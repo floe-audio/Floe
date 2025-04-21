@@ -101,7 +101,6 @@ struct Region {
 
     struct Playback {
         KeytrackRequirement keytrack_requirement {KeytrackRequirement::Default};
-        // IMPROVE: add keytrack_requirement: enum: default, always, never
         // IMPROVE: add monophonic_requirement: enum: default, always, never
         // IMPROVE: add volume_envelope_requirement?
     } playback;
