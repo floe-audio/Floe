@@ -154,14 +154,15 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
         auto& inst = *inst_ptr;
         struct RoundRobinGroupInfo {
             u8 max_rr_pos;
-            u8 round_robin_group_index;
+            u8 sequencing_group;
         };
         Array<HashTable<String, RoundRobinGroupInfo>, ToInt(TriggerEvent::Count)> round_robin_group_infos {};
 
-        u8 round_robin_group_counter = 0;
+        Array<u8, ToInt(TriggerEvent::Count)> sequencing_group_counters {};
 
         for (auto& region : inst->regions) {
             if (!region.trigger.round_robin_index) continue;
+
             if (auto const e =
                     round_robin_group_infos[ToInt(region.trigger.trigger_event)].FindOrInsertGrowIfNeeded(
                         scratch_arena,
@@ -172,10 +173,13 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
 
                 auto& existing = e.element->data;
                 existing.max_rr_pos = Max(existing.max_rr_pos, *region.trigger.round_robin_index);
+
+                region.trigger.round_robin_sequencing_group = existing.sequencing_group;
             } else {
                 // We've inserted it, so we need to set the actual values.
 
-                if (round_robin_group_counter == k_max_round_robin_sequence_groups) {
+                auto& counter = sequencing_group_counters[ToInt(region.trigger.trigger_event)];
+                if (counter == k_max_round_robin_sequence_groups) {
                     return (String)fmt::Format(arena,
                                                "More than {} round robin groups in instrument {}",
                                                k_max_round_robin_sequence_groups,
@@ -185,16 +189,18 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
                 auto& new_group = e.element->data;
                 new_group = {
                     .max_rr_pos = *region.trigger.round_robin_index,
-                    .round_robin_group_index = round_robin_group_counter++,
+                    .sequencing_group = counter++,
                 };
+
+                region.trigger.round_robin_sequencing_group = new_group.sequencing_group;
             }
         }
 
         for (auto const i : ::Range(ToInt(TriggerEvent::Count))) {
             inst->round_robin_sequence_groups[i] =
-                arena.NewMultiple<RoundRobinGroup>(round_robin_group_counter);
-            for (auto const& [_, group_info] : round_robin_group_infos[i]) {
-                auto& group = inst->round_robin_sequence_groups[i][group_info->round_robin_group_index];
+                arena.NewMultiple<RoundRobinGroup>(sequencing_group_counters[i]);
+            for (auto const& [group_key, group_info] : round_robin_group_infos[i]) {
+                auto& group = inst->round_robin_sequence_groups[i][group_info->sequencing_group];
                 group = {
                     .max_rr_pos = group_info->max_rr_pos,
                 };
