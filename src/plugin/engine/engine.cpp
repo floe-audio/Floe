@@ -72,8 +72,6 @@ static void UpdateAttributionText(Engine& engine, ArenaAllocator& scratch_arena)
     }
 
     UpdateAttributionText(engine.attribution_requirements, scratch_arena, insts, ir);
-
-    // TODO: if the attributions have changed, we should update the GUI
 }
 
 static void SetLastSnapshot(Engine& engine, StateSnapshotWithName const& state) {
