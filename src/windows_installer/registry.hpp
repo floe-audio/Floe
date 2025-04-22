@@ -34,7 +34,7 @@ PUBLIC Optional<String> UninstallerPath(ArenaAllocator& arena, bool create) {
 
     if (create) {
         TRY_OR(CreateDirectory(path, {.create_intermediate_directories = false, .fail_if_exists = false}), {
-            ReportError(ErrorLevel::Warning, k_nullopt, "Failed to create directory '{}': {}", path, error);
+            ReportError(ErrorLevel::Warning, k_nullopt, "Failed to create directory: {}", error);
             return k_nullopt;
         });
     }

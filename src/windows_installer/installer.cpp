@@ -106,7 +106,7 @@ static ErrorCodeOr<void> TryInstall(Component const& comp) {
     PathArena arena {Malloc::Instance()};
     auto const path = path::Join(arena, Array {comp.install_dir, comp.info.filename});
     TRY_OR(WriteFile(path, comp.data), {
-        ReportError(ErrorLevel::Warning, k_nullopt, "Failed to install file {}: {}", path, error);
+        ReportError(ErrorLevel::Warning, k_nullopt, "Failed to install file: {}", error);
         return error;
     });
 
