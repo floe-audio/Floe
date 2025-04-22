@@ -1521,19 +1521,19 @@ AudioProcessor::AudioProcessor(clap_host const& host,
             param_learned_ccs[ToInt(mapping.param)].Set(mapping.cc);
     for (auto const i : EnumIterator<ParamIndex>())
         param_learned_ccs[ToInt(i)].AssignBlockwise(PersistentCcsForParam(prefs, ParamIndexToId(i)));
-
-    processor_callbacks = {
-        .activate = Activate,
-        .deactivate = Deactivate,
-        .reset = Reset,
-        .process = Process,
-        .flush_parameter_events = FlushParameterEvents,
-        .on_main_thread = OnMainThread,
-        .on_thread_pool_exec = OnThreadPoolExec,
-    };
 }
 
 AudioProcessor::~AudioProcessor() {
     for (auto& i : lifetime_extended_insts)
         i.Release();
 }
+
+PluginCallbacks<AudioProcessor> const g_processor_callbacks {
+    .activate = Activate,
+    .deactivate = Deactivate,
+    .reset = Reset,
+    .process = Process,
+    .flush_parameter_events = FlushParameterEvents,
+    .on_main_thread = OnMainThread,
+    .on_thread_pool_exec = OnThreadPoolExec,
+};

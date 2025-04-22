@@ -610,14 +610,11 @@ static bool PluginLoadState(Engine& engine, clap_istream const& stream) {
     return true;
 }
 
-PluginCallbacks<Engine> EngineCallbacks() {
-    PluginCallbacks<Engine> result {
-        .on_main_thread = OnMainThread,
-        .on_timer = PluginOnTimer,
-        .on_poll_thread = PluginOnPollThread,
-        .on_preference_changed = PluginOnPreferenceChanged,
-        .save_state = PluginSaveState,
-        .load_state = PluginLoadState,
-    };
-    return result;
-}
+PluginCallbacks<Engine> const g_engine_callbacks {
+    .on_main_thread = OnMainThread,
+    .on_timer = PluginOnTimer,
+    .on_poll_thread = PluginOnPollThread,
+    .on_preference_changed = PluginOnPreferenceChanged,
+    .save_state = PluginSaveState,
+    .load_state = PluginLoadState,
+};

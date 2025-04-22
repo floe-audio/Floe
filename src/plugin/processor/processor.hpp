@@ -265,9 +265,9 @@ struct AudioProcessor {
     EffectsArray actual_fx_order {effects_ordered_by_type};
 
     bool activated = false;
-
-    PluginCallbacks<AudioProcessor> processor_callbacks;
 };
+
+extern PluginCallbacks<AudioProcessor> const g_processor_callbacks;
 
 enum class ProcessorSetting {
     DefaultCcParamMappings,

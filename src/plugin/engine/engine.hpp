@@ -92,7 +92,7 @@ struct Engine : ProcessorListener {
     sample_lib_server::AsyncCommsChannel& sample_lib_server_async_channel;
 };
 
-PluginCallbacks<Engine> EngineCallbacks();
+extern PluginCallbacks<Engine> const g_engine_callbacks;
 
 void RunFunctionOnMainThread(Engine& engine, ThreadsafeFunctionQueue::Function function);
 

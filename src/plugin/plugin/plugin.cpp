@@ -172,7 +172,7 @@ bool ClapStateSave(clap_plugin const* plugin, clap_ostream const* stream) {
         if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return false;
         if (!Check(floe, floe.initialised, k_func, "not initialised")) return false;
 
-        return EngineCallbacks().save_state(*floe.engine, *stream);
+        return g_engine_callbacks.save_state(*floe.engine, *stream);
     } catch (PanicException) {
         return false;
     }
@@ -196,7 +196,7 @@ static bool ClapStateLoad(clap_plugin const* plugin, clap_istream const* stream)
         if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return false;
         if (!Check(floe, floe.initialised, k_func, "not initialised")) return false;
 
-        return EngineCallbacks().load_state(*floe.engine, *stream);
+        return g_engine_callbacks.load_state(*floe.engine, *stream);
     } catch (PanicException) {
         return false;
     }
@@ -913,7 +913,7 @@ ClapParamsFlush(clap_plugin_t const* plugin, clap_input_events_t const* in, clap
         if (!CheckInputEvents(in)) return;
 
         auto& processor = floe.engine->processor;
-        processor.processor_callbacks.flush_parameter_events(processor, *in, *out);
+        g_processor_callbacks.flush_parameter_events(processor, *in, *out);
     } catch (PanicException) {
     }
 }
@@ -1067,7 +1067,7 @@ static void ClapThreadPoolExec(clap_plugin_t const* plugin, u32 task_index) {
             f;
         });
 
-        floe.engine->processor.processor_callbacks.on_thread_pool_exec(floe.engine->processor, task_index);
+        g_processor_callbacks.on_thread_pool_exec(floe.engine->processor, task_index);
     } catch (PanicException) {
     }
 }
@@ -1097,7 +1097,7 @@ static void ClapTimerSupportOnTimer(clap_plugin_t const* plugin, clap_id timer_i
         prefs::PollForExternalChanges(g_shared_engine_systems->prefs);
 
         if (floe.gui_platform) OnClapTimer(*floe.gui_platform, timer_id);
-        if (floe.engine) EngineCallbacks().on_timer(*floe.engine, timer_id);
+        if (floe.engine) g_engine_callbacks.on_timer(*floe.engine, timer_id);
     } catch (PanicException) {
     }
 }
@@ -1237,12 +1237,12 @@ static bool ClapActivate(const struct clap_plugin* plugin,
         if (floe.active) return true;
 
         auto& processor = floe.engine->processor;
-        if (!processor.processor_callbacks.activate(processor,
-                                                    {
-                                                        .sample_rate = sample_rate,
-                                                        .min_block_size = min_frames_count,
-                                                        .max_block_size = max_frames_count,
-                                                    }))
+        if (!g_processor_callbacks.activate(processor,
+                                            {
+                                                .sample_rate = sample_rate,
+                                                .min_block_size = min_frames_count,
+                                                .max_block_size = max_frames_count,
+                                            }))
             return false;
         floe.active = true;
         return true;
@@ -1270,7 +1270,7 @@ static void ClapDeactivate(const struct clap_plugin* plugin) {
         if (!floe.active) return;
 
         auto& processor = floe.engine->processor;
-        processor.processor_callbacks.deactivate(processor);
+        g_processor_callbacks.deactivate(processor);
         floe.active = false;
     } catch (PanicException) {
     }
@@ -1332,7 +1332,7 @@ static bool ClapStartProcessing(const struct clap_plugin* plugin) {
         if (floe.processing) return true;
 
         auto& processor = floe.engine->processor;
-        processor.processor_callbacks.start_processing(processor);
+        g_processor_callbacks.start_processing(processor);
         floe.processing = true;
         return true;
     } catch (PanicException) {
@@ -1359,7 +1359,7 @@ static void ClapStopProcessing(const struct clap_plugin* plugin) {
         if (!floe.processing) return;
 
         auto& processor = floe.engine->processor;
-        processor.processor_callbacks.stop_processing(processor);
+        g_processor_callbacks.stop_processing(processor);
         floe.processing = false;
     } catch (PanicException) {
     }
@@ -1381,7 +1381,7 @@ static void ClapReset(const struct clap_plugin* plugin) {
         if (!Check(floe, floe.active, k_func, "not active")) return;
 
         auto& processor = floe.engine->processor;
-        processor.processor_callbacks.reset(processor);
+        g_processor_callbacks.reset(processor);
     } catch (PanicException) {
     }
 }
@@ -1411,8 +1411,7 @@ static clap_process_status ClapProcess(const struct clap_plugin* plugin, clap_pr
             return CLAP_PROCESS_ERROR;
 
         ScopedNoDenormals const no_denormals;
-        auto& processor = floe.engine->processor;
-        return processor.processor_callbacks.process(floe.engine->processor, *process);
+        return g_processor_callbacks.process(floe.engine->processor, *process);
     } catch (PanicException) {
         return CLAP_PROCESS_ERROR;
     }
@@ -1466,8 +1465,8 @@ static void ClapOnMainThread(const struct clap_plugin* plugin) {
             prefs::PollForExternalChanges(g_shared_engine_systems->prefs);
 
             auto& processor = floe.engine->processor;
-            processor.processor_callbacks.on_main_thread(processor);
-            EngineCallbacks().on_main_thread(*floe.engine);
+            g_processor_callbacks.on_main_thread(processor);
+            g_engine_callbacks.on_main_thread(*floe.engine);
         }
     } catch (PanicException) {
     }
@@ -1515,7 +1514,7 @@ void OnPollThread(FloeInstanceIndex index) {
     // Register/Unregister calls are correctly before/after.
     auto& floe = *g_floe_instances[index];
     ASSERT(floe.engine);
-    EngineCallbacks().on_poll_thread(*floe.engine);
+    g_engine_callbacks.on_poll_thread(*floe.engine);
 }
 
 void OnPreferenceChanged(FloeInstanceIndex index, prefs::Key const& key, prefs::Value const* value) {
@@ -1555,5 +1554,5 @@ void OnPreferenceChanged(FloeInstanceIndex index, prefs::Key const& key, prefs::
         }
     }
 
-    EngineCallbacks().on_preference_changed(*floe.engine, key, value);
+    g_engine_callbacks.on_preference_changed(*floe.engine, key, value);
 }
