@@ -1290,7 +1290,11 @@ static void ClapDestroy(const struct clap_plugin* plugin) {
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
         if (floe.initialised) {
-            if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return;
+            // We check if it's the main thread but we continue anyway. This has triggered in Logic Pro with
+            // the CLAP-wrapper AUv2 plugin. In terms of our code we don't require the main thread, we just
+            // require that this funciton is not called at the same time as any other of our functions; we
+            // suspect that is the case here.
+            Check(floe, IsMainThread(floe.host), k_func, "not main thread");
 
             // These shouldn't be necessary, but we can easily handle them so we do.
             if (floe.active) ClapDeactivate(plugin);
