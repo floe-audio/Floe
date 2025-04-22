@@ -104,7 +104,6 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform,
 
     @try {
         ASSERT([NSThread isMainThread]);
-        ASSERT([NSApp activationPolicy] != NSApplicationActivationPolicyProhibited);
 
         switch (options.type) {
             case FilePickerDialogOptions::Type::OpenFile:
