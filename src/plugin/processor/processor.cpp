@@ -633,14 +633,15 @@ HandleNoteOff(AudioProcessor& processor, MidiChannelNote note, f32 velocity, boo
     }
 }
 
+static void FlushEventsForAudioThread(AudioProcessor& processor) {
+    for (auto const& event : processor.events_for_audio_thread.PopAll())
+        if (auto remove_midi_learn = event.TryGet<RemoveMidiLearn>())
+            processor.param_learned_ccs[ToInt(remove_midi_learn->param)].Clear(remove_midi_learn->midi_cc);
+}
+
 static void Deactivate(AudioProcessor& processor) {
     if (processor.activated) {
-        for (auto const& event : processor.events_for_audio_thread.PopAll()) {
-            if (auto remove_midi_learn = event.TryGet<RemoveMidiLearn>()) {
-                processor.param_learned_ccs[ToInt(remove_midi_learn->param)].Clear(
-                    remove_midi_learn->midi_cc);
-            }
-        }
+        FlushEventsForAudioThread(processor);
         processor.voice_pool.EndAllVoicesInstantly();
         processor.activated = false;
     }
@@ -1440,12 +1441,10 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     return result;
 }
 
-static void Reset(AudioProcessor&) {
-    // TODO(1.0):
-    // - Clears all buffers, performs a full reset of the processing state (filters, oscillators,
-    //   envelopes, lfo, ...) and kills all voices.
-    // - The parameter's value remain unchanged.
-    // - clap_process.steady_time may jump backward.
+static void Reset(AudioProcessor& processor) {
+    FlushEventsForAudioThread(processor);
+    processor.voice_pool.EndAllVoicesInstantly();
+    ResetProcessor(processor, {}, 0);
 }
 
 static void OnMainThread(AudioProcessor& processor) {
