@@ -198,13 +198,16 @@ static void SwitchPage(Application& app, GuiFramework& framework, Pages page) {
                                 app.components[comp_index].info.name,
                                 app.components[comp_index].info.filename,
                                 app.components[comp_index].install_dir);
-                else
+                else {
                     fmt::Append(summary_text,
                                 "Failed to install {} ({}) to {}: {u}."_s,
                                 app.components[comp_index].info.name,
                                 app.components[comp_index].info.filename,
                                 app.components[comp_index].install_dir,
                                 result.Error());
+                    if (result.Error() == FilesystemError::AccessDenied)
+                        fmt::Append(summary_text, "\nTry closing your DAW and trying again.");
+                }
                 dyn::AppendSpan(summary_text, "\n\n");
             }
 
