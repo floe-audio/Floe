@@ -184,7 +184,10 @@ bool Knob(Gui* g, imgui::Id id, Parameter const& param, Rect r, Style const& sty
                                                         val,
                                                         param.DefaultLinearValue());
     if (result.new_string_value) {
-        if (auto v = param.info.StringToLinearValue(*result.new_string_value)) new_val = v;
+        if (auto v = param.info.StringToLinearValue(*result.new_string_value)) {
+            new_val = v;
+            g->imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+        }
     }
 
     if (result.value_changed) new_val = val;

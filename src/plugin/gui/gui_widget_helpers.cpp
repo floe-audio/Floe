@@ -147,7 +147,7 @@ void MidiLearnMenu(Gui* g, Span<ParamIndex> params, Rect r) {
 
     auto item_height = imgui.graphics->context->CurrentFontSize() * 1.5f;
     static constexpr String k_reset_text = "Set To Default Value";
-    static constexpr String k_set_text = "Set Value";
+    static constexpr String k_enter_text = "Enter Value";
     static constexpr String k_learn_text = "MIDI CC Learn";
     static constexpr String k_cancel_text = "Cancel MIDI CC Learn";
     static constexpr String k_remove_fmt = "Remove MIDI CC {}";
@@ -160,7 +160,8 @@ void MidiLearnMenu(Gui* g, Span<ParamIndex> params, Rect r) {
         auto check_max_size = [&](String str) { item_width = Max(item_width, MenuItemWidth(g, {&str, 1})); };
 
         check_max_size(k_reset_text);
-        check_max_size(k_set_text);
+        if (k_param_descriptors[ToInt(param)].value_type == ParamValueType::Float)
+            check_max_size(k_enter_text);
         if (IsMidiCCLearnActive(engine.processor))
             check_max_size(k_cancel_text);
         else
@@ -230,10 +231,10 @@ void MidiLearnMenu(Gui* g, Span<ParamIndex> params, Rect r) {
                 pos += item_height;
             }
 
-            {
+            if (k_param_descriptors[ToInt(param)].value_type == ParamValueType::Float) {
                 if (buttons::Button(g,
                                     {.xywh {0, pos, item_width, item_height}},
-                                    k_set_text,
+                                    k_enter_text,
                                     buttons::MenuItem(imgui, false))) {
                     imgui.ClosePopupToLevel(0);
                     g->param_text_editor_to_open = param;
@@ -493,8 +494,11 @@ void HandleShowingTextEditorForParams(Gui* g, Rect r, Span<ParamIndex const> par
                 auto const text_input = g->imgui.TextInput(GetParameterTextInputSettings(), r, id, *str);
 
                 if (text_input.enter_pressed || g->imgui.TextInputJustUnfocused(id)) {
-                    if (auto val = p_obj.info.StringToLinearValue(text_input.text))
+                    if (auto val = p_obj.info.StringToLinearValue(text_input.text)) {
                         SetParameterValue(g->engine.processor, p, *val, {});
+                        g->imgui.frame_output.ElevateUpdateRequest(
+                            GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                    }
                     g->param_text_editor_to_open.Clear();
                 }
                 break;
