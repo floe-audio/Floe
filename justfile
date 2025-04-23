@@ -128,9 +128,17 @@ install-cbd arch_os_pair=native_arch_os_pair:
 
 clang-tidy arch_os_pair=native_arch_os_pair: (install-cbd arch_os_pair)
   #!/usr/bin/env bash
+  cdb_file="{{cache_dir}}/compile_commands_{{arch_os_pair}}.json"
+
+  # We return early with a warning if the compile commands file doesn't exist.
+  if [[ ! -f $cdb_file ]]; then
+    echo "WARNING: compile_commands.json file not found for arch+OS: {{arch_os_pair}}"
+    exit 0
+  fi
+
   # NOTE: we specify the config file because we don't want clang-tidy to go automatically looking for it and 
   # sometimes finding .clang-tidy files in third-party libraries that are incompatible with our version of clang-tidy
-  jq -r '.[].file' {{cache_dir}}/compile_commands_{{arch_os_pair}}.json | xargs clang-tidy --config-file=.clang-tidy -p {{cache_dir}} 
+  jq -r '.[].file' "$cdb_file" | xargs clang-tidy --config-file=.clang-tidy -p "{{cache_dir}}"
 
 clang-tidy-all: (clang-tidy "x86_64-linux") (clang-tidy "x86_64-windows") (clang-tidy "aarch64-macos")
 
