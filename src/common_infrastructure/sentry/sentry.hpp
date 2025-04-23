@@ -405,10 +405,11 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
     // tags
     TRY(json::WriteKeyObjectBegin(json_writer, "tags"));
     auto const app_type = Tag {"app_type", ToString(g_final_binary_type)};
+    auto const app_type_arr = Array {app_type};
     for (auto const tags : Array {
              event.tags,
              options.diagnostics ? sentry.tags : Span<Tag> {},
-             Array {app_type},
+             app_type_arr,
          }) {
         for (auto const& tag : tags) {
             if (!tag.key.size) continue;
