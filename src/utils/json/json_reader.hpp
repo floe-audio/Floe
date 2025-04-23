@@ -57,7 +57,7 @@ using EventCallback = TrivialAllocatedFunction<bool(EventHandlerStack& handler_s
 
 class EventHandler {
   public:
-    EventHandler(EventCallbackRef callback, Allocator& a) : m_handle_event_callback({callback, a}) {
+    EventHandler(EventCallbackRef callback, Allocator& a) : m_handle_event_callback(callback, a) {
         ASSERT(callback);
     }
 
@@ -438,7 +438,7 @@ class EventHandlerContext {
     }
 
     void PushHandler(EventCallbackRef callback) {
-        dyn::Append(m_handler_stack, EventHandler {callback, m_handler_stack.allocator});
+        dyn::Emplace(m_handler_stack, callback, m_handler_stack.allocator);
     }
     void PopHandler() { dyn::Pop(m_handler_stack); }
     EventHandler& CurrentHandler() { return Last(m_handler_stack); }
@@ -694,7 +694,7 @@ PUBLIC bool SetIfMatchingContainer(EventType type,
                                    EventCallbackRef callback) {
     ASSERT(type == EventType::ArrayStart || type == EventType::ObjectStart);
     if (event.type == type && event.key == expected_key) {
-        dyn::Append(handler_stack, EventHandler {callback, handler_stack.allocator});
+        dyn::Emplace(handler_stack, callback, handler_stack.allocator);
         Last(handler_stack).HandleEvent(handler_stack, event);
         return true;
     }

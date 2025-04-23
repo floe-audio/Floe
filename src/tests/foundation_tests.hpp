@@ -1034,11 +1034,13 @@ static ErrorCodeOr<void> TestTrivialFunctionBasics(tests::Tester& tester, Functi
     }
     f();
 
-    auto other_f = f;
-    other_f();
+    if constexpr (CopyConstructible<FunctionType>) {
+        auto other_f = f;
+        other_f();
 
-    auto other_f2 = Move(f);
-    other_f2();
+        auto other_f2 = Move(f);
+        other_f2();
+    }
     return k_success;
 }
 
@@ -1090,7 +1092,7 @@ TEST_CASE(TestFunction) {
         TrivialAllocatedFunction<void()> f {SimpleFunction, allocator};
         TRY(TestTrivialFunctionBasics(tester, f));
 
-        SUBCASE("captures are copied 1") {
+        SUBCASE("captures are copied") {
             int value = 0;
             TrivialAllocatedFunction<void()> a {[&value]() { value = 1; }, allocator};
             TrivialAllocatedFunction<void()> b {[&value]() { value = 2; }, allocator};
@@ -1102,25 +1104,6 @@ TEST_CASE(TestFunction) {
             value = 0;
             b();
             CHECK_EQ(value, 2);
-
-            value = 0;
-            b = a;
-            a = []() {};
-            b();
-            CHECK_EQ(value, 1);
-        }
-
-        SUBCASE("captures are copied 2") {
-            bool a_value = false;
-            bool b_value = false;
-            TrivialAllocatedFunction<void()> a {[&a_value]() { a_value = true; }, allocator};
-            TrivialAllocatedFunction<void()> b {[&b_value]() { b_value = true; }, allocator};
-
-            b = a;
-            a = []() {};
-            b();
-            CHECK(a_value);
-            CHECK(!b_value);
         }
     }
 
@@ -1129,7 +1112,7 @@ TEST_CASE(TestFunction) {
         static_assert(TriviallyCopyable<decltype(f)>);
         static_assert(TriviallyDestructible<decltype(f)>);
 
-        f = &SimpleFunction;
+        f = SimpleFunction;
         f();
         auto const lambda = [&tester]() { REQUIRE(true); };
         f = lambda;
@@ -1141,16 +1124,18 @@ TEST_CASE(TestFunction) {
             allocated_f();
         }
 
-        f = &SimpleFunction;
+        f = SimpleFunction;
         {
             TrivialAllocatedFunction<void()> const allocated_f {f, allocator};
             allocated_f();
         }
 
+        int value = 100;
+        auto const other_lambda = [&tester, value]() { REQUIRE(value == 100); };
+
         TrivialFunctionRef<void()> other;
         {
-            int value = 100;
-            f = [&tester, value]() { REQUIRE(value == 100); };
+            f = other_lambda;
             other = f.CloneObject(tester.scratch_arena);
         }
         [[maybe_unused]] char push_stack[32];
