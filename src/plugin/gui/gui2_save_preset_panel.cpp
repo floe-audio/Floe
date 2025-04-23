@@ -14,7 +14,25 @@ void OnEngineStateChange(SavePresetPanelState& state, Engine const& engine) {
     state.scroll_to_start = true;
 }
 
-static void SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext&, SavePresetPanelState& state) {
+static prefs::Descriptor RememberedAuthorPrefsDescriptor() {
+    prefs::Descriptor const desc {
+        .key = "preset-author"_s,
+        .value_requirements =
+            prefs::Descriptor::StringRequirements {
+                .validator =
+                    [](String& value) {
+                        if (value.size > k_max_preset_author_size) return false;
+                        if (!IsValidUtf8(value)) return false;
+                        return true;
+                    },
+            },
+        .default_value = "Unknown"_s,
+    };
+    return desc;
+}
+
+static void
+SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SavePresetPanelState& state) {
     auto const root = DoBox(box_system,
                             {
                                 .layout {
@@ -66,6 +84,33 @@ static void SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext&, S
                                          TextInputBox::SingleLine);
             input.text_input_result && input.text_input_result->buffer_changed) {
             dyn::AssignFitInCapacity(state.metadata.author, input.text_input_result->text);
+        }
+
+        if (IconButton(box_system,
+                       author_box,
+                       ICON_FA_SAVE,
+                       "Remember this author"_s,
+                       style::k_font_body_size,
+                       style::k_font_body_size)
+                .button_fired) {
+            dyn::Append(box_system.state->deferred_actions, [&context, &state]() {
+                prefs::SetValue(context.prefs,
+                                RememberedAuthorPrefsDescriptor(),
+                                (String)state.metadata.author);
+            });
+        }
+
+        if (auto const remembered_name = prefs::GetValue(context.prefs, RememberedAuthorPrefsDescriptor());
+            !remembered_name.is_default) {
+            if (IconButton(box_system,
+                           author_box,
+                           ICON_FA_FILE_IMPORT,
+                           fmt::Format(box_system.arena, "Use saved author: {}"_s, remembered_name.value),
+                           style::k_font_body_size,
+                           style::k_font_body_size)
+                    .button_fired) {
+                dyn::Assign(state.metadata.author, remembered_name.value.Get<String>());
+            }
         }
     }
 

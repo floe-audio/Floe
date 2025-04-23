@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "common_infrastructure/preferences.hpp"
+
 #include "gui/gui_fwd.hpp"
 #include "state/state_snapshot.hpp"
 
@@ -14,6 +16,7 @@ struct SavePresetPanelContext {
     Engine& engine;
     FilePickerState& file_picker_state;
     FloePaths const& paths;
+    prefs::Preferences& prefs;
 };
 
 struct SavePresetPanelState {

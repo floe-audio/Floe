@@ -367,6 +367,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .engine = g->engine,
                 .file_picker_state = g->file_picker_state,
                 .paths = g->shared_engine_systems.paths,
+                .prefs = g->prefs,
             };
             DoSavePresetPanel(g->box_system, context, g->save_preset_panel_state);
         }
