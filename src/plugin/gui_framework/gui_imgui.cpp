@@ -1966,6 +1966,12 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     RegisterRegionForMouseTracking(window->unpadded_bounds, false);
 }
 
+Window* Context::FindWindow(Id id) {
+    for (auto const i : Range(windows.size))
+        if (windows[i]->id == id) return windows[i];
+    return nullptr;
+}
+
 void Context::EndWindow() {
     Window* window = Last(window_stack);
     if (window->prev_content_size.x != window->prevprev_content_size.x ||

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "gui/gui_fwd.hpp"
 #include "state/state_snapshot.hpp"
 
 struct FilePickerState;
@@ -18,6 +19,7 @@ struct SavePresetPanelContext {
 struct SavePresetPanelState {
     bool open;
     StateMetadata metadata;
+    bool scroll_to_start;
 };
 
 void OnEngineStateChange(SavePresetPanelState& state, Engine const& engine);

@@ -11,6 +11,7 @@ struct Parameter;
 namespace imgui {
 struct Context;
 using Id = u32;
+struct Window;
 } // namespace imgui
 
 namespace graphics {

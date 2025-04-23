@@ -381,6 +381,8 @@ struct Context {
 
     void EndWindow();
 
+    Window* FindWindow(Id id);
+
     void SetYScroll(Window* window, f32 val) {
         window->scroll_offset.y = val;
         frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
