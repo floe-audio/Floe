@@ -329,6 +329,32 @@ struct AddEventOptions {
     Optional<FeedbackEvent> feedback {};
 };
 
+// NOTE: our own filepaths should be relative because we use -fmacro-prefix-map
+// -fdebug-prefix-map and -ffile-prefix-map. We ignore absolute paths because they could
+// contain usernames.
+//
+// NOTE: on Windows, there might be Linux paths in the stacktrace because the Windows
+// binary is built using Linux. These stacktraces are from the build machine and are
+// therefore harmless. They will not be detected by path::IsAbsolute() since that will be
+// checking for Windows filepaths.
+static bool ShouldSendFilepath(String path) {
+    if (path.size == 0) return false;
+
+    if (path::IsAbsolute(path)) {
+        // We allow paths from Zig's global cache. These are paths from the build machine and are therefore
+        // safe. They will contain information about our external dependencies.
+        String const zig_cache_path = FLOE_GLOBAL_ZIG_CACHE_PATH;
+        if (path.size > zig_cache_path.size && StartsWithSpan(path, zig_cache_path) &&
+            path::IsDirectorySeparator(path[zig_cache_path.size]))
+            return true;
+
+        return false;
+    }
+
+    // Relative paths are ok.
+    return true;
+}
+
 // thread-safe (for Sentry), signal-safe if signal_safe is true
 // NOTE (Jan 2025): There's no pure informational concept in Sentry. All events are 'issues' regardless of
 // their level.
@@ -416,15 +442,7 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
                 auto try_write = [&]() -> ErrorCodeOr<void> {
                     TRY(json::WriteObjectBegin(json_writer));
 
-                    // NOTE: our own filepaths should be relative because we use -fmacro-prefix-map
-                    // -fdebug-prefix-map and -ffile-prefix-map. We ignore absolute paths because they could
-                    // contain usernames.
-                    //
-                    // NOTE: on Windows, there might be Linux paths in the stacktrace because the Windows
-                    // binary is built using Linux. These stacktraces are from the build machine and are
-                    // therefore harmless. They will not be detected by path::IsAbsolute() since that will be
-                    // checking for Windows filepaths.
-                    if (frame.filename.size && !path::IsAbsolute(frame.filename)) {
+                    if (ShouldSendFilepath(frame.filename)) {
                         TRY(json::WriteKeyValue(json_writer, "filename", frame.filename));
                         TRY(json::WriteKeyValue(json_writer, "in_app", true));
                         TRY(json::WriteKeyValue(json_writer, "lineno", frame.line));
