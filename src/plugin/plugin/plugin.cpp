@@ -1331,7 +1331,7 @@ static bool ClapStartProcessing(const struct clap_plugin* plugin) {
         if (!Check(floe, IsAudioThread(floe.host) != IsAudioThreadResult::No, k_func, "not audio thread"))
             return false;
 
-        if (!Check(floe, floe.active, k_func, "not active")) return false;
+        if (!floe.active) return false;
 
         if (floe.processing) return true;
 
@@ -1358,7 +1358,7 @@ static void ClapStopProcessing(const struct clap_plugin* plugin) {
 
         if (!Check(floe, IsAudioThread(floe.host) != IsAudioThreadResult::No, k_func, "not audio thread"))
             return;
-        if (!Check(floe, floe.active, k_func, "not active")) return;
+        if (!floe.active) return;
 
         if (!floe.processing) return;
 
@@ -1382,7 +1382,7 @@ static void ClapReset(const struct clap_plugin* plugin) {
 
         if (!Check(floe, IsAudioThread(floe.host) != IsAudioThreadResult::No, k_func, "not audio thread"))
             return;
-        if (!Check(floe, floe.active, k_func, "not active")) return;
+        if (!floe.active) return;
 
         auto& processor = floe.engine->processor;
         g_processor_callbacks.reset(processor);
