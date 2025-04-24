@@ -821,7 +821,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
     switch (event.type) {
         case CLAP_EVENT_NOTE_ON: {
             auto note = (clap_event_note const&)event;
-            if (note.channel != 0) break;
+
             if (note.key > MidiMessage::k_u7_max) break;
             if (note.channel > MidiMessage::k_u4_max) break;
             MidiChannelNote const chan_note {.note = (u7)note.key, .channel = (u4)note.channel};
@@ -832,7 +832,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
         }
         case CLAP_EVENT_NOTE_OFF: {
             auto note = (clap_event_note const&)event;
-            if (note.channel != 0) break;
+
             if (note.key > MidiMessage::k_u7_max) break;
             if (note.channel > MidiMessage::k_u4_max) break;
             MidiChannelNote const chan_note {.note = (u7)note.key, .channel = (u4)note.channel};
