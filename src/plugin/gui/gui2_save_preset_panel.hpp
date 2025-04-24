@@ -21,6 +21,7 @@ struct SavePresetPanelContext {
 
 struct SavePresetPanelState {
     bool open;
+    DynamicArrayBounded<char, 200> preset_name;
     StateMetadata metadata;
     bool scroll_to_start;
 };

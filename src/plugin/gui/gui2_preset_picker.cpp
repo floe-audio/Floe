@@ -225,10 +225,13 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
             c;
         });
 
+        DynamicArrayBounded<char, 200> name {preset.name};
+        if (preset.file_format == PresetFormat::Mirage) dyn::AppendSpan(name, " (Mirage)"_s);
+
         auto const item = DoPickerItem(box_system,
                                        {
                                            .parent = folder_box,
-                                           .text = preset.name,
+                                           .text = name,
                                            .is_current = is_current,
                                            .icon = k_nullopt,
                                        });

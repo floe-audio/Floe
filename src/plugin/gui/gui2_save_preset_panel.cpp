@@ -12,6 +12,7 @@
 void OnEngineStateChange(SavePresetPanelState& state, Engine const& engine) {
     state.metadata = engine.state_metadata;
     state.scroll_to_start = true;
+    state.preset_name = engine.last_snapshot.name_or_path.Name();
 }
 
 static prefs::Descriptor RememberedAuthorPrefsDescriptor() {
@@ -55,6 +56,36 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
             .font = FontType::Body,
             .size_from_text = true,
         });
+
+    {
+        auto const name_box = DoBox(box_system,
+                                    {
+                                        .parent = root,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                            .contents_gap = style::k_spacing / 3,
+                                            .contents_direction = layout::Direction::Row,
+                                            .contents_align = layout::Alignment::Start,
+                                            .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                        },
+                                    });
+        DoBox(box_system,
+              {
+                  .parent = name_box,
+                  .text = "Name:"_s,
+                  .font = FontType::Body,
+                  .size_from_text = true,
+              });
+        if (auto const input = TextInput(box_system,
+                                         name_box,
+                                         state.preset_name,
+                                         "Preset name"_s,
+                                         f32x2 {200, style::k_font_body_size * 1.3f},
+                                         TextInputBox::SingleLine);
+            input.text_input_result && input.text_input_result->buffer_changed) {
+            dyn::AssignFitInCapacity(state.preset_name, input.text_input_result->text);
+        }
+    }
 
     {
         auto const author_box = DoBox(box_system,
@@ -105,7 +136,7 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
             if (IconButton(box_system,
                            author_box,
                            ICON_FA_FILE_IMPORT,
-                           fmt::Format(box_system.arena, "Use saved author: {}"_s, remembered_name.value),
+                           fmt::Format(box_system.arena, "Insert saved author: {}"_s, remembered_name.value),
                            style::k_font_body_size,
                            style::k_font_body_size)
                     .button_fired) {
