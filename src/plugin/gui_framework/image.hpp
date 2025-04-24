@@ -43,7 +43,7 @@ struct ImageF32 {
 };
 
 static ErrorCodeOr<ImageBytesManaged> DecodeJpgOrPng(Span<u8 const> image_data) {
-    ASSERT(image_data.size);
+    if (!image_data.size) return ImageBytes {};
 
     // always returns rgba because we specify k_rgba_channels as the output channels
     int actual_number_channels;
