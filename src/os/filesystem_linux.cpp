@@ -45,7 +45,7 @@ ErrorCodeOr<void> CopyFile(String from, String to, ExistingDestinationHandling e
     auto from_nt = NullTerminated(from, temp_path_allocator);
     auto to_nt = NullTerminated(to, temp_path_allocator);
 
-    if (auto const exists = access(to_nt, F_OK) == 0) {
+    if (access(to_nt, F_OK) == 0) {
         switch (existing) {
             case ExistingDestinationHandling::Fail: return ErrorCode(FilesystemError::PathAlreadyExists);
             case ExistingDestinationHandling::Skip: return k_success;

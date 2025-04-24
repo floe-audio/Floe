@@ -193,7 +193,7 @@ void OnParamChange(LayerProcessor& layer,
     constexpr f32 k_min_envelope_ms = 0.2f;
     // Volume envelope
     // =======================================================================================================
-    if (auto p = changed_params.Param(LayerParamIndex::VolEnvOn)) UpdateVolumeEnvelopeOn(layer, voice_pool);
+    if (changed_params.Param(LayerParamIndex::VolEnvOn)) UpdateVolumeEnvelopeOn(layer, voice_pool);
     if (auto p = changed_params.Param(LayerParamIndex::VolumeAttack))
         layer.voice_controller.vol_env.SetAttackSamples(Max(k_min_envelope_ms, p->ProjectedValue()) /
                                                             1000.0f * sample_rate,
