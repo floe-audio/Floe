@@ -481,6 +481,113 @@ ErrorCodeOr<u64> MdataHash(Reader& reader) {
     return Hash(header.Name());
 }
 
+static ErrorCodeOr<void> GenerateFloeLua(Library& library, ArenaAllocator& scratch_arena) {
+    auto filename = scratch_arena.Clone(library.name);
+    for (auto& c : filename)
+        if (c == ' ')
+            c = '-';
+        else
+            c = ToLowercaseAscii(c);
+
+    String const out_path = path::Join(scratch_arena,
+                                       Array {
+                                           "/home/sam/Projects/mdata-to-floe"_s,
+                                           fmt::Format(scratch_arena, "{}.floe.lua", filename),
+                                       });
+    TRY(CreateDirectory(*path::Directory(out_path), {}));
+
+    auto f = TRY(OpenFile(out_path, FileMode::Write()));
+    auto writer = f.Writer();
+
+    TRY(fmt::FormatToWriter(writer, "local library = floe.new_library({{\n"));
+    TRY(fmt::FormatToWriter(writer, "  name = \"{}\",\n", library.name));
+    TRY(fmt::FormatToWriter(writer, "  author = \"FrozenPlain\",\n"));
+    TRY(fmt::FormatToWriter(writer, "  tagline = \"{}\",\n", library.tagline));
+    TRY(fmt::FormatToWriter(writer, "}})\n"));
+
+    for (auto const& inst : library.sorted_instruments) {
+        TRY(fmt::FormatToWriter(writer, "do\n"));
+        DEFER { auto _ = fmt::FormatToWriter(writer, "end\n"); };
+
+        TRY(fmt::FormatToWriter(writer, "  local inst = floe.new_instrument(library, {{\n"));
+        TRY(fmt::FormatToWriter(writer, "    name = \"{}\",\n", inst->name));
+        if (inst->folder) TRY(fmt::FormatToWriter(writer, "    folder = \"{}\",\n", inst->folder));
+        TRY(fmt::FormatToWriter(writer, "  }})\n"));
+
+        for (auto const& region : inst->regions) {
+            TRY(fmt::FormatToWriter(writer, "  floe.add_region(inst, {{\n"));
+            DEFER { auto _ = fmt::FormatToWriter(writer, "  }})\n"); };
+            TRY(fmt::FormatToWriter(writer, "    path = \"{}\",\n", region.path));
+            TRY(fmt::FormatToWriter(writer, "    root_key = {},\n", region.root_key));
+
+            {
+                TRY(fmt::FormatToWriter(writer, "    trigger_criteria = {{\n"));
+                DEFER { auto _ = fmt::FormatToWriter(writer, "    }},\n"); };
+                TRY(fmt::FormatToWriter(writer,
+                                        "      key_range = {{ {}, {} }},\n",
+                                        region.trigger.key_range.start,
+                                        region.trigger.key_range.end));
+                if (region.trigger.velocity_range.start != 0 || region.trigger.velocity_range.end != 100) {
+                    TRY(fmt::FormatToWriter(writer,
+                                            "      velocity_range = {{ {}, {} }},\n",
+                                            region.trigger.velocity_range.start,
+                                            region.trigger.velocity_range.end));
+                }
+                if (region.trigger.round_robin_index) {
+                    TRY(fmt::FormatToWriter(writer,
+                                            "      round_robin_index = {},\n",
+                                            region.trigger.round_robin_index.Value()));
+                }
+                if (region.trigger.feather_overlapping_velocity_layers)
+                    TRY(fmt::FormatToWriter(writer, "      feather_overlapping_velocity_layers = true,\n"));
+            }
+
+            if (region.loop.builtin_loop || region.loop.loop_requirement != LoopRequirement::Default) {
+                TRY(fmt::FormatToWriter(writer, "    loop = {{\n"));
+                DEFER { auto _ = fmt::FormatToWriter(writer, "    }},\n"); };
+                if (region.loop.builtin_loop) {
+                    TRY(fmt::FormatToWriter(writer, "      builtin_loop = {{\n"));
+                    DEFER { auto _ = fmt::FormatToWriter(writer, "      }},\n"); };
+                    TRY(fmt::FormatToWriter(writer,
+                                            "        start_frame = {},\n",
+                                            region.loop.builtin_loop->start_frame));
+                    TRY(fmt::FormatToWriter(writer,
+                                            "        end_frame = {},\n",
+                                            region.loop.builtin_loop->end_frame));
+                    TRY(fmt::FormatToWriter(writer,
+                                            "        crossfade = {},\n",
+                                            region.loop.builtin_loop->crossfade_frames));
+                    if (region.loop.builtin_loop->lock_loop_points)
+                        TRY(fmt::FormatToWriter(writer, "        lock_loop_points = true,\n"));
+                    if (region.loop.builtin_loop->lock_mode)
+                        TRY(fmt::FormatToWriter(writer, "        lock_mode = true,\n"));
+                }
+
+                if (region.loop.loop_requirement != LoopRequirement::Default) {
+                    TRY(fmt::FormatToWriter(writer,
+                                            "      loop_requirement = \"{}\",\n",
+                                            region.loop.loop_requirement == LoopRequirement::AlwaysLoop
+                                                ? "always-loop"
+                                                : "never-loop"));
+                }
+            }
+
+            if (region.timbre_layering.layer_range) {
+                TRY(fmt::FormatToWriter(writer, "    timbre_layering = {{\n"));
+                DEFER { auto _ = fmt::FormatToWriter(writer, "    }},\n"); };
+                TRY(fmt::FormatToWriter(writer,
+                                        "      layer_range = {{ {}, {} }},\n",
+                                        region.timbre_layering.layer_range->start,
+                                        region.timbre_layering.layer_range->end));
+            }
+        }
+    }
+
+    TRY(fmt::FormatToWriter(writer, "return library\n"));
+
+    return k_success;
+}
+
 LibraryPtrOrError
 ReadMdata(Reader& reader, String filepath, ArenaAllocator& result_arena, ArenaAllocator& scratch_arena) {
     auto library = ({
@@ -598,6 +705,8 @@ ReadMdata(Reader& reader, String filepath, ArenaAllocator& result_arena, ArenaAl
             }
         }
     }
+
+    auto const _ = GenerateFloeLua(*library, scratch_arena);
 
     return library;
 }
