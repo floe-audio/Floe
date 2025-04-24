@@ -7,6 +7,7 @@
     flake-utils = {
       url = "github:numtide/flake-utils";
     };
+    zig.url = "github:mitchellh/zig-overlay";
   };
 
   outputs =
@@ -14,11 +15,13 @@
       self,
       nixpkgs,
       flake-utils,
+      zig,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = import nixpkgs { inherit system; };
+        zigpkgs = zig.packages.${system};
 
         nativeBinSubdir = "zig-out/${builtins.replaceStrings [ "darwin" ] [ "macos" ] system}";
 
@@ -165,8 +168,7 @@
               pkgs.hunspell
               pkgs.hunspellDicts.en_GB-ise
               pkgs.lychee # link checker
-              pkgs.zig
-              pkgs.zls
+              zigpkgs."0.14.0" # NOTE(Sam): if you change this version you might also need to change your ZLS version
               pkgs.sentry-cli
 
               # dsymutil internally calls "lipo", so we have to make sure it's available under that name

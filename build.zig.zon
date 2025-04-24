@@ -8,7 +8,8 @@
 // - Zig supports git+https://domain/path#commit: https://github.com/ziglang/zig/commit/9a001e1f7cc878579f1c0a614ac0124bfdc58332
 
 .{
-    .name = "Floe",
+    .name = .floe,
+    .fingerprint = 0xa179a738ea815f67,
     .version = "0.0.0",
     .dependencies = .{
         .xxhash = .{

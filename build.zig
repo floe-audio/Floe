@@ -35,14 +35,7 @@ const floe_au_factory_function = "FloeAuV2";
 const min_macos_version = "11.0.0"; // use 3-part version for plist
 const min_windows_version = "win10";
 
-const rootdir = struct {
-    fn getSrcDir() []const u8 {
-        return std.fs.path.dirname(@src().file).?;
-    }
-}.getSrcDir();
-
 const floe_cache_relative = ".floe-cache";
-const floe_cache_abs = rootdir ++ "/" ++ floe_cache_relative;
 
 const ConcatCompileCommandsStep = struct {
     step: std.Build.Step,
@@ -60,33 +53,34 @@ fn archAndOsPair(target: std.Target) std.BoundedArray(u8, 32) {
     return result;
 }
 
-fn compileCommandsDirForTarget(alloc: std.mem.Allocator, target: std.Target) ![]u8 {
-    return std.fmt.allocPrint(
-        alloc,
-        "{s}/compile_commands_{s}",
-        .{ floe_cache_abs, archAndOsPair(target).slice() },
-    );
+fn compileCommandsDirForTarget(b: *std.Build, target: std.Target) ![]u8 {
+    return b.pathJoin(&.{
+        b.build_root.path.?,
+        floe_cache_relative,
+        b.fmt("compile_commands_{s}", .{archAndOsPair(target).slice()}),
+    });
 }
 
-fn compileCommandsFileForTarget(alloc: std.mem.Allocator, target: std.Target) ![]u8 {
-    return std.fmt.allocPrint(
-        alloc,
+fn compileCommandsFileForTarget(b: *std.Build, target: std.Target) ![]u8 {
+    return b.fmt(
         "{s}.json",
-        .{compileCommandsDirForTarget(alloc, target) catch @panic("OOM")},
+        .{compileCommandsDirForTarget(b, target) catch @panic("OOM")},
     );
 }
 
-fn tryCopyCompileCommandsForTargetFileToDefault(alloc: std.mem.Allocator, target: std.Target) void {
-    const generic_out_path = std.fs.path.join(
-        alloc,
-        &.{ floe_cache_abs, "compile_commands.json" },
-    ) catch @panic("OOM");
-    const out_path = compileCommandsFileForTarget(alloc, target) catch @panic("OOM");
+fn tryCopyCompileCommandsForTargetFileToDefault(b: *std.Build, target: std.Target) void {
+    const generic_out_path = b.pathJoin(&.{
+        b.build_root.path.?,
+        floe_cache_relative,
+        "compile_commands.json",
+    });
+    const out_path = compileCommandsFileForTarget(b, target) catch @panic("OOM");
     std.fs.copyFileAbsolute(out_path, generic_out_path, .{ .override_mode = null }) catch {};
 }
 
 fn tryConcatCompileCommands(step: *std.Build.Step) !void {
     const self: *ConcatCompileCommandsStep = @fieldParentPtr("step", step);
+    const b = step.owner;
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -99,7 +93,7 @@ fn tryConcatCompileCommands(step: *std.Build.Step) !void {
     };
 
     var compile_commands = std.ArrayList(CompileFragment).init(arena.allocator());
-    const compile_commands_dir = try compileCommandsDirForTarget(arena.allocator(), self.target.result);
+    const compile_commands_dir = try compileCommandsDirForTarget(b, self.target.result);
 
     {
         const maybe_dir = std.fs.openDirAbsolute(compile_commands_dir, .{ .iterate = true });
@@ -192,7 +186,7 @@ fn tryConcatCompileCommands(step: *std.Build.Step) !void {
     }
 
     if (compile_commands.items.len != 0) {
-        const out_path = compileCommandsFileForTarget(arena.allocator(), self.target.result) catch @panic("OOM");
+        const out_path = compileCommandsFileForTarget(b, self.target.result) catch @panic("OOM");
 
         const maybe_file = std.fs.openFileAbsolute(out_path, .{});
         if (maybe_file != std.fs.File.OpenError.FileNotFound) {
@@ -237,13 +231,13 @@ fn tryConcatCompileCommands(step: *std.Build.Step) !void {
         try std.fs.deleteTreeAbsolute(compile_commands_dir);
 
         if (self.use_as_default) {
-            tryCopyCompileCommandsForTargetFileToDefault(arena.allocator(), self.target.result);
+            tryCopyCompileCommandsForTargetFileToDefault(b, self.target.result);
         }
     }
 }
 
-fn concatCompileCommands(step: *std.Build.Step, prog_node: std.Progress.Node) !void {
-    _ = prog_node;
+fn concatCompileCommands(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
+    _ = options;
 
     tryConcatCompileCommands(step) catch |err| {
         std.debug.print("failed to concatenate compile commands: {any}\n", .{err});
@@ -455,9 +449,9 @@ fn addToLipoSteps(context: *BuildContext, step: *std.Build.Step.Compile, make_ma
     }
 }
 
-fn doLipoStep(step: *std.Build.Step, prog_node: std.Progress.Node) !void {
+fn doLipoStep(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
     const self: *LipoStep = @fieldParentPtr("step", step);
-    _ = prog_node;
+    _ = options;
 
     if (self.step_x86 == null) return;
     if (self.step_arm == null) return;
@@ -475,7 +469,7 @@ fn doLipoStep(step: *std.Build.Step, prog_node: std.Progress.Node) !void {
     try dir.makePath(universal_dir);
     const out_path = step.owner.pathJoin(&.{ working_dir, universal_dir, std.fs.path.basename(path1) });
 
-    try step.evalChildProcess(&.{ "llvm-lipo", "-create", "-output", out_path, path1, path2 });
+    _ = try step.evalChildProcess(&.{ "llvm-lipo", "-create", "-output", out_path, path1, path2 });
 
     try postInstallMacosBinary(self.context, step, self.make_macos_bundle, out_path, x86.name, x86.version);
 }
@@ -493,7 +487,7 @@ fn addWin32EmbedInfo(step: *std.Build.Step.Compile, info: Win32EmbedInfo) !void 
     const arena = b.allocator;
 
     const path = try std.fmt.allocPrint(arena, "{s}/{s}.rc", .{ floe_cache_relative, step.name });
-    const file = try std.fs.createFileAbsolute(b.pathJoin(&.{ rootdir, path }), .{});
+    const file = try b.build_root.handle.createFile(path, .{});
     defer file.close();
 
     const this_year = 1970 + @divTrunc(std.time.timestamp(), 60 * 60 * 24 * 365);
@@ -539,12 +533,12 @@ fn addWin32EmbedInfo(step: *std.Build.Step.Compile, info: Win32EmbedInfo) !void 
     step.addWin32ResourceFile(.{ .file = b.path(path) });
 }
 
-fn performPostInstallConfig(step: *std.Build.Step, prog_node: std.Progress.Node) !void {
+fn performPostInstallConfig(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
     const self: *PostInstallStep = @fieldParentPtr("step", step);
-    _ = prog_node;
+    _ = options;
     var path = self.compile_step.installed_path.?;
 
     switch (self.compile_step.rootModuleTarget().os.tag) {
@@ -634,9 +628,9 @@ pub fn addWindowsCodeSignStep(
     return &cs_step.step;
 }
 
-fn performWindowsCodeSign(step: *std.Build.Step, prog_node: std.Progress.Node) !void {
+fn performWindowsCodeSign(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
     const self: *WindowsCodeSignStep = @fieldParentPtr("step", step);
-    _ = prog_node;
+    _ = options;
 
     const b = self.context.b;
 
@@ -849,7 +843,7 @@ fn universalFlags(
 
     if (ubsan) {
         if (context.optimise != .ReleaseFast) {
-            if (target.result.os.tag != .windows) {
+            if (target.result.os.tag != .windows or true) {
                 // By default, zig enables UBSan (unless ReleaseFast mode) in trap mode. Meaning it will catch undefined
                 // behaviour and trigger a trap which can be caught by signal handlers. UBSan also has a mode where
                 // undefined behaviour will instead call various functions. This is called the UBSan runtime. It's
@@ -926,7 +920,7 @@ fn objcppFlags(
 
 fn applyUniversalSettings(context: *BuildContext, step: *std.Build.Step.Compile) void {
     var b = context.b;
-    if (!step.rootModuleTarget().isDarwin()) {
+    if (step.rootModuleTarget().os.tag != .macos) {
         // TODO: try LTO on mac again
         // LTO doesn't seem like it's supported on mac
         step.want_lto = context.build_mode == .production;
@@ -953,7 +947,7 @@ fn applyUniversalSettings(context: *BuildContext, step: *std.Build.Step.Compile)
     step.addIncludePath(b.path("src"));
     step.addIncludePath(b.path("third_party_libs"));
 
-    if (step.rootModuleTarget().isDarwin()) {
+    if (step.rootModuleTarget().os.tag == .macos) {
         const sdk_root = b.graph.env_map.get("MACOSX_SDK_SYSROOT");
         if (sdk_root == null) {
             // This environment variable should be set and should be a path containing the macOS SDKS.
@@ -1060,8 +1054,8 @@ fn getTargets(b: *std.Build, user_given_target_presets: ?[]const u8) !std.ArrayL
 }
 
 fn getLicenceText(b: *std.Build, filename: []const u8) ![]const u8 {
-    const file = try std.fs.openFileAbsolute(
-        b.pathJoin(&.{ rootdir, "LICENSES", filename }),
+    const file = try b.build_root.handle.openFile(
+        b.pathJoin(&.{ "LICENSES", filename }),
         .{ .mode = std.fs.File.OpenMode.read_only },
     );
     defer file.close();
@@ -1084,7 +1078,7 @@ fn getExternalResource(context: *BuildContext, name: []const u8) ?ExternalResour
     }
 
     const relative_path = context.b.pathJoin(&.{ context.external_resources_subdir.?, name });
-    const absolute_path = context.b.pathJoin(&.{ rootdir, relative_path });
+    const absolute_path = context.b.pathJoin(&.{ context.b.build_root.path.?, relative_path });
 
     var found = true;
     std.fs.accessAbsolute(absolute_path, .{}) catch {
@@ -1160,7 +1154,7 @@ pub fn build(b: *std.Build) void {
     const user_given_target_presets = b.option([]const u8, "targets", "Target operating system");
 
     // ignore any error
-    std.fs.makeDirAbsolute(floe_cache_abs) catch {};
+    b.build_root.handle.makeDir(floe_cache_relative) catch {};
 
     // const install_dir = b.install_path; // zig-out
 
@@ -1169,7 +1163,7 @@ pub fn build(b: *std.Build) void {
     // If we're building for multiple targets at the same time, we need to choose one that gets to be the final compile_commands.json.
     const target_for_compile_commands = targets.items[0];
     // We'll try installing the desired compile_commands.json version here in case any previous build already created it.
-    tryCopyCompileCommandsForTargetFileToDefault(b.allocator, target_for_compile_commands.result);
+    tryCopyCompileCommandsForTargetFileToDefault(b, target_for_compile_commands.result);
 
     for (targets.items) |target| {
         var join_compile_commands = b.allocator.create(ConcatCompileCommandsStep) catch @panic("OOM");
@@ -1194,8 +1188,8 @@ pub fn build(b: *std.Build) void {
 
         var floe_version_string: ?[]const u8 = null;
         {
-            var file = std.fs.openFileAbsolute(
-                rootdir ++ "/version.txt",
+            var file = b.build_root.handle.openFile(
+                "version.txt",
                 .{ .mode = .read_only },
             ) catch @panic("version.txt not found");
             defer file.close();
@@ -1214,7 +1208,7 @@ pub fn build(b: *std.Build) void {
         const universal_floe_flags = universalFlags(&build_context, target, &.{
             "-gen-cdb-fragment-path",
             // IMPROVE: will this error if the path contains a space?
-            compileCommandsDirForTarget(b.allocator, target.result) catch unreachable,
+            compileCommandsDirForTarget(b, target.result) catch unreachable,
             "-Werror",
             "-Wconversion",
             "-Wexit-time-destructors",
@@ -1271,8 +1265,8 @@ pub fn build(b: *std.Build) void {
             .FLOE_MANUAL_URL = floe_manual_url,
             .FLOE_DOWNLOAD_URL = floe_download_url,
             .FLOE_SOURCE_CODE_URL = floe_source_code_url,
-            .FLOE_PROJECT_ROOT_PATH = rootdir,
-            .FLOE_PROJECT_CACHE_PATH = b.pathJoin(&.{ rootdir, floe_cache_relative }),
+            .FLOE_PROJECT_ROOT_PATH = b.build_root.path.?,
+            .FLOE_PROJECT_CACHE_PATH = b.pathJoin(&.{ b.build_root.path.?, floe_cache_relative }),
             .FLOE_GLOBAL_ZIG_CACHE_PATH = b.graph.global_cache_root.path,
             .FLOE_VENDOR = floe_vendor,
             .FLOE_CLAP_ID = floe_clap_id,
@@ -1779,7 +1773,7 @@ pub fn build(b: *std.Build) void {
                     .ENABLE_64_BIT_WORDS = target.result.ptrBitWidth() == 64,
                     .FLAC__ALIGN_MALLOC_DATA = target.result.cpu.arch.isX86(),
                     .FLAC__CPU_ARM64 = target.result.cpu.arch.isAARCH64(),
-                    .FLAC__SYS_DARWIN = target.result.isDarwin(),
+                    .FLAC__SYS_DARWIN = target.result.os.tag == .macos,
                     .FLAC__SYS_LINUX = target.result.os.tag == .linux,
                     .HAVE_BYTESWAP_H = target.result.os.tag == .linux,
                     .HAVE_CPUID_H = target.result.cpu.arch.isX86(),
@@ -1792,16 +1786,20 @@ pub fn build(b: *std.Build) void {
                     .HAVE_STDLIB_H = true,
                     .HAVE_TYPEOF = true,
                     .HAVE_UNISTD_H = true,
+                    .GIT_COMMIT_DATE = "",
+                    .GIT_COMMIT_HASH = "",
+                    .GIT_COMMIT_TAG = "",
+                    .PROJECT_VERSION = "1.0.0",
                 },
             );
 
             flac.linkLibC();
-            flac.defineCMacro("HAVE_CONFIG_H", null);
+            flac.root_module.addCMacro("HAVE_CONFIG_H", "");
             flac.addConfigHeader(config_header);
             flac.addIncludePath(build_context.dep_flac.path("include"));
             flac.addIncludePath(build_context.dep_flac.path("src/libFLAC/include"));
             if (target.result.os.tag == .windows) {
-                flac.defineCMacro("FLAC__NO_DLL", null);
+                flac.root_module.addCMacro("FLAC__NO_DLL", "");
                 flac.addCSourceFile(.{
                     .file = build_context.dep_flac.path("src/share/win_utf8_io/win_utf8_io.c"),
                 });
@@ -2066,7 +2064,7 @@ pub fn build(b: *std.Build) void {
                 },
                 .flags = cpp_floe_flags,
             });
-            docs_preprocessor.defineCMacro("FINAL_BINARY_TYPE", "DocsPreprocessor");
+            docs_preprocessor.root_module.addCMacro("FINAL_BINARY_TYPE", "DocsPreprocessor");
             docs_preprocessor.linkLibrary(common_infrastructure);
             docs_preprocessor.addIncludePath(b.path("src"));
             docs_preprocessor.addConfigHeader(build_config_step);
@@ -2088,7 +2086,7 @@ pub fn build(b: *std.Build) void {
                 },
                 .flags = cpp_floe_flags,
             });
-            packager.defineCMacro("FINAL_BINARY_TYPE", "Packager");
+            packager.root_module.addCMacro("FINAL_BINARY_TYPE", "Packager");
             packager.linkLibrary(common_infrastructure);
             packager.addIncludePath(b.path("src"));
             packager.addConfigHeader(build_config_step);
@@ -2132,7 +2130,7 @@ pub fn build(b: *std.Build) void {
                 },
                 .flags = cpp_floe_flags,
             });
-            clap.defineCMacro("FINAL_BINARY_TYPE", "Clap");
+            clap.root_module.addCMacro("FINAL_BINARY_TYPE", "Clap");
             clap.addConfigHeader(build_config_step);
             clap.addIncludePath(b.path("src"));
             clap.linkLibrary(plugin);
@@ -2293,7 +2291,7 @@ pub fn build(b: *std.Build) void {
                 .flags = cpp_floe_flags,
             });
 
-            floe_standalone.defineCMacro("FINAL_BINARY_TYPE", "Standalone");
+            floe_standalone.root_module.addCMacro("FINAL_BINARY_TYPE", "Standalone");
             floe_standalone.addConfigHeader(build_config_step);
             floe_standalone.addIncludePath(b.path("src"));
             floe_standalone.linkLibrary(portmidi);
@@ -2563,7 +2561,7 @@ pub fn build(b: *std.Build) void {
                 },
                 .flags = cpp_floe_flags,
             });
-            vst3.defineCMacro("FINAL_BINARY_TYPE", "Vst3");
+            vst3.root_module.addCMacro("FINAL_BINARY_TYPE", "Vst3");
 
             const wrapper_src_path = build_context.dep_clap_wrapper.path("src");
             vst3.addCSourceFiles(.{
@@ -2744,7 +2742,7 @@ pub fn build(b: *std.Build) void {
                     "src/plugin/plugin/plugin_entry.cpp",
                     "src/common_infrastructure/final_binary_type.cpp",
                 }, .flags = cpp_floe_flags });
-                au.defineCMacro("FINAL_BINARY_TYPE", "AuV2");
+                au.root_module.addCMacro("FINAL_BINARY_TYPE", "AuV2");
 
                 au.addCSourceFiles(.{
                     .root = wrapper_src_path,
@@ -2764,8 +2762,8 @@ pub fn build(b: *std.Build) void {
                 });
 
                 {
-                    const file = std.fs.createFileAbsolute(
-                        b.pathJoin(&.{ rootdir, floe_cache_relative, "generated_entrypoints.hxx" }),
+                    const file = b.build_root.handle.createFile(
+                        b.pathJoin(&.{ floe_cache_relative, "generated_entrypoints.hxx" }),
                         .{ .truncate = true },
                     ) catch @panic("could not create file");
                     defer file.close();
@@ -2791,8 +2789,8 @@ pub fn build(b: *std.Build) void {
                 }
 
                 {
-                    const file = std.fs.createFileAbsolute(
-                        b.pathJoin(&.{ rootdir, floe_cache_relative, "generated_cocoaclasses.hxx" }),
+                    const file = b.build_root.handle.createFile(
+                        b.pathJoin(&.{ floe_cache_relative, "generated_cocoaclasses.hxx" }),
                         .{ .truncate = true },
                     ) catch @panic("could not create file");
                     defer file.close();
@@ -2874,15 +2872,15 @@ pub fn build(b: *std.Build) void {
                         require_admin: bool,
                         description: []const u8,
                     ) []const u8 {
-                        const manifest_path = std.fs.path.join(builder.allocator, &.{
+                        const manifest_path = builder.pathJoin(&.{
                             floe_cache_relative,
                             builder.fmt(
                                 "{s}.manifest",
                                 .{name},
                             ),
-                        }) catch @panic("OOM");
-                        const file = std.fs.createFileAbsolute(
-                            builder.pathJoin(&.{ rootdir, manifest_path }),
+                        });
+                        const file = builder.build_root.handle.createFile(
+                            manifest_path,
                             .{ .truncate = true },
                         ) catch @panic("could not create file");
                         defer file.close();
@@ -2976,7 +2974,7 @@ pub fn build(b: *std.Build) void {
                     },
                     .flags = cppFlags(b, cpp_floe_flags, flags.items) catch unreachable,
                 });
-                win_uninstaller.defineCMacro("FINAL_BINARY_TYPE", "WindowsUninstaller");
+                win_uninstaller.root_module.addCMacro("FINAL_BINARY_TYPE", "WindowsUninstaller");
                 win_uninstaller.linkSystemLibrary("gdi32");
                 win_uninstaller.linkSystemLibrary("version");
                 win_uninstaller.linkSystemLibrary("comctl32");
@@ -3047,7 +3045,7 @@ pub fn build(b: *std.Build) void {
                     .flags = flags.items,
                 });
 
-                win_installer.defineCMacro("FINAL_BINARY_TYPE", "WindowsInstaller");
+                win_installer.root_module.addCMacro("FINAL_BINARY_TYPE", "WindowsInstaller");
                 win_installer.linkSystemLibrary("gdi32");
                 win_installer.linkSystemLibrary("version");
                 win_installer.linkSystemLibrary("comctl32");
@@ -3103,7 +3101,7 @@ pub fn build(b: *std.Build) void {
                 "src/tests/tests_main.cpp",
                 "src/common_infrastructure/final_binary_type.cpp",
             }, .flags = cpp_floe_flags });
-            tests.defineCMacro("FINAL_BINARY_TYPE", "Tests");
+            tests.root_module.addCMacro("FINAL_BINARY_TYPE", "Tests");
             tests.addConfigHeader(build_config_step);
             tests.linkLibrary(plugin);
             b.getInstallStep().dependOn(&b.addInstallArtifact(tests, .{ .dest_dir = install_subfolder }).step);
