@@ -429,23 +429,23 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
               },
           });
 
-    auto const add_button = DoBox(
-        box_system,
-        {
-            .parent = root,
-            .background_fill_auto_hot_active_overlay = true,
-            .activate_on_click_button = MouseButton::Left,
-            .activation_click_event = ActivationClickEvent::Up,
-            .layout {
-                .size = {layout::k_fill_parent, layout::k_hug_contents},
-                .contents_padding = {.l = (style::k_menu_item_padding_x * 2) + style::k_prefs_icon_button_size,
-                                     .r = style::k_menu_item_padding_x,
-                                     .tb = style::k_menu_item_padding_y},
-                .contents_direction = layout::Direction::Row,
-                .contents_align = layout::Alignment::Start,
-            },
-            .tooltip = "Select a new folder"_s,
-        });
+    auto const add_button = DoBox(box_system,
+                                  {
+                                      .parent = root,
+                                      .background_fill_auto_hot_active_overlay = true,
+                                      .activate_on_click_button = MouseButton::Left,
+                                      .activation_click_event = ActivationClickEvent::Up,
+                                      .layout {
+                                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                          .contents_padding = {.l = (style::k_menu_item_padding_x * 2) +
+                                                                    style::k_prefs_icon_button_size,
+                                                               .r = style::k_menu_item_padding_x,
+                                                               .tb = style::k_menu_item_padding_y},
+                                          .contents_direction = layout::Direction::Row,
+                                          .contents_align = layout::Alignment::Start,
+                                      },
+                                      .tooltip = "Select a new folder"_s,
+                                  });
     DoBox(box_system,
           {
               .parent = add_button,

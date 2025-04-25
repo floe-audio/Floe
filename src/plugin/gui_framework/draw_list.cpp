@@ -865,18 +865,18 @@ void DrawList::PathBezierCurveTo(f32x2 const& p2, f32x2 const& p3, f32x2 const& 
 
 void DrawList::PathRect(f32x2 const& a, f32x2 const& b, f32 rounding, int rounding_corners) {
     f32 r = rounding;
-    r = Min(r,
-            (Fabs(b.x - a.x) *
-                    (((rounding_corners & (1 | 2)) == (1 | 2)) || ((rounding_corners & (4 | 8)) == (4 | 8))
-                         ? 0.5f
-                         : 1.0f)) -
-                1.0f);
-    r = Min(r,
-            (Fabs(b.y - a.y) *
-                    (((rounding_corners & (1 | 8)) == (1 | 8)) || ((rounding_corners & (2 | 4)) == (2 | 4))
-                         ? 0.5f
-                         : 1.0f)) -
-                1.0f);
+    r = Min(
+        r,
+        (Fabs(b.x - a.x) *
+         (((rounding_corners & (1 | 2)) == (1 | 2)) || ((rounding_corners & (4 | 8)) == (4 | 8)) ? 0.5f
+                                                                                                 : 1.0f)) -
+            1.0f);
+    r = Min(
+        r,
+        (Fabs(b.y - a.y) *
+         (((rounding_corners & (1 | 8)) == (1 | 8)) || ((rounding_corners & (2 | 4)) == (2 | 4)) ? 0.5f
+                                                                                                 : 1.0f)) -
+            1.0f);
 
     if (r <= 0.0f || rounding_corners == 0) {
         PathLineTo(a);
@@ -1867,7 +1867,7 @@ void FontAtlas::RenderCustomTexData(int pass, void* p_rects) {
     int const tex_data_w = 2;
     int const tex_data_h = 2;
     char const texture_data[(tex_data_w * tex_data_h) + 1] = {".."
-                                                            ".."};
+                                                              ".."};
 
     Vector<stbrp_rect>& rects = *(Vector<stbrp_rect>*)p_rects;
     if (pass == 0) {

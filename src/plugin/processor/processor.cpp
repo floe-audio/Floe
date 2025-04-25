@@ -497,10 +497,11 @@ static void ProcessorOnParamChange(AudioProcessor& processor, ChangedParams chan
     }
 
     for (auto [index, l] : Enumerate(processor.layer_processors)) {
-        OnParamChange(l,
-                      processor.audio_processing_context,
-                      processor.voice_pool,
-                      changed_params.Subsection<k_num_layer_parameters>(0 + (index * k_num_layer_parameters)));
+        OnParamChange(
+            l,
+            processor.audio_processing_context,
+            processor.voice_pool,
+            changed_params.Subsection<k_num_layer_parameters>(0 + (index * k_num_layer_parameters)));
     }
 
     for (auto effect : processor.effects_ordered_by_type)
