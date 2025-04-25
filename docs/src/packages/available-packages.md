@@ -102,7 +102,7 @@ Impulses can be used to simulate war reports, old radio broadcasts, space missio
 
 ## Mirage Compatibility - Free
 
-Compatibility files for working the FrozenPlain Mirage libraries inside Floe.
+Enables full compatibility when using FrozenPlain’s Mirage libraries inside Floe.
 
 For Mirage libraries to fully work inside Floe, the Mirage Compatibility library is needed. This library will normally be included alongside Mirage libraries, but it can also be installed separately.
 
