@@ -2340,6 +2340,8 @@ pub fn build(b: *std.Build) void {
             } else {
                 extra_flags.append("-DRELEASE=1") catch unreachable;
             }
+            // Ignore warning about non-reproducible __DATE__ usage.
+            extra_flags.append("-Wno-date-time") catch unreachable;
             const flags = universalFlags(&build_context, target, extra_flags.items, false) catch unreachable;
 
             {
