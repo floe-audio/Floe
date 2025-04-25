@@ -32,7 +32,6 @@ jobs:
       - uses: Hanaasagi/zig-action-cache@master
 
       - run: |
-          # NOTE: the logos probably have copyright so this should only be done if you have permission
           just fetch-logos 
           just build-release windows
 
@@ -65,6 +64,7 @@ jobs:
       - uses: Hanaasagi/zig-action-cache@master
 
       - run: |
+          just fetch-logos
           just build-release mac_ub
 
       - uses: apple-actions/import-codesign-certs@v3
