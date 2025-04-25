@@ -11,7 +11,7 @@ For instance: 0.0.1. Don't change the headings.
 
 ## 0.9.0-beta
 - Library creation: fix specifying loop end points relative to the end of the file.
-- Library creation: *breaking change*: replace always_loop, never_loop field with enum `loop_requirement`.
+- Library creation: replace always_loop, never_loop field with enum `loop_requirement`.
 - Library creation: add round_robin_sequencing_group field to allow for different sets of variations.
 - Library creation: separate note-off round-robin sequencing group from note-on round-robin sequencing group.
 - Library creation: disable volume envelope for note-off regions
