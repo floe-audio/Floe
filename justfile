@@ -124,6 +124,14 @@ check-links:
 
 # install Compile DataBase (compile_commands.json)
 install-cbd arch_os_pair=native_arch_os_pair:
+  #!/usr/bin/env bash
+  cdb_file="{{cache_dir}}/compile_commands_{{arch_os_pair}}.json"
+
+  if [[ ! -f $cdb_file ]]; then
+    echo "WARNING: compile_commands.json file not found for arch+OS: {{arch_os_pair}}"
+    exit 0
+  fi
+
   cp {{cache_dir}}/compile_commands_{{arch_os_pair}}.json {{cache_dir}}/compile_commands.json
 
 clang-tidy arch_os_pair=native_arch_os_pair: (install-cbd arch_os_pair)
