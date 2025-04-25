@@ -38,7 +38,7 @@ layout::Id LayoutParameterComponent(Gui* g,
     if (index_for_menu_items) {
         auto const menu_items = ParameterMenuItems(*index_for_menu_items);
         auto strings_width =
-            MaxStringLength(g, menu_items) + LiveSize(imgui, UiSizeId::MenuButtonTextMarginL) * 2;
+            MaxStringLength(g, menu_items) + (LiveSize(imgui, UiSizeId::MenuButtonTextMarginL) * 2);
         width = strings_width;
         height = param_popup_button_height;
     } else if (is_convo_ir) {

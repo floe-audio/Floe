@@ -266,7 +266,7 @@ struct LayerProcessor {
             return (sample_lib::LoadedInstrument const*)v;
         }
         static constexpr u64 ValForWaveform(WaveformType w) {
-            auto const v = 1 + alignof(sample_lib::LoadedInstrument) * ((u64)w + 1);
+            auto const v = 1 + (alignof(sample_lib::LoadedInstrument) * ((u64)w + 1));
             ASSERT(v % alignof(sample_lib::LoadedInstrument) != 0, "needs to be an invalid ptr");
             return v;
         }

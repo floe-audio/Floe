@@ -54,7 +54,7 @@ CheckOptions:
   - { key: readability-identifier-naming.MethodCase,                 value: CamelCase }
   - { key: readability-identifier-naming.MethodIgnoredRegexp,        value: '^begin$|^end$|^__ubsan.*$' }
   - { key: readability-identifier-naming.VariableCase,               value: lower_case }
-  - { key: readability-identifier-naming.VariableIgnoredRegexp,      value: '^__ubsan.*$' }
+  - { key: readability-identifier-naming.VariableIgnoredRegexp,      value: '^__ubsan.*$|^___tracy.*$' }
   - { key: readability-identifier-naming.ConstexprVariablePrefix,    value: k_ }
   - { key: readability-identifier-naming.EnumCase,                   value: CamelCase }
   - { key: readability-identifier-naming.EnumConstantCase,           value: CamelCase }
@@ -66,7 +66,7 @@ CheckOptions:
   - { key: readability-identifier-naming.GlobalVariableCase,         value: lower_case }
   - { key: readability-identifier-naming.GlobalVariablePrefix,       value: g_ }
   - { key: modernize-use-auto.MinTypeNameLength,                     value: 0 }
-  - { key: bugprone-reserved-identifier.AllowedIdentifiers,          value: '^__ubsan.*$' }
+  - { key: bugprone-reserved-identifier.AllowedIdentifiers,          value: '^__ubsan.*$|^___tracy.*$' }
   - { key: readability-identifier-length.MinimumParameterNameLength, value: 1 }
   - { key: readability-identifier-length.IgnoredVariableNames,       value: '_' }
 

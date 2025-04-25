@@ -110,7 +110,7 @@ struct Vector {
     }
 
     int GrowCapacity(int new_size) {
-        int const new_capacity = capacity ? (capacity + capacity / 2) : 8;
+        int const new_capacity = capacity ? (capacity + (capacity / 2)) : 8;
         return new_capacity > new_size ? new_capacity : new_size;
     }
 

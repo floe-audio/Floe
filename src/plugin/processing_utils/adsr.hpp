@@ -69,7 +69,7 @@ struct Processor {
     // TODO(1.0): don't smooth here: it's not the right place
     f32 SmoothOutput() {
         static constexpr f32 k_smoothing_amount = 0.10f;
-        f32 const result = prev_output + k_smoothing_amount * (output - prev_output);
+        f32 const result = prev_output + (k_smoothing_amount * (output - prev_output));
         prev_output = result;
         return result;
     }

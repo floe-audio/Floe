@@ -24,7 +24,7 @@ struct DistortionProcessor {
     f32 Saturate(f32 input, DistFunction type, f32 amount_fraction) {
         f32 output = 0;
 
-        auto const input_gain = amount_fraction * 59 + 1;
+        auto const input_gain = (amount_fraction * 59) + 1;
         input *= input_gain;
 
         switch (type) {
@@ -56,7 +56,7 @@ struct DistortionProcessor {
                 constexpr int k_decimate_bits = 16;
                 constexpr f32 k_m = 1 << (k_decimate_bits - 1);
 
-                auto const amount = amount_fraction * 59 + 1;
+                auto const amount = (amount_fraction * 59) + 1;
                 m_decimate_cnt += amount + ((1.0f - amount) * 0.165f);
 
                 if (m_decimate_cnt >= 1) {

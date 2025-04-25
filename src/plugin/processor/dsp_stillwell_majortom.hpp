@@ -139,7 +139,7 @@ struct StillwellMajorTom {
             rundb = overdb + relcoef * (rundb - overdb);
         overdb = rundb;
 
-        cratio = (k_slider_knee_type ? (1 + (slider_ratio - 1) * Min(overdb, 6.0f) / 6) : slider_ratio);
+        cratio = (k_slider_knee_type ? (1 + ((slider_ratio - 1) * Min(overdb, 6.0f) / 6)) : slider_ratio);
 
         auto gr = -overdb * (cratio - 1) / cratio;
         auto grv = Exp(gr * k_db2log);

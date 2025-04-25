@@ -33,7 +33,7 @@ constexpr double Abs(double const x) {
 constexpr double Square(double const x) { return x * x; }
 
 constexpr double SqrtHelper(double const x, double const g) {
-    return Abs(g - x / g) < k_tol ? g : SqrtHelper(x, (g + x / g) / 2.0);
+    return Abs(g - (x / g)) < k_tol ? g : SqrtHelper(x, (g + x / g) / 2.0);
 }
 
 constexpr double Sqrt(double const x) { return SqrtHelper(x, 1.0); }
@@ -51,14 +51,14 @@ constexpr double Pow(double base, int exponent) {
 // x - x^3/3 + x^5/5 - x^7/7+x^9/9  etc.
 constexpr double AtanPolyHelper(double const res, double const num1, double const den1, double const delta) {
     return res < k_tol ? res
-                       : res + AtanPolyHelper((num1 * delta) / (den1 + 2.) - num1 / den1,
+                       : res + AtanPolyHelper(((num1 * delta) / (den1 + 2.)) - (num1 / den1),
                                               num1 * delta * delta,
                                               den1 + 4.,
                                               delta);
 }
 
 constexpr double AtanPoly(double const x) {
-    return x + AtanPolyHelper(Pow(x, 5) / 5. - Pow(x, 3) / 3., Pow(x, 7), 7., x * x);
+    return x + AtanPolyHelper((Pow(x, 5) / 5.) - (Pow(x, 3) / 3.), Pow(x, 7), 7., x * x);
 }
 
 // Define an M_PI_6? Define a root 3?
@@ -101,8 +101,8 @@ constexpr double Fraction(double x) {
 }
 
 constexpr double ExpHelper(double const r) {
-    return 1.0 + r + Pow(r, 2) / 2.0 + Pow(r, 3) / 6.0 + Pow(r, 4) / 24.0 + Pow(r, 5) / 120.0 +
-           Pow(r, 6) / 720.0 + Pow(r, 7) / 5040.0;
+    return 1.0 + r + (Pow(r, 2) / 2.0) + (Pow(r, 3) / 6.0) + (Pow(r, 4) / 24.0) + (Pow(r, 5) / 120.0) +
+           (Pow(r, 6) / 720.0) + (Pow(r, 7) / 5040.0);
 }
 
 // exp(x) = e^n . e^r (where n is an integer, and -0.5 > r < 0.5
@@ -146,7 +146,7 @@ constexpr double Log(double const x) {
     constexpr double k_quiet_nan = __builtin_nan("");
     return x == 0  ? -k_inf
            : x < 0 ? k_quiet_nan
-                   : 2.0 * LogHelper(Sqrt(Mantissa(x))) + 2.3025851 * Exponent(x);
+                   : (2.0 * LogHelper(Sqrt(Mantissa(x)))) + (2.3025851 * Exponent(x));
 }
 
 constexpr double Pow(double base, double exponent) {
@@ -180,7 +180,7 @@ constexpr double Fmod(double const x, double const y) {
     constexpr double k_quiet_nan = __builtin_nan("");
     if (__builtin_isnan(x) || __builtin_isnan(y)) return k_quiet_nan;
     if (__builtin_isinf(x) || __builtin_isinf(y)) return k_quiet_nan;
-    return x - Trunc(x / y) * y;
+    return x - (Trunc(x / y) * y);
 }
 
 constexpr double Sin(double x) {
@@ -197,7 +197,7 @@ constexpr double Sin(double x) {
     u = u * x + -3.8595063473619359e-1;
     u = u * x + 2.4826590880887231e-1;
     u = u * x + 8.9753139917518325e-1;
-    return u * x + 6.8497712357808586e-3;
+    return (u * x) + 6.8497712357808586e-3;
 }
 
 constexpr double Cos(double const x) { return Sin(k_pi_2 - x); }

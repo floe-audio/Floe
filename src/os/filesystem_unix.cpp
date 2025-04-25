@@ -147,7 +147,7 @@ ErrorCodeOr<s128> File::LastModifiedTimeNsSinceEpoch() {
 #elif IS_MACOS
     auto const modified_time = file_stat.st_mtimespec;
 #endif
-    return (s128)modified_time.tv_sec * (s128)1'000'000'000 + (s128)modified_time.tv_nsec;
+    return ((s128)modified_time.tv_sec * (s128)1'000'000'000) + (s128)modified_time.tv_nsec;
 }
 
 ErrorCodeOr<void> File::SetLastModifiedTimeNsSinceEpoch(s128 ns_since_epoch) {

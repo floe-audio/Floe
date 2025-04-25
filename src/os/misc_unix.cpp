@@ -226,7 +226,7 @@ void TryShrinkPages(void* ptr, usize old_size, usize new_size) {
     auto const new_num_pages = (new_size == 0) ? 0 : ((new_size / page_size) + 1);
     if (current_num_pages != new_num_pages) {
         auto const num_pages = current_num_pages - new_num_pages;
-        Span<u8> const unused_pages {(u8*)ptr + new_num_pages * page_size, page_size * num_pages};
+        Span<u8> const unused_pages {(u8*)ptr + (new_num_pages * page_size), page_size * num_pages};
         ASSERT(ContainsPointer(unused_pages, unused_pages.data));
         ASSERT(ContainsPointer(unused_pages, &Last(unused_pages)));
 
@@ -257,14 +257,14 @@ s128 NanosecondsSinceEpoch() {
 #else
     timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    return (s128)ts.tv_sec * (s128)1e+9 + (s128)ts.tv_nsec;
+    return ((s128)ts.tv_sec * (s128)1e+9) + (s128)ts.tv_nsec;
 #endif
 }
 
 s64 MicrosecondsSinceEpoch() {
     timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    return CheckedCast<s64>((u64)ts.tv_sec * 1'000'000 + (u64)ts.tv_nsec / 1'000);
+    return CheckedCast<s64>(((u64)ts.tv_sec * 1'000'000) + ((u64)ts.tv_nsec / 1'000));
 }
 
 DateAndTime LocalTimeFromNanosecondsSinceEpoch(s128 nanoseconds) {
@@ -361,7 +361,7 @@ TimePoint TimePoint::Now() {
 #else
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC_RAW, &ts); // signal-safe
-    return TimePoint((s64)ts.tv_sec * (s64)1e+9 + (s64)ts.tv_nsec);
+    return TimePoint(((s64)ts.tv_sec * (s64)1e+9) + (s64)ts.tv_nsec);
 #endif
 }
 

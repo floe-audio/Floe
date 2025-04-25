@@ -768,7 +768,7 @@ class ChunkwiseVoiceProcessor {
                 auto const half_amp = lfo_amp / 2;
                 v1 = b + m_lfo_amounts[frame] * half_amp;
                 auto const frame_p1 = frame + 1;
-                auto const v2 = (frame_p1 != num_frames) ? b + m_lfo_amounts[frame_p1] * half_amp : 0.0f;
+                auto const v2 = (frame_p1 != num_frames) ? b + (m_lfo_amounts[frame_p1] * half_amp) : 0.0f;
                 f32x4 v {v1, v1, v2, v2};
                 v = Min<f32x4>(v, 1.0f);
                 v = Max<f32x4>(v, 0.0f);
@@ -873,7 +873,7 @@ class ChunkwiseVoiceProcessor {
 
                 auto cut =
                     m_voice.smoothing_system.Value(m_voice.sv_filter_linear_cutoff_smoother_id, frame) +
-                    (env - 0.5f) * m_voice.controller->fil_env_amount;
+                    ((env - 0.5f) * m_voice.controller->fil_env_amount);
                 auto const res =
                     m_voice.smoothing_system.Value(m_voice.sv_filter_resonance_smoother_id, frame);
 
@@ -942,7 +942,7 @@ class ChunkwiseVoiceProcessor {
     f32 m_position_for_gui = 0;
 
     alignas(16) Array<f32, k_num_frames_in_voice_processing_chunk + 1> m_lfo_amounts;
-    alignas(16) Array<f32, k_num_frames_in_voice_processing_chunk * 2 + 2> m_buffer;
+    alignas(16) Array<f32, (k_num_frames_in_voice_processing_chunk * 2) + 2> m_buffer;
 };
 
 inline void ProcessBuffer(Voice& voice, u32 num_frames, AudioProcessingContext const& context) {
@@ -1006,8 +1006,8 @@ ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& con
         if (v.written_to_buffer_this_block) {
             if constexpr (RUNTIME_SAFETY_CHECKS_ON && PRODUCTION_BUILD) {
                 for (auto const frame : Range(num_frames)) {
-                    auto const& l = pool.buffer_pool[v.index][frame * 2 + 0];
-                    auto const& r = pool.buffer_pool[v.index][frame * 2 + 1];
+                    auto const& l = pool.buffer_pool[v.index][(frame * 2) + 0];
+                    auto const& r = pool.buffer_pool[v.index][(frame * 2) + 1];
                     ASSERT(l >= -k_erroneous_sample_value && l <= k_erroneous_sample_value);
                     ASSERT(r >= -k_erroneous_sample_value && r <= k_erroneous_sample_value);
                 }

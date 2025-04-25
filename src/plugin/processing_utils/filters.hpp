@@ -9,7 +9,7 @@
 
 struct OnePoleLowPassFilter {
     f32 LowPass(f32 const input, f32 const cutoff01) {
-        f32 const output = m_prev_output + cutoff01 * (input - m_prev_output);
+        f32 const output = m_prev_output + (cutoff01 * (input - m_prev_output));
         m_prev_output = output;
         return output;
     }
@@ -66,7 +66,7 @@ struct Params {
 };
 
 inline f32 Process(Data& d, Coeffs const& c, f32 in) {
-    f32 const out = c.b0 * in + c.b1 * d.in1 + c.b2 * d.in2 - c.a1 * d.out1 - c.a2 * d.out2;
+    f32 const out = (c.b0 * in) + (c.b1 * d.in1) + (c.b2 * d.in2) - (c.a1 * d.out1) - (c.a2 * d.out2);
 
     d.in2 = d.in1;
     d.in1 = in;
@@ -526,7 +526,7 @@ static consteval auto CreateLinearSpaceLookupTable() {
 
     for (auto const i : Range(result.size)) {
         auto t = (f64)i / (f64)k_max_index;
-        result[i] = (f32)(constexpr_math::Pow(t, (f64)k_projection_exponent) * (f64)k_projection_range +
+        result[i] = (f32)((constexpr_math::Pow(t, (f64)k_projection_exponent) * (f64)k_projection_range) +
                           (f64)k_projection_min);
     }
 
@@ -550,7 +550,7 @@ PUBLIC f32 LinearToHz(f32 linear) {
     auto x = scaled - (f32)index;
     auto index_next = index + 1;
     if (index_next == k_table.size) index_next = k_max_index;
-    return k_table[index] + (k_table[index_next] - k_table[index]) * x;
+    return k_table[index] + ((k_table[index_next] - k_table[index]) * x);
 }
 
 } // namespace sv_filter

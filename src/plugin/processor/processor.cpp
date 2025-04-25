@@ -500,7 +500,7 @@ static void ProcessorOnParamChange(AudioProcessor& processor, ChangedParams chan
         OnParamChange(l,
                       processor.audio_processing_context,
                       processor.voice_pool,
-                      changed_params.Subsection<k_num_layer_parameters>(0 + index * k_num_layer_parameters));
+                      changed_params.Subsection<k_num_layer_parameters>(0 + (index * k_num_layer_parameters)));
     }
 
     for (auto effect : processor.effects_ordered_by_type)
@@ -920,7 +920,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                     for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
                         if (v.midi_key_trigger.channel == channel) {
                             SetVoicePitch(v,
-                                          v.controller->tune + pitch_pos * k_pitch_bend_semitones,
+                                          v.controller->tune + (pitch_pos * k_pitch_bend_semitones),
                                           processor.audio_processing_context.sample_rate);
                         }
                     }
@@ -1356,8 +1356,8 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         SimdZeroAlignedBuffer(interleaved_outputs.data, num_sample_frames * 2);
     } else if constexpr (RUNTIME_SAFETY_CHECKS_ON && !PRODUCTION_BUILD) {
         for (auto const frame : Range(num_sample_frames)) {
-            auto const& l = interleaved_outputs[frame * 2 + 0];
-            auto const& r = interleaved_outputs[frame * 2 + 1];
+            auto const& l = interleaved_outputs[(frame * 2) + 0];
+            auto const& r = interleaved_outputs[(frame * 2) + 1];
             ASSERT(l >= -k_erroneous_sample_value && l <= k_erroneous_sample_value);
             ASSERT(r >= -k_erroneous_sample_value && r <= k_erroneous_sample_value);
         }

@@ -154,7 +154,7 @@ static inline void BlurAxis(BlurAxisArgs const args) {
         auto const line_data_offset = line_number * args.line_data_stride;
 
         auto data_index = [&](u16 element_index) ALWAYS_INLINE {
-            return line_data_offset + element_index * args.element_data_stride;
+            return line_data_offset + (element_index * args.element_data_stride);
         };
 
         // Rather than calculate the average for every pixel, we can just keep a running average. For each
@@ -255,7 +255,7 @@ static f32x4* CreateBlurredImage(ArenaAllocator& arena, ImageF32 original, u16 b
 static ImageF32 ImageBytesToImageF32(ImageBytes image, ArenaAllocator& arena) {
     auto const result = arena.AllocateExactSizeUninitialised<f32x4>(image.NumPixels());
     for (auto [pixel_index, pixel] : Enumerate(result)) {
-        auto const bytes = LoadUnalignedToType<u8x4>(image.rgba + pixel_index * k_rgba_channels);
+        auto const bytes = LoadUnalignedToType<u8x4>(image.rgba + (pixel_index * k_rgba_channels));
         pixel = ConvertVector(bytes, f32x4) / 255.0f;
     }
     return {.rgba = result, .size = image.size};
@@ -269,7 +269,7 @@ static inline f32x4 MakeOpaque(f32x4 pixel) {
 static void WriteImageF32AsBytesNoAlpha(ImageF32 image, u8* out) {
     for (auto [pixel_index, pixel] : Enumerate(image.rgba)) {
         auto bytes = ConvertVector(MakeOpaque(pixel) * 255.0f, u8x4);
-        StoreToUnaligned(out + pixel_index * k_rgba_channels, bytes);
+        StoreToUnaligned(out + (pixel_index * k_rgba_channels), bytes);
     }
 }
 

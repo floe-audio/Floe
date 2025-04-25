@@ -143,7 +143,7 @@ enum class ParamIndex : u16 {
     Count = CountHelper - FirstNonLayerParam,
 };
 
-constexpr auto k_num_parameters = ToInt(LayerParamIndex::Count) * k_num_layers + ToInt(ParamIndex::Count);
+constexpr auto k_num_parameters = (ToInt(LayerParamIndex::Count) * k_num_layers) + ToInt(ParamIndex::Count);
 
 enum class ParamDisplayFormat : u8 {
     None,
@@ -490,7 +490,7 @@ struct ParamDescriptor {
         constexpr f32 Remap(f32 in, Range out_range) const {
             auto const delta = Delta();
             if (delta == 0) return 0;
-            return out_range.min + ((in - min) / delta) * out_range.Delta();
+            return out_range.min + (((in - min) / delta) * out_range.Delta());
         }
         constexpr f32 RamapTo01(f32 in) const { return (in - min) * (1 / Delta()); }
         constexpr f32 Delta() const { return max - min; }
@@ -527,7 +527,7 @@ struct ParamDescriptor {
             }
 
             auto const value_01 = linear_range_.RamapTo01(linear_value);
-            return range.min + Pow(value_01, exponent) * range.Delta();
+            return range.min + (Pow(value_01, exponent) * range.Delta());
         }
 
         template <f32 (*pow_fn)(f32, f32)>
@@ -541,7 +541,7 @@ struct ParamDescriptor {
                     return -pow_fn((-projected_value) / (-range.min), 1 / exponent);
             }
             auto const value_01 = range.RamapTo01(projected_value);
-            return linear_range_.min + pow_fn(value_01, 1 / exponent) * linear_range_.Delta();
+            return linear_range_.min + (pow_fn(value_01, 1 / exponent) * linear_range_.Delta());
         }
 
         Range range;
@@ -650,7 +650,7 @@ struct ParamDescriptor {
 };
 
 constexpr ParamIndex ParamIndexFromLayerParamIndex(u32 layer_index, LayerParamIndex layer_param_index) {
-    return ParamIndex(layer_index * (u32)LayerParamIndex::Count + (u32)layer_param_index);
+    return ParamIndex((layer_index * (u32)LayerParamIndex::Count) + (u32)layer_param_index);
 }
 
 constexpr bool IsLayerParamOfSpecificType(ParamIndex global_index, LayerParamIndex layer_index) {
@@ -988,7 +988,7 @@ consteval auto CreateParams() {
 
     auto const id = [](IdRegion region, u32 index) {
         if (index >= k_ids_per_region) throw "region overflow";
-        return (u32)region * k_ids_per_region + index;
+        return ((u32)region * k_ids_per_region) + index;
     };
 
     // =====================================================================================================

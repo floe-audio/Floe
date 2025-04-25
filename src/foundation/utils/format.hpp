@@ -554,7 +554,7 @@ PUBLIC inline ErrorCodeOr<void> AppendLineRaw(Writer writer, Arg const& arg) {
 //=================================================
 template <dyn::DynArray DynCharArray, typename... Args>
 PUBLIC inline void Append(DynCharArray& output, String format, Args const&... args) {
-    output.Reserve(output.size + format.size * 2);
+    output.Reserve(output.size + (format.size * 2));
     auto result = FormatToWriter(dyn::WriterFor(output), format, args...);
     if (result.HasError()) __builtin_debugtrap();
 }
@@ -702,7 +702,7 @@ PUBLIC void Uuid(u64& seed, char* out) {
     for (usize i = 0; i < 4; i++) {
         u64 const r = RandomU64(seed);
         for (usize j = 0; j < 8; j++)
-            out[i * 8 + j] = "0123456789abcdef"[r >> (j * 4) & 0xf];
+            out[(i * 8) + j] = "0123456789abcdef"[r >> (j * 4) & 0xf];
     }
 }
 

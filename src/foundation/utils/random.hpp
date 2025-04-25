@@ -32,7 +32,7 @@ PUBLIC inline Type RandomIntInRange(u64& seed, Type inclusive_min, Type inclusiv
 template <FloatingPoint Type>
 PUBLIC inline Type RandomFloatInRange(u64& seed, Type min, Type max) {
     constexpr u64 k_arbitrary_val = 1239671576;
-    return min + ((Type)(RandomU64(seed) % k_arbitrary_val) / (Type)k_arbitrary_val) * (max - min);
+    return min + (((Type)(RandomU64(seed) % k_arbitrary_val) / (Type)k_arbitrary_val) * (max - min));
 }
 
 template <FloatingPoint Type>
@@ -47,7 +47,7 @@ struct RandomNormalDistribution {
     f64 Next(u64& seed) {
         if (has_spare) {
             has_spare = false;
-            return spare * std_dev + mean;
+            return (spare * std_dev) + mean;
         } else {
             f64 u;
             f64 v;
@@ -60,7 +60,7 @@ struct RandomNormalDistribution {
             s = __builtin_sqrt(-2.0 * __builtin_log(s) / s);
             spare = v * s;
             has_spare = true;
-            return mean + std_dev * u * s;
+            return mean + (std_dev * u * s);
         }
     }
 
@@ -116,7 +116,7 @@ struct RandomFloatGenerator {
 PUBLIC auto& Shuffle(ContiguousContainer auto& data, u64& seed) {
     if (data.size <= 1) return data;
     for (usize i = 0; i < data.size - 1; i++) {
-        u64 const j = i + RandomU64(seed) / (k_rand_max / (data.size - i) + 1);
+        u64 const j = i + (RandomU64(seed) / (k_rand_max / (data.size - i) + 1));
         ASSERT(j < data.size);
         Swap(data[i], data[j]);
     }

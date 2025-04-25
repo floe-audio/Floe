@@ -708,10 +708,10 @@ u32 CreateWidget(GuiFramework& framework, u32 page, WidgetOptions options) {
                 auto const bgra_data = PageAllocator::Instance().AllocateExactSizeUninitialised<u8>(
                     image_opts.size.width * image_opts.size.height * 4);
                 for (auto const i : Range<u32>(image_opts.size.width * image_opts.size.height)) {
-                    bgra_data[i * 4u + 0] = image_opts.rgba_data[i * 4u + 2];
-                    bgra_data[i * 4u + 1] = image_opts.rgba_data[i * 4u + 1];
-                    bgra_data[i * 4u + 2] = image_opts.rgba_data[i * 4u + 0];
-                    bgra_data[i * 4u + 3] = image_opts.rgba_data[i * 4u + 3];
+                    bgra_data[(i * 4u) + 0] = image_opts.rgba_data[(i * 4u) + 2];
+                    bgra_data[(i * 4u) + 1] = image_opts.rgba_data[(i * 4u) + 1];
+                    bgra_data[(i * 4u) + 2] = image_opts.rgba_data[(i * 4u) + 0];
+                    bgra_data[(i * 4u) + 3] = image_opts.rgba_data[(i * 4u) + 3];
                 }
                 DEFER { PageAllocator::Instance().Free(bgra_data); };
 

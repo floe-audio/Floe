@@ -85,7 +85,7 @@ struct Bitset {
     constexpr usize FirstUnsetBit() const {
         for (auto const element_index : Range(k_num_elements))
             if (elements[element_index] != u64(-1))
-                return element_index * k_bits_per_element + (usize)__builtin_ctzll(~elements[element_index]);
+                return (element_index * k_bits_per_element) + (usize)__builtin_ctzll(~elements[element_index]);
         [[unlikely]] return k_bits;
     }
 

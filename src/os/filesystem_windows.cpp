@@ -91,7 +91,7 @@ ErrorCodeOr<s128> File::LastModifiedTimeNsSinceEpoch() {
 
     // The windows epoch starts 1601-01-01T00:00:00Z. It's 11644473600 seconds before the Unix/Linux epoch
     // (1970-01-01T00:00:00Z). Windows ticks are in 100 nanoseconds.
-    return (s128)file_time_int.QuadPart * (s128)100 - (s128)11644473600ull * (s128)1'000'000'000ull;
+    return ((s128)file_time_int.QuadPart * (s128)100) - ((s128)11644473600ull * (s128)1'000'000'000ull);
 }
 
 ErrorCodeOr<void> File::SetLastModifiedTimeNsSinceEpoch(s128 time) {

@@ -55,7 +55,7 @@ PUBLIC inline bool MemoryIsEqual(void const* a, void const* b, usize num_bytes) 
 
 constexpr usize NumBitsNeededToStore(unsigned long long val) {
     if (val == 0) return 1;
-    return sizeof(val) * 8 - (usize)__builtin_clzll(val);
+    return (sizeof(val) * 8) - (usize)__builtin_clzll(val);
 }
 
 static constexpr usize k_max_alignment = sizeof(void*) * 2;

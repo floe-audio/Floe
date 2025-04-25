@@ -733,7 +733,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
 // Helpers
 PUBLIC Rect CentredRect(Rect container, f32x2 size) {
     return {
-        .pos = container.pos + (container.size - size) / 2,
+        .pos = container.pos + ((container.size - size) / 2),
         .size = size,
     };
 }

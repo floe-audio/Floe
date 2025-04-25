@@ -44,10 +44,10 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(Gui* g, Rect r, int starting_octave)
 
     f32 const black_note_offset[] = {
         (d1), // c#
-        (d1 * 2 + black_note_width), // d#
-        (white_note_width * 3 + d2), // f#
-        (white_note_width * 3 + d2 * 2 + black_note_width), // g#
-        (white_note_width * 3 + d2 * 3 + black_note_width * 2) // a#
+        ((d1 * 2) + black_note_width), // d#
+        ((white_note_width * 3) + d2), // f#
+        ((white_note_width * 3) + (d2 * 2) + black_note_width), // g#
+        ((white_note_width * 3) + (d2 * 3) + (black_note_width * 2)) // a#
     };
     constexpr int k_white_note_nums[] = {0, 2, 4, 5, 7, 9, 11};
     constexpr int k_black_note_nums[] = {1, 3, 6, 8, 10};
@@ -58,7 +58,7 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(Gui* g, Rect r, int starting_octave)
         auto const num_active_voices = voices_per_midi_note[(usize)key].Load(LoadMemoryOrder::Relaxed);
         if (num_active_voices != 0) {
             auto overlay = colours::FromU32(LiveCol(imgui, col_index));
-            overlay.a = (uint8_t)Min(255, overlay.a + 40 * num_active_voices);
+            overlay.a = (uint8_t)Min(255, overlay.a + (40 * num_active_voices));
             auto overlay_u32 = colours::ToU32(overlay);
             imgui.graphics->AddRectFilled(key_rect.Min(),
                                           f32x2 {key_rect.Right(), key_rect.y + active_voice_marker_h},
@@ -70,7 +70,7 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(Gui* g, Rect r, int starting_octave)
     for (auto const i : Range(num_octaves * 7)) {
         int const this_white_note = i % 7;
         int const this_octave = i / 7;
-        int const this_rel_note = k_white_note_nums[this_white_note] + this_octave * 12;
+        int const this_rel_note = k_white_note_nums[this_white_note] + (this_octave * 12);
         int const this_abs_note = lowest_note_shown + this_rel_note;
         if (this_abs_note > 127) continue;
 
@@ -103,13 +103,13 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(Gui* g, Rect r, int starting_octave)
     for (auto const i : Range(num_octaves * 5)) {
         int const this_black_note = i % 5;
         int const this_octave = i / 5;
-        int const this_rel_note = k_black_note_nums[this_black_note] + this_octave * 12;
+        int const this_rel_note = k_black_note_nums[this_black_note] + (this_octave * 12);
         int const this_abs_note = lowest_note_shown + this_rel_note;
         if (this_abs_note > 127) continue;
 
         Rect key_r;
         key_r.x = (f32)RoundPositiveFloat(r.x + black_note_offset[this_black_note] +
-                                          (f32)this_octave * white_note_width * 7);
+                                          ((f32)this_octave * white_note_width * 7));
         key_r.y = r.y;
         key_r.w = (f32)RoundPositiveFloat(black_note_width);
         key_r.h = black_height;

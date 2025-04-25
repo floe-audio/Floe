@@ -144,14 +144,14 @@ PUBLIC constexpr FloatType FloorPositiveFloat(FloatType v) {
 
 template <typename T1, typename T2, typename T3>
 PUBLIC constexpr auto LinearInterpolate(T1 t, T2 a, T3 b) {
-    return a + t * (b - a);
+    return a + (t * (b - a));
 }
 
-PUBLIC constexpr f32 LinearInterpolate(f32 t, f32 a, f32 b) { return a + t * (b - a); }
+PUBLIC constexpr f32 LinearInterpolate(f32 t, f32 a, f32 b) { return a + (t * (b - a)); }
 
 PUBLIC constexpr f32 Map(f32 value, f32 in_min, f32 in_max, f32 out_min, f32 out_max) {
     if (in_max - in_min == 0.0f) return 0.0f;
-    return out_min + (value - in_min) * (out_max - out_min) / (in_max - in_min);
+    return out_min + ((value - in_min) * (out_max - out_min) / (in_max - in_min));
 }
 
 PUBLIC constexpr f32 MapTo01(f32 value, f32 in_min, f32 in_max) { return Map(value, in_min, in_max, 0, 1); }
@@ -171,7 +171,7 @@ PUBLIC constexpr f32 MapTo01Skew(f32 non_norm_val, f32 min, f32 max, f32 skew) {
 PUBLIC constexpr f32 MapFrom01Skew(f32 normalised_val, f32 min, f32 max, f32 skew) {
     ASSERT(normalised_val >= 0 && normalised_val <= 1);
     if (skew == 1) return MapFrom01(normalised_val, min, max);
-    return Pow(normalised_val, skew) * (max - min) + min;
+    return (Pow(normalised_val, skew) * (max - min)) + min;
 }
 
 namespace trig_table_lookup {

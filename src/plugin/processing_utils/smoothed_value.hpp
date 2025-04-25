@@ -26,7 +26,7 @@ class SmoothedValueFilter {
     }
 
     f32 GetValue(f32 const cutoff01 = k_default_cutoff) {
-        f32 const result = m_prev + cutoff01 * (m_value - m_prev);
+        f32 const result = m_prev + (cutoff01 * (m_value - m_prev));
         m_prev = result;
         return result;
     }

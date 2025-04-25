@@ -438,7 +438,7 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
             .activation_click_event = ActivationClickEvent::Up,
             .layout {
                 .size = {layout::k_fill_parent, layout::k_hug_contents},
-                .contents_padding = {.l = style::k_menu_item_padding_x * 2 + style::k_prefs_icon_button_size,
+                .contents_padding = {.l = (style::k_menu_item_padding_x * 2) + style::k_prefs_icon_button_size,
                                      .r = style::k_menu_item_padding_x,
                                      .tb = style::k_menu_item_padding_y},
                 .contents_direction = layout::Direction::Row,
@@ -648,7 +648,7 @@ static void GeneralPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCo
         if (width_change) {
             auto const desc = SettingDescriptor(GuiSetting::WindowWidth);
             auto const width = prefs::GetInt(context.prefs, desc);
-            auto const new_width = width + *width_change * AlignTo(100, k_aspect_ratio_with_keyboard.width);
+            auto const new_width = width + (*width_change * AlignTo(100, k_aspect_ratio_with_keyboard.width));
             prefs::SetValue(context.prefs, desc, new_width);
         }
     }

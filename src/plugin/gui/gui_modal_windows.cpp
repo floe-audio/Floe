@@ -69,7 +69,7 @@ static bool DoButton(Gui* g, String button_text, DoButtonArgs args) {
 
     auto const content_width = text_width + (args.icon.size ? icon_size + gap_between_icon_and_text : 0);
 
-    auto const box_width = (args.auto_width) ? (content_width + box_padding * 2) : args.width;
+    auto const box_width = (args.auto_width) ? (content_width + (box_padding * 2)) : args.width;
     auto const box_height = line_height * 1.5f;
 
     auto x_pos = args.x_offset;

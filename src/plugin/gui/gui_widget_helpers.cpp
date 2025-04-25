@@ -316,7 +316,7 @@ void MidiLearnMenu(Gui* g, Span<ParamIndex> params, Rect r) {
                 auto const div_gap_x = LiveSize(imgui, UiSizeId::MenuItemDividerGapX);
                 auto const div_h = LiveSize(imgui, UiSizeId::MenuItemDividerH);
 
-                Rect div_r = {.xywh {div_gap_x, pos + (div_h / 2), item_width - 2 * div_gap_x, 1}};
+                Rect div_r = {.xywh {div_gap_x, pos + (div_h / 2), item_width - (2 * div_gap_x), 1}};
                 imgui.RegisterAndConvertRect(&div_r);
                 imgui.graphics->AddRectFilled(div_r.Min(),
                                               div_r.Max(),
@@ -449,7 +449,7 @@ imgui::TextInputSettings GetParameterTextInputSettings() {
         auto const text_pos = result->GetTextPos();
         auto const w = Max(r.w, draw::GetTextWidth(imgui.graphics->context->CurrentFont(), text));
         Rect const background_r {
-            .xywh {r.CentreX() - w / 2, text_pos.y, w, imgui.graphics->context->CurrentFontSize()}};
+            .xywh {r.CentreX() - (w / 2), text_pos.y, w, imgui.graphics->context->CurrentFontSize()}};
         auto const rounding = LiveSize(imgui, UiSizeId::CornerRounding);
 
         imgui.graphics->AddRectFilled(background_r.Min(),

@@ -14,8 +14,6 @@
 #include "os/misc.hpp"
 #include "tests/framework.hpp"
 
-#include "common_infrastructure/constants.hpp"
-
 #include "sample_library.hpp"
 
 namespace sample_lib {
@@ -1545,6 +1543,7 @@ floe.add_region(instrument, floe.extend_table(group1, {
 )aaa";
 
 static VoidOrError<Error> OpenFloeLuaLibrary(LuaState& ctx) {
+    // NOLINTNEXTLINE(readability-math-missing-parentheses)
     luaL_newlib(ctx.lua, k_floe_lib); // puts functions into an table on the top of the stack
     lua_setglobal(ctx.lua, "floe"); // pops top stack value and assigns it to global name
 

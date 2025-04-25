@@ -37,7 +37,7 @@ struct EffectWetDryHelper {
     void SetDry(FloeSmoothedValueSystem& s, f32 amp) { SetValue(s, m_dry_smoother_id, amp); }
 
     f32 Mix(FloeSmoothedValueSystem& s, u32 frame_index, f32 w, f32 d) {
-        return w * s.Value(m_wet_smoother_id, frame_index) + d * s.Value(m_dry_smoother_id, frame_index);
+        return (w * s.Value(m_wet_smoother_id, frame_index)) + (d * s.Value(m_dry_smoother_id, frame_index));
     }
 
     StereoAudioFrame

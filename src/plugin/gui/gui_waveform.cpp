@@ -489,7 +489,7 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
             f32 const intensity = (f32)marker.intensity / (f32)UINT16_MAX;
             if (reverse) position = 1 - position;
 
-            f32x2 cursor_pos {Round(waveform_r.x + position * waveform_r.w), waveform_r.y};
+            f32x2 cursor_pos {Round(waveform_r.x + (position * waveform_r.w)), waveform_r.y};
             cursor_pos = imgui.WindowPosToScreenPos(cursor_pos);
             draw::VoiceMarkerLine(imgui,
                                   cursor_pos,

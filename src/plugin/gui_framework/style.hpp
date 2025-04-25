@@ -21,9 +21,9 @@ constexpr u32 Hsla(u32 hue_degrees, u32 saturation_percent, u32 lightness_percen
     auto const hue_to_rgb = [](float p, float q, float t) {
         if (t < 0) t += 1;
         if (t > 1) t -= 1;
-        if (t < 1.0f / 6) return p + (q - p) * 6 * t;
+        if (t < 1.0f / 6) return p + ((q - p) * 6 * t);
         if (t < 1.0f / 2) return q;
-        if (t < 2.0f / 3) return p + (q - p) * (2.0f / 3 - t) * 6;
+        if (t < 2.0f / 3) return p + ((q - p) * (2.0f / 3 - t) * 6);
         return p;
     };
 
@@ -37,11 +37,11 @@ constexpr u32 Hsla(u32 hue_degrees, u32 saturation_percent, u32 lightness_percen
     if (s == 0) {
         result.r = result.g = result.b = (u8)(l * 255); // grey
     } else {
-        auto const q = l < 0.5f ? l * (1 + s) : l + s - l * s;
-        auto const p = 2 * l - q;
-        result.r = (u8)(hue_to_rgb(p, q, h + 1.0f / 3) * 255);
+        auto const q = l < 0.5f ? l * (1 + s) : l + s - (l * s);
+        auto const p = (2 * l) - q;
+        result.r = (u8)(hue_to_rgb(p, q, h + (1.0f / 3)) * 255);
         result.g = (u8)(hue_to_rgb(p, q, h) * 255);
-        result.b = (u8)(hue_to_rgb(p, q, h - 1.0f / 3) * 255);
+        result.b = (u8)(hue_to_rgb(p, q, h - (1.0f / 3)) * 255);
     }
 
     return colours::ToU32(result);
@@ -52,10 +52,10 @@ constexpr u32 BlendColours(u32 bg, u32 fg) {
     auto const bg_col = colours::FromU32(bg);
     auto const alpha = fg_col.a / 255.0f;
     auto const inv_alpha = 1.0f - alpha;
-    auto const r = (u8)Min(255.0f, fg_col.r * alpha + bg_col.r * inv_alpha);
-    auto const g = (u8)Min(255.0f, fg_col.g * alpha + bg_col.g * inv_alpha);
-    auto const b = (u8)Min(255.0f, fg_col.b * alpha + bg_col.b * inv_alpha);
-    auto const a = (u8)Min(255.0f, fg_col.a + bg_col.a * inv_alpha);
+    auto const r = (u8)Min(255.0f, (fg_col.r * alpha) + (bg_col.r * inv_alpha));
+    auto const g = (u8)Min(255.0f, (fg_col.g * alpha) + (bg_col.g * inv_alpha));
+    auto const b = (u8)Min(255.0f, (fg_col.b * alpha) + (bg_col.b * inv_alpha));
+    auto const a = (u8)Min(255.0f, fg_col.a + (bg_col.a * inv_alpha));
     return colours::ToU32(colours::Col {.a = a, .b = b, .g = g, .r = r});
 }
 
@@ -72,7 +72,7 @@ constexpr f32 RelativeLuminance(u32 abgr) {
         else
             c = constexpr_math::Powf((c + 0.055f) / 1.055f, 2.4f);
 
-    return 0.2126f * rgb[0] + 0.7152f * rgb[1] + 0.0722f * rgb[2];
+    return (0.2126f * rgb[0]) + (0.7152f * rgb[1]) + (0.0722f * rgb[2]);
 }
 
 constexpr f32 Contrast(u32 abgr1, u32 abgr2) {

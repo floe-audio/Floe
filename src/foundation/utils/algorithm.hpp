@@ -242,7 +242,7 @@ PUBLIC constexpr Optional<usize> FindBinarySearch(ContiguousContainer auto const
     ssize left = 0;
     ssize right = (ssize)data.size - 1;
     while (left <= right) {
-        auto const mid = left + (right - left) / 2;
+        auto const mid = left + ((right - left) / 2);
         auto const comp = compare_to_target(data[CheckedCast<usize>(mid)]);
 
         if (comp == 0)
@@ -263,7 +263,7 @@ PUBLIC constexpr usize BinarySearchForSlotToInsert(ContiguousContainer auto cons
     ssize left = 0;
     ssize right = (ssize)data.size - 1;
     while (left <= right) {
-        auto const mid = left + (right - left) / 2;
+        auto const mid = left + ((right - left) / 2);
         auto const comp = compare_to_target(data[CheckedCast<usize>(mid)]);
 
         if (comp == 0)

@@ -14,7 +14,7 @@ namespace path {
 #define FAKE_ABSOLUTE_PATH_PREFIX "/"
 #endif
 
-constexpr usize k_max = IS_WINDOWS ? (32767 * 3 + 1) : 4096;
+constexpr usize k_max = IS_WINDOWS ? ((32767 * 3) + 1) : 4096;
 
 enum class Format {
     Windows,

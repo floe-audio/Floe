@@ -119,7 +119,7 @@ static ErrorCodeOr<AudioData> DecodeFlac(Reader& reader, Allocator& allocator) {
             for (unsigned int chan = 0; chan < frame->header.channels; ++chan) {
                 for (unsigned int sample = 0; sample < frame->header.blocksize; ++sample) {
                     auto const val = buffer[chan][sample];
-                    context.interleaved_samples[start_pos + chan + sample * frame->header.channels] =
+                    context.interleaved_samples[start_pos + chan + (sample * frame->header.channels)] =
                         (f32)val / divisor;
                 }
             }

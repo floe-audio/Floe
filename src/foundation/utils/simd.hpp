@@ -78,7 +78,7 @@ PUBLIC constexpr T Map(T value, T in_min, T in_max, T out_min, T out_max) {
 // Doesn't check for divide by zero.
 template <F32Vector T>
 PUBLIC constexpr T MapUnchecked(T value, T in_min, T in_max, T out_min, T out_max) {
-    return out_min + (value - in_min) * (out_max - out_min) / (in_max - in_min);
+    return out_min + ((value - in_min) * (out_max - out_min) / (in_max - in_min));
 }
 
 template <F32Vector T>

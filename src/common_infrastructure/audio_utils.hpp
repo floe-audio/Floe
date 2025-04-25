@@ -44,7 +44,7 @@ constexpr f64 DbToAmpApprox(f64 x) {
     u = u * x + 0.00025499434891803805;
     u = u * x + 0.0066832945699735963;
     u = u * x + 0.11512732505952211;
-    return u * x + 0.99783786294442656;
+    return (u * x) + 0.99783786294442656;
 }
 
 // res in range (0, 1) outputs to a curve in range (0.5, infinity)
@@ -71,5 +71,5 @@ CopySeparateChannelsToInterleaved(SpanType interleaved_dest, f32* src_l, f32* sr
     for (auto const i : Range(num_frames))
         interleaved_dest[i * 2] = src_l[i];
     for (auto const i : Range(num_frames))
-        interleaved_dest[1 + i * 2] = src_r[i];
+        interleaved_dest[1 + (i * 2)] = src_r[i];
 }

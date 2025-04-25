@@ -290,10 +290,10 @@ inline void SampleGetData(AudioData const& s,
     ASSERT(x0 >= 0 && x0 < frames_in_sample);
 
     f32 const* sample_data = s.interleaved_samples.data;
-    auto* f0 = sample_data + x0 * s.channels;
-    auto* f1 = sample_data + x1 * s.channels;
-    auto* f2 = sample_data + x2 * s.channels;
-    auto* fm1 = sample_data + xm1 * s.channels;
+    auto* f0 = sample_data + (x0 * s.channels);
+    auto* f1 = sample_data + (x1 * s.channels);
+    auto* f2 = sample_data + (x2 * s.channels);
+    auto* fm1 = sample_data + (xm1 * s.channels);
     Array<f32, 2> outs = {};
     if (s.channels == 1) {
         DoMonoCubicInterp(f0, f1, f2, fm1, x, outs[0]);
@@ -489,9 +489,9 @@ PUBLIC Span<u8> CreateWaveformImage(WaveformAudioSource source,
     {
         min_y = Max(0, min_y - 1);
         max_y = Min(size.height - 1, max_y + 1);
-        FillMemory({px.data + min_y * size.width * 4, (usize)((max_y - min_y + 1) * size.width * 4)}, 0xff);
+        FillMemory({px.data + (min_y * size.width * 4), (usize)((max_y - min_y + 1) * size.width * 4)}, 0xff);
 
-        int alpha_chan_px_index = min_y * size.width * 4 + 3;
+        int alpha_chan_px_index = (min_y * size.width * 4) + 3;
         for (int y = min_y; y <= max_y; ++y) {
             auto const ss_y = y * k_supersample_scale;
             IntRange const ss_range = {ss_y, ss_y + k_supersample_scale - 1};
