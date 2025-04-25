@@ -843,27 +843,17 @@ fn universalFlags(
 
     if (ubsan) {
         if (context.optimise != .ReleaseFast) {
-            if (target.result.os.tag != .windows or true) {
-                // By default, zig enables UBSan (unless ReleaseFast mode) in trap mode. Meaning it will catch undefined
-                // behaviour and trigger a trap which can be caught by signal handlers. UBSan also has a mode where
-                // undefined behaviour will instead call various functions. This is called the UBSan runtime. It's
-                // really easy to implement the 'minimal' version of this runtime: we just have to declare a bunch of
-                // functions like __ubsan_handle_x. So that's what we do rather than trying to link with the system's
-                // version. https://github.com/ziglang/zig/issues/5163#issuecomment-811606110
-                try flags.append("-fno-sanitize-trap=undefined"); // undo zig's default behaviour (trap mode)
-                try flags.append("-fno-sanitize=function");
-                const minimal_runtime_mode = false; // I think it's better performance. Certainly less information.
-                if (minimal_runtime_mode) {
-                    try flags.append("-fsanitize-runtime"); // set it to 'minimal' mode
-                }
-            } else {
-                // For some reason the same method of creating our own UBSan runtime doesn't work on windows. These are
-                // the link errors that we get:
-                // error: lld-link: could not open 'liblibclang_rt.ubsan_standalone-x86_64.a': No such file or directory
-                // error: lld-link: could not open 'liblibclang_rt.ubsan_standalone_cxx-x86_64.a': No such file or
-                // directory
-                // TODO: when we upgrade Zig, add this flag (or use Zig 0.14's ubsan runtime)
-                // try flags.append("-fno-rtlib-defaultlib");
+            // By default, zig enables UBSan (unless ReleaseFast mode) in trap mode. Meaning it will catch undefined
+            // behaviour and trigger a trap which can be caught by signal handlers. UBSan also has a mode where
+            // undefined behaviour will instead call various functions. This is called the UBSan runtime. It's
+            // really easy to implement the 'minimal' version of this runtime: we just have to declare a bunch of
+            // functions like __ubsan_handle_x. So that's what we do rather than trying to link with the system's
+            // version. https://github.com/ziglang/zig/issues/5163#issuecomment-811606110
+            try flags.append("-fno-sanitize-trap=undefined"); // undo zig's default behaviour (trap mode)
+            try flags.append("-fno-sanitize=function");
+            const minimal_runtime_mode = false; // I think it's better performance. Certainly less information.
+            if (minimal_runtime_mode) {
+                try flags.append("-fsanitize-runtime"); // set it to 'minimal' mode
             }
         }
     } else {
