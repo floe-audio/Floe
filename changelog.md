@@ -9,6 +9,10 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 
+## 0.9.1-beta
+- AU: fix crash when trying to open the file/folder picker
+- Fix missing logo on macOS
+
 ## 0.9.0-beta
 - Library creation: fix specifying loop end points relative to the end of the file.
 - Library creation: replace always_loop, never_loop field with enum `loop_requirement`.
@@ -16,7 +20,6 @@ For instance: 0.0.1. Don't change the headings.
 - Library creation: separate note-off round-robin sequencing group from note-on round-robin sequencing group.
 - Library creation: disable volume envelope for note-off regions
 - Library creation: improve memory usage when reading Lua scripts
-- AU: fix crash when trying to open the file/folder picker
 - Library creation: fix crash when an image file is empty
 - VST3: fix not responding to note-on/note-off messages when they weren't on channel 0
 - GUI: on the Save Preset dialog, add the ability to store/load a preset author
