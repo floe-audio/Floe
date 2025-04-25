@@ -39,9 +39,6 @@ using s7 = signed _BitInt(7);
 using u4 = unsigned _BitInt(4);
 using s4 = signed _BitInt(4);
 
-// NOTE: with LLVM 19, we can use bit-precise-int-suffix _wb to create _BitInts with the automatically
-// correct number of bits. See https://en.cppreference.com/w/c/language/integer_constant.
-
 // We rely on Clang's vector extensions for both convenience (we don't have to define operator overloads for
 // +, -, *, etc.) and for the core of our SIMD code generation.
 // https://clang.llvm.org/docs/LanguageExtensions.html#vectors-and-extended-vectors

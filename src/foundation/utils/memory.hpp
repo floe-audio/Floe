@@ -65,13 +65,7 @@ static constexpr usize k_max_alignment = sizeof(void*) * 2;
 // https://en.wikipedia.org/wiki/False_sharing
 // The cppreference page suggests that, in certain cases, separating data accessed by multiple threads
 // by this value can speed up things by 6x. FreeBSD's buf_ring.h uses this technique.
-// IMPROVE: with LLVM 19 we will get __GCC_DESTRUCTIVE_SIZE and __GCC_CONSTRUCTIVE_SIZE, we should use them.
-static constexpr usize k_destructive_interference_size = []() {
-    switch (k_arch) {
-        case Arch::X86_64: return 64;
-        case Arch::Aarch64: return 128; // apple's M1 has 128 byte cache lines
-    }
-}();
+static constexpr usize k_destructive_interference_size = __GCC_DESTRUCTIVE_SIZE;
 
 PUBLIC constexpr bool IsPowerOfTwo(usize v) { return !(v & (v - 1)); }
 PUBLIC constexpr usize Power2Modulo(usize x, usize y) { return x & (y - 1); }
