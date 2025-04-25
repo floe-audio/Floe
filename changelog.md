@@ -15,6 +15,15 @@ For instance: 0.0.1. Don't change the headings.
 - Library creation: add round_robin_sequencing_group field to allow for different sets of variations.
 - Library creation: separate note-off round-robin sequencing group from note-on round-robin sequencing group.
 - Library creation: disable volume envelope for note-off regions
+- Library creation: improve memory usage when reading Lua scripts
+- AU: fix crash when trying to open the file/folder picker
+- Library creation: fix crash when an image file is empty
+- VST3: fix not responding to note-on/note-off messages when they weren't on channel 0
+- GUI: on the Save Preset dialog, add the ability to store/load a preset author
+- GUI: make the Save Preset dialog larger and scroll to top when a new preset is loaded
+- Fix potential crash when reporting an error
+- Rename parameter right-click menu Set Value to Enter Value
+- Support CLAP reset() function
 
 ## 0.8.3-beta
 - Fix crash when error occurs in the Windows native file picker
