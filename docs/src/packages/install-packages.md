@@ -11,16 +11,18 @@ Floe can install sample libraries and presets from ZIP files called _Floe packag
 
 ![Floe's GUI](../images/install-package-gui.png)
 
-[Install Floe](../installation/download-and-install-floe.md) first, and open it in your DAW.
+If you don't already have Floe, [install](../installation/download-and-install-floe.md) it first, and open it in your DAW.
 
-Next, __don't extract the ZIP package__. Instead, use the 'Install package' button in the preferences panel and direct it to the ZIP file. It will extract the package into the correct folders. The library/presets will be available immediately, no need to restart Floe.
+Next, download your chosen package(s). Remember, [packages](../packages/about-packages.html) are ZIP files that contain sample libraries and presets.
+
+__Don't extract it though__. Instead, use the 'Install package' button in the preferences panel of Floe and direct it to the ZIP file. It will extract the package into the correct folders. The library/presets will be available immediately, no need to restart Floe.
 
 ### Here's the full steps:
 
 1. Open Floe.
 1. Open the Preferences panel using the <i class="fa fa-cog"></i> cog icon at the top.
 1. Open the Packages tab.
-1. Click the 'Install package' button and direct it to the package ZIP file.
+1. Click the 'Install package' button. A file browser will open. Use it to select the [package(s)](../packages/about-packages.html) you want to install. Packages are ZIP files that contain sample libraries and presets. They normally follow this naming scheme `Developer Name - Library Name Package.zip`.
 1. Done. After installation, you may delete the ZIP file. No need to restart Floe.
 
 ### Mirage Compatibility

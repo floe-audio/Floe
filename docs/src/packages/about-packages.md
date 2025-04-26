@@ -9,6 +9,8 @@ Sample libraries and presets are typically put into ZIP files called _Floe packa
 
 Floe can easily [extract and install these packages](./install-packages.md).
 
+The [available packages](../packages/available-packages.md) page lists some of the packages available for download.
+
 ## Additional Information
 
 Packages are just normal ZIP files, but they contain subfolders in a particular structure that Floe knows how to handle. 
