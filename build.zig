@@ -997,6 +997,7 @@ fn getTargets(b: *std.Build, user_given_target_presets: ?[]const u8) !std.ArrayL
     // find definitive information on this. It's not a big deal for now; the baseline x86_64 target includes SSE2
     // which is the important feature for our performance-critical code.
     const x86_cpu = "x86_64";
+    const apple_x86_cpu = "x86_64_v2";
     const apple_arm_cpu = "apple_m1";
 
     var it = std.mem.splitSequence(u8, preset_strings, ",");
@@ -1025,7 +1026,7 @@ fn getTargets(b: *std.Build, user_given_target_presets: ?[]const u8) !std.ArrayL
                 },
                 .x86_64_macos => {
                     arch_os_abi = "x86_64-macos." ++ min_macos_version;
-                    cpu_features = x86_cpu;
+                    cpu_features = apple_x86_cpu;
                 },
                 .aarch64_macos => {
                     arch_os_abi = "aarch64-macos." ++ min_macos_version;
