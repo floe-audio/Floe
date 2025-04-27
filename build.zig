@@ -37,6 +37,8 @@ const min_windows_version = "win10";
 
 const floe_cache_relative = ".floe-cache";
 
+const embed_files_workaround = true;
+
 const ConcatCompileCommandsStep = struct {
     step: std.Build.Step,
     target: std.Build.ResolvedTarget,
@@ -1895,29 +1897,32 @@ pub fn build(b: *std.Build) void {
             join_compile_commands.step.dependOn(&common_infrastructure.step);
         }
 
-        const embedded_files = b.addObject(.{
-            .name = "embedded_files",
-            .root_source_file = b.path("build_resources/embedded_files.zig"),
-            .target = target,
-            .optimize = build_context.optimise,
-            .pic = true,
-        });
-        {
-            var embedded_files_options = b.addOptions();
+        var embedded_files: ?*std.Build.Step.Compile = null;
+        if (!embed_files_workaround) {
+            embedded_files = b.addObject(.{
+                .name = "embedded_files",
+                .root_source_file = b.path("build_resources/embedded_files.zig"),
+                .target = target,
+                .optimize = build_context.optimise,
+                .pic = true,
+            });
             {
-                const logo_resource = getExternalResource(&build_context, "Logos/rasterized/plugin-gui-logo.png");
-                const logo_path = if (logo_resource) |r| r.absolute_path else null;
-                embedded_files_options.addOption(?[]const u8, "logo_file", logo_path);
+                var embedded_files_options = b.addOptions();
+                {
+                    const logo_resource = getExternalResource(&build_context, "Logos/rasterized/plugin-gui-logo.png");
+                    const logo_path = if (logo_resource) |r| r.absolute_path else null;
+                    embedded_files_options.addOption(?[]const u8, "logo_file", logo_path);
+                }
+                {
+                    const icon_resource = getExternalResource(&build_context, "Logos/rasterized/icon-background-256px.png");
+                    const icon_path = if (icon_resource) |r| r.absolute_path else null;
+                    embedded_files_options.addOption(?[]const u8, "icon_file", icon_path);
+                }
+                embedded_files.?.root_module.addOptions("build_options", embedded_files_options);
             }
-            {
-                const icon_resource = getExternalResource(&build_context, "Logos/rasterized/icon-background-256px.png");
-                const icon_path = if (icon_resource) |r| r.absolute_path else null;
-                embedded_files_options.addOption(?[]const u8, "icon_file", icon_path);
-            }
-            embedded_files.root_module.addOptions("build_options", embedded_files_options);
+            embedded_files.?.linkLibC();
+            embedded_files.?.addIncludePath(b.path("build_resources"));
         }
-        embedded_files.linkLibC();
-        embedded_files.addIncludePath(b.path("build_resources"));
 
         const plugin = b.addStaticLibrary(.{
             .name = "plugin",
@@ -1929,6 +1934,7 @@ pub fn build(b: *std.Build) void {
 
             plugin.addCSourceFiles(.{
                 .files = &(.{
+                    plugin_path ++ "/engine/autosave.cpp",
                     plugin_path ++ "/engine/autosave.cpp",
                     plugin_path ++ "/engine/engine.cpp",
                     plugin_path ++ "/engine/package_installation.cpp",
@@ -2031,7 +2037,13 @@ pub fn build(b: *std.Build) void {
             plugin.linkLibrary(library);
             plugin.linkLibrary(common_infrastructure);
             plugin.linkLibrary(fft_convolver);
-            plugin.addObject(embedded_files);
+            if (embed_files_workaround) {
+                plugin.addCSourceFile(.{
+                    .file = b.dependency("embedded_files_workaround", .{}).path("embedded_files.cpp"),
+                });
+            } else {
+                plugin.addObject(embedded_files.?);
+            }
             plugin.linkLibrary(tracy);
             plugin.linkLibrary(pugl);
             plugin.addObject(stb_image);
@@ -2082,7 +2094,13 @@ pub fn build(b: *std.Build) void {
             packager.addIncludePath(b.path("src"));
             packager.addConfigHeader(build_config_step);
             packager.linkLibrary(miniz);
-            packager.addObject(embedded_files);
+            if (embed_files_workaround) {
+                packager.addCSourceFile(.{
+                    .file = b.dependency("embedded_files_workaround", .{}).path("embedded_files.cpp"),
+                });
+            } else {
+                packager.addObject(embedded_files.?);
+            }
             join_compile_commands.step.dependOn(&packager.step);
             addToLipoSteps(&build_context, packager, false) catch @panic("OOM");
             applyUniversalSettings(&build_context, packager);

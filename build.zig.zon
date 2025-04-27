@@ -16,6 +16,10 @@
             .url = "https://github.com/Cyan4973/xxHash/archive/refs/tags/v0.8.2.tar.gz",
             .hash = "1220f1fadc5ed8683a107695153d475025cef9619fd05040043abe8f923741d093d3",
         },
+        .embedded_files_workaround = .{
+            .url = "git+https://github.com/floe-audio/floe-embedded-files-workaround#d3b73b5bb68ff08e6b6e0a12855a50eef0bae5b0",
+            .hash = "N-V-__8AABH8sAJj8dOv9vL32v4HTxQ3uIgyLF_PbtDgoYcL",
+        },
         .stb = .{
             .url = "git+https://github.com/nothings/stb#64e783d73879abe2e7589bc634bf6cb6f5e2baae",
             .hash = "1220b43efb0e8a88a92ec54f9f85987ba2099739e69d6bb49b9b219c2c0731bbd934",
