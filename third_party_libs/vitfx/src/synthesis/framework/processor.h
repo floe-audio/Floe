@@ -9,6 +9,7 @@
 #include "poly_utils.h"
 
 #include <cstring>
+#include <memory>
 #include <vector>
 
 namespace vital {

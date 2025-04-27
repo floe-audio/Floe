@@ -155,7 +155,6 @@ template <typename From, typename To> concept Convertible = requires { Declval<v
 template <typename T> concept CArray = __is_array(T);
 template <typename T> concept Pointer = __is_pointer(T);
 template <typename T> concept Void = __is_void(T);
-template <typename T> concept Nullptr = __is_nullptr(T);
 template <typename T> concept FunctionType = __is_function(T);
 template <typename T> concept Arithmetic = __is_arithmetic(T);
 template <typename T> concept Struct = __is_class(T);
