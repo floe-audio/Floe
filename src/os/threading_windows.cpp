@@ -103,7 +103,7 @@ void SetThreadName(String name, bool tag_only) {
 }
 
 Optional<DynamicArrayBounded<char, k_max_thread_name_size>> ThreadName(bool tag_only) {
-    if (g_is_main_thread) return "main"_s;
+    if (g_is_logical_main_thread) return "main"_s;
     (void)tag_only; // We don't set the thread name in the OS anyways.
     auto const name = detail::GetThreadLocalThreadName();
     if (name) return *name;

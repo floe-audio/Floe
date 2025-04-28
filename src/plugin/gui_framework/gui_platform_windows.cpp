@@ -184,7 +184,7 @@ RunFilePicker(FilePickerDialogOptions const& args, ArenaAllocator& arena, HWND p
 }
 
 bool detail::NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data1, uintptr data2) {
-    ASSERT(ThreadName() == "main");
+    ASSERT(g_is_logical_main_thread);
 
     if (data1 != k_file_picker_message_data) return false;
     if (data2 != k_file_picker_message_data) return false;
@@ -240,7 +240,7 @@ bool detail::NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data
 //   otherwise IFileDialog::Show() will block forever, and never show it's own dialog.
 
 ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& args) {
-    ASSERT(ThreadName() == "main");
+    ASSERT(g_is_logical_main_thread);
 
     NativeFilePicker* native_file_picker = nullptr;
 
@@ -340,7 +340,7 @@ static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
             return false; // Not our window.
     }
 
-    ASSERT(ThreadName() == "main");
+    ASSERT(g_is_logical_main_thread);
 
     // We only want messages when wants_keyboard_input is true.
     {
@@ -387,7 +387,7 @@ static HHOOK g_keyboard_hook {};
 static u32 g_keyboard_hook_ref_count {};
 
 void detail::AddWindowsKeyboardHook(GuiPlatform& platform) {
-    ASSERT(ThreadName() == "main");
+    ASSERT(g_is_logical_main_thread);
 
     if (g_keyboard_hook_ref_count++ > 0) return;
 
@@ -416,7 +416,7 @@ void detail::AddWindowsKeyboardHook(GuiPlatform& platform) {
 }
 
 void detail::RemoveWindowsKeyboardHook(GuiPlatform&) {
-    ASSERT(ThreadName() == "main");
+    ASSERT(g_is_logical_main_thread);
 
     if (--g_keyboard_hook_ref_count > 0) return;
 
