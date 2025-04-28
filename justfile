@@ -646,7 +646,7 @@ macos-prepare-release-plugins:
   EOF
 
   codesign_plugin() {
-    codesign --sign "$MACOS_DEV_ID_APP_NAME" --timestamp --options=runtime --deep --force --entitlements plugin.entitlements $1
+    codesign --sign "$MACOS_DEV_ID_APP_NAME" --timestamp --options=runtime --deep --force --strict --entitlements plugin.entitlements $1
   }
 
   plugin_list="Floe.clap Floe.vst3 Floe.component"
