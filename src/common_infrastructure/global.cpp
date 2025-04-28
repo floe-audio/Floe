@@ -22,7 +22,7 @@ static u32 g_tracy_init = 0;
 void GlobalInit(GlobalInitOptions options) {
     if (g_tracy_init++ == 0) StartupTracy();
 
-    if (options.set_main_thread) SetThreadName("main");
+    if (options.set_main_thread) SetThreadName("main", FinalBinaryIsPlugin());
 
     SetPanicHook([](char const* message_c_str, SourceLocation loc, uintptr loc_pc) {
         // We don't have to be signal-safe here.

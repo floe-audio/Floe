@@ -24,7 +24,7 @@
 #include "state/state_snapshot.hpp"
 
 Optional<sample_lib::LibraryIdRef> LibraryForOverallBackground(Engine const& engine) {
-    ASSERT(IsMainThread(engine.host));
+    ASSERT(g_is_logical_main_thread);
 
     Array<Optional<sample_lib::LibraryIdRef>, k_num_layers> lib_ids {};
     for (auto [layer_index, l] : Enumerate<u32>(engine.processor.layer_processors))
@@ -50,7 +50,7 @@ Optional<sample_lib::LibraryIdRef> LibraryForOverallBackground(Engine const& eng
 }
 
 static void UpdateAttributionText(Engine& engine, ArenaAllocator& scratch_arena) {
-    ASSERT(IsMainThread(engine.host));
+    ASSERT(g_is_logical_main_thread);
 
     DynamicArrayBounded<sample_lib::Instrument const*, k_num_layers> insts {};
     for (auto& l : engine.processor.layer_processors)
@@ -84,7 +84,7 @@ static void SetLastSnapshot(Engine& engine, StateSnapshotWithName const& state) 
 
 static void LoadNewState(Engine& engine, StateSnapshotWithName const& state, StateSource source) {
     ZoneScoped;
-    ASSERT(IsMainThread(engine.host));
+    ASSERT(g_is_logical_main_thread);
 
     if (source == StateSource::Daw) SetInstanceId(engine.autosave_state, state.state.instance_id);
 
@@ -197,7 +197,7 @@ static AudioData const* IrAudioDataFromPendingState(Engine::PendingStateChange c
 
 static void ApplyNewStateFromPending(Engine& engine) {
     ZoneScoped;
-    ASSERT(IsMainThread(engine.host));
+    ASSERT(g_is_logical_main_thread);
 
     auto const& pending_state_change = *engine.pending_state_change;
 
@@ -217,7 +217,7 @@ static void ApplyNewStateFromPending(Engine& engine) {
 
 static void SampleLibraryChanged(Engine& engine, sample_lib::LibraryIdRef library_id) {
     ZoneScoped;
-    ASSERT(IsMainThread(engine.host));
+    ASSERT(g_is_logical_main_thread);
 
     auto const current_ir_id = engine.processor.convo.ir_id;
     if (current_ir_id.HasValue()) {
@@ -233,7 +233,7 @@ static void SampleLibraryChanged(Engine& engine, sample_lib::LibraryIdRef librar
 
 static void SampleLibraryResourceLoaded(Engine& engine, sample_lib_server::LoadResult result) {
     ZoneScoped;
-    ASSERT(IsMainThread(engine.host));
+    ASSERT(g_is_logical_main_thread);
 
     enum class Source : u32 { OneOff, PartOfPendingStateChange, LastInPendingStateChange, Count };
 
@@ -334,7 +334,7 @@ bool StateChangedSinceLastSnapshot(Engine& engine) {
 
 // one-off load
 void LoadConvolutionIr(Engine& engine, Optional<sample_lib::IrId> ir_id) {
-    ASSERT(IsMainThread(engine.host));
+    ASSERT(g_is_logical_main_thread);
     engine.processor.convo.ir_id = ir_id;
 
     if (ir_id)
@@ -350,7 +350,7 @@ void LoadConvolutionIr(Engine& engine, Optional<sample_lib::IrId> ir_id) {
 
 // one-off load
 void LoadInstrument(Engine& engine, u32 layer_index, InstrumentId inst_id) {
-    ASSERT(IsMainThread(engine.host));
+    ASSERT(g_is_logical_main_thread);
     engine.processor.layer_processors[layer_index].instrument_id = inst_id;
 
     switch (inst_id.tag) {
@@ -503,7 +503,7 @@ Engine::~Engine() {
 }
 
 static void PluginOnTimer(Engine& engine, clap_id timer_id) {
-    ASSERT(IsMainThread(engine.host));
+    ASSERT(g_is_logical_main_thread);
     if (timer_id == *engine.timer_id) OnMainThread(engine);
 }
 
@@ -520,7 +520,7 @@ static void PluginOnPollThread(Engine& engine) {
 }
 
 static void PluginOnPreferenceChanged(Engine& engine, prefs::Key key, prefs::Value const* value) {
-    ASSERT(IsMainThread(engine.host));
+    ASSERT(g_is_logical_main_thread);
     OnPreferenceChanged(engine.autosave_state, key, value);
 }
 

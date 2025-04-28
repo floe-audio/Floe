@@ -8,6 +8,8 @@
 
 thread_local DynamicArrayBounded<char, k_max_thread_name_size> g_thread_name {};
 
+thread_local u8 g_is_logical_main_thread = 0;
+
 namespace detail {
 
 void AssertThreadNameIsValid(String name) {
