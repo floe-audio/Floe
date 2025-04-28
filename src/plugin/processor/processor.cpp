@@ -92,33 +92,33 @@ bool EffectIsOn(Parameters const& params, Effect* effect) {
 }
 
 bool IsMidiCCLearnActive(AudioProcessor const& processor) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     return processor.midi_learn_param_index.Load(LoadMemoryOrder::Relaxed).HasValue();
 }
 
 void LearnMidiCC(AudioProcessor& processor, ParamIndex param) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     processor.midi_learn_param_index.Store((s32)param, StoreMemoryOrder::Relaxed);
 }
 
 void CancelMidiCCLearn(AudioProcessor& processor) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     processor.midi_learn_param_index.Store(k_nullopt, StoreMemoryOrder::Relaxed);
 }
 
 void UnlearnMidiCC(AudioProcessor& processor, ParamIndex param, u7 cc_num_to_remove) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     processor.events_for_audio_thread.Push(RemoveMidiLearn {.param = param, .midi_cc = cc_num_to_remove});
     processor.host.request_process(&processor.host);
 }
 
 Bitset<128> GetLearnedCCsBitsetForParam(AudioProcessor const& processor, ParamIndex param) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     return processor.param_learned_ccs[ToInt(param)].GetBlockwise();
 }
 
 bool CcControllerMovedParamRecently(AudioProcessor const& processor, ParamIndex param) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     return (processor.time_when_cc_moved_param[ToInt(param)].Load(LoadMemoryOrder::Relaxed) + 0.4) >
            TimePoint::Now();
 }
@@ -186,7 +186,7 @@ static void HandleMuteSolo(AudioProcessor& processor) {
 }
 
 void SetAllParametersToDefaultValues(AudioProcessor& processor) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     for (auto& param : processor.params)
         param.SetLinearValue(param.DefaultLinearValue());
 
@@ -509,7 +509,7 @@ static void ProcessorOnParamChange(AudioProcessor& processor, ChangedParams chan
 }
 
 void ParameterJustStartedMoving(AudioProcessor& processor, ParamIndex index) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     auto host_params =
         (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS);
     if (!host_params) return;
@@ -518,7 +518,7 @@ void ParameterJustStartedMoving(AudioProcessor& processor, ParamIndex index) {
 }
 
 void ParameterJustStoppedMoving(AudioProcessor& processor, ParamIndex index) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     auto host_params =
         (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS);
     if (!host_params) return;
@@ -527,7 +527,7 @@ void ParameterJustStoppedMoving(AudioProcessor& processor, ParamIndex index) {
 }
 
 bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, ParamChangeFlags flags) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     auto& param = processor.params[ToInt(index)];
 
     bool const changed =
@@ -649,7 +649,7 @@ static void Deactivate(AudioProcessor& processor) {
 }
 
 void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const& instrument) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
 
     // If we currently have a sampler instrument, we keep it alive by storing it and releasing at a later
     // time.
@@ -686,7 +686,7 @@ void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const&
 }
 
 void SetConvolutionIrAudioData(AudioProcessor& processor, AudioData const* audio_data) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     processor.convo.ConvolutionIrDataLoaded(audio_data);
     processor.events_for_audio_thread.Push(EventForAudioThreadType::ConvolutionIRChanged);
     processor.host.request_process(&processor.host);

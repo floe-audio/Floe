@@ -49,7 +49,7 @@ SharedEngineSystems::SharedEngineSystems(Span<sentry::Tag const> tags)
     InitBackgroundErrorReporting(tags);
 
     prefs.on_change = [this](prefs::Key const& key, prefs::Value const* value) {
-        ASSERT(CheckThreadName("main"));
+        ASSERT(g_is_logical_main_thread);
 
         if (key == prefs::key::k_extra_libraries_folder) {
             DynamicArrayBounded<String, k_max_extra_scan_folders> extra_scan_folders;

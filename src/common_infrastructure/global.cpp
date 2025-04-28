@@ -22,7 +22,7 @@ static u32 g_tracy_init = 0;
 void GlobalInit(GlobalInitOptions options) {
     if (g_tracy_init++ == 0) StartupTracy();
 
-    if (options.set_main_thread) SetThreadName("main");
+    if (options.set_main_thread) SetThreadName("main", FinalBinaryIsPlugin());
 
     SetPanicHook([](char const* message_c_str, SourceLocation loc, uintptr loc_pc) {
         // We don't have to be signal-safe here.
@@ -34,9 +34,10 @@ void GlobalInit(GlobalInitOptions options) {
         auto const stacktrace = CurrentStacktrace(ProgramCounter {loc_pc});
         DynamicArray<char> message {arena};
         fmt::Assign(message,
-                    "[panic] ({}) {}\n",
+                    "[panic] ({}) {} (thread: {})\n",
                     ToString(g_final_binary_type),
-                    FromNullTerminated(message_c_str));
+                    FromNullTerminated(message_c_str),
+                    CurrentThreadId());
         auto _ = FrameInfo::FromSourceLocation(loc).Write(0, dyn::WriterFor(message), {});
 
         // Step 1: log the error for easier local debugging.
@@ -112,8 +113,11 @@ void GlobalInit(GlobalInitOptions options) {
 
         FixedSizeAllocator<4000> allocator {nullptr};
 
-        auto const message =
-            fmt::Format(allocator, "[crash] ({}) {}", ToString(g_final_binary_type), crash_message);
+        auto const message = fmt::Format(allocator,
+                                         "[crash] ({}) {} (thread: {})",
+                                         ToString(g_final_binary_type),
+                                         crash_message,
+                                         CurrentThreadId());
 
         // Step 1: dump info to stderr.
         {

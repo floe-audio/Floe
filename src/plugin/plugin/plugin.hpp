@@ -5,6 +5,7 @@
 #include "os/threading.hpp"
 
 #include "common_infrastructure/constants.hpp"
+#include "common_infrastructure/final_binary_type.hpp"
 #include "common_infrastructure/preferences.hpp"
 
 #include "clap/ext/gui.h"
@@ -105,7 +106,7 @@ constexpr char const* k_supported_gui_api =
 // need to convert. See gui.h definitions of CLAP_WINDOW_API_WIN32, CLAP_WINDOW_API_COCOA,
 // CLAP_WINDOW_API_X11.
 PUBLIC UiSize PhysicalPixelsToClapPixels(PuglView* view, UiSize size) {
-    ASSERT(CheckThreadName("main"));
+    ASSERT(g_is_logical_main_thread);
     ASSERT(view);
     if constexpr (IS_MACOS) {
         auto scale_factor = puglGetScaleFactor(view);
@@ -117,7 +118,7 @@ PUBLIC UiSize PhysicalPixelsToClapPixels(PuglView* view, UiSize size) {
     return size;
 }
 PUBLIC Optional<UiSize> ClapPixelsToPhysicalPixels(PuglView* view, u32 width, u32 height) {
-    ASSERT(CheckThreadName("main"));
+    ASSERT(g_is_logical_main_thread);
     ASSERT(view);
     if constexpr (IS_MACOS) {
         auto scale_factor = puglGetScaleFactor(view);
@@ -145,26 +146,29 @@ struct FloeClapTestingExtension {
     bool (*state_change_is_pending)(clap_plugin const* plugin) = nullptr;
 };
 
-inline bool IsMainThread(clap_host const& host) {
-    if (auto const thread_check =
-            (clap_host_thread_check const*)host.get_extension(&host, CLAP_EXT_THREAD_CHECK);
-        thread_check)
-        return thread_check->is_main_thread(&host);
-    else
-        return CheckThreadName("main");
+enum class IsThreadResult { No, Yes, Unknown };
+
+inline IsThreadResult IsMainThread(clap_host const& host) {
+    // Whilst the CLAP-wrapper does support thread-check, it's untrustworthy. We only trust the value of
+    // direct CLAP thread-check.
+    if (g_final_binary_type == FinalBinaryType::Clap) {
+        if (auto const thread_check =
+                (clap_host_thread_check const*)host.get_extension(&host, CLAP_EXT_THREAD_CHECK);
+            thread_check)
+            return thread_check->is_main_thread(&host) ? IsThreadResult::Yes : IsThreadResult::No;
+    }
+    return IsThreadResult::Unknown;
 }
 
-enum class IsAudioThreadResult { No, Yes, Unknown };
-
-inline IsAudioThreadResult IsAudioThread(clap_host const& host) {
+inline IsThreadResult IsAudioThread(clap_host const& host) {
     if (auto const thread_check =
             (clap_host_thread_check const*)host.get_extension(&host, CLAP_EXT_THREAD_CHECK);
         thread_check)
-        return thread_check->is_audio_thread(&host) ? IsAudioThreadResult::Yes : IsAudioThreadResult::No;
+        return thread_check->is_audio_thread(&host) ? IsThreadResult::Yes : IsThreadResult::No;
     else {
         // We can't know for sure without the host's extension since the CLAP spec allows there to be multiple
         // audio threads.
-        return IsAudioThreadResult::Unknown;
+        return IsThreadResult::Unknown;
     }
 }
 

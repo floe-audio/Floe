@@ -24,19 +24,19 @@ static constexpr NativeHandleSizes NativeHandleSizes() {
 void SleepThisThread(int milliseconds);
 void YieldThisThread();
 
-u64 CurrentThreadId();
+u64 CurrentThreadId(); // signal-safe
 
 void SetCurrentThreadPriorityRealTime();
 
 constexpr static usize k_max_thread_name_size = 16;
-void SetThreadName(String name);
-Optional<DynamicArrayBounded<char, k_max_thread_name_size>> ThreadName();
+// tag_only will tag the thread ID with our thread_local name, rather than attempt to
+// set the thread using the OS.
+void SetThreadName(String name, bool tag_only);
+Optional<DynamicArrayBounded<char, k_max_thread_name_size>> ThreadName(bool tag_only);
 
-inline bool CheckThreadName(String name) {
-    auto thread_name = ThreadName();
-    ASSERT(thread_name, "Thread name is not set");
-    return *thread_name == name;
-}
+// We use this primarily in assertions to check what is the main thread. The main thread could technically
+// change thread ID. It's a 'logical' main thread, not a physical one.
+extern thread_local u8 g_is_logical_main_thread;
 
 namespace detail {
 void AssertThreadNameIsValid(String name);
@@ -74,7 +74,7 @@ class Thread {
             thread_name = name;
         }
         void StartThread() {
-            SetThreadName(thread_name);
+            SetThreadName(thread_name, false);
             start_function();
         }
 

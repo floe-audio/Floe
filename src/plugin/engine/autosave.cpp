@@ -136,7 +136,7 @@ void InitAutosaveState(AutosaveState& state,
                        prefs::PreferencesTable const& prefs,
                        u64& random_seed,
                        StateSnapshot const& initial_state) {
-    ASSERT(CheckThreadName("main"));
+    ASSERT(g_is_logical_main_thread);
     constexpr auto k_instance_words = Array {
         "wave"_s, "pond",  "beam", "drift", "breeze", "flow",  "spark",  "glow",  "river",  "cloud",
         "stream", "rain",  "sun",  "moon",  "star",   "wind",  "storm",  "frost", "flame",  "mist",
@@ -202,7 +202,7 @@ void AutosaveToFileIfNeeded(AutosaveState& state, FloePaths const& paths) {
 }
 
 prefs::Descriptor SettingDescriptor(AutosaveSetting setting) {
-    ASSERT(CheckThreadName("main"));
+    ASSERT(g_is_logical_main_thread);
     switch (setting) {
         case AutosaveSetting::AutosaveIntervalSeconds:
             return {
@@ -252,7 +252,7 @@ prefs::Descriptor SettingDescriptor(AutosaveSetting setting) {
 }
 
 void OnPreferenceChanged(AutosaveState& state, prefs::Key const& key, prefs::Value const* value) {
-    ASSERT(CheckThreadName("main"));
+    ASSERT(g_is_logical_main_thread);
     for (auto const setting : EnumIterator<AutosaveSetting>()) {
         if (auto const v = prefs::Match(key, value, SettingDescriptor(setting))) {
             switch (setting) {
@@ -291,14 +291,14 @@ void SetInstanceId(AutosaveState& state, String instance_id) {
 }
 
 bool AutosaveNeeded(AutosaveState const& state, prefs::Preferences const& preferences) {
-    ASSERT(CheckThreadName("main"));
+    ASSERT(g_is_logical_main_thread);
     ZoneScoped;
     return state.last_save_time.SecondsFromNow() >=
            (f64)AutosaveSettingIntValue(AutosaveSetting::AutosaveIntervalSeconds, preferences);
 }
 
 void QueueAutosave(AutosaveState& state, StateSnapshot const& snapshot) {
-    ASSERT(CheckThreadName("main"));
+    ASSERT(g_is_logical_main_thread);
     ZoneScoped;
     state.mutex.Lock();
     DEFER { state.mutex.Unlock(); };

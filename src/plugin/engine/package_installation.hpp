@@ -750,7 +750,7 @@ PUBLIC void AddJob(InstallJobs& jobs,
                    sample_lib_server::Server& sample_library_server) {
     ASSERT(!jobs.Full());
     ASSERT(path::IsAbsolute(zip_path));
-    ASSERT(CheckThreadName("main"));
+    ASSERT(g_is_logical_main_thread);
 
     auto job = jobs.AppendUninitialised();
     PLACEMENT_NEW(job) ManagedInstallJob();
@@ -780,7 +780,7 @@ PUBLIC void AddJob(InstallJobs& jobs,
 
 // [main thread]
 PUBLIC InstallJobs::Iterator RemoveJob(InstallJobs& jobs, InstallJobs::Iterator it) {
-    ASSERT(CheckThreadName("main"));
+    ASSERT(g_is_logical_main_thread);
     ASSERT(it->job->state.Load(LoadMemoryOrder::Acquire) == InstallJob::State::DoneError ||
            it->job->state.Load(LoadMemoryOrder::Acquire) == InstallJob::State::DoneSuccess);
 
@@ -790,7 +790,7 @@ PUBLIC InstallJobs::Iterator RemoveJob(InstallJobs& jobs, InstallJobs::Iterator 
 // Stalls until all jobs are done.
 // [main thread]
 PUBLIC void ShutdownJobs(InstallJobs& jobs) {
-    ASSERT(CheckThreadName("main"));
+    ASSERT(g_is_logical_main_thread);
     if (jobs.Empty()) return;
 
     for (auto& j : jobs)

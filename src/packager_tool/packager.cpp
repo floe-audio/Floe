@@ -269,6 +269,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
 }
 
 int main(int argc, char** argv) {
+    ++g_is_logical_main_thread;
     auto const result = Main({argc, argv});
     if (result.HasError()) {
         StdPrintF(StdStream::Err, "Error: {}\n", result.Error());

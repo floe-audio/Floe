@@ -97,9 +97,14 @@ static unsigned __stdcall ThreadProc(void* data) {
     return 0;
 }
 
-void SetThreadName(String name) { detail::SetThreadLocalThreadName(name); }
+void SetThreadName(String name, bool tag_only) {
+    (void)tag_only; // We don't set the thread name in the OS anyways.
+    detail::SetThreadLocalThreadName(name);
+}
 
-Optional<DynamicArrayBounded<char, k_max_thread_name_size>> ThreadName() {
+Optional<DynamicArrayBounded<char, k_max_thread_name_size>> ThreadName(bool tag_only) {
+    if (g_is_logical_main_thread) return "main"_s;
+    (void)tag_only; // We don't set the thread name in the OS anyways.
     auto const name = detail::GetThreadLocalThreadName();
     if (name) return *name;
     return k_nullopt;

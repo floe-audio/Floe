@@ -54,7 +54,7 @@ ErrorCodeOr<void> WriteLogLine(Writer writer,
 
     if (options.thread) {
         TRY(begin_prefix_item());
-        if (auto const thread_name = ThreadName())
+        if (auto const thread_name = ThreadName(false))
             TRY(writer.WriteChars(*thread_name));
         else
             TRY(writer.WriteChars(fmt::IntToString(CurrentThreadId(),

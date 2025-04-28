@@ -216,7 +216,7 @@ static bool HasAnyErrorNotifications(Gui* g) {
 
 GuiFrameResult GuiUpdate(Gui* g) {
     ZoneScoped;
-    ASSERT(IsMainThread(g->engine.host));
+    ASSERT(g_is_logical_main_thread);
     g->imgui.SetPixelsPerVw(PixelsPerVw(g));
 
     g->box_system.show_tooltips = prefs::GetBool(g->prefs, SettingDescriptor(GuiSetting::ShowTooltips));

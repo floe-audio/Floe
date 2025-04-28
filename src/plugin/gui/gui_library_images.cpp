@@ -224,7 +224,7 @@ Optional<LibraryImages> LibraryImagesFromLibraryId(LibraryImagesArray& array,
 void InvalidateLibraryImages(LibraryImagesArray& array,
                              sample_lib::LibraryIdRef library_id,
                              graphics::DrawContext& ctx) {
-    ASSERT(CheckThreadName("main"));
+    ASSERT(g_is_logical_main_thread);
     auto opt_index = FindIf(array, [&](LibraryImages const& l) { return l.library_id == library_id; });
     if (opt_index) {
         auto& imgs = array[*opt_index];

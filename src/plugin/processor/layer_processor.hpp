@@ -176,7 +176,7 @@ struct LayerProcessor {
     }
 
     String InstName() const {
-        ASSERT(IsMainThread(host));
+        ASSERT(g_is_logical_main_thread);
         switch (instrument_id.tag) {
             case InstrumentType::WaveformSynth: {
                 return k_waveform_type_names[ToInt(instrument_id.Get<WaveformType>())];
@@ -190,7 +190,7 @@ struct LayerProcessor {
     }
 
     String InstTypeName() const {
-        ASSERT(IsMainThread(host));
+        ASSERT(g_is_logical_main_thread);
         switch (instrument.tag) {
             case InstrumentType::WaveformSynth: return "Oscillator waveform"_s;
             case InstrumentType::Sampler: {
@@ -205,7 +205,7 @@ struct LayerProcessor {
     }
 
     bool UsesTimbreLayering() const {
-        ASSERT(IsMainThread(host));
+        ASSERT(g_is_logical_main_thread);
         switch (instrument.tag) {
             case InstrumentType::WaveformSynth: return false;
             case InstrumentType::Sampler: {
@@ -220,7 +220,7 @@ struct LayerProcessor {
     bool VolumeEnvelopeIsOn(bool is_audio_thread);
 
     Optional<sample_lib::LibraryIdRef> LibId() const {
-        ASSERT(IsMainThread(host));
+        ASSERT(g_is_logical_main_thread);
         if (auto sampled_inst = instrument.TryGetFromTag<InstrumentType::Sampler>())
             return (*sampled_inst)->instrument.library.Id();
         return k_nullopt;

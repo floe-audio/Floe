@@ -6,7 +6,7 @@
 #include "gui_framework/gui_platform.hpp"
 
 prefs::Descriptor SettingDescriptor(GuiSetting setting) {
-    ASSERT(CheckThreadName("main"));
+    ASSERT(g_is_logical_main_thread);
     switch (setting) {
         case GuiSetting::ShowTooltips:
             return {
@@ -62,20 +62,20 @@ prefs::Descriptor SettingDescriptor(GuiSetting setting) {
 }
 
 UiSize DesiredAspectRatio(prefs::Preferences const& preferences) {
-    ASSERT(CheckThreadName("main"));
+    ASSERT(g_is_logical_main_thread);
     return prefs::GetBool(preferences, SettingDescriptor(GuiSetting::ShowKeyboard))
                ? k_aspect_ratio_with_keyboard
                : k_aspect_ratio_without_keyboard;
 }
 
 UiSize DesiredWindowSize(prefs::Preferences const& preferences) {
-    ASSERT(CheckThreadName("main"));
+    ASSERT(g_is_logical_main_thread);
     return SizeWithAspectRatio((u16)prefs::GetInt(preferences, SettingDescriptor(GuiSetting::WindowWidth)),
                                DesiredAspectRatio(preferences));
 }
 
 f32 KeyboardHeight(prefs::Preferences const& preferences) {
-    ASSERT(CheckThreadName("main"));
+    ASSERT(g_is_logical_main_thread);
     static_assert(k_aspect_ratio_with_keyboard.height > k_aspect_ratio_without_keyboard.height);
     static_assert(k_aspect_ratio_with_keyboard.width == k_aspect_ratio_without_keyboard.width);
     auto const width = (u16)prefs::GetInt(preferences, SettingDescriptor(GuiSetting::WindowWidth));

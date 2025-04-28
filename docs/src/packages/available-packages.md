@@ -7,7 +7,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Floe can [install libraries and presets](./install-packages.md) from ZIP files called _Floe packages_.
 
-Here are some available packages.
+Here are some available packages. This is not an exhaustive list.
 
 ## Music Box Suite Free - Free
 

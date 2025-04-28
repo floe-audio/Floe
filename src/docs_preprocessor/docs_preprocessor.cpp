@@ -374,6 +374,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
 }
 
 int main(int argc, char** argv) {
+    ++g_is_logical_main_thread;
     GlobalInit({.init_error_reporting = false, .set_main_thread = true});
     DEFER { GlobalDeinit({.shutdown_error_reporting = false}); };
     auto result = Main({argc, argv});
