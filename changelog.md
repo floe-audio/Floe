@@ -8,6 +8,10 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 0.9.2-beta
+- Slightly improve performance of Intel Mac builds
+- Fix crash with Intel Mac builds
+- Fix errors with threads
 
 ## 0.9.1-beta
 - AU: fix crash when trying to open the file/folder picker
