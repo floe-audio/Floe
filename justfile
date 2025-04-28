@@ -616,7 +616,7 @@ macos-prepare-packager:
   mv $final_packager_zip_name {{release_files_dir}}
 
 [macos]
-macos-prepare-release-plugins:
+macos-prepare-release-plugins notarize="1":
   #!/usr/bin/env bash
   set -euo pipefail # don't use 'set -x' because it might print sensitive information
   [[ ! -f version.txt ]] && echo "version.txt file not found" && exit 1
@@ -658,27 +658,29 @@ macos-prepare-release-plugins:
   rm plugin.entitlements
 
   # step 2: notarize
-  notarize_plugin() {
-    plugin=$1
-    temp_subdir=notarizing_$plugin
+  if [[ "{{notarize}}" -eq 1 ]]; then
+    notarize_plugin() {
+        plugin=$1
+        temp_subdir=notarizing_$plugin
 
-    rm -rf $temp_subdir
-    mkdir -p $temp_subdir
-    zip -r $temp_subdir/$plugin.zip $plugin
+        rm -rf $temp_subdir
+        mkdir -p $temp_subdir
+        zip -r $temp_subdir/$plugin.zip $plugin
 
-    just macos-notarize $temp_subdir/$plugin.zip
+        just macos-notarize $temp_subdir/$plugin.zip
 
-    unzip $temp_subdir/$plugin.zip -d $temp_subdir
-    xcrun stapler staple $temp_subdir/$plugin
-    # replace the original bundle with the stapled one
-    rm -rf $plugin
-    mv $temp_subdir/$plugin $plugin
-    rm -rf $temp_subdir
-  }
+        unzip $temp_subdir/$plugin.zip -d $temp_subdir
+        xcrun stapler staple $temp_subdir/$plugin
+        # replace the original bundle with the stapled one
+        rm -rf $plugin
+        mv $temp_subdir/$plugin $plugin
+        rm -rf $temp_subdir
+    }
 
-  # we can do it in parallel for speed, but we need to be careful there's no conflicting use of the filesystem
-  export -f notarize_plugin
-  SHELL=$(type -p bash) parallel --bar notarize_plugin ::: $plugin_list
+    # we can do it in parallel for speed, but we need to be careful there's no conflicting use of the filesystem
+    export -f notarize_plugin
+    SHELL=$(type -p bash) parallel --bar notarize_plugin ::: $plugin_list
+  fi
 
   # step 3: zip
   just _create-manual-install-readme "macOS"
