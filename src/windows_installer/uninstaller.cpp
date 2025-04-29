@@ -213,10 +213,7 @@ void HandleUserInteraction(Application& app, GuiFramework& framework, UserIntera
                     UninstallMirage(scratch, error_log);
                 }
 
-                if (error_log.size) {
-                    app.has_error = true;
-                    ReportError(ErrorLevel::Error, k_nullopt, "Uninstalling {} failed:\n{}", name, error_log);
-                }
+                if (error_log.size) app.has_error = true;
 
                 if (!app.has_error)
                     EditWidget(framework,
