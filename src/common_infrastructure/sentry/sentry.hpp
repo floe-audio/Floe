@@ -446,10 +446,13 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
                     if (ShouldSendFilepath(frame.filename)) {
                         TRY(json::WriteKeyValue(json_writer, "filename", frame.filename));
                         TRY(json::WriteKeyValue(json_writer, "in_app", true));
-                        TRY(json::WriteKeyValue(json_writer, "lineno", frame.line));
+
+                        if (frame.line > 0) {
+                            TRY(json::WriteKeyValue(json_writer, "lineno", frame.line));
+                            HashUpdate(fingerprint, frame.line);
+                        }
 
                         HashUpdate(fingerprint, frame.filename);
-                        HashUpdate(fingerprint, frame.line);
 
                         if (frame.function_name.size)
                             TRY(json::WriteKeyValue(json_writer, "function", frame.function_name));

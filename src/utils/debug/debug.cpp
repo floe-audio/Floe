@@ -658,20 +658,25 @@ void StacktraceToCallback(Span<uintptr const> stack,
     Context context {callback, options};
 
 #ifdef ZIG_BACKTRACE
-    SymbolInfo(
-        state->state,
-        stack.data,
-        stack.size,
-        &context,
-        [](void* data, size_t, char const*, char const* compile_unit_name, char const* file, int line, int) {
-            auto& ctx = *(Context*)data;
-            FrameInfo const frame {
-                .function_name = FromNullTerminated(compile_unit_name),
-                .filename = file ? Filename(file) : "unknown-file"_s,
-                .line = line,
-            };
-            ctx.callback(frame);
-        });
+    SymbolInfo(state->state,
+               stack.data,
+               stack.size,
+               &context,
+               [](void* data,
+                  size_t,
+                  char const* name,
+                  char const* compile_unit_name,
+                  char const* file,
+                  int line,
+                  int) {
+                   auto& ctx = *(Context*)data;
+                   FrameInfo const frame {
+                       .function_name = FromNullTerminated(name),
+                       .filename = file ? Filename(file) : FromNullTerminated(compile_unit_name),
+                       .line = line,
+                   };
+                   ctx.callback(frame);
+               });
 #else
     for (auto const pc : stack)
         backtrace_pcinfo(
