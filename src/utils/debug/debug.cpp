@@ -5,7 +5,15 @@
 
 #include "debug.hpp"
 
+#define ZIG_BACKTRACE
+
+#ifndef ZIG_BACKTRACE
 #include <backtrace.h>
+#else
+#include <unwind.h>
+
+#include "utils/debug_info/debug_info.h"
+#endif
 #include <cxxabi.h>
 #include <stdlib.h> // free
 
@@ -330,7 +338,11 @@ ErrorCodeCategory const g_stacktrace_error_category {
 
 struct BacktraceState {
     Optional<DynamicArrayBounded<char, 256>> failed_init_error {};
+#ifdef ZIG_BACKTRACE
+    void* state = nullptr;
+#else
     backtrace_state* state = nullptr;
+#endif
 };
 
 alignas(BacktraceState) static u8 g_backtrace_state_storage[sizeof(BacktraceState)] {};
@@ -370,6 +382,9 @@ Optional<String> InitStacktraceState(Optional<String> current_binary_path) {
         }
 
         auto state = PLACEMENT_NEW(g_backtrace_state_storage) BacktraceState;
+#ifdef ZIG_BACKTRACE
+        state->state = CreateSelfModuleInfo();
+#else
         state->state = backtrace_create_state(
             g_current_binary_path.data, // filename must be a permanent, null-terminated buffer
             true,
@@ -399,6 +414,7 @@ Optional<String> InitStacktraceState(Optional<String> current_binary_path) {
                 [](void*, char const*, int) -> void {},
                 nullptr);
         }
+#endif
 
         g_backtrace_state.Store(state, StoreMemoryOrder::Release);
     });
@@ -416,6 +432,9 @@ void ShutdownStacktraceState() {
     CountedDeinit(g_init, [] {
         if (auto state = g_backtrace_state.Exchange(nullptr, RmwMemoryOrder::AcquireRelease)) {
             if (g_current_binary_path.size) StateAllocator().Free(g_current_binary_path.ToByteSpan());
+#ifdef ZIG_BACKTRACE
+            DestroySelfModuleInfo(state->state);
+#endif
             state->~BacktraceState();
         }
     });
@@ -454,6 +473,23 @@ Optional<StacktraceStack> CurrentStacktrace(StacktraceSkipOptions skip) {
     if (!state || state->failed_init_error) return k_nullopt;
 
     StacktraceStack result;
+#ifdef ZIG_BACKTRACE
+    _Unwind_Backtrace(
+        [](struct _Unwind_Context* context, void* user) -> _Unwind_Reason_Code {
+            auto& stack = *(StacktraceStack*)user;
+            int ip_before = 0;
+            auto pc = _Unwind_GetIPInfo(context, &ip_before);
+            if (pc == 0) return _URC_END_OF_STACK;
+            if (!ip_before) --pc;
+
+            if (stack.size != stack.Capacity()) dyn::Append(stack, pc);
+
+            return _URC_NO_REASON;
+        },
+        &result);
+    // IMPROVE: inefficient
+    dyn::Remove(result, 0, (usize)NumSkipFrames(skip));
+#else
     backtrace_simple(
         state->state,
         NumSkipFrames(skip),
@@ -467,6 +503,7 @@ Optional<StacktraceStack> CurrentStacktrace(StacktraceSkipOptions skip) {
             // printed
         },
         &result);
+#endif
 
     if (auto const pc = skip.TryGet<ProgramCounter>()) SkipUntil(result, (uintptr)*pc);
 
@@ -480,6 +517,7 @@ struct StacktraceContext {
     ErrorCodeOr<void> return_value;
 };
 
+#ifndef ZIG_BACKTRACE
 static int HandleStacktraceLine(void* data,
                                 [[maybe_unused]] uintptr_t program_counter,
                                 char const* filename,
@@ -515,6 +553,7 @@ static void HandleStacktraceError(void* data, char const* message, [[maybe_unuse
                                  ctx.line_num++,
                                  FromNullTerminated(message));
 }
+#endif
 
 ErrorCodeOr<void> WriteStacktrace(Span<uintptr const> stack, Writer writer, StacktracePrintOptions options) {
     auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
@@ -523,10 +562,35 @@ ErrorCodeOr<void> WriteStacktrace(Span<uintptr const> stack, Writer writer, Stac
     if (state->failed_init_error) return fmt::FormatToWriter(writer, "{}", *state->failed_init_error);
 
     StacktraceContext ctx {.options = options, .writer = writer};
+
+#ifdef ZIG_BACKTRACE
+    SymbolInfo(state->state,
+               stack.data,
+               stack.size,
+               &ctx,
+               [](void* user_data,
+                  size_t,
+                  char const* name,
+                  char const* compile_unit_name,
+                  char const* file,
+                  int line,
+                  int) {
+                   auto& ctx = *(StacktraceContext*)user_data;
+                   if (ctx.return_value.HasError()) return;
+                   FrameInfo const frame {
+                       .function_name = FromNullTerminated(name),
+                       .filename = file ? Filename(file) : FromNullTerminated(compile_unit_name),
+                       .line = line,
+                   };
+                   ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
+               });
+    if (ctx.return_value.HasError()) return ctx.return_value;
+#else
     for (auto const pc : stack) {
         backtrace_pcinfo(state->state, pc, HandleStacktraceLine, HandleStacktraceError, &ctx);
         if (ctx.return_value.HasError()) return ctx.return_value;
     }
+#endif
 
     return k_success;
 }
@@ -544,8 +608,31 @@ MutableString StacktraceString(Span<uintptr const> stack, Allocator& a, Stacktra
 
     DynamicArray<char> result {a};
     StacktraceContext ctx {.options = options, .writer = dyn::WriterFor(result)};
+#ifdef ZIG_BACKTRACE
+    SymbolInfo(state->state,
+               stack.data,
+               stack.size,
+               &ctx,
+               [](void* user_data,
+                  size_t,
+                  char const* name,
+                  char const* compile_unit_name,
+                  char const* file,
+                  int line,
+                  int) {
+                   auto& ctx = *(StacktraceContext*)user_data;
+                   if (ctx.return_value.HasError()) return;
+                   FrameInfo const frame {
+                       .function_name = FromNullTerminated(name),
+                       .filename = file ? Filename(file) : FromNullTerminated(compile_unit_name),
+                       .line = line,
+                   };
+                   ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
+               });
+#else
     for (auto const pc : stack)
         backtrace_pcinfo(state->state, pc, HandleStacktraceLine, HandleStacktraceError, &ctx);
+#endif
 
     return result.ToOwnedSpan();
 }
@@ -570,6 +657,22 @@ void StacktraceToCallback(Span<uintptr const> stack,
     };
     Context context {callback, options};
 
+#ifdef ZIG_BACKTRACE
+    SymbolInfo(
+        state->state,
+        stack.data,
+        stack.size,
+        &context,
+        [](void* data, size_t, char const*, char const* compile_unit_name, char const* file, int line, int) {
+            auto& ctx = *(Context*)data;
+            FrameInfo const frame {
+                .function_name = FromNullTerminated(compile_unit_name),
+                .filename = file ? Filename(file) : "unknown-file"_s,
+                .line = line,
+            };
+            ctx.callback(frame);
+        });
+#else
     for (auto const pc : stack)
         backtrace_pcinfo(
             state->state,
@@ -597,6 +700,7 @@ void StacktraceToCallback(Span<uintptr const> stack,
             },
             [](void*, char const*, int) {},
             &context);
+#endif
 }
 
 void CurrentStacktraceToCallback(FunctionRef<void(FrameInfo const&)> callback,

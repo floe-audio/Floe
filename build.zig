@@ -1577,6 +1577,15 @@ pub fn build(b: *std.Build) void {
             applyUniversalSettings(&build_context, pugl);
         }
 
+        const debug_info_lib = b.addObject(.{
+            .name = "debug_info_lib",
+            .target = target,
+            .optimize = build_context.optimise,
+            .root_source_file = b.path("src/utils/debug_info/debug_info.zig"),
+            .pic = true,
+        });
+        debug_info_lib.linkLibC(); // Means better debug info on Linux
+
         // TODO: does this need to be a library? is foundation/os/plugin all linked together?
         const library = b.addStaticLibrary(.{
             .name = "library",
@@ -1660,6 +1669,7 @@ pub fn build(b: *std.Build) void {
             library.addConfigHeader(build_config_step);
             library.linkLibC();
             library.linkLibrary(tracy);
+            library.addObject(debug_info_lib);
             library.addObject(stb_sprintf);
             // library.linkLibCpp(); // needed for __cxa_demangle
             library.linkLibrary(libbacktrace);
