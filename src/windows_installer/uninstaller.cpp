@@ -70,7 +70,7 @@ Application* CreateApplication(GuiFramework& framework, u32 root_layout) {
             .margins = {0, 0, 2, 8},
             .expand_x = true,
             .text =
-                "This program will remove Floe from your system. It does not remove libraries or presets.",
+                "This program will remove Floe from your system. It does not remove libraries or presets. Close your DAW before uninstalling.",
             .type = WidgetOptions::Label {.style = LabelStyle::Regular},
         });
 

@@ -5,22 +5,25 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Uninstalling
 
-## Windows
+## Uninstall plugins
+
+##### Windows
 
 On Windows, Floe can be uninstalled using the standard method for uninstalling software, via the 'Add or Remove Programs' control panel. See the [Windows documentation here](https://support.microsoft.com/en-gb/windows/uninstall-or-remove-apps-and-programs-in-windows-4b55f974-2cc6-2d2b-d092-5905080eaf98).
+
+Close your DAW before running the uninstaller.
 
 This uninstalls Floe, but not libraries or presets. Follow the instructions below to delete libraries and presets.
 
 This uninstaller also supports uninstalling Mirage, the predecessor to Floe.
 
-## macOS
+##### macOS
 
-We don't have an uninstaller program for macOS. But you can manually uninstall Floe by deleting its files.
+We don't have an uninstaller program for macOS. Please follow the manual uninstall instructions below.
 
 
-## Manual Uninstall
-
-### Delete libraries and presets
+## Uninstall libraries and presets
+##### Windows and macOS
 1. Open Floe
 1. Click on the cog icon <i class="fa fa-cog"></i> at the top.
 1. Open the 'Folders' tab.
@@ -28,6 +31,9 @@ We don't have an uninstaller program for macOS. But you can manually uninstall F
 1. Delete all files in the folder.
 
 Repeat this for each folder in Floe preferences panel.
+
+
+## Manually uninstall plugins
 
 ### Delete Floe
 Floe consists of plugin files, and a preferences file. The preferences file is normally tiny: around 1 Kb in size. Plugins files are normally around 15 MB in size.
