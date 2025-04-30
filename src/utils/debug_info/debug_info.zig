@@ -5,12 +5,14 @@ const std = @import("std");
 const c = @cImport({
     @cInclude("debug_info.h");
 });
+const builtin = @import("builtin");
+const native_os = builtin.os.tag;
 
 const ModuleInfo = struct {
     arena: std.heap.ArenaAllocator,
     self: std.debug.SelfInfo = undefined,
     module: *std.debug.SelfInfo.Module = undefined,
-    dwarf: ?*std.debug.Dwarf = undefined,
+    dwarf: ?*std.debug.Dwarf = null,
 };
 
 fn WriteErrorToErrorBuffer(
@@ -47,7 +49,15 @@ fn Create() !*ModuleInfo {
     // We only need the module for this current binary - we just want stack traces for our own code, not
     // the whole process.
     self.module = try self.self.getModuleForAddress(address);
-    self.dwarf = try self.module.getDwarfInfoForAddress(self.arena.allocator(), address);
+    if (native_os == .windows) {
+        // There seems to be a bug in the Windows implementation where getDwarfInfoForAddress won't compile,
+        // so we workaround.
+        if (self.module.dwarf != null) {
+            self.dwarf = &self.module.dwarf.?;
+        }
+    } else {
+        self.dwarf = try self.module.getDwarfInfoForAddress(self.arena.allocator(), address);
+    }
 
     // We populate the cache here so it's not done in SymbolInfo where we want to be thread-safe and signal-safe.
     if (self.dwarf) |dwarf| {
