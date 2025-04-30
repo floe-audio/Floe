@@ -60,10 +60,7 @@ fn Create() !*ModuleInfo {
     }
 
     // We populate the cache here so it's not done in SymbolInfo where we want to be thread-safe and signal-safe.
-    if (self.dwarf) |dwarf| {
-        const compile_unit = try dwarf.findCompileUnit(address);
-        try dwarf.populateSrcLocCache(self.arena.allocator(), compile_unit);
-    }
+    _ = try self.module.getSymbolAtAddress(self.self.allocator, address);
 
     return self;
 }

@@ -384,7 +384,8 @@ Optional<String> InitStacktraceState(Optional<String> current_binary_path) {
         auto state = PLACEMENT_NEW(g_backtrace_state_storage) BacktraceState;
 #ifdef ZIG_BACKTRACE
         state->failed_init_error.Emplace();
-        state->state = CreateSelfModuleInfo(state->failed_init_error->data, state->failed_init_error->size);
+        state->state =
+            CreateSelfModuleInfo(state->failed_init_error->data, state->failed_init_error->Capacity());
         if (state->state)
             state->failed_init_error.Clear();
         else
