@@ -492,7 +492,7 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
         if (auto hook = g_crash_hook.Load(LoadMemoryOrder::Acquire)) {
             auto trace = CurrentStacktrace();
             if (trace) {
-                auto const error_ip = ErrorAddress(context) - 1;
+                auto const error_ip = ErrorAddress(context);
                 if (error_ip) {
                     // Find and remove signal handler frames
                     for (auto i : Range(1uz, trace->size)) {

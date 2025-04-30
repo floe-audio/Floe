@@ -715,3 +715,9 @@ ErrorCodeOr<void>
 PrintCurrentStacktrace(StdStream stream, StacktracePrintOptions options, StacktraceSkipOptions skip) {
     return WriteCurrentStacktrace(StdWriter(stream), options, skip);
 }
+
+bool HasAddressesInCurrentModule(Span<uintptr const> addresses) {
+    auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
+    if (!state || state->failed_init_error) return true;
+    return HasAddressesInCurrentModule(state->state, addresses.data, addresses.size);
+}

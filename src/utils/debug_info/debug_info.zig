@@ -10,95 +10,106 @@ const ModuleInfo = struct {
     arena: std.heap.ArenaAllocator,
     self: std.debug.SelfInfo = undefined,
     module: *std.debug.SelfInfo.Module = undefined,
+    dwarf: ?*std.debug.Dwarf = undefined,
 };
 
 fn WriteErrorToErrorBuffer(
-    error_buffer: ?*anyopaque,
+    error_buffer: [*c]u8,
     error_buffer_size: usize,
     err: anyerror,
 ) void {
-    if (error_buffer != null and error_buffer_size != 0) {
-        var buf: [*c]u8 = @ptrCast(error_buffer.?);
-        const buf_slice = buf[0..error_buffer_size];
-        _ = std.fmt.bufPrintZ(buf_slice, "{}", .{err}) catch |print_err| {
-            switch (print_err) {
-                error.NoSpaceLeft => {
-                    buf_slice[buf_slice.len - 1] = 0;
-                },
-            }
-        };
-    }
+    if (error_buffer == null) return;
+    if (error_buffer_size == 0) return;
+
+    var buf: [*c]u8 = @ptrCast(error_buffer.?);
+    const buf_slice = buf[0..error_buffer_size];
+    _ = std.fmt.bufPrintZ(buf_slice, "{}", .{err}) catch |print_err| {
+        switch (print_err) {
+            error.NoSpaceLeft => {
+                buf_slice[buf_slice.len - 1] = 0;
+            },
+        }
+    };
 }
 
 fn Create() !*ModuleInfo {
-    const info = try std.heap.c_allocator.create(ModuleInfo);
-    errdefer std.heap.c_allocator.destroy(info);
+    const self = try std.heap.c_allocator.create(ModuleInfo);
+    errdefer std.heap.c_allocator.destroy(self);
 
-    info.* = ModuleInfo{
+    self.* = ModuleInfo{
         .arena = std.heap.ArenaAllocator.init(std.heap.page_allocator),
     };
-    info.self = try std.debug.SelfInfo.open(info.arena.allocator());
-    errdefer info.self.deinit();
+    self.self = try std.debug.SelfInfo.open(self.arena.allocator());
+    errdefer self.self.deinit();
+
+    const address = @intFromPtr(&CreateSelfModuleInfo);
 
     // We only need the module for this current binary - we just want stack traces for our own code, not
     // the whole process.
-    info.module = try info.self.getModuleForAddress(@intFromPtr(&CreateSelfModuleInfo));
+    self.module = try self.self.getModuleForAddress(address);
+    self.dwarf = try self.module.getDwarfInfoForAddress(self.arena.allocator(), address);
 
-    // We get a symbol to fill the various caches that might be used.
-    _ = try info.module.getSymbolAtAddress(info.arena.allocator(), @intFromPtr(&CreateSelfModuleInfo));
+    // We populate the cache here so it's not done in SymbolInfo where we want to be thread-safe and signal-safe.
+    if (self.dwarf) |dwarf| {
+        const compile_unit = try dwarf.findCompileUnit(address);
+        try dwarf.populateSrcLocCache(self.arena.allocator(), compile_unit);
+    }
 
-    return info;
+    return self;
 }
 
-export fn CreateSelfModuleInfo(error_buffer: ?*anyopaque, error_buffer_size: usize) ?*anyopaque {
-    const info = Create() catch |err| {
+export fn CreateSelfModuleInfo(error_buffer: [*c]u8, error_buffer_size: usize) callconv(.c) c.SelfModuleHandle {
+    const self = Create() catch |err| {
         WriteErrorToErrorBuffer(error_buffer, error_buffer_size, err);
         return null;
     };
 
-    return info;
+    return self;
 }
 
-export fn DestroySelfModuleInfo(module_info: ?*anyopaque) void {
-    if (module_info == null) {
-        return;
-    }
-    const info: *ModuleInfo = @alignCast(@ptrCast(module_info));
+export fn DestroySelfModuleInfo(module_info: c.SelfModuleHandle) callconv(.c) void {
+    if (module_info == null) return;
 
-    info.self.deinit();
-    info.arena.deinit();
-    std.heap.c_allocator.destroy(info);
+    const self: *ModuleInfo = @alignCast(@ptrCast(module_info));
+
+    self.self.deinit();
+    self.arena.deinit();
+    std.heap.c_allocator.destroy(self);
 }
-
-const CallbackFunc = fn (
-    user_data: ?*anyopaque,
-    symbol: *const c.SymbolInfoData,
-) callconv(.C) void;
 
 export fn SymbolInfo(
-    module_info: ?*anyopaque,
+    module_info: c.SelfModuleHandle,
     addresses: [*c]const usize,
     num_addresses: usize,
     user_data: ?*anyopaque,
-    callback: ?*const CallbackFunc,
-) void {
-    if (module_info == null or addresses == null or callback == null or num_addresses == 0) {
+    callback: c.SymbolInfoCallback,
+) callconv(.c) void {
+    if (module_info == null or addresses == null or callback == null or num_addresses == 0)
         return;
-    }
 
-    const info: *ModuleInfo = @alignCast(@ptrCast(module_info));
-    const module = info.module;
-    const addr_slice = addresses[0..num_addresses];
+    const self: *ModuleInfo = @alignCast(@ptrCast(module_info.?));
+    const cb = callback.?;
 
-    for (addr_slice) |address| {
+    for (addresses[0..num_addresses]) |address| {
+        if (address < self.module.base_address) {
+            const symbol_info = c.SymbolInfoData{
+                .address = address,
+                .name = "???",
+                .compile_unit_name = "???",
+                .file = null,
+                .line = -1,
+                .column = -1,
+            };
+            cb(user_data, &symbol_info);
+            continue;
+        }
+
         var temp_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer temp_arena.deinit();
         var stack_allocator = std.heap.stackFallback(8000, temp_arena.allocator());
         var temp_allocator = stack_allocator.get();
 
-        const symbol = module.getSymbolAtAddress(info.self.allocator, address) catch {
-            continue;
-        };
+        const symbol = self.module.getSymbolAtAddress(self.self.allocator, address) catch continue;
 
         const name_ptr = temp_allocator.dupeZ(u8, symbol.name) catch continue;
         const compile_unit_name_ptr = temp_allocator.dupeZ(u8, symbol.compile_unit_name) catch continue;
@@ -125,8 +136,33 @@ export fn SymbolInfo(
             .line = line,
             .column = column,
         };
-
-        const cb = callback.?;
         cb(user_data, &symbol_info);
     }
+}
+
+export fn HasAddressesInCurrentModule(
+    module_info: c.SelfModuleHandle,
+    addresses: [*c]const usize,
+    num_addresses: usize,
+) callconv(.c) c_int {
+    if (module_info == null or addresses == null or num_addresses == 0) return 0;
+
+    const self: *ModuleInfo = @alignCast(@ptrCast(module_info.?));
+
+    // TODO: we ideally want this function to work without dwarf info. We'd perhaps need to work out the
+    // base_address and extend of our current module and see if the address is in that range.
+
+    if (self.dwarf == null) return 1; // We don't know, so assume yes.
+
+    var result: c_int = 0;
+
+    for (addresses[0..num_addresses]) |address| {
+        if (address < self.module.base_address) continue;
+
+        _ = self.dwarf.?.findCompileUnit(address) catch continue;
+        result = 1;
+        break;
+    }
+
+    return result;
 }

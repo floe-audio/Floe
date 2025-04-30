@@ -3,6 +3,8 @@
 
 #include "global.hpp"
 
+#include "utils/debug_info/debug_info.h"
+
 #include "error_reporting.hpp"
 
 static void StartupTracy() {
@@ -108,6 +110,10 @@ void GlobalInit(GlobalInitOptions options) {
     // after tracy
     BeginCrashDetection([](String crash_message, Optional<StacktraceStack> stacktrace) {
         // This function is async-signal-safe.
+
+        // We might be running as a shared library and the signal crash could have occurred in a callstack
+        // completely unrelated to us. We don't want to write a crash report in that case.
+        if (stacktrace && !HasAddressesInCurrentModule(*stacktrace)) return;
 
         if (!PRODUCTION_BUILD && IsRunningUnderDebugger()) __builtin_debugtrap();
 
