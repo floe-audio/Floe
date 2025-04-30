@@ -38,7 +38,7 @@ void GlobalInit(GlobalInitOptions options) {
                     ToString(g_final_binary_type),
                     FromNullTerminated(message_c_str),
                     CurrentThreadId());
-        auto _ = FrameInfo::FromSourceLocation(loc).Write(0, dyn::WriterFor(message), {});
+        auto _ = FrameInfo::FromSourceLocation(loc, loc_pc).Write(0, dyn::WriterFor(message), {});
 
         // Step 1: log the error for easier local debugging.
         Log(ModuleName::ErrorReporting, LogLevel::Error, [&](Writer writer) -> ErrorCodeOr<void> {

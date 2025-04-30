@@ -37,26 +37,32 @@ void ShutdownStacktraceState();
 struct FrameInfo {
     ErrorCodeOr<void> Write(u32 frame_index, Writer writer, StacktracePrintOptions options) const {
         return fmt::FormatToWriter(writer,
-                                   "[{}] {}{}{}:{}: {}\n",
+                                   "[{}] {x} {}{}{}:{}:{}: {}\n",
                                    frame_index,
+                                   address,
                                    options.ansi_colours ? ANSI_COLOUR_SET_FOREGROUND_BLUE : ""_s,
                                    filename,
                                    options.ansi_colours ? ANSI_COLOUR_RESET : ""_s,
                                    line,
+                                   column,
                                    function_name);
     }
 
-    static FrameInfo FromSourceLocation(SourceLocation loc) {
+    static FrameInfo FromSourceLocation(SourceLocation loc, uintptr address) {
         return {
+            .address = address,
             .function_name = FromNullTerminated(loc.function),
             .filename = FromNullTerminated(loc.file),
             .line = loc.line,
+            .column = -1,
         };
     }
 
+    uintptr address;
     String function_name;
     String filename;
     int line;
+    int column = -1;
 };
 
 MutableString CurrentStacktraceString(Allocator& a,

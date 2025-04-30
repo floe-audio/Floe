@@ -820,6 +820,7 @@ fn universalFlags(
     }
 
     // A bit of information about debug symbols:
+    //
     // DWARF is a debugging information format. It is used widely, particularly on Linux and macOS. libbacktrace,
     // which we use for getting nice stack traces can read DWARF information from the executable on any OS. All
     // we need to do is make sure that the DWARF info is available for libbacktrace to read.
@@ -839,9 +840,11 @@ fn universalFlags(
     // outputs a .dSYM folder which contains the aggregated DWARF info. libbacktrace looks for this dSYM folder
     // adjacent to the executable.
 
-    // Include dwarf debug info, even on windows. This means we can use the libbacktrace library everywhere to get
+    // Include dwarf debug info, even on windows. This means we can use the libbacktrace/Zig everywhere to get
     // really good stack traces.
-    try flags.append("-gdwarf");
+    //
+    // We use DWARF 4 because Zig has a problem with version 5: https://github.com/ziglang/zig/issues/23732
+    try flags.append("-gdwarf-4");
 
     if (ubsan) {
         if (context.optimise != .ReleaseFast) {
@@ -1585,6 +1588,7 @@ pub fn build(b: *std.Build) void {
             .pic = true,
         });
         debug_info_lib.linkLibC(); // Means better debug info on Linux
+        debug_info_lib.addIncludePath(b.path("src/utils/debug_info"));
 
         // TODO: does this need to be a library? is foundation/os/plugin all linked together?
         const library = b.addStaticLibrary(.{

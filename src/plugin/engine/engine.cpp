@@ -4,7 +4,6 @@
 #include "engine.hpp"
 
 #include <clap/ext/params.h>
-#include <csignal>
 
 #include "foundation/foundation.hpp"
 

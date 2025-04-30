@@ -452,6 +452,15 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
                             HashUpdate(fingerprint, frame.line);
                         }
 
+                        if (frame.column > 0) {
+                            TRY(json::WriteKeyValue(json_writer, "colno", frame.column));
+                            HashUpdate(fingerprint, frame.column);
+                        }
+
+                        TRY(json::WriteKeyValue(json_writer,
+                                                "instruction_addr",
+                                                fmt::FormatInline<32>("0x{x}", frame.address)));
+
                         HashUpdate(fingerprint, frame.filename);
 
                         if (frame.function_name.size)

@@ -383,7 +383,12 @@ Optional<String> InitStacktraceState(Optional<String> current_binary_path) {
 
         auto state = PLACEMENT_NEW(g_backtrace_state_storage) BacktraceState;
 #ifdef ZIG_BACKTRACE
-        state->state = CreateSelfModuleInfo();
+        state->failed_init_error.Emplace();
+        state->state = CreateSelfModuleInfo(state->failed_init_error->data, state->failed_init_error->size);
+        if (state->state)
+            state->failed_init_error.Clear();
+        else
+            state->failed_init_error->size = NullTerminatedSize(state->failed_init_error->data);
 #else
         state->state = backtrace_create_state(
             g_current_binary_path.data, // filename must be a permanent, null-terminated buffer
@@ -568,19 +573,16 @@ ErrorCodeOr<void> WriteStacktrace(Span<uintptr const> stack, Writer writer, Stac
                stack.data,
                stack.size,
                &ctx,
-               [](void* user_data,
-                  size_t,
-                  char const* name,
-                  char const* compile_unit_name,
-                  char const* file,
-                  int line,
-                  int) {
+               [](void* user_data, struct SymbolInfoData const* symbol) {
                    auto& ctx = *(StacktraceContext*)user_data;
                    if (ctx.return_value.HasError()) return;
                    FrameInfo const frame {
-                       .function_name = FromNullTerminated(name),
-                       .filename = file ? Filename(file) : FromNullTerminated(compile_unit_name),
-                       .line = line,
+                       .address = symbol->address,
+                       .function_name = FromNullTerminated(symbol->name),
+                       .filename = symbol->file ? Filename(symbol->file)
+                                                : FromNullTerminated(symbol->compile_unit_name),
+                       .line = symbol->line,
+                       .column = symbol->column,
                    };
                    ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
                });
@@ -613,19 +615,16 @@ MutableString StacktraceString(Span<uintptr const> stack, Allocator& a, Stacktra
                stack.data,
                stack.size,
                &ctx,
-               [](void* user_data,
-                  size_t,
-                  char const* name,
-                  char const* compile_unit_name,
-                  char const* file,
-                  int line,
-                  int) {
+               [](void* user_data, struct SymbolInfoData const* symbol) {
                    auto& ctx = *(StacktraceContext*)user_data;
                    if (ctx.return_value.HasError()) return;
                    FrameInfo const frame {
-                       .function_name = FromNullTerminated(name),
-                       .filename = file ? Filename(file) : FromNullTerminated(compile_unit_name),
-                       .line = line,
+                       .address = symbol->address,
+                       .function_name = FromNullTerminated(symbol->name),
+                       .filename = symbol->file ? Filename(symbol->file)
+                                                : FromNullTerminated(symbol->compile_unit_name),
+                       .line = symbol->line,
+                       .column = symbol->column,
                    };
                    ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
                });
@@ -662,18 +661,15 @@ void StacktraceToCallback(Span<uintptr const> stack,
                stack.data,
                stack.size,
                &context,
-               [](void* data,
-                  size_t,
-                  char const* name,
-                  char const* compile_unit_name,
-                  char const* file,
-                  int line,
-                  int) {
+               [](void* data, struct SymbolInfoData const* symbol) {
                    auto& ctx = *(Context*)data;
                    FrameInfo const frame {
-                       .function_name = FromNullTerminated(name),
-                       .filename = file ? Filename(file) : FromNullTerminated(compile_unit_name),
-                       .line = line,
+                       .address = symbol->address,
+                       .function_name = FromNullTerminated(symbol->name),
+                       .filename = symbol->file ? Filename(symbol->file)
+                                                : FromNullTerminated(symbol->compile_unit_name),
+                       .line = symbol->line,
+                       .column = symbol->column,
                    };
                    ctx.callback(frame);
                });
