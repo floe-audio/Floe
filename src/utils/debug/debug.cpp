@@ -5,16 +5,12 @@
 
 #include "debug.hpp"
 
-#if !IS_MACOS
-#define ZIG_BACKTRACE
-#endif
-
-#ifndef ZIG_BACKTRACE
-#include <backtrace.h>
-#else
+#if ZIG_BACKTRACE
 #include <unwind.h>
 
 #include "utils/debug_info/debug_info.h"
+#else
+#include <backtrace.h>
 #endif
 #include <cxxabi.h>
 #include <stdlib.h> // free
@@ -340,7 +336,7 @@ ErrorCodeCategory const g_stacktrace_error_category {
 
 struct BacktraceState {
     Optional<DynamicArrayBounded<char, 256>> failed_init_error {};
-#ifdef ZIG_BACKTRACE
+#if ZIG_BACKTRACE
     void* state = nullptr;
 #else
     backtrace_state* state = nullptr;
@@ -384,7 +380,7 @@ Optional<String> InitStacktraceState(Optional<String> current_binary_path) {
         }
 
         auto state = PLACEMENT_NEW(g_backtrace_state_storage) BacktraceState;
-#ifdef ZIG_BACKTRACE
+#if ZIG_BACKTRACE
         state->failed_init_error.Emplace();
         state->state =
             CreateSelfModuleInfo(state->failed_init_error->data, state->failed_init_error->Capacity());
@@ -440,7 +436,7 @@ void ShutdownStacktraceState() {
     CountedDeinit(g_init, [] {
         if (auto state = g_backtrace_state.Exchange(nullptr, RmwMemoryOrder::AcquireRelease)) {
             if (g_current_binary_path.size) StateAllocator().Free(g_current_binary_path.ToByteSpan());
-#ifdef ZIG_BACKTRACE
+#if ZIG_BACKTRACE
             DestroySelfModuleInfo(state->state);
 #endif
             state->~BacktraceState();
@@ -481,7 +477,7 @@ Optional<StacktraceStack> CurrentStacktrace(StacktraceSkipOptions skip) {
     if (!state || state->failed_init_error) return k_nullopt;
 
     StacktraceStack result;
-#ifdef ZIG_BACKTRACE
+#if ZIG_BACKTRACE
     _Unwind_Backtrace(
         [](struct _Unwind_Context* context, void* user) -> _Unwind_Reason_Code {
             auto& stack = *(StacktraceStack*)user;
@@ -525,7 +521,7 @@ struct StacktraceContext {
     ErrorCodeOr<void> return_value;
 };
 
-#ifndef ZIG_BACKTRACE
+#if !ZIG_BACKTRACE
 static int HandleStacktraceLine(void* data,
                                 [[maybe_unused]] uintptr_t program_counter,
                                 char const* filename,
@@ -573,7 +569,7 @@ ErrorCodeOr<void> WriteStacktrace(Span<uintptr const> stack, Writer writer, Stac
 
     StacktraceContext ctx {.options = options, .writer = writer};
 
-#ifdef ZIG_BACKTRACE
+#if ZIG_BACKTRACE
     SymbolInfo(state->state,
                stack.data,
                stack.size,
@@ -615,7 +611,7 @@ MutableString StacktraceString(Span<uintptr const> stack, Allocator& a, Stacktra
 
     DynamicArray<char> result {a};
     StacktraceContext ctx {.options = options, .writer = dyn::WriterFor(result)};
-#ifdef ZIG_BACKTRACE
+#if ZIG_BACKTRACE
     SymbolInfo(state->state,
                stack.data,
                stack.size,
@@ -661,7 +657,7 @@ void StacktraceToCallback(Span<uintptr const> stack,
     };
     Context context {callback, options};
 
-#ifdef ZIG_BACKTRACE
+#if ZIG_BACKTRACE
     SymbolInfo(state->state,
                stack.data,
                stack.size,
@@ -730,7 +726,7 @@ PrintCurrentStacktrace(StdStream stream, StacktracePrintOptions options, Stacktr
 bool HasAddressesInCurrentModule(Span<uintptr const> addresses) {
     auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
     if (!state || state->failed_init_error) return true;
-#ifdef ZIG_BACKTRACE
+#if ZIG_BACKTRACE
     return HasAddressesInCurrentModule(state->state, addresses.data, addresses.size);
 #else
     (void)addresses;

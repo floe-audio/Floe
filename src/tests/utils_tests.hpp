@@ -1140,6 +1140,7 @@ TEST_CASE(TestStacktraceString) {
 }
 
 TEST_CASE(TestHasAddressesInCurrentModule) {
+#if ZIG_BACKTRACE
     CHECK(IsAddressInCurrentModule((uintptr)&TestHasAddressesInCurrentModule));
     CHECK(!IsAddressInCurrentModule(0));
     CHECK(!IsAddressInCurrentModule(LargestRepresentableValue<usize>()));
@@ -1153,6 +1154,7 @@ TEST_CASE(TestHasAddressesInCurrentModule) {
     // This doesn't work on Windows, perhaps because we're using mingw which means it actually is in the
     // current module?
     if constexpr (!IS_WINDOWS) CHECK(!IsAddressInCurrentModule((uintptr)&powf));
+#endif
 
     return k_success;
 }
