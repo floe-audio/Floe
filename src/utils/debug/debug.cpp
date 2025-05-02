@@ -5,7 +5,9 @@
 
 #include "debug.hpp"
 
+#if !IS_MACOS
 #define ZIG_BACKTRACE
+#endif
 
 #ifndef ZIG_BACKTRACE
 #include <backtrace.h>
@@ -542,9 +544,11 @@ static int HandleStacktraceLine(void* data,
     if (!function_name.size) function_name = function ? FromNullTerminated(function) : ""_s;
 
     FrameInfo const frame {
+        .address = program_counter,
         .function_name = function_name,
         .filename = filename ? Filename(filename) : "unknown-file"_s,
         .line = lineno,
+        .column = -1,
     };
     ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
 
@@ -696,7 +700,13 @@ void StacktraceToCallback(Span<uintptr const> stack,
                 }
                 if (!function_name.size) function_name = function ? FromNullTerminated(function) : ""_s;
 
-                ctx.callback({function_name, Filename(filename), lineno});
+                ctx.callback({
+                    .address = program_counter,
+                    .function_name = function_name,
+                    .filename = Filename(filename),
+                    .line = lineno,
+                    .column = -1,
+                });
 
                 return 0;
             },
@@ -720,5 +730,10 @@ PrintCurrentStacktrace(StdStream stream, StacktracePrintOptions options, Stacktr
 bool HasAddressesInCurrentModule(Span<uintptr const> addresses) {
     auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
     if (!state || state->failed_init_error) return true;
+#ifdef ZIG_BACKTRACE
     return HasAddressesInCurrentModule(state->state, addresses.data, addresses.size);
+#else
+    (void)addresses;
+    return true; // TODO: we don't have this information in libbacktrace so we say yes.
+#endif
 }
