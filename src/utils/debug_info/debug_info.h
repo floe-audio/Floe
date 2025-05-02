@@ -26,12 +26,12 @@ struct SymbolInfoData {
 
 typedef void (*SymbolInfoCallback)(void* user_data, struct SymbolInfoData const* symbol_info);
 
-// NOTE: debug info in our module is currently required for this function.
-// Should be thread safe and async safe.
+// Fast, thread-safe and signal-safe.
+// Checks if any of the given address are in the current module.
 int HasAddressesInCurrentModule(SelfModuleHandle module_info, size_t const* addresses, size_t num_addresses);
 
 // Only gets info for the current module (our shared library or executable, never for any externals)
-// Should be thread safe and async safe.
+// Should be thread safe and signal safe.
 void SymbolInfo(SelfModuleHandle module_info,
                 size_t const* addresses,
                 size_t num_addresses,
