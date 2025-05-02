@@ -624,7 +624,7 @@ static ErrorCodeOr<void> Main(String exe_path_rel) {
 }
 
 int main(int, char** argv) {
-    ++g_is_logical_main_thread;
+    auto _ = EnterLogicalMainThread();
     auto const o = Main(FromNullTerminated(argv[0]));
     if (o.HasError()) {
         LogError(ModuleName::Standalone, "Standalone error: {}", o.Error());

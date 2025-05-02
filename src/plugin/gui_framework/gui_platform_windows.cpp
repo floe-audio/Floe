@@ -306,6 +306,9 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePicker
 }
 
 static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
+    if (!EnterLogicalMainThread()) return false;
+    DEFER { LeaveLogicalMainThread(); };
+
     // "If code is HC_ACTION, the hook procedure must process the message"
     if (code != HC_ACTION) return false;
 

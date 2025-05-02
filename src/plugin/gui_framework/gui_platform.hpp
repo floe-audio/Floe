@@ -781,8 +781,8 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
     ZoneNameF("%s", PuglEventString(event->type));
     if (PanicOccurred()) return PUGL_FAILURE;
 
-    ++g_is_logical_main_thread;
-    DEFER { --g_is_logical_main_thread; };
+    if (!EnterLogicalMainThread()) return PUGL_FAILURE;
+    DEFER { LeaveLogicalMainThread(); };
 
     try {
         auto& platform = *(GuiPlatform*)puglGetHandle(view);

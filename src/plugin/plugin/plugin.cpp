@@ -145,22 +145,6 @@ inline bool Check(bool condition, String function_name, String message) {
     return condition;
 }
 
-static AtomicFlag g_inside_main_thread {};
-
-[[nodiscard]] static bool EnterLogicalMainThread() {
-    if (g_inside_main_thread.ExchangeTrue(RmwMemoryOrder::Acquire)) [[unlikely]]
-        // The host is misbehaving by calling this function from another 'main' thread.
-        return false;
-
-    ++g_is_logical_main_thread;
-    return true;
-}
-
-static void LeaveLogicalMainThread() {
-    g_inside_main_thread.StoreFalse(StoreMemoryOrder::Release);
-    --g_is_logical_main_thread;
-}
-
 static FloePluginInstance* ExtractFloe(clap_plugin const* plugin) {
     if (!plugin) [[unlikely]]
         return nullptr;
