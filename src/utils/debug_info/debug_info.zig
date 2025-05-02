@@ -423,6 +423,7 @@ export fn HasAddressesInCurrentModule(
             for (addresses[0..num_addresses]) |address| {
                 if (address >= segment.start and address < segment.end) return 1;
             }
+            return 0;
         }
     } else {
         for (self.segments.items) |segment| {
@@ -435,6 +436,7 @@ export fn HasAddressesInCurrentModule(
                 if (address >= segment.start and address < segment.end) return 1;
             }
         }
+        if (self.segments.items.len != 0) return 0;
     }
 
     // Fallback.
