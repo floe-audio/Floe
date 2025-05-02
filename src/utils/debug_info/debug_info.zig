@@ -303,7 +303,9 @@ fn Create() !*ModuleInfo {
                 while (it.next()) |cmd| switch (cmd.cmd()) {
                     .SEGMENT_64 => {
                         const segment_cmd = cmd.cast(std.macho.segment_command_64).?;
-                        if (!std.mem.eql(u8, "__TEXT", segment_cmd.segName())) continue;
+                        // NOTE: this line differs from Zig's implementation which checks for __TEXT instead of
+                        // the executable bit.
+                        if (segment_cmd.initprot & std.macho.PROT.EXEC == 0) continue;
 
                         const seg_start = segment_cmd.vmaddr;
                         const seg_end = seg_start + segment_cmd.vmsize;
