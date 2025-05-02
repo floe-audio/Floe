@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <math.h>
 #include "os/threading.hpp"
 #include "tests/framework.hpp"
 #include "utils/cli_arg_parse.hpp"
@@ -1147,6 +1148,8 @@ TEST_CASE(TestHasAddressesInCurrentModule) {
 
     addrs[0] = CALL_SITE_PROGRAM_COUNTER;
     CHECK(HasAddressesInCurrentModule(addrs));
+
+    CHECK(!IsAddressInCurrentModule((uintptr)&powf));
 
     return k_success;
 }

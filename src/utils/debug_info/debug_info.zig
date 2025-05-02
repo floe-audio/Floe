@@ -303,11 +303,9 @@ fn Create() !*ModuleInfo {
                 while (it.next()) |cmd| switch (cmd.cmd()) {
                     .SEGMENT_64 => {
                         const segment_cmd = cmd.cast(std.macho.segment_command_64).?;
-                        // NOTE: this line differs from Zig's implementation which checks for __TEXT instead of
-                        // the executable bit.
-                        if (segment_cmd.initprot & std.macho.PROT.EXEC == 0) continue;
+                        if (!std.mem.eql(u8, "__TEXT", segment_cmd.segName())) continue;
 
-                        const seg_start = segment_cmd.vmaddr;
+                        const seg_start = segment_cmd.vmaddr + self.module.vmaddr_slide;
                         const seg_end = seg_start + segment_cmd.vmsize;
                         try self.segments.append(self.arena.allocator(), Segment{
                             .start = seg_start,
@@ -348,6 +346,19 @@ export fn DestroySelfModuleInfo(module_info: c.SelfModuleHandle) callconv(.c) vo
     std.heap.c_allocator.destroy(self);
 }
 
+fn InModule(self: *ModuleInfo, address: usize) bool {
+    if (native_os == .windows) {
+        if (self.whole_segment) |segment| {
+            return address >= segment.start and address < segment.end;
+        }
+    } else {
+        for (self.segments.items) |segment| {
+            if (address >= segment.start and address < segment.end) return true;
+        }
+    }
+    return false;
+}
+
 export fn SymbolInfo(
     module_info: c.SelfModuleHandle,
     addresses: [*c]const usize,
@@ -362,7 +373,7 @@ export fn SymbolInfo(
     const cb = callback.?;
 
     for (addresses[0..num_addresses]) |address| {
-        if (address < self.module.base_address) {
+        if (!InModule(self, address)) {
             const symbol_info = c.SymbolInfoData{
                 .address = address,
                 .name = "???",
@@ -420,40 +431,13 @@ export fn HasAddressesInCurrentModule(
 
     const self: *ModuleInfo = @alignCast(@ptrCast(module_info.?));
 
-    if (native_os == .windows) {
-        if (self.whole_segment) |segment| {
-            for (addresses[0..num_addresses]) |address| {
-                if (address >= segment.start and address < segment.end) return 1;
-            }
-            return 0;
-        }
-    } else {
-        for (self.segments.items) |segment| {
-            for (addresses[0..num_addresses]) |address| {
-                std.debug.print("checking address {x} against segment {x} - {x}\n", .{
-                    address,
-                    segment.start,
-                    segment.end,
-                });
-                if (address >= segment.start and address < segment.end) return 1;
-            }
-        }
-        if (self.segments.items.len != 0) return 0;
-    }
-
-    // Fallback.
-
-    if (self.dwarf == null) return 1; // We don't know, so assume yes.
-
-    var result: c_int = 0;
-
     for (addresses[0..num_addresses]) |address| {
-        if (address < self.module.base_address) continue;
-
-        _ = self.dwarf.?.findCompileUnit(address) catch continue;
-        result = 1;
-        break;
+        if (InModule(self, address)) {
+            return 1;
+        }
     }
+    if (native_os == .windows and self.whole_segment != null) return 0;
+    if (native_os != .windows and self.segments.items.len != 0) return 0;
 
-    return result;
+    return 1; // We don't know, so assume yes.
 }
