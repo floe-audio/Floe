@@ -245,14 +245,14 @@ ALWAYS_INLINE inline void SetSize(Context& ctx, Id id, f32x2 size) { SetItemSize
 
 // Flags for how the item behaves inside a parent item.
 ALWAYS_INLINE inline void SetBehave(Item& item, u32 flags) {
-    ASSERT_EQ((flags & flags::ChildBehaviourMask), flags);
+    ASSERT_EQ(flags & flags::ChildBehaviourMask, flags);
     item.flags = (item.flags & ~flags::ChildBehaviourMask) | flags;
 }
 ALWAYS_INLINE inline void SetBehave(Context& ctx, Id id, u32 flags) { SetBehave(*GetItem(ctx, id), flags); }
 
 // Flags for how the item arranges its children.
 ALWAYS_INLINE inline void SetContain(Item& item, u32 flags) {
-    ASSERT_EQ((flags & flags::ContainerMask), flags);
+    ASSERT_EQ(flags & flags::ContainerMask, flags);
     item.flags = (item.flags & ~flags::ContainerMask) | flags;
 }
 ALWAYS_INLINE inline void SetContain(Context& ctx, Id id, u32 flags) { SetContain(*GetItem(ctx, id), flags); }

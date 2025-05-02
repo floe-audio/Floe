@@ -23,7 +23,7 @@ static Range MapMidiVelocityRangeToNormalizedRange(s8 low_velo, s8 high_velo) {
     constexpr auto k_new_steps = 99.0;
 
     auto const start = RoundPositiveFloat((lo / k_existing_steps) * k_new_steps);
-    auto const end = RoundPositiveFloat(Min((((hi + 1) / k_existing_steps) * k_new_steps), k_new_steps + 1));
+    auto const end = RoundPositiveFloat(Min(((hi + 1) / k_existing_steps) * k_new_steps, k_new_steps + 1));
 
     return {(u8)start, (u8)end};
 }

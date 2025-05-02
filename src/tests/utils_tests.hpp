@@ -3,6 +3,7 @@
 #pragma once
 
 #include <math.h>
+
 #include "os/threading.hpp"
 #include "tests/framework.hpp"
 #include "utils/cli_arg_parse.hpp"

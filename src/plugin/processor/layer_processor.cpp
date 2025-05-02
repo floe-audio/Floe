@@ -120,7 +120,7 @@ static void SetVelocityMapping(LayerProcessor& layer, param_values::VelocityMapp
 }
 
 static f32 GetVelocityRegionLevel(LayerProcessor& layer, f32 velocity, f32 velocity_to_volume) {
-    auto mod = MapFrom01(velocity, (1 - velocity_to_volume), 1);
+    auto mod = MapFrom01(velocity, 1 - velocity_to_volume, 1);
     if (layer.num_velocity_regions == 2) {
         mod *= ProcessVeloRegions(k_velo_regions_half.Items(), layer.active_velocity_regions, velocity * 127);
     } else if (layer.num_velocity_regions == 3) {

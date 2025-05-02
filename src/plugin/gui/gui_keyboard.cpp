@@ -44,9 +44,9 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(Gui* g, Rect r, int starting_octave)
 
     f32 const black_note_offset[] = {
         (d1), // c#
-        ((d1 * 2) + black_note_width), // d#
-        ((white_note_width * 3) + d2), // f#
-        ((white_note_width * 3) + (d2 * 2) + black_note_width), // g#
+        (d1 * 2) + black_note_width, // d#
+        (white_note_width * 3) + d2, // f#
+        (white_note_width * 3) + (d2 * 2) + black_note_width, // g#
         ((white_note_width * 3) + (d2 * 3) + (black_note_width * 2)) // a#
     };
     constexpr int k_white_note_nums[] = {0, 2, 4, 5, 7, 9, 11};

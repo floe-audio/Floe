@@ -80,7 +80,7 @@ struct Result {
 
 struct Tester;
 using TestFunction = Result (*)(Tester&);
-using CreateFixturePointer = void* (*)(Allocator& a, Tester& tester);
+using CreateFixturePointer = void* (*)(Allocator & a, Tester& tester);
 using DeleteFixturePointer = void (*)(void*, Allocator& a);
 
 struct TestCase {
