@@ -8,6 +8,11 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 0.9.3-beta
+- Fix more errors with threads
+- Fix memory leak on Windows (new debug info system)
+- Protect against hosts that try to use multiple main threads
+
 ## 0.9.2-beta
 - Slightly improve performance of Intel Mac builds
 - Fix crash with Intel Mac builds
