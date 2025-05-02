@@ -1137,6 +1137,20 @@ TEST_CASE(TestStacktraceString) {
     return k_success;
 }
 
+TEST_CASE(TestHasAddressesInCurrentModule) {
+    CHECK(IsAddressInCurrentModule((uintptr)&TestHasAddressesInCurrentModule));
+    CHECK(!IsAddressInCurrentModule(0));
+    CHECK(!IsAddressInCurrentModule(LargestRepresentableValue<usize>()));
+
+    auto addrs = Array {0uz, 0};
+    CHECK(!HasAddressesInCurrentModule(addrs));
+
+    addrs[0] = CALL_SITE_PROGRAM_COUNTER;
+    CHECK(HasAddressesInCurrentModule(addrs));
+
+    return k_success;
+}
+
 TEST_CASE(TestSprintfBuffer) {
     InlineSprintfBuffer buffer {};
     CHECK_EQ(buffer.AsString(), String {});
@@ -1155,13 +1169,14 @@ TEST_CASE(TestSprintfBuffer) {
 }
 
 TEST_REGISTRATION(RegisterUtilsTests) {
-    REGISTER_TEST(TestSprintfBuffer);
-    REGISTER_TEST(TestStacktraceString);
-    REGISTER_TEST(TestJsonReader);
-    REGISTER_TEST(TestJsonWriter);
     REGISTER_TEST(TestAtomicQueue);
-    REGISTER_TEST(TestErrorNotifications);
     REGISTER_TEST(TestAtomicRefList);
     REGISTER_TEST(TestAtomicSwapBuffer);
+    REGISTER_TEST(TestErrorNotifications);
+    REGISTER_TEST(TestHasAddressesInCurrentModule);
+    REGISTER_TEST(TestJsonReader);
+    REGISTER_TEST(TestJsonWriter);
     REGISTER_TEST(TestParseCommandLineArgs);
+    REGISTER_TEST(TestSprintfBuffer);
+    REGISTER_TEST(TestStacktraceString);
 }

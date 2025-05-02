@@ -84,6 +84,7 @@ ErrorCodeOr<void> WriteCurrentStacktrace(Writer writer,
                                          StacktraceSkipOptions skip = StacktraceFrames {1});
 
 bool HasAddressesInCurrentModule(Span<uintptr const> addresses);
+inline bool IsAddressInCurrentModule(uintptr address) { return HasAddressesInCurrentModule({&address, 1}); }
 
 // Call once at the start/end of your progam. When a crash occurs g_crash_handler will be called. It must be
 // async-signal-safe on Unix. It should return normally, not throw exceptions or call abort().
