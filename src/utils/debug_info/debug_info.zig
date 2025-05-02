@@ -427,6 +427,11 @@ export fn HasAddressesInCurrentModule(
     } else {
         for (self.segments.items) |segment| {
             for (addresses[0..num_addresses]) |address| {
+                std.debug.print("checking address {x} against segment {x} - {x}\n", .{
+                    address,
+                    segment.start,
+                    segment.end,
+                });
                 if (address >= segment.start and address < segment.end) return 1;
             }
         }
