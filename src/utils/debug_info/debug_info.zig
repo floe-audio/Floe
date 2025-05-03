@@ -13,6 +13,15 @@ const builtin = @import("builtin");
 const native_os = builtin.os.tag;
 const native_endian = builtin.cpu.arch.endian();
 
+pub const panic = std.debug.FullPanic(myPanic);
+
+fn myPanic(msg: []const u8, first_trace_addr: ?usize) noreturn {
+    _ = first_trace_addr;
+    std.debug.print("Panic in Zig code: {s}\n", .{msg});
+    c.PanicHandler(msg.ptr, msg.len);
+    std.process.exit(1);
+}
+
 const Segment = struct {
     start: usize,
     end: usize,

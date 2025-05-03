@@ -560,6 +560,14 @@ static void HandleStacktraceError(void* data, char const* message, [[maybe_unuse
                                  ctx.line_num++,
                                  FromNullTerminated(message));
 }
+#else
+// Our Zig code calls this function when it panics.
+void PanicHandler(char const* message, size_t message_length) {
+    char buffer[256];
+    CopyStringIntoBufferWithNullTerm(buffer, String {message, message_length});
+    Panic(buffer, SourceLocation::Current());
+}
+
 #endif
 
 ErrorCodeOr<void> WriteStacktrace(Span<uintptr const> stack, Writer writer, StacktracePrintOptions options) {

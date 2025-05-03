@@ -10,6 +10,9 @@
 extern "C" {
 #endif
 
+// This is used in the Zig code to back into our C code.
+void PanicHandler(char const* message, size_t message_length);
+
 typedef void* SelfModuleHandle;
 
 SelfModuleHandle CreateSelfModuleInfo(char* error_buffer, size_t error_buffer_size);
