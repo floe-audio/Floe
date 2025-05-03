@@ -48,13 +48,14 @@ struct FrameInfo {
                                    function_name);
     }
 
-    static FrameInfo FromSourceLocation(SourceLocation loc, uintptr address) {
+    static FrameInfo FromSourceLocation(SourceLocation loc, uintptr address, bool in_self_module) {
         return {
             .address = address,
             .function_name = FromNullTerminated(loc.function),
             .filename = FromNullTerminated(loc.file),
             .line = loc.line,
             .column = -1,
+            .in_self_module = in_self_module,
         };
     }
 
@@ -63,6 +64,7 @@ struct FrameInfo {
     String filename;
     int line;
     int column = -1;
+    bool in_self_module = false; // if the filename is in the current module
 };
 
 MutableString CurrentStacktraceString(Allocator& a,

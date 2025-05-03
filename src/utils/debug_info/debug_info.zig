@@ -381,6 +381,7 @@ export fn SymbolInfo(
                 .file = null,
                 .line = -1,
                 .column = -1,
+                .address_in_self_module = 1,
             };
             cb(user_data, &symbol_info);
             continue;
@@ -417,6 +418,7 @@ export fn SymbolInfo(
             .file = file_ptr,
             .line = line,
             .column = column,
+            .address_in_self_module = 0,
         };
         cb(user_data, &symbol_info);
     }

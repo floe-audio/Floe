@@ -545,6 +545,7 @@ static int HandleStacktraceLine(void* data,
         .filename = filename ? Filename(filename) : "unknown-file"_s,
         .line = lineno,
         .column = -1,
+        .in_app = true, // TODO: we don't actually know
     };
     ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
 
@@ -584,6 +585,7 @@ ErrorCodeOr<void> WriteStacktrace(Span<uintptr const> stack, Writer writer, Stac
                                                 : FromNullTerminated(symbol->compile_unit_name),
                        .line = symbol->line,
                        .column = symbol->column,
+                       .in_self_module = symbol->address_in_self_module != 0,
                    };
                    ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
                });
@@ -626,6 +628,7 @@ MutableString StacktraceString(Span<uintptr const> stack, Allocator& a, Stacktra
                                                 : FromNullTerminated(symbol->compile_unit_name),
                        .line = symbol->line,
                        .column = symbol->column,
+                       .in_self_module = symbol->address_in_self_module != 0,
                    };
                    ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
                });
@@ -671,6 +674,7 @@ void StacktraceToCallback(Span<uintptr const> stack,
                                                 : FromNullTerminated(symbol->compile_unit_name),
                        .line = symbol->line,
                        .column = symbol->column,
+                       .in_self_module = symbol->address_in_self_module != 0,
                    };
                    ctx.callback(frame);
                });
@@ -702,6 +706,7 @@ void StacktraceToCallback(Span<uintptr const> stack,
                     .filename = Filename(filename),
                     .line = lineno,
                     .column = -1,
+                    .in_self_module = true, // TODO: we don't actually know
                 });
 
                 return 0;

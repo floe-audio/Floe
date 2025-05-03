@@ -22,6 +22,7 @@ struct SymbolInfoData {
     char const* file; // nullptr if not available
     int line; // -1 if not available
     int column; // -1 if not available
+    int address_in_self_module; // bool: if the filename is in the current module
 };
 
 typedef void (*SymbolInfoCallback)(void* user_data, struct SymbolInfoData const* symbol_info);
