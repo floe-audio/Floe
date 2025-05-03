@@ -155,9 +155,9 @@ upload-errors:
   set -euxo pipefail
   
   case "$(uname -s)" in
-    Linux*)   dir="$HOME/.local/state/Floe" ;;
+    Linux*)   dir="$HOME/.local/state/Floe/Logs" ;;
     Darwin*)  dir="$HOME/Library/Logs/Floe" ;;
-    MINGW*|CYGWIN*|MSYS*) dir="$LOCALAPPDATA/Floe" ;;
+    MINGW*|CYGWIN*|MSYS*) dir="$LOCALAPPDATA/Floe/Logs" ;;
     *) echo "Unsupported OS" && exit 1 ;;
   esac
 
