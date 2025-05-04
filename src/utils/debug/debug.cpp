@@ -545,7 +545,7 @@ static int HandleStacktraceLine(void* data,
         .filename = filename ? Filename(filename) : "unknown-file"_s,
         .line = lineno,
         .column = -1,
-        .in_app = true, // TODO: we don't actually know
+        .in_self_module = true, // TODO: we don't actually know
     };
     ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
 
