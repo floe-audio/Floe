@@ -13,6 +13,8 @@ const builtin = @import("builtin");
 const native_os = builtin.os.tag;
 const native_endian = builtin.cpu.arch.endian();
 
+const SelfInfo = @import("SelfInfo.zig");
+
 pub const panic = std.debug.FullPanic(myPanic);
 
 fn myPanic(msg: []const u8, first_trace_addr: ?usize) noreturn {
@@ -29,11 +31,10 @@ const Segment = struct {
 
 const ModuleInfo = struct {
     arena: std.heap.ArenaAllocator,
-    self: std.debug.SelfInfo = undefined,
-    module: *std.debug.SelfInfo.Module = undefined,
+    self: SelfInfo = undefined,
+    module: *SelfInfo.Module = undefined,
     dwarf: ?*std.debug.Dwarf = null,
-    segments: if (native_os != .windows) std.ArrayListUnmanaged(Segment) else void,
-    whole_segment: if (native_os == .windows) ?Segment else void,
+    segments: std.ArrayListUnmanaged(Segment),
 };
 
 fn WriteErrorToErrorBuffer(
@@ -55,218 +56,38 @@ fn WriteErrorToErrorBuffer(
     };
 }
 
-pub const MODULEINFO = extern struct {
-    lpBaseOfDll: ?*anyopaque,
-    SizeOfImage: u32,
-    EntryPoint: ?*anyopaque,
-};
-
-pub extern "kernel32" fn K32GetModuleInformation(
-    hProcess: ?std.os.windows.HANDLE,
-    hModule: ?std.os.windows.HINSTANCE,
-    lpmodinfo: ?*MODULEINFO,
-    cb: u32,
-) callconv(@import("std").os.windows.WINAPI) std.os.windows.BOOL;
-
-pub const GET_MODULE_HANDLE_EX_FLAG_PIN = @as(u32, 1);
-pub const GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT = @as(u32, 2);
-pub const GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS = @as(u32, 4);
-
-pub extern "kernel32" fn GetModuleHandleExW(
-    dwFlags: u32,
-    lpModuleName: ?[*:0]const u16,
-    phModule: ?*?std.os.windows.HINSTANCE,
-) callconv(@import("std").os.windows.WINAPI) std.os.windows.BOOL;
-
-// NOTE: copied directly from std.debug.SelfInfo. The existing implementation isn't a great fit for us so we
-// copy the code and make the changes we need. Specifically:
-// - We don't care about PDB info. We only need the DWARF info. Related: https://github.com/ziglang/zig/pull/22492
-// This code is likely very brittle when Zig changes their implementation, but it works for now.
-fn lookupModuleWin32(self: *std.debug.SelfInfo, address: usize) !*std.debug.SelfInfo.Module {
-    for (self.modules.items) |*module| {
-        if (address >= module.base_address and address < module.base_address + module.size) {
-            if (self.address_map.get(module.base_address)) |obj_di| {
-                return obj_di;
-            }
-
-            const obj_di = try self.allocator.create(std.debug.SelfInfo.Module);
-            errdefer self.allocator.destroy(obj_di);
-
-            const mapped_module = @as([*]const u8, @ptrFromInt(module.base_address))[0..module.size];
-            var coff_obj = try std.coff.Coff.init(mapped_module, true);
-
-            // The string table is not mapped into memory by the loader, so if a section name is in the
-            // string table then we have to map the full image file from disk. This can happen when
-            // a binary is produced with -gdwarf, since the section names are longer than 8 bytes.
-            if (coff_obj.strtabRequired()) {
-                var name_buffer: [std.os.windows.PATH_MAX_WIDE + 4:0]u16 = undefined;
-                // openFileAbsoluteW requires the prefix to be present
-                @memcpy(name_buffer[0..4], &[_]u16{ '\\', '?', '?', '\\' });
-
-                const process_handle = std.os.windows.GetCurrentProcess();
-                const len = std.os.windows.kernel32.GetModuleFileNameExW(
-                    process_handle,
-                    module.handle,
-                    @ptrCast(&name_buffer[4]),
-                    std.os.windows.PATH_MAX_WIDE,
-                );
-
-                if (len == 0) return error.MissingDebugInfo;
-                const coff_file = std.fs.openFileAbsoluteW(name_buffer[0 .. len + 4 :0], .{}) catch |err| switch (err) {
-                    error.FileNotFound => return error.MissingDebugInfo,
-                    else => return err,
-                };
-                errdefer coff_file.close();
-
-                var section_handle: std.os.windows.HANDLE = undefined;
-                const create_section_rc = std.os.windows.ntdll.NtCreateSection(
-                    &section_handle,
-                    std.os.windows.STANDARD_RIGHTS_REQUIRED | std.os.windows.SECTION_QUERY | std.os.windows.SECTION_MAP_READ,
-                    null,
-                    null,
-                    std.os.windows.PAGE_READONLY,
-                    // The documentation states that if no AllocationAttribute is specified, then SEC_COMMIT is the default.
-                    // In practice, this isn't the case and specifying 0 will result in INVALID_PARAMETER_6.
-                    std.os.windows.SEC_COMMIT,
-                    coff_file.handle,
-                );
-                if (create_section_rc != .SUCCESS) return error.MissingDebugInfo;
-                errdefer std.os.windows.CloseHandle(section_handle);
-
-                var coff_len: usize = 0;
-                var base_ptr: usize = 0;
-                const map_section_rc = std.os.windows.ntdll.NtMapViewOfSection(
-                    section_handle,
-                    process_handle,
-                    @ptrCast(&base_ptr),
-                    null,
-                    0,
-                    null,
-                    &coff_len,
-                    .ViewUnmap,
-                    0,
-                    std.os.windows.PAGE_READONLY,
-                );
-                if (map_section_rc != .SUCCESS) return error.MissingDebugInfo;
-                errdefer std.debug.assert(std.os.windows.ntdll.NtUnmapViewOfSection(process_handle, @ptrFromInt(base_ptr)) == .SUCCESS);
-
-                const section_view = @as([*]const u8, @ptrFromInt(base_ptr))[0..coff_len];
-                coff_obj = try std.coff.Coff.init(section_view, false);
-
-                module.mapped_file = .{
-                    .file = coff_file,
-                    .section_handle = section_handle,
-                    .section_view = section_view,
-                };
-            }
-            errdefer if (module.mapped_file) |mapped_file| mapped_file.deinit();
-
-            obj_di.* = try readCoffDebugInfo(self.allocator, &coff_obj);
-            obj_di.base_address = module.base_address;
-
-            try self.address_map.putNoClobber(module.base_address, obj_di);
-            return obj_di;
-        }
-    }
-
-    return error.MissingDebugInfo;
-}
-
-// NOTE: copied directly from std.debug.SelfInfo, see above comment.
-fn readCoffDebugInfo(allocator: std.mem.Allocator, coff_obj: *std.coff.Coff) !std.debug.SelfInfo.Module {
-    nosuspend {
-        var di: std.debug.SelfInfo.Module = .{
-            .base_address = undefined,
-            .coff_image_base = coff_obj.getImageBase(),
-            .coff_section_headers = undefined,
-        };
-
-        if (coff_obj.getSectionByName(".debug_info")) |_| {
-            // This coff file has embedded DWARF debug info
-            var sections: std.debug.Dwarf.SectionArray = std.debug.Dwarf.null_section_array;
-            errdefer for (sections) |section| if (section) |s| if (s.owned) allocator.free(s.data);
-
-            inline for (@typeInfo(std.debug.Dwarf.Section.Id).@"enum".fields, 0..) |section, i| {
-                sections[i] = if (coff_obj.getSectionByName("." ++ section.name)) |section_header| blk: {
-                    break :blk .{
-                        .data = try coff_obj.getSectionDataAlloc(section_header, allocator),
-                        .virtual_address = section_header.virtual_address,
-                        .owned = true,
-                    };
-                } else null;
-            }
-
-            var dwarf: std.debug.Dwarf = .{
-                .endian = native_endian,
-                .sections = sections,
-                .is_macho = false,
-            };
-
-            try std.debug.Dwarf.open(&dwarf, allocator);
-            di.dwarf = dwarf;
-        }
-
-        // NOTE: at this same point in the Zig code, PDB info is read. We don't do that here.
-
-        return di;
-    }
-}
-
 fn Create() !*ModuleInfo {
     const self = try std.heap.c_allocator.create(ModuleInfo);
     errdefer std.heap.c_allocator.destroy(self);
 
     self.* = ModuleInfo{
         .arena = std.heap.ArenaAllocator.init(std.heap.page_allocator),
-        .segments = if (native_os != .windows) .{} else {},
-        .whole_segment = if (native_os == .windows) null else {},
+        .segments = .{},
     };
-    self.self = try std.debug.SelfInfo.open(self.arena.allocator());
+    errdefer self.arena.deinit();
+
+    self.self = try SelfInfo.open(self.arena.allocator());
     errdefer self.self.deinit();
 
-    const address = @intFromPtr(&CreateSelfModuleInfo);
+    const address = @intFromPtr(&c.PanicHandler);
 
     // We only need the module for this current binary - we just want stack traces for our own code, not
     // the whole process.
-    self.module = if (native_os == .windows) try lookupModuleWin32(&self.self, address) else try self.self.getModuleForAddress(address);
-    if (native_os == .windows) {
-        // There seems to be a bug in the Windows implementation where getDwarfInfoForAddress won't compile,
-        // so we workaround.
-        if (self.module.dwarf != null) {
-            self.dwarf = &self.module.dwarf.?;
-        }
-    } else {
-        self.dwarf = try self.module.getDwarfInfoForAddress(self.arena.allocator(), address);
-    }
+    self.module = try self.self.getModuleForAddress(address);
+    self.dwarf = try self.module.getDwarfInfoForAddress(self.arena.allocator(), address);
 
     // We populate the cache here so it's not done in SymbolInfo where we want to be thread-safe and signal-safe.
     _ = try self.module.getSymbolAtAddress(self.self.allocator, address);
 
     switch (native_os) {
         .windows => {
-            var module: ?std.os.windows.HINSTANCE = null;
-            if (GetModuleHandleExW(
-                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                @alignCast(@ptrCast(&CreateSelfModuleInfo)),
-                &module,
-            ) != 0) {
-                var module_info: MODULEINFO = undefined;
-                if (K32GetModuleInformation(
-                    std.os.windows.GetCurrentProcess(),
-                    module,
-                    &module_info,
-                    @sizeOf(MODULEINFO),
-                ) != 0) {
-                    const base_address: usize = @intFromPtr(module_info.lpBaseOfDll);
-                    self.whole_segment = Segment{
-                        .start = base_address,
-                        .end = base_address + module_info.SizeOfImage,
-                    };
-                    if (builtin.mode == .Debug) std.debug.print("got Windows module info: {x} - {x}\n", .{
-                        self.whole_segment.?.start,
-                        self.whole_segment.?.end,
-                    });
-                }
+            // Bit of a hack - we are using data structures that might be internal workings of the SelfInfo code.
+            for (self.self.modules.items) |*module| {
+                if (module.base_address != self.module.base_address) continue;
+                try self.segments.append(self.arena.allocator(), Segment{
+                    .start = module.base_address,
+                    .end = module.base_address + module.size,
+                });
             }
         },
         .linux => {
@@ -287,9 +108,6 @@ fn Create() !*ModuleInfo {
                     }
                 }
             }.callback);
-            if (builtin.mode == .Debug) std.debug.print("got Linux module info, num segments: {}\n", .{
-                self.segments.items.len,
-            });
         },
 
         .macos => {
@@ -324,10 +142,6 @@ fn Create() !*ModuleInfo {
                     else => {},
                 };
             }
-
-            if (builtin.mode == .Debug) std.debug.print("got macOS module info, num segments: {}\n", .{
-                self.segments.items.len,
-            });
         },
 
         else => {},
@@ -356,14 +170,8 @@ export fn DestroySelfModuleInfo(module_info: c.SelfModuleHandle) callconv(.c) vo
 }
 
 fn InModule(self: *ModuleInfo, address: usize) bool {
-    if (native_os == .windows) {
-        if (self.whole_segment) |segment| {
-            return address >= segment.start and address < segment.end;
-        }
-    } else {
-        for (self.segments.items) |segment| {
-            if (address >= segment.start and address < segment.end) return true;
-        }
+    for (self.segments.items) |segment| {
+        if (address >= segment.start and address < segment.end) return true;
     }
     return false;
 }
@@ -447,8 +255,7 @@ export fn HasAddressesInCurrentModule(
             return 1;
         }
     }
-    if (native_os == .windows and self.whole_segment != null) return 0;
-    if (native_os != .windows and self.segments.items.len != 0) return 0;
+    if (self.segments.items.len != 0) return 0;
 
     return 1; // We don't know, so assume yes.
 }
