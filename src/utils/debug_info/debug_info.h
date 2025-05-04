@@ -31,8 +31,7 @@ struct SymbolInfoData {
 typedef void (*SymbolInfoCallback)(void* user_data, struct SymbolInfoData const* symbol_info);
 
 // Fast, thread-safe and signal-safe.
-// Checks if any of the given address are in the current module.
-int HasAddressesInCurrentModule(SelfModuleHandle module_info, size_t const* addresses, size_t num_addresses);
+int IsAddressInCurrentModule(SelfModuleHandle module_info, size_t address);
 
 // Only gets info for the current module (our shared library or executable, never for any externals)
 // Should be thread safe and signal safe.

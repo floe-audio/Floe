@@ -198,7 +198,7 @@ export fn SymbolInfo(
                 .file = null,
                 .line = -1,
                 .column = -1,
-                .address_in_self_module = 1,
+                .address_in_self_module = 0,
             };
             cb(user_data, &symbol_info);
             continue;
@@ -235,27 +235,19 @@ export fn SymbolInfo(
             .file = file_ptr,
             .line = line,
             .column = column,
-            .address_in_self_module = 0,
+            .address_in_self_module = 1,
         };
         cb(user_data, &symbol_info);
     }
 }
 
-export fn HasAddressesInCurrentModule(
+export fn IsAddressInCurrentModule(
     module_info: c.SelfModuleHandle,
-    addresses: [*c]const usize,
-    num_addresses: usize,
+    address: usize,
 ) callconv(.c) c_int {
-    if (module_info == null or addresses == null or num_addresses == 0) return 0;
+    if (module_info == null) return 0;
 
     const self: *ModuleInfo = @alignCast(@ptrCast(module_info.?));
 
-    for (addresses[0..num_addresses]) |address| {
-        if (InModule(self, address)) {
-            return 1;
-        }
-    }
-    if (self.segments.items.len != 0) return 0;
-
-    return 1; // We don't know, so assume yes.
+    return if (InModule(self, address)) 1 else 0;
 }

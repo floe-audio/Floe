@@ -740,9 +740,22 @@ bool HasAddressesInCurrentModule(Span<uintptr const> addresses) {
     auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
     if (!state || state->failed_init_error) return true;
 #if ZIG_BACKTRACE
-    return HasAddressesInCurrentModule(state->state, addresses.data, addresses.size);
+    for (auto const address : addresses)
+        if (IsAddressInCurrentModule(state->state, address)) return true;
+    return false;
 #else
     (void)addresses;
+    return true; // TODO: we don't have this information in libbacktrace so we say yes.
+#endif
+}
+
+bool IsAddressInCurrentModule(usize address) {
+    auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
+    if (!state || state->failed_init_error) return false;
+#if ZIG_BACKTRACE
+    return IsAddressInCurrentModule(state->state, address);
+#else
+    (void)address;
     return true; // TODO: we don't have this information in libbacktrace so we say yes.
 #endif
 }
