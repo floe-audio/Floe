@@ -445,7 +445,7 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
 
                     if (ShouldSendFilepath(frame.filename)) {
                         TRY(json::WriteKeyValue(json_writer, "filename", frame.filename));
-                        TRY(json::WriteKeyValue(json_writer, "in_app", true));
+                        TRY(json::WriteKeyValue(json_writer, "in_app", frame.in_self_module));
 
                         if (frame.line > 0) {
                             TRY(json::WriteKeyValue(json_writer, "lineno", frame.line));
