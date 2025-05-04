@@ -38,6 +38,7 @@ const min_windows_version = "win10";
 const floe_cache_relative = ".floe-cache";
 
 const embed_files_workaround = true;
+const clap_only = false;
 
 const ConcatCompileCommandsStep = struct {
     step: std.Build.Step,
@@ -2069,7 +2070,7 @@ pub fn build(b: *std.Build) void {
             join_compile_commands.step.dependOn(&plugin.step);
         }
 
-        if (build_context.build_mode != .production) {
+        if (!clap_only and build_context.build_mode != .production) {
             var docs_preprocessor = b.addExecutable(.{
                 .name = "docs_preprocessor",
                 .target = target,
@@ -2091,7 +2092,7 @@ pub fn build(b: *std.Build) void {
             b.getInstallStep().dependOn(&b.addInstallArtifact(docs_preprocessor, .{ .dest_dir = install_subfolder }).step);
         }
 
-        {
+        if (!clap_only) {
             var packager = b.addExecutable(.{
                 .name = "floe-packager",
                 .target = target,
@@ -2201,7 +2202,7 @@ pub fn build(b: *std.Build) void {
         }
 
         // standalone is for development-only at the moment
-        if (build_context.build_mode != .production) {
+        if (!clap_only and build_context.build_mode != .production) {
             const miniaudio = b.addStaticLibrary(.{
                 .name = "miniaudio",
                 .target = target,
@@ -2356,7 +2357,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = build_context.optimise,
         });
-        {
+        if (!clap_only) {
             var extra_flags = std.ArrayList([]const u8).init(b.allocator);
             defer extra_flags.deinit();
             if (build_context.optimise == .Debug) {
@@ -2543,7 +2544,7 @@ pub fn build(b: *std.Build) void {
         }
 
         var vst3_final_step: ?*std.Build.Step = null;
-        {
+        if (!clap_only) {
             const vst3 = b.addSharedLibrary(.{
                 .name = "Floe.vst3",
                 .target = target,
@@ -2700,7 +2701,7 @@ pub fn build(b: *std.Build) void {
             }
         }
 
-        if (target.result.os.tag == .macos) {
+        if (!clap_only and target.result.os.tag == .macos) {
             const au_sdk = b.addStaticLibrary(.{
                 .name = "AU",
                 .target = target,
@@ -2883,7 +2884,7 @@ pub fn build(b: *std.Build) void {
             }
         }
 
-        if (target.result.os.tag == .windows) {
+        if (!clap_only and target.result.os.tag == .windows) {
             const installer_path = "src/windows_installer";
 
             // the logos probably have a different license to the rest of the codebase, so we keep them separate and optional
@@ -3117,7 +3118,7 @@ pub fn build(b: *std.Build) void {
             }
         }
 
-        if (build_context.build_mode != .production) {
+        if (!clap_only and build_context.build_mode != .production) {
             const tests = b.addExecutable(.{
                 .name = "tests",
                 .target = target,
