@@ -765,154 +765,207 @@ const BuildContext = struct {
     dep_vst3_sdk: *std.Build.Dependency,
 };
 
-const stb_image_config_flags = [_][]const u8{
-    "-DSTBI_NO_STDIO",
-    "-DSTBI_MAX_DIMENSIONS=65535", // we use u16 for dimensions
+const FlagsBuilderOptions = struct {
+    ubsan: bool = false,
+    add_compile_commands: bool = true,
+    full_diagnostics: bool = false,
+    cpp: bool = false,
+    objcpp: bool = false,
 };
 
-fn universalFlags(
-    context: *BuildContext,
-    target: std.Build.ResolvedTarget,
-    extra_flags: []const []const u8,
-    ubsan: bool,
-) ![][]const u8 {
-    var flags = std.ArrayList([]const u8).init(context.b.allocator);
-    try flags.appendSlice(extra_flags);
-    try flags.append("-fchar8_t");
-    try flags.append("-D_USE_MATH_DEFINES");
-    try flags.append("-D__USE_FILE_OFFSET64");
-    try flags.append("-D_FILE_OFFSET_BITS=64");
-    try flags.append("-ftime-trace");
+const FlagsBuilder = struct {
+    flags: std.ArrayList([]const u8),
 
-    try flags.appendSlice(&stb_image_config_flags);
-    try flags.append("-DMINIZ_USE_UNALIGNED_LOADS_AND_STORES=0");
-    try flags.append("-DMINIZ_NO_STDIO");
-    try flags.append("-DMINIZ_NO_ZLIB_COMPATIBLE_NAMES");
-    try flags.append(context.b.fmt("-DMINIZ_LITTLE_ENDIAN={d}", .{@intFromBool(target.result.cpu.arch.endian() == .little)}));
-    try flags.append("-DMINIZ_HAS_64BIT_REGISTERS=1");
-
-    if (target.result.os.tag == .linux) {
-        // NOTE(Sam, June 2024): workaround for a bug in Zig (most likely) where our shared library always causes a
-        // crash after dlclose(), as described here: https://github.com/ziglang/zig/issues/17908
-        // The workaround involves adding this flag and also adding a custom bit of code using
-        // __attribute__((destructor)) to manually call __cxa_finalize():
-        // https://stackoverflow.com/questions/34308720/where-is-dso-handle-defined/48256026#48256026
-        try flags.append("-fno-use-cxa-atexit");
+    pub fn init(
+        context: *BuildContext,
+        target: std.Build.ResolvedTarget,
+        options: FlagsBuilderOptions,
+    ) FlagsBuilder {
+        var result = FlagsBuilder{
+            .flags = std.ArrayList([]const u8).init(context.b.allocator),
+        };
+        result.addCoreFlags(context, target, options) catch @panic("OOM");
+        return result;
     }
 
-    // We want __builtin_FILE() and __FILE__ to be portable because we use this information in stacktraces and
-    // logging so we change the absolute paths of all files to be relative to the build root.
-    const build_root = context.b.pathFromRoot("");
-    try flags.append(context.b.fmt("-fmacro-prefix-map={s}/=", .{build_root}));
-    try flags.append(context.b.fmt("-ffile-prefix-map={s}/=", .{build_root}));
-    try flags.append(context.b.fmt("-fdebug-prefix-map={s}/=", .{build_root}));
-    try flags.append("-fvisibility=hidden");
+    fn addFlag(self: *FlagsBuilder, flag: []const u8) void {
+        self.flags.append(flag) catch @panic("OOM");
+    }
 
-    if (context.build_mode != .production and context.enable_tracy) {
-        try flags.append("-DTRACY_ENABLE");
-        try flags.append("-DTRACY_MANUAL_LIFETIME");
-        try flags.append("-DTRACY_DELAYED_INIT");
-        try flags.append("-DTRACY_ONLY_LOCALHOST");
-        if (target.result.os.tag == .linux) {
-            // Couldn't get these working well so just disabling them
-            try flags.append("-DTRACY_NO_CALLSTACK");
-            try flags.append("-DTRACY_NO_SYSTEM_TRACING");
+    fn addCoreFlags(
+        self: *FlagsBuilder,
+        context: *BuildContext,
+        target: std.Build.ResolvedTarget,
+        options: FlagsBuilderOptions,
+    ) !void {
+        if (options.full_diagnostics) {
+            try self.flags.appendSlice(&.{
+                "-Werror",
+                "-Wconversion",
+                "-Wexit-time-destructors",
+                "-Wglobal-constructors",
+                "-Wall",
+                "-Wextra",
+                "-Wextra-semi",
+                "-Wshadow",
+                "-Wimplicit-fallthrough",
+                "-Wunused-member-function",
+                "-Wunused-template",
+                "-Wcast-align",
+                "-Wdouble-promotion",
+                "-Woverloaded-virtual",
+                "-Wno-missing-field-initializers",
+                "-DFLAC__NO_DLL",
+                "-DPUGL_DISABLE_DEPRECATED",
+                "-DPUGL_STATIC",
+
+                // Minimise windows.h size for faster compile times:
+                // "Define one or more of the NOapi symbols to exclude the API. For example, NOCOMM excludes the serial
+                // communication API. For a list of support NOapi symbols, see Windows.h."
+                "-DWIN32_LEAN_AND_MEAN",
+                "-DNOKANJI",
+                "-DNOHELP",
+                "-DNOMCX",
+                "-DNOCLIPBOARD",
+                "-DNOMEMMGR",
+                "-DNOMETAFILE",
+                "-DNOMINMAX",
+                "-DNOOPENFILE",
+                "-DNOSERVICE",
+                "-DNOSOUND",
+                "-DNOTEXTMETRIC",
+                "-DSTRICT",
+                "-DNOMINMAX",
+            });
         }
-    }
 
-    // A bit of information about debug symbols:
-    //
-    // DWARF is a debugging information format. It is used widely, particularly on Linux and macOS. libbacktrace,
-    // which we use for getting nice stack traces can read DWARF information from the executable on any OS. All
-    // we need to do is make sure that the DWARF info is available for libbacktrace to read.
-    //
-    // On Windows, there is the PDB format, this is a separate file that contains the debug information. Zig
-    // generates this too, but we can tell it to also embed DWARF debug info into the executable, that's what the
-    // -gdwarf flag does.
-    //
-    // On Linux, it's easy, just use the same flag.
-    //
-    // On macOS, there is a slightly different approach. DWARF info is embedded in the compiled .o flags. But it's
-    // not aggregated into the final executable. Instead, the final executable contains a 'debug map' which points
-    // to all of the object files and shows where the DWARF info is. You can see this map by running
-    // 'dsymutil --dump-debug-map my-exe'.
-    //
-    // In order to aggregate the DWARF info into the final executable, we need to run 'dsymutil my-exe'. This then
-    // outputs a .dSYM folder which contains the aggregated DWARF info. libbacktrace looks for this dSYM folder
-    // adjacent to the executable.
+        try self.flags.append("-fchar8_t");
+        try self.flags.append("-D_USE_MATH_DEFINES");
+        try self.flags.append("-D__USE_FILE_OFFSET64");
+        try self.flags.append("-D_FILE_OFFSET_BITS=64");
+        try self.flags.append("-ftime-trace");
 
-    // Include dwarf debug info, even on windows. This means we can use the libbacktrace/Zig everywhere to get
-    // really good stack traces.
-    //
-    // We use DWARF 4 because Zig has a problem with version 5: https://github.com/ziglang/zig/issues/23732
-    try flags.append("-gdwarf-4");
+        try self.flags.append("-DMINIZ_USE_UNALIGNED_LOADS_AND_STORES=0");
+        try self.flags.append("-DMINIZ_NO_STDIO");
+        try self.flags.append("-DMINIZ_NO_ZLIB_COMPATIBLE_NAMES");
+        try self.flags.append(context.b.fmt("-DMINIZ_LITTLE_ENDIAN={d}", .{@intFromBool(target.result.cpu.arch.endian() == .little)}));
+        try self.flags.append("-DMINIZ_HAS_64BIT_REGISTERS=1");
 
-    if (ubsan) {
-        if (context.optimise != .ReleaseFast) {
-            // By default, zig enables UBSan (unless ReleaseFast mode) in trap mode. Meaning it will catch undefined
-            // behaviour and trigger a trap which can be caught by signal handlers. UBSan also has a mode where
-            // undefined behaviour will instead call various functions. This is called the UBSan runtime. It's
-            // really easy to implement the 'minimal' version of this runtime: we just have to declare a bunch of
-            // functions like __ubsan_handle_x. So that's what we do rather than trying to link with the system's
-            // version. https://github.com/ziglang/zig/issues/5163#issuecomment-811606110
-            try flags.append("-fno-sanitize-trap=undefined"); // undo zig's default behaviour (trap mode)
-            try flags.append("-fno-sanitize=function");
-            const minimal_runtime_mode = false; // I think it's better performance. Certainly less information.
-            if (minimal_runtime_mode) {
-                try flags.append("-fsanitize-runtime"); // set it to 'minimal' mode
+        try self.flags.append("-DSTBI_NO_STDIO");
+        try self.flags.append("-DSTBI_MAX_DIMENSIONS=65535"); // we use u16 for dimensions
+
+        if (target.result.os.tag == .linux) {
+            // NOTE(Sam, June 2024): workaround for a bug in Zig (most likely) where our shared library always causes a
+            // crash after dlclose(), as described here: https://github.com/ziglang/zig/issues/17908
+            // The workaround involves adding this flag and also adding a custom bit of code using
+            // __attribute__((destructor)) to manually call __cxa_finalize():
+            // https://stackoverflow.com/questions/34308720/where-is-dso-handle-defined/48256026#48256026
+            try self.flags.append("-fno-use-cxa-atexit");
+        }
+
+        // We want __builtin_FILE() and __FILE__ to be portable because we use this information in stacktraces and
+        // logging so we change the absolute paths of all files to be relative to the build root.
+        // __FILE__, __builtin_FILE(), and DWARF info should be made relative.
+        // -ffile-prefix-map=OLD=NEW is an alias for both -fdebug-prefix-map and -fmacro-prefix-map
+        try self.flags.append(context.b.fmt("-ffile-prefix-map={s}{s}=", .{
+            context.b.pathFromRoot(""),
+            std.fs.path.sep_str,
+        }));
+        try self.flags.append("-fvisibility=hidden");
+
+        if (context.build_mode != .production and context.enable_tracy) {
+            try self.flags.append("-DTRACY_ENABLE");
+            try self.flags.append("-DTRACY_MANUAL_LIFETIME");
+            try self.flags.append("-DTRACY_DELAYED_INIT");
+            try self.flags.append("-DTRACY_ONLY_LOCALHOST");
+            if (target.result.os.tag == .linux) {
+                // Couldn't get these working well so just disabling them
+                try self.flags.append("-DTRACY_NO_CALLSTACK");
+                try self.flags.append("-DTRACY_NO_SYSTEM_TRACING");
             }
         }
-    } else {
-        try flags.append("-fno-sanitize=all");
+
+        // A bit of information about debug symbols:
+        //
+        // DWARF is a debugging information format. It is used widely, particularly on Linux and macOS. libbacktrace,
+        // which we use for getting nice stack traces can read DWARF information from the executable on any OS. All
+        // we need to do is make sure that the DWARF info is available for libbacktrace to read.
+        //
+        // On Windows, there is the PDB format, this is a separate file that contains the debug information. Zig
+        // generates this too, but we can tell it to also embed DWARF debug info into the executable, that's what the
+        // -gdwarf flag does.
+        //
+        // On Linux, it's easy, just use the same flag.
+        //
+        // On macOS, there is a slightly different approach. DWARF info is embedded in the compiled .o flags. But it's
+        // not aggregated into the final executable. Instead, the final executable contains a 'debug map' which points
+        // to all of the object files and shows where the DWARF info is. You can see this map by running
+        // 'dsymutil --dump-debug-map my-exe'.
+        //
+        // In order to aggregate the DWARF info into the final executable, we need to run 'dsymutil my-exe'. This then
+        // outputs a .dSYM folder which contains the aggregated DWARF info. libbacktrace looks for this dSYM folder
+        // adjacent to the executable.
+
+        // Include dwarf debug info, even on windows. This means we can use the libbacktrace/Zig everywhere to get
+        // really good stack traces.
+        //
+        // We use DWARF 4 because Zig has a problem with version 5: https://github.com/ziglang/zig/issues/23732
+        try self.flags.append("-gdwarf-4");
+
+        if (options.ubsan) {
+            if (context.optimise != .ReleaseFast) {
+                // By default, zig enables UBSan (unless ReleaseFast mode) in trap mode. Meaning it will catch undefined
+                // behaviour and trigger a trap which can be caught by signal handlers. UBSan also has a mode where
+                // undefined behaviour will instead call various functions. This is called the UBSan runtime. It's
+                // really easy to implement the 'minimal' version of this runtime: we just have to declare a bunch of
+                // functions like __ubsan_handle_x. So that's what we do rather than trying to link with the system's
+                // version. https://github.com/ziglang/zig/issues/5163#issuecomment-811606110
+                try self.flags.append("-fno-sanitize-trap=undefined"); // undo zig's default behaviour (trap mode)
+                try self.flags.append("-fno-sanitize=function");
+                const minimal_runtime_mode = false; // I think it's better performance. Certainly less information.
+                if (minimal_runtime_mode) {
+                    try self.flags.append("-fsanitize-runtime"); // set it to 'minimal' mode
+                }
+            }
+        } else {
+            try self.flags.append("-fno-sanitize=all");
+        }
+
+        if (options.cpp) {
+            try self.flags.append("-std=c++2c");
+        }
+        if (options.objcpp) {
+            try self.flags.append("-std=c++2b");
+            try self.flags.append("-ObjC++");
+            try self.flags.append("-fobjc-arc");
+        }
+
+        if (options.add_compile_commands) {
+            try self.flags.append("-gen-cdb-fragment-path");
+            // IMPROVE: will this error if the path contains a space?
+            try self.flags.append(try compileCommandsDirForTarget(context.b, target.result));
+        }
+
+        if (target.result.os.tag == .windows) {
+            // On Windows, fix compile errors related to deprecated usage of string in mingw
+            try self.flags.append("-DSTRSAFE_NO_DEPRECATE");
+            try self.flags.append("-DUNICODE");
+            try self.flags.append("-D_UNICODE");
+        } else if (target.result.os.tag == .macos) {
+            try self.flags.append("-DGL_SILENCE_DEPRECATION"); // disable opengl warnings on macos
+
+            // don't fail when compiling macOS obj-c SDK headers
+            try self.flags.appendSlice(&.{
+                "-Wno-elaborated-enum-base",
+                "-Wno-missing-method-return-type",
+                "-Wno-deprecated-declarations",
+                "-Wno-deprecated-anon-enum-enum-conversion",
+                "-D__kernel_ptr_semantics=",
+                "-Wno-c99-extensions",
+            });
+        }
     }
-
-    if (target.result.os.tag == .windows) {
-        // On Windows, fix compile errors related to deprecated usage of string in mingw
-        try flags.append("-DSTRSAFE_NO_DEPRECATE");
-        try flags.append("-DUNICODE");
-        try flags.append("-D_UNICODE");
-    } else if (target.result.os.tag == .macos) {
-        try flags.append("-DGL_SILENCE_DEPRECATION"); // disable opengl warnings on macos
-
-        // don't fail when compiling macOS obj-c SDK headers
-        try flags.appendSlice(&.{
-            "-Wno-elaborated-enum-base",
-            "-Wno-missing-method-return-type",
-            "-Wno-deprecated-declarations",
-            "-Wno-deprecated-anon-enum-enum-conversion",
-            "-D__kernel_ptr_semantics=",
-            "-Wno-c99-extensions",
-        });
-    }
-
-    return try flags.toOwnedSlice();
-}
-
-fn cppFlags(
-    b: *std.Build,
-    universal_flags: [][]const u8,
-    extra_flags: []const []const u8,
-) ![][]const u8 {
-    var flags = std.ArrayList([]const u8).init(b.allocator);
-    try flags.appendSlice(universal_flags);
-    try flags.appendSlice(extra_flags);
-    try flags.append("-std=c++2c");
-    return try flags.toOwnedSlice();
-}
-
-fn objcppFlags(
-    b: *std.Build,
-    universal_flags: [][]const u8,
-    extra_flags: []const []const u8,
-) ![][]const u8 {
-    var flags = std.ArrayList([]const u8).init(b.allocator);
-    try flags.appendSlice(universal_flags);
-    try flags.appendSlice(extra_flags);
-    try flags.append("-std=c++2b");
-    try flags.append("-ObjC++");
-    try flags.append("-fobjc-arc");
-    return try flags.toOwnedSlice();
-}
+};
 
 fn applyUniversalSettings(context: *BuildContext, step: *std.Build.Step.Compile) void {
     var b = context.b;
@@ -1203,53 +1256,6 @@ pub fn build(b: *std.Build) void {
         const floe_version = std.SemanticVersion.parse(floe_version_string.?) catch @panic("invalid version");
         const floe_version_hash = std.hash.Fnv1a_32.hash(floe_version_string.?);
 
-        const universal_flags = universalFlags(&build_context, target, &.{}, true) catch unreachable;
-        const universal_floe_flags = universalFlags(&build_context, target, &.{
-            "-gen-cdb-fragment-path",
-            // IMPROVE: will this error if the path contains a space?
-            compileCommandsDirForTarget(b, target.result) catch unreachable,
-            "-Werror",
-            "-Wconversion",
-            "-Wexit-time-destructors",
-            "-Wglobal-constructors",
-            "-Wall",
-            "-Wextra",
-            "-Wextra-semi",
-            "-Wshadow",
-            "-Wimplicit-fallthrough",
-            "-Wunused-member-function",
-            "-Wunused-template",
-            "-Wcast-align",
-            "-Wdouble-promotion",
-            "-Woverloaded-virtual",
-            "-Wno-missing-field-initializers",
-            "-DFLAC__NO_DLL",
-            "-DPUGL_DISABLE_DEPRECATED",
-            "-DPUGL_STATIC",
-
-            // Minimise windows.h size for faster compile times:
-            // "Define one or more of the NOapi symbols to exclude the API. For example, NOCOMM excludes the serial
-            // communication API. For a list of support NOapi symbols, see Windows.h."
-            "-DWIN32_LEAN_AND_MEAN",
-            "-DNOKANJI",
-            "-DNOHELP",
-            "-DNOMCX",
-            "-DNOCLIPBOARD",
-            "-DNOMEMMGR",
-            "-DNOMETAFILE",
-            "-DNOMINMAX",
-            "-DNOOPENFILE",
-            "-DNOSERVICE",
-            "-DNOSOUND",
-            "-DNOTEXTMETRIC",
-            "-DSTRICT",
-            "-DNOMINMAX",
-        }, true) catch unreachable;
-        const cpp_flags = cppFlags(b, universal_flags, &.{}) catch unreachable;
-        const cpp_floe_flags = cppFlags(b, universal_floe_flags, &.{}) catch unreachable;
-        const objcpp_flags = objcppFlags(b, universal_flags, &.{}) catch unreachable;
-        const objcpp_floe_flags = objcppFlags(b, universal_floe_flags, &.{}) catch unreachable;
-
         const windows_ntddi_version: i64 = @intFromEnum(std.Target.Os.WindowsVersion.parse(min_windows_version) catch @panic("invalid win ver"));
 
         const build_config_step = b.addConfigHeader(.{
@@ -1285,7 +1291,10 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = build_context.optimise,
         });
-        stb_sprintf.addCSourceFile(.{ .file = b.path("third_party_libs/stb_sprintf.c"), .flags = universal_flags });
+        stb_sprintf.addCSourceFile(.{
+            .file = b.path("third_party_libs/stb_sprintf.c"),
+            .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
+        });
         stb_sprintf.addIncludePath(build_context.dep_stb.path(""));
         stb_sprintf.linkLibC();
 
@@ -1294,7 +1303,10 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = build_context.optimise,
         });
-        xxhash.addCSourceFile(.{ .file = build_context.dep_xxhash.path("xxhash.c"), .flags = universal_flags });
+        xxhash.addCSourceFile(.{
+            .file = build_context.dep_xxhash.path("xxhash.c"),
+            .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
+        });
         xxhash.linkLibC();
 
         const tracy = b.addStaticLibrary(.{
@@ -1305,7 +1317,7 @@ pub fn build(b: *std.Build) void {
         {
             tracy.addCSourceFile(.{
                 .file = build_context.dep_tracy.path("public/TracyClient.cpp"),
-                .flags = cpp_flags,
+                .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
             });
 
             switch (target.result.os.tag) {
@@ -1351,7 +1363,7 @@ pub fn build(b: *std.Build) void {
                     vitfx_path ++ "/src/synthesis/filters/formant_manager.cpp",
                     vitfx_path ++ "/wrapper.cpp",
                 },
-                .flags = cpp_flags,
+                .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
             });
             vitfx.addIncludePath(b.path(vitfx_path ++ "/src/synthesis"));
             vitfx.addIncludePath(b.path(vitfx_path ++ "/src/synthesis/framework"));
@@ -1378,6 +1390,8 @@ pub fn build(b: *std.Build) void {
                 "mmapio.c",
             };
 
+            const backtrace_flags = FlagsBuilder.init(&build_context, target, .{}).flags.items;
+
             libbacktrace.addCSourceFiles(.{
                 .root = libbacktrace_root_path,
                 .files = &.{
@@ -1391,7 +1405,7 @@ pub fn build(b: *std.Build) void {
                     "state.c",
                     "posix.c",
                 },
-                .flags = universal_flags,
+                .flags = backtrace_flags,
             });
 
             const backtrace_supported_header = b.addConfigHeader(
@@ -1451,7 +1465,7 @@ pub fn build(b: *std.Build) void {
                             "pecoff.c",
                             "alloc.c",
                         },
-                        .flags = universal_flags,
+                        .flags = backtrace_flags,
                     });
                 },
                 .macos => {
@@ -1463,12 +1477,12 @@ pub fn build(b: *std.Build) void {
                     libbacktrace.addCSourceFiles(.{
                         .root = libbacktrace_root_path,
                         .files = &posix_sources,
-                        .flags = universal_flags,
+                        .flags = backtrace_flags,
                     });
                     libbacktrace.addCSourceFiles(.{
                         .root = libbacktrace_root_path,
                         .files = &.{"macho.c"},
-                        .flags = universal_flags,
+                        .flags = backtrace_flags,
                     });
                 },
                 .linux => {
@@ -1483,12 +1497,12 @@ pub fn build(b: *std.Build) void {
                     libbacktrace.addCSourceFiles(.{
                         .root = libbacktrace_root_path,
                         .files = &.{"elf.c"},
-                        .flags = universal_flags,
+                        .flags = backtrace_flags,
                     });
                     libbacktrace.addCSourceFiles(.{
                         .root = libbacktrace_root_path,
                         .files = &posix_sources,
-                        .flags = universal_flags,
+                        .flags = backtrace_flags,
                     });
                 },
                 else => {
@@ -1511,6 +1525,8 @@ pub fn build(b: *std.Build) void {
             const pugl_path = build_context.dep_pugl.path("src");
             const pugl_version = std.hash.Fnv1a_32.hash(build_context.dep_pugl.builder.pkg_hash);
 
+            const pugl_flags = FlagsBuilder.init(&build_context, target, .{}).flags.items;
+
             pugl.addCSourceFiles(.{
                 .root = pugl_path,
                 .files = &.{
@@ -1518,7 +1534,7 @@ pub fn build(b: *std.Build) void {
                     "internal.c",
                     "internal.c",
                 },
-                .flags = universal_flags,
+                .flags = pugl_flags,
             });
 
             switch (target.result.os.tag) {
@@ -1530,7 +1546,7 @@ pub fn build(b: *std.Build) void {
                             "win_gl.c",
                             "win_stub.c",
                         },
-                        .flags = universal_flags,
+                        .flags = pugl_flags,
                     });
                     pugl.linkSystemLibrary("opengl32");
                     pugl.linkSystemLibrary("gdi32");
@@ -1544,15 +1560,13 @@ pub fn build(b: *std.Build) void {
                             "mac_gl.m",
                             "mac_stub.m",
                         },
-                        .flags = universalFlags(&build_context, target, &.{
-                            // Make unique names to avoid collisions with other versions of Pugl that might be
-                            // loaded in the application (other plugins). Objective-C uses a global namespace.
-                            b.fmt("-DPuglWindow=PuglWindow{d}", .{pugl_version}),
-                            b.fmt("-DPuglWindowDelegate=PuglWindowDelegate{d}", .{pugl_version}),
-                            b.fmt("-DPuglWrapperView=PuglWrapperView{d}", .{pugl_version}),
-                            b.fmt("-DPuglOpenGLView=PuglOpenGLView{d}", .{pugl_version}),
-                        }, true) catch @panic("OOM"),
+                        .flags = pugl_flags,
                     });
+                    pugl.root_module.addCMacro("PuglWindow", b.fmt("PuglWindow{d}", .{pugl_version}));
+                    pugl.root_module.addCMacro("PuglWindowDelegate", b.fmt("PuglWindowDelegate{d}", .{pugl_version}));
+                    pugl.root_module.addCMacro("PuglWrapperView", b.fmt("PuglWrapperView{d}", .{pugl_version}));
+                    pugl.root_module.addCMacro("PuglOpenGLView", b.fmt("PuglOpenGLView{d}", .{pugl_version}));
+
                     pugl.linkFramework("OpenGL");
                     pugl.linkFramework("CoreVideo");
                 },
@@ -1564,7 +1578,7 @@ pub fn build(b: *std.Build) void {
                             "x11_gl.c",
                             "x11_stub.c",
                         },
-                        .flags = universal_flags,
+                        .flags = pugl_flags,
                     });
                     pugl.root_module.addCMacro("USE_XRANDR", "0");
                     pugl.root_module.addCMacro("USE_XSYNC", "1");
@@ -1643,9 +1657,18 @@ pub fn build(b: *std.Build) void {
                 library_path ++ "/os/web_linux.cpp",
             };
 
+            const library_flags = FlagsBuilder.init(&build_context, target, .{
+                .full_diagnostics = true,
+                .ubsan = true,
+                .cpp = true,
+            }).flags.items;
+
             switch (target.result.os.tag) {
                 .windows => {
-                    library.addCSourceFiles(.{ .files = &windows_source_files, .flags = cpp_floe_flags });
+                    library.addCSourceFiles(.{
+                        .files = &windows_source_files,
+                        .flags = library_flags,
+                    });
                     library.linkSystemLibrary("dbghelp");
                     library.linkSystemLibrary("shlwapi");
                     library.linkSystemLibrary("ole32");
@@ -1657,15 +1680,25 @@ pub fn build(b: *std.Build) void {
                     library.linkSystemLibrary("api-ms-win-core-synch-l1-2-0");
                 },
                 .macos => {
-                    library.addCSourceFiles(.{ .files = &unix_source_files, .flags = cpp_floe_flags });
-                    library.addCSourceFiles(.{ .files = &macos_source_files, .flags = objcpp_floe_flags });
+                    library.addCSourceFiles(.{
+                        .files = &unix_source_files,
+                        .flags = library_flags,
+                    });
+                    library.addCSourceFiles(.{
+                        .files = &macos_source_files,
+                        .flags = FlagsBuilder.init(&build_context, target, .{
+                            .full_diagnostics = true,
+                            .ubsan = true,
+                            .objcpp = true,
+                        }).flags.items,
+                    });
                     library.linkFramework("Cocoa");
                     library.linkFramework("CoreFoundation");
                     library.linkFramework("AppKit");
                 },
                 .linux => {
-                    library.addCSourceFiles(.{ .files = &unix_source_files, .flags = cpp_floe_flags });
-                    library.addCSourceFiles(.{ .files = &linux_source_files, .flags = cpp_floe_flags });
+                    library.addCSourceFiles(.{ .files = &unix_source_files, .flags = library_flags });
+                    library.addCSourceFiles(.{ .files = &linux_source_files, .flags = library_flags });
                     library.linkSystemLibrary2("libcurl", .{ .use_pkg_config = use_pkg_config });
                 },
                 else => {
@@ -1673,7 +1706,7 @@ pub fn build(b: *std.Build) void {
                 },
             }
 
-            library.addCSourceFiles(.{ .files = &common_source_files, .flags = cpp_floe_flags });
+            library.addCSourceFiles(.{ .files = &common_source_files, .flags = library_flags });
             library.addConfigHeader(build_config_step);
             library.linkLibC();
             library.linkLibrary(tracy);
@@ -1692,7 +1725,7 @@ pub fn build(b: *std.Build) void {
         });
         stb_image.addCSourceFile(.{
             .file = b.path("third_party_libs/stb_image_impls.c"),
-            .flags = universalFlags(&build_context, target, &stb_image_config_flags, false) catch unreachable,
+            .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
         });
         stb_image.addIncludePath(build_context.dep_stb.path(""));
         stb_image.linkLibC();
@@ -1705,7 +1738,7 @@ pub fn build(b: *std.Build) void {
         dr_wav.addCSourceFile(
             .{
                 .file = b.path("third_party_libs/dr_wav_implementation.c"),
-                .flags = universal_flags,
+                .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
             },
         );
         dr_wav.addIncludePath(build_context.dep_dr_libs.path(""));
@@ -1725,7 +1758,7 @@ pub fn build(b: *std.Build) void {
                     "miniz_tinfl.c",
                     "miniz_zip.c",
                 },
-                .flags = universal_flags,
+                .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
             });
             miniz.addIncludePath(build_context.dep_miniz.path(""));
             miniz.linkLibC();
@@ -1738,6 +1771,8 @@ pub fn build(b: *std.Build) void {
             .optimize = build_context.optimise,
         });
         {
+            const flac_flags = FlagsBuilder.init(&build_context, target, .{}).flags.items;
+
             flac.addCSourceFiles(.{
                 .root = build_context.dep_flac.path("src/libFLAC"),
                 .files = &.{
@@ -1771,7 +1806,7 @@ pub fn build(b: *std.Build) void {
                     "stream_encoder_framing.c",
                     "window.c",
                 },
-                .flags = universal_flags,
+                .flags = flac_flags,
             });
 
             const config_header = b.addConfigHeader(
@@ -1813,6 +1848,7 @@ pub fn build(b: *std.Build) void {
                 flac.root_module.addCMacro("FLAC__NO_DLL", "");
                 flac.addCSourceFile(.{
                     .file = build_context.dep_flac.path("src/share/win_utf8_io/win_utf8_io.c"),
+                    .flags = flac_flags,
                 });
             }
         }
@@ -1823,18 +1859,18 @@ pub fn build(b: *std.Build) void {
             .optimize = build_context.optimise,
         });
         {
-            var fft_flags: []const []const u8 = &.{};
+            var fft_flags: FlagsBuilder = FlagsBuilder.init(&build_context, target, .{});
             if (target.result.os.tag == .macos) {
                 fft_convolver.linkFramework("Accelerate");
-                fft_flags = &.{ "-DAUDIOFFT_APPLE_ACCELERATE", "-ObjC++" };
+                fft_flags.addFlag("-DAUDIOFFT_APPLE_ACCELERATE");
+                fft_flags.addFlag("-ObjC++");
             } else {
                 fft_convolver.addCSourceFile(.{
                     .file = build_context.dep_pffft.path("pffft.c"),
-                    .flags = &.{},
+                    .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
                 });
-                fft_flags = &.{"-DAUDIOFFT_PFFFT"};
+                fft_flags.addFlag("-DAUDIOFFT_PFFFT");
             }
-            fft_flags = universalFlags(&build_context, target, fft_flags, true) catch unreachable;
 
             fft_convolver.addCSourceFiles(.{
                 .files = &.{
@@ -1844,7 +1880,7 @@ pub fn build(b: *std.Build) void {
                     "third_party_libs/FFTConvolver/Utilities.cpp",
                     "third_party_libs/FFTConvolver/wrapper.cpp",
                 },
-                .flags = fft_flags,
+                .flags = fft_flags.flags.items,
             });
             fft_convolver.linkLibCpp();
             fft_convolver.addIncludePath(build_context.dep_pffft.path(""));
@@ -1900,7 +1936,11 @@ pub fn build(b: *std.Build) void {
                     path ++ "/sample_library/sample_library_mdata.cpp",
                     path ++ "/sentry/sentry.cpp",
                 },
-                .flags = cpp_floe_flags,
+                .flags = FlagsBuilder.init(&build_context, target, .{
+                    .full_diagnostics = true,
+                    .ubsan = true,
+                    .cpp = true,
+                }).flags.items,
             });
 
             common_infrastructure.linkLibrary(lua);
@@ -1949,6 +1989,12 @@ pub fn build(b: *std.Build) void {
         });
         {
             const plugin_path = "src/plugin";
+
+            const plugin_flags = FlagsBuilder.init(&build_context, target, .{
+                .full_diagnostics = true,
+                .ubsan = true,
+                .cpp = true,
+            }).flags.items;
 
             plugin.addCSourceFiles(.{
                 .files = &(.{
@@ -2000,7 +2046,7 @@ pub fn build(b: *std.Build) void {
                     plugin_path ++ "/sample_lib_server/sample_library_server.cpp",
                     plugin_path ++ "/state/state_coding.cpp",
                 }),
-                .flags = cpp_floe_flags,
+                .flags = plugin_flags,
             });
 
             switch (target.result.os.tag) {
@@ -2009,7 +2055,7 @@ pub fn build(b: *std.Build) void {
                         .files = &.{
                             plugin_path ++ "/gui_framework/gui_platform_windows.cpp",
                         },
-                        .flags = cpp_floe_flags,
+                        .flags = plugin_flags,
                     });
                 },
                 .linux => {
@@ -2017,7 +2063,7 @@ pub fn build(b: *std.Build) void {
                         .files = &.{
                             plugin_path ++ "/gui_framework/gui_platform_linux.cpp",
                         },
-                        .flags = cpp_floe_flags,
+                        .flags = plugin_flags,
                     });
                 },
                 .macos => {
@@ -2025,7 +2071,11 @@ pub fn build(b: *std.Build) void {
                         .files = &.{
                             plugin_path ++ "/gui_framework/gui_platform_mac.mm",
                         },
-                        .flags = objcpp_floe_flags,
+                        .flags = FlagsBuilder.init(&build_context, target, .{
+                            .full_diagnostics = true,
+                            .ubsan = true,
+                            .objcpp = true,
+                        }).flags.items,
                     });
                 },
                 else => {
@@ -2083,7 +2133,11 @@ pub fn build(b: *std.Build) void {
                     "src/docs_preprocessor/docs_preprocessor.cpp",
                     "src/common_infrastructure/final_binary_type.cpp",
                 },
-                .flags = cpp_floe_flags,
+                .flags = FlagsBuilder.init(&build_context, target, .{
+                    .full_diagnostics = true,
+                    .ubsan = true,
+                    .cpp = true,
+                }).flags.items,
             });
             docs_preprocessor.root_module.addCMacro("FINAL_BINARY_TYPE", "DocsPreprocessor");
             docs_preprocessor.linkLibrary(common_infrastructure);
@@ -2105,7 +2159,11 @@ pub fn build(b: *std.Build) void {
                     "src/packager_tool/packager.cpp",
                     "src/common_infrastructure/final_binary_type.cpp",
                 },
-                .flags = cpp_floe_flags,
+                .flags = FlagsBuilder.init(&build_context, target, .{
+                    .full_diagnostics = true,
+                    .ubsan = true,
+                    .cpp = true,
+                }).flags.items,
             });
             packager.root_module.addCMacro("FINAL_BINARY_TYPE", "Packager");
             packager.linkLibrary(common_infrastructure);
@@ -2155,7 +2213,11 @@ pub fn build(b: *std.Build) void {
                     "src/plugin/plugin/plugin_entry.cpp",
                     "src/common_infrastructure/final_binary_type.cpp",
                 },
-                .flags = cpp_floe_flags,
+                .flags = FlagsBuilder.init(&build_context, target, .{
+                    .full_diagnostics = true,
+                    .ubsan = true,
+                    .cpp = true,
+                }).flags.items,
             });
             clap.root_module.addCMacro("FINAL_BINARY_TYPE", "Clap");
             clap.addConfigHeader(build_config_step);
@@ -2211,11 +2273,12 @@ pub fn build(b: *std.Build) void {
                 .optimize = build_context.optimise,
             });
             {
-                // disabling pulse audio because it was causing lots of stutters on my machine
                 miniaudio.addCSourceFile(.{
                     .file = b.path("third_party_libs/miniaudio.c"),
-                    .flags = universalFlags(&build_context, target, &.{"-DMA_NO_PULSEAUDIO"}, true) catch @panic("OOM"),
+                    .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
                 });
+                // Disabling pulse audio because it was causing lots of stutters on my machine.
+                miniaudio.root_module.addCMacro("MA_NO_PULSEAUDIO", "1");
                 miniaudio.linkLibC();
                 miniaudio.addIncludePath(build_context.dep_miniaudio.path(""));
                 switch (target.result.os.tag) {
@@ -2243,6 +2306,7 @@ pub fn build(b: *std.Build) void {
             });
             {
                 const pm_root = build_context.dep_portmidi.path("");
+                const pm_flags = FlagsBuilder.init(&build_context, target, .{}).flags.items;
                 portmidi.addCSourceFiles(.{
                     .root = pm_root,
                     .files = &.{
@@ -2250,7 +2314,7 @@ pub fn build(b: *std.Build) void {
                         "pm_common/pmutil.c",
                         "porttime/porttime.c",
                     },
-                    .flags = universal_flags,
+                    .flags = pm_flags,
                 });
                 switch (target.result.os.tag) {
                     .macos => {
@@ -2262,7 +2326,7 @@ pub fn build(b: *std.Build) void {
                                 "porttime/ptmacosx_cf.c",
                                 "porttime/ptmacosx_mach.c",
                             },
-                            .flags = universal_flags,
+                            .flags = pm_flags,
                         });
                         portmidi.linkFramework("CoreAudio");
                         portmidi.linkFramework("CoreMIDI");
@@ -2276,7 +2340,7 @@ pub fn build(b: *std.Build) void {
                                 "pm_win/pmwinmm.c",
                                 "porttime/ptwinmm.c",
                             },
-                            .flags = universal_flags,
+                            .flags = pm_flags,
                         });
                         portmidi.linkSystemLibrary("winmm");
                     },
@@ -2288,8 +2352,9 @@ pub fn build(b: *std.Build) void {
                                 "pm_linux/pmlinuxalsa.c",
                                 "porttime/ptlinux.c",
                             },
-                            .flags = universalFlags(&build_context, target, &.{"-DPMALSA"}, true) catch @panic("OOM"),
+                            .flags = pm_flags,
                         });
+                        portmidi.root_module.addCMacro("PMALSA", "1");
                         portmidi.linkSystemLibrary2("alsa", .{ .use_pkg_config = use_pkg_config });
                     },
                     else => {
@@ -2315,7 +2380,11 @@ pub fn build(b: *std.Build) void {
                     "src/plugin/plugin/plugin_entry.cpp",
                     "src/common_infrastructure/final_binary_type.cpp",
                 },
-                .flags = cpp_floe_flags,
+                .flags = FlagsBuilder.init(&build_context, target, .{
+                    .full_diagnostics = true,
+                    .ubsan = true,
+                    .cpp = true,
+                }).flags.items,
             });
 
             floe_standalone.root_module.addCMacro("FINAL_BINARY_TYPE", "Standalone");
@@ -2360,16 +2429,16 @@ pub fn build(b: *std.Build) void {
             .optimize = build_context.optimise,
         });
         if (!clap_only) {
-            var extra_flags = std.ArrayList([]const u8).init(b.allocator);
-            defer extra_flags.deinit();
+            var flags = FlagsBuilder.init(&build_context, target, .{
+                .ubsan = false,
+            });
             if (build_context.optimise == .Debug) {
-                extra_flags.append("-DDEVELOPMENT=1") catch unreachable;
+                flags.addFlag("-DDEVELOPMENT=1");
             } else {
-                extra_flags.append("-DRELEASE=1") catch unreachable;
+                flags.addFlag("-DRELEASE=1");
             }
             // Ignore warning about non-reproducible __DATE__ usage.
-            extra_flags.append("-Wno-date-time") catch unreachable;
-            const flags = universalFlags(&build_context, target, extra_flags.items, false) catch unreachable;
+            flags.addFlag("-Wno-date-time");
 
             {
                 vst3_sdk.addCSourceFiles(.{
@@ -2418,7 +2487,7 @@ pub fn build(b: *std.Build) void {
                         "public.sdk/source/vst/vstparameters.cpp",
                         "public.sdk/source/vst/utility/stringconvert.cpp",
                     },
-                    .flags = flags,
+                    .flags = flags.flags.items,
                 });
 
                 switch (target.result.os.tag) {
@@ -2499,7 +2568,7 @@ pub fn build(b: *std.Build) void {
                         "public.sdk/source/vst/hosting/processdata.cpp",
                         "public.sdk/source/vst/vstpresetfile.cpp",
                     },
-                    .flags = flags,
+                    .flags = flags.flags.items,
                 });
 
                 switch (target.result.os.tag) {
@@ -2507,7 +2576,7 @@ pub fn build(b: *std.Build) void {
                         vst3_validator.addCSourceFiles(.{
                             .root = build_context.dep_vst3_sdk.path(""),
                             .files = &.{"public.sdk/source/vst/hosting/module_win32.cpp"},
-                            .flags = flags,
+                            .flags = flags.flags.items,
                         });
                         vst3_validator.linkSystemLibrary("ole32");
                     },
@@ -2515,14 +2584,16 @@ pub fn build(b: *std.Build) void {
                         vst3_validator.addCSourceFiles(.{
                             .root = build_context.dep_vst3_sdk.path(""),
                             .files = &.{"public.sdk/source/vst/hosting/module_linux.cpp"},
-                            .flags = flags,
+                            .flags = flags.flags.items,
                         });
                     },
                     .macos => {
                         vst3_validator.addCSourceFiles(.{
                             .root = build_context.dep_vst3_sdk.path(""),
                             .files = &.{"public.sdk/source/vst/hosting/module_mac.mm"},
-                            .flags = objcpp_flags,
+                            .flags = FlagsBuilder.init(&build_context, target, .{
+                                .objcpp = true,
+                            }).flags.items,
                         });
                     },
                     else => {},
@@ -2554,41 +2625,42 @@ pub fn build(b: *std.Build) void {
                 .version = floe_version,
                 .pic = true,
             });
-            var extra_flags = std.ArrayList([]const u8).init(b.allocator);
-            defer extra_flags.deinit();
             switch (target.result.os.tag) {
                 .windows => {
-                    extra_flags.append("-DWIN=1") catch unreachable;
+                    vst3.root_module.addCMacro("WIN", "1");
                 },
                 .linux => {
-                    extra_flags.append("-DLIN=1") catch unreachable;
+                    vst3.root_module.addCMacro("LIN", "1");
                 },
                 .macos => {
-                    extra_flags.append("-DMAC=1") catch unreachable;
+                    vst3.root_module.addCMacro("MAC", "1");
                 },
                 else => {},
             }
             if (build_context.optimise == .Debug) {
-                extra_flags.append("-DDEVELOPMENT=1") catch unreachable;
+                vst3.root_module.addCMacro("DEVELOPMENT", "1");
             } else {
-                extra_flags.append("-DRELEASE=1") catch unreachable;
+                vst3.root_module.addCMacro("RELEASE", "1");
             }
-            extra_flags.append("-fno-char8_t") catch unreachable;
-            extra_flags.append("-DMACOS_USE_STD_FILESYSTEM=1") catch unreachable;
-            extra_flags.append("-DCLAP_WRAPPER_VERSION=\"0.11.0\"") catch unreachable;
-            extra_flags.append("-DSTATICALLY_LINKED_CLAP_ENTRY=1") catch unreachable;
-            const flags = cppFlags(
-                b,
-                universalFlags(&build_context, target, &.{}, false) catch unreachable,
-                extra_flags.items,
-            ) catch unreachable;
+            vst3.root_module.addCMacro("MACOS_USE_STD_FILESYSTEM", "1");
+            vst3.root_module.addCMacro("CLAP_WRAPPER_VERSION", "\"0.11.0\"");
+            vst3.root_module.addCMacro("STATICALLY_LINKED_CLAP_ENTRY", "1");
+
+            var flags = FlagsBuilder.init(&build_context, target, .{
+                .ubsan = false,
+            });
+            flags.addFlag("-fno-char8_t");
 
             vst3.addCSourceFiles(.{
                 .files = &.{
                     "src/plugin/plugin/plugin_entry.cpp",
                     "src/common_infrastructure/final_binary_type.cpp",
                 },
-                .flags = cpp_floe_flags,
+                .flags = FlagsBuilder.init(&build_context, target, .{
+                    .full_diagnostics = true,
+                    .ubsan = true,
+                    .cpp = true,
+                }).flags.items,
             });
             vst3.root_module.addCMacro("FINAL_BINARY_TYPE", "Vst3");
 
@@ -2607,30 +2679,30 @@ pub fn build(b: *std.Build) void {
                     "detail/shared/sha1.cpp",
                     "detail/clap/fsutil.cpp",
                 },
-                .flags = flags,
+                .flags = flags.flags.items,
             });
 
             switch (target.result.os.tag) {
                 .windows => {
                     vst3.addCSourceFile(.{
                         .file = build_context.dep_clap_wrapper.path("src/detail/os/windows.cpp"),
-                        .flags = flags,
+                        .flags = flags.flags.items,
                     });
                     vst3.addCSourceFiles(.{
                         .root = build_context.dep_vst3_sdk.path(""),
                         .files = &.{"public.sdk/source/main/dllmain.cpp"},
-                        .flags = flags,
+                        .flags = flags.flags.items,
                     });
                 },
                 .linux => {
                     vst3.addCSourceFile(.{
                         .file = build_context.dep_clap_wrapper.path("src/detail/os/linux.cpp"),
-                        .flags = flags,
+                        .flags = flags.flags.items,
                     });
                     vst3.addCSourceFiles(.{
                         .root = build_context.dep_vst3_sdk.path(""),
                         .files = &.{"public.sdk/source/main/linuxmain.cpp"},
-                        .flags = flags,
+                        .flags = flags.flags.items,
                     });
                 },
                 .macos => {
@@ -2640,12 +2712,12 @@ pub fn build(b: *std.Build) void {
                             "detail/os/macos.mm",
                             "detail/clap/mac_helpers.mm",
                         },
-                        .flags = flags,
+                        .flags = flags.flags.items,
                     });
                     vst3.addCSourceFiles(.{
                         .root = build_context.dep_vst3_sdk.path(""),
                         .files = &.{"public.sdk/source/main/macmain.cpp"},
-                        .flags = flags,
+                        .flags = flags.flags.items,
                     });
                 },
                 else => {},
@@ -2726,7 +2798,9 @@ pub fn build(b: *std.Build) void {
                         "ComponentBase.cpp",
                         "MusicDeviceBase.cpp",
                     },
-                    .flags = cpp_flags,
+                    .flags = FlagsBuilder.init(&build_context, target, .{
+                        .cpp = true,
+                    }).flags.items,
                 });
                 au_sdk.addIncludePath(build_context.dep_au_sdk.path("include"));
                 au_sdk.linkLibCpp();
@@ -2736,29 +2810,28 @@ pub fn build(b: *std.Build) void {
             {
                 const wrapper_src_path = build_context.dep_clap_wrapper.path("src");
 
-                var flags = std.ArrayList([]const u8).init(b.allocator);
+                var flags = FlagsBuilder.init(&build_context, target, .{});
                 switch (target.result.os.tag) {
                     .windows => {
-                        flags.append("-DWIN=1") catch unreachable;
+                        flags.addFlag("-DWIN=1");
                     },
                     .linux => {
-                        flags.append("-DLIN=1") catch unreachable;
+                        flags.addFlag("-DLIN=1");
                     },
                     .macos => {
-                        flags.append("-DMAC=1") catch unreachable;
+                        flags.addFlag("-DMAC=1");
                     },
                     else => {},
                 }
                 if (build_context.optimise == .Debug) {
-                    flags.append("-DDEVELOPMENT=1") catch unreachable;
+                    flags.addFlag("-DDEVELOPMENT=1");
                 } else {
-                    flags.append("-DRELEASE=1") catch unreachable;
+                    flags.addFlag("-DRELEASE=1");
                 }
-                flags.append("-fno-char8_t") catch unreachable;
-                flags.append("-DMACOS_USE_STD_FILESYSTEM=1") catch unreachable;
-                flags.append("-DCLAP_WRAPPER_VERSION=\"0.11.0\"") catch unreachable;
-                flags.append("-DSTATICALLY_LINKED_CLAP_ENTRY=1") catch unreachable;
-                flags.appendSlice(universal_flags) catch unreachable;
+                flags.addFlag("-fno-char8_t");
+                flags.addFlag("-DMACOS_USE_STD_FILESYSTEM=1");
+                flags.addFlag("-DCLAP_WRAPPER_VERSION=\"0.11.0\"");
+                flags.addFlag("-DSTATICALLY_LINKED_CLAP_ENTRY=1");
 
                 const au = b.addSharedLibrary(.{
                     .name = "Floe.component",
@@ -2767,10 +2840,17 @@ pub fn build(b: *std.Build) void {
                     .version = floe_version,
                     .pic = true,
                 });
-                au.addCSourceFiles(.{ .files = &.{
-                    "src/plugin/plugin/plugin_entry.cpp",
-                    "src/common_infrastructure/final_binary_type.cpp",
-                }, .flags = cpp_floe_flags });
+                au.addCSourceFiles(.{
+                    .files = &.{
+                        "src/plugin/plugin/plugin_entry.cpp",
+                        "src/common_infrastructure/final_binary_type.cpp",
+                    },
+                    .flags = FlagsBuilder.init(&build_context, target, .{
+                        .full_diagnostics = true,
+                        .ubsan = true,
+                        .objcpp = true,
+                    }).flags.items,
+                });
                 au.root_module.addCMacro("FINAL_BINARY_TYPE", "AuV2");
 
                 au.addCSourceFiles(.{
@@ -2787,7 +2867,7 @@ pub fn build(b: *std.Build) void {
                         "detail/auv2/parameter.cpp",
                         "detail/auv2/auv2_shared.mm",
                     },
-                    .flags = flags.items,
+                    .flags = flags.flags.items,
                 });
 
                 {
@@ -2972,6 +3052,12 @@ pub fn build(b: *std.Build) void {
                     }
                 }).writeManifest;
 
+                const flags = FlagsBuilder.init(&build_context, target, .{
+                    .full_diagnostics = true,
+                    .ubsan = true,
+                    .cpp = true,
+                });
+
                 const uninstaller_name = "Floe-Uninstaller";
                 const win_uninstaller = b.addExecutable(.{
                     .name = uninstaller_name,
@@ -2987,13 +3073,10 @@ pub fn build(b: *std.Build) void {
                 });
                 win_uninstaller.subsystem = .Windows;
 
-                var flags = std.ArrayList([]const u8).init(b.allocator);
-                flags.append(
-                    b.fmt(
-                        "-DUNINSTALLER_PATH_RELATIVE_BUILD_ROOT=\"zig-out/x86_64-windows/{s}\"",
-                        .{win_uninstaller.out_filename},
-                    ),
-                ) catch unreachable;
+                win_uninstaller.root_module.addCMacro(
+                    "UNINSTALLER_PATH_RELATIVE_BUILD_ROOT",
+                    b.fmt("\"zig-out/x86_64-windows/{s}\"", .{win_uninstaller.out_filename}),
+                );
 
                 win_uninstaller.addCSourceFiles(.{
                     .files = &.{
@@ -3001,7 +3084,7 @@ pub fn build(b: *std.Build) void {
                         installer_path ++ "/gui.cpp",
                         "src/common_infrastructure/final_binary_type.cpp",
                     },
-                    .flags = cppFlags(b, cpp_floe_flags, flags.items) catch unreachable,
+                    .flags = flags.flags.items,
                 });
                 win_uninstaller.root_module.addCMacro("FINAL_BINARY_TYPE", "WindowsUninstaller");
                 win_uninstaller.linkSystemLibrary("gdi32");
@@ -3048,22 +3131,27 @@ pub fn build(b: *std.Build) void {
                 win_installer.subsystem = .Windows;
 
                 if (sidebar_image != null) {
-                    flags.append(
-                        b.fmt(
-                            "-DSIDEBAR_IMAGE_PATH=\"{s}\"",
-                            .{sidebar_image.?.relative_path},
-                        ),
-                    ) catch unreachable;
+                    win_installer.root_module.addCMacro(
+                        "SIDEBAR_IMAGE_PATH",
+                        b.fmt("\"{s}\"", .{sidebar_image.?.relative_path}),
+                    );
                 }
-                flags.append(
-                    "-DCLAP_PLUGIN_PATH_RELATIVE_BUILD_ROOT=\"zig-out/x86_64-windows/Floe.clap\"",
-                ) catch unreachable;
-                flags.append("-DVST3_PLUGIN_PATH_RELATIVE_BUILD_ROOT=\"zig-out/x86_64-windows/Floe.vst3\"") catch unreachable;
+                win_installer.root_module.addCMacro(
+                    "VST3_PLUGIN_PATH_RELATIVE_BUILD_ROOT",
+                    "\"zig-out/x86_64-windows/Floe.vst3\"",
+                );
+                win_installer.root_module.addCMacro(
+                    "CLAP_PLUGIN_PATH_RELATIVE_BUILD_ROOT",
+                    "\"zig-out/x86_64-windows/Floe.clap\"",
+                );
+                win_installer.root_module.addCMacro(
+                    "UNINSTALLER_PATH_RELATIVE_BUILD_ROOT",
+                    b.fmt("\"zig-out/x86_64-windows/{s}\"", .{win_uninstaller.out_filename}),
+                );
                 win_installer.addWin32ResourceFile(.{
                     .file = b.path(installer_path ++ "/resources.rc"),
-                    .flags = flags.items,
+                    .flags = win_installer.root_module.c_macros.items,
                 });
-                flags.appendSlice(cpp_floe_flags) catch unreachable;
 
                 win_installer.addCSourceFiles(.{
                     .files = &.{
@@ -3071,7 +3159,7 @@ pub fn build(b: *std.Build) void {
                         installer_path ++ "/gui.cpp",
                         "src/common_infrastructure/final_binary_type.cpp",
                     },
-                    .flags = flags.items,
+                    .flags = flags.flags.items,
                 });
 
                 win_installer.root_module.addCMacro("FINAL_BINARY_TYPE", "WindowsInstaller");
@@ -3126,10 +3214,17 @@ pub fn build(b: *std.Build) void {
                 .target = target,
                 .optimize = build_context.optimise,
             });
-            tests.addCSourceFiles(.{ .files = &.{
-                "src/tests/tests_main.cpp",
-                "src/common_infrastructure/final_binary_type.cpp",
-            }, .flags = cpp_floe_flags });
+            tests.addCSourceFiles(.{
+                .files = &.{
+                    "src/tests/tests_main.cpp",
+                    "src/common_infrastructure/final_binary_type.cpp",
+                },
+                .flags = FlagsBuilder.init(&build_context, target, .{
+                    .full_diagnostics = true,
+                    .ubsan = true,
+                    .cpp = true,
+                }).flags.items,
+            });
             tests.root_module.addCMacro("FINAL_BINARY_TYPE", "Tests");
             tests.addConfigHeader(build_config_step);
             tests.linkLibrary(plugin);
