@@ -10,6 +10,7 @@ native_binary_dir := join("zig-out", native_arch_os_pair)
 native_binary_dir_abs := join(justfile_directory(), native_binary_dir)
 all_src_files := 'fd . -e .mm -e .cpp -e .hpp -e .h src' 
 cache_dir := ".floe-cache"
+zig_global_cache_dir := ".zig-cache-global"
 release_files_dir := join(justfile_directory(), "zig-out", "release") # for final release files
 run_windows_program := if os() == 'windows' {
   ''
@@ -44,7 +45,11 @@ default:
 alias pre-debug := default
 
 build target_os='native' mode='development':
-  zig build compile -Dtargets={{target_os}} -Dbuild-mode={{mode}} -Dexternal-resources="{{external_resources}}"
+  zig build compile \
+      -Dtargets={{target_os}} \
+      -Dbuild-mode={{mode}} \
+      -Dexternal-resources="{{external_resources}}" \
+      --global-cache-dir {{zig_global_cache_dir}}
   just patch-rpath
 
 
@@ -71,10 +76,13 @@ patch-rpath:
   fi
 
 build-tracy:
-  zig build compile -Dtargets=native -Dbuild-mode=development -Dtracy
+  zig build compile -Dtargets=native -Dbuild-mode=development -Dtracy --global-cache-dir {{zig_global_cache_dir}}
 
 build-release target_os='native':
-  zig build compile -Dtargets={{target_os}} -Dbuild-mode=production -Dexternal-resources="{{external_resources}}"
+  zig build compile -Dtargets={{target_os}} \
+      -Dbuild-mode=production \
+      -Dexternal-resources="{{external_resources}}" \
+      --global-cache-dir {{zig_global_cache_dir}}
 
 # build and report compile-time statistics
 build-timed target_os='native':
