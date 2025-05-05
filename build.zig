@@ -1275,7 +1275,7 @@ pub fn build(b: *std.Build) void {
             .FLOE_GLOBAL_ZIG_CACHE_PATH = b.graph.global_cache_root.path,
             .FLOE_VENDOR = floe_vendor,
             .FLOE_CLAP_ID = floe_clap_id,
-            .ZIG_BACKTRACE = target.result.os.tag != .macos,
+            .ZIG_BACKTRACE = true,
             .IS_WINDOWS = target.result.os.tag == .windows,
             .IS_MACOS = target.result.os.tag == .macos,
             .IS_LINUX = target.result.os.tag == .linux,
