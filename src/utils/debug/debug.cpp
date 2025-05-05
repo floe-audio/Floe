@@ -457,6 +457,7 @@ static int NumSkipFrames(StacktraceSkipOptions skip) {
     return CheckedCast<int>(skip.TryGetOpt<StacktraceFrames>().ValueOr(StacktraceFrames {1}));
 }
 
+#if !ZIG_BACKTRACE
 static String Filename(char const* filename) {
     if (!filename) return ""_s;
     auto result = FromNullTerminated(filename);
@@ -470,6 +471,7 @@ static String Filename(char const* filename) {
         TrimStartIfMatches(result, ConcatArrays(FLOE_PROJECT_ROOT_PATH ""_ca, path::k_dir_separator_str));
     return result;
 }
+#endif
 
 Optional<StacktraceStack> CurrentStacktrace(StacktraceSkipOptions skip) {
     auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
@@ -589,7 +591,7 @@ ErrorCodeOr<void> WriteStacktrace(Span<uintptr const> stack, Writer writer, Stac
                    FrameInfo const frame {
                        .address = symbol->address,
                        .function_name = FromNullTerminated(symbol->name),
-                       .filename = symbol->file ? Filename(symbol->file)
+                       .filename = symbol->file ? FromNullTerminated(symbol->file)
                                                 : FromNullTerminated(symbol->compile_unit_name),
                        .line = symbol->line,
                        .column = symbol->column,
@@ -632,7 +634,7 @@ MutableString StacktraceString(Span<uintptr const> stack, Allocator& a, Stacktra
                    FrameInfo const frame {
                        .address = symbol->address,
                        .function_name = FromNullTerminated(symbol->name),
-                       .filename = symbol->file ? Filename(symbol->file)
+                       .filename = symbol->file ? FromNullTerminated(symbol->file)
                                                 : FromNullTerminated(symbol->compile_unit_name),
                        .line = symbol->line,
                        .column = symbol->column,
@@ -678,7 +680,7 @@ void StacktraceToCallback(Span<uintptr const> stack,
                    FrameInfo const frame {
                        .address = symbol->address,
                        .function_name = FromNullTerminated(symbol->name),
-                       .filename = symbol->file ? Filename(symbol->file)
+                       .filename = symbol->file ? FromNullTerminated(symbol->file)
                                                 : FromNullTerminated(symbol->compile_unit_name),
                        .line = symbol->line,
                        .column = symbol->column,

@@ -339,20 +339,8 @@ struct AddEventOptions {
 // checking for Windows filepaths.
 static bool ShouldSendFilepath(String path) {
     if (path.size == 0) return false;
-
-    if (path::IsAbsolute(path)) {
-        // We allow paths from Zig's global cache. These are paths from the build machine and are therefore
-        // safe. They will contain information about our external dependencies.
-        String const zig_cache_path = FLOE_GLOBAL_ZIG_CACHE_PATH;
-        if (path.size > zig_cache_path.size && StartsWithSpan(path, zig_cache_path) &&
-            path::IsDirectorySeparator(path[zig_cache_path.size]))
-            return true;
-
-        return false;
-    }
-
-    // Relative paths are ok.
-    return true;
+    if (path::IsAbsolute(path)) return false;
+    return true; // Relative paths are ok.
 }
 
 // thread-safe (for Sentry), signal-safe if signal_safe is true
