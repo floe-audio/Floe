@@ -213,10 +213,19 @@ export fn SymbolInfo(
 
         const name_ptr = temp_allocator.dupeZ(u8, symbol.name) catch continue;
         const compile_unit_name_ptr = temp_allocator.dupeZ(u8, symbol.compile_unit_name) catch continue;
-        const file_ptr: ?[*:0]const u8 = if (symbol.source_location) |loc|
+        const file_ptr: ?[*:0]u8 = if (symbol.source_location) |loc|
             (temp_allocator.dupeZ(u8, loc.file_name) catch continue)
         else
             null;
+
+        if (native_os == .windows) {
+            if (file_ptr) |file| {
+                var i: usize = 0;
+                while (file[i] != 0) : (i += 1) {
+                    if (file[i] == '\\') file[i] = '/';
+                }
+            }
+        }
 
         const line: c_int = if (symbol.source_location) |loc|
             @intCast(loc.line)
