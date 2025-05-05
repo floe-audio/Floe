@@ -863,14 +863,15 @@ const FlagsBuilder = struct {
             try self.flags.append("-fno-use-cxa-atexit");
         }
 
-        // We want __builtin_FILE() and __FILE__ to be portable because we use this information in stacktraces and
-        // logging so we change the absolute paths of all files to be relative to the build root.
+        // We want __builtin_FILE(), __FILE__ and debug info to be portable because we use this information in
+        // stacktraces and logging so we change the absolute paths of all files to be relative to the build root.
         // __FILE__, __builtin_FILE(), and DWARF info should be made relative.
         // -ffile-prefix-map=OLD=NEW is an alias for both -fdebug-prefix-map and -fmacro-prefix-map
         try self.flags.append(context.b.fmt("-ffile-prefix-map={s}{s}=", .{
             context.b.pathFromRoot(""),
             std.fs.path.sep_str,
         }));
+
         try self.flags.append("-fvisibility=hidden");
 
         if (context.build_mode != .production and context.enable_tracy) {
