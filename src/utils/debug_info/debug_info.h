@@ -30,6 +30,13 @@ struct SymbolInfoData {
 
 typedef void (*SymbolInfoCallback)(void* user_data, struct SymbolInfoData const* symbol_info);
 
+struct ModuleData {
+    size_t image_addr;
+    size_t image_size;
+    unsigned char debug_id[16];
+};
+struct ModuleData GetModuleData(SelfModuleHandle module_info);
+
 // Fast, thread-safe and signal-safe.
 int IsAddressInCurrentModule(SelfModuleHandle module_info, size_t address);
 

@@ -173,6 +173,8 @@ fn lookupModuleDyld(self: *SelfInfo, address: usize) !*Module {
             )[0..header.sizeofcmds]),
         };
 
+        var debug_id: ?[16]u8 = null;
+
         var unwind_info: ?[]const u8 = null;
         var eh_frame: ?[]const u8 = null;
         while (it.next()) |cmd| switch (cmd.cmd()) {
@@ -210,11 +212,16 @@ fn lookupModuleDyld(self: *SelfInfo, address: usize) !*Module {
                     obj_di.vmaddr_slide = vmaddr_slide;
                     obj_di.unwind_info = unwind_info;
                     obj_di.eh_frame = eh_frame;
+                    obj_di.debug_id = debug_id;
 
                     try self.address_map.putNoClobber(base_address, obj_di);
 
                     return obj_di;
                 }
+            },
+            .UUID => {
+                const segment_cmd = cmd.cast(macho.uuid_command).?;
+                debug_id = segment_cmd.uuid;
             },
             else => {},
         };
@@ -525,6 +532,9 @@ pub const Module = switch (native_os) {
         // Backed by the in-memory sections mapped by the loader
         unwind_info: ?[]const u8 = null,
         eh_frame: ?[]const u8 = null,
+
+        // NOTE(Sam): added this field
+        debug_id: ?[16]u8 = null,
 
         const OFileTable = std.StringHashMap(OFileInfo);
         const OFileInfo = struct {

@@ -169,6 +169,30 @@ export fn DestroySelfModuleInfo(module_info: c.SelfModuleHandle) callconv(.c) vo
     std.heap.c_allocator.destroy(self);
 }
 
+// struct ModuleData {
+//     size_t image_addr;
+//     size_t image_size;
+//     unsigned char debug_id[16];
+// };
+// struct ModuleData GetModuleData(SelfModuleHandle module_info);
+
+export fn GetModuleData(module_info: c.SelfModuleHandle) callconv(.c) c.ModuleData {
+    if (module_info == null) return c.ModuleData{};
+
+    const self: *ModuleInfo = @alignCast(@ptrCast(module_info));
+
+    var result: c.ModuleData = .{
+        .image_addr = self.module.base_address,
+        .image_size = 0, // TODO:
+    };
+    if (self.module.debug_id) |debug_id| {
+        result.debug_id = debug_id;
+    } else {
+        @memset(&result.debug_id, 0);
+    }
+    return result;
+}
+
 fn InModule(self: *ModuleInfo, address: usize) bool {
     for (self.segments.items) |segment| {
         if (address >= segment.start and address < segment.end) return true;
