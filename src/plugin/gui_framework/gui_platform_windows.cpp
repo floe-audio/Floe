@@ -267,34 +267,38 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePicker
         nullptr,
         0,
         [](void* p) -> DWORD {
-            auto& platform = *(GuiPlatform*)p;
-            auto& native_file_picker = platform.native_file_picker->As<NativeFilePicker>();
+            try {
+                auto& platform = *(GuiPlatform*)p;
+                auto& native_file_picker = platform.native_file_picker->As<NativeFilePicker>();
 
-            auto const hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-            ASSERT(SUCCEEDED(hr), "new thread couldn't initialise COM");
-            DEFER { CoUninitialize(); };
+                auto const hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+                ASSERT(SUCCEEDED(hr), "new thread couldn't initialise COM");
+                DEFER { CoUninitialize(); };
 
-            native_file_picker.result = TRY_OR(
-                RunFilePicker(native_file_picker.args,
-                              native_file_picker.thread_arena,
-                              native_file_picker.parent),
-                {
-                    ReportError(ErrorLevel::Error, SourceLocationHash(), "file picker failed: {}", error);
-                    return 0;
-                });
-
-            // We have results, now we need to send them back to the main thread.
-            PuglEvent const event {
-                .client =
+                native_file_picker.result = TRY_OR(
+                    RunFilePicker(native_file_picker.args,
+                                  native_file_picker.thread_arena,
+                                  native_file_picker.parent),
                     {
-                        .type = PUGL_CLIENT,
-                        .flags = PUGL_IS_SEND_EVENT,
-                        .data1 = k_file_picker_message_data,
-                        .data2 = k_file_picker_message_data,
-                    },
-            };
-            ASSERT(puglSendEvent(platform.view, &event) == PUGL_SUCCESS);
+                        ReportError(ErrorLevel::Error, SourceLocationHash(), "file picker failed: {}", error);
+                        return 0;
+                    });
 
+                // We have results, now we need to send them back to the main thread.
+                PuglEvent const event {
+                    .client =
+                        {
+                            .type = PUGL_CLIENT,
+                            .flags = PUGL_IS_SEND_EVENT,
+                            .data1 = k_file_picker_message_data,
+                            .data2 = k_file_picker_message_data,
+                        },
+                };
+                ASSERT(puglSendEvent(platform.view, &event) == PUGL_SUCCESS);
+
+                return 0;
+            } catch (PanicException) {
+            }
             return 0;
         },
         &platform,
