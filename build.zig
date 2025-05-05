@@ -1286,22 +1286,28 @@ pub fn build(b: *std.Build) void {
             .SENTRY_DSN = b.graph.env_map.get("SENTRY_DSN"),
         });
 
-        var stb_sprintf = b.addObject(.{
-            .name = "stb_sprintf",
+        const module_options: std.Build.Module.CreateOptions = .{
             .target = target,
             .optimize = build_context.optimise,
+            .strip = false,
+            .pic = true,
+            .link_libc = true,
+            .omit_frame_pointer = false,
+        };
+
+        var stb_sprintf = b.addObject(.{
+            .name = "stb_sprintf",
+            .root_module = b.createModule(module_options),
         });
         stb_sprintf.addCSourceFile(.{
             .file = b.path("third_party_libs/stb_sprintf.c"),
             .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
         });
         stb_sprintf.addIncludePath(build_context.dep_stb.path(""));
-        stb_sprintf.linkLibC();
 
         var xxhash = b.addObject(.{
             .name = "xxhash",
-            .target = target,
-            .optimize = build_context.optimise,
+            .root_module = b.createModule(module_options),
         });
         xxhash.addCSourceFile(.{
             .file = build_context.dep_xxhash.path("xxhash.c"),
@@ -1311,8 +1317,7 @@ pub fn build(b: *std.Build) void {
 
         const tracy = b.addStaticLibrary(.{
             .name = "tracy",
-            .target = target,
-            .optimize = build_context.optimise,
+            .root_module = b.createModule(module_options),
         });
         {
             tracy.addCSourceFile(.{
@@ -1336,8 +1341,7 @@ pub fn build(b: *std.Build) void {
 
         const vitfx = b.addStaticLibrary(.{
             .name = "vitfx",
-            .target = target,
-            .optimize = build_context.optimise,
+            .root_module = b.createModule(module_options),
         });
         {
             const vitfx_path = "third_party_libs/vitfx";
@@ -1379,9 +1383,7 @@ pub fn build(b: *std.Build) void {
 
         const libbacktrace = b.addStaticLibrary(.{
             .name = "backtrace",
-            .target = target,
-            .optimize = build_context.optimise,
-            .strip = false,
+            .root_module = b.createModule(module_options),
         });
         if (true) {
             const libbacktrace_root_path = build_context.dep_libbacktrace.path("");
@@ -1518,8 +1520,7 @@ pub fn build(b: *std.Build) void {
 
         const pugl = b.addStaticLibrary(.{
             .name = "pugl",
-            .target = target,
-            .optimize = build_context.optimise,
+            .root_module = b.createModule(module_options),
         });
         {
             const pugl_path = build_context.dep_pugl.path("src");
@@ -1598,12 +1599,11 @@ pub fn build(b: *std.Build) void {
             applyUniversalSettings(&build_context, pugl);
         }
 
+        var debug_info_module_options = module_options;
+        debug_info_module_options.root_source_file = b.path("src/utils/debug_info/debug_info.zig");
         const debug_info_lib = b.addObject(.{
             .name = "debug_info_lib",
-            .target = target,
-            .optimize = build_context.optimise,
-            .root_source_file = b.path("src/utils/debug_info/debug_info.zig"),
-            .pic = true,
+            .root_module = b.createModule(debug_info_module_options),
         });
         debug_info_lib.linkLibC(); // Means better debug info on Linux
         debug_info_lib.addIncludePath(b.path("src/utils/debug_info"));
@@ -1611,8 +1611,7 @@ pub fn build(b: *std.Build) void {
         // TODO: does this need to be a library? is foundation/os/plugin all linked together?
         const library = b.addStaticLibrary(.{
             .name = "library",
-            .target = target,
-            .optimize = build_context.optimise,
+            .root_module = b.createModule(module_options),
         });
         {
             const library_path = "src";
@@ -1720,8 +1719,7 @@ pub fn build(b: *std.Build) void {
 
         var stb_image = b.addObject(.{
             .name = "stb_image",
-            .target = target,
-            .optimize = build_context.optimise,
+            .root_module = b.createModule(module_options),
         });
         stb_image.addCSourceFile(.{
             .file = b.path("third_party_libs/stb_image_impls.c"),
@@ -1732,8 +1730,7 @@ pub fn build(b: *std.Build) void {
 
         var dr_wav = b.addObject(.{
             .name = "dr_wav",
-            .target = target,
-            .optimize = build_context.optimise,
+            .root_module = b.createModule(module_options),
         });
         dr_wav.addCSourceFile(
             .{
@@ -1746,8 +1743,7 @@ pub fn build(b: *std.Build) void {
 
         var miniz = b.addStaticLibrary(.{
             .name = "miniz",
-            .target = target,
-            .optimize = build_context.optimise,
+            .root_module = b.createModule(module_options),
         });
         {
             miniz.addCSourceFiles(.{
@@ -1767,8 +1763,7 @@ pub fn build(b: *std.Build) void {
 
         const flac = b.addStaticLibrary(.{
             .name = "flac",
-            .target = target,
-            .optimize = build_context.optimise,
+            .root_module = b.createModule(module_options),
         });
         {
             const flac_flags = FlagsBuilder.init(&build_context, target, .{}).flags.items;
@@ -1855,8 +1850,7 @@ pub fn build(b: *std.Build) void {
 
         const fft_convolver = b.addStaticLibrary(.{
             .name = "fftconvolver",
-            .target = target,
-            .optimize = build_context.optimise,
+            .root_module = b.createModule(module_options),
         });
         {
             var fft_flags: FlagsBuilder = FlagsBuilder.init(&build_context, target, .{});
@@ -1889,8 +1883,7 @@ pub fn build(b: *std.Build) void {
 
         const common_infrastructure = b.addStaticLibrary(.{
             .name = "common_infrastructure",
-            .target = target,
-            .optimize = build_context.optimise,
+            .root_module = b.createModule(module_options),
         });
         {
             const lua = b.addStaticLibrary(.{
@@ -1957,12 +1950,11 @@ pub fn build(b: *std.Build) void {
 
         var embedded_files: ?*std.Build.Step.Compile = null;
         if (!embed_files_workaround) {
+            var emdedded_files_module_options = module_options;
+            emdedded_files_module_options.root_source_file = b.path("build_resources/embedded_files.zig");
             embedded_files = b.addObject(.{
                 .name = "embedded_files",
-                .root_source_file = b.path("build_resources/embedded_files.zig"),
-                .target = target,
-                .optimize = build_context.optimise,
-                .pic = true,
+                .root_module = b.createModule(emdedded_files_module_options),
             });
             {
                 var embedded_files_options = b.addOptions();
@@ -1984,8 +1976,7 @@ pub fn build(b: *std.Build) void {
 
         const plugin = b.addStaticLibrary(.{
             .name = "plugin",
-            .target = target,
-            .optimize = build_context.optimise,
+            .root_module = b.createModule(module_options),
         });
         {
             const plugin_path = "src/plugin";
@@ -2125,8 +2116,7 @@ pub fn build(b: *std.Build) void {
         if (!clap_only and build_context.build_mode != .production) {
             var docs_preprocessor = b.addExecutable(.{
                 .name = "docs_preprocessor",
-                .target = target,
-                .optimize = build_context.optimise,
+                .root_module = b.createModule(module_options),
             });
             docs_preprocessor.addCSourceFiles(.{
                 .files = &.{
@@ -2151,8 +2141,8 @@ pub fn build(b: *std.Build) void {
         if (!clap_only) {
             var packager = b.addExecutable(.{
                 .name = "floe-packager",
-                .target = target,
-                .optimize = build_context.optimise,
+                .root_module = b.createModule(module_options),
+                .version = floe_version,
             });
             packager.addCSourceFiles(.{
                 .files = &.{
@@ -2203,10 +2193,8 @@ pub fn build(b: *std.Build) void {
         {
             const clap = b.addSharedLibrary(.{
                 .name = "Floe.clap",
-                .target = target,
-                .optimize = build_context.optimise,
+                .root_module = b.createModule(module_options),
                 .version = floe_version,
-                .pic = true,
             });
             clap.addCSourceFiles(.{
                 .files = &.{
@@ -2269,8 +2257,7 @@ pub fn build(b: *std.Build) void {
         if (!clap_only and build_context.build_mode != .production) {
             const miniaudio = b.addStaticLibrary(.{
                 .name = "miniaudio",
-                .target = target,
-                .optimize = build_context.optimise,
+                .root_module = b.createModule(module_options),
             });
             {
                 miniaudio.addCSourceFile(.{
@@ -2300,9 +2287,7 @@ pub fn build(b: *std.Build) void {
 
             const portmidi = b.addStaticLibrary(.{
                 .name = "portmidi",
-                .target = target,
-                .optimize = build_context.optimise,
-                .version = floe_version,
+                .root_module = b.createModule(module_options),
             });
             {
                 const pm_root = build_context.dep_portmidi.path("");
@@ -2369,9 +2354,7 @@ pub fn build(b: *std.Build) void {
 
             const floe_standalone = b.addExecutable(.{
                 .name = "floe_standalone",
-                .target = target,
-                .optimize = build_context.optimise,
-                .version = floe_version,
+                .root_module = b.createModule(module_options),
             });
 
             floe_standalone.addCSourceFiles(.{
@@ -2420,13 +2403,11 @@ pub fn build(b: *std.Build) void {
 
         const vst3_sdk = b.addStaticLibrary(.{
             .name = "VST3",
-            .target = target,
-            .optimize = build_context.optimise,
+            .root_module = b.createModule(module_options),
         });
         const vst3_validator = b.addExecutable(.{
             .name = "VST3-Validator",
-            .target = target,
-            .optimize = build_context.optimise,
+            .root_module = b.createModule(module_options),
         });
         if (!clap_only) {
             var flags = FlagsBuilder.init(&build_context, target, .{
@@ -2620,10 +2601,8 @@ pub fn build(b: *std.Build) void {
         if (!clap_only) {
             const vst3 = b.addSharedLibrary(.{
                 .name = "Floe.vst3",
-                .target = target,
-                .optimize = build_context.optimise,
                 .version = floe_version,
-                .pic = true,
+                .root_module = b.createModule(module_options),
             });
             switch (target.result.os.tag) {
                 .windows => {
@@ -2778,8 +2757,7 @@ pub fn build(b: *std.Build) void {
         if (!clap_only and target.result.os.tag == .macos) {
             const au_sdk = b.addStaticLibrary(.{
                 .name = "AU",
-                .target = target,
-                .optimize = build_context.optimise,
+                .root_module = b.createModule(module_options),
             });
             {
                 au_sdk.addCSourceFiles(.{
@@ -2835,10 +2813,8 @@ pub fn build(b: *std.Build) void {
 
                 const au = b.addSharedLibrary(.{
                     .name = "Floe.component",
-                    .target = target,
-                    .optimize = build_context.optimise,
+                    .root_module = b.createModule(module_options),
                     .version = floe_version,
-                    .pic = true,
                 });
                 au.addCSourceFiles(.{
                     .files = &.{
@@ -3061,8 +3037,7 @@ pub fn build(b: *std.Build) void {
                 const uninstaller_name = "Floe-Uninstaller";
                 const win_uninstaller = b.addExecutable(.{
                     .name = uninstaller_name,
-                    .target = target,
-                    .optimize = build_context.optimise,
+                    .root_module = b.createModule(module_options),
                     .version = floe_version,
                     .win32_manifest = b.path(writeManifest(
                         b,
@@ -3118,8 +3093,7 @@ pub fn build(b: *std.Build) void {
                 const win_installer_description = "Installer for Floe plugins";
                 const win_installer = b.addExecutable(.{
                     .name = b.fmt("Floe-Installer-v{s}", .{ .version = floe_version_string.? }),
-                    .target = target,
-                    .optimize = build_context.optimise,
+                    .root_module = b.createModule(module_options),
                     .version = floe_version,
                     .win32_manifest = b.path(writeManifest(
                         b,
@@ -3211,8 +3185,7 @@ pub fn build(b: *std.Build) void {
         if (!clap_only and build_context.build_mode != .production) {
             const tests = b.addExecutable(.{
                 .name = "tests",
-                .target = target,
-                .optimize = build_context.optimise,
+                .root_module = b.createModule(module_options),
             });
             tests.addCSourceFiles(.{
                 .files = &.{
