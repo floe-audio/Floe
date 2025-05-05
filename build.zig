@@ -970,12 +970,8 @@ const FlagsBuilder = struct {
 fn applyUniversalSettings(context: *BuildContext, step: *std.Build.Step.Compile) void {
     var b = context.b;
     // NOTE (May 2025, Zig 0.14): LTO on Windows results in debug_info generation that fails to parse with Zig's
-    // Dwarf parser (InvalidDebugInfo). We skip LTO for now.
-    if (step.rootModuleTarget().os.tag != .macos and step.rootModuleTarget().os.tag != .windows) {
-        // TODO: try LTO on mac again
-        // LTO doesn't seem like it's supported on mac
-        step.want_lto = context.build_mode == .production;
-    }
+    // Dwarf parser (InvalidDebugInfo). We've previously had issues on macOS too. So we disable it for now.
+    step.want_lto = false;
     step.rdynamic = true;
     step.linkLibC();
 
