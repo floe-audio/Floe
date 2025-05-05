@@ -11,9 +11,10 @@
 #include "utils/debug_info/debug_info.h"
 #else
 #include <backtrace.h>
-#endif
 #include <cxxabi.h>
 #include <stdlib.h> // free
+#endif
+#include <signal.h>
 
 #include "foundation/foundation.hpp"
 #include "os/filesystem.hpp"
@@ -47,35 +48,64 @@ static Atomic<bool> g_panic_occurred {};
 bool PanicOccurred() { return g_panic_occurred.Load(LoadMemoryOrder::Acquire); }
 void ResetPanic() { g_panic_occurred.Store(false, StoreMemoryOrder::Release); }
 
+// signal-safe
+static void WriteDisasterFile(char const* message_c_str, SourceLocation loc) {
+    static thread_local bool writing_disaster_file {};
+    if (writing_disaster_file) return;
+    writing_disaster_file = true;
+    DEFER { writing_disaster_file = false; };
+    auto const log_folder = TRY_OPT_OR(LogFolder(), return);
+    auto const message = FromNullTerminated(message_c_str);
+    auto const hash = Hash(message);
+    DynamicArrayBounded<char, 1000> filepath {log_folder};
+    dyn::Append(filepath, path::k_dir_separator);
+    fmt::Append(filepath, ConcatArrays("{}."_ca, k_floe_disaster_file_extension), hash);
+    auto file = TRY_OR(OpenFile(filepath, FileMode::Write()), return);
+    auto _ = file.Write(message);
+    auto _ = file.Write("\n");
+    auto _ = file.Write(FromNullTerminated(loc.file));
+    auto _ = file.Write(":");
+    auto _ = file.Write(fmt::IntToString(loc.line, fmt::IntToStringOptions {}));
+}
+
 // noinline because we want __builtin_return_address(0) to return the address of the call site
 [[noreturn]] __attribute__((noinline)) void Panic(char const* message, SourceLocation loc) {
-    if (g_in_signal_handler) {
-        auto _ = StdPrint(StdStream::Err, "Panic occurred while in a signal handler, aborting\n");
-        __builtin_abort();
-    }
-
     static thread_local u8 in_panic_hook {};
 
     switch (in_panic_hook) {
+        // First time we've panicked.
         case 0: {
-            // First time we've panicked.
             ++in_panic_hook;
+            if (g_in_signal_handler) {
+                auto _ = StdPrint(StdStream::Err, "Panic occurred while in a signal handler, exiting\n");
+                WriteDisasterFile(message, loc);
+                _exit(EXIT_FAILURE);
+            }
             g_panic_hook.Load(LoadMemoryOrder::Acquire)(message, loc, CALL_SITE_PROGRAM_COUNTER);
             --in_panic_hook;
 
             g_panic_occurred.Store(true, StoreMemoryOrder::Release);
             throw PanicException();
         }
+
+        // Nested panic.
         default: {
-            auto _ = StdPrint(StdStream::Err, "Panic occurred while handling a panic, aborting\n");
-            if constexpr (IS_WINDOWS) {
-                // TODO: we do a null dereference here to trigger the windows vectored exception handler. This
-                // is a workaround because we don't have a signal handler installed on Windows and therefore
-                // SIGABRT is not caught. We should installer a signal handler on Windows.
-                int* pointer = nullptr;
-                *pointer = 42;
+            if (g_in_signal_handler) {
+                auto _ =
+                    StdPrint(StdStream::Err,
+                             "Panic occurred while handling a panic while in a signal handler, exiting\n");
+                WriteDisasterFile(message, loc);
+                _exit(EXIT_FAILURE);
             }
-            __builtin_abort();
+
+            auto _ = StdPrint(StdStream::Err, "Panic occurred while handling a panic, exiting\n");
+
+            if constexpr (IS_WINDOWS)
+                WindowsRaiseException(k_windows_nested_panic_code);
+            else
+                raise(SIGABRT);
+
+            __builtin_unreachable();
             break;
         }
     }

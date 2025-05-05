@@ -110,6 +110,8 @@ bool IsRunningUnderWine() {
     return false;
 }
 
+void WindowsRaiseException(u32 code) { RaiseException(code, EXCEPTION_NONCONTINUABLE, 0, nullptr); }
+
 void* AlignedAlloc(usize alignment, usize size) {
     ASSERT(IsPowerOfTwo(alignment));
     return _aligned_malloc(size, alignment);
@@ -279,6 +281,7 @@ static String ExceptionCodeString(DWORD code) {
         case EXCEPTION_PRIV_INSTRUCTION:
             return "EXCEPTION_PRIV_INSTRUCTION: The thread tried to execute an instruction whose operation is not allowed in the current machine mode.";
         case EXCEPTION_STACK_OVERFLOW: return "EXCEPTION_STACK_OVERFLOW: The thread used up its stack. ";
+        case k_windows_nested_panic_code: return "Floe nested panic exception";
     }
     return {};
 }
@@ -287,7 +290,7 @@ static void* g_exception_handler = nullptr;
 static CrashHookFunction g_crash_hook {};
 static CountedInitFlag g_crash_hook_init_flag {};
 
-// TODO: we need to support signal handling as well.
+// IMPROVE: support signal handling as well.
 // On Windows, vectored exception handlers are called for some hardware exceptions and win32 exceptions
 // (RaiseException, SEH). For example, a null pointer dereference will trigger this exception. However, we
 // should also handle signals like SIGABRT, SIGSEGV, etc.

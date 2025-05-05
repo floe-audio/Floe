@@ -746,6 +746,14 @@ PUBLIC ErrorCodeOr<void> WriteFeedbackToFile(Sentry& sentry, FeedbackEvent const
     return k_success;
 }
 
+PUBLIC ErrorCodeOr<void> ConsumeAndSubmitDisasterFiles(Sentry& sentry, String folder, ArenaAllocator& arena) {
+    // TODO: similar to ConsumeAndSubmitErrorFiles, but for disaster files, k_disaster_file_extension
+    (void)sentry;
+    (void)folder;
+    (void)arena;
+    return k_success;
+}
+
 PUBLIC ErrorCodeOr<void>
 ConsumeAndSubmitErrorFiles(Sentry& sentry, String folder, ArenaAllocator& scratch_arena) {
     if constexpr (!k_online_reporting) return k_success;

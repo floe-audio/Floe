@@ -126,7 +126,8 @@ void GlobalInit(GlobalInitOptions options) {
                                          crash_message,
                                          CurrentThreadId());
 
-        // Step 1: dump info to stderr.
+        // Step 1: dump info to stderr. This is useful for debugging: either us as developers, host
+        // developers, or if this code is running in a CLI, the user.
         {
             auto writer = StdWriter(StdStream::Err);
             auto _ = fmt::FormatToWriter(writer,
