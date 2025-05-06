@@ -42,6 +42,11 @@ ReportError(ErrorLevel level, Optional<u64> error_id, String format, Args const&
     });
     error.message = fmt::Format(error.arena, format, args...);
     error.stacktrace = CurrentStacktrace(ProgramCounter {CALL_SITE_PROGRAM_COUNTER});
+    error.thread = sentry::Error::Thread {
+        .id = CurrentThreadId(),
+        .is_main = g_is_logical_main_thread != 0,
+        .name = ThreadName(false),
+    };
     detail::ReportError(Move(error), error_id);
 }
 

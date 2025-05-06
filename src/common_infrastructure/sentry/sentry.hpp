@@ -39,6 +39,13 @@ struct ErrorEvent {
         Info,
         Debug,
     };
+
+    struct Thread {
+        u64 id;
+        Optional<bool> is_main;
+        Optional<DynamicArrayBounded<char, k_max_thread_name_size>> name;
+    };
+
     String LevelString() const {
         switch (level) {
             case Level::Fatal: return "fatal"_s;
@@ -53,6 +60,7 @@ struct ErrorEvent {
     Level level;
     String message;
     Optional<StacktraceStack> stacktrace;
+    Optional<Thread> thread;
     Span<Tag const> tags;
 };
 
@@ -508,7 +516,27 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
 
     auto fingerprint = HashInit();
 
-    // stacktrace
+    if (event.thread) {
+        auto const& thread = *event.thread;
+        TRY(json::WriteKeyObjectBegin(json_writer, "threads"));
+        TRY(json::WriteKeyArrayBegin(json_writer, "values"));
+
+        // NOTE: Sentry doesn't show the thread ID on their web UI if there's only one thread in this object.
+        // So we add a fake thread.
+        TRY(json::WriteObjectBegin(json_writer));
+        TRY(json::WriteKeyValue(json_writer, "id", 999999));
+        TRY(json::WriteKeyValue(json_writer, "name", "fake"));
+        TRY(json::WriteKeyObjectBegin(json_writer, "stacktrace"));
+        TRY(json::WriteObjectEnd(json_writer));
+        TRY(json::WriteObjectEnd(json_writer));
+
+        TRY(json::WriteObjectBegin(json_writer));
+        TRY(json::WriteKeyValue(json_writer, "id", thread.id));
+        TRY(json::WriteKeyValue(json_writer, "current", true));
+        if (thread.name) TRY(json::WriteKeyValue(json_writer, "name", *thread.name));
+        if (thread.is_main) TRY(json::WriteKeyValue(json_writer, "main", *thread.is_main));
+    }
+    // Stacktrace. this lives inside the thread object where possible, but it can also be top-level.
     if (event.stacktrace && event.stacktrace->size) {
         TRY(json::WriteKeyObjectBegin(json_writer, "stacktrace"));
         TRY(json::WriteKeyArrayBegin(json_writer, "frames"));
@@ -556,6 +584,11 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
                 .demangle = !options.signal_safe,
             });
         TRY(stacktrace_error);
+        TRY(json::WriteArrayEnd(json_writer));
+        TRY(json::WriteObjectEnd(json_writer));
+    }
+    if (event.thread) {
+        TRY(json::WriteObjectEnd(json_writer));
         TRY(json::WriteArrayEnd(json_writer));
         TRY(json::WriteObjectEnd(json_writer));
     }
@@ -759,6 +792,7 @@ PUBLIC ErrorCodeOr<fmt::UuidArray> SubmitEnvelope(Sentry& sentry,
 // thread-safe, signal-safe on Unix
 PUBLIC ErrorCodeOr<void> WriteCrashToFile(Sentry& sentry,
                                           Optional<StacktraceStack> const& stacktrace,
+                                          Optional<ErrorEvent::Thread> thread,
                                           String folder,
                                           String message,
                                           Allocator& scratch_allocator) {
@@ -773,6 +807,7 @@ PUBLIC ErrorCodeOr<void> WriteCrashToFile(Sentry& sentry,
                              .level = ErrorEvent::Level::Fatal,
                              .message = message,
                              .stacktrace = stacktrace,
+                             .thread = thread,
                          },
                          {
                              .signal_safe = !IS_WINDOWS,
@@ -786,6 +821,7 @@ PUBLIC ErrorCodeOr<void> WriteCrashToFile(Sentry& sentry,
 // thread-safe, not signal-safe
 PUBLIC ErrorCodeOr<void> SubmitCrash(Sentry& sentry,
                                      Optional<StacktraceStack> const& stacktrace,
+                                     Optional<ErrorEvent::Thread> thread,
                                      String message,
                                      ArenaAllocator& scratch_arena,
                                      SubmissionOptions options) {
@@ -798,6 +834,7 @@ PUBLIC ErrorCodeOr<void> SubmitCrash(Sentry& sentry,
                              .level = ErrorEvent::Level::Fatal,
                              .message = message,
                              .stacktrace = stacktrace,
+                             .thread = thread,
                          },
                          {
                              .signal_safe = false,

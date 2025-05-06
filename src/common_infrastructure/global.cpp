@@ -34,13 +34,15 @@ void GlobalInit(GlobalInitOptions options) {
         ArenaAllocatorWithInlineStorage<2000> arena {PageAllocator::Instance()};
 
         auto const stacktrace = CurrentStacktrace(ProgramCounter {loc_pc});
+        auto const thread_id = CurrentThreadId();
+
         DynamicArray<char> message {arena};
         fmt::Assign(message,
                     "[panic] ({}) {} (address: 0x{x}, thread: {})\n",
                     ToString(g_final_binary_type),
                     FromNullTerminated(message_c_str),
                     loc_pc,
-                    CurrentThreadId());
+                    thread_id);
         auto _ = FrameInfo::FromSourceLocation(loc, loc_pc, IsAddressInCurrentModule(loc_pc))
                      .Write(0, dyn::WriterFor(message), {});
 
@@ -66,6 +68,11 @@ void GlobalInit(GlobalInitOptions options) {
             DynamicArray<char> response {arena};
             TRY_OR(sentry::SubmitCrash(*sentry,
                                        stacktrace,
+                                       sentry::ErrorEvent::Thread {
+                                           .id = thread_id,
+                                           .is_main = g_is_logical_main_thread != 0,
+                                           .name = ThreadName(false),
+                                       },
                                        message,
                                        arena,
                                        {
@@ -123,12 +130,14 @@ void GlobalInit(GlobalInitOptions options) {
 
         FixedSizeAllocator<4000> allocator {nullptr};
 
+        auto const thread_id = CurrentThreadId();
+
         auto const message = fmt::Format(allocator,
                                          "[crash] ({}) {} (address: 0x{x}, thread: {})",
                                          ToString(g_final_binary_type),
                                          crash_message,
                                          error_program_counter,
-                                         CurrentThreadId());
+                                         thread_id);
 
         // Step 1: dump info to stderr. This is useful for debugging: either us as developers, host
         // developers, or if this code is running in a CLI - the user.
@@ -157,7 +166,14 @@ void GlobalInit(GlobalInitOptions options) {
             }
 
             sentry::SentryOrFallback sentry {};
-            auto _ = sentry::WriteCrashToFile(*sentry, stacktrace, *log_folder, message, allocator);
+            auto _ = sentry::WriteCrashToFile(*sentry,
+                                              stacktrace,
+                                              sentry::ErrorEvent::Thread {
+                                                  .id = thread_id,
+                                              },
+                                              *log_folder,
+                                              message,
+                                              allocator);
         }
     });
 
