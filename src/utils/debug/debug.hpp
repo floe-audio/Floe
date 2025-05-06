@@ -14,6 +14,8 @@ enum class StacktraceError {
 extern ErrorCodeCategory const g_stacktrace_error_category;
 inline ErrorCodeCategory const& ErrorCategoryForEnum(StacktraceError) { return g_stacktrace_error_category; }
 
+// Our stacktraces always have the newest frame first.
+
 struct StacktracePrintOptions {
     bool ansi_colours = false;
     bool demangle = true; // demangling is not signal-safe
@@ -98,7 +100,7 @@ constexpr u32 k_windows_nested_panic_code = 0xF10EDEAD;
 // If there's a crash something has gone very wrong. We can't do much really other than write to a file
 // since we need to be async-signal-safe. Crashes are different to Panics, panics are controlled failure - we
 // have an opportunity to try and clean up and exit with a bit more grace.
-using CrashHookFunction = void (*)(String message, Optional<StacktraceStack> stacktrace);
+using CrashHookFunction = void (*)(String message, uintptr crash_program_counter);
 void BeginCrashDetection(CrashHookFunction);
 void EndCrashDetection();
 

@@ -36,9 +36,10 @@ void GlobalInit(GlobalInitOptions options) {
         auto const stacktrace = CurrentStacktrace(ProgramCounter {loc_pc});
         DynamicArray<char> message {arena};
         fmt::Assign(message,
-                    "[panic] ({}) {} (thread: {})\n",
+                    "[panic] ({}) {} (address: 0x{x}, thread: {})\n",
                     ToString(g_final_binary_type),
                     FromNullTerminated(message_c_str),
+                    loc_pc,
                     CurrentThreadId());
         auto _ = FrameInfo::FromSourceLocation(loc, loc_pc, IsAddressInCurrentModule(loc_pc))
                      .Write(0, dyn::WriterFor(message), {});
@@ -109,10 +110,12 @@ void GlobalInit(GlobalInitOptions options) {
     InitLogFolderIfNeeded();
 
     // after tracy
-    BeginCrashDetection([](String crash_message, Optional<StacktraceStack> stacktrace) {
+    BeginCrashDetection([](String crash_message, uintptr error_program_counter) {
         // This function is async-signal-safe.
 
-        // We might be running as a shared library and the signal crash could have occurred in a callstack
+        auto const stacktrace = CurrentStacktrace(ProgramCounter {error_program_counter});
+
+        // We might be running as a shared library and the crash could have occurred in a callstack
         // completely unrelated to us. We don't want to write a crash report in that case.
         if (stacktrace && !HasAddressesInCurrentModule(*stacktrace)) return;
 
@@ -121,13 +124,14 @@ void GlobalInit(GlobalInitOptions options) {
         FixedSizeAllocator<4000> allocator {nullptr};
 
         auto const message = fmt::Format(allocator,
-                                         "[crash] ({}) {} (thread: {})",
+                                         "[crash] ({}) {} (address: 0x{x}, thread: {})",
                                          ToString(g_final_binary_type),
                                          crash_message,
+                                         error_program_counter,
                                          CurrentThreadId());
 
         // Step 1: dump info to stderr. This is useful for debugging: either us as developers, host
-        // developers, or if this code is running in a CLI, the user.
+        // developers, or if this code is running in a CLI - the user.
         {
             auto writer = StdWriter(StdStream::Err);
             auto _ = fmt::FormatToWriter(writer,

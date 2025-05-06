@@ -489,22 +489,8 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
 #endif
         }
 
-        if (auto hook = g_crash_hook.Load(LoadMemoryOrder::Acquire)) {
-            auto trace = CurrentStacktrace();
-            if (trace) {
-                auto const error_ip = ErrorAddress(context);
-                if (error_ip) {
-                    // Find and remove signal handler frames
-                    for (auto i : Range(1uz, trace->size)) {
-                        if (trace->data[i] == error_ip) {
-                            dyn::Remove(*trace, 0, i);
-                            break;
-                        }
-                    }
-                }
-            }
-            hook(signal_description, trace);
-        }
+        if (auto hook = g_crash_hook.Load(LoadMemoryOrder::Acquire))
+            hook(signal_description, ErrorAddress(context));
 
         for (auto [index, s] : Enumerate(k_signals)) {
             if (s == signal_num) {

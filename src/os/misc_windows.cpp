@@ -287,7 +287,7 @@ static String ExceptionCodeString(DWORD code) {
 }
 
 static void* g_exception_handler = nullptr;
-static CrashHookFunction g_crash_hook {};
+static Atomic<CrashHookFunction> g_crash_hook {};
 static CountedInitFlag g_crash_hook_init_flag {};
 
 // IMPROVE: support signal handling as well.
@@ -296,25 +296,13 @@ static CountedInitFlag g_crash_hook_init_flag {};
 // should also handle signals like SIGABRT, SIGSEGV, etc.
 void BeginCrashDetection(CrashHookFunction hook) {
     CountedInit(g_crash_hook_init_flag, [hook]() {
-        g_crash_hook = hook;
+        g_crash_hook.Store(hook, StoreMemoryOrder::Release);
         g_exception_handler = AddVectoredExceptionHandler(1, [](PEXCEPTION_POINTERS exception_info) -> LONG {
             // Some exceptions are expected and should be ignored; for example Lua will trigger exceptions.
             if (auto const msg = ExceptionCodeString(exception_info->ExceptionRecord->ExceptionCode);
                 msg.size) {
-                if (g_crash_hook) {
-                    auto stacktrace = CurrentStacktrace(StacktraceFrames {0});
-                    if (stacktrace) {
-                        // Remove frames related to the exception handling code
-                        auto const error_ip = (uintptr)exception_info->ExceptionRecord->ExceptionAddress - 1;
-                        for (auto i : Range(1uz, stacktrace->size)) {
-                            if (stacktrace->data[i] == error_ip) {
-                                dyn::Remove(*stacktrace, 0, i);
-                                break;
-                            }
-                        }
-                    }
-                    g_crash_hook(msg, stacktrace);
-                }
+                if (auto hook = g_crash_hook.Load(LoadMemoryOrder::Acquire))
+                    hook(msg, (uintptr)exception_info->ExceptionRecord->ExceptionAddress - 1);
             }
             return EXCEPTION_CONTINUE_SEARCH;
         });
