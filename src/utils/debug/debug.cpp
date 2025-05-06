@@ -127,7 +127,7 @@ static void WriteDisasterFile(char const* message_c_str, String additional_messa
             else
                 raise(SIGABRT);
 
-            __builtin_unreachable();
+            _Exit(EXIT_FAILURE);
         }
     }
 }
