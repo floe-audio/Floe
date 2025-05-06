@@ -34,8 +34,8 @@ constexpr static usize k_max_thread_name_size = 16;
 void SetThreadName(String name, bool tag_only);
 Optional<DynamicArrayBounded<char, k_max_thread_name_size>> ThreadName(bool tag_only);
 
-// We use this primarily in assertions to check what is the main thread. The main thread could technically
-// change thread ID. It's a 'logical' main thread, not a physical one.
+// We use this primarily in assertions to check what is the main thread. It's a 'logical' main thread, various
+// threads can be the main thread at different times.
 extern thread_local u8 g_is_logical_main_thread;
 
 // This is re-entrant safe. If it returns false, there's already a thread that is the logical main thread.
