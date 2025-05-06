@@ -110,7 +110,7 @@ static void WriteDisasterFile(char const* message_c_str, String additional_messa
         }
 
         // Nested panic.
-        default: {
+        case 1: {
             if (g_in_signal_handler) {
                 WriteDisasterFile(message,
                                   "Panic occurred while handling a panic, while in a signal handler",
@@ -118,6 +118,7 @@ static void WriteDisasterFile(char const* message_c_str, String additional_messa
                 _Exit(EXIT_FAILURE);
             }
 
+            ++in_panic_hook;
             auto _ =
                 StdPrint(StdStream::Err,
                          "Panic occurred while handling a panic, raising unrecoverable exception/SIGABRT\n");
@@ -129,6 +130,10 @@ static void WriteDisasterFile(char const* message_c_str, String additional_messa
 
             _Exit(EXIT_FAILURE);
         }
+
+        default:
+            WriteDisasterFile(message, "Code continued after exception/SIGABRT", loc);
+            _Exit(EXIT_FAILURE);
     }
 }
 
