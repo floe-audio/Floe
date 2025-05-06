@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Contains a section of code from the LLVM project that is licenced differently, see below for full details.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Copyright (c) LLVM Project contributors
 
 #include "debug.hpp"
 
@@ -149,11 +151,9 @@ namespace ubsan {
 
 // Code taken based LLVM's UBSan runtime implementation.
 // https://github.com/llvm/llvm-project/blob/main/compiler-rt/lib/ubsan/ubsan_handlers.h
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Copyright (c) LLVM Project contributors
-//
 // Modified by Sam Windell to integrate with the rest of the codebase
 // Copyright 2018-2024 Sam Windell
+// Start of LLVM-based code
 // =============================================================================================================
 
 struct SourceLocation {
