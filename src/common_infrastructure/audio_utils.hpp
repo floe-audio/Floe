@@ -53,6 +53,7 @@ static inline f32 ResonanceToQ(f32 res) { return 1.0f / (2.0f * (1.0f - res)); }
 template <typename SpanType>
 inline void
 CopyInterleavedToSeparateChannels(f32* dest_l, f32* dest_r, SpanType interleaved_source, usize num_frames) {
+    ASSERT(interleaved_source.size >= num_frames * 2);
     usize pos = 0;
     for (auto const i : Range(num_frames)) {
         dest_l[i] = interleaved_source[pos];

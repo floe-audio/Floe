@@ -108,7 +108,7 @@ static Coeffs Coefficients(Params const& p) {
 
     // peaking, lowshelf and hishelf
     if (type >= Type::Peaking) {
-        f64 const a = Pow(10.0, (db_gain / 40.0));
+        f64 const a = Pow(10.0, db_gain / 40.0);
         f64 const omega = 2.0 * k_pi<f64> * frequency / sample_rate;
         f64 const tsin = Sin(omega);
         f64 const tcos = Cos(omega);

@@ -1607,7 +1607,7 @@ bool Context::ButtonBehavior(Rect r, Id id, ButtonFlags flags) {
         bool const clicked = CheckForValidMouseDown(flags, frame_input);
 
         if (clicked) {
-            SetActiveID(id, (flags.closes_popups), flags, !(flags.dont_check_for_release));
+            SetActiveID(id, flags.closes_popups, flags, !(flags.dont_check_for_release));
 
             button_repeat_counter = {};
             if (flags.hold_to_repeat) WakeupAtTimedInterval(button_repeat_counter, button_repeat_rate);

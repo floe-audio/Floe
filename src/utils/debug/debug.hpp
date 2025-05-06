@@ -14,6 +14,8 @@ enum class StacktraceError {
 extern ErrorCodeCategory const g_stacktrace_error_category;
 inline ErrorCodeCategory const& ErrorCategoryForEnum(StacktraceError) { return g_stacktrace_error_category; }
 
+// Our stacktraces always have the newest frame first.
+
 struct StacktracePrintOptions {
     bool ansi_colours = false;
     bool demangle = true; // demangling is not signal-safe
@@ -37,26 +39,34 @@ void ShutdownStacktraceState();
 struct FrameInfo {
     ErrorCodeOr<void> Write(u32 frame_index, Writer writer, StacktracePrintOptions options) const {
         return fmt::FormatToWriter(writer,
-                                   "[{}] {}{}{}:{}: {}\n",
+                                   "[{}] {x} {}{}{}:{}:{}: {}\n",
                                    frame_index,
+                                   address,
                                    options.ansi_colours ? ANSI_COLOUR_SET_FOREGROUND_BLUE : ""_s,
                                    filename,
                                    options.ansi_colours ? ANSI_COLOUR_RESET : ""_s,
                                    line,
+                                   column,
                                    function_name);
     }
 
-    static FrameInfo FromSourceLocation(SourceLocation loc) {
+    static FrameInfo FromSourceLocation(SourceLocation loc, uintptr address, bool in_self_module) {
         return {
+            .address = address,
             .function_name = FromNullTerminated(loc.function),
             .filename = FromNullTerminated(loc.file),
             .line = loc.line,
+            .column = -1,
+            .in_self_module = in_self_module,
         };
     }
 
+    uintptr address;
     String function_name;
     String filename;
     int line;
+    int column = -1;
+    bool in_self_module = false; // if the filename is in the current module
 };
 
 MutableString CurrentStacktraceString(Allocator& a,
@@ -77,6 +87,12 @@ ErrorCodeOr<void> WriteCurrentStacktrace(Writer writer,
                                          StacktracePrintOptions options,
                                          StacktraceSkipOptions skip = StacktraceFrames {1});
 
+bool HasAddressesInCurrentModule(Span<uintptr const> addresses);
+bool IsAddressInCurrentModule(uintptr address);
+
+constexpr auto k_floe_disaster_file_extension = "floe-disaster"_ca;
+constexpr u32 k_windows_nested_panic_code = 0xF10EDEAD;
+
 // Call once at the start/end of your progam. When a crash occurs g_crash_handler will be called. It must be
 // async-signal-safe on Unix. It should return normally, not throw exceptions or call abort().
 //
@@ -84,7 +100,7 @@ ErrorCodeOr<void> WriteCurrentStacktrace(Writer writer,
 // If there's a crash something has gone very wrong. We can't do much really other than write to a file
 // since we need to be async-signal-safe. Crashes are different to Panics, panics are controlled failure - we
 // have an opportunity to try and clean up and exit with a bit more grace.
-using CrashHookFunction = void (*)(String message, Optional<StacktraceStack> stacktrace);
+using CrashHookFunction = void (*)(String message, uintptr crash_program_counter);
 void BeginCrashDetection(CrashHookFunction);
 void EndCrashDetection();
 

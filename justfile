@@ -10,6 +10,7 @@ native_binary_dir := join("zig-out", native_arch_os_pair)
 native_binary_dir_abs := join(justfile_directory(), native_binary_dir)
 all_src_files := 'fd . -e .mm -e .cpp -e .hpp -e .h src' 
 cache_dir := ".floe-cache"
+zig_global_cache_dir := ".zig-cache-global"
 release_files_dir := join(justfile_directory(), "zig-out", "release") # for final release files
 run_windows_program := if os() == 'windows' {
   ''
@@ -44,7 +45,11 @@ default:
 alias pre-debug := default
 
 build target_os='native' mode='development':
-  zig build compile -Dtargets={{target_os}} -Dbuild-mode={{mode}} -Dexternal-resources="{{external_resources}}"
+  zig build compile \
+      -Dtargets={{target_os}} \
+      -Dbuild-mode={{mode}} \
+      -Dexternal-resources="{{external_resources}}" \
+      --global-cache-dir {{zig_global_cache_dir}}
   just patch-rpath
 
 
@@ -71,10 +76,13 @@ patch-rpath:
   fi
 
 build-tracy:
-  zig build compile -Dtargets=native -Dbuild-mode=development -Dtracy
+  zig build compile -Dtargets=native -Dbuild-mode=development -Dtracy --global-cache-dir {{zig_global_cache_dir}}
 
 build-release target_os='native':
-  zig build compile -Dtargets={{target_os}} -Dbuild-mode=production -Dexternal-resources="{{external_resources}}"
+  zig build compile -Dtargets={{target_os}} \
+      -Dbuild-mode=production \
+      -Dexternal-resources="{{external_resources}}" \
+      --global-cache-dir {{zig_global_cache_dir}}
 
 # build and report compile-time statistics
 build-timed target_os='native':
@@ -146,7 +154,9 @@ clang-tidy arch_os_pair=native_arch_os_pair: (install-cbd arch_os_pair)
 
   # NOTE: we specify the config file because we don't want clang-tidy to go automatically looking for it and 
   # sometimes finding .clang-tidy files in third-party libraries that are incompatible with our version of clang-tidy
-  jq -r '.[].file' "$cdb_file" | xargs clang-tidy --config-file=.clang-tidy -p "{{cache_dir}}"
+  jq -r '.[].file' "$cdb_file" | \
+      grep -E -i "^{{justfile_directory()}}[/\\]src[/\\]" |
+      xargs clang-tidy --config-file=.clang-tidy -p "{{cache_dir}}"
 
 clang-tidy-all: (clang-tidy "x86_64-linux") (clang-tidy "x86_64-windows") (clang-tidy "aarch64-macos")
 
@@ -155,9 +165,9 @@ upload-errors:
   set -euxo pipefail
   
   case "$(uname -s)" in
-    Linux*)   dir="$HOME/.local/state/Floe" ;;
+    Linux*)   dir="$HOME/.local/state/Floe/Logs" ;;
     Darwin*)  dir="$HOME/Library/Logs/Floe" ;;
-    MINGW*|CYGWIN*|MSYS*) dir="$LOCALAPPDATA/Floe" ;;
+    MINGW*|CYGWIN*|MSYS*) dir="$LOCALAPPDATA/Floe/Logs" ;;
     *) echo "Unsupported OS" && exit 1 ;;
   esac
 

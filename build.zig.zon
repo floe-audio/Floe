@@ -14,7 +14,7 @@
     .dependencies = .{
         .xxhash = .{
             .url = "https://github.com/Cyan4973/xxHash/archive/refs/tags/v0.8.2.tar.gz",
-            .hash = "1220f1fadc5ed8683a107695153d475025cef9619fd05040043abe8f923741d093d3",
+            .hash = "N-V-__8AAExyUgDx-txe2Gg6EHaVFT1HUCXO-WGf0FBABDq-",
         },
         .embedded_files_workaround = .{
             .url = "git+https://github.com/floe-audio/floe-embedded-files-workaround#d3b73b5bb68ff08e6b6e0a12855a50eef0bae5b0",
@@ -22,19 +22,19 @@
         },
         .stb = .{
             .url = "git+https://github.com/nothings/stb#64e783d73879abe2e7589bc634bf6cb6f5e2baae",
-            .hash = "1220b43efb0e8a88a92ec54f9f85987ba2099739e69d6bb49b9b219c2c0731bbd934",
+            .hash = "N-V-__8AAEcaTgC0PvsOioipLsVPn4WYe6IJlznmnWu0m5sh",
         },
         .audio_unit_sdk = .{
             .url = "https://github.com/floe-audio/AudioUnitSDK/archive/refs/tags/v1.1.0.tar.gz",
-            .hash = "12208f7bcf60ae38c05e372f98ac2d487a3ed1bc79ef413820661fd04311b496f1e5",
+            .hash = "N-V-__8AABXaAwCPe89grjjAXjcvmKwtSHo-0bx570E4IGYf",
         },
         .miniaudio = .{
             .url = "https://github.com/mackron/miniaudio/archive/refs/tags/0.11.21.tar.gz",
-            .hash = "1220daa13e5e160cc3e8d286843749f292dbe31ae7700df3584a7b1ce32da7dcb296",
+            .hash = "N-V-__8AAGQdhQDaoT5eFgzD6NKGhDdJ8pLb4xrncA3zWEp7",
         },
         .clap = .{
             .url = "https://github.com/free-audio/clap/archive/refs/tags/1.2.3.tar.gz",
-            .hash = "1220c6534f5ec8d81d53df7f4e2c6e4274ba13b74bab56d296f34085e23fd7d243ba",
+            .hash = "N-V-__8AAJ0IOwDGU09eyNgdU99_TixuQnS6E7dLq1bSlvNA",
         },
         .clap_wrapper = .{
             .url = "git+https://github.com/SamWindell/clap-wrapper#bbb3c80fcfd470d030bdd973abac32fdf3676c25",
@@ -42,52 +42,52 @@
         },
         .dr_libs = .{
             .url = "git+https://github.com/mackron/dr_libs#da35f9d6c7374a95353fd1df1d394d44ab66cf01",
-            .hash = "122004c0722cece2f2a503d0ee7e480a2cefc0811bf7c2ad4fff7f8d543b4657f859",
+            .hash = "N-V-__8AAJpbLQAEwHIs7OLypQPQ7n5ICizvwIEb98KtT_9_",
         },
         .flac = .{
             .url = "https://github.com/xiph/flac/archive/refs/tags/1.4.3.tar.gz",
-            .hash = "12207d2c6fec5cdc517036b7d3d37497578406727d7474c668f04197dbe5cfda4a51",
+            .hash = "N-V-__8AAKJvQgB9LG_sXNxRcDa309N0l1eEBnJ9dHTGaPBB",
         },
         .icon_font_cpp_headers = .{
             .url = "git+https://github.com/juliettef/IconFontCppHeaders#f30b1e73b2d71eb331d77619c3f1de34199afc38",
-            .hash = "1220cf5438c8886ec3fcc296995432a48280405274e1473deca4c0f7dece376093d9",
+            .hash = "N-V-__8AANOnVADPVDjIiG7D_MKWmVQypIKAQFJ04Uc97KTA",
         },
         .miniz = .{
             .url = "https://github.com/richgel999/miniz/archive/refs/tags/3.0.2.tar.gz",
-            .hash = "1220967b3455d5b2e950a346dac71225b25dc1e17521dff724a73bff9a819846a056",
+            .hash = "N-V-__8AAERZCACWezRV1bLpUKNG2scSJbJdweF1Id_3JKc7",
         },
         .libbacktrace = .{
             .url = "git+https://github.com/SamWindell/libbacktrace#8c232c7dc09fcb8bb21addf44c9b7fab4ff37499",
-            .hash = "1220875298a6546e893239e5d8c9a2528aabcca85d8d11bfeb8ea0162ade5d8ad416",
+            .hash = "N-V-__8AANzfJgCHUpimVG6JMjnl2MmiUoqrzKhdjRG_646g",
         },
         .lua = .{
             .url = "https://github.com/lua/lua/archive/refs/tags/v5.4.7.tar.gz",
-            .hash = "1220c8a30a9f05d36e186274ddbf9a7af94f211dd368557792727dd73353beff155c",
+            .hash = "N-V-__8AAA2SGQDIowqfBdNuGGJ03b-aevlPIR3TaFV3knJ9",
         },
         .pugl = .{
             .url = "git+https://github.com/lv2/pugl#66afe808e8c17f41cf6122158df96361cb42cccb",
-            .hash = "1220fc50d31ffbbf21a8a6243c5f025b66062a03c54e8f951ee9f322062cf766f7a5",
+            .hash = "N-V-__8AALnoDwD8UNMf-78hqKYkPF8CW2YGKgPFTo-VHunz",
         },
         .pffft = .{
             .url = "https://bitbucket.org/jpommier/pffft/get/fbc405860280.zip",
-            .hash = "122029473fd091f5e677fe91244cf5261e185f7130bda43f668971d811c360278f45",
+            .hash = "N-V-__8AAN5xAwApRz_QkfXmd_6RJEz1Jh4YX3EwvaQ_Zolx",
         },
         .valgrind_h = .{
             .url = "https://github.com/allyourcodebase/valgrind.h/archive/refs/tags/3.23.0.tar.gz",
-            .hash = "12207d68a1e77210037b9a27012baf12a01e4513bb022d684eecd6b1134ba886fe3a",
+            .hash = "N-V-__8AAMV2BgB9aKHnchADe5onASuvEqAeRRO7Ai1oTuzW",
         },
         .portmidi = .{
             .url = "git+https://github.com/PortMidi/portmidi#8efac0cfe6c245aeb2ce5122aa2b82fb79e91463",
-            .hash = "1220f5d96c857e20be7ed56e7d613fb320fca16a92511cae78679cd4755bdc14b045",
+            .hash = "N-V-__8AANbpCgD12WyFfiC-ftVufWE_syD8oWqSURyueGec",
         },
         .tracy = .{
             .url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.11.1.tar.gz",
-            .hash = "122022a478dccaed1309fb5d022f4041eec45d40c93a855ed24fad970774c2426d91",
+            .hash = "N-V-__8AAMeOlQEipHjcyu0TCftdAi9AQe7EXUDJOoVe0k-t",
         },
         .vst3_sdk = .{
             .url = "https://github.com/floe-audio/vst3sdk/archive/refs/tags/v3.7.9.tar.gz",
-            .hash = "122082706afde70c8430ef4cc5d77331bf6b1a9c5feb22c11222046a72c66abd2f67",
+            .hash = "N-V-__8AAO0bUAGCcGr95wyEMO9MxddzMb9rGpxf6yLBEiIE",
         },
     },
-    .paths = .{""},
+    .paths = .{"src"},
 }

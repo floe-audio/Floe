@@ -66,6 +66,7 @@ Writer StdWriter(StdStream stream) {
 
 #if !IS_WINDOWS
 bool IsRunningUnderWine() { return false; }
+void WindowsRaiseException(u32) {}
 #endif
 
 DynamicArrayBounded<char, fmt::k_timestamp_str_size> Timestamp() {

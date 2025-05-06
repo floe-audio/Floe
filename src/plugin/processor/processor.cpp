@@ -769,10 +769,7 @@ ResetProcessor(AudioProcessor& processor, Bitset<k_num_parameters> processing_ch
 }
 
 static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
-    if (args.sample_rate <= 0 || args.max_block_size == 0) {
-        PanicIfReached();
-        return false;
-    }
+    ASSERT(args.sample_rate > 0);
 
     processor.audio_processing_context.process_block_size_max = args.max_block_size;
     processor.audio_processing_context.sample_rate = (f32)args.sample_rate;
@@ -1118,6 +1115,9 @@ FlushParameterEvents(AudioProcessor& processor, clap_input_events const& in, cla
 clap_process_status Process(AudioProcessor& processor, clap_process const& process) {
     ZoneScoped;
     ASSERT_EQ(process.audio_outputs_count, 1u);
+    ASSERT_HOT(processor.activated);
+
+    if (process.frames_count == 0) return CLAP_PROCESS_CONTINUE;
 
     if (process.audio_outputs->channel_count != 2) return CLAP_PROCESS_ERROR;
 

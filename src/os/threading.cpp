@@ -9,6 +9,27 @@
 thread_local DynamicArrayBounded<char, k_max_thread_name_size> g_thread_name {};
 
 thread_local u8 g_is_logical_main_thread = 0;
+static Atomic<u8> g_inside_main_thread {};
+
+[[nodiscard]] bool EnterLogicalMainThread() {
+    auto expected = g_is_logical_main_thread;
+    if (!g_inside_main_thread.CompareExchangeStrong(expected,
+                                                    expected + 1,
+                                                    RmwMemoryOrder::AcquireRelease,
+                                                    LoadMemoryOrder::Relaxed)) [[unlikely]] {
+        // The thread_local and the atomic variable are not in sync meaning there's already a thread that's
+        // the logical main thread.
+        return false;
+    }
+
+    ++g_is_logical_main_thread;
+    return true;
+}
+
+void LeaveLogicalMainThread() {
+    g_inside_main_thread.FetchSub(1, RmwMemoryOrder::Release);
+    --g_is_logical_main_thread;
+}
 
 namespace detail {
 

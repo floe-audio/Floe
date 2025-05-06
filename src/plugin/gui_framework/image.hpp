@@ -19,8 +19,8 @@ constexpr u16 k_rgba_channels = 4;
 struct ImageBytes {
     usize NumPixels() const { return (usize)(size.width * size.height); }
     usize NumBytes() const { return NumPixels() * k_rgba_channels; }
-    u8* rgba;
-    UiSize size;
+    u8* rgba {};
+    UiSize size {};
 };
 
 struct ImageBytesManaged final : ImageBytes {
@@ -28,10 +28,20 @@ struct ImageBytesManaged final : ImageBytes {
     ~ImageBytesManaged() {
         if (rgba) stbi_image_free(rgba);
     }
-    ImageBytesManaged() {}
     ImageBytesManaged(ImageBytes image) : ImageBytes {image} {}
     ImageBytesManaged(ImageBytesManaged&& other) : ImageBytes {.rgba = other.rgba, .size = other.size} {
         other.rgba = nullptr;
+        other.size = {};
+    }
+    ImageBytesManaged& operator=(ImageBytesManaged&& other) {
+        if (this != &other) {
+            if (rgba) stbi_image_free(rgba);
+            rgba = other.rgba;
+            size = other.size;
+            other.rgba = nullptr;
+            other.size = {};
+        }
+        return *this;
     }
 };
 

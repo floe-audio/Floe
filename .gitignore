@@ -4,6 +4,7 @@
 *.DS_Store
 nvim-project.ini
 .zig-cache/
+.zig-cache-global/
 .floe-cache/
 docs/book/
 zig-out/
