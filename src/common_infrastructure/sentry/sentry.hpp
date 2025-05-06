@@ -43,7 +43,12 @@ struct ErrorEvent {
     struct Thread {
         u64 id;
         Optional<bool> is_main;
-        Optional<DynamicArrayBounded<char, k_max_thread_name_size>> name;
+        Optional<String> name;
+    };
+
+    struct Exception {
+        String type;
+        String value;
     };
 
     String LevelString() const {
@@ -61,6 +66,7 @@ struct ErrorEvent {
     String message;
     Optional<StacktraceStack> stacktrace;
     Optional<Thread> thread;
+    Optional<Exception> exception;
     Span<Tag const> tags;
 };
 
@@ -514,6 +520,19 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
         TRY(json::WriteObjectEnd(json_writer));
     }
 
+    // exception
+    if (event.exception) {
+        TRY(json::WriteKeyObjectBegin(json_writer, "exception"));
+        TRY(json::WriteKeyArrayBegin(json_writer, "values"));
+        TRY(json::WriteObjectBegin(json_writer));
+        TRY(json::WriteKeyValue(json_writer, "type", event.exception->type));
+        TRY(json::WriteKeyValue(json_writer, "value", event.exception->value));
+        if (event.thread) TRY(json::WriteKeyValue(json_writer, "thread_id", event.thread->id));
+        TRY(json::WriteObjectEnd(json_writer));
+        TRY(json::WriteArrayEnd(json_writer));
+        TRY(json::WriteObjectEnd(json_writer));
+    }
+
     auto fingerprint = HashInit();
 
     if (event.thread) {
@@ -535,6 +554,7 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
         TRY(json::WriteKeyValue(json_writer, "current", true));
         if (thread.name) TRY(json::WriteKeyValue(json_writer, "name", *thread.name));
         if (thread.is_main) TRY(json::WriteKeyValue(json_writer, "main", *thread.is_main));
+        if (event.exception) TRY(json::WriteKeyValue(json_writer, "crashed", true));
     }
     // Stacktrace. this lives inside the thread object where possible, but it can also be top-level.
     if (event.stacktrace && event.stacktrace->size) {
@@ -793,6 +813,7 @@ PUBLIC ErrorCodeOr<fmt::UuidArray> SubmitEnvelope(Sentry& sentry,
 PUBLIC ErrorCodeOr<void> WriteCrashToFile(Sentry& sentry,
                                           Optional<StacktraceStack> const& stacktrace,
                                           Optional<ErrorEvent::Thread> thread,
+                                          Optional<ErrorEvent::Exception> exception,
                                           String folder,
                                           String message,
                                           Allocator& scratch_allocator) {
@@ -808,6 +829,7 @@ PUBLIC ErrorCodeOr<void> WriteCrashToFile(Sentry& sentry,
                              .message = message,
                              .stacktrace = stacktrace,
                              .thread = thread,
+                             .exception = exception,
                          },
                          {
                              .signal_safe = !IS_WINDOWS,
@@ -822,6 +844,7 @@ PUBLIC ErrorCodeOr<void> WriteCrashToFile(Sentry& sentry,
 PUBLIC ErrorCodeOr<void> SubmitCrash(Sentry& sentry,
                                      Optional<StacktraceStack> const& stacktrace,
                                      Optional<ErrorEvent::Thread> thread,
+                                     Optional<ErrorEvent::Exception> exception,
                                      String message,
                                      ArenaAllocator& scratch_arena,
                                      SubmissionOptions options) {
@@ -835,6 +858,7 @@ PUBLIC ErrorCodeOr<void> SubmitCrash(Sentry& sentry,
                              .message = message,
                              .stacktrace = stacktrace,
                              .thread = thread,
+                             .exception = exception,
                          },
                          {
                              .signal_safe = false,
@@ -889,6 +913,11 @@ ConsumeAndSubmitDisasterFiles(Sentry& sentry, String folder, ArenaAllocator& scr
                                     {
                                         .level = ErrorEvent::Level::Warning,
                                         .message = file_data,
+                                        .exception =
+                                            ErrorEvent::Exception {
+                                                .type = "Disaster",
+                                                .value = file_data,
+                                            },
                                     },
                                     {
                                         .signal_safe = false,

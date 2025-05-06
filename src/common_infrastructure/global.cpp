@@ -36,19 +36,16 @@ void GlobalInit(GlobalInitOptions options) {
         auto const stacktrace = CurrentStacktrace(ProgramCounter {loc_pc});
         auto const thread_id = CurrentThreadId();
 
-        DynamicArray<char> message {arena};
-        fmt::Assign(message,
-                    "[panic] ({}) {} (address: 0x{x}, thread: {})\n",
-                    ToString(g_final_binary_type),
-                    FromNullTerminated(message_c_str),
-                    loc_pc,
-                    thread_id);
-        auto _ = FrameInfo::FromSourceLocation(loc, loc_pc, IsAddressInCurrentModule(loc_pc))
-                     .Write(0, dyn::WriterFor(message), {});
-
         // Step 1: log the error for easier local debugging.
         Log(ModuleName::ErrorReporting, LogLevel::Error, [&](Writer writer) -> ErrorCodeOr<void> {
-            TRY(writer.WriteChars(message));
+            TRY(fmt::FormatToWriter(writer,
+                                    "[panic] ({}) {} (address: 0x{x}, thread: {})\n",
+                                    ToString(g_final_binary_type),
+                                    FromNullTerminated(message_c_str),
+                                    loc_pc,
+                                    thread_id));
+            auto _ = FrameInfo::FromSourceLocation(loc, loc_pc, IsAddressInCurrentModule(loc_pc))
+                         .Write(0, writer, {});
             if (stacktrace) {
                 auto stack = stacktrace->Items();
                 if (stack[0] == loc_pc) stack.RemovePrefix(1);
@@ -64,6 +61,7 @@ void GlobalInit(GlobalInitOptions options) {
 
         // Step 2: send an error report to Sentry.
         {
+            auto const thread_name = ThreadName(false);
             sentry::SentryOrFallback sentry {};
             DynamicArray<char> response {arena};
             TRY_OR(sentry::SubmitCrash(*sentry,
@@ -71,9 +69,13 @@ void GlobalInit(GlobalInitOptions options) {
                                        sentry::ErrorEvent::Thread {
                                            .id = thread_id,
                                            .is_main = g_is_logical_main_thread != 0,
-                                           .name = ThreadName(false),
+                                           .name = thread_name.Transform([](String s) { return s; }),
                                        },
-                                       message,
+                                       sentry::ErrorEvent::Exception {
+                                           .type = "Panic",
+                                           .value = FromNullTerminated(message_c_str),
+                                       },
+                                       "",
                                        arena,
                                        {
                                            .write_to_file_if_needed = true,
@@ -132,20 +134,21 @@ void GlobalInit(GlobalInitOptions options) {
 
         auto const thread_id = CurrentThreadId();
 
-        auto const message = fmt::Format(allocator,
-                                         "[crash] ({}) {} (address: 0x{x}, thread: {})",
-                                         ToString(g_final_binary_type),
-                                         crash_message,
-                                         error_program_counter,
-                                         thread_id);
-
         // Step 1: dump info to stderr. This is useful for debugging: either us as developers, host
         // developers, or if this code is running in a CLI - the user.
         {
-            auto writer = StdWriter(StdStream::Err);
-            auto _ = fmt::FormatToWriter(writer,
-                                         "\n" ANSI_COLOUR_SET_FOREGROUND_RED "{}" ANSI_COLOUR_RESET "\n",
-                                         message);
+            auto buffered_writer = BufferedWriter<1000> {StdWriter(StdStream::Err)};
+            auto writer = buffered_writer.Writer();
+            DEFER { buffered_writer.FlushReset(); };
+
+            auto _ =
+                fmt::FormatToWriter(writer,
+                                    "\n" ANSI_COLOUR_SET_FOREGROUND_RED
+                                    "[crash] ({}) {} (address: 0x{x}, thread: {})" ANSI_COLOUR_RESET "\n",
+                                    ToString(g_final_binary_type),
+                                    crash_message,
+                                    error_program_counter,
+                                    thread_id);
             if (stacktrace) {
                 auto _ = WriteStacktrace(*stacktrace,
                                          writer,
@@ -171,8 +174,12 @@ void GlobalInit(GlobalInitOptions options) {
                                               sentry::ErrorEvent::Thread {
                                                   .id = thread_id,
                                               },
+                                              sentry::ErrorEvent::Exception {
+                                                  .type = "Crash",
+                                                  .value = crash_message,
+                                              },
                                               *log_folder,
-                                              message,
+                                              "",
                                               allocator);
         }
     });
