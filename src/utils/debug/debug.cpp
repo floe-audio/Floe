@@ -12,9 +12,9 @@
 #else
 #include <backtrace.h>
 #include <cxxabi.h>
-#include <stdlib.h> // free
 #endif
 #include <signal.h>
+#include <stdlib.h> // EXIT_FAILURE
 
 #include "foundation/foundation.hpp"
 #include "os/filesystem.hpp"
@@ -49,7 +49,8 @@ bool PanicOccurred() { return g_panic_occurred.Load(LoadMemoryOrder::Acquire); }
 void ResetPanic() { g_panic_occurred.Store(false, StoreMemoryOrder::Release); }
 
 // signal-safe
-static void WriteDisasterFile(char const* message_c_str, SourceLocation loc) {
+static void WriteDisasterFile(char const* message_c_str, String additional_message, SourceLocation loc) {
+    auto _ = StdPrint(StdStream::Err, additional_message);
     static thread_local bool writing_disaster_file {};
     if (writing_disaster_file) return;
     writing_disaster_file = true;
@@ -61,11 +62,32 @@ static void WriteDisasterFile(char const* message_c_str, SourceLocation loc) {
     dyn::Append(filepath, path::k_dir_separator);
     fmt::Append(filepath, ConcatArrays("{}."_ca, k_floe_disaster_file_extension), hash);
     auto file = TRY_OR(OpenFile(filepath, FileMode::Write()), return);
-    auto _ = file.Write(message);
-    auto _ = file.Write("\n");
-    auto _ = file.Write(FromNullTerminated(loc.file));
-    auto _ = file.Write(":");
-    auto _ = file.Write(fmt::IntToString(loc.line, fmt::IntToStringOptions {}));
+
+    BufferedWriter<1000> buffered_writer {file.Writer()};
+    auto writer = buffered_writer.Writer();
+    DEFER { buffered_writer.FlushReset(); };
+
+    auto _ = writer.WriteChars(message);
+    auto _ = writer.WriteChars("\n");
+    if (additional_message.size) {
+        auto _ = writer.WriteChars(additional_message);
+        auto _ = writer.WriteChars("\n");
+    }
+    auto _ = writer.WriteChars(FromNullTerminated(loc.file));
+    auto _ = writer.WriteChars(":");
+    auto _ = writer.WriteChars(fmt::IntToString(loc.line, fmt::IntToStringOptions {}));
+    auto _ = writer.WriteChars("\n");
+    auto _ = writer.WriteChars("os:");
+    auto _ = writer.WriteChars(({
+        String s {};
+        if constexpr (IS_WINDOWS)
+            s = "Windows"_s;
+        else if constexpr (IS_LINUX)
+            s = "Linux"_s;
+        else if constexpr (IS_MACOS)
+            s = "macOS"_s;
+        s;
+    }));
 }
 
 // noinline because we want __builtin_return_address(0) to return the address of the call site
@@ -77,9 +99,8 @@ static void WriteDisasterFile(char const* message_c_str, SourceLocation loc) {
         case 0: {
             ++in_panic_hook;
             if (g_in_signal_handler) {
-                auto _ = StdPrint(StdStream::Err, "Panic occurred while in a signal handler, exiting\n");
-                WriteDisasterFile(message, loc);
-                _exit(EXIT_FAILURE);
+                WriteDisasterFile(message, "Panic occured while in a signal handler", loc);
+                _Exit(EXIT_FAILURE);
             }
             g_panic_hook.Load(LoadMemoryOrder::Acquire)(message, loc, CALL_SITE_PROGRAM_COUNTER);
             --in_panic_hook;
@@ -91,14 +112,15 @@ static void WriteDisasterFile(char const* message_c_str, SourceLocation loc) {
         // Nested panic.
         default: {
             if (g_in_signal_handler) {
-                auto _ =
-                    StdPrint(StdStream::Err,
-                             "Panic occurred while handling a panic while in a signal handler, exiting\n");
-                WriteDisasterFile(message, loc);
-                _exit(EXIT_FAILURE);
+                WriteDisasterFile(message,
+                                  "Panic occurred while handling a panic, while in a signal handler",
+                                  loc);
+                _Exit(EXIT_FAILURE);
             }
 
-            auto _ = StdPrint(StdStream::Err, "Panic occurred while handling a panic, exiting\n");
+            auto _ =
+                StdPrint(StdStream::Err,
+                         "Panic occurred while handling a panic, raising unrecoverable exception/SIGABRT\n");
 
             if constexpr (IS_WINDOWS)
                 WindowsRaiseException(k_windows_nested_panic_code);
@@ -106,7 +128,6 @@ static void WriteDisasterFile(char const* message_c_str, SourceLocation loc) {
                 raise(SIGABRT);
 
             __builtin_unreachable();
-            break;
         }
     }
 }

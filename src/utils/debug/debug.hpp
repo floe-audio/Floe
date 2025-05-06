@@ -88,7 +88,7 @@ ErrorCodeOr<void> WriteCurrentStacktrace(Writer writer,
 bool HasAddressesInCurrentModule(Span<uintptr const> addresses);
 bool IsAddressInCurrentModule(uintptr address);
 
-constexpr auto k_floe_disaster_file_extension = ".floe-disaster"_ca;
+constexpr auto k_floe_disaster_file_extension = "floe-disaster"_ca;
 constexpr u32 k_windows_nested_panic_code = 0xF10EDEAD;
 
 // Call once at the start/end of your progam. When a crash occurs g_crash_handler will be called. It must be
