@@ -83,6 +83,8 @@ struct FloePluginInstance : PluginInstanceMessages {
     bool initialised {false};
     bool active {false};
     bool processing {false};
+    u32 min_block_size {};
+    u32 max_block_size {};
 
     TracyMessageConfig trace_config {
         .category = "clap",
@@ -1302,7 +1304,6 @@ static bool ClapActivate(const struct clap_plugin* plugin,
         if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
             return false;
         if (!Check(floe, sample_rate > 0, k_func, "sample rate is invalid")) return false;
-        if (max_frames_count == 0) return false;
 
         if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
         DEFER { LeaveLogicalMainThread(); };
@@ -1311,6 +1312,16 @@ static bool ClapActivate(const struct clap_plugin* plugin,
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
         if (floe.active) return true;
+
+        // The CLAP spec says neither min nor max can be 0. But we found this can be the case. It's easy
+        // enough for us to handle this case so we do.
+
+        // Let's be a little lenient and allow for min/max to be swapped.
+        min_frames_count = Min(min_frames_count, max_frames_count);
+        max_frames_count = Max(min_frames_count, max_frames_count);
+
+        floe.min_block_size = min_frames_count;
+        floe.max_block_size = max_frames_count;
 
         auto& processor = floe.engine->processor;
         if (!g_processor_callbacks.activate(processor,
@@ -1489,6 +1500,16 @@ static clap_process_status ClapProcess(const struct clap_plugin* plugin, clap_pr
         if (!Check(floe, floe.processing, k_func, "not processing")) return CLAP_PROCESS_ERROR;
         if (!Check(floe, process, k_func, "process is null")) return CLAP_PROCESS_ERROR;
         if (!Check(floe, CheckInputEvents(process->in_events), k_func, "invalid events"))
+            return CLAP_PROCESS_ERROR;
+        if (!Check(floe,
+                   process->frames_count >= floe.min_block_size,
+                   k_func,
+                   "given process block too small"))
+            return CLAP_PROCESS_ERROR;
+        if (!Check(floe,
+                   process->frames_count <= floe.max_block_size,
+                   k_func,
+                   "given process block too large"))
             return CLAP_PROCESS_ERROR;
 
         ScopedNoDenormals const no_denormals;
