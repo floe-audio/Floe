@@ -1502,15 +1502,14 @@ static clap_process_status ClapProcess(const struct clap_plugin* plugin, clap_pr
         if (!Check(floe, CheckInputEvents(process->in_events), k_func, "invalid events"))
             return CLAP_PROCESS_ERROR;
         if (!Check(floe,
-                   process->frames_count >= floe.min_block_size,
-                   k_func,
-                   "given process block too small"))
-            return CLAP_PROCESS_ERROR;
-        if (!Check(floe,
                    process->frames_count <= floe.max_block_size,
                    k_func,
                    "given process block too large"))
             return CLAP_PROCESS_ERROR;
+
+        // The CLAP spec says the process block size should also be >= the min_block_size passed to
+        // activate(). For one, VST3-Validator on Windows will send blocks smaller than this. It's easy for us
+        // to handle so we do.
 
         ScopedNoDenormals const no_denormals;
         return g_processor_callbacks.process(floe.engine->processor, *process);
