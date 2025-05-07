@@ -1119,11 +1119,8 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 
     if (process.frames_count == 0) return CLAP_PROCESS_CONTINUE;
 
-    if (process.audio_outputs->channel_count != 2) return CLAP_PROCESS_ERROR;
-
     clap_process_status result = CLAP_PROCESS_CONTINUE;
     auto const num_sample_frames = process.frames_count;
-    auto outputs = process.audio_outputs->data32;
 
     // Handle transport changes
     {
@@ -1429,8 +1426,12 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 
     //
     // ======================================================================================================
-    if (outputs)
+    if (process.audio_outputs->channel_count == 2 && process.audio_outputs->data32 &&
+        (((uintptr)process.audio_outputs->data32 % alignof(f32*)) == 0) && process.audio_outputs->data32[0] &&
+        process.audio_outputs->data32[1]) {
+        auto outputs = process.audio_outputs->data32;
         CopyInterleavedToSeparateChannels(outputs[0], outputs[1], interleaved_outputs, num_sample_frames);
+    }
 
     // Mark gui dirty
     {

@@ -117,7 +117,7 @@ DEFINE_BUILTIN_SIMD_MATHS_FUNC(Trunc, trunc)
 
 // IMPROVE: we could do wider SIMD with these. e.g. AVX2
 PUBLIC inline void SimdAddAlignedBuffer(f32* d, f32 const* s, usize num) {
-    ASSERT_HOT(num != 0);
+    if (num == 0) return;
     ASSERT_HOT((usize)&d[0] % 16 == 0);
     ASSERT_HOT((usize)&s[0] % 16 == 0);
     ASSERT_HOT(!(d >= s && d < (s + num)));
@@ -129,6 +129,7 @@ PUBLIC inline void SimdAddAlignedBuffer(f32* d, f32 const* s, usize num) {
 }
 
 PUBLIC inline void SimdZeroAlignedBuffer(f32* d, usize num) {
+    if (num == 0) return;
     ASSERT_HOT((usize)&d[0] % 16 == 0);
 
     for (usize i = 0; i < num; i += NumVectorElements<f32x4>()) {
