@@ -112,7 +112,9 @@ SystemStats GetSystemStats() {
     SystemStats result {};
 
     result.num_logical_cpus = (u32)[[NSProcessInfo processInfo] activeProcessorCount];
+    ASSERT(result.num_logical_cpus);
     result.page_size = (u32)NSPageSize();
+    ASSERT(result.page_size);
 
     auto size = result.cpu_name.Capacity();
     if (sysctlbyname("machdep.cpu.brand_string", result.cpu_name.data, &size, nullptr, 0) == 0)

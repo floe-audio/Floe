@@ -445,6 +445,7 @@ SystemStats GetSystemStats() {
     GetNativeSystemInfo(&system_info);
     result.num_logical_cpus = (u32)system_info.dwNumberOfProcessors;
     result.page_size = (u32)system_info.dwPageSize;
+    ASSERT(result.page_size);
 
     HKEY hkey;
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,

@@ -26,7 +26,10 @@ static inline f32 FrequencyToMidiNote(f32 frequency) {
     return k_notes_per_octave * Log(frequency / k_midi_0_frequency) * k_inv_log_of_2;
 }
 
-static inline f32 MsToHz(f32 ms) { return 1.0f / (ms / 1000.0f); }
+static inline f32 MsToHz(f32 ms) {
+    ASSERT(ms > 0.0f);
+    return 1.0f / (ms / 1000.0f);
+}
 
 // Does seem to be slightly faster than the std::pow version
 // Degree 10 approximation of f(x) = 10^(x/20)
