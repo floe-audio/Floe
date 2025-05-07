@@ -629,8 +629,8 @@ macos-prepare-packager folder:
 check-bundle bundle label:
   #!/usr/bin/env bash
   set -euxo pipefail
-  echo "Checking $bundle $label"
-  exe="$bundle/Contents/MacOS/Floe"
+  echo "Checking {{bundle}} {{label}}"
+  exe="{{bundle}}/Contents/MacOS/Floe"
   dsymutil --verify $exe # check debug info
   lipo -archs $exe # check mach-o validity and arch
 
