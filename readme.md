@@ -29,7 +29,7 @@ Linux is only used for development purposes at the moment, and you can't cross-c
 
 - Install Nix and enable Flakes
 - Run `nix develop` in the root of the project to enter a shell with all dependencies
-- Run `just build native`. Alternative options instead of `native` are: `linux`, `windows`, `mac_arm`, `mac_x86`, `mac_ub` (universal binary)
+- Run `just build native`. Alternative options instead of `native` are: `linux`, `windows`, `mac_arm`, `mac_x86`
 - Binaries are created in the zig-out directory
 
 ## About this codebase
