@@ -6,47 +6,45 @@ name: Release
 on:
   workflow_dispatch:
   push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+*'
 
 env:
   SENTRY_DSN: ${{ secrets.SENTRY_DSN_PRODUCTION }}
 
 jobs:
-  build-windows:
-    runs-on: ubuntu-latest # NOTE: we don't actually use Windows
-    permissions:
-      id-token: write
-      contents: read
-    env:
-      WINDOWS_CODESIGN_CERT_PFX: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX }}
-      WINDOWS_CODESIGN_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX_PASSWORD }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/flakehub-cache-action@main
-      - uses: nicknovitski/nix-develop@v1.1.0
-      - uses: Hanaasagi/zig-action-cache@master
-
-      - run: |
-          just fetch-logos 
-          just build-release windows
-
-      - run: just windows-prepare-release
-
-      - name: 'get release dir from just'
-        run: |
-          export RELEASE_DIR=$(just --evaluate release_files_dir)
-          echo "RELEASE_DIR=${RELEASE_DIR}" >> $GITHUB_ENV
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: final-windows
-          if-no-files-found: error
-          path: ${{ env.RELEASE_DIR }}
+  # build-windows:
+  #   runs-on: ubuntu-latest # NOTE: we don't actually use Windows
+  #   permissions:
+  #     id-token: write
+  #     contents: read
+  #   env:
+  #     WINDOWS_CODESIGN_CERT_PFX: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX }}
+  #     WINDOWS_CODESIGN_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX_PASSWORD }}
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         submodules: recursive
+  #
+  #     - uses: DeterminateSystems/nix-installer-action@main
+  #     - uses: DeterminateSystems/flakehub-cache-action@main
+  #     - uses: nicknovitski/nix-develop@v1.1.0
+  #     - uses: Hanaasagi/zig-action-cache@master
+  #
+  #     - run: |
+  #         just fetch-logos 
+  #         just build-release windows
+  #
+  #     - run: just windows-prepare-release
+  #
+  #     - name: 'get release dir from just'
+  #       run: |
+  #         export RELEASE_DIR=$(just --evaluate release_files_dir)
+  #         echo "RELEASE_DIR=${RELEASE_DIR}" >> $GITHUB_ENV
+  #
+  #     - uses: actions/upload-artifact@v4
+  #       with:
+  #         name: final-windows
+  #         if-no-files-found: error
+  #         path: ${{ env.RELEASE_DIR }}
 
   build-macos:
     runs-on: macos-latest
@@ -81,6 +79,10 @@ jobs:
           MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
           MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
 
+      - run: |
+          dsymutil --verify zig-out/aarch64-macos/Floe.clap/Contents/MacOS/Floe
+          dsymutil --verify zig-out/x86_64-macos/Floe.clap/Contents/MacOS/Floe
+
       - name: 'get release dir from just'
         run: |
           export RELEASE_DIR=$(just --evaluate release_files_dir)
@@ -93,7 +95,7 @@ jobs:
           path: ${{ env.RELEASE_DIR }}
 
   deploy:
-    needs: [build-macos, build-windows]
+    needs: [build-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -126,17 +128,17 @@ jobs:
           artifacts: "${{ env.RELEASE_ARTIFACTS_FOLDER }}/*"
           name: Release v${{ env.VERSION }}
           tag: v${{ env.VERSION }}
-          draft: false
+          draft: true
           bodyFile: latest_changes.md
 
-      - name: Create Sentry release
-        uses: getsentry/action-release@v3
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-        with:
-          release: ${{ env.VERSION }}
+      # - name: Create Sentry release
+      #   uses: getsentry/action-release@v3
+      #   env:
+      #     SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      #     SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      #     SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+      #   with:
+      #     release: ${{ env.VERSION }}
 
       - if: '!cancelled()'
         run: |
