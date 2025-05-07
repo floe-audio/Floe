@@ -94,7 +94,9 @@ constexpr auto k_floe_disaster_file_extension = "floe-disaster"_ca;
 constexpr u32 k_windows_nested_panic_code = 0xF10EDEAD;
 
 // Call once at the start/end of your progam. When a crash occurs g_crash_handler will be called. It must be
-// async-signal-safe on Unix. It should return normally, not throw exceptions or call abort().
+// async-signal-safe on Unix. It should return normally, not throw exceptions or call abort(). On Windows:
+// "The handler should not call functions that acquire synchronization objects or allocate memory, because
+// this can cause problems."
 //
 // About crashes:
 // If there's a crash something has gone very wrong. We can't do much really other than write to a file
