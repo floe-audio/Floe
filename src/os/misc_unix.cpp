@@ -378,7 +378,7 @@ static constexpr auto k_signals = Array {
     SIGILL, // "illegal", invalid instruction.
     SIGSEGV, // "segmentation violation", invalid memory access.
     SIGBUS, // Bus error (bad memory access)
-    SIGPIPE, // Broken pipe
+    // SIGPIPE, // Broken pipe. Bitwig Studio triggers this often but it doens't seem to be a problem.
     SIGTRAP, // Trace/breakpoint trap
 };
 
