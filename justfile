@@ -626,9 +626,18 @@ macos-prepare-packager folder:
   mv $final_packager_zip_name {{release_files_dir}}
 
 [macos]
+check-bundle bundle label:
+  #!/usr/bin/env bash
+  set -euxo pipefail
+  echo "Checking $bundle $label"
+  exe="$bundle/Contents/MacOS/Floe"
+  dsymutil --verify $exe # check debug info
+  lipo -archs $exe # check mach-o validity and arch
+
+[macos]
 macos-prepare-release-plugins folder notarize="1":
   #!/usr/bin/env bash
-  set -euo pipefail # don't use 'set -x' because it might print sensitive information
+  set -euxo pipefail
   [[ ! -f version.txt ]] && echo "version.txt file not found" && exit 1
   [[ ! -d zig-out/{{folder}} ]] && echo "{{folder}} folder not found" && exit 1
 
@@ -656,7 +665,9 @@ macos-prepare-release-plugins folder notarize="1":
   EOF
 
   codesign_plugin() {
+    just check-bundle $1 "before codesigning"
     codesign --sign "$MACOS_DEV_ID_APP_NAME" --timestamp --options=runtime --deep --force --strict --entitlements plugin.entitlements $1
+    just check-bundle $1 "after codesigning"
   }
 
   plugin_list="Floe.clap Floe.vst3 Floe.component"
@@ -681,6 +692,7 @@ macos-prepare-release-plugins folder notarize="1":
 
         unzip $temp_subdir/$plugin.zip -d $temp_subdir
         xcrun stapler staple $temp_subdir/$plugin
+        just check-bundle $temp_subdir/$plugin "after notarize and stapling"
         # replace the original bundle with the stapled one
         rm -rf $plugin
         mv $temp_subdir/$plugin $plugin
