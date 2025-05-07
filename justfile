@@ -604,9 +604,9 @@ macos-notarize file:
   xcrun notarytool submit {{file}} --apple-id "$MACOS_NOTARIZATION_USERNAME" --password "$MACOS_NOTARIZATION_PASSWORD" --team-id $MACOS_TEAM_ID --wait
 
 [macos]
-macos-prepare-packager folder:
+macos-prepare-packager folder notarize="1":
   #!/usr/bin/env bash
-  set -euo pipefail # don't use 'set -x' because it might print sensitive information
+  set -euxo pipefail
   [[ ! -f version.txt ]] && echo "version.txt file not found" && exit 1
   [[ ! -d zig-out/{{folder}} ]] && echo "{{folder}} folder not found" && exit 1
 
@@ -615,20 +615,74 @@ macos-prepare-packager folder:
 
   cd zig-out/{{folder}}
 
-  codesign --sign "$MACOS_DEV_ID_APP_NAME" --timestamp --options=runtime --force floe-packager
+  just _workaround-invalid-macho floe-packager
 
-  final_packager_zip_name="Floe-Packager-v$version-macOS.zip"
+  codesign --sign "$MACOS_DEV_ID_APP_NAME" --timestamp --options=runtime --force floe-packager
+  
+  arch_name=$(just _get-arch-name "floe-packager")
+
+  final_packager_zip_name="Floe-Packager-v$version-macOS-$arch_name.zip"
   zip $final_packager_zip_name floe-packager
 
-  just macos-notarize "$final_packager_zip_name"
-  # NOTE: we can't staple the packager because it's a Unix binary 
+  if [[ "{{notarize}}" -eq 1 ]]; then
+    just macos-notarize "$final_packager_zip_name"
+    # NOTE: we can't staple the packager because it's a Unix binary 
+  fi
 
   mv $final_packager_zip_name {{release_files_dir}}
+
+[macos, no-cd]
+_check-bundle bundle label:
+  #!/usr/bin/env bash
+  set -euxo pipefail
+  echo "Checking {{bundle}} {{label}}"
+  exe="{{bundle}}/Contents/MacOS/Floe"
+  otool -l $exe | head -20 # check mach-o validity
+  vtool -show-build $exe # another mach-o check
+  dsymutil --dump-debug-map $exe | tail -20 # check debug info
+  dsymutil --verify $exe # check debug info
+  lipo -archs $exe # check mach-o validity and arch
+
+[macos, no-cd]
+_workaround-invalid-macho filepath:
+  #!/usr/bin/env bash
+  set -euxo pipefail
+  # I believe there is a bug in the Zig mach-o toolchain that results in binaries that become invalid after codesigning. Perhaps 
+  # it is an isuse with codesign. rcodesign and zsign will not even run on the binary. `codesign` succeeds, but the binary is invalid. See the various checks we do in _check-bundle.
+  # 
+  # otool: error: truncated or malformed object (offset field of section 0 in LC_SEGMENT_64 command 0 not past the headers of the
+  # file)
+  #
+  # To workaround this, we can first run the binary through vtool which seems to happily accept the binary and convert it into     
+  # something that codesign doesn't mess up. It was trial and error to find a command that works. Removing the source version 
+  # seems to work for all binaries we are currently using. -set-source-version worked for some binaries but not all.
+  file {{filepath}}
+  vtool -remove-source-version -output {{filepath}}-fixed {{filepath}} # arbitrary change to trigger MachO fix
+  rm {{filepath}}
+  mv {{filepath}}-fixed {{filepath}}
+
+[macos, no-cd]
+_get-arch-name filepath:
+  #!/usr/bin/env bash
+  set -euxo pipefail
+  # Helper function to determine architecture name from binary
+  arch_info=$(lipo -archs {{filepath}} | xargs)  # xargs trims whitespace
+  
+  if [[ "$arch_info" == "arm64" ]]; then
+    echo "Apple-Silicon"
+  elif [[ "$arch_info" == "x86_64" ]]; then
+    echo "Intel"
+  elif [[ "$arch_info" == "x86_64 arm64" || "$arch_info" == "arm64 x86_64" ]]; then
+    echo "Universal"
+  else
+    echo "ERROR: Unsupported architecture: $arch_info" >&2
+    exit 1
+  fi
 
 [macos]
 macos-prepare-release-plugins folder notarize="1":
   #!/usr/bin/env bash
-  set -euo pipefail # don't use 'set -x' because it might print sensitive information
+  set -euxo pipefail
   [[ ! -f version.txt ]] && echo "version.txt file not found" && exit 1
   [[ ! -d zig-out/{{folder}} ]] && echo "{{folder}} folder not found" && exit 1
 
@@ -656,7 +710,14 @@ macos-prepare-release-plugins folder notarize="1":
   EOF
 
   codesign_plugin() {
+    just _check-bundle $1 "before codesigning"
+
+    just _workaround-invalid-macho $1/Contents/MacOS/Floe
+
     codesign --sign "$MACOS_DEV_ID_APP_NAME" --timestamp --options=runtime --deep --force --strict --entitlements plugin.entitlements $1
+    just _check-bundle $1 "after codesigning"
+
+    codesign --verify $1 --verbose
   }
 
   plugin_list="Floe.clap Floe.vst3 Floe.component"
@@ -673,6 +734,8 @@ macos-prepare-release-plugins folder notarize="1":
         plugin=$1
         temp_subdir=notarizing_$plugin
 
+        just _check-bundle $plugin "before notarize and stapling"
+
         rm -rf $temp_subdir
         mkdir -p $temp_subdir
         zip -r $temp_subdir/$plugin.zip $plugin
@@ -684,6 +747,7 @@ macos-prepare-release-plugins folder notarize="1":
         # replace the original bundle with the stapled one
         rm -rf $plugin
         mv $temp_subdir/$plugin $plugin
+        just _check-bundle $plugin "after notarize and stapling"
         rm -rf $temp_subdir
     }
 
@@ -692,9 +756,12 @@ macos-prepare-release-plugins folder notarize="1":
     SHELL=$(type -p bash) parallel --bar notarize_plugin ::: $plugin_list
   fi
 
-  # step 3: zip
+  # step 3: determine architecture and zip
+  plugin_executable="Floe.clap/Contents/MacOS/Floe"
+  arch_name=$(just _get-arch-name "$plugin_executable")
+  
   just _create-manual-install-readme "macOS"
-  final_manual_zip_name="Floe-Manual-Install-v$version-macOS.zip"
+  final_manual_zip_name="Floe-Manual-Install-v$version-macOS-$arch_name.zip"
   rm -f $final_manual_zip_name
   zip -r $final_manual_zip_name $plugin_list readme.txt
   mv $final_manual_zip_name {{release_files_dir}}
@@ -703,7 +770,7 @@ macos-prepare-release-plugins folder notarize="1":
 [macos]
 macos-build-installer folder:
   #!/usr/bin/env bash
-  set -euo pipefail # don't use 'set -x' because it might print sensitive information
+  set -euxo pipefail
   [[ ! -f version.txt ]] && echo "version.txt file not found" && exit 1
   [[ ! -d zig-out/{{folder}} ]] && echo "{{folder}} folder not found" && exit 1
 
@@ -751,11 +818,12 @@ macos-build-installer folder:
     local identifier="com.Floe.$file_extension"
     local plugin_path="$zig_out_abs_path/Floe.$file_extension"
 
-    codesign --verify "$plugin_path" || { echo "ERROR: the plugin file isn't codesigned, do that before this command"; exit 1; }
+    codesign --verbose --verify "$plugin_path" || { echo "ERROR: the plugin file isn't codesigned, do that before this command"; exit 1; }
 
     mkdir -p "$package_root/$install_folder"
     cp -r "$plugin_path" "$package_root/$install_folder"
     pkgbuild --analyze --root "$package_root" "$package_root.plist"
+    cat "$package_root.plist"
     pkgbuild --root "$package_root" --component-plist "$package_root.plist" --identifier "$identifier" --install-location / --version "$version" "$package_root.pkg"
 
     add_package_to_distribution_xml "$identifier" "$title" "$description" "$package_root.pkg"
@@ -772,28 +840,25 @@ macos-build-installer folder:
   # find the min macos version from one of the plugin's plists
   min_macos_version=$(grep -A 1 '<key>LSMinimumSystemVersion</key>' "$zig_out_abs_path/Floe.clap/Contents/Info.plist" | grep '<string>' | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
 
-  # Determine the architecture(s) from the executable using lipo -archs
+  # Determine the architecture(s) from the executable
   plugin_executable="$zig_out_abs_path/Floe.clap/Contents/MacOS/Floe"
-  arch_info=$(lipo -archs "$plugin_executable")
+  arch_info=$(lipo -archs "$plugin_executable" | xargs)  # xargs trims whitespace
+  arch_name=$(just _get-arch-name "$plugin_executable")
 
   # Set the architecture restriction for the installer based on the plugin architecture
   if [[ "$arch_info" == "arm64" ]]; then
     # Only arm64 architecture
     host_architectures='hostArchitectures="arm64"'
-    arch_name="Apple-Silicon"
   elif [[ "$arch_info" == "x86_64" ]]; then
     # Only x86_64 architecture
     host_architectures='hostArchitectures="x86_64"'
-    arch_name="Intel"
   elif [[ "$arch_info" == "x86_64 arm64" || "$arch_info" == "arm64 x86_64" ]]; then
     # Universal binary with both architectures
     host_architectures='hostArchitectures="arm64,x86_64"'
-    arch_name="Universal"
   else
-    # Unknown architecture combination
-    echo "Warning: Unknown architecture combination: $arch_info"
-    host_architectures=""
-    arch_name="Unknown"
+    # error - unsupported architecture
+    echo "ERROR: Unsupported architecture: $arch_info"
+    exit 1
   fi
 
   cat >distribution.xml <<EOF
@@ -808,6 +873,8 @@ macos-build-installer folder:
       </choices-outline>
   </installer-gui-script>
   EOF
+
+  cat distribution.xml
 
   productbuild --distribution distribution.xml --resources productbuild_files --package-path . unsigned.pkg
   productsign --timestamp --sign "$MACOS_DEV_ID_INSTALLER_NAME" unsigned.pkg "$zig_out_abs_path/$final_installer_name.pkg"

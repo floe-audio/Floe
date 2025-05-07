@@ -32,21 +32,22 @@ Additional information:
 
 > **<i class="fa fa-windows"></i> Floe Installer Windows**: ==Floe-Installer-Windows-markdown-link==
 > 
-> **<i class="fa fa-apple"></i> Floe Installer macOS Apple Silicon**: ==Floe-Installer-macOS-Apple-Silicon-markdown-link==
+> **<i class="fa fa-apple"></i> Floe Installer macOS Apple Silicon[^mac-arm]**: ==Floe-Installer-macOS-Apple-Silicon-markdown-link==
 > 
-> **<i class="fa fa-apple"></i> Floe Installer macOS Intel**: ==Floe-Installer-macOS-Intel-markdown-link==
+> **<i class="fa fa-apple"></i> Floe Installer macOS Intel[^mac-intel]**: ==Floe-Installer-macOS-Intel-markdown-link==
 
 Download, unzip, and run the installer program. The installer will guide you through the installation process, including choosing the plugin formats you want to install. 
 
 Once the installation is complete you might need to restart your DAW in order for it to find the Floe plugins.
 
+
 ## Manually Install
 
 > **<i class="fa fa-windows"></i> Floe Manual Install Windows**: ==Floe-Manual-Install-Windows-markdown-link==
 > 
-> **<i class="fa fa-apple"></i> Floe Manual Install macOS Apple Silicon**: ==Floe-Manual-Install-macOS-Apple-Silicon-markdown-link==
+> **<i class="fa fa-apple"></i> Floe Manual Install macOS Apple Silicon[^mac-arm]**: ==Floe-Manual-Install-macOS-Apple-Silicon-markdown-link==
 > 
-> **<i class="fa fa-apple"></i> Floe Manual Install macOS Intel**: ==Floe-Manual-Install-macOS-Intel-markdown-link==
+> **<i class="fa fa-apple"></i> Floe Manual Install macOS Intel[^mac-intel]**: ==Floe-Manual-Install-macOS-Intel-markdown-link==
 
 
 Normally you'll want to use the installer, but there could be some cases where you'd prefer to install Floe manually. To allow for this, we provide a zip file that contains Floe's plugin files. Extract it and move the files to your plugin folders.
@@ -65,3 +66,6 @@ Normally you'll want to use the installer, but there could be some cases where y
 ---
 
 Download links can also be found on the [Github releases page](https://github.com/floe-audio/Floe/releases/latest).
+
+[^mac-arm]: For computers with Apple Silicon chips; Apple's line of M processors (M1, M2, etc.); ARM64 architecture.
+[^mac-intel]: For computers with Intel chips; x86_64 architecture.
