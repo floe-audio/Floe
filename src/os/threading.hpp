@@ -7,18 +7,19 @@
 struct NativeHandleSizes {
     usize thread;
     usize mutex;
+    usize recursive_mutex;
     usize cond_var;
     usize sema;
 };
 
 static constexpr NativeHandleSizes NativeHandleSizes() {
     if constexpr (IS_LINUX)
-        return {.thread = 8, .mutex = 40, .cond_var = 48, .sema = 32};
+        return {.thread = 8, .mutex = 40, .recursive_mutex = 40, .cond_var = 48, .sema = 32};
     else if constexpr (IS_MACOS)
-        return {.thread = 8, .mutex = 64, .cond_var = 48, .sema = 4};
+        return {.thread = 8, .mutex = 64, .recursive_mutex = 64, .cond_var = 48, .sema = 4};
     else if constexpr (IS_WINDOWS)
-        return {.thread = 8, .mutex = 40, .cond_var = 8, .sema = 8};
-    return {.thread = 8, .mutex = 40, .cond_var = 8, .sema = 8};
+        return {.thread = 8, .mutex = 8, .recursive_mutex = 40, .cond_var = 8, .sema = 8};
+    return {.thread = 8, .mutex = 40, .recursive_mutex = 40, .cond_var = 8, .sema = 8};
 }
 
 void SleepThisThread(int milliseconds);
@@ -487,7 +488,7 @@ struct RecursiveMutex {
 
     NON_COPYABLE_AND_MOVEABLE(RecursiveMutex);
 
-    OpaqueHandle<NativeHandleSizes().mutex> mutex;
+    OpaqueHandle<NativeHandleSizes().recursive_mutex> mutex;
 };
 
 struct ScopedMutexLock {
