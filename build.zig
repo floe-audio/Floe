@@ -406,77 +406,6 @@ fn postInstallMacosBinary(
     }
 }
 
-const LipoStep = struct {
-    step: std.Build.Step,
-    make_macos_bundle: bool,
-    step_x86: ?*std.Build.Step.Compile,
-    step_arm: ?*std.Build.Step.Compile,
-    context: *BuildContext,
-};
-
-fn addToLipoSteps(context: *BuildContext, step: *std.Build.Step.Compile, make_macos_bundle: bool) !void {
-    if (step.rootModuleTarget().os.tag != .macos) return;
-
-    const name = step.name;
-    if (!context.lipo_steps.contains(name)) {
-        var lipo_step = context.b.allocator.create(LipoStep) catch @panic("OOM");
-        lipo_step.* = LipoStep{
-            .step = std.Build.Step.init(.{
-                .id = std.Build.Step.Id.custom,
-                .name = "Lipo step",
-                .owner = context.b,
-                .makeFn = doLipoStep,
-            }),
-            .make_macos_bundle = make_macos_bundle,
-            .step_x86 = null,
-            .step_arm = null,
-            .context = context,
-        };
-        context.master_step.dependOn(&lipo_step.step);
-        try context.lipo_steps.put(name, lipo_step);
-    }
-
-    const lipo_step = context.lipo_steps.get(name);
-
-    var add_step: ?*?*std.Build.Step.Compile = null;
-    if (step.rootModuleTarget().cpu.arch == .x86_64) {
-        add_step = &lipo_step.?.step_x86;
-    } else if (step.rootModuleTarget().cpu.arch == .aarch64) {
-        add_step = &lipo_step.?.step_arm;
-    }
-
-    if (add_step) |s| {
-        s.* = step;
-        lipo_step.?.step.dependOn(&step.step);
-        lipo_step.?.step.dependOn(context.b.getInstallStep());
-    }
-}
-
-fn doLipoStep(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
-    const self: *LipoStep = @fieldParentPtr("step", step);
-    _ = options;
-
-    if (self.step_x86 == null) return;
-    if (self.step_arm == null) return;
-    const x86 = self.step_x86.?;
-    const arm = self.step_arm.?;
-
-    const path1 = x86.installed_path.?;
-    const path2 = arm.installed_path.?;
-
-    const working_dir = std.fs.path.dirname(std.fs.path.dirname(path1).?).?;
-    var dir = try std.fs.openDirAbsolute(working_dir, .{});
-    defer dir.close();
-
-    const universal_dir = "universal-macos";
-    try dir.makePath(universal_dir);
-    const out_path = step.owner.pathJoin(&.{ working_dir, universal_dir, std.fs.path.basename(path1) });
-
-    _ = try step.evalChildProcess(&.{ "llvm-lipo", "-create", "-output", out_path, path1, path2 });
-
-    try postInstallMacosBinary(self.context, step, self.make_macos_bundle, out_path, x86.name, x86.version);
-}
-
 const Win32EmbedInfo = struct {
     name: []const u8,
     description: []const u8,
@@ -740,7 +669,6 @@ const BuildContext = struct {
     b: *std.Build,
     enable_tracy: bool,
     build_mode: BuildMode,
-    lipo_steps: std.StringHashMap(*LipoStep),
     master_step: *std.Build.Step,
     test_step: *std.Build.Step,
     optimise: std.builtin.OptimizeMode,
@@ -1042,7 +970,6 @@ fn getTargets(b: *std.Build, user_given_target_presets: ?[]const u8) !std.ArrayL
     try target_map.put("linux", &.{.x86_64_linux});
     try target_map.put("mac_x86", &.{.x86_64_macos});
     try target_map.put("mac_arm", &.{.aarch64_macos});
-    try target_map.put("mac_ub", &.{ .x86_64_macos, .aarch64_macos });
     if (builtin.os.tag == .linux) {
         try target_map.put("dev", &.{ .native, .x86_64_windows, .aarch64_macos });
     } else if (builtin.os.tag == .macos) {
@@ -1168,7 +1095,6 @@ pub fn build(b: *std.Build) void {
         .b = b,
         .enable_tracy = enable_tracy,
         .build_mode = build_mode,
-        .lipo_steps = std.StringHashMap(*LipoStep).init(b.allocator),
         .master_step = b.step("compile", "Compile all"),
         .test_step = b.step("test", "Run tests"),
         .optimise = switch (build_mode) {
@@ -2165,7 +2091,6 @@ pub fn build(b: *std.Build) void {
                 packager.addObject(embedded_files.?);
             }
             join_compile_commands.step.dependOn(&packager.step);
-            addToLipoSteps(&build_context, packager, false) catch @panic("OOM");
             applyUniversalSettings(&build_context, packager);
             const packager_install_artifact_step = b.addInstallArtifact(
                 packager,
@@ -2217,7 +2142,6 @@ pub fn build(b: *std.Build) void {
                 .icon_path = null,
             }) catch @panic("OOM");
             join_compile_commands.step.dependOn(&clap.step);
-            addToLipoSteps(&build_context, clap, true) catch @panic("OOM");
 
             var clap_post_install_step = b.allocator.create(PostInstallStep) catch @panic("OOM");
             clap_post_install_step.* = PostInstallStep{
@@ -2586,7 +2510,6 @@ pub fn build(b: *std.Build) void {
                     vst3_validator,
                     .{ .dest_dir = install_subfolder },
                 ).step);
-                addToLipoSteps(&build_context, vst3_validator, false) catch @panic("OOM");
 
                 // const run_tests = b.addRunArtifact(vst3_validator);
                 // run_tests.addArg(b.pathJoin(&.{ install_dir, install_subfolder_string, "Floe.vst3" }));
@@ -2719,7 +2642,6 @@ pub fn build(b: *std.Build) void {
                 .description = floe_description,
                 .icon_path = null,
             }) catch @panic("OOM");
-            addToLipoSteps(&build_context, vst3, true) catch @panic("OOM");
 
             var vst3_post_install_step = b.allocator.create(PostInstallStep) catch @panic("OOM");
             vst3_post_install_step.* = PostInstallStep{
@@ -2920,7 +2842,6 @@ pub fn build(b: *std.Build) void {
                 const au_install_artifact_step = b.addInstallArtifact(au, .{ .dest_dir = install_subfolder });
                 b.getInstallStep().dependOn(&au_install_artifact_step.step);
                 applyUniversalSettings(&build_context, au);
-                addToLipoSteps(&build_context, au, true) catch @panic("OOM");
 
                 var au_post_install_step = b.allocator.create(PostInstallStep) catch @panic("OOM");
                 au_post_install_step.* = PostInstallStep{
@@ -3201,7 +3122,6 @@ pub fn build(b: *std.Build) void {
             b.getInstallStep().dependOn(&b.addInstallArtifact(tests, .{ .dest_dir = install_subfolder }).step);
             applyUniversalSettings(&build_context, tests);
             join_compile_commands.step.dependOn(&tests.step);
-            addToLipoSteps(&build_context, tests, false) catch @panic("OOM");
 
             var post_install_step = b.allocator.create(PostInstallStep) catch @panic("OOM");
             post_install_step.* = PostInstallStep{

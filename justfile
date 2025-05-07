@@ -604,16 +604,16 @@ macos-notarize file:
   xcrun notarytool submit {{file}} --apple-id "$MACOS_NOTARIZATION_USERNAME" --password "$MACOS_NOTARIZATION_PASSWORD" --team-id $MACOS_TEAM_ID --wait
 
 [macos]
-macos-prepare-packager:
+macos-prepare-packager folder:
   #!/usr/bin/env bash
   set -euo pipefail # don't use 'set -x' because it might print sensitive information
   [[ ! -f version.txt ]] && echo "version.txt file not found" && exit 1
-  [[ ! -d zig-out/universal-macos ]] && echo "universal-macos folder not found" && exit 1
+  [[ ! -d zig-out/{{folder}} ]] && echo "{{folder}} folder not found" && exit 1
 
   version=$(cat version.txt)
   mkdir -p {{release_files_dir}}
 
-  cd zig-out/universal-macos
+  cd zig-out/{{folder}}
 
   codesign --sign "$MACOS_DEV_ID_APP_NAME" --timestamp --options=runtime --force floe-packager
 
@@ -626,16 +626,16 @@ macos-prepare-packager:
   mv $final_packager_zip_name {{release_files_dir}}
 
 [macos]
-macos-prepare-release-plugins notarize="1":
+macos-prepare-release-plugins folder notarize="1":
   #!/usr/bin/env bash
   set -euo pipefail # don't use 'set -x' because it might print sensitive information
   [[ ! -f version.txt ]] && echo "version.txt file not found" && exit 1
-  [[ ! -d zig-out/universal-macos ]] && echo "universal-macos folder not found" && exit 1
+  [[ ! -d zig-out/{{folder}} ]] && echo "{{folder}} folder not found" && exit 1
 
   version=$(cat version.txt)
   mkdir -p {{release_files_dir}}
 
-  cd zig-out/universal-macos
+  cd zig-out/{{folder}}
 
   # step 1: codesign
   cat >plugin.entitlements <<EOF
@@ -701,19 +701,19 @@ macos-prepare-release-plugins notarize="1":
   rm readme.txt
 
 [macos]
-macos-build-installer:
+macos-build-installer folder:
   #!/usr/bin/env bash
   set -euo pipefail # don't use 'set -x' because it might print sensitive information
   [[ ! -f version.txt ]] && echo "version.txt file not found" && exit 1
-  [[ ! -d zig-out/universal-macos ]] && echo "universal-macos folder not found" && exit 1
+  [[ ! -d zig-out/{{folder}} ]] && echo "{{folder}} folder not found" && exit 1
 
   mkdir -p "{{release_files_dir}}"
 
   version=$(cat version.txt)
-  universal_macos_abs_path="{{justfile_directory()}}/zig-out/universal-macos"
+  zig_out_abs_path="{{justfile_directory()}}/zig-out/{{folder}}"
   final_installer_name="Floe-Installer-v$version"
 
-  cd $universal_macos_abs_path
+  cd $zig_out_abs_path
 
   temp_working_subdir="temp_installer_working_subdir"
   rm -rf "$temp_working_subdir"
@@ -749,7 +749,7 @@ macos-build-installer:
     local package_root="package_$file_extension"
     local install_folder="Library/Audio/Plug-Ins/$destination_plugin_folder"
     local identifier="com.Floe.$file_extension"
-    local plugin_path="$universal_macos_abs_path/Floe.$file_extension"
+    local plugin_path="$zig_out_abs_path/Floe.$file_extension"
 
     codesign --verify "$plugin_path" || { echo "ERROR: the plugin file isn't codesigned, do that before this command"; exit 1; }
 
@@ -770,13 +770,37 @@ macos-build-installer:
   echo "This application will install Floe on your computer. You will be able to select which types of audio plugin format you would like to install. Please note that sample libraries are separate: this installer just installs the Floe engine." > productbuild_files/welcome.txt
 
   # find the min macos version from one of the plugin's plists
-  min_macos_version=$(grep -A 1 '<key>LSMinimumSystemVersion</key>' "$universal_macos_abs_path/Floe.clap/Contents/Info.plist" | grep '<string>' | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
+  min_macos_version=$(grep -A 1 '<key>LSMinimumSystemVersion</key>' "$zig_out_abs_path/Floe.clap/Contents/Info.plist" | grep '<string>' | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
+
+  # Determine the architecture(s) from the executable using lipo -archs
+  plugin_executable="$zig_out_abs_path/Floe.clap/Contents/MacOS/Floe"
+  arch_info=$(lipo -archs "$plugin_executable")
+
+  # Set the architecture restriction for the installer based on the plugin architecture
+  if [[ "$arch_info" == "arm64" ]]; then
+    # Only arm64 architecture
+    host_architectures='hostArchitectures="arm64"'
+    arch_name="Apple-Silicon"
+  elif [[ "$arch_info" == "x86_64" ]]; then
+    # Only x86_64 architecture
+    host_architectures='hostArchitectures="x86_64"'
+    arch_name="Intel"
+  elif [[ "$arch_info" == "x86_64 arm64" || "$arch_info" == "arm64 x86_64" ]]; then
+    # Universal binary with both architectures
+    host_architectures='hostArchitectures="arm64,x86_64"'
+    arch_name="Universal"
+  else
+    # Unknown architecture combination
+    echo "Warning: Unknown architecture combination: $arch_info"
+    host_architectures=""
+    arch_name="Unknown"
+  fi
 
   cat >distribution.xml <<EOF
   <installer-gui-script minSpecVersion="1">
       <title>Floe v$version</title>
       <welcome file="welcome.txt" mime-type="text/plain"/>
-      <options customize="always" require-scripts="false"/>
+      <options customize="always" require-scripts="false" $host_architectures/>
       <os-version min="$min_macos_version" /> 
       $distribution_xml_choices
       <choices-outline>
@@ -786,7 +810,7 @@ macos-build-installer:
   EOF
 
   productbuild --distribution distribution.xml --resources productbuild_files --package-path . unsigned.pkg
-  productsign --timestamp --sign "$MACOS_DEV_ID_INSTALLER_NAME" unsigned.pkg "$universal_macos_abs_path/$final_installer_name.pkg"
+  productsign --timestamp --sign "$MACOS_DEV_ID_INSTALLER_NAME" unsigned.pkg "$zig_out_abs_path/$final_installer_name.pkg"
 
   popd
   rm -rf "$temp_working_subdir"
@@ -796,11 +820,17 @@ macos-build-installer:
   xcrun stapler staple $final_installer_name.pkg
 
   # step 6: zip the installer
-  final_zip_name="$final_installer_name-macOS.zip"
+  final_zip_name="$final_installer_name-macOS-$arch_name.zip"
   rm -f "$final_zip_name"
   zip -r "$final_zip_name" "$final_installer_name.pkg"
   mv "$final_zip_name" "{{release_files_dir}}"
 
 [macos]
-macos-prepare-release: (macos-prepare-packager) (macos-prepare-release-plugins) (macos-build-installer)
+macos-prepare-release: 
+  just macos-prepare-packager aarch64-macos
+  just macos-prepare-packager x86_64-macos
+  just macos-prepare-release-plugins aarch64-macos
+  just macos-prepare-release-plugins x86_64-macos
+  just macos-build-installer aarch64-macos
+  just macos-build-installer x86_64-macos
 

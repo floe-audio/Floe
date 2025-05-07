@@ -65,7 +65,8 @@ jobs:
 
       - run: |
           just fetch-logos
-          just build-release mac_ub
+          just build-release mac_arm
+          just build-release mac_x86
 
       - uses: apple-actions/import-codesign-certs@v3
         with: 
