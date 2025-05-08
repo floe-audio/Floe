@@ -9,7 +9,8 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 0.9.4-beta
-- Offer separate downloads for Intel and Apple Silicon Macs rather than a universal binary, this reduces the size of the download to ~50MB.
+- Offer separate downloads for Intel and Apple Silicon Macs rather than a universal binary, this reduces the size of the download to ~50 MB.
+- Fix missing diagnostic information on macOS
 
 ## 0.9.3-beta
 - Fix more errors with threads
