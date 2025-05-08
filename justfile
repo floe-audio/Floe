@@ -625,7 +625,7 @@ macos-prepare-packager folder:
 
   mv $final_packager_zip_name {{release_files_dir}}
 
-[macos]
+[macos, no-cd]
 check-bundle bundle label:
   #!/usr/bin/env bash
   set -euxo pipefail
