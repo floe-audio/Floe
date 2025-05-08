@@ -476,7 +476,7 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
     if (first_call) {
         first_call = 0;
 
-        g_in_signal_handler = true;
+        g_in_crash_handler = true;
         auto signal_description = SignalString(signal_num, info);
 
         if constexpr (!PRODUCTION_BUILD) {
@@ -494,7 +494,7 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
 
         for (auto [index, s] : Enumerate(k_signals)) {
             if (s == signal_num) {
-                g_in_signal_handler = true;
+                g_in_crash_handler = true;
                 auto& prev_action = g_previous_signal_actions[index];
 
                 enum class Type { HandlerFunction, HandlerWithInfoFunction };
@@ -526,7 +526,7 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
                             // raise it.
                             if constexpr (!PRODUCTION_BUILD)
                                 auto _ = StdPrint(k_signal_output_stream, "Calling default signal handler\n");
-                            g_in_signal_handler = false;
+                            g_in_crash_handler = false;
                             signal(signal_num, SIG_DFL);
                             raise(signal_num);
                         } else if (*h == SIG_IGN) {
@@ -563,7 +563,7 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
                         if constexpr (!PRODUCTION_BUILD)
                             auto _ = StdPrint(k_signal_output_stream, "Calling previous signal handler\n");
                         auto h = previous_handler_function.GetFromTag<Type::HandlerFunction>();
-                        g_in_signal_handler = false;
+                        g_in_crash_handler = false;
                         (*h)(signal_num);
                         break;
                     }
@@ -572,7 +572,7 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
                             auto _ =
                                 StdPrint(k_signal_output_stream, "Calling previous info signal handler\n");
                         auto h = previous_handler_function.GetFromTag<Type::HandlerWithInfoFunction>();
-                        g_in_signal_handler = false;
+                        g_in_crash_handler = false;
                         (*h)(signal_num, info, context);
                         break;
                     }

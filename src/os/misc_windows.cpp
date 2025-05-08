@@ -298,12 +298,17 @@ void BeginCrashDetection(CrashHookFunction hook) {
     CountedInit(g_crash_hook_init_flag, [hook]() {
         g_crash_hook.Store(hook, StoreMemoryOrder::Release);
         g_exception_handler = AddVectoredExceptionHandler(1, [](PEXCEPTION_POINTERS exception_info) -> LONG {
+            g_in_crash_handler = true;
+            DEFER { g_in_crash_handler = false; };
+
+            auto const msg = ExceptionCodeString(exception_info->ExceptionRecord->ExceptionCode);
+
             // Some exceptions are expected and should be ignored; for example Lua will trigger exceptions.
-            if (auto const msg = ExceptionCodeString(exception_info->ExceptionRecord->ExceptionCode);
-                msg.size) {
-                if (auto hook = g_crash_hook.Load(LoadMemoryOrder::Acquire))
-                    hook(msg, (uintptr)exception_info->ExceptionRecord->ExceptionAddress - 1);
-            }
+            if (!msg.size) return EXCEPTION_CONTINUE_SEARCH;
+
+            if (auto hook = g_crash_hook.Load(LoadMemoryOrder::Acquire))
+                hook(msg, (uintptr)exception_info->ExceptionRecord->ExceptionAddress - 1);
+
             return EXCEPTION_CONTINUE_SEARCH;
         });
     });

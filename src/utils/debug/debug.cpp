@@ -43,7 +43,7 @@ Atomic<PanicHook> g_panic_hook = DefaultPanicHook;
 void SetPanicHook(PanicHook hook) { g_panic_hook.Store(hook, StoreMemoryOrder::Release); }
 PanicHook GetPanicHook() { return g_panic_hook.Load(LoadMemoryOrder::Acquire); }
 
-thread_local bool g_in_signal_handler {};
+thread_local bool g_in_crash_handler {};
 
 static Atomic<bool> g_panic_occurred {};
 
@@ -95,15 +95,15 @@ static void WriteDisasterFile(char const* message_c_str, String additional_messa
 // noinline because we want __builtin_return_address(0) to return the address of the call site
 [[noreturn]] __attribute__((noinline)) void Panic(char const* message, SourceLocation loc) {
     static thread_local u8 in_panic_hook {};
+    if (g_in_crash_handler) {
+        WriteDisasterFile(message, "Panic occurred while in a signal handler", loc);
+        _Exit(EXIT_FAILURE);
+    }
 
     switch (in_panic_hook) {
         // First time we've panicked.
         case 0: {
             ++in_panic_hook;
-            if (g_in_signal_handler) {
-                WriteDisasterFile(message, "Panic occured while in a signal handler", loc);
-                _Exit(EXIT_FAILURE);
-            }
             g_panic_hook.Load(LoadMemoryOrder::Acquire)(message, loc, CALL_SITE_PROGRAM_COUNTER);
             --in_panic_hook;
 
@@ -111,16 +111,13 @@ static void WriteDisasterFile(char const* message_c_str, String additional_messa
             throw PanicException();
         }
 
-        // Nested panic.
-        case 1: {
-            if (g_in_signal_handler) {
-                WriteDisasterFile(message,
-                                  "Panic occurred while handling a panic, while in a signal handler",
-                                  loc);
-                _Exit(EXIT_FAILURE);
-            }
+        // Panicked inside the panic hook.
+        default: {
+            --in_panic_hook;
+            g_panic_occurred.Store(true, StoreMemoryOrder::Release);
 
-            ++in_panic_hook;
+            // We try to get our crash system to handle this as that is probably the best way to get some
+            // information out of it.
             auto _ =
                 StdPrint(StdStream::Err,
                          "Panic occurred while handling a panic, raising unrecoverable exception/SIGABRT\n");
@@ -130,12 +127,10 @@ static void WriteDisasterFile(char const* message_c_str, String additional_messa
             else
                 raise(SIGABRT);
 
-            _Exit(EXIT_FAILURE);
+            // While the above options are probably no-return, on Windows at least it's possible control
+            // returns to this point after the exception handler runs.
+            throw PanicException();
         }
-
-        default:
-            WriteDisasterFile(message, "Code continued after exception/SIGABRT", loc);
-            _Exit(EXIT_FAILURE);
     }
 }
 

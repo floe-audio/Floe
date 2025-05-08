@@ -339,7 +339,7 @@ using PanicHook = void (*)(char const* message, SourceLocation loc, uintptr loc_
 void SetPanicHook(PanicHook hook); // thread-safe
 PanicHook GetPanicHook(); // thread-safe
 
-extern thread_local bool g_in_signal_handler;
+extern thread_local bool g_in_crash_handler;
 
 #define ASSUME(expression)                                                                                   \
     _Pragma("clang diagnostic push") _Pragma("clang diagnostic ignored \"-Wassume\"")                        \
