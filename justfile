@@ -685,7 +685,7 @@ macos-prepare-release-plugins folder notarize="1":
     codesign --verify $1 --verbose
   }
 
-  plugin_list="Floe.clap"
+  plugin_list="Floe.clap Floe.vst3 Floe.component"
 
   # we can do it in parallel for speed, but we need to be careful there's no conflicting use of the filesystem
   export -f codesign_plugin
