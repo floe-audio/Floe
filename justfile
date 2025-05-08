@@ -672,11 +672,17 @@ macos-prepare-release-plugins folder notarize="1":
 
     # I believe there is a bug in the Zig mach-o toolchain that results in binaries that become invalid after codesigning. Perhaps 
     # it is an isuse with codesign. rcodesign and zsign will not even run on the binary. `codesign` succeeds, but the binary is invalid.
-    # Something about HEADER offset invalid or something. To workaround this, we can first run the binary through vtool which seems
+    # 
+    # otool: error: truncated or malformed object (offset field of section 0 in LC_SEGMENT_64 command 0 not past the headers of the
+    # file)
+    #
+    # To workaround this, we can first run the binary through vtool which seems
     # to happily accept the binary and convert it into something that codesign doesn't mess up. -set-build-version is used just so we
     # can trigger vtool to do something.
-    vtool -set-build-version macos 11.0 15.1 -output $1/Contents/MacOS/Floe-out $1/Contents/MacOS/Floe # set build version
-    rm -rf $1/Contents/MacOS/Floe
+    file $1/Contents/MacOS/Floe
+    # vtool -set-build-version macos 11.0 15.1 -output $1/Contents/MacOS/Floe-out $1/Contents/MacOS/Floe # set build version
+    vtool -remove-source-version -output $1/Contents/MacOS/Floe-out $1/Contents/MacOS/Floe # arbitrary change to trigger macho fix
+    rm $1/Contents/MacOS/Floe
     mv $1/Contents/MacOS/Floe-out $1/Contents/MacOS/Floe
 
     codesign --sign "$MACOS_DEV_ID_APP_NAME" --timestamp --options=runtime --deep --force --strict --entitlements plugin.entitlements $1
@@ -685,11 +691,15 @@ macos-prepare-release-plugins folder notarize="1":
     codesign --verify $1 --verbose
   }
 
-  plugin_list="Floe.clap Floe.vst3 Floe.component"
+  plugin_list="Floe.component Floe.clap Floe.vst3"
 
   # we can do it in parallel for speed, but we need to be careful there's no conflicting use of the filesystem
-  export -f codesign_plugin
-  SHELL=$(type -p bash) parallel --bar codesign_plugin ::: $plugin_list
+  # export -f codesign_plugin
+  # SHELL=$(type -p bash) parallel --bar codesign_plugin ::: $plugin_list
+  # run serial for now because of the above issue
+  for plugin in $plugin_list; do
+    codesign_plugin $plugin
+  done
 
   rm plugin.entitlements
 
@@ -715,8 +725,12 @@ macos-prepare-release-plugins folder notarize="1":
     }
 
     # we can do it in parallel for speed, but we need to be careful there's no conflicting use of the filesystem
-    export -f notarize_plugin
-    SHELL=$(type -p bash) parallel --bar notarize_plugin ::: $plugin_list
+    # export -f notarize_plugin
+    # SHELL=$(type -p bash) parallel --bar notarize_plugin ::: $plugin_list
+    # run serial for now because of the above issue
+    for plugin in $plugin_list; do
+      notarize_plugin $plugin
+    done
   fi
 
   # step 3: zip
