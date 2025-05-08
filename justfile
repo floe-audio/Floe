@@ -709,6 +709,8 @@ macos-prepare-release-plugins folder notarize="1":
         plugin=$1
         temp_subdir=notarizing_$plugin
 
+        just check-bundle $plugin "before notarize and stapling"
+
         rm -rf $temp_subdir
         mkdir -p $temp_subdir
         zip -r $temp_subdir/$plugin.zip $plugin
@@ -717,10 +719,10 @@ macos-prepare-release-plugins folder notarize="1":
 
         unzip $temp_subdir/$plugin.zip -d $temp_subdir
         xcrun stapler staple $temp_subdir/$plugin
-        just check-bundle $temp_subdir/$plugin "after notarize and stapling"
         # replace the original bundle with the stapled one
         rm -rf $plugin
         mv $temp_subdir/$plugin $plugin
+        just check-bundle $plugin "after notarize and stapling"
         rm -rf $temp_subdir
     }
 
@@ -792,7 +794,7 @@ macos-build-installer folder:
     local identifier="com.Floe.$file_extension"
     local plugin_path="$zig_out_abs_path/Floe.$file_extension"
 
-    codesign --verify "$plugin_path" || { echo "ERROR: the plugin file isn't codesigned, do that before this command"; exit 1; }
+    codesign --verbose --verify "$plugin_path" || { echo "ERROR: the plugin file isn't codesigned, do that before this command"; exit 1; }
 
     mkdir -p "$package_root/$install_folder"
     cp -r "$plugin_path" "$package_root/$install_folder"
