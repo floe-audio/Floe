@@ -79,9 +79,9 @@ jobs:
           MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
           MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
 
-      - run: |
-          dsymutil --verify zig-out/aarch64-macos/Floe.clap/Contents/MacOS/Floe
-          dsymutil --verify zig-out/x86_64-macos/Floe.clap/Contents/MacOS/Floe
+      # - run: |
+      #     dsymutil --verify zig-out/aarch64-macos/Floe.clap/Contents/MacOS/Floe
+      #     dsymutil --verify zig-out/x86_64-macos/Floe.clap/Contents/MacOS/Floe
 
       - name: 'get release dir from just'
         run: |

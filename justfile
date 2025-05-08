@@ -746,7 +746,7 @@ macos-prepare-release-plugins folder notarize="1":
 [macos]
 macos-build-installer folder:
   #!/usr/bin/env bash
-  set -euo pipefail # don't use 'set -x' because it might print sensitive information
+  set -euxo pipefail
   [[ ! -f version.txt ]] && echo "version.txt file not found" && exit 1
   [[ ! -d zig-out/{{folder}} ]] && echo "{{folder}} folder not found" && exit 1
 
@@ -799,6 +799,7 @@ macos-build-installer folder:
     mkdir -p "$package_root/$install_folder"
     cp -r "$plugin_path" "$package_root/$install_folder"
     pkgbuild --analyze --root "$package_root" "$package_root.plist"
+    cat "$package_root.plist"
     pkgbuild --root "$package_root" --component-plist "$package_root.plist" --identifier "$identifier" --install-location / --version "$version" "$package_root.pkg"
 
     add_package_to_distribution_xml "$identifier" "$title" "$description" "$package_root.pkg"
@@ -817,7 +818,7 @@ macos-build-installer folder:
 
   # Determine the architecture(s) from the executable using lipo -archs
   plugin_executable="$zig_out_abs_path/Floe.clap/Contents/MacOS/Floe"
-  arch_info=$(lipo -archs "$plugin_executable")
+  arch_info=$(lipo -archs "$plugin_executable" | xargs)  # xargs trims whitespace
 
   # Set the architecture restriction for the installer based on the plugin architecture
   if [[ "$arch_info" == "arm64" ]]; then
@@ -833,10 +834,9 @@ macos-build-installer folder:
     host_architectures='hostArchitectures="arm64,x86_64"'
     arch_name="Universal"
   else
-    # Unknown architecture combination
-    echo "Warning: Unknown architecture combination: $arch_info"
-    host_architectures=""
-    arch_name="Unknown"
+    # error - unsupported architecture
+    echo "ERROR: Unsupported architecture: $arch_info"
+    exit 1
   fi
 
   cat >distribution.xml <<EOF
@@ -851,6 +851,8 @@ macos-build-installer folder:
       </choices-outline>
   </installer-gui-script>
   EOF
+
+  cat distribution.xml
 
   productbuild --distribution distribution.xml --resources productbuild_files --package-path . unsigned.pkg
   productsign --timestamp --sign "$MACOS_DEV_ID_INSTALLER_NAME" unsigned.pkg "$zig_out_abs_path/$final_installer_name.pkg"
