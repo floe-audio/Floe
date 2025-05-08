@@ -310,71 +310,77 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePicker
 }
 
 static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
+    if (PanicOccurred()) return false;
+
     if (!EnterLogicalMainThread()) return false;
     DEFER { LeaveLogicalMainThread(); };
 
-    // "If code is HC_ACTION, the hook procedure must process the message"
-    if (code != HC_ACTION) return false;
+    try {
+        // "If code is HC_ACTION, the hook procedure must process the message"
+        if (code != HC_ACTION) return false;
 
-    // "The message has been removed from the queue." We only want to process messages that aren't otherwise
-    // going to be processed.
-    if (w_param != PM_REMOVE) return false;
+        // "The message has been removed from the queue." We only want to process messages that aren't
+        // otherwise going to be processed.
+        if (w_param != PM_REMOVE) return false;
 
-    if (!msg.hwnd) return false;
+        if (!msg.hwnd) return false;
 
-    // We only care about keyboard messages.
-    {
-        constexpr auto k_accepted_messages =
-            Array {(UINT)WM_KEYDOWN, WM_SYSKEYDOWN, WM_KEYUP, WM_SYSKEYUP, WM_CHAR, WM_SYSCHAR};
-        if (!Contains(k_accepted_messages, msg.message)) return false;
-    }
-
-    // We only care about messages to our window.
-    {
-        constexpr auto k_floe_class_name_len = NullTerminatedSize(GuiPlatform::k_window_class_name);
-        char class_name[k_floe_class_name_len + 1];
-        auto const class_name_len = GetClassNameA(msg.hwnd, class_name, sizeof(class_name));
-        if (class_name_len == 0) {
-            ReportError(ErrorLevel::Warning,
-                        SourceLocationHash(),
-                        "failed to get class name for hwnd, {}",
-                        Win32ErrorCode(GetLastError()));
-            return false;
+        // We only care about keyboard messages.
+        {
+            constexpr auto k_accepted_messages =
+                Array {(UINT)WM_KEYDOWN, WM_SYSKEYDOWN, WM_KEYUP, WM_SYSKEYUP, WM_CHAR, WM_SYSCHAR};
+            if (!Contains(k_accepted_messages, msg.message)) return false;
         }
 
-        if (class_name_len != k_floe_class_name_len) return false; // Not our window.
-        if (!MemoryIsEqual(class_name, GuiPlatform::k_window_class_name, k_floe_class_name_len))
-            return false; // Not our window.
-    }
+        // We only care about messages to our window.
+        {
+            constexpr auto k_floe_class_name_len = NullTerminatedSize(GuiPlatform::k_window_class_name);
+            char class_name[k_floe_class_name_len + 1];
+            auto const class_name_len = GetClassNameA(msg.hwnd, class_name, sizeof(class_name));
+            if (class_name_len == 0) {
+                ReportError(ErrorLevel::Warning,
+                            SourceLocationHash(),
+                            "failed to get class name for hwnd, {}",
+                            Win32ErrorCode(GetLastError()));
+                return false;
+            }
 
-    ASSERT(g_is_logical_main_thread);
-
-    // We only want messages when wants_keyboard_input is true.
-    {
-        // WARNING: doing this is not part of Pugl's public API - it might break.
-        auto view = (PuglView*)GetWindowLongPtrW(msg.hwnd, GWLP_USERDATA);
-
-        auto& platform = *(GuiPlatform*)puglGetHandle(view);
-
-        if (!platform.last_result.wants_keyboard_input) return false;
-    }
-
-    // "If the message is translated (that is, a character message is posted to the thread's message queue),
-    // the return value is nonzero. If the message is WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, or WM_SYSKEYUP, the
-    // return value is nonzero, regardless of the translation."
-    if (TranslateMessage(&msg)) {
-        // We don't want the message in the message queue because it might reach other windows - we want to
-        // consume it for ourselves.
-        MSG peeked {};
-        if (PeekMessageW(&peeked, msg.hwnd, WM_CHAR, WM_DEADCHAR, PM_REMOVE) ||
-            PeekMessageW(&peeked, msg.hwnd, WM_SYSCHAR, WM_SYSDEADCHAR, PM_REMOVE)) {
-            SendMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
-            return true;
+            if (class_name_len != k_floe_class_name_len) return false; // Not our window.
+            if (!MemoryIsEqual(class_name, GuiPlatform::k_window_class_name, k_floe_class_name_len))
+                return false; // Not our window.
         }
-    }
-    SendMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
 
-    return true;
+        ASSERT(g_is_logical_main_thread);
+
+        // We only want messages when wants_keyboard_input is true.
+        {
+            // WARNING: doing this is not part of Pugl's public API - it might break.
+            auto view = (PuglView*)GetWindowLongPtrW(msg.hwnd, GWLP_USERDATA);
+
+            auto& platform = *(GuiPlatform*)puglGetHandle(view);
+
+            if (!platform.last_result.wants_keyboard_input) return false;
+        }
+
+        // "If the message is translated (that is, a character message is posted to the thread's message
+        // queue), the return value is nonzero. If the message is WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, or
+        // WM_SYSKEYUP, the return value is nonzero, regardless of the translation."
+        if (TranslateMessage(&msg)) {
+            // We don't want the message in the message queue because it might reach other windows - we want
+            // to consume it for ourselves.
+            MSG peeked {};
+            if (PeekMessageW(&peeked, msg.hwnd, WM_CHAR, WM_DEADCHAR, PM_REMOVE) ||
+                PeekMessageW(&peeked, msg.hwnd, WM_SYSCHAR, WM_SYSDEADCHAR, PM_REMOVE)) {
+                SendMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
+                return true;
+            }
+        }
+        SendMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
+
+        return true;
+    } catch (PanicException) {
+        return false;
+    }
 }
 
 // GetMsgProc
