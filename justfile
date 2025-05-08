@@ -619,16 +619,7 @@ macos-prepare-packager folder notarize="1":
 
   codesign --sign "$MACOS_DEV_ID_APP_NAME" --timestamp --options=runtime --force floe-packager
   
-  arch_name=
-  arch_info=$(lipo -archs floe-packager | xargs)  # xargs trims whitespace
-  if [[ "$arch_info" == "arm64" ]]; then
-    arch_name="Apple-Silicon"
-  elif [[ "$arch_info" == "x86_64" ]]; then
-    arch_name="Intel"
-  else
-    echo "Unknown architecture: $arch_info"
-    exit 1
-  fi
+  arch_name=$(just _get-arch-name "floe-packager")
 
   final_packager_zip_name="Floe-Packager-v$version-macOS-$arch_name.zip"
   zip $final_packager_zip_name floe-packager
@@ -669,6 +660,24 @@ _workaround-invalid-macho filepath:
   vtool -remove-source-version -output {{filepath}}-fixed {{filepath}} # arbitrary change to trigger MachO fix
   rm {{filepath}}
   mv {{filepath}}-fixed {{filepath}}
+
+[macos, no-cd]
+_get-arch-name filepath:
+  #!/usr/bin/env bash
+  set -euxo pipefail
+  # Helper function to determine architecture name from binary
+  arch_info=$(lipo -archs {{filepath}} | xargs)  # xargs trims whitespace
+  
+  if [[ "$arch_info" == "arm64" ]]; then
+    echo "Apple-Silicon"
+  elif [[ "$arch_info" == "x86_64" ]]; then
+    echo "Intel"
+  elif [[ "$arch_info" == "x86_64 arm64" || "$arch_info" == "arm64 x86_64" ]]; then
+    echo "Universal"
+  else
+    echo "ERROR: Unsupported architecture: $arch_info" >&2
+    exit 1
+  fi
 
 [macos]
 macos-prepare-release-plugins folder notarize="1":
@@ -747,9 +756,12 @@ macos-prepare-release-plugins folder notarize="1":
     SHELL=$(type -p bash) parallel --bar notarize_plugin ::: $plugin_list
   fi
 
-  # step 3: zip
+  # step 3: determine architecture and zip
+  plugin_executable="Floe.clap/Contents/MacOS/Floe"
+  arch_name=$(just _get-arch-name "$plugin_executable")
+  
   just _create-manual-install-readme "macOS"
-  final_manual_zip_name="Floe-Manual-Install-v$version-macOS.zip"
+  final_manual_zip_name="Floe-Manual-Install-v$version-macOS-$arch_name.zip"
   rm -f $final_manual_zip_name
   zip -r $final_manual_zip_name $plugin_list readme.txt
   mv $final_manual_zip_name {{release_files_dir}}
@@ -828,23 +840,21 @@ macos-build-installer folder:
   # find the min macos version from one of the plugin's plists
   min_macos_version=$(grep -A 1 '<key>LSMinimumSystemVersion</key>' "$zig_out_abs_path/Floe.clap/Contents/Info.plist" | grep '<string>' | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
 
-  # Determine the architecture(s) from the executable using lipo -archs
+  # Determine the architecture(s) from the executable
   plugin_executable="$zig_out_abs_path/Floe.clap/Contents/MacOS/Floe"
   arch_info=$(lipo -archs "$plugin_executable" | xargs)  # xargs trims whitespace
+  arch_name=$(just _get-arch-name "$plugin_executable")
 
   # Set the architecture restriction for the installer based on the plugin architecture
   if [[ "$arch_info" == "arm64" ]]; then
     # Only arm64 architecture
     host_architectures='hostArchitectures="arm64"'
-    arch_name="Apple-Silicon"
   elif [[ "$arch_info" == "x86_64" ]]; then
     # Only x86_64 architecture
     host_architectures='hostArchitectures="x86_64"'
-    arch_name="Intel"
   elif [[ "$arch_info" == "x86_64 arm64" || "$arch_info" == "arm64 x86_64" ]]; then
     # Universal binary with both architectures
     host_architectures='hostArchitectures="arm64,x86_64"'
-    arch_name="Universal"
   else
     # error - unsupported architecture
     echo "ERROR: Unsupported architecture: $arch_info"
