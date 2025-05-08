@@ -631,6 +631,9 @@ check-bundle bundle label:
   set -euxo pipefail
   echo "Checking {{bundle}} {{label}}"
   exe="{{bundle}}/Contents/MacOS/Floe"
+  otool -l $exe | head -20 # check mach-o validity
+  vtool -show-build $exe # another mach-o check
+  dsymutil --dump-debug-map $exe | tail -20 # check debug info
   dsymutil --verify $exe # check debug info
   lipo -archs $exe # check mach-o validity and arch
 
@@ -666,11 +669,23 @@ macos-prepare-release-plugins folder notarize="1":
 
   codesign_plugin() {
     just check-bundle $1 "before codesigning"
+
+    # I believe there is a bug in the Zig mach-o toolchain that results in binaries that become invalid after codesigning. Perhaps 
+    # it is an isuse with codesign. rcodesign and zsign will not even run on the binary. `codesign` succeeds, but the binary is invalid.
+    # Something about HEADER offset invalid or something. To workaround this, we can first run the binary through vtool which seems
+    # to happily accept the binary and convert it into something that codesign doesn't mess up. -set-build-version is used just so we
+    # can trigger vtool to do something.
+    vtool -set-build-version macos 11.0 15.1 -output $1/Contents/MacOS/Floe-out $1/Contents/MacOS/Floe # set build version
+    rm -rf $1/Contents/MacOS/Floe
+    mv $1/Contents/MacOS/Floe-out $1/Contents/MacOS/Floe
+
     codesign --sign "$MACOS_DEV_ID_APP_NAME" --timestamp --options=runtime --deep --force --strict --entitlements plugin.entitlements $1
     just check-bundle $1 "after codesigning"
+
+    codesign --verify $1 --verbose
   }
 
-  plugin_list="Floe.clap Floe.vst3 Floe.component"
+  plugin_list="Floe.clap"
 
   # we can do it in parallel for speed, but we need to be careful there's no conflicting use of the filesystem
   export -f codesign_plugin
