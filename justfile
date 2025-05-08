@@ -604,9 +604,9 @@ macos-notarize file:
   xcrun notarytool submit {{file}} --apple-id "$MACOS_NOTARIZATION_USERNAME" --password "$MACOS_NOTARIZATION_PASSWORD" --team-id $MACOS_TEAM_ID --wait
 
 [macos]
-macos-prepare-packager folder:
+macos-prepare-packager folder notarize="1":
   #!/usr/bin/env bash
-  set -euo pipefail # don't use 'set -x' because it might print sensitive information
+  set -euxo pipefail
   [[ ! -f version.txt ]] && echo "version.txt file not found" && exit 1
   [[ ! -d zig-out/{{folder}} ]] && echo "{{folder}} folder not found" && exit 1
 
@@ -615,20 +615,33 @@ macos-prepare-packager folder:
 
   cd zig-out/{{folder}}
 
+  just _workaround-invalid-macho floe-packager
+
   codesign --sign "$MACOS_DEV_ID_APP_NAME" --timestamp --options=runtime --force floe-packager
+  
+  arch_name=
+  arch_info=$(lipo -archs floe-packager | xargs)  # xargs trims whitespace
+  if [[ "$arch_info" == "arm64" ]]; then
+    arch_name="Apple-Silicon"
+  elif [[ "$arch_info" == "x86_64" ]]; then
+    arch_name="Intel"
+  else
+    echo "Unknown architecture: $arch_info"
+    exit 1
+  fi
 
-  lipo -archs floe-packager # check mach-o validity and arch
-
-  final_packager_zip_name="Floe-Packager-v$version-macOS.zip"
+  final_packager_zip_name="Floe-Packager-v$version-macOS-$arch_name.zip"
   zip $final_packager_zip_name floe-packager
 
-  just macos-notarize "$final_packager_zip_name"
-  # NOTE: we can't staple the packager because it's a Unix binary 
+  if [[ "{{notarize}}" -eq 1 ]]; then
+    just macos-notarize "$final_packager_zip_name"
+    # NOTE: we can't staple the packager because it's a Unix binary 
+  fi
 
   mv $final_packager_zip_name {{release_files_dir}}
 
 [macos, no-cd]
-check-bundle bundle label:
+_check-bundle bundle label:
   #!/usr/bin/env bash
   set -euxo pipefail
   echo "Checking {{bundle}} {{label}}"
@@ -638,6 +651,24 @@ check-bundle bundle label:
   dsymutil --dump-debug-map $exe | tail -20 # check debug info
   dsymutil --verify $exe # check debug info
   lipo -archs $exe # check mach-o validity and arch
+
+[macos, no-cd]
+_workaround-invalid-macho filepath:
+  #!/usr/bin/env bash
+  set -euxo pipefail
+  # I believe there is a bug in the Zig mach-o toolchain that results in binaries that become invalid after codesigning. Perhaps 
+  # it is an isuse with codesign. rcodesign and zsign will not even run on the binary. `codesign` succeeds, but the binary is invalid. See the various checks we do in _check-bundle.
+  # 
+  # otool: error: truncated or malformed object (offset field of section 0 in LC_SEGMENT_64 command 0 not past the headers of the
+  # file)
+  #
+  # To workaround this, we can first run the binary through vtool which seems to happily accept the binary and convert it into     
+  # something that codesign doesn't mess up. It was trial and error to find a command that works. Removing the source version 
+  # seems to work for all binaries we are currently using. -set-source-version worked for some binaries but not all.
+  file {{filepath}}
+  vtool -remove-source-version -output {{filepath}}-fixed {{filepath}} # arbitrary change to trigger MachO fix
+  rm {{filepath}}
+  mv {{filepath}}-fixed {{filepath}}
 
 [macos]
 macos-prepare-release-plugins folder notarize="1":
@@ -670,25 +701,12 @@ macos-prepare-release-plugins folder notarize="1":
   EOF
 
   codesign_plugin() {
-    just check-bundle $1 "before codesigning"
+    just _check-bundle $1 "before codesigning"
 
-    # I believe there is a bug in the Zig mach-o toolchain that results in binaries that become invalid after codesigning. Perhaps 
-    # it is an isuse with codesign. rcodesign and zsign will not even run on the binary. `codesign` succeeds, but the binary is invalid. See the various checks we do in check-bundle.
-    # 
-    # otool: error: truncated or malformed object (offset field of section 0 in LC_SEGMENT_64 command 0 not past the headers of the
-    # file)
-    #
-    # To workaround this, we can first run the binary through vtool which seems to happily accept the binary and convert it into     
-    # something that codesign doesn't mess up. It was trial and error to find a command that works. Removing the source version 
-    # seems to work for all binaries we are currently using. -set-source-version worked for some binaries but not all.
-    binary_file=$1/Contents/MacOS/Floe
-    file $binary_file
-    vtool -remove-source-version -output $binary_file-fixed $binary_file # arbitrary change to trigger MachO fix
-    rm $binary_file
-    mv $binary_file-fixed $binary_file
+    just _workaround-invalid-macho $1/Contents/MacOS/Floe
 
     codesign --sign "$MACOS_DEV_ID_APP_NAME" --timestamp --options=runtime --deep --force --strict --entitlements plugin.entitlements $1
-    just check-bundle $1 "after codesigning"
+    just _check-bundle $1 "after codesigning"
 
     codesign --verify $1 --verbose
   }
@@ -707,7 +725,7 @@ macos-prepare-release-plugins folder notarize="1":
         plugin=$1
         temp_subdir=notarizing_$plugin
 
-        just check-bundle $plugin "before notarize and stapling"
+        just _check-bundle $plugin "before notarize and stapling"
 
         rm -rf $temp_subdir
         mkdir -p $temp_subdir
@@ -720,7 +738,7 @@ macos-prepare-release-plugins folder notarize="1":
         # replace the original bundle with the stapled one
         rm -rf $plugin
         mv $temp_subdir/$plugin $plugin
-        just check-bundle $plugin "after notarize and stapling"
+        just _check-bundle $plugin "after notarize and stapling"
         rm -rf $temp_subdir
     }
 
