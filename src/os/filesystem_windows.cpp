@@ -1203,13 +1203,22 @@ PollDirectoryChanges(DirectoryWatcher& watcher, PollDirectoryChangesArgs args) {
         if (wait_result == WAIT_OBJECT_0) {
             DWORD bytes_transferred {};
             if (GetOverlappedResult(windows_dir.handle, &windows_dir.overlapped, &bytes_transferred, FALSE)) {
+                bool error = false;
+
+                if (bytes_transferred == 0) {
+                    // Even though this is a result from GetOverlappedResult, I believe this is the relevant
+                    // docs: "If the buffer overflows, ReadDirectoryChangesW will still return true, but the
+                    // entire contents of the buffer are discarded and the lpBytesReturned parameter will be
+                    // zero, which indicates that your buffer was too small to hold all of the changes that
+                    // occurred."
+                    error = true;
+                }
+
                 auto const* base = windows_dir.buffer.data;
                 auto const* end = Min<u8 const*>(base + bytes_transferred, windows_dir.buffer.end());
                 auto const min_chunk_size = sizeof(FILE_NOTIFY_INFORMATION);
 
-                bool error = false;
-
-                while (true) {
+                while (!error) {
                     ASSERT(base < end, "invalid data from ReadDirectoryChangesW");
                     ASSERT((usize)(end - base) >= min_chunk_size, "invalid data from ReadDirectoryChangesW");
 
