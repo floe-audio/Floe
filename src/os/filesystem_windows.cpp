@@ -1303,7 +1303,9 @@ PollDirectoryChanges(DirectoryWatcher& watcher, PollDirectoryChangesArgs args) {
                 dir.directory_changes.error = FilesystemWin32ErrorCode(GetLastError());
             }
         } else {
-            ASSERT_EQ(wait_result, (DWORD)WAIT_TIMEOUT);
+            // For WAIT_IO_COMPLETION, WAIT_ABANDONED, WAIT_TIMEOUT, or any other result just continue to the
+            // next directory without processing changes; we'll catch any pending changes in the next poll. We
+            // have seen WAIT_IO_COMPLETION in the wild.
         }
 
         auto const succeeded = ReadDirectoryChangesW(windows_dir.handle,
