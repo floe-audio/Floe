@@ -219,7 +219,7 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
                                              "[Download {}]({}) ({} MB)",
                                              asset.name,
                                              asset.url,
-                                             asset.size / 1024 / 1024),
+                                             Max(1uz, asset.size / 1024 / 1024)),
                                  scratch);
             }
         }
