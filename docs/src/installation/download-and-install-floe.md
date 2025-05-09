@@ -24,30 +24,30 @@ Additional information:
 
 [^pre-releases]: Main releases are backwards compatible, but alpha and beta versions do not have this guarantee.
 
-## Installer
+## Installer (recommended)
 
 <img src="../images/installer-macos-gui.png" width="49%" style="display: inline;">
 <img src="../images/installer-windows-gui.png" width="49%" style="display: inline;">
 
 
-> **<i class="fa fa-windows"></i> Floe Installer Windows**: ==Floe-Installer-Windows-markdown-link==
+> **<i class="fa fa-windows"></i> Floe Installer Windows**:<br>==Floe-Installer-Windows-markdown-link==
 > 
-> **<i class="fa fa-apple"></i> Floe Installer macOS Apple Silicon[^mac-arm]**: ==Floe-Installer-macOS-Apple-Silicon-markdown-link==
+> **<i class="fa fa-apple"></i> Floe Installer macOS Apple Silicon[^mac-arm]**:<br>==Floe-Installer-macOS-Apple-Silicon-markdown-link==
 > 
-> **<i class="fa fa-apple"></i> Floe Installer macOS Intel[^mac-intel]**: ==Floe-Installer-macOS-Intel-markdown-link==
+> **<i class="fa fa-apple"></i> Floe Installer macOS Intel[^mac-intel]**:<br>==Floe-Installer-macOS-Intel-markdown-link==
 
 Download, unzip, and run the installer program. The installer will guide you through the installation process, including choosing the plugin formats you want to install. 
 
 Once the installation is complete you might need to restart your DAW in order for it to find the Floe plugins.
 
 
-## Manually Install
+## Manually Install (advanced)
 
-> **<i class="fa fa-windows"></i> Floe Manual Install Windows**: ==Floe-Manual-Install-Windows-markdown-link==
+> **<i class="fa fa-windows"></i> Floe Manual Install Windows**:<br>==Floe-Manual-Install-Windows-markdown-link==
 > 
-> **<i class="fa fa-apple"></i> Floe Manual Install macOS Apple Silicon[^mac-arm]**: ==Floe-Manual-Install-macOS-Apple-Silicon-markdown-link==
+> **<i class="fa fa-apple"></i> Floe Manual Install macOS Apple Silicon[^mac-arm]**:<br>==Floe-Manual-Install-macOS-Apple-Silicon-markdown-link==
 > 
-> **<i class="fa fa-apple"></i> Floe Manual Install macOS Intel[^mac-intel]**: ==Floe-Manual-Install-macOS-Intel-markdown-link==
+> **<i class="fa fa-apple"></i> Floe Manual Install macOS Intel[^mac-intel]**:<br>==Floe-Manual-Install-macOS-Intel-markdown-link==
 
 
 Normally you'll want to use the installer, but there could be some cases where you'd prefer to install Floe manually. To allow for this, we provide a zip file that contains Floe's plugin files. Extract it and move the files to your plugin folders.

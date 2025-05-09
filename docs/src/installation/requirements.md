@@ -17,7 +17,7 @@ On Windows, Floe is available in the CLAP and VST3 formats. We recommend using t
 On macOS, Floe is available in the CLAP, VST3 and AU (v2) formats. We recommend using the CLAP version where possible. Requirements:
 
 - ==min-macos-version== or later
-- Apple Silicon or Intel (Floe is a universal binary)
+- Apple Silicon or Intel
 - CLAP, AU (v2) or VST3 host
 
 ### Plugin Hosts (DAWs)
