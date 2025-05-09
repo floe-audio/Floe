@@ -149,6 +149,7 @@ static void DoScanFolderJob(PendingLibraryJobs::Job::ScanFolder& job,
                             LibrariesList& lib_list) {
     auto folder = job.args.folder;
     ASSERT(folder);
+    ASSERT(folder->state.Load(LoadMemoryOrder::Acquire) == ScanFolder::State::Scanning);
 
     auto const& path = folder->path;
     ZoneScoped;
@@ -2104,41 +2105,6 @@ TEST_CASE(TestSampleLibraryLoader) {
                         },
                 });
         };
-
-        // IMPROVE: add tests for Core library
-#if 0
-        SUBCASE("core library") {
-            dyn::Append(
-                requests,
-                {
-                    .request =
-                        LoadRequestInstrumentIdWithLayer {
-                            .id =
-                                {
-                                    .library_name = "Core"_s,
-                                    .inst_name = "bar"_s,
-                                },
-                            .layer_index = 0,
-                        },
-                    .check_result =
-                        [&](LoadResult const& r, LoadRequest const&) {
-                            auto err = r.result.TryGet<ErrorCode>();
-                            REQUIRE(err);
-                            if (*err != CommonError::NotFound)
-                                LOG_WARNING(
-                                    "Unable to properly test Core library, not expecting error: {}. The test program scans upwards from its executable path for a folder named '{}' and scans that for the core library",
-                                    tests::k_build_resources_subdir,
-                                    *err);
-                            for (auto& n : fixture.error_notif.items)
-                                if (auto e = n.TryScoped())
-                                    tester.log.Debug("Error: {}: {}: {}",
-                                                       e->title,
-                                                       e->message,
-                                                       e->error_code);
-                        },
-                });
-        }
-#endif
 
         SUBCASE("invalid lib+path") {
             dyn::Append(requests,
