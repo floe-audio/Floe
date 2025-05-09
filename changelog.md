@@ -8,9 +8,10 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
-## 0.9.4-beta
+## 0.9.5-beta
 - Fix potential crash in Floe AU format
-- Fix error related to filesystem watching on Windows
+- Fix errors related to filesystem watching on Windows
+- Fix error related to sample library folders - could happen when installing a package
 
 ## 0.9.4-beta
 - Offer separate downloads for Intel and Apple Silicon Macs rather than a universal binary, this reduces the size of the download to ~50 MB.
