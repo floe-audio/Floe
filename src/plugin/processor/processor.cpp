@@ -107,9 +107,7 @@ void CancelMidiCCLearn(AudioProcessor& processor) {
 }
 
 void UnlearnMidiCC(AudioProcessor& processor, ParamIndex param, u7 cc_num_to_remove) {
-    ASSERT(g_is_logical_main_thread);
-    processor.events_for_audio_thread.Push(RemoveMidiLearn {.param = param, .midi_cc = cc_num_to_remove});
-    processor.host.request_process(&processor.host);
+    processor.param_learned_ccs[ToInt(param)].Clear(cc_num_to_remove);
 }
 
 Bitset<128> GetLearnedCCsBitsetForParam(AudioProcessor const& processor, ParamIndex param) {
@@ -635,9 +633,7 @@ HandleNoteOff(AudioProcessor& processor, MidiChannelNote note, f32 velocity, boo
 }
 
 static void FlushEventsForAudioThread(AudioProcessor& processor) {
-    for (auto const& event : processor.events_for_audio_thread.PopAll())
-        if (auto remove_midi_learn = event.TryGet<RemoveMidiLearn>())
-            processor.param_learned_ccs[ToInt(remove_midi_learn->param)].Clear(remove_midi_learn->midi_cc);
+    auto _ = processor.events_for_audio_thread.PopAll();
 }
 
 static void Deactivate(AudioProcessor& processor) {
@@ -1091,8 +1087,7 @@ static void ConsumeParamEventsFromGui(AudioProcessor& processor,
             case EventForAudioThreadType::ConvolutionIRChanged:
             case EventForAudioThreadType::LayerInstrumentChanged:
             case EventForAudioThreadType::StartNote:
-            case EventForAudioThreadType::EndNote:
-            case EventForAudioThreadType::RemoveMidiLearn: PanicIfReached();
+            case EventForAudioThreadType::EndNote: PanicIfReached();
         }
     }
 }
@@ -1189,11 +1184,6 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
             }
             case EventForAudioThreadType::ConvolutionIRChanged: {
                 mark_convolution_for_fade_out = true;
-                break;
-            }
-            case EventForAudioThreadType::RemoveMidiLearn: {
-                auto const& remove_midi_learn = e.Get<RemoveMidiLearn>();
-                processor.param_learned_ccs[ToInt(remove_midi_learn.param)].Clear(remove_midi_learn.midi_cc);
                 break;
             }
             case EventForAudioThreadType::ParamChanged:
