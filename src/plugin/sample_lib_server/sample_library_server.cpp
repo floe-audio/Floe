@@ -236,8 +236,8 @@ static bool MarkNotScannedFoldersRescanRequested(ScanFolderList& scan_folders) {
             auto expected = ScanFolder::State::NotScanned;
             if (f->state.CompareExchangeStrong(expected,
                                                ScanFolder::State::RescanRequested,
-                                               RmwMemoryOrder::Relaxed,
-                                               LoadMemoryOrder::Relaxed))
+                                               RmwMemoryOrder::AcquireRelease,
+                                               LoadMemoryOrder::Acquire))
                 any_rescan_requested = true;
         }
     return any_rescan_requested;
@@ -263,11 +263,11 @@ static bool UpdateLibraryJobs(Server& server,
     for (auto& node : server.scan_folders) {
         if (auto f = node.TryScoped()) {
             auto expected = ScanFolder::State::RescanRequested;
-            auto const exchanged = f->state.CompareExchangeStrong(expected,
-                                                                  ScanFolder::State::Scanning,
-                                                                  RmwMemoryOrder::Relaxed,
-                                                                  LoadMemoryOrder::Relaxed);
-            if (!exchanged) continue;
+            if (!f->state.CompareExchangeStrong(expected,
+                                                ScanFolder::State::Scanning,
+                                                RmwMemoryOrder::Relaxed,
+                                                LoadMemoryOrder::Relaxed))
+                continue;
         }
 
         PendingLibraryJobs::Job::ScanFolder* scan_job;
@@ -290,7 +290,7 @@ static bool UpdateLibraryJobs(Server& server,
     }
 
     // handle async jobs that have completed
-    for (auto node = pending_library_jobs.jobs.Load(LoadMemoryOrder::Relaxed); node != nullptr;
+    for (auto node = pending_library_jobs.jobs.Load(LoadMemoryOrder::Acquire); node != nullptr;
          node = node->next) {
         if (node->result_handled) continue;
         if (!node->completed.Load(LoadMemoryOrder::Acquire)) continue;
@@ -426,7 +426,7 @@ static bool UpdateLibraryJobs(Server& server,
                     if (!folder->state.CompareExchangeStrong(expected,
                                                              new_state,
                                                              RmwMemoryOrder::AcquireRelease,
-                                                             LoadMemoryOrder::Relaxed)) {
+                                                             LoadMemoryOrder::Acquire)) {
                         ASSERT_EQ(expected, ScanFolder::State::RescanRequested);
                     }
                 }
@@ -503,7 +503,7 @@ static bool UpdateLibraryJobs(Server& server,
                 for (auto const& subpath_changeset : dir_changes.subpath_changesets) {
                     if (subpath_changeset.changes & DirectoryWatcher::ChangeType::ManualRescanNeeded) {
                         scan_folder.state.Store(ScanFolder::State::RescanRequested,
-                                                StoreMemoryOrder::Relaxed);
+                                                StoreMemoryOrder::Release);
                         continue;
                     }
 
@@ -530,7 +530,7 @@ static bool UpdateLibraryJobs(Server& server,
 
                         if (file_type == FileType::Directory) {
                             scan_folder.state.Store(ScanFolder::State::RescanRequested,
-                                                    StoreMemoryOrder::Relaxed);
+                                                    StoreMemoryOrder::Release);
                             continue;
                         }
                     }
@@ -1691,7 +1691,7 @@ void RescanFolder(Server& server, String path) {
     for (auto& n : server.scan_folders)
         if (auto f = n.TryScoped()) {
             if (path::Equal(f->path, path) || path::IsWithinDirectory(path, f->path)) {
-                f->state.Store(ScanFolder::State::RescanRequested, StoreMemoryOrder::Relaxed);
+                f->state.Store(ScanFolder::State::RescanRequested, StoreMemoryOrder::Release);
                 found = true;
             }
         }
