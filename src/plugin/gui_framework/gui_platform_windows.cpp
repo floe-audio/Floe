@@ -81,15 +81,19 @@ RunFilePicker(FilePickerDialogOptions const& args, ArenaAllocator& arena, HWND p
             auto dir = WidenAllocNullTerm(temp_path_arena, *narrow_dir).Value();
             Replace(dir, L'/', L'\\');
             IShellItem* item = nullptr;
-            HRESULT_TRY(SHCreateItemFromParsingName(dir.data, nullptr, IID_PPV_ARGS(&item)));
-            ASSERT(item);
-            DEFER { item->Release(); };
+            // SHCreateItemFromParsingName can fail with ERROR_FILE_NOT_FOUND. We only set the default folder
+            // if it succeeds.
+            if (auto const hr = SHCreateItemFromParsingName(dir.data, nullptr, IID_PPV_ARGS(&item));
+                SUCCEEDED(hr)) {
+                ASSERT(item);
+                DEFER { item->Release(); };
 
-            constexpr bool k_forced_default_folder = true;
-            if constexpr (k_forced_default_folder)
-                f->SetFolder(item);
-            else
-                f->SetDefaultFolder(item);
+                constexpr bool k_forced_default_folder = true;
+                if constexpr (k_forced_default_folder)
+                    f->SetFolder(item);
+                else
+                    f->SetDefaultFolder(item);
+            }
         }
 
         if (args.type == FilePickerDialogOptions::Type::SaveFile) {
