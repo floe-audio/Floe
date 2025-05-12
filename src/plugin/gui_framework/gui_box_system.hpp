@@ -367,6 +367,8 @@ constexpr f32 k_default_font_size = 0;
 
 enum class TextInputBox : u32 { None, SingleLine, MultiLine, Count };
 
+enum class BackgroundShape : u32 { Rectangle, Circle, Count };
+
 struct BoxConfig {
     Optional<Box> parent {};
 
@@ -384,6 +386,8 @@ struct BoxConfig {
         : NumBitsNeededToStore(ToInt(TextOverflowType::Count)) = TextOverflowType::AllowOverflow;
     bool32 capitalize_text : 1 = false;
 
+    BackgroundShape background_shape
+        : NumBitsNeededToStore(ToInt(BackgroundShape::Count)) = BackgroundShape::Rectangle;
     style::Colour background_fill : style::k_colour_bits = style::Colour::None;
     style::Colour background_fill_hot : style::k_colour_bits = style::Colour::None;
     style::Colour background_fill_active : style::k_colour_bits = style::Colour::None;
@@ -626,7 +630,18 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
                 // the system. The issue is that the drawing code works differently to this system.
                 auto const corner_flags = __builtin_bitreverse32(config.round_background_corners) >> 28;
 
-                builder.imgui.graphics->AddRectFilled(r, col_u32, rounding, (int)corner_flags);
+                switch (config.background_shape) {
+                    case BackgroundShape::Rectangle:
+                        builder.imgui.graphics->AddRectFilled(r, col_u32, rounding, (int)corner_flags);
+                        break;
+                    case BackgroundShape::Circle: {
+                        auto const centre = r.Centre();
+                        auto const radius = Min(r.w, r.h) / 2;
+                        builder.imgui.graphics->AddCircleFilled(centre, radius, col_u32);
+                        return box;
+                    }
+                    case BackgroundShape::Count: PanicIfReached();
+                }
             }
 
             if (config.background_tex)
