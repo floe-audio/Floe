@@ -32,6 +32,14 @@ jobs:
 
       - run: just install-docs-preprocessor
 
+      - name: Generate API files
+        run: |
+          mkdir -p docs/src/api/v1
+          version=$(cat version.txt)
+          cat > docs/src/api/v1/version << EOF
+          latest=$version
+          EOF
+
       - name: Deploy GitHub Pages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
