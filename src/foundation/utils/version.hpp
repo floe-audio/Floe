@@ -17,7 +17,7 @@ PUBLIC constexpr u8 ExtractPatchFromPackedVersion(u32 packed) { return packed & 
 struct Version {
     constexpr Version() = default;
     constexpr Version(u8 mj, u8 mn, u8 p) : major(mj), minor(mn), patch(p) {}
-    constexpr Version(u32 packed_version) {
+    constexpr explicit Version(u32 packed_version) {
         major = CheckedCast<u8>(ExtractMajorFromPackedVersion(packed_version));
         minor = ExtractMinorFromPackedVersion(packed_version);
         patch = ExtractPatchFromPackedVersion(packed_version);
@@ -27,8 +27,6 @@ struct Version {
         ASSERT(index < k_num_version_subdivisions);
         return ((u8*)&major)[index];
     }
-
-    MutableString ToString(Allocator& a) const { return fmt::Format(a, "{}.{}.{}", major, minor, patch); }
 
     bool IsEmpty() const { return !major && !minor && !patch; }
     u32 Packed() const { return PackVersionIntoU32(major, minor, patch); }
@@ -54,7 +52,7 @@ struct Version {
     u8 major {}, minor {}, patch {};
 };
 
-PUBLIC Optional<Version> ParseVersionString(String str) {
+PUBLIC constexpr Optional<Version> ParseVersionString(String str) {
     auto const first_dot = Find(str, '.');
     if (!first_dot) return {};
 
@@ -70,21 +68,35 @@ PUBLIC Optional<Version> ParseVersionString(String str) {
     Version result {};
     usize num_chars_read = 0;
     if (auto n = ParseInt(major_text, ParseIntBase::Decimal, &num_chars_read, false);
-        n.HasValue() && num_chars_read == major_text.size)
+        n.HasValue() && num_chars_read == major_text.size && n.Value() >= 0 &&
+        n.Value() <= LargestRepresentableValue<decltype(result.major)>())
         result.major = (u8)n.Value();
     else
         return k_nullopt;
 
     if (auto n = ParseInt(minor_text, ParseIntBase::Decimal, &num_chars_read, false);
-        n.HasValue() && num_chars_read == minor_text.size)
+        n.HasValue() && num_chars_read == minor_text.size && n.Value() >= 0 &&
+        n.Value() <= LargestRepresentableValue<decltype(result.minor)>())
         result.minor = (u8)n.Value();
     else
         return k_nullopt;
 
-    if (auto n = ParseInt(patch_text, ParseIntBase::Decimal, nullptr, false); n.HasValue())
+    if (auto n = ParseInt(patch_text, ParseIntBase::Decimal, nullptr, false);
+        n.HasValue() && n.Value() >= 0 && n.Value() <= LargestRepresentableValue<decltype(result.patch)>())
         result.patch = (u8)n.Value();
     else
         return k_nullopt;
 
     return result;
+}
+
+PUBLIC ErrorCodeOr<void>
+CustomValueToString(Writer writer, Version const& version, fmt::FormatOptions options) {
+    ASSERT(!options.required_width);
+    TRY(ValueToString(writer, version.major, options));
+    TRY(writer.WriteChar('.'));
+    TRY(ValueToString(writer, version.minor, options));
+    TRY(writer.WriteChar('.'));
+    TRY(ValueToString(writer, version.patch, options));
+    return k_success;
 }
