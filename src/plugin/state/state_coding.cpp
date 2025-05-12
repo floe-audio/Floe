@@ -954,7 +954,8 @@ struct StateCoder {
             TRY(args.read_or_write_data(&size, sizeof(size)));
 
             if (size) {
-                if (IsReading()) dyn::Resize(arr, size);
+                if (IsReading())
+                    if (!dyn::Resize(arr, size)) return ErrorCode(CommonError::InvalidFileFormat);
                 TRY(args.read_or_write_data((void*)arr.data, size * sizeof(Type)));
             }
         }
@@ -1115,7 +1116,10 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
             String tag {};
             if (coder.IsWriting()) tag = state.metadata.tags[i];
             TRY(coder.CodeString(tag, scratch_arena, StateVersion::Initial));
-            if (coder.IsReading()) dyn::Append(state.metadata.tags, tag);
+            if (coder.IsReading()) {
+                if (tag.size > k_max_tag_size) return ErrorCode(CommonError::InvalidFileFormat);
+                dyn::Emplace(state.metadata.tags, tag);
+            }
         }
     }
 
@@ -1124,12 +1128,19 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         String author {};
         if (coder.IsWriting()) author = state.metadata.author;
         TRY(coder.CodeString(author, scratch_arena, StateVersion::Initial));
-        if (coder.IsReading()) state.metadata.author = author;
+        if (coder.IsReading()) {
+            if (author.size > k_max_preset_author_size) return ErrorCode(CommonError::InvalidFileFormat);
+            state.metadata.author = author;
+        }
 
         String description {};
         if (coder.IsWriting()) description = state.metadata.description;
         TRY(coder.CodeString(description, scratch_arena, StateVersion::Initial));
-        if (coder.IsReading()) state.metadata.description = description;
+        if (coder.IsReading()) {
+            if (description.size > k_max_preset_description_size)
+                return ErrorCode(CommonError::InvalidFileFormat);
+            state.metadata.description = description;
+        }
     }
 
     // =======================================================================================================
@@ -1143,7 +1154,10 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         String instance_id {};
         if (coder.IsWriting()) instance_id = state.instance_id;
         TRY(coder.CodeString(instance_id, scratch_arena, StateVersion::Initial));
-        if (coder.IsReading()) state.instance_id = instance_id;
+        if (coder.IsReading()) {
+            if (instance_id.size > k_max_instance_id_size) return ErrorCode(CommonError::InvalidFileFormat);
+            state.instance_id = instance_id;
+        }
     }
 
     // =======================================================================================================
