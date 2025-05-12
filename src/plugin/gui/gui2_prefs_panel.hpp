@@ -8,6 +8,7 @@
 #include "common_infrastructure/error_reporting.hpp"
 
 #include "engine/autosave.hpp"
+#include "engine/check_for_update.hpp"
 #include "engine/package_installation.hpp"
 #include "gui/gui_file_picker.hpp"
 #include "gui/gui_prefs.hpp"
@@ -679,6 +680,8 @@ static void GeneralPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCo
 
         for (auto const autosave_setting : EnumIterator<AutosaveSetting>())
             Setting(box_system, context, options_rhs_column, SettingDescriptor(autosave_setting));
+
+        Setting(box_system, context, options_rhs_column, check_for_update::CheckAllowedPrefDescriptor());
     }
 }
 

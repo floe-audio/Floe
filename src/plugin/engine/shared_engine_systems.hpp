@@ -9,6 +9,7 @@
 #include "common_infrastructure/preferences.hpp"
 #include "common_infrastructure/sentry/sentry.hpp"
 
+#include "check_for_update.hpp"
 #include "clap/plugin.h"
 #include "preset_server/preset_server.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
@@ -37,6 +38,7 @@ struct SharedEngineSystems {
     sample_lib_server::Server sample_library_server;
     Optional<LockableSharedMemory> shared_attributions_store {};
     PresetServer preset_server;
+    check_for_update::State check_for_update_state;
 
     Thread polling_thread {};
     Mutex polling_mutex {};

@@ -13,5 +13,6 @@ struct InfoPanelState {
         Count,
     };
     bool open {};
+    bool opened_before {};
     Tab tab {Tab::Libraries};
 };

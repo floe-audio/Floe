@@ -11,7 +11,6 @@
 #include "state/state_snapshot.hpp"
 
 struct AutosaveState {
-
     enum class State { Idle, SaveRequested, Saved };
     Atomic<u16> max_autosaves_per_instance {};
     Atomic<u16> autosave_delete_after_days {};

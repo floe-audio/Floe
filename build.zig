@@ -30,6 +30,7 @@ const floe_clap_id = "com.floe-audio.floe";
 const floe_homepage_url = "https://floe.audio";
 const floe_manual_url = "https://floe.audio";
 const floe_download_url = "https://floe.audio/installation/download-and-install-floe.html";
+const floe_changelog_url = "https://floe.audio/changelog.html";
 const floe_source_code_url = "https://github.com/floe-audio/Floe";
 const floe_au_factory_function = "FloeAuV2";
 const min_macos_version = "11.0.0"; // use 3-part version for plist
@@ -1192,6 +1193,7 @@ pub fn build(b: *std.Build) void {
             .FLOE_HOMEPAGE_URL = floe_homepage_url,
             .FLOE_MANUAL_URL = floe_manual_url,
             .FLOE_DOWNLOAD_URL = floe_download_url,
+            .FLOE_CHANGELOG_URL = floe_changelog_url,
             .FLOE_SOURCE_CODE_URL = floe_source_code_url,
             .FLOE_PROJECT_ROOT_PATH = b.build_root.path.?,
             .FLOE_PROJECT_CACHE_PATH = b.pathJoin(&.{ b.build_root.path.?, floe_cache_relative }),
@@ -1913,7 +1915,7 @@ pub fn build(b: *std.Build) void {
             plugin.addCSourceFiles(.{
                 .files = &(.{
                     plugin_path ++ "/engine/autosave.cpp",
-                    plugin_path ++ "/engine/autosave.cpp",
+                    plugin_path ++ "/engine/check_for_update.cpp",
                     plugin_path ++ "/engine/engine.cpp",
                     plugin_path ++ "/engine/package_installation.cpp",
                     plugin_path ++ "/engine/shared_engine_systems.cpp",
