@@ -407,7 +407,8 @@ struct BraceSectionResult {
 };
 
 // This is primarily done in a separate function in order to reduce the size of the template function
-static ErrorCodeOr<BraceSectionResult> ParseBraceSection(Writer writer, char const* p, char const* end) {
+[[maybe_unused]] static ErrorCodeOr<BraceSectionResult>
+ParseBraceSection(Writer writer, char const* p, char const* end) {
     ASSERT(*p == '{');
     for (; p < end; ++p) {
         ++p;
@@ -473,7 +474,8 @@ static ErrorCodeOr<BraceSectionResult> ParseBraceSection(Writer writer, char con
 
 // 'format' is advanced to after the next brace-section
 template <typename Arg>
-static ErrorCodeOr<void> FindAndWriteNextValue(Writer writer, String& format, Arg const& arg) {
+[[maybe_unused]] static ErrorCodeOr<void>
+FindAndWriteNextValue(Writer writer, String& format, Arg const& arg) {
     auto const starting_size = format.size;
     auto const end = format.end();
     for (auto p = format.begin(); p != end; ++p) {

@@ -440,7 +440,7 @@ ALWAYS_INLINE constexpr bool NumberCastIsSafe(FromType val) {
 }
 
 template <Scalar T1, Scalar T2>
-ALWAYS_INLINE inline T1 CheckedCast(T2 v) {
+ALWAYS_INLINE inline constexpr T1 CheckedCast(T2 v) {
     ASSERT(NumberCastIsSafe<T1>(v));
     return (T1)v;
 }
