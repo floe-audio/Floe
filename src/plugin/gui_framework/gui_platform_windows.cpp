@@ -88,7 +88,7 @@ RunFilePicker(FilePickerDialogOptions const& args, ArenaAllocator& arena, HWND p
                 ASSERT(item);
                 DEFER { item->Release(); };
 
-                constexpr bool k_forced_default_folder = true;
+                constexpr bool k_forced_default_folder = false;
                 if constexpr (k_forced_default_folder)
                     f->SetFolder(item);
                 else
