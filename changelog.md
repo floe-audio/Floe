@@ -10,6 +10,7 @@ For instance: 0.0.1. Don't change the headings.
 # Changelog
 ## 0.9.6-beta
 - Check for updates on startup; a small indicator on the Info button will appear - leading to more information on the Info panel. Can be disabled in the preferences.
+- Fix file picker on Windows not opened when there's missing folders
 
 ## 0.9.5-beta
 - Fix potential crash in Floe AU format
