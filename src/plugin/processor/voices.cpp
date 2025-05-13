@@ -15,37 +15,55 @@
 static constexpr u32 k_num_frames_in_voice_processing_chunk = 64;
 
 static void FadeOutVoicesToEnsureMaxActive(VoicePool& pool, AudioProcessingContext const& context) {
-    if (pool.num_active_voices.Load(LoadMemoryOrder::Relaxed) > k_max_num_active_voices) {
-        auto oldest = LargestRepresentableValue<u64>();
-        Voice* oldest_voice = nullptr;
-        for (auto& v : pool.EnumerateActiveVoices()) {
-            if (v.age < oldest && !v.volume_fade.IsFadingOut()) {
-                oldest = v.age;
-                oldest_voice = &v;
-            }
+    if (pool.num_active_voices.Load(LoadMemoryOrder::Relaxed) <= k_max_num_active_voices) return;
+
+    auto time_started = LargestRepresentableValue<u64>();
+    Voice* oldest_active_voice = nullptr;
+    for (auto& v : pool.EnumerateActiveVoices()) {
+        if (v.time_started < time_started && !v.volume_fade.IsFadingOut()) {
+            time_started = v.time_started;
+            oldest_active_voice = &v;
         }
-        if (oldest_voice) oldest_voice->volume_fade.SetAsFadeOut(context.sample_rate);
     }
+
+    // It's possible that all the voices are fading out already.
+    if (!oldest_active_voice) return;
+
+    // Fade out this voice.
+    oldest_active_voice->volume_fade.SetAsFadeOut(context.sample_rate);
 }
 
 static Voice& FindVoice(VoicePool& pool, AudioProcessingContext const& context) {
     FadeOutVoicesToEnsureMaxActive(pool, context);
 
+    // Easy case: find an inactive voice.
     for (auto& v : pool.voices)
         if (!v.is_active) return v;
 
-    DynamicArrayBounded<u16, k_num_voices> voice_indexes {};
-    for (auto [i, index] : Enumerate<u16>(voice_indexes))
-        index = i;
-    Sort(voice_indexes, [&voices = pool.voices](u16 a, u16 b) { return voices[a].age < voices[b].age; });
+    // All the voices are active, so we do a simple algorithm to find an appropriate voice to steal: quiet and
+    // old.
 
-    auto quietest_gain = 1.0f;
-    auto quietest_voice_index = (u16)-1;
-    for (auto const i : Range(k_num_voices / 4)) {
-        auto& v = pool.voices[i];
+    // Generate an array of the voice indexes, sorted by age. Where the first index in the array is an index
+    // to the oldest voice.
+    Array<u16, k_num_voices> old_index_to_index;
+    for (auto [i, index] : Enumerate<u16>(old_index_to_index))
+        index = i;
+    Sort(old_index_to_index,
+         [&voices = pool.voices](u16 a, u16 b) { return voices[a].time_started < voices[b].time_started; });
+
+    ASSERT(pool.voices[old_index_to_index[0]].time_started <=
+           pool.voices[old_index_to_index[1]].time_started);
+
+    // We loop through the oldest 1/4 of the voices and find the quietest one to steal - this will hopefully
+    // have the least obvious audible effect.
+    auto quietest_gain = pool.voices[old_index_to_index[0]].current_gain;
+    u16 quietest_voice_index = 0;
+    for (auto const old_index : Range(1uz, old_index_to_index.size / 4)) {
+        auto const voice_index = old_index_to_index[old_index];
+        auto& v = pool.voices[voice_index];
         if (v.current_gain < quietest_gain) {
             quietest_gain = v.current_gain;
-            quietest_voice_index = (u16)i;
+            quietest_voice_index = voice_index;
         }
     }
 
@@ -318,7 +336,7 @@ void StartVoice(VoicePool& pool,
     voice.disable_vol_env = params.disable_vol_env;
     voice.fil_env.Reset();
     voice.fil_env.Gate(true);
-    voice.age = voice.pool.voice_age_counter++;
+    voice.time_started = voice.pool.voice_start_counter++;
     voice.id = voice.pool.voice_id_counter++;
     voice.midi_key_trigger = params.midi_key_trigger;
     voice.note_num = params.note_num;

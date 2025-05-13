@@ -82,7 +82,7 @@ struct Voice {
     VoiceSmoothedValueSystem smoothing_system;
 
     VoiceProcessingController* controller = {};
-    u64 age = ~(u64)0;
+    u64 time_started = 0;
     u16 id {};
     u32 frames_before_starting {};
     f32 current_gain {};
@@ -200,7 +200,7 @@ struct VoicePool {
     void PrepareToPlay(ArenaAllocator& arena, AudioProcessingContext const& context);
     void EndAllVoicesInstantly();
 
-    u64 voice_age_counter = 0;
+    u64 voice_start_counter = 0;
     u16 voice_id_counter = 0;
     Atomic<u32> num_active_voices = 0;
     Array<Voice, k_num_voices> voices {MakeInitialisedArray<Voice, k_num_voices>(*this)};
