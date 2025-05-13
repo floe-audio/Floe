@@ -1,0 +1,489 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Tags and Folders - Floe</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="Floe is a free, open-source sample library engine. Available as an audio plugin for Windows and macOS.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/floe-theme.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "ayu" : "rust";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../home.html">Home</a></li><li class="chapter-item expanded "><div><strong aria-hidden="true">1.</strong> Installation</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="../installation/requirements.html"><strong aria-hidden="true">1.1.</strong> Requirements</a></li><li class="chapter-item expanded "><a href="../installation/download-and-install-floe.html"><strong aria-hidden="true">1.2.</strong> Download & Install Floe</a></li><li class="chapter-item expanded "><a href="../installation/uninstalling.html"><strong aria-hidden="true">1.3.</strong> Uninstalling</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">2.</strong> Packages</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="../packages/about-packages.html"><strong aria-hidden="true">2.1.</strong> Packages</a></li><li class="chapter-item expanded "><a href="../packages/install-packages.html"><strong aria-hidden="true">2.2.</strong> Install Libraries & Presets</a></li><li class="chapter-item expanded "><a href="../packages/available-packages.html"><strong aria-hidden="true">2.3.</strong> Available Libraries & Presets</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">3.</strong> Usage</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="../usage/sample-libraries.html"><strong aria-hidden="true">3.1.</strong> Sample Libraries</a></li><li class="chapter-item expanded "><a href="../usage/presets.html"><strong aria-hidden="true">3.2.</strong> Presets</a></li><li class="chapter-item expanded "><a href="../usage/layers.html"><strong aria-hidden="true">3.3.</strong> Layers</a></li><li class="chapter-item expanded "><a href="../usage/effects.html"><strong aria-hidden="true">3.4.</strong> Effects</a></li><li class="chapter-item expanded "><a href="../usage/midi.html"><strong aria-hidden="true">3.5.</strong> MIDI</a></li><li class="chapter-item expanded "><a href="../usage/looping.html"><strong aria-hidden="true">3.6.</strong> Looping</a></li><li class="chapter-item expanded "><a href="../usage/parameters.html"><strong aria-hidden="true">3.7.</strong> Parameters</a></li><li class="chapter-item expanded "><a href="../usage/autosave.html"><strong aria-hidden="true">3.8.</strong> Autosave</a></li><li class="chapter-item expanded "><a href="../usage/attribution.html"><strong aria-hidden="true">3.9.</strong> Attribution</a></li><li class="chapter-item expanded "><a href="../usage/error-reporting.html"><strong aria-hidden="true">3.10.</strong> Error Reporting</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">4.</strong> Library Development</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="../develop/develop-libraries.html"><strong aria-hidden="true">4.1.</strong> Develop Libraries</a></li><li class="chapter-item expanded "><a href="../develop/library-lua-scripts.html"><strong aria-hidden="true">4.2.</strong> Library Lua Scripts</a></li><li class="chapter-item expanded "><a href="../develop/develop-preset-packs.html"><strong aria-hidden="true">4.3.</strong> Develop Preset Packs</a></li><li class="chapter-item expanded "><a href="../develop/packaging.html"><strong aria-hidden="true">4.4.</strong> Packaging for Distribution</a></li><li class="chapter-item expanded "><a href="../develop/tags-and-folders.html" class="active"><strong aria-hidden="true">4.5.</strong> Tags and Folders</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">5.</strong> About the Project</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="../about-the-project/mirage.html"><strong aria-hidden="true">5.1.</strong> Previously known as Mirage</a></li><li class="chapter-item expanded "><a href="../about-the-project/roadmap.html"><strong aria-hidden="true">5.2.</strong> Roadmap</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="../changelog.html">Changelog</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Floe</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/floe-audio/Floe" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<div class="warning">
+The tags and folder features of Floe are under development. Some of the features on this page aren't implemented yet.
+</div>
+<h1 id="tags-and-folders"><a class="header" href="#tags-and-folders">Tags and folders</a></h1>
+<p>Floe has 2 complimentary features for browsing, searching and filtering: tags and folders. These apply to a few different features of Floe: presets, instruments and impulse responses.</p>
+<p>For developers, there are best practises for how to use tags and folders to offer the best experience for the user.</p>
+<p>On this page, we use the term ‘item’ to mean either preset, instrument or impulse response: these all use tags and folders in a similar way.</p>
+<h2 id="folders"><a class="header" href="#folders">Folders</a></h2>
+<p>Folders are used to group items under a common heading. Items are often displayed in folders, even when other filtering has been applied.</p>
+<p>Folders should be categories that relate to the theme or objective of the library. For example, for Lost Reveries, we wanted to explore the technique of using three complimentary timbres to layer into a full-spectrum sound, so we choose folders: “Low”, “Mid” and “Air”. Another example might be a library of field recordings, folders might be “Urban/London”, “Urban/York” or “Nature/New Forest”.</p>
+<p>Folders may contain slashes to represent a hierarchy, just like a filepath. For example: “Piano/1978 Steinway”. Use this to specify broad categories that narrow down to specific categories. It’s not usually best to have more than 2 levels of hierarchy.</p>
+<p>It’s best to have 5 to 30 items per folder. Folders with not many items clutter the GUI and don’t offer much value. Folders with too many items loose their focus.</p>
+<p>Folders might overlap with tags but, in general, they are more abstract and can use phrases that only make sense in the context of the library as a whole. However, if it makes sense to group items under a common heading such as ‘Percussion’ (a common tag), then that’s fine too — but you should also add this as a tag.</p>
+<h2 id="tags"><a class="header" href="#tags">Tags</a></h2>
+<p>Tags are the properties of an item. They are used for filtering and searching items across all libraries. Therefore, tags should normally come from the standard pool of tags so that there is a common language that enables standard usage across all libraries. Custom tags are allowed, but they should only be used for a good reason.</p>
+<p>Add as many relevant tags as possible.</p>
+<p>Tags are case-insensitive.</p>
+<h2 id="standard-tags"><a class="header" href="#standard-tags">Standard tags</a></h2>
+<p>We take a pragmatic approach to defining this set of standard tags. Rather than try to be completely comprehensive and technically accurate, we instead aim to strike a balance between correctness and common usage within the music production space. The goal of tags is to help users find the item they need. You can suggest edits to this list via Github or other means.</p>
+<p>For best results setting tags, go over each of the following questions and add all tags that apply to the item.</p>
+<h3 id="1-where-did-the-sound-come-from-sound-source"><a class="header" href="#1-where-did-the-sound-come-from-sound-source">1. Where did the sound come from? (Sound source)</a></h3>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Description</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>synthesized</code></td><td style="text-align: left">Generated by algorithms or circuits</td></tr>
+<tr><td style="text-align: left"><code>acoustic</code></td><td style="text-align: left">Originating from a real instrument</td></tr>
+<tr><td style="text-align: left"><code>vocal</code></td><td style="text-align: left">Originating from a human voice</td></tr>
+<tr><td style="text-align: left"><code>hybrid</code></td><td style="text-align: left">Combines acoustic/vocal sounds with processed/synthesized elements</td></tr>
+<tr><td style="text-align: left"><code>field recording</code></td><td style="text-align: left">Environmental or location recordings</td></tr>
+<tr><td style="text-align: left"><code>found sounds</code></td><td style="text-align: left">Real objects not traditionally used for music</td></tr>
+</tbody></table>
+</div>
+<p>It’s strongly recommended to specify a sound-source for instruments and impulse responses. This is sometimes not applicable for presets.</p>
+<h3 id="2-does-it-fit-in-a-real-instrument-category-real-instrument-type"><a class="header" href="#2-does-it-fit-in-a-real-instrument-category-real-instrument-type">2. Does it fit in a real instrument category? (Real instrument type)</a></h3>
+<p><code>piano</code>,
+<code>keys</code>,
+<code>strings</code><sup class="footnote-reference"><a href="#bowed-strings">1</a></sup>,
+<code>violin</code>,
+<code>cello</code>,
+<code>plucked strings</code><sup class="footnote-reference"><a href="#plucked-strings">2</a></sup>,
+<code>struck strings</code><sup class="footnote-reference"><a href="#struck-strings">3</a></sup>,
+<code>guitar</code>,
+<code>bass</code>,
+<code>brass</code>,
+<code>wind</code>,
+<code>percussion</code>,
+<code>drums</code>,
+<code>vocal</code>,
+<code>choir</code>,
+<code>folk</code>,
+<code>organ</code>,
+<code>tonal percussion</code></p>
+<p>Number of instruments: <code>solo</code>, <code>ensemble</code>.</p>
+<p>These are mostly relevant for acoustic or hybrid sounds, but can be used for synthesized sounds that emulate these instruments.</p>
+<div class="footnote-definition" id="bowed-strings"><sup class="footnote-definition-label">1</sup>
+<p>Bowed strings such as violin, viola, cello, double bass.</p>
+</div>
+<div class="footnote-definition" id="plucked-strings"><sup class="footnote-definition-label">2</sup>
+<p>Plucked strings such as guitar, harp, mandolin.</p>
+</div>
+<div class="footnote-definition" id="struck-strings"><sup class="footnote-definition-label">3</sup>
+<p>Struck strings such as hammered dulcimer, santur.</p>
+</div>
+<h3 id="3-is-it-made-from-a-specific-material-material"><a class="header" href="#3-is-it-made-from-a-specific-material-material">3. Is it made from a specific material? (Material)</a></h3>
+<p><code>wood</code>,
+<code>metal</code>,
+<code>glass</code>,
+<code>plastic</code>,
+<code>rubber</code>,
+<code>stone</code>,
+<code>ice</code>.</p>
+<p>This is typically used for non-standard instruments in the <code>acoustic</code> or <code>found sounds</code> categories.</p>
+<h3 id="3-what-reverb-type-is-it-reverb-type"><a class="header" href="#3-what-reverb-type-is-it-reverb-type">3. What reverb type is it? (Reverb type)</a></h3>
+<p><code>small room</code>,
+<code>large room</code>,
+<code>chamber</code>,
+<code>studio</code>,
+<code>hall</code>,
+<code>church</code>,
+<code>cathedral</code>,
+<code>unusual</code>,
+<code>open air</code>.</p>
+<p>Strongly recommended for impulse responses. Not applicable for instruments or presets.</p>
+<h3 id="4-what-mood-does-the-item-evoke-mood"><a class="header" href="#4-what-mood-does-the-item-evoke-mood">4. What mood does the item evoke? (Mood)</a></h3>
+<p>Positive moods:
+<code>bright</code><sup class="footnote-reference"><a href="#bright">4</a></sup>,
+<code>dreamy</code>,
+<code>ethereal</code>,
+<code>hopeful</code>,
+<code>nostalgic</code>,
+<code>peaceful</code>,
+<code>playful</code>.
+Negative moods:
+<code>aggressive</code>,
+<code>chaotic</code>,
+<code>dark</code><sup class="footnote-reference"><a href="#dark">5</a></sup>,
+<code>disturbing</code>,
+<code>eerie</code>,
+<code>melancholic</code>,
+<code>menacing</code>,
+<code>tense</code>.
+Mixed moods:
+<code>bittersweet</code>,
+<code>hypnotic</code>,
+<code>mysterious</code>,
+<code>quirky</code>.
+Thematic moods:
+<code>dramatic</code>,
+<code>dystopian</code>,
+<code>epic</code>,
+<code>experimental</code>,
+<code>fantasy</code>,
+<code>heroic</code>,
+<code>noir</code>,
+<code>romantic</code>,
+<code>sci-fi</code>,
+<code>western</code>.</p>
+<p>It’s usually recommended to specify moods for synthesised instruments and presets. Not typically used for well-known acoustic instruments.</p>
+<div class="footnote-definition" id="bright"><sup class="footnote-definition-label">4</sup>
+<p>‘bright’ as in: positive, uplifting, clear</p>
+</div>
+<div class="footnote-definition" id="dark"><sup class="footnote-definition-label">5</sup>
+<p>‘dark’ as in: unhappy, dim, unpleasant</p>
+</div>
+<h3 id="3-what-are-its-pitch-characteristics-pitch"><a class="header" href="#3-what-are-its-pitch-characteristics-pitch">3. What are its pitch characteristics? (Pitch)</a></h3>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>multi-pitched</code></td><td style="text-align: left">Contains multiple distinct notes</td></tr>
+<tr><td style="text-align: left"><code>non-pitched</code></td><td style="text-align: left">Lacks identifiable musical pitch</td></tr>
+<tr><td style="text-align: left"><code>dissonant</code></td><td style="text-align: left">Contains harmonically clashing pitches</td></tr>
+</tbody></table>
+</div>
+<p>Useful for non-typical sounds that have notable pitch characteristics. A sound is assumed to possess a musical pitch unless otherwise stated.</p>
+<h3 id="5-what-type-of-sound-is-it-sound-type"><a class="header" href="#5-what-type-of-sound-is-it-sound-type">5. What type of sound is it? (Sound type)</a></h3>
+<h4 id="51-does-it-have-a-long-duration"><a class="header" href="#51-does-it-have-a-long-duration">5.1. Does it have a long duration?</a></h4>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>pad</code></td><td style="text-align: left">Sustained, pitched background harmonic element</td></tr>
+<tr><td style="text-align: left"><code>texture</code></td><td style="text-align: left">Sustained atmospheric element, typically less of a musical pitch than <code>pad</code></td></tr>
+<tr><td style="text-align: left"><code>soundscape</code></td><td style="text-align: left">Complex and rich sonic environment</td></tr>
+<tr><td style="text-align: left"><code>underscore</code></td><td style="text-align: left">Background tones or sequences for underneath dialogue</td></tr>
+<tr><td style="text-align: left"><code>noise</code></td><td style="text-align: left">Non-pitched and constant, similar to white noise</td></tr>
+</tbody></table>
+</div>
+<h4 id="52-does-it-have-a-short-duration"><a class="header" href="#52-does-it-have-a-short-duration">5.2. Does it have a short duration?</a></h4>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>hit</code></td><td style="text-align: left">Single impactful sound with pitch and percussive elements</td></tr>
+<tr><td style="text-align: left"><code>keys</code></td><td style="text-align: left">Piano or keyboard-like</td></tr>
+<tr><td style="text-align: left"><code>oneshot</code></td><td style="text-align: left">Non-looping single sound, typically not for playing chromatically</td></tr>
+<tr><td style="text-align: left"><code>percussion</code></td><td style="text-align: left">Rhythmic element, typically non-pitched</td></tr>
+<tr><td style="text-align: left"><code>pluck</code></td><td style="text-align: left">Short melodic notes</td></tr>
+<tr><td style="text-align: left"><code>stab</code></td><td style="text-align: left">Extra-short melodic notes</td></tr>
+</tbody></table>
+</div>
+<h4 id="53-is-it-a-sequence-or-pattern"><a class="header" href="#53-is-it-a-sequence-or-pattern">5.3. Is it a sequence or pattern?</a></h4>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>arp</code></td><td style="text-align: left">Arpeggiated pattern of notes</td></tr>
+<tr><td style="text-align: left"><code>sequence</code></td><td style="text-align: left">Sequenced pattern timbre changes</td></tr>
+<tr><td style="text-align: left"><code>underscore</code></td><td style="text-align: left">Background tones or sequences for underneath dialogue</td></tr>
+<tr><td style="text-align: left"><code>loop</code></td><td style="text-align: left">Sampled repeating phrase</td></tr>
+</tbody></table>
+</div>
+<h4 id="54-does-it-play-a-standard-role-in-a-track"><a class="header" href="#54-does-it-play-a-standard-role-in-a-track">5.4. Does it play a standard role in a track?</a></h4>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>lead</code></td><td style="text-align: left">Foreground melodic element</td></tr>
+<tr><td style="text-align: left"><code>bass</code></td><td style="text-align: left">Low-frequency foundation</td></tr>
+<tr><td style="text-align: left"><code>riser</code></td><td style="text-align: left">Building tension element</td></tr>
+<tr><td style="text-align: left"><code>downer</code></td><td style="text-align: left">Descending tension element</td></tr>
+<tr><td style="text-align: left"><code>sound-fx</code></td><td style="text-align: left">Special effect sound</td></tr>
+<tr><td style="text-align: left"><code>transition</code></td><td style="text-align: left">Section change element</td></tr>
+</tbody></table>
+</div>
+<h3 id="6-what-is-its-timbre-like-timbre"><a class="header" href="#6-what-is-its-timbre-like-timbre">6. What is its timbre like? (Timbre)</a></h3>
+<h4 id="61-is-the-sound-modulated-in-some-way"><a class="header" href="#61-is-the-sound-modulated-in-some-way">6.1. Is the sound modulated in some way?</a></h4>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>pulsing</code></td><td style="text-align: left">Rhythmic modulation</td></tr>
+<tr><td style="text-align: left"><code>evolving</code></td><td style="text-align: left">Changing over time</td></tr>
+<tr><td style="text-align: left"><code>glitched</code></td><td style="text-align: left">Digital error artefacts</td></tr>
+<tr><td style="text-align: left"><code>grainy</code></td><td style="text-align: left">Fine textural irregularities</td></tr>
+</tbody></table>
+</div>
+<h4 id="62-does-it-have-a-tone-similar-to-a-real-instrument"><a class="header" href="#62-does-it-have-a-tone-similar-to-a-real-instrument">6.2. Does it have a tone similar to a real instrument?</a></h4>
+<p>Only use these if the sound isn’t actually from that instrument, but has a similar character.</p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>brassy</code></td><td style="text-align: left">Like brass instruments</td></tr>
+<tr><td style="text-align: left"><code>breathy</code></td><td style="text-align: left">Containing air noise, like wind instruments</td></tr>
+<tr><td style="text-align: left"><code>strings-like</code></td><td style="text-align: left">Characteristic resonance of string instruments</td></tr>
+<tr><td style="text-align: left"><code>reedy</code></td><td style="text-align: left">Characteristic of reed instruments</td></tr>
+</tbody></table>
+</div>
+<h4 id="63-is-it-related-to-a-synthesis-technique"><a class="header" href="#63-is-it-related-to-a-synthesis-technique">6.3. Is it related to a synthesis technique?</a></h4>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>analog</code></td><td style="text-align: left">Warm, imprecise, vintage character</td></tr>
+<tr><td style="text-align: left"><code>fm</code></td><td style="text-align: left">Frequency modulation synthesis</td></tr>
+<tr><td style="text-align: left"><code>granular</code></td><td style="text-align: left">Granular synthesis</td></tr>
+<tr><td style="text-align: left"><code>physical modelling</code></td><td style="text-align: left">Simulating real-world physics</td></tr>
+</tbody></table>
+</div>
+<h4 id="64-what-are-the-frequencies-and-harmonics-like"><a class="header" href="#64-what-are-the-frequencies-and-harmonics-like">6.4. What are the frequencies and harmonics like?</a></h4>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>airy</code></td><td style="text-align: left">Open, spacious, light</td></tr>
+<tr><td style="text-align: left"><code>circuit-bent</code></td><td style="text-align: left">Characteristic of modified electronic devices</td></tr>
+<tr><td style="text-align: left"><code>cold</code></td><td style="text-align: left">Thin, clinical, lacking warmth</td></tr>
+<tr><td style="text-align: left"><code>digital</code></td><td style="text-align: left">Clean, precise, computer-generated character</td></tr>
+<tr><td style="text-align: left"><code>distorted</code></td><td style="text-align: left">Overdriven, crushed, non-linear</td></tr>
+<tr><td style="text-align: left"><code>fuzzy</code></td><td style="text-align: left">Indistinct, soft-edged, unclear</td></tr>
+<tr><td style="text-align: left"><code>glassy</code></td><td style="text-align: left">Clear, fragile, transparent</td></tr>
+<tr><td style="text-align: left"><code>gritty</code></td><td style="text-align: left">Rough, textured, unpolished</td></tr>
+<tr><td style="text-align: left"><code>harsh</code></td><td style="text-align: left">Abrasive, aggressive high frequencies</td></tr>
+<tr><td style="text-align: left"><code>lo-fi</code></td><td style="text-align: left">Intentionally degraded quality</td></tr>
+<tr><td style="text-align: left"><code>lush</code></td><td style="text-align: left">Full, rich, densely layered</td></tr>
+<tr><td style="text-align: left"><code>metallic</code></td><td style="text-align: left">Resonant, hard, bright, like metal</td></tr>
+<tr><td style="text-align: left"><code>muddy</code></td><td style="text-align: left">Unclear low-mid frequencies</td></tr>
+<tr><td style="text-align: left"><code>muffled</code></td><td style="text-align: left">Dampened high frequencies</td></tr>
+<tr><td style="text-align: left"><code>nasal</code></td><td style="text-align: left">Strong mid-range resonance</td></tr>
+<tr><td style="text-align: left"><code>noisy</code></td><td style="text-align: left">Contains noise components, imperfect. If the sound is 100% noise use <code>noise</code> instead.</td></tr>
+<tr><td style="text-align: left"><code>pure</code></td><td style="text-align: left">Free from noise, clean sine-like quality</td></tr>
+<tr><td style="text-align: left"><code>resonant</code></td><td style="text-align: left">Strong resonant peaks in frequency</td></tr>
+<tr><td style="text-align: left"><code>saturated</code></td><td style="text-align: left">Subtly distorted, harmonically enhanced</td></tr>
+<tr><td style="text-align: left"><code>smooth</code></td><td style="text-align: left">Even, consistent, without sharp edges</td></tr>
+<tr><td style="text-align: left"><code>thin</code></td><td style="text-align: left">Lacking in fullness, narrow frequency range</td></tr>
+<tr><td style="text-align: left"><code>warm</code></td><td style="text-align: left">Rich in harmonics, pleasant mid-range</td></tr>
+</tbody></table>
+</div>
+<h3 id="7-what-genres-might-this-item-fit-best-into-genre"><a class="header" href="#7-what-genres-might-this-item-fit-best-into-genre">7. What genres might this item fit best into? (Genre)</a></h3>
+<p><code>80s</code>,
+<code>EDM</code>,
+<code>IDM</code>,
+<code>ambient</code>,
+<code>blues</code>,
+<code>chillout</code>,
+<code>chiptune</code>,
+<code>cinematic</code>,
+<code>disco</code>,
+<code>downtempo</code>,
+<code>drum &amp; bass</code>,
+<code>dubstep</code>,
+<code>electronic</code>,
+<code>folk</code>,
+<code>funk</code>,
+<code>future bass</code>,
+<code>glitch</code>,
+<code>hip-hop</code>,
+<code>house</code>,
+<code>industrial</code>,
+<code>jazz</code>,
+<code>lo-fi</code>,
+<code>metal</code>,
+<code>orchestral</code>,
+<code>pop</code>,
+<code>rock</code>,
+<code>synthwave</code>,
+<code>techno</code>,
+<code>trance</code>,
+<code>trap</code>,
+<code>vaporwave</code>,
+<code>world</code></p>
+<p>Specifying at least one genre is recommended for all presets and instruments.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../develop/packaging.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../about-the-project/mirage.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../develop/packaging.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../about-the-project/mirage.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
