@@ -23,28 +23,6 @@ struct ImageBytes {
     UiSize size {};
 };
 
-struct ImageBytesManaged final : ImageBytes {
-    NON_COPYABLE(ImageBytesManaged);
-    ~ImageBytesManaged() {
-        if (rgba) stbi_image_free(rgba);
-    }
-    ImageBytesManaged(ImageBytes image) : ImageBytes {image} {}
-    ImageBytesManaged(ImageBytesManaged&& other) : ImageBytes {.rgba = other.rgba, .size = other.size} {
-        other.rgba = nullptr;
-        other.size = {};
-    }
-    ImageBytesManaged& operator=(ImageBytesManaged&& other) {
-        if (this != &other) {
-            if (rgba) stbi_image_free(rgba);
-            rgba = other.rgba;
-            size = other.size;
-            other.rgba = nullptr;
-            other.size = {};
-        }
-        return *this;
-    }
-};
-
 struct ImageF32 {
     usize NumPixels() const { return (usize)(size.width * size.height); }
     usize NumBytes() const { return NumPixels() * sizeof(f32x4); }
@@ -52,8 +30,11 @@ struct ImageF32 {
     UiSize size;
 };
 
-static ErrorCodeOr<ImageBytesManaged> DecodeJpgOrPng(Span<u8 const> image_data) {
-    if (!image_data.size) return ImageBytes {};
+// NOTE: sadly we can't use an arena allocator with stb_image. So we have to free the image data using
+// FreeDecodedImage.
+
+static ErrorCodeOr<ImageBytes> DecodeJpgOrPng(Span<u8 const> image_data) {
+    if (!image_data.size) return ErrorCode(CommonError::InvalidFileFormat);
 
     // always returns rgba because we specify k_rgba_channels as the output channels
     int actual_number_channels;
@@ -68,23 +49,28 @@ static ErrorCodeOr<ImageBytesManaged> DecodeJpgOrPng(Span<u8 const> image_data) 
 
     if (!rgba) return ErrorCode(CommonError::InvalidFileFormat);
 
+    if (!width || !height) {
+        stbi_image_free(rgba);
+        return ErrorCode(CommonError::InvalidFileFormat);
+    }
+
     return ImageBytes {
         .rgba = rgba,
         .size = {CheckedCast<u16>(width), CheckedCast<u16>(height)},
     };
 }
 
-PUBLIC ErrorCodeOr<ImageBytesManaged> DecodeImage(Span<u8 const> image_data) {
-    return DecodeJpgOrPng(image_data);
+PUBLIC ErrorCodeOr<ImageBytes> DecodeImage(Span<u8 const> image_data) { return DecodeJpgOrPng(image_data); }
+
+PUBLIC ErrorCodeOr<ImageBytes> DecodeImageFromFile(String filename, ArenaAllocator& scratch_arena) {
+    auto const cursor = scratch_arena.TotalUsed();
+    DEFER { scratch_arena.TryShrinkTotalUsed(cursor); };
+    auto const file_data = TRY(ReadEntireFile(filename, scratch_arena));
+    return DecodeImage(file_data.ToByteSpan());
 }
 
-PUBLIC ErrorCodeOr<ImageBytesManaged> DecodeImageFromFile(String filename) {
-    PageAllocator allocator;
-    auto const file_data = TRY(ReadEntireFile(filename, allocator));
-    DEFER {
-        if (file_data.size) allocator.Free(file_data.ToByteSpan());
-    };
-    return DecodeImage(file_data.ToByteSpan());
+PUBLIC void FreeDecodedImage(ImageBytes image) {
+    if (image.size.width && image.size.height) stbi_image_free(image.rgba);
 }
 
 PUBLIC ImageBytes ShrinkImageIfNeeded(ImageBytes image,
