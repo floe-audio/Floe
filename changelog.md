@@ -11,6 +11,8 @@ For instance: 0.0.1. Don't change the headings.
 ## 0.9.7-beta
 - Fix rare crash related to closing the GUI on Floe AU
 - Fix rare crash related to library images
+- Fix rare crash related to voice stealing
+- Fix edge cases related to file paths on Windows
 
 ## 0.9.6-beta
 - Check for updates on startup; a small indicator on the Info button will appear - leading to more information on the Info panel. Can be disabled in the preferences.
