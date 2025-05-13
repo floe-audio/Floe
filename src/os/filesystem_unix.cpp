@@ -50,6 +50,7 @@ ErrorCodeOr<FileType> GetFileType(String path) {
 namespace dir_iterator {
 
 ErrorCodeOr<Iterator> Create(ArenaAllocator& arena, String path, Options options) {
+    path = path::TrimDirectorySeparatorsEnd(path);
     auto result = TRY(Iterator::InternalCreate(arena, path, options));
 
     ArenaAllocatorWithInlineStorage<1024> scratch_arena {Malloc::Instance()};

@@ -10,7 +10,7 @@
 
 static void CreateLibraryBackgroundImageTextures(imgui::Context const& imgui,
                                                  LibraryImages& imgs,
-                                                 ImageBytesManaged const& background_image,
+                                                 ImageBytes const& background_image,
                                                  bool reload_background,
                                                  bool reload_blurred_background) {
     ArenaAllocator arena {PageAllocator::Instance()};
@@ -84,9 +84,9 @@ static LibraryImages LoadDefaultLibraryImagesIfNeeded(LibraryImagesArray& librar
 
     if (reloads.reload_background || reloads.reload_blurred_background) {
         auto image_data = EmbeddedDefaultBackground();
-        auto outcome = DecodeImage({image_data.data, image_data.size});
-        ASSERT(!outcome.HasError());
-        auto const bg_pixels = outcome.ReleaseValue();
+        // Decoding should work because our embedded image should be a valid image.
+        auto const bg_pixels = DecodeImage({image_data.data, image_data.size}).Value();
+        DEFER { FreeDecodedImage(bg_pixels); };
         CreateLibraryBackgroundImageTextures(imgui,
                                              images,
                                              bg_pixels,
@@ -118,10 +118,10 @@ static Optional<sample_lib::LibraryPath> LibraryImagePath(sample_lib::Library co
     return {};
 }
 
-Optional<ImageBytesManaged> ImagePixelsFromLibrary(sample_lib::Library const& lib,
-                                                   LibraryImageType type,
-                                                   sample_lib_server::Server& server,
-                                                   ArenaAllocator& scratch_arena) {
+Optional<ImageBytes> ImagePixelsFromLibrary(sample_lib::Library const& lib,
+                                            LibraryImageType type,
+                                            sample_lib_server::Server& server,
+                                            ArenaAllocator& scratch_arena) {
     auto const filename = FilenameForLibraryImageType(type);
 
     if (lib.file_format_specifics.tag == sample_lib::FileFormat::Mdata) {
@@ -136,7 +136,7 @@ Optional<ImageBytesManaged> ImagePixelsFromLibrary(sample_lib::Library const& li
                 String const library_subdir = lib.name == "Wraith Demo" ? "Wraith" : lib.name;
                 auto const path =
                     path::Join(scratch_arena, Array {*dir, "Images"_s, library_subdir, filename});
-                auto outcome = DecodeImageFromFile(path);
+                auto outcome = DecodeImageFromFile(path, scratch_arena);
                 if (outcome.HasValue()) return outcome.ReleaseValue();
             }
         }
@@ -144,9 +144,9 @@ Optional<ImageBytesManaged> ImagePixelsFromLibrary(sample_lib::Library const& li
 
     auto const path_in_lib = LibraryImagePath(lib, type);
 
-    auto const err = [&](String middle, Optional<ErrorCode> error) {
+    auto const err = [&](String middle, Optional<ErrorCode> error) -> Optional<ImageBytes> {
         Log(ModuleName::Gui, LogLevel::Warning, "{} {} {}, code: {}", lib.name, middle, filename, error);
-        return Optional<ImageBytesManaged> {};
+        return k_nullopt;
     };
 
     if (!path_in_lib) return err("does not have", k_nullopt);
@@ -158,7 +158,7 @@ Optional<ImageBytesManaged> ImagePixelsFromLibrary(sample_lib::Library const& li
 
     auto pixels = TRY_OR(DecodeImage(file_data), return err("error decoding", error));
 
-    if (!pixels.size.width || !pixels.size.height) return err("image is empty", k_nullopt);
+    ASSERT(pixels.size.width && pixels.size.height, "ImageBytes cannot be empty");
 
     return pixels;
 }
@@ -173,7 +173,9 @@ static LibraryImages LoadLibraryImagesIfNeeded(LibraryImagesArray& array,
     auto const reloads = CheckLibraryImages(*imgui.frame_input.graphics_ctx, images);
 
     if (reloads.reload_icon) {
-        if (auto icon_pixels = ImagePixelsFromLibrary(lib, LibraryImageType::Icon, server, scratch_arena)) {
+        if (auto const icon_pixels =
+                ImagePixelsFromLibrary(lib, LibraryImageType::Icon, server, scratch_arena)) {
+            DEFER { FreeDecodedImage(*icon_pixels); };
             // Twice the desired size seems to produce the nicest looking results.
             auto const desired_icon_size =
                 CheckedCast<u16>(Ceil(imgui.VwToPixels(style::k_library_icon_standard_size)) * 2);
@@ -185,15 +187,12 @@ static LibraryImages LoadLibraryImagesIfNeeded(LibraryImagesArray& array,
     }
 
     if (!only_icon_needed && (reloads.reload_background || reloads.reload_blurred_background)) {
-        ImageBytesManaged const bg_pixels = ({
-            Optional<ImageBytesManaged> opt =
-                ImagePixelsFromLibrary(lib, LibraryImageType::Background, server, scratch_arena);
-            if (!opt) {
+        auto const bg_pixels =
+            TRY_OPT_OR(ImagePixelsFromLibrary(lib, LibraryImageType::Background, server, scratch_arena), {
                 images.background_missing = true;
                 return images;
-            }
-            opt.ReleaseValue();
-        });
+            });
+        DEFER { FreeDecodedImage(bg_pixels); };
 
         CreateLibraryBackgroundImageTextures(imgui,
                                              images,

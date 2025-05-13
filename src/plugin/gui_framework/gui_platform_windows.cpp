@@ -155,7 +155,7 @@ RunFilePicker(FilePickerDialogOptions const& args, ArenaAllocator& arena, HWND p
         DEFER { CoTaskMemFree(wide_path); };
 
         auto narrow_path = Narrow(arena, FromNullTerminated(wide_path)).Value();
-        ASSERT(!path::IsDirectorySeparator(Last(narrow_path)));
+        narrow_path.size = path::TrimDirectorySeparatorsEnd(narrow_path).size;
         ASSERT(path::IsAbsolute(narrow_path));
         return narrow_path;
     };
