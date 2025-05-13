@@ -993,6 +993,7 @@ static bool ShouldSkipFile(WString filename, bool skip_dot_files) {
 }
 
 ErrorCodeOr<Iterator> Create(ArenaAllocator& a, String path, Options options) {
+    path = path::TrimDirectorySeparatorsEnd(path);
     auto result = TRY(Iterator::InternalCreate(a, path, options));
     return result;
 }
