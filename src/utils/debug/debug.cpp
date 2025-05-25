@@ -504,11 +504,11 @@ static void SkipUntil(StacktraceStack& stack, uintptr pc) {
         }
 }
 
+#if !ZIG_BACKTRACE
 static int NumSkipFrames(StacktraceSkipOptions skip) {
     return CheckedCast<int>(skip.TryGetOpt<StacktraceFrames>().ValueOr(StacktraceFrames {1}));
 }
 
-#if !ZIG_BACKTRACE
 static String Filename(char const* filename) {
     if (!filename) return ""_s;
     auto result = FromNullTerminated(filename);
@@ -544,8 +544,13 @@ Optional<StacktraceStack> CurrentStacktrace(StacktraceSkipOptions skip) {
             return _URC_NO_REASON;
         },
         &result);
-    // IMPROVE: inefficient
-    dyn::Remove(result, 0, (usize)NumSkipFrames(skip));
+
+    switch (skip.tag) {
+        case StacktraceSkipType::Frames: dyn::Remove(result, 0, ToInt(skip.Get<StacktraceFrames>())); break;
+        case StacktraceSkipType::UntilProgramCounter:
+            SkipUntil(result, ToInt(skip.Get<ProgramCounter>()));
+            break;
+    }
 #else
     backtrace_simple(
         state->state,
