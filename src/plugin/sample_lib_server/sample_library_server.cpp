@@ -287,8 +287,8 @@ static bool UpdateLibraryJobs(Server& server,
         auto expected = ScanFolder::State::RescanRequested;
         if (!f->state.CompareExchangeStrong(expected,
                                             ScanFolder::State::Scanning,
-                                            RmwMemoryOrder::Relaxed,
-                                            LoadMemoryOrder::Relaxed))
+                                            RmwMemoryOrder::AcquireRelease,
+                                            LoadMemoryOrder::Acquire))
             continue;
 
         PendingLibraryJobs::Job::ScanFolder* scan_job;
@@ -444,15 +444,31 @@ static bool UpdateLibraryJobs(Server& server,
                 // This scan folder might have been given another request for a rescan while it was
                 // mid-scan. We want to honour that request still, so we use a CAS to ensure that we only
                 // mark this as completed if no rescan request was given.
-                ScanFolder::State expected = ScanFolder::State::Scanning;
-                if (!folder->state.CompareExchangeStrong(expected,
-                                                         new_state,
-                                                         RmwMemoryOrder::AcquireRelease,
-                                                         LoadMemoryOrder::Acquire)) {
-                    // assertion failed: ScannedSuccessfully == RescanRequested
-                    // assertion failed: ScanFailed == RescanRequested
-                    ASSERT_EQ(expected, ScanFolder::State::RescanRequested);
+
+                // The server thread will trigger a new scanning job if the state is RescanRequested
+                // (simultaneously turning the state to Scanning). There could already be a scanning job
+                // running though. The first scanning job should not overwrite the state if it is
+                // RescanRequested because the server thread needs to see RescanRequested in order to trigger
+                // a new scanning job.
+                {
+                    auto state = folder->state.Load(LoadMemoryOrder::Acquire);
+                    while (true) {
+                        if (state == ScanFolder::State::RescanRequested) {
+                            // Don't overwrite RescanRequested - let server thread handle it
+                            break;
+                        }
+
+                        if (folder->state.CompareExchangeWeak(state,
+                                                              new_state,
+                                                              RmwMemoryOrder::AcquireRelease,
+                                                              LoadMemoryOrder::Acquire)) {
+                            // Successfully updated to new_state
+                            break;
+                        }
+                        // state was automatically updated by CompareExchangeWeak, try again
+                    }
                 }
+
                 break;
             }
         }

@@ -426,6 +426,47 @@ struct MutexThin {
     }
 };
 
+// As above, based on Zig's RecursiveMutex
+struct MutexThinRecursive {
+    static constexpr u64 k_invalid_thread_id = ~(u64)0;
+
+    MutexThin mutex {};
+    Atomic<u64> thread_id = k_invalid_thread_id;
+    usize lock_count = 0;
+
+    bool Lock() {
+        u64 const current_thread_id = CurrentThreadId();
+        if (thread_id.Load(LoadMemoryOrder::Relaxed) != current_thread_id) {
+            mutex.Lock();
+            ASSERT_EQ(lock_count, 0uz);
+            thread_id.Store(current_thread_id, StoreMemoryOrder::Relaxed);
+        }
+        ++lock_count;
+        return true;
+    }
+
+    bool TryLock() {
+        u64 const current_thread_id = CurrentThreadId();
+        if (thread_id.Load(LoadMemoryOrder::Relaxed) != current_thread_id) {
+            if (!mutex.TryLock()) return false;
+            ASSERT_EQ(lock_count, 0uz);
+            thread_id.Store(current_thread_id, StoreMemoryOrder::Relaxed);
+        }
+        ++lock_count;
+        return true;
+    }
+
+    void Unlock() {
+        ASSERT(lock_count > 0, "Unlocking a mutex that is not locked");
+        --lock_count;
+
+        if (lock_count == 0) {
+            thread_id.Store(k_invalid_thread_id, StoreMemoryOrder::Relaxed);
+            mutex.Unlock();
+        }
+    }
+};
+
 struct CountedInitFlag {
     u32 counter = 0;
     MutexThin mutex {};

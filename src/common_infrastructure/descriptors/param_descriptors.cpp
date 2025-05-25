@@ -117,7 +117,7 @@ Optional<f32> ParamDescriptor::StringToLinearValue(String str) const {
         case ParamDisplayFormat::Cents: {
             break;
         }
-        case ParamDisplayFormat::FilterSemitones: {
+        case ParamDisplayFormat::Semitones: {
             break;
         }
     }
@@ -239,7 +239,7 @@ Optional<DynamicArrayBounded<char, 128>> ParamDescriptor::LinearValueToString(f3
             result = fmt::FormatInline<k_size>("{.0} cents", value);
             break;
         }
-        case ParamDisplayFormat::FilterSemitones: {
+        case ParamDisplayFormat::Semitones: {
             result = fmt::FormatInline<k_size>("{.0} semitones", value);
             break;
         }
