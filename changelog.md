@@ -8,6 +8,11 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 0.9.8-beta
+- Fix rare error on Windows when closing the GUI when there's a file picker open
+- Fix rare errors in some VST3 hosts
+- Fix rare crash related to sample library folder scanning
+
 ## 0.9.7-beta
 - Fix rare crash related to closing the GUI on Floe AU
 - Fix rare crash related to library images
