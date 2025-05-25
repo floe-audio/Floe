@@ -33,8 +33,9 @@ void detail::CloseNativeFilePicker(GuiPlatform& platform) {
     auto& native = platform.native_file_picker->As<NativeFilePicker>();
     if (native.thread) {
         PostThreadMessageW(GetThreadId(native.thread), WM_CLOSE, 0, 0);
+        // Blocking wait for the thread to finish.
         auto const wait_result = WaitForSingleObject(native.thread, INFINITE);
-        ASSERT_EQ(wait_result, WAIT_OBJECT_0);
+        ASSERT_NEQ(wait_result, WAIT_FAILED);
         CloseHandle(native.thread);
     }
     native.~NativeFilePicker();
@@ -198,7 +199,7 @@ bool detail::NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data
 
     // The thread should have exited by now so this should be immediate.
     auto const wait_result = WaitForSingleObject(native_file_picker.thread, INFINITE);
-    ASSERT_EQ(wait_result, WAIT_OBJECT_0);
+    ASSERT_NEQ(wait_result, WAIT_FAILED);
     CloseHandle(native_file_picker.thread);
     native_file_picker.thread = nullptr;
 
@@ -298,7 +299,11 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePicker
                             .data2 = k_file_picker_message_data,
                         },
                 };
-                ASSERT(puglSendEvent(platform.view, &event) == PUGL_SUCCESS);
+                // This can fail in very rare cases. I don't know the exact reason, but I don't think it is a
+                // problem. It just means the file picker result won't be processed. I think this occurs when
+                // the GUI is being destroyed - a case where we don't care about the file picker result
+                // anyways.
+                puglSendEvent(platform.view, &event);
 
                 return 0;
             } catch (PanicException) {

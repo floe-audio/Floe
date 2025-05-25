@@ -54,4 +54,17 @@ template <typename... Args>
         }                                                                                                    \
     } while (0)
 
+#define ASSERT_NEQ(a, b)                                                                                     \
+    do {                                                                                                     \
+        if constexpr (RUNTIME_SAFETY_CHECKS_ON) {                                                            \
+            auto x = a;                                                                                      \
+            auto y = b;                                                                                      \
+            if (!(x != y) && !PanicOccurred()) {                                                             \
+                PanicF(SourceLocation::Current(), "assertion failed: " #a " != " #b " | {} != {}", x, y);    \
+            }                                                                                                \
+        } else {                                                                                             \
+            ASSUME((a) != (b));                                                                              \
+        }                                                                                                    \
+    } while (0)
+
 #define PANICF(format, ...) PanicF(SourceLocation::Current(), format, ##__VA_ARGS__)
