@@ -407,7 +407,8 @@ struct BraceSectionResult {
 };
 
 // This is primarily done in a separate function in order to reduce the size of the template function
-static ErrorCodeOr<BraceSectionResult> ParseBraceSection(Writer writer, char const* p, char const* end) {
+[[maybe_unused]] static ErrorCodeOr<BraceSectionResult>
+ParseBraceSection(Writer writer, char const* p, char const* end) {
     ASSERT(*p == '{');
     for (; p < end; ++p) {
         ++p;
@@ -473,7 +474,8 @@ static ErrorCodeOr<BraceSectionResult> ParseBraceSection(Writer writer, char con
 
 // 'format' is advanced to after the next brace-section
 template <typename Arg>
-static ErrorCodeOr<void> FindAndWriteNextValue(Writer writer, String& format, Arg const& arg) {
+[[maybe_unused]] static ErrorCodeOr<void>
+FindAndWriteNextValue(Writer writer, String& format, Arg const& arg) {
     auto const starting_size = format.size;
     auto const end = format.end();
     for (auto p = format.begin(); p != end; ++p) {
@@ -554,7 +556,7 @@ PUBLIC inline ErrorCodeOr<void> AppendLineRaw(Writer writer, Arg const& arg) {
 //=================================================
 template <dyn::DynArray DynCharArray, typename... Args>
 PUBLIC inline void Append(DynCharArray& output, String format, Args const&... args) {
-    output.Reserve(output.size + format.size * 2);
+    output.Reserve(output.size + (format.size * 2));
     auto result = FormatToWriter(dyn::WriterFor(output), format, args...);
     if (result.HasError()) __builtin_debugtrap();
 }
@@ -702,7 +704,7 @@ PUBLIC void Uuid(u64& seed, char* out) {
     for (usize i = 0; i < 4; i++) {
         u64 const r = RandomU64(seed);
         for (usize j = 0; j < 8; j++)
-            out[i * 8 + j] = "0123456789abcdef"[r >> (j * 4) & 0xf];
+            out[(i * 8) + j] = "0123456789abcdef"[r >> (j * 4) & 0xf];
     }
 }
 

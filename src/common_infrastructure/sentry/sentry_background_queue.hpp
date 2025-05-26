@@ -52,6 +52,9 @@ static void BackgroundThread(BackgroundQueue& queue, Span<Tag const> tags) {
 
     InitLogFolderIfNeeded();
 
+    if (auto const o = ConsumeAndSubmitDisasterFiles(sentry, *LogFolder(), scratch_arena); o.HasError())
+        LogError(ModuleName::ErrorReporting, "Failed to consume disaster files: {}", o.Error());
+
     if (auto const o = ConsumeAndSubmitErrorFiles(sentry, *LogFolder(), scratch_arena); o.HasError())
         LogError(ModuleName::ErrorReporting, "Failed to consume error files: {}", o.Error());
 

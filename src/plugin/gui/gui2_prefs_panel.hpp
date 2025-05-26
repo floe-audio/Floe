@@ -8,6 +8,7 @@
 #include "common_infrastructure/error_reporting.hpp"
 
 #include "engine/autosave.hpp"
+#include "engine/check_for_update.hpp"
 #include "engine/package_installation.hpp"
 #include "gui/gui_file_picker.hpp"
 #include "gui/gui_prefs.hpp"
@@ -429,23 +430,23 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
               },
           });
 
-    auto const add_button = DoBox(
-        box_system,
-        {
-            .parent = root,
-            .background_fill_auto_hot_active_overlay = true,
-            .activate_on_click_button = MouseButton::Left,
-            .activation_click_event = ActivationClickEvent::Up,
-            .layout {
-                .size = {layout::k_fill_parent, layout::k_hug_contents},
-                .contents_padding = {.l = style::k_menu_item_padding_x * 2 + style::k_prefs_icon_button_size,
-                                     .r = style::k_menu_item_padding_x,
-                                     .tb = style::k_menu_item_padding_y},
-                .contents_direction = layout::Direction::Row,
-                .contents_align = layout::Alignment::Start,
-            },
-            .tooltip = "Select a new folder"_s,
-        });
+    auto const add_button = DoBox(box_system,
+                                  {
+                                      .parent = root,
+                                      .background_fill_auto_hot_active_overlay = true,
+                                      .activate_on_click_button = MouseButton::Left,
+                                      .activation_click_event = ActivationClickEvent::Up,
+                                      .layout {
+                                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                          .contents_padding = {.l = (style::k_menu_item_padding_x * 2) +
+                                                                    style::k_prefs_icon_button_size,
+                                                               .r = style::k_menu_item_padding_x,
+                                                               .tb = style::k_menu_item_padding_y},
+                                          .contents_direction = layout::Direction::Row,
+                                          .contents_align = layout::Alignment::Start,
+                                      },
+                                      .tooltip = "Select a new folder"_s,
+                                  });
     DoBox(box_system,
           {
               .parent = add_button,
@@ -648,7 +649,7 @@ static void GeneralPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCo
         if (width_change) {
             auto const desc = SettingDescriptor(GuiSetting::WindowWidth);
             auto const width = prefs::GetInt(context.prefs, desc);
-            auto const new_width = width + *width_change * AlignTo(100, k_aspect_ratio_with_keyboard.width);
+            auto const new_width = width + (*width_change * AlignTo(100, k_aspect_ratio_with_keyboard.width));
             prefs::SetValue(context.prefs, desc, new_width);
         }
     }
@@ -679,6 +680,8 @@ static void GeneralPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCo
 
         for (auto const autosave_setting : EnumIterator<AutosaveSetting>())
             Setting(box_system, context, options_rhs_column, SettingDescriptor(autosave_setting));
+
+        Setting(box_system, context, options_rhs_column, check_for_update::CheckAllowedPrefDescriptor());
     }
 }
 

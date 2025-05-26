@@ -29,6 +29,27 @@ constexpr String k_trace_category = "SLS";
 constexpr u32 k_trace_colour = 0xfcba03;
 
 // ==========================================================================================================
+// Scan folders
+
+ScanFolders::Folders CopyActiveFolders(ScanFolders& folders) {
+    folders.mutex.Lock();
+    DEFER { folders.mutex.Unlock(); };
+    auto const result = folders.folders;
+    return result;
+}
+
+// You must not have a copy of any active folders when you call this.
+void DeleteUnusedScanFolders(ScanFolders& folders) {
+    folders.mutex.Lock();
+    DEFER { folders.mutex.Unlock(); };
+
+    folders.folder_allocator.RemoveIf([&](ScanFolder const& f) {
+        // Delete folders that are not in the active list.
+        return !Contains(folders.folders, &f);
+    });
+}
+
+// ==========================================================================================================
 // Library loading
 
 struct PendingLibraryJobs {
@@ -52,7 +73,7 @@ struct PendingLibraryJobs {
 
         struct ScanFolder {
             struct Args {
-                ScanFolderList::Node* folder;
+                detail::ScanFolder* folder;
                 LibrariesList& libraries;
             };
             struct Result {
@@ -77,6 +98,7 @@ struct PendingLibraryJobs {
     ThreadPool& thread_pool;
     WorkSignaller& work_signaller;
     Atomic<u32>& num_uncompleted_jobs;
+    Span<ScanFolder*> const folders;
 
     Mutex job_mutex;
     ArenaAllocator job_arena {PageAllocator::Instance()};
@@ -125,8 +147,8 @@ static void DoScanFolderJob(PendingLibraryJobs::Job::ScanFolder& job,
                             ArenaAllocator& scratch_arena,
                             PendingLibraryJobs& pending_library_jobs,
                             LibrariesList& lib_list) {
-    auto folder = job.args.folder->TryScoped();
-    if (!folder) job.result.outcome = k_success;
+    auto folder = job.args.folder;
+    ASSERT(folder);
 
     auto const& path = folder->path;
     ZoneScoped;
@@ -228,18 +250,17 @@ static void ReadLibraryAsync(PendingLibraryJobs& pending_library_jobs,
     AddAsyncJob(pending_library_jobs, lib_list, read_job);
 }
 
-// threadsafe
-static bool MarkNotScannedFoldersRescanRequested(ScanFolderList& scan_folders) {
+static bool MarkNotScannedFoldersRescanRequested(Span<ScanFolder*> scan_folders) {
     bool any_rescan_requested = false;
-    for (auto& n : scan_folders)
-        if (auto f = n.TryScoped()) {
-            auto expected = ScanFolder::State::NotScanned;
-            if (f->state.CompareExchangeStrong(expected,
-                                               ScanFolder::State::RescanRequested,
-                                               RmwMemoryOrder::Relaxed,
-                                               LoadMemoryOrder::Relaxed))
-                any_rescan_requested = true;
-        }
+    for (auto& f : scan_folders) {
+        ASSERT(f);
+        auto expected = ScanFolder::State::NotScanned;
+        if (f->state.CompareExchangeStrong(expected,
+                                           ScanFolder::State::RescanRequested,
+                                           RmwMemoryOrder::AcquireRelease,
+                                           LoadMemoryOrder::Acquire))
+            any_rescan_requested = true;
+    }
     return any_rescan_requested;
 }
 
@@ -260,15 +281,14 @@ static bool UpdateLibraryJobs(Server& server,
     ZoneNamed(outer, true);
 
     // trigger folder scanning if any are marked as 'rescan-requested'
-    for (auto& node : server.scan_folders) {
-        if (auto f = node.TryScoped()) {
-            auto expected = ScanFolder::State::RescanRequested;
-            auto const exchanged = f->state.CompareExchangeStrong(expected,
-                                                                  ScanFolder::State::Scanning,
-                                                                  RmwMemoryOrder::Relaxed,
-                                                                  LoadMemoryOrder::Relaxed);
-            if (!exchanged) continue;
-        }
+    for (auto& f : pending_library_jobs.folders) {
+        ASSERT(f);
+        auto expected = ScanFolder::State::RescanRequested;
+        if (!f->state.CompareExchangeStrong(expected,
+                                            ScanFolder::State::Scanning,
+                                            RmwMemoryOrder::AcquireRelease,
+                                            LoadMemoryOrder::Acquire))
+            continue;
 
         PendingLibraryJobs::Job::ScanFolder* scan_job;
         {
@@ -279,7 +299,7 @@ static bool UpdateLibraryJobs(Server& server,
             PendingLibraryJobs::Job::ScanFolder {
                 .args =
                     {
-                        .folder = &node,
+                        .folder = f,
                         .libraries = server.libraries,
                     },
                 .result = {},
@@ -290,7 +310,7 @@ static bool UpdateLibraryJobs(Server& server,
     }
 
     // handle async jobs that have completed
-    for (auto node = pending_library_jobs.jobs.Load(LoadMemoryOrder::Relaxed); node != nullptr;
+    for (auto node = pending_library_jobs.jobs.Load(LoadMemoryOrder::Acquire); node != nullptr;
          node = node->next) {
         if (node->result_handled) continue;
         if (!node->completed.Load(LoadMemoryOrder::Acquire)) continue;
@@ -390,46 +410,64 @@ static bool UpdateLibraryJobs(Server& server,
             case PendingLibraryJobs::Job::Type::ScanFolder: {
                 auto const& j = *job.data.Get<PendingLibraryJobs::Job::ScanFolder*>();
                 DEFER { j.PendingLibraryJobs::Job::ScanFolder::~ScanFolder(); };
-                if (auto folder = j.args.folder->TryScoped()) {
-                    auto const& path = folder->path;
-                    ZoneScopedN("job completed: folder scanned");
-                    ZoneText(path.data, path.size);
+                auto folder = j.args.folder;
+                ASSERT(folder);
+                auto const& path = folder->path;
+                ZoneScopedN("job completed: folder scanned");
+                ZoneText(path.data, path.size);
 
-                    auto const folder_error_id = ThreadsafeErrorNotifications::Id("libs", path);
+                auto const folder_error_id = ThreadsafeErrorNotifications::Id("libs", path);
 
-                    ScanFolder::State new_state {};
+                ScanFolder::State new_state {};
 
-                    if (!j.result.outcome.HasError()) {
-                        server.error_notifications.RemoveError(folder_error_id);
-                        new_state = ScanFolder::State::ScannedSuccessfully;
-                    } else {
-                        auto const is_always_scanned_folder =
-                            folder->source == ScanFolder::Source::AlwaysScannedFolder;
-                        if (!(is_always_scanned_folder &&
-                              j.result.outcome.Error() == FilesystemError::PathDoesNotExist)) {
-                            auto const err = server.error_notifications.NewError();
-                            err->value = {
-                                .title = "Failed to scan library folder"_s,
-                                .message = String(path),
-                                .error_code = j.result.outcome.Error(),
-                                .id = folder_error_id,
-                            };
-                            server.error_notifications.AddOrUpdateError(err);
-                        }
-                        new_state = ScanFolder::State::ScanFailed;
+                if (!j.result.outcome.HasError()) {
+                    server.error_notifications.RemoveError(folder_error_id);
+                    new_state = ScanFolder::State::ScannedSuccessfully;
+                } else {
+                    auto const is_always_scanned_folder =
+                        folder->source == ScanFolder::Source::AlwaysScannedFolder;
+                    if (!(is_always_scanned_folder &&
+                          j.result.outcome.Error() == FilesystemError::PathDoesNotExist)) {
+                        auto const err = server.error_notifications.NewError();
+                        err->value = {
+                            .title = "Failed to scan library folder"_s,
+                            .message = String(path),
+                            .error_code = j.result.outcome.Error(),
+                            .id = folder_error_id,
+                        };
+                        server.error_notifications.AddOrUpdateError(err);
                     }
+                    new_state = ScanFolder::State::ScanFailed;
+                }
 
-                    // This scan folder might have been given another request for a rescan while it was
-                    // mid-scan. We want to honour that request still, so we use a CAS to ensure that we only
-                    // mark this as completed if no rescan request was given.
-                    ScanFolder::State expected = ScanFolder::State::Scanning;
-                    if (!folder->state.CompareExchangeStrong(expected,
-                                                             new_state,
-                                                             RmwMemoryOrder::AcquireRelease,
-                                                             LoadMemoryOrder::Relaxed)) {
-                        ASSERT_EQ(expected, ScanFolder::State::RescanRequested);
+                // This scan folder might have been given another request for a rescan while it was
+                // mid-scan. We want to honour that request still, so we use a CAS to ensure that we only
+                // mark this as completed if no rescan request was given.
+
+                // The server thread will trigger a new scanning job if the state is RescanRequested
+                // (simultaneously turning the state to Scanning). There could already be a scanning job
+                // running though. The first scanning job should not overwrite the state if it is
+                // RescanRequested because the server thread needs to see RescanRequested in order to trigger
+                // a new scanning job.
+                {
+                    auto state = folder->state.Load(LoadMemoryOrder::Acquire);
+                    while (true) {
+                        if (state == ScanFolder::State::RescanRequested) {
+                            // Don't overwrite RescanRequested - let server thread handle it
+                            break;
+                        }
+
+                        if (folder->state.CompareExchangeWeak(state,
+                                                              new_state,
+                                                              RmwMemoryOrder::AcquireRelease,
+                                                              LoadMemoryOrder::Acquire)) {
+                            // Successfully updated to new_state
+                            break;
+                        }
+                        // state was automatically updated by CompareExchangeWeak, try again
                     }
                 }
+
                 break;
             }
         }
@@ -441,25 +479,16 @@ static bool UpdateLibraryJobs(Server& server,
 
         auto const dirs_to_watch = ({
             DynamicArray<DirectoryToWatch> dirs {scratch_arena};
-            for (auto& node : server.scan_folders) {
-                if (auto f = node.TryRetain()) {
-                    if (f->state.Load(LoadMemoryOrder::Acquire) == ScanFolder::State::ScannedSuccessfully)
-                        dyn::Append(dirs,
-                                    {
-                                        .path = f->path,
-                                        .recursive = true,
-                                        .user_data = &node,
-                                    });
-                    else
-                        node.Release();
-                }
-            }
+            for (auto f : pending_library_jobs.folders)
+                if (f->state.Load(LoadMemoryOrder::Acquire) == ScanFolder::State::ScannedSuccessfully)
+                    dyn::Append(dirs,
+                                {
+                                    .path = f->path,
+                                    .recursive = true,
+                                    .user_data = f,
+                                });
             dirs.ToOwnedSpan();
         });
-        DEFER {
-            for (auto& d : dirs_to_watch)
-                ((ScanFolderList::Node*)d.user_data)->Release();
-        };
 
         // we buffer these up so we don't spam the channels with notifications
         DynamicArray<LibrariesList::Node*> libraries_that_changed {scratch_arena};
@@ -479,17 +508,10 @@ static bool UpdateLibraryJobs(Server& server,
         } else {
             auto const dir_changes_span = outcome.Value();
             for (auto const& dir_changes : dir_changes_span) {
-                bool found = false;
-                for (auto& node : server.scan_folders) {
-                    if ((void*)&node == dir_changes.linked_dir_to_watch->user_data) {
-                        found = true;
-                        break;
-                    }
-                }
-                ASSERT(found);
-
-                auto& scan_folder =
-                    ((ScanFolderList::Node*)dir_changes.linked_dir_to_watch->user_data)->value;
+                ASSERT(FindIf(pending_library_jobs.folders, [&](ScanFolder* f) {
+                    return f == dir_changes.linked_dir_to_watch->user_data;
+                }));
+                auto& scan_folder = *(ScanFolder*)dir_changes.linked_dir_to_watch->user_data;
 
                 if (dir_changes.error) {
                     // IMPROVE: handle this
@@ -503,7 +525,7 @@ static bool UpdateLibraryJobs(Server& server,
                 for (auto const& subpath_changeset : dir_changes.subpath_changesets) {
                     if (subpath_changeset.changes & DirectoryWatcher::ChangeType::ManualRescanNeeded) {
                         scan_folder.state.Store(ScanFolder::State::RescanRequested,
-                                                StoreMemoryOrder::Relaxed);
+                                                StoreMemoryOrder::Release);
                         continue;
                     }
 
@@ -530,7 +552,7 @@ static bool UpdateLibraryJobs(Server& server,
 
                         if (file_type == FileType::Directory) {
                             scan_folder.state.Store(ScanFolder::State::RescanRequested,
-                                                    StoreMemoryOrder::Relaxed);
+                                                    StoreMemoryOrder::Release);
                             continue;
                         }
                     }
@@ -582,12 +604,11 @@ static bool UpdateLibraryJobs(Server& server,
         if (lib.Id() == sample_lib::k_builtin_library_id)
             within_any_folder = true;
         else
-            for (auto& sn : server.scan_folders) {
-                if (auto folder = sn.TryScoped()) {
-                    if (path::IsWithinDirectory(lib.path, folder->path)) {
-                        within_any_folder = true;
-                        break;
-                    }
+            for (auto folder : pending_library_jobs.folders) {
+                ASSERT(folder);
+                if (path::IsWithinDirectory(lib.path, folder->path)) {
+                    within_any_folder = true;
+                    break;
                 }
             }
 
@@ -623,13 +644,6 @@ static bool UpdateLibraryJobs(Server& server,
                 libs_by_name.Insert(lib.Id(), &n);
             }
         }
-    }
-
-    // remove scan-folders that are no longer used
-    {
-        server.scan_folders_writer_mutex.Lock();
-        DEFER { server.scan_folders_writer_mutex.Unlock(); };
-        server.scan_folders.DeleteRemovedAndUnreferenced();
     }
 
     auto const library_work_still_pending =
@@ -1438,11 +1452,13 @@ static void ServerThreadProc(Server& server) {
         PendingResources pending_resources {
             .server_thread_id = server.server_thread_id,
         };
+        auto scan_folders = CopyActiveFolders(server.scan_folders);
         PendingLibraryJobs pending_library_jobs {
             .server_thread_id = server.server_thread_id,
             .thread_pool = server.thread_pool,
             .work_signaller = server.work_signaller,
             .num_uncompleted_jobs = server.num_uncompleted_library_jobs,
+            .folders = scan_folders,
         };
 
         while (true) {
@@ -1475,7 +1491,7 @@ static void ServerThreadProc(Server& server) {
 
             if (ConsumeResourceRequests(pending_resources, scratch_arena, server.request_queue)) {
                 // For quick initialisation, we load libraries only when there's been a request.
-                MarkNotScannedFoldersRescanRequested(server.scan_folders);
+                MarkNotScannedFoldersRescanRequested(scan_folders);
             }
 
             // There's 2 separate systems here. The library loading, and then the audio loading (which
@@ -1500,6 +1516,8 @@ static void ServerThreadProc(Server& server) {
         ZoneNamedN(post_inner, "post inner", true);
 
         TracyMessageEx({k_trace_category, k_trace_colour, -1u}, "poll completed");
+
+        DeleteUnusedScanFolders(server.scan_folders);
 
         // We have completed all of the loading requests, but there might still be audio data that is in the
         // thread pool. We need for them to finish before we potentially delete the memory that they rely on.
@@ -1604,13 +1622,12 @@ Server::Server(ThreadPool& pool,
     : error_notifications(error_notifications)
     , thread_pool(pool) {
     if (always_scanned_folder.size) {
-        ArenaAllocatorWithInlineStorage<1000> scratch_arena {Malloc::Instance()};
-        auto node = scan_folders.AllocateUninitialised();
-        PLACEMENT_NEW(&node->value) ScanFolder();
-        dyn::Assign(node->value.path, always_scanned_folder);
-        node->value.source = ScanFolder::Source::AlwaysScannedFolder;
-        node->value.state.raw = ScanFolder::State::NotScanned;
-        scan_folders.Insert(node);
+        auto folder = scan_folders.folder_allocator.PrependUninitialised();
+        PLACEMENT_NEW(folder) ScanFolder();
+        dyn::Assign(folder->path, always_scanned_folder);
+        folder->source = ScanFolder::Source::AlwaysScannedFolder;
+        folder->state.raw = ScanFolder::State::NotScanned;
+        dyn::Append(scan_folders.folders, folder);
     }
 
     {
@@ -1639,8 +1656,7 @@ Server::~Server() {
     thread.Join();
     ASSERT(channels.Use([](auto& h) { return h.Empty(); }), "missing channel close");
 
-    scan_folders.RemoveAll();
-    scan_folders.DeleteRemovedAndUnreferenced();
+    scan_folders.folder_allocator.Clear();
 }
 
 AsyncCommsChannel& OpenAsyncCommsChannel(Server& server, OpenAsyncCommsChannelArgs const& args) {
@@ -1680,7 +1696,10 @@ RequestId SendAsyncLoadRequest(Server& server, AsyncCommsChannel& channel, LoadR
 }
 
 void RequestScanningOfUnscannedFolders(Server& server) {
-    if (MarkNotScannedFoldersRescanRequested(server.scan_folders)) {
+    server.scan_folders.mutex.Lock();
+    auto const rescan_requested = MarkNotScannedFoldersRescanRequested(server.scan_folders.folders);
+    server.scan_folders.mutex.Unlock();
+    if (rescan_requested) {
         server.is_scanning_libraries.Store(true, StoreMemoryOrder::SequentiallyConsistent);
         server.work_signaller.Signal();
     }
@@ -1688,13 +1707,18 @@ void RequestScanningOfUnscannedFolders(Server& server) {
 
 void RescanFolder(Server& server, String path) {
     bool found = false;
-    for (auto& n : server.scan_folders)
-        if (auto f = n.TryScoped()) {
-            if (path::Equal(f->path, path) || path::IsWithinDirectory(path, f->path)) {
-                f->state.Store(ScanFolder::State::RescanRequested, StoreMemoryOrder::Relaxed);
+    {
+        server.scan_folders.mutex.Lock();
+        DEFER { server.scan_folders.mutex.Unlock(); };
+
+        for (auto folder : server.scan_folders.folders) {
+            ASSERT(folder);
+            if (path::Equal(folder->path, path) || path::IsWithinDirectory(path, folder->path)) {
+                folder->state.Store(ScanFolder::State::RescanRequested, StoreMemoryOrder::Release);
                 found = true;
             }
         }
+    }
     if (found) {
         server.is_scanning_libraries.Store(true, StoreMemoryOrder::SequentiallyConsistent);
         server.work_signaller.Signal();
@@ -1702,31 +1726,35 @@ void RescanFolder(Server& server, String path) {
 }
 
 void SetExtraScanFolders(Server& server, Span<String const> extra_folders) {
+    ASSERT(extra_folders.size <= k_max_extra_scan_folders);
     bool edited = false;
     {
-        server.scan_folders_writer_mutex.Lock();
-        DEFER { server.scan_folders_writer_mutex.Unlock(); };
+        server.scan_folders.mutex.Lock();
+        DEFER { server.scan_folders.mutex.Unlock(); };
 
-        for (auto it = server.scan_folders.begin(); it != server.scan_folders.end();)
-            if (it->value.source == ScanFolder::Source::ExtraFolder && !Find(extra_folders, it->value.path)) {
-                it = server.scan_folders.Remove(it);
-                edited = true;
-            } else
-                ++it;
+        // Remove folders that are not in the new extra_folders.
+        edited = dyn::RemoveValueIf(server.scan_folders.folders, [&](ScanFolder* folder) {
+                     return folder->source == ScanFolder::Source::ExtraFolder &&
+                            !Find(extra_folders, folder->path);
+                 }) != 0;
 
-        for (auto e : extra_folders) {
-            bool already_present = false;
-            for (auto& l : server.scan_folders)
-                if (l.value.path == e) already_present = true;
-            if (already_present) continue;
+        // Add any new extra_folders that are not already present.
+        for (auto const path : extra_folders) {
+            // We don't need to add folders that are already in the array.
+            if (FindIf(server.scan_folders.folders, [path](ScanFolder* f) {
+                    return f->source == ScanFolder::Source::ExtraFolder && f->path == path;
+                })) {
+                continue;
+            }
 
-            ArenaAllocatorWithInlineStorage<1000> scratch_arena {Malloc::Instance()};
-            auto node = server.scan_folders.AllocateUninitialised();
-            PLACEMENT_NEW(&node->value) ScanFolder();
-            dyn::Assign(node->value.path, e);
-            node->value.source = ScanFolder::Source::ExtraFolder;
-            node->value.state.raw = ScanFolder::State::NotScanned;
-            server.scan_folders.Insert(node);
+            ASSERT(server.scan_folders.folders.size != ScanFolders::Folders::Capacity());
+
+            auto folder = server.scan_folders.folder_allocator.PrependUninitialised();
+            PLACEMENT_NEW(folder) ScanFolder();
+            dyn::Assign(folder->path, path);
+            folder->source = ScanFolder::Source::ExtraFolder;
+            folder->state.raw = ScanFolder::State::NotScanned;
+            dyn::Append(server.scan_folders.folders, folder);
             edited = true;
         }
     }
@@ -2093,41 +2121,6 @@ TEST_CASE(TestSampleLibraryLoader) {
                 });
         };
 
-        // IMPROVE: add tests for Core library
-#if 0
-        SUBCASE("core library") {
-            dyn::Append(
-                requests,
-                {
-                    .request =
-                        LoadRequestInstrumentIdWithLayer {
-                            .id =
-                                {
-                                    .library_name = "Core"_s,
-                                    .inst_name = "bar"_s,
-                                },
-                            .layer_index = 0,
-                        },
-                    .check_result =
-                        [&](LoadResult const& r, LoadRequest const&) {
-                            auto err = r.result.TryGet<ErrorCode>();
-                            REQUIRE(err);
-                            if (*err != CommonError::NotFound)
-                                LOG_WARNING(
-                                    "Unable to properly test Core library, not expecting error: {}. The test program scans upwards from its executable path for a folder named '{}' and scans that for the core library",
-                                    tests::k_build_resources_subdir,
-                                    *err);
-                            for (auto& n : fixture.error_notif.items)
-                                if (auto e = n.TryScoped())
-                                    tester.log.Debug("Error: {}: {}: {}",
-                                                       e->title,
-                                                       e->message,
-                                                       e->error_code);
-                        },
-                });
-        }
-#endif
-
         SUBCASE("invalid lib+path") {
             dyn::Append(requests,
                         {
@@ -2239,7 +2232,7 @@ TEST_CASE(TestSampleLibraryLoader) {
         auto const builtin_irs = GetEmbeddedIrs();
 
         constexpr u32 k_num_calls = 200;
-        auto random_seed = (u64)NanosecondsSinceEpoch();
+        auto random_seed = RandomSeed();
         AtomicCountdown countdown {k_num_calls};
 
         auto& channel = OpenAsyncCommsChannel(server,

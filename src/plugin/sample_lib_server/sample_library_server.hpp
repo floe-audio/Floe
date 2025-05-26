@@ -212,7 +212,12 @@ struct ScanFolder {
     Atomic<State> state {State::NotScanned};
 };
 
-using ScanFolderList = AtomicRefList<ScanFolder>;
+struct ScanFolders {
+    using Folders = DynamicArrayBounded<ScanFolder*, k_max_extra_scan_folders + 1>;
+    Mutex mutex;
+    ArenaList<ScanFolder, true> folder_allocator {PageAllocator::Instance()};
+    Folders folders; // active folders
+};
 
 struct QueuedRequest {
     RequestId id;
@@ -240,8 +245,7 @@ struct Server {
     Atomic<u32> is_scanning_libraries {}; // you can use WaitIfValueIsExpected
 
     // private
-    Mutex scan_folders_writer_mutex;
-    detail::ScanFolderList scan_folders;
+    detail::ScanFolders scan_folders;
     detail::LibrariesList libraries;
     Mutex libraries_by_id_mutex;
     DynamicHashTable<sample_lib::LibraryIdRef, detail::LibrariesList::Node*, detail::HashLibraryRef>

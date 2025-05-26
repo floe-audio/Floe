@@ -39,9 +39,6 @@ using s7 = signed _BitInt(7);
 using u4 = unsigned _BitInt(4);
 using s4 = signed _BitInt(4);
 
-// NOTE: with LLVM 19, we can use bit-precise-int-suffix _wb to create _BitInts with the automatically
-// correct number of bits. See https://en.cppreference.com/w/c/language/integer_constant.
-
 // We rely on Clang's vector extensions for both convenience (we don't have to define operator overloads for
 // +, -, *, etc.) and for the core of our SIMD code generation.
 // https://clang.llvm.org/docs/LanguageExtensions.html#vectors-and-extended-vectors
@@ -158,7 +155,6 @@ template <typename From, typename To> concept Convertible = requires { Declval<v
 template <typename T> concept CArray = __is_array(T);
 template <typename T> concept Pointer = __is_pointer(T);
 template <typename T> concept Void = __is_void(T);
-template <typename T> concept Nullptr = __is_nullptr(T);
 template <typename T> concept FunctionType = __is_function(T);
 template <typename T> concept Arithmetic = __is_arithmetic(T);
 template <typename T> concept Struct = __is_class(T);
@@ -343,7 +339,7 @@ using PanicHook = void (*)(char const* message, SourceLocation loc, uintptr loc_
 void SetPanicHook(PanicHook hook); // thread-safe
 PanicHook GetPanicHook(); // thread-safe
 
-extern thread_local bool g_in_signal_handler;
+extern thread_local bool g_in_crash_handler;
 
 #define ASSUME(expression)                                                                                   \
     _Pragma("clang diagnostic push") _Pragma("clang diagnostic ignored \"-Wassume\"")                        \
@@ -444,7 +440,7 @@ ALWAYS_INLINE constexpr bool NumberCastIsSafe(FromType val) {
 }
 
 template <Scalar T1, Scalar T2>
-ALWAYS_INLINE inline T1 CheckedCast(T2 v) {
+ALWAYS_INLINE inline constexpr T1 CheckedCast(T2 v) {
     ASSERT(NumberCastIsSafe<T1>(v));
     return (T1)v;
 }

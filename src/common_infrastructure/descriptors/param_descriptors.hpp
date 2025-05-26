@@ -143,7 +143,7 @@ enum class ParamIndex : u16 {
     Count = CountHelper - FirstNonLayerParam,
 };
 
-constexpr auto k_num_parameters = ToInt(LayerParamIndex::Count) * k_num_layers + ToInt(ParamIndex::Count);
+constexpr auto k_num_parameters = (ToInt(LayerParamIndex::Count) * k_num_layers) + ToInt(ParamIndex::Count);
 
 enum class ParamDisplayFormat : u8 {
     None,
@@ -155,7 +155,7 @@ enum class ParamDisplayFormat : u8 {
     Hz,
     VolumeDbRange,
     Cents,
-    FilterSemitones,
+    Semitones,
 };
 
 enum class ParamValueType : u8 {
@@ -490,7 +490,7 @@ struct ParamDescriptor {
         constexpr f32 Remap(f32 in, Range out_range) const {
             auto const delta = Delta();
             if (delta == 0) return 0;
-            return out_range.min + ((in - min) / delta) * out_range.Delta();
+            return out_range.min + (((in - min) / delta) * out_range.Delta());
         }
         constexpr f32 RamapTo01(f32 in) const { return (in - min) * (1 / Delta()); }
         constexpr f32 Delta() const { return max - min; }
@@ -527,7 +527,7 @@ struct ParamDescriptor {
             }
 
             auto const value_01 = linear_range_.RamapTo01(linear_value);
-            return range.min + Pow(value_01, exponent) * range.Delta();
+            return range.min + (Pow(value_01, exponent) * range.Delta());
         }
 
         template <f32 (*pow_fn)(f32, f32)>
@@ -541,7 +541,7 @@ struct ParamDescriptor {
                     return -pow_fn((-projected_value) / (-range.min), 1 / exponent);
             }
             auto const value_01 = range.RamapTo01(projected_value);
-            return linear_range_.min + pow_fn(value_01, 1 / exponent) * linear_range_.Delta();
+            return linear_range_.min + (pow_fn(value_01, 1 / exponent) * linear_range_.Delta());
         }
 
         Range range;
@@ -650,7 +650,7 @@ struct ParamDescriptor {
 };
 
 constexpr ParamIndex ParamIndexFromLayerParamIndex(u32 layer_index, LayerParamIndex layer_param_index) {
-    return ParamIndex(layer_index * (u32)LayerParamIndex::Count + (u32)layer_param_index);
+    return ParamIndex((layer_index * (u32)LayerParamIndex::Count) + (u32)layer_param_index);
 }
 
 constexpr bool IsLayerParamOfSpecificType(ParamIndex global_index, LayerParamIndex layer_index) {
@@ -747,19 +747,18 @@ constexpr ValConfig CustomLinear(CustomLinearOptions opts) {
     };
 }
 
-// TODO: rename - it's not just for filters I think
-struct FilterSemitonesOptions {
+struct SemitonesOptions {
     f32 default_val;
     ParamFlags flags;
     ParamDescriptor::Range range = {0, 128};
 };
-constexpr ValConfig FilterSemitones(FilterSemitonesOptions opts) {
+constexpr ValConfig Semitones(SemitonesOptions opts) {
     return ValConfig {
         .linear_range = opts.range,
         .projection = k_nullopt,
         .default_linear_value = opts.default_val,
         .flags = opts.flags,
-        .display_format = ParamDisplayFormat::FilterSemitones,
+        .display_format = ParamDisplayFormat::Semitones,
     };
 }
 
@@ -988,7 +987,7 @@ consteval auto CreateParams() {
 
     auto const id = [](IdRegion region, u32 index) {
         if (index >= k_ids_per_region) throw "region overflow";
-        return (u32)region * k_ids_per_region + index;
+        return ((u32)region * k_ids_per_region) + index;
     };
 
     // =====================================================================================================
@@ -1291,7 +1290,7 @@ consteval auto CreateParams() {
 
     mp(DelayFilterCutoffSemitones) = Args {
         .id = id(IdRegion::Master, 91), // never change
-        .value_config = val_config_helpers::FilterSemitones({.default_val = 60}),
+        .value_config = val_config_helpers::Semitones({.default_val = 60}),
         .modules = {ParameterModule::Effect, ParameterModule::Delay},
         .name = "Filter Cutoff"_s,
         .gui_label = "Filter"_s,
@@ -1402,7 +1401,7 @@ consteval auto CreateParams() {
     };
     mp(PhaserCenterSemitones) = Args {
         .id = id(IdRegion::Master, 84), // never change
-        .value_config = val_config_helpers::FilterSemitones({
+        .value_config = val_config_helpers::Semitones({
             .default_val = 60,
             .range = {8, 136},
         }),
@@ -1423,7 +1422,7 @@ consteval auto CreateParams() {
     };
     mp(PhaserModDepth) = Args {
         .id = id(IdRegion::Master, 86), // never change
-        .value_config = val_config_helpers::FilterSemitones({.default_val = 20, .range = {0, 48}}),
+        .value_config = val_config_helpers::Semitones({.default_val = 20, .range = {0, 48}}),
         .modules = {ParameterModule::Effect, ParameterModule::Phaser},
         .name = "Mod Depth"_s,
         .gui_label = "Depth"_s,
@@ -1507,7 +1506,7 @@ consteval auto CreateParams() {
 
     mp(ReverbPreLowPassCutoff) = Args {
         .id = id(IdRegion::Master, 70), // never change
-        .value_config = val_config_helpers::FilterSemitones({.default_val = 128}),
+        .value_config = val_config_helpers::Semitones({.default_val = 128}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "Pre Low Cutoff"_s,
         .gui_label = "Pre LP"_s,
@@ -1517,7 +1516,7 @@ consteval auto CreateParams() {
 
     mp(ReverbPreHighPassCutoff) = Args {
         .id = id(IdRegion::Master, 71), // never change
-        .value_config = val_config_helpers::FilterSemitones({.default_val = 0}),
+        .value_config = val_config_helpers::Semitones({.default_val = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "Pre High Cutoff"_s,
         .gui_label = "Pre HP"_s,
@@ -1527,7 +1526,7 @@ consteval auto CreateParams() {
 
     mp(ReverbLowShelfCutoff) = Args {
         .id = id(IdRegion::Master, 72), // never change
-        .value_config = val_config_helpers::FilterSemitones({.default_val = 128}),
+        .value_config = val_config_helpers::Semitones({.default_val = 128}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "Low Cutoff"_s,
         .gui_label = "Lo-Shelf"_s,
@@ -1554,7 +1553,7 @@ consteval auto CreateParams() {
 
     mp(ReverbHighShelfCutoff) = Args {
         .id = id(IdRegion::Master, 74), // never change
-        .value_config = val_config_helpers::FilterSemitones({.default_val = 128}),
+        .value_config = val_config_helpers::Semitones({.default_val = 128}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "High Cutoff"_s,
         .gui_label = "Hi-Shelf"_s,

@@ -109,6 +109,11 @@ Gui::Gui(GuiFrameInput& frame_input, Engine& engine)
     engine.stated_changed_callback = [this]() { OnEngineStateChange(save_preset_panel_state, this->engine); };
 
     layout::ReserveItemsCapacity(layout, 2048);
+
+    // The GUI has opened, we can check for updates if needed. We don't want to do this before because it has
+    // no use until the GUI is open.
+    check_for_update::FetchLatestIfNeeded(shared_engine_systems.check_for_update_state);
+    shared_engine_systems.StartPollingThreadIfNeeded();
 }
 
 Gui::~Gui() {
@@ -216,7 +221,7 @@ static bool HasAnyErrorNotifications(Gui* g) {
 
 GuiFrameResult GuiUpdate(Gui* g) {
     ZoneScoped;
-    ASSERT(IsMainThread(g->engine.host));
+    ASSERT(g_is_logical_main_thread);
     g->imgui.SetPixelsPerVw(PixelsPerVw(g));
 
     g->box_system.show_tooltips = prefs::GetBool(g->prefs, SettingDescriptor(GuiSetting::ShowTooltips));
@@ -377,6 +382,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .server = g->shared_engine_systems.sample_library_server,
                 .voice_pool = g->engine.processor.voice_pool,
                 .scratch_arena = g->scratch_arena,
+                .check_for_update_state = g->shared_engine_systems.check_for_update_state,
+                .prefs = g->prefs,
                 .libraries =
                     sample_lib_server::AllLibrariesRetained(g->shared_engine_systems.sample_library_server,
                                                             g->scratch_arena),

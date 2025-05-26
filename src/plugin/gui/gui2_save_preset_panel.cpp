@@ -83,6 +83,7 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
                                          f32x2 {200, style::k_font_body_size * 1.3f},
                                          TextInputBox::SingleLine);
             input.text_input_result && input.text_input_result->buffer_changed) {
+            ASSERT(input.text_input_result->text.size < 10000);
             dyn::AssignFitInCapacity(state.metadata.author, input.text_input_result->text);
         }
 

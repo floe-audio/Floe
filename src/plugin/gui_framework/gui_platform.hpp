@@ -113,8 +113,8 @@ inline FloeClapExtensionHost const* CustomFloeHost(clap_host const& host);
 
 // Due to the way Windows, Linux and macOS handle file pickers, we have this design:
 // - This function may or may not block, depending on the platform.
-// - Either way, it will fill GuiFrameInput::file_picker_results with the selected file paths for the
-//   application to consume on its next frame.
+// - Either way, it will at some point fill GuiFrameInput::file_picker_results with the selected file paths
+//   for the application to consume on its next frame.
 ErrorCodeOr<void> OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& options);
 void CloseNativeFilePicker(GuiPlatform& platform);
 
@@ -780,6 +780,9 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
     ZoneScoped;
     ZoneNameF("%s", PuglEventString(event->type));
     if (PanicOccurred()) return PUGL_FAILURE;
+
+    if (!EnterLogicalMainThread()) return PUGL_FAILURE;
+    DEFER { LeaveLogicalMainThread(); };
 
     try {
         auto& platform = *(GuiPlatform*)puglGetHandle(view);

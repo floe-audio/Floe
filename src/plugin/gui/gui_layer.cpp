@@ -863,7 +863,7 @@ void Draw(Gui* g,
         auto const layer_peak_meter_bottom_gap = LiveSize(g->imgui, LayerPeakMeterBottomGap);
 
         Rect const peak_meter_r {.xywh {
-            volume_knob_r.Centre().x - layer_peak_meter_width / 2,
+            volume_knob_r.Centre().x - (layer_peak_meter_width / 2),
             volume_knob_r.y + (volume_knob_r.h - (layer_peak_meter_height + layer_peak_meter_bottom_gap)),
             layer_peak_meter_width,
             layer_peak_meter_height - layer_peak_meter_bottom_gap}};
@@ -892,7 +892,7 @@ void Draw(Gui* g,
         auto mute_solo_r = layout::GetRect(g->layout, c.mute_solo);
         Rect const mute_r = {.xywh {mute_solo_r.x, mute_solo_r.y, mute_solo_r.w / 2, mute_solo_r.h}};
         Rect const solo_r = {
-            .xywh {mute_solo_r.x + mute_solo_r.w / 2, mute_solo_r.y, mute_solo_r.w / 2, mute_solo_r.h}};
+            .xywh {mute_solo_r.x + (mute_solo_r.w / 2), mute_solo_r.y, mute_solo_r.w / 2, mute_solo_r.h}};
 
         auto const col_border = LiveCol(g->imgui, UiColMap::LayerMuteSoloBorder);
         auto const col_background = LiveCol(g->imgui, UiColMap::LayerMuteSoloBackground);
@@ -1120,8 +1120,8 @@ void Draw(Gui* g,
                     bool state = ToInt(layer->GetVelocityMode()) == btn_ind;
                     auto imgui_id = g->imgui.GetID(layer_gui::k_velo_btn_tooltips[(usize)btn_ind]);
 
-                    Rect btn_r {.xywh {whole_velo_r.x + (whole_velo_r.w / 3) * (btn_ind % 3),
-                                       whole_velo_r.y + (whole_velo_r.h / 2) * (f32)(int)(btn_ind / 3),
+                    Rect btn_r {.xywh {whole_velo_r.x + ((whole_velo_r.w / 3) * (btn_ind % 3)),
+                                       whole_velo_r.y + ((whole_velo_r.h / 2) * (f32)(int)(btn_ind / 3)),
                                        whole_velo_r.w / 3,
                                        whole_velo_r.h / 2}};
 
@@ -1227,7 +1227,7 @@ void Draw(Gui* g,
 
             buttons::Toggle(g,
                             layer->params[ToInt(LayerParamIndex::LfoSyncSwitch)],
-                            {.xywh {rate_name_r.x + rate_name_r.w / 2 - lfo_sync_switch_width / 2,
+                            {.xywh {rate_name_r.x + (rate_name_r.w / 2) - (lfo_sync_switch_width / 2),
                                     rate_name_r.Bottom() + lfo_sync_switch_gap_y,
                                     lfo_sync_switch_width,
                                     lfo_sync_switch_height}},

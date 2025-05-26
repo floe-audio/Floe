@@ -63,7 +63,7 @@ struct HashTable {
     };
 
     static constexpr usize k_min_size = 8;
-    static constexpr usize k_max_size = ((usize)-1 / 2 + 1);
+    static constexpr usize k_max_size = (((usize)-1 / 2) + 1);
     static constexpr u64 k_tombstone = 0xdeadc0de;
 
     static u64 Hash(KeyType k) {

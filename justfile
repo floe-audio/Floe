@@ -10,6 +10,7 @@ native_binary_dir := join("zig-out", native_arch_os_pair)
 native_binary_dir_abs := join(justfile_directory(), native_binary_dir)
 all_src_files := 'fd . -e .mm -e .cpp -e .hpp -e .h src' 
 cache_dir := ".floe-cache"
+zig_global_cache_dir := ".zig-cache-global"
 release_files_dir := join(justfile_directory(), "zig-out", "release") # for final release files
 run_windows_program := if os() == 'windows' {
   ''
@@ -44,7 +45,11 @@ default:
 alias pre-debug := default
 
 build target_os='native' mode='development':
-  zig build compile -Dtargets={{target_os}} -Dbuild-mode={{mode}} -Dexternal-resources="{{external_resources}}"
+  zig build compile \
+      -Dtargets={{target_os}} \
+      -Dbuild-mode={{mode}} \
+      -Dexternal-resources="{{external_resources}}" \
+      --global-cache-dir {{zig_global_cache_dir}}
   just patch-rpath
 
 
@@ -71,10 +76,13 @@ patch-rpath:
   fi
 
 build-tracy:
-  zig build compile -Dtargets=native -Dbuild-mode=development -Dtracy
+  zig build compile -Dtargets=native -Dbuild-mode=development -Dtracy --global-cache-dir {{zig_global_cache_dir}}
 
 build-release target_os='native':
-  zig build compile -Dtargets={{target_os}} -Dbuild-mode=production -Dexternal-resources="{{external_resources}}"
+  zig build compile -Dtargets={{target_os}} \
+      -Dbuild-mode=production \
+      -Dexternal-resources="{{external_resources}}" \
+      --global-cache-dir {{zig_global_cache_dir}}
 
 # build and report compile-time statistics
 build-timed target_os='native':
@@ -124,6 +132,14 @@ check-links:
 
 # install Compile DataBase (compile_commands.json)
 install-cbd arch_os_pair=native_arch_os_pair:
+  #!/usr/bin/env bash
+  cdb_file="{{cache_dir}}/compile_commands_{{arch_os_pair}}.json"
+
+  if [[ ! -f $cdb_file ]]; then
+    echo "WARNING: compile_commands.json file not found for arch+OS: {{arch_os_pair}}"
+    exit 0
+  fi
+
   cp {{cache_dir}}/compile_commands_{{arch_os_pair}}.json {{cache_dir}}/compile_commands.json
 
 clang-tidy arch_os_pair=native_arch_os_pair: (install-cbd arch_os_pair)
@@ -138,7 +154,9 @@ clang-tidy arch_os_pair=native_arch_os_pair: (install-cbd arch_os_pair)
 
   # NOTE: we specify the config file because we don't want clang-tidy to go automatically looking for it and 
   # sometimes finding .clang-tidy files in third-party libraries that are incompatible with our version of clang-tidy
-  jq -r '.[].file' "$cdb_file" | xargs clang-tidy --config-file=.clang-tidy -p "{{cache_dir}}"
+  jq -r '.[].file' "$cdb_file" | \
+      grep -E -i "^{{justfile_directory()}}[/\\]src[/\\]" |
+      xargs clang-tidy --config-file=.clang-tidy -p "{{cache_dir}}"
 
 clang-tidy-all: (clang-tidy "x86_64-linux") (clang-tidy "x86_64-windows") (clang-tidy "aarch64-macos")
 
@@ -147,9 +165,9 @@ upload-errors:
   set -euxo pipefail
   
   case "$(uname -s)" in
-    Linux*)   dir="$HOME/.local/state/Floe" ;;
+    Linux*)   dir="$HOME/.local/state/Floe/Logs" ;;
     Darwin*)  dir="$HOME/Library/Logs/Floe" ;;
-    MINGW*|CYGWIN*|MSYS*) dir="$LOCALAPPDATA/Floe" ;;
+    MINGW*|CYGWIN*|MSYS*) dir="$LOCALAPPDATA/Floe/Logs" ;;
     *) echo "Unsupported OS" && exit 1 ;;
   esac
 
@@ -586,38 +604,92 @@ macos-notarize file:
   xcrun notarytool submit {{file}} --apple-id "$MACOS_NOTARIZATION_USERNAME" --password "$MACOS_NOTARIZATION_PASSWORD" --team-id $MACOS_TEAM_ID --wait
 
 [macos]
-macos-prepare-packager:
+macos-prepare-packager folder notarize="1":
   #!/usr/bin/env bash
-  set -euo pipefail # don't use 'set -x' because it might print sensitive information
+  set -euxo pipefail
   [[ ! -f version.txt ]] && echo "version.txt file not found" && exit 1
-  [[ ! -d zig-out/universal-macos ]] && echo "universal-macos folder not found" && exit 1
+  [[ ! -d zig-out/{{folder}} ]] && echo "{{folder}} folder not found" && exit 1
 
   version=$(cat version.txt)
   mkdir -p {{release_files_dir}}
 
-  cd zig-out/universal-macos
+  cd zig-out/{{folder}}
+
+  just _workaround-invalid-macho floe-packager
 
   codesign --sign "$MACOS_DEV_ID_APP_NAME" --timestamp --options=runtime --force floe-packager
+  
+  arch_name=$(just _get-arch-name "floe-packager")
 
-  final_packager_zip_name="Floe-Packager-v$version-macOS.zip"
+  final_packager_zip_name="Floe-Packager-v$version-macOS-$arch_name.zip"
   zip $final_packager_zip_name floe-packager
 
-  just macos-notarize "$final_packager_zip_name"
-  # NOTE: we can't staple the packager because it's a Unix binary 
+  if [[ "{{notarize}}" -eq 1 ]]; then
+    just macos-notarize "$final_packager_zip_name"
+    # NOTE: we can't staple the packager because it's a Unix binary 
+  fi
 
   mv $final_packager_zip_name {{release_files_dir}}
 
-[macos]
-macos-prepare-release-plugins:
+[macos, no-cd]
+_check-bundle bundle label:
   #!/usr/bin/env bash
-  set -euo pipefail # don't use 'set -x' because it might print sensitive information
+  set -euxo pipefail
+  echo "Checking {{bundle}} {{label}}"
+  exe="{{bundle}}/Contents/MacOS/Floe"
+  otool -l $exe | head -20 # check mach-o validity
+  vtool -show-build $exe # another mach-o check
+  dsymutil --dump-debug-map $exe | tail -20 # check debug info
+  dsymutil --verify $exe # check debug info
+  lipo -archs $exe # check mach-o validity and arch
+
+[macos, no-cd]
+_workaround-invalid-macho filepath:
+  #!/usr/bin/env bash
+  set -euxo pipefail
+  # I believe there is a bug in the Zig mach-o toolchain that results in binaries that become invalid after codesigning. Perhaps 
+  # it is an isuse with codesign. rcodesign and zsign will not even run on the binary. `codesign` succeeds, but the binary is invalid. See the various checks we do in _check-bundle.
+  # 
+  # otool: error: truncated or malformed object (offset field of section 0 in LC_SEGMENT_64 command 0 not past the headers of the
+  # file)
+  #
+  # To workaround this, we can first run the binary through vtool which seems to happily accept the binary and convert it into     
+  # something that codesign doesn't mess up. It was trial and error to find a command that works. Removing the source version 
+  # seems to work for all binaries we are currently using. -set-source-version worked for some binaries but not all.
+  file {{filepath}}
+  vtool -remove-source-version -output {{filepath}}-fixed {{filepath}} # arbitrary change to trigger MachO fix
+  rm {{filepath}}
+  mv {{filepath}}-fixed {{filepath}}
+
+[macos, no-cd]
+_get-arch-name filepath:
+  #!/usr/bin/env bash
+  set -euxo pipefail
+  # Helper function to determine architecture name from binary
+  arch_info=$(lipo -archs {{filepath}} | xargs)  # xargs trims whitespace
+  
+  if [[ "$arch_info" == "arm64" ]]; then
+    echo "Apple-Silicon"
+  elif [[ "$arch_info" == "x86_64" ]]; then
+    echo "Intel"
+  elif [[ "$arch_info" == "x86_64 arm64" || "$arch_info" == "arm64 x86_64" ]]; then
+    echo "Universal"
+  else
+    echo "ERROR: Unsupported architecture: $arch_info" >&2
+    exit 1
+  fi
+
+[macos]
+macos-prepare-release-plugins folder notarize="1":
+  #!/usr/bin/env bash
+  set -euxo pipefail
   [[ ! -f version.txt ]] && echo "version.txt file not found" && exit 1
-  [[ ! -d zig-out/universal-macos ]] && echo "universal-macos folder not found" && exit 1
+  [[ ! -d zig-out/{{folder}} ]] && echo "{{folder}} folder not found" && exit 1
 
   version=$(cat version.txt)
   mkdir -p {{release_files_dir}}
 
-  cd zig-out/universal-macos
+  cd zig-out/{{folder}}
 
   # step 1: codesign
   cat >plugin.entitlements <<EOF
@@ -638,7 +710,14 @@ macos-prepare-release-plugins:
   EOF
 
   codesign_plugin() {
-    codesign --sign "$MACOS_DEV_ID_APP_NAME" --timestamp --options=runtime --deep --force --entitlements plugin.entitlements $1
+    just _check-bundle $1 "before codesigning"
+
+    just _workaround-invalid-macho $1/Contents/MacOS/Floe
+
+    codesign --sign "$MACOS_DEV_ID_APP_NAME" --timestamp --options=runtime --deep --force --strict --entitlements plugin.entitlements $1
+    just _check-bundle $1 "after codesigning"
+
+    codesign --verify $1 --verbose
   }
 
   plugin_list="Floe.clap Floe.vst3 Floe.component"
@@ -650,50 +729,58 @@ macos-prepare-release-plugins:
   rm plugin.entitlements
 
   # step 2: notarize
-  notarize_plugin() {
-    plugin=$1
-    temp_subdir=notarizing_$plugin
+  if [[ "{{notarize}}" -eq 1 ]]; then
+    notarize_plugin() {
+        plugin=$1
+        temp_subdir=notarizing_$plugin
 
-    rm -rf $temp_subdir
-    mkdir -p $temp_subdir
-    zip -r $temp_subdir/$plugin.zip $plugin
+        just _check-bundle $plugin "before notarize and stapling"
 
-    just macos-notarize $temp_subdir/$plugin.zip
+        rm -rf $temp_subdir
+        mkdir -p $temp_subdir
+        zip -r $temp_subdir/$plugin.zip $plugin
 
-    unzip $temp_subdir/$plugin.zip -d $temp_subdir
-    xcrun stapler staple $temp_subdir/$plugin
-    # replace the original bundle with the stapled one
-    rm -rf $plugin
-    mv $temp_subdir/$plugin $plugin
-    rm -rf $temp_subdir
-  }
+        just macos-notarize $temp_subdir/$plugin.zip
 
-  # we can do it in parallel for speed, but we need to be careful there's no conflicting use of the filesystem
-  export -f notarize_plugin
-  SHELL=$(type -p bash) parallel --bar notarize_plugin ::: $plugin_list
+        unzip $temp_subdir/$plugin.zip -d $temp_subdir
+        xcrun stapler staple $temp_subdir/$plugin
+        # replace the original bundle with the stapled one
+        rm -rf $plugin
+        mv $temp_subdir/$plugin $plugin
+        just _check-bundle $plugin "after notarize and stapling"
+        rm -rf $temp_subdir
+    }
 
-  # step 3: zip
+    # we can do it in parallel for speed, but we need to be careful there's no conflicting use of the filesystem
+    export -f notarize_plugin
+    SHELL=$(type -p bash) parallel --bar notarize_plugin ::: $plugin_list
+  fi
+
+  # step 3: determine architecture and zip
+  plugin_executable="Floe.clap/Contents/MacOS/Floe"
+  arch_name=$(just _get-arch-name "$plugin_executable")
+  
   just _create-manual-install-readme "macOS"
-  final_manual_zip_name="Floe-Manual-Install-v$version-macOS.zip"
+  final_manual_zip_name="Floe-Manual-Install-v$version-macOS-$arch_name.zip"
   rm -f $final_manual_zip_name
   zip -r $final_manual_zip_name $plugin_list readme.txt
   mv $final_manual_zip_name {{release_files_dir}}
   rm readme.txt
 
 [macos]
-macos-build-installer:
+macos-build-installer folder:
   #!/usr/bin/env bash
-  set -euo pipefail # don't use 'set -x' because it might print sensitive information
+  set -euxo pipefail
   [[ ! -f version.txt ]] && echo "version.txt file not found" && exit 1
-  [[ ! -d zig-out/universal-macos ]] && echo "universal-macos folder not found" && exit 1
+  [[ ! -d zig-out/{{folder}} ]] && echo "{{folder}} folder not found" && exit 1
 
   mkdir -p "{{release_files_dir}}"
 
   version=$(cat version.txt)
-  universal_macos_abs_path="{{justfile_directory()}}/zig-out/universal-macos"
+  zig_out_abs_path="{{justfile_directory()}}/zig-out/{{folder}}"
   final_installer_name="Floe-Installer-v$version"
 
-  cd $universal_macos_abs_path
+  cd $zig_out_abs_path
 
   temp_working_subdir="temp_installer_working_subdir"
   rm -rf "$temp_working_subdir"
@@ -729,13 +816,14 @@ macos-build-installer:
     local package_root="package_$file_extension"
     local install_folder="Library/Audio/Plug-Ins/$destination_plugin_folder"
     local identifier="com.Floe.$file_extension"
-    local plugin_path="$universal_macos_abs_path/Floe.$file_extension"
+    local plugin_path="$zig_out_abs_path/Floe.$file_extension"
 
-    codesign --verify "$plugin_path" || { echo "ERROR: the plugin file isn't codesigned, do that before this command"; exit 1; }
+    codesign --verbose --verify "$plugin_path" || { echo "ERROR: the plugin file isn't codesigned, do that before this command"; exit 1; }
 
     mkdir -p "$package_root/$install_folder"
     cp -r "$plugin_path" "$package_root/$install_folder"
     pkgbuild --analyze --root "$package_root" "$package_root.plist"
+    cat "$package_root.plist"
     pkgbuild --root "$package_root" --component-plist "$package_root.plist" --identifier "$identifier" --install-location / --version "$version" "$package_root.pkg"
 
     add_package_to_distribution_xml "$identifier" "$title" "$description" "$package_root.pkg"
@@ -750,13 +838,34 @@ macos-build-installer:
   echo "This application will install Floe on your computer. You will be able to select which types of audio plugin format you would like to install. Please note that sample libraries are separate: this installer just installs the Floe engine." > productbuild_files/welcome.txt
 
   # find the min macos version from one of the plugin's plists
-  min_macos_version=$(grep -A 1 '<key>LSMinimumSystemVersion</key>' "$universal_macos_abs_path/Floe.clap/Contents/Info.plist" | grep '<string>' | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
+  min_macos_version=$(grep -A 1 '<key>LSMinimumSystemVersion</key>' "$zig_out_abs_path/Floe.clap/Contents/Info.plist" | grep '<string>' | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
+
+  # Determine the architecture(s) from the executable
+  plugin_executable="$zig_out_abs_path/Floe.clap/Contents/MacOS/Floe"
+  arch_info=$(lipo -archs "$plugin_executable" | xargs)  # xargs trims whitespace
+  arch_name=$(just _get-arch-name "$plugin_executable")
+
+  # Set the architecture restriction for the installer based on the plugin architecture
+  if [[ "$arch_info" == "arm64" ]]; then
+    # Only arm64 architecture
+    host_architectures='hostArchitectures="arm64"'
+  elif [[ "$arch_info" == "x86_64" ]]; then
+    # Only x86_64 architecture
+    host_architectures='hostArchitectures="x86_64"'
+  elif [[ "$arch_info" == "x86_64 arm64" || "$arch_info" == "arm64 x86_64" ]]; then
+    # Universal binary with both architectures
+    host_architectures='hostArchitectures="arm64,x86_64"'
+  else
+    # error - unsupported architecture
+    echo "ERROR: Unsupported architecture: $arch_info"
+    exit 1
+  fi
 
   cat >distribution.xml <<EOF
   <installer-gui-script minSpecVersion="1">
       <title>Floe v$version</title>
       <welcome file="welcome.txt" mime-type="text/plain"/>
-      <options customize="always" require-scripts="false"/>
+      <options customize="always" require-scripts="false" $host_architectures/>
       <os-version min="$min_macos_version" /> 
       $distribution_xml_choices
       <choices-outline>
@@ -765,8 +874,10 @@ macos-build-installer:
   </installer-gui-script>
   EOF
 
+  cat distribution.xml
+
   productbuild --distribution distribution.xml --resources productbuild_files --package-path . unsigned.pkg
-  productsign --timestamp --sign "$MACOS_DEV_ID_INSTALLER_NAME" unsigned.pkg "$universal_macos_abs_path/$final_installer_name.pkg"
+  productsign --timestamp --sign "$MACOS_DEV_ID_INSTALLER_NAME" unsigned.pkg "$zig_out_abs_path/$final_installer_name.pkg"
 
   popd
   rm -rf "$temp_working_subdir"
@@ -776,11 +887,17 @@ macos-build-installer:
   xcrun stapler staple $final_installer_name.pkg
 
   # step 6: zip the installer
-  final_zip_name="$final_installer_name-macOS.zip"
+  final_zip_name="$final_installer_name-macOS-$arch_name.zip"
   rm -f "$final_zip_name"
   zip -r "$final_zip_name" "$final_installer_name.pkg"
   mv "$final_zip_name" "{{release_files_dir}}"
 
 [macos]
-macos-prepare-release: (macos-prepare-packager) (macos-prepare-release-plugins) (macos-build-installer)
+macos-prepare-release: 
+  just macos-prepare-packager aarch64-macos
+  just macos-prepare-packager x86_64-macos
+  just macos-prepare-release-plugins aarch64-macos
+  just macos-prepare-release-plugins x86_64-macos
+  just macos-build-installer aarch64-macos
+  just macos-build-installer x86_64-macos
 

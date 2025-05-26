@@ -7,36 +7,41 @@
 struct NativeHandleSizes {
     usize thread;
     usize mutex;
+    usize recursive_mutex;
     usize cond_var;
     usize sema;
 };
 
 static constexpr NativeHandleSizes NativeHandleSizes() {
     if constexpr (IS_LINUX)
-        return {.thread = 8, .mutex = 40, .cond_var = 48, .sema = 32};
+        return {.thread = 8, .mutex = 40, .recursive_mutex = 40, .cond_var = 48, .sema = 32};
     else if constexpr (IS_MACOS)
-        return {.thread = 8, .mutex = 64, .cond_var = 48, .sema = 4};
+        return {.thread = 8, .mutex = 64, .recursive_mutex = 64, .cond_var = 48, .sema = 4};
     else if constexpr (IS_WINDOWS)
-        return {.thread = 8, .mutex = 40, .cond_var = 8, .sema = 8};
-    return {.thread = 8, .mutex = 40, .cond_var = 8, .sema = 8};
+        return {.thread = 8, .mutex = 8, .recursive_mutex = 40, .cond_var = 8, .sema = 8};
+    return {.thread = 8, .mutex = 40, .recursive_mutex = 40, .cond_var = 8, .sema = 8};
 }
 
 void SleepThisThread(int milliseconds);
 void YieldThisThread();
 
-u64 CurrentThreadId();
+u64 CurrentThreadId(); // signal-safe
 
 void SetCurrentThreadPriorityRealTime();
 
 constexpr static usize k_max_thread_name_size = 16;
-void SetThreadName(String name);
-Optional<DynamicArrayBounded<char, k_max_thread_name_size>> ThreadName();
+// tag_only will tag the thread ID with our thread_local name, rather than attempt to
+// set the thread using the OS.
+void SetThreadName(String name, bool tag_only);
+Optional<DynamicArrayBounded<char, k_max_thread_name_size>> ThreadName(bool tag_only);
 
-inline bool CheckThreadName(String name) {
-    auto thread_name = ThreadName();
-    ASSERT(thread_name, "Thread name is not set");
-    return *thread_name == name;
-}
+// We use this primarily in assertions to check what is the main thread. It's a 'logical' main thread, various
+// threads can be the main thread at different times.
+extern thread_local u8 g_is_logical_main_thread;
+
+// This is re-entrant safe. If it returns false, there's already a thread that is the logical main thread.
+[[nodiscard]] bool EnterLogicalMainThread();
+void LeaveLogicalMainThread();
 
 namespace detail {
 void AssertThreadNameIsValid(String name);
@@ -74,7 +79,7 @@ class Thread {
             thread_name = name;
         }
         void StartThread() {
-            SetThreadName(thread_name);
+            SetThreadName(thread_name, false);
             start_function();
         }
 
@@ -421,6 +426,47 @@ struct MutexThin {
     }
 };
 
+// As above, based on Zig's RecursiveMutex
+struct MutexThinRecursive {
+    static constexpr u64 k_invalid_thread_id = ~(u64)0;
+
+    MutexThin mutex {};
+    Atomic<u64> thread_id = k_invalid_thread_id;
+    usize lock_count = 0;
+
+    bool Lock() {
+        u64 const current_thread_id = CurrentThreadId();
+        if (thread_id.Load(LoadMemoryOrder::Relaxed) != current_thread_id) {
+            mutex.Lock();
+            ASSERT_EQ(lock_count, 0uz);
+            thread_id.Store(current_thread_id, StoreMemoryOrder::Relaxed);
+        }
+        ++lock_count;
+        return true;
+    }
+
+    bool TryLock() {
+        u64 const current_thread_id = CurrentThreadId();
+        if (thread_id.Load(LoadMemoryOrder::Relaxed) != current_thread_id) {
+            if (!mutex.TryLock()) return false;
+            ASSERT_EQ(lock_count, 0uz);
+            thread_id.Store(current_thread_id, StoreMemoryOrder::Relaxed);
+        }
+        ++lock_count;
+        return true;
+    }
+
+    void Unlock() {
+        ASSERT(lock_count > 0, "Unlocking a mutex that is not locked");
+        --lock_count;
+
+        if (lock_count == 0) {
+            thread_id.Store(k_invalid_thread_id, StoreMemoryOrder::Relaxed);
+            mutex.Unlock();
+        }
+    }
+};
+
 struct CountedInitFlag {
     u32 counter = 0;
     MutexThin mutex {};
@@ -483,7 +529,7 @@ struct RecursiveMutex {
 
     NON_COPYABLE_AND_MOVEABLE(RecursiveMutex);
 
-    OpaqueHandle<NativeHandleSizes().mutex> mutex;
+    OpaqueHandle<NativeHandleSizes().recursive_mutex> mutex;
 };
 
 struct ScopedMutexLock {

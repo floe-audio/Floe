@@ -43,9 +43,9 @@ struct ChorusProcessor {
         ASSERT_HOT(depth01 >= 0.0f && depth01 <= 1.0f);
 
         constexpr auto k_min_time_multiplier = 0.04f;
-        auto const depth = -(0.5f - k_min_time_multiplier / 2) * depth01 + 1.0f;
+        auto const depth = (-(0.5f - (k_min_time_multiplier / 2)) * depth01) + 1.0f;
         auto const time_multiplier =
-            chorus_lfo.Tick() * (1.f - depth) + depth; // range: [k_min_time_multiplier, 1]
+            (chorus_lfo.Tick() * (1.f - depth)) + depth; // range: [k_min_time_multiplier, 1]
 
         auto const dl_offset = time_multiplier * delay_line.size_float;
         ASSERT_HOT(dl_offset >= 0.0f);

@@ -226,7 +226,7 @@ void TryShrinkPages(void* ptr, usize old_size, usize new_size) {
     auto const new_num_pages = (new_size == 0) ? 0 : ((new_size / page_size) + 1);
     if (current_num_pages != new_num_pages) {
         auto const num_pages = current_num_pages - new_num_pages;
-        Span<u8> const unused_pages {(u8*)ptr + new_num_pages * page_size, page_size * num_pages};
+        Span<u8> const unused_pages {(u8*)ptr + (new_num_pages * page_size), page_size * num_pages};
         ASSERT(ContainsPointer(unused_pages, unused_pages.data));
         ASSERT(ContainsPointer(unused_pages, &Last(unused_pages)));
 
@@ -257,14 +257,14 @@ s128 NanosecondsSinceEpoch() {
 #else
     timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    return (s128)ts.tv_sec * (s128)1e+9 + (s128)ts.tv_nsec;
+    return ((s128)ts.tv_sec * (s128)1e+9) + (s128)ts.tv_nsec;
 #endif
 }
 
 s64 MicrosecondsSinceEpoch() {
     timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    return CheckedCast<s64>((u64)ts.tv_sec * 1'000'000 + (u64)ts.tv_nsec / 1'000);
+    return CheckedCast<s64>(((u64)ts.tv_sec * 1'000'000) + ((u64)ts.tv_nsec / 1'000));
 }
 
 DateAndTime LocalTimeFromNanosecondsSinceEpoch(s128 nanoseconds) {
@@ -361,7 +361,7 @@ TimePoint TimePoint::Now() {
 #else
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC_RAW, &ts); // signal-safe
-    return TimePoint((s64)ts.tv_sec * (s64)1e+9 + (s64)ts.tv_nsec);
+    return TimePoint(((s64)ts.tv_sec * (s64)1e+9) + (s64)ts.tv_nsec);
 #endif
 }
 
@@ -378,7 +378,7 @@ static constexpr auto k_signals = Array {
     SIGILL, // "illegal", invalid instruction.
     SIGSEGV, // "segmentation violation", invalid memory access.
     SIGBUS, // Bus error (bad memory access)
-    SIGPIPE, // Broken pipe
+    // SIGPIPE, // Broken pipe. Bitwig Studio triggers this often but it doens't seem to be a problem.
     SIGTRAP, // Trace/breakpoint trap
 };
 
@@ -476,7 +476,7 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
     if (first_call) {
         first_call = 0;
 
-        g_in_signal_handler = true;
+        g_in_crash_handler = true;
         auto signal_description = SignalString(signal_num, info);
 
         if constexpr (!PRODUCTION_BUILD) {
@@ -489,26 +489,12 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
 #endif
         }
 
-        if (auto hook = g_crash_hook.Load(LoadMemoryOrder::Acquire)) {
-            auto trace = CurrentStacktrace();
-            if (trace) {
-                auto const error_ip = ErrorAddress(context) - 1;
-                if (error_ip) {
-                    // Find and remove signal handler frames
-                    for (auto i : Range(1uz, trace->size)) {
-                        if (trace->data[i] == error_ip) {
-                            dyn::Remove(*trace, 0, i);
-                            break;
-                        }
-                    }
-                }
-            }
-            hook(signal_description, trace);
-        }
+        if (auto hook = g_crash_hook.Load(LoadMemoryOrder::Acquire))
+            hook(signal_description, ErrorAddress(context));
 
         for (auto [index, s] : Enumerate(k_signals)) {
             if (s == signal_num) {
-                g_in_signal_handler = true;
+                g_in_crash_handler = true;
                 auto& prev_action = g_previous_signal_actions[index];
 
                 enum class Type { HandlerFunction, HandlerWithInfoFunction };
@@ -540,7 +526,7 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
                             // raise it.
                             if constexpr (!PRODUCTION_BUILD)
                                 auto _ = StdPrint(k_signal_output_stream, "Calling default signal handler\n");
-                            g_in_signal_handler = false;
+                            g_in_crash_handler = false;
                             signal(signal_num, SIG_DFL);
                             raise(signal_num);
                         } else if (*h == SIG_IGN) {
@@ -577,7 +563,7 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
                         if constexpr (!PRODUCTION_BUILD)
                             auto _ = StdPrint(k_signal_output_stream, "Calling previous signal handler\n");
                         auto h = previous_handler_function.GetFromTag<Type::HandlerFunction>();
-                        g_in_signal_handler = false;
+                        g_in_crash_handler = false;
                         (*h)(signal_num);
                         break;
                     }
@@ -586,7 +572,7 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
                             auto _ =
                                 StdPrint(k_signal_output_stream, "Calling previous info signal handler\n");
                         auto h = previous_handler_function.GetFromTag<Type::HandlerWithInfoFunction>();
-                        g_in_signal_handler = false;
+                        g_in_crash_handler = false;
                         (*h)(signal_num, info, context);
                         break;
                     }

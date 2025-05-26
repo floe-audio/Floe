@@ -19,7 +19,7 @@ Floe is currently in beta — please give it a try today.
 
 
 <h1 style="font-size: 3.1rem">Streamlined sample-based instrument platform</h1>
-<p style="font-size: 2rem; margin-bottom: 4px;">Floe lets you find, perform and transform sounds from sample libraries — from realistic instruments to synthesised tones. Handmade with care, Floe is no-hassle, open-source and always free.</p>
+<p style="font-size: 2rem; margin-bottom: 4px;">Floe lets you find, perform and transform sounds from sample libraries — from realistic instruments to synthesised tones. Handmade with care, Floe is no-hassle, open-source and <strong>always free</strong>.</p>
 
 <div style="padding-bottom: 10px;"></div>
 

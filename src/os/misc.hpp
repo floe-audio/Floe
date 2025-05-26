@@ -83,6 +83,8 @@ void UnloadLibrary(LibraryHandle library);
 
 bool IsRunningUnderWine();
 
+void WindowsRaiseException(u32 code);
+
 // We can also use __builtin_debugtrap().
 bool IsRunningUnderDebugger();
 

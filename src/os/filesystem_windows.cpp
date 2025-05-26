@@ -91,7 +91,7 @@ ErrorCodeOr<s128> File::LastModifiedTimeNsSinceEpoch() {
 
     // The windows epoch starts 1601-01-01T00:00:00Z. It's 11644473600 seconds before the Unix/Linux epoch
     // (1970-01-01T00:00:00Z). Windows ticks are in 100 nanoseconds.
-    return (s128)file_time_int.QuadPart * (s128)100 - (s128)11644473600ull * (s128)1'000'000'000ull;
+    return ((s128)file_time_int.QuadPart * (s128)100) - ((s128)11644473600ull * (s128)1'000'000'000ull);
 }
 
 ErrorCodeOr<void> File::SetLastModifiedTimeNsSinceEpoch(s128 time) {
@@ -993,6 +993,7 @@ static bool ShouldSkipFile(WString filename, bool skip_dot_files) {
 }
 
 ErrorCodeOr<Iterator> Create(ArenaAllocator& a, String path, Options options) {
+    path = path::TrimDirectorySeparatorsEnd(path);
     auto result = TRY(Iterator::InternalCreate(a, path, options));
     return result;
 }
@@ -1203,13 +1204,22 @@ PollDirectoryChanges(DirectoryWatcher& watcher, PollDirectoryChangesArgs args) {
         if (wait_result == WAIT_OBJECT_0) {
             DWORD bytes_transferred {};
             if (GetOverlappedResult(windows_dir.handle, &windows_dir.overlapped, &bytes_transferred, FALSE)) {
+                bool error = false;
+
+                if (bytes_transferred == 0) {
+                    // Even though this is a result from GetOverlappedResult, I believe this is the relevant
+                    // docs: "If the buffer overflows, ReadDirectoryChangesW will still return true, but the
+                    // entire contents of the buffer are discarded and the lpBytesReturned parameter will be
+                    // zero, which indicates that your buffer was too small to hold all of the changes that
+                    // occurred."
+                    error = true;
+                }
+
                 auto const* base = windows_dir.buffer.data;
                 auto const* end = Min<u8 const*>(base + bytes_transferred, windows_dir.buffer.end());
                 auto const min_chunk_size = sizeof(FILE_NOTIFY_INFORMATION);
 
-                bool error = false;
-
-                while (true) {
+                while (!error) {
                     ASSERT(base < end, "invalid data from ReadDirectoryChangesW");
                     ASSERT((usize)(end - base) >= min_chunk_size, "invalid data from ReadDirectoryChangesW");
 
@@ -1303,7 +1313,9 @@ PollDirectoryChanges(DirectoryWatcher& watcher, PollDirectoryChangesArgs args) {
                 dir.directory_changes.error = FilesystemWin32ErrorCode(GetLastError());
             }
         } else {
-            ASSERT_EQ(wait_result, (DWORD)WAIT_TIMEOUT);
+            // For WAIT_IO_COMPLETION, WAIT_ABANDONED, WAIT_TIMEOUT, or any other result just continue to the
+            // next directory without processing changes; we'll catch any pending changes in the next poll. We
+            // have seen WAIT_IO_COMPLETION in the wild.
         }
 
         auto const succeeded = ReadDirectoryChangesW(windows_dir.handle,

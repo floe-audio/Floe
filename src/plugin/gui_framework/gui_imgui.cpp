@@ -620,7 +620,7 @@ void Context::Begin(WindowSettings settings) {
                 VwToPixels(20); // IMPROVE: this should be a setting so, for example, popups
                                 // can scroll in increments of each item
             f32 const lines = -frame_input.mouse_scroll_delta_in_lines;
-            f32 const new_scroll = lines * k_pixels_per_line + final_window->scroll_offset.y;
+            f32 const new_scroll = (lines * k_pixels_per_line) + final_window->scroll_offset.y;
             final_window->scroll_offset.y = Round(Clamp(new_scroll, 0.0f, final_window->scroll_max.y));
         }
     }
@@ -1397,7 +1397,7 @@ TextInputResult Context::TextInput(Rect r,
             if (flags.multiline_wordwrap_hack && stb_state.cursor == textedit_len &&
                 textedit_len == (initial_textedit_len + 1)) {
 
-                auto const max_width = r.w - k_text_xpad_in_input_box * 4;
+                auto const max_width = r.w - (k_text_xpad_in_input_box * 4);
                 if (max_width <= 0) break;
 
                 auto const* line_end = textedit_text_utf8.data + textedit_text_utf8.size - 1;
@@ -1461,9 +1461,9 @@ TextInputResult Context::TextInput(Rect r,
         f32 const cursor_start = font->CalcTextSizeA(font_size, FLT_MAX, 0, text_up_to_cursor).x;
 
         auto cursor_r = Rect {.x = result.text_pos.x + cursor_start,
-                              .y = result.text_pos.y - y_pad + line_index * font_size,
+                              .y = result.text_pos.y - y_pad + (line_index * font_size),
                               .w = cursor_width,
-                              .h = font_size + y_pad * 2};
+                              .h = font_size + (y_pad * 2)};
 
         result.cursor_rect = cursor_r;
     }
@@ -1534,7 +1534,7 @@ Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIter
                                                   0,
                                                   {start_line_start, (usize)(start_pos - start_line_start)})
                                   .x,
-            .y = text_pos.y - 2 + start_line_index * font_size,
+            .y = text_pos.y - 2 + (start_line_index * font_size),
             .w = font->CalcTextSizeA(font_size, FLT_MAX, 0, {start_pos, (usize)(end_pos - start_pos)}).x,
             .h = font_size + 4};
 
@@ -1564,7 +1564,7 @@ Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIter
     auto font_size = it.draw_ctx.CurrentFontSize();
 
     return Rect {.x = text_pos.x,
-                 .y = text_pos.y - 2 + start_line_index * font_size,
+                 .y = text_pos.y - 2 + (start_line_index * font_size),
                  .w = font->CalcTextSizeA(font_size, FLT_MAX, 0, {start_pos, (usize)(end_pos - start_pos)}).x,
                  .h = font_size + 4};
 }
@@ -1607,7 +1607,7 @@ bool Context::ButtonBehavior(Rect r, Id id, ButtonFlags flags) {
         bool const clicked = CheckForValidMouseDown(flags, frame_input);
 
         if (clicked) {
-            SetActiveID(id, (flags.closes_popups), flags, !(flags.dont_check_for_release));
+            SetActiveID(id, flags.closes_popups, flags, !(flags.dont_check_for_release));
 
             button_repeat_counter = {};
             if (flags.hold_to_repeat) WakeupAtTimedInterval(button_repeat_counter, button_repeat_rate);
@@ -2001,7 +2001,7 @@ void Context::EndWindow() {
 bool Context::ScrollWindowToShowRectangle(Rect r) {
     if (!Rect::DoRectsIntersect(GetRegisteredAndConvertedRect(r),
                                 CurrentWindow()->clipping_rect.ReducedVertically(r.h))) {
-        SetYScroll(CurrentWindow(), Clamp(r.CentreY() - Height() / 2, 0.0f, CurrentWindow()->scroll_max.y));
+        SetYScroll(CurrentWindow(), Clamp(r.CentreY() - (Height() / 2), 0.0f, CurrentWindow()->scroll_max.y));
         return true;
     }
     return false;
@@ -2534,7 +2534,7 @@ f32 Context::LargestStringWidth(f32 pad, void* items, int num, String (*GetStr)(
         auto len = font->CalcTextSizeA(font->font_size, FLT_MAX, 0.0f, str).x;
         if (len > result) result = len;
     }
-    return (f32)(int)(result + pad * 2);
+    return (f32)(int)(result + (pad * 2));
 }
 
 f32 Context::LargestStringWidth(f32 pad, Span<String const> strs) {

@@ -14,7 +14,7 @@ void detail::CloseNativeFilePicker(GuiPlatform&) {}
 bool detail::NativeFilePickerOnClientMessage(GuiPlatform&, uintptr, uintptr) { return false; }
 
 ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& args) {
-    ASSERT(ThreadName() == "main");
+    ASSERT(g_is_logical_main_thread);
     if (platform.native_file_picker) return k_success;
 
     if (args.default_path) ASSERT(path::IsAbsolute(*args.default_path));

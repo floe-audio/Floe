@@ -73,7 +73,7 @@ struct StereoPeakMeter {
   private:
     static f32x2 SmoothOutput(f32x2 output, f32x2& prev_output) {
         static constexpr f32 k_smoothing_amount = 0.001f;
-        auto const result = prev_output + k_smoothing_amount * (output - prev_output);
+        auto const result = prev_output + (k_smoothing_amount * (output - prev_output));
         prev_output = result;
         return result;
     }

@@ -15,24 +15,22 @@ void SharedEngineSystems::StartPollingThreadIfNeeded() {
     polling_running.Store(1, StoreMemoryOrder::Release);
     polling_thread.Start(
         [this]() {
-            try {
-                {
-                    ArenaAllocatorWithInlineStorage<2000> scratch_arena {PageAllocator::Instance()};
-                    auto const o = CleanupOldLogFilesIfNeeded(scratch_arena);
-                    if (o.HasError())
-                        LogError(ModuleName::Global, "Failed to cleanup old log files: {}", o.Error());
-                }
+            {
+                ArenaAllocatorWithInlineStorage<2000> scratch_arena {PageAllocator::Instance()};
+                auto const o = CleanupOldLogFilesIfNeeded(scratch_arena);
+                if (o.HasError())
+                    LogError(ModuleName::Global, "Failed to cleanup old log files: {}", o.Error());
+            }
 
-                while (polling_running.Load(LoadMemoryOrder::Relaxed)) {
-                    WaitIfValueIsExpected(polling_running, 1, 1000u);
-                    {
-                        registered_floe_instances_mutex.Lock();
-                        DEFER { registered_floe_instances_mutex.Unlock(); };
-                        for (auto index : registered_floe_instances)
-                            OnPollThread(index);
-                    }
+            while (polling_running.Load(LoadMemoryOrder::Relaxed)) {
+                WaitIfValueIsExpected(polling_running, 1, 1000u);
+                {
+                    registered_floe_instances_mutex.Lock();
+                    DEFER { registered_floe_instances_mutex.Unlock(); };
+                    for (auto index : registered_floe_instances)
+                        OnPollThread(index);
                 }
-            } catch (PanicException) {
+                check_for_update::CheckForUpdateIfNeeded(check_for_update_state);
             }
         },
         "polling");
@@ -47,9 +45,10 @@ SharedEngineSystems::SharedEngineSystems(Span<sentry::Tag const> tags)
                             error_notifications)
     , preset_server {.error_notifications = error_notifications} {
     InitBackgroundErrorReporting(tags);
+    check_for_update::Init(check_for_update_state, prefs);
 
     prefs.on_change = [this](prefs::Key const& key, prefs::Value const* value) {
-        ASSERT(CheckThreadName("main"));
+        ASSERT(g_is_logical_main_thread);
 
         if (key == prefs::key::k_extra_libraries_folder) {
             DynamicArrayBounded<String, k_max_extra_scan_folders> extra_scan_folders;
@@ -67,6 +66,7 @@ SharedEngineSystems::SharedEngineSystems(Span<sentry::Tag const> tags)
             SetExtraScanFolders(preset_server, extra_scan_folders);
         }
         ErrorReportingOnPreferenceChanged(key, value);
+        check_for_update::OnPreferenceChanged(check_for_update_state, key, value);
 
         registered_floe_instances_mutex.Lock();
         DEFER { registered_floe_instances_mutex.Unlock(); };

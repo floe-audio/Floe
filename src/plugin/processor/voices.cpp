@@ -15,37 +15,55 @@
 static constexpr u32 k_num_frames_in_voice_processing_chunk = 64;
 
 static void FadeOutVoicesToEnsureMaxActive(VoicePool& pool, AudioProcessingContext const& context) {
-    if (pool.num_active_voices.Load(LoadMemoryOrder::Relaxed) > k_max_num_active_voices) {
-        auto oldest = LargestRepresentableValue<u64>();
-        Voice* oldest_voice = nullptr;
-        for (auto& v : pool.EnumerateActiveVoices()) {
-            if (v.age < oldest && !v.volume_fade.IsFadingOut()) {
-                oldest = v.age;
-                oldest_voice = &v;
-            }
+    if (pool.num_active_voices.Load(LoadMemoryOrder::Relaxed) <= k_max_num_active_voices) return;
+
+    auto time_started = LargestRepresentableValue<u64>();
+    Voice* oldest_active_voice = nullptr;
+    for (auto& v : pool.EnumerateActiveVoices()) {
+        if (v.time_started < time_started && !v.volume_fade.IsFadingOut()) {
+            time_started = v.time_started;
+            oldest_active_voice = &v;
         }
-        if (oldest_voice) oldest_voice->volume_fade.SetAsFadeOut(context.sample_rate);
     }
+
+    // It's possible that all the voices are fading out already.
+    if (!oldest_active_voice) return;
+
+    // Fade out this voice.
+    oldest_active_voice->volume_fade.SetAsFadeOut(context.sample_rate);
 }
 
 static Voice& FindVoice(VoicePool& pool, AudioProcessingContext const& context) {
     FadeOutVoicesToEnsureMaxActive(pool, context);
 
+    // Easy case: find an inactive voice.
     for (auto& v : pool.voices)
         if (!v.is_active) return v;
 
-    DynamicArrayBounded<u16, k_num_voices> voice_indexes {};
-    for (auto [i, index] : Enumerate<u16>(voice_indexes))
-        index = i;
-    Sort(voice_indexes, [&voices = pool.voices](u16 a, u16 b) { return voices[a].age < voices[b].age; });
+    // All the voices are active, so we do a simple algorithm to find an appropriate voice to steal: quiet and
+    // old.
 
-    auto quietest_gain = 1.0f;
-    auto quietest_voice_index = (u16)-1;
-    for (auto const i : Range(k_num_voices / 4)) {
-        auto& v = pool.voices[i];
+    // Generate an array of the voice indexes, sorted by age. Where the first index in the array is an index
+    // to the oldest voice.
+    Array<u16, k_num_voices> old_index_to_index;
+    for (auto [i, index] : Enumerate<u16>(old_index_to_index))
+        index = i;
+    Sort(old_index_to_index,
+         [&voices = pool.voices](u16 a, u16 b) { return voices[a].time_started < voices[b].time_started; });
+
+    ASSERT(pool.voices[old_index_to_index[0]].time_started <=
+           pool.voices[old_index_to_index[1]].time_started);
+
+    // We loop through the oldest 1/4 of the voices and find the quietest one to steal - this will hopefully
+    // have the least obvious audible effect.
+    auto quietest_gain = pool.voices[old_index_to_index[0]].current_gain;
+    u16 quietest_voice_index = 0;
+    for (auto const old_index : Range(1uz, old_index_to_index.size / 4)) {
+        auto const voice_index = old_index_to_index[old_index];
+        auto& v = pool.voices[voice_index];
         if (v.current_gain < quietest_gain) {
             quietest_gain = v.current_gain;
-            quietest_voice_index = (u16)i;
+            quietest_voice_index = voice_index;
         }
     }
 
@@ -86,7 +104,7 @@ void SetFilterRes(Voice& v, f32 res) {
 
 static f64 MidiNoteToFrequency(f64 note) { return 440.0 * Exp2((note - 69.0) / 12.0); }
 
-inline f64 CalculatePitchRatio(int note, VoiceSample const* s, f32 pitch, f32 sample_rate) {
+inline f64 CalculatePitchRatio(int note, VoiceSample const* s, f32 pitch_semitones, f32 sample_rate) {
     switch (s->generator) {
         case InstrumentType::None: {
             PanicIfReached();
@@ -96,13 +114,16 @@ inline f64 CalculatePitchRatio(int note, VoiceSample const* s, f32 pitch, f32 sa
             auto const& sampler = s->sampler;
             auto const source_root_note = sampler.region->root_key;
             auto const source_sample_rate = (f64)sampler.data->sample_rate;
-            auto const pitch_delta = (((f64)note + (f64)pitch) - source_root_note) / 12.0;
+            auto const pitch_delta =
+                (((f64)note + (f64)pitch_semitones + ((f64)sampler.region->audio_props.tune_cents / 100.0)) -
+                 source_root_note) /
+                12.0;
             auto const exp = Exp2(pitch_delta);
             auto const result = exp * source_sample_rate / (f64)sample_rate;
             return result;
         }
         case InstrumentType::WaveformSynth: {
-            auto const freq = MidiNoteToFrequency((f64)note + (f64)pitch);
+            auto const freq = MidiNoteToFrequency((f64)note + (f64)pitch_semitones);
             auto const result = freq / (f64)sample_rate;
             return result;
         }
@@ -126,12 +147,12 @@ static int RootKey(Voice const& v, VoiceSample const& s) {
     return k;
 }
 
-void SetVoicePitch(Voice& v, f32 pitch, f32 sample_rate) {
+void SetVoicePitch(Voice& v, f32 pitch_semitones, f32 sample_rate) {
     for (auto& s : v.voice_samples) {
         if (!s.is_active) continue;
 
         v.smoothing_system.Set(s.pitch_ratio_smoother_id,
-                               CalculatePitchRatio(RootKey(v, s), &s, pitch, sample_rate),
+                               CalculatePitchRatio(RootKey(v, s), &s, pitch_semitones, sample_rate),
                                10);
     }
 }
@@ -318,7 +339,7 @@ void StartVoice(VoicePool& pool,
     voice.disable_vol_env = params.disable_vol_env;
     voice.fil_env.Reset();
     voice.fil_env.Gate(true);
-    voice.age = voice.pool.voice_age_counter++;
+    voice.time_started = voice.pool.voice_start_counter++;
     voice.id = voice.pool.voice_id_counter++;
     voice.midi_key_trigger = params.midi_key_trigger;
     voice.note_num = params.note_num;
@@ -356,7 +377,8 @@ void StartVoice(VoicePool& pool,
                     s.pitch_ratio_smoother_id,
                     CalculatePitchRatio(RootKey(voice, s), &s, params.initial_pitch, sample_rate));
                 auto const offs =
-                    (f64)(sampler.initial_sample_offset_01 * ((f32)s.sampler.data->num_frames - 1));
+                    (f64)(sampler.initial_sample_offset_01 * ((f32)s.sampler.data->num_frames - 1)) +
+                    s_params.region.audio_props.start_offset_frames;
                 s.pos = offs;
                 if (voice.controller->reverse) s.pos = (f64)(s.sampler.data->num_frames - Max(offs, 1.0));
             }
@@ -768,7 +790,7 @@ class ChunkwiseVoiceProcessor {
                 auto const half_amp = lfo_amp / 2;
                 v1 = b + m_lfo_amounts[frame] * half_amp;
                 auto const frame_p1 = frame + 1;
-                auto const v2 = (frame_p1 != num_frames) ? b + m_lfo_amounts[frame_p1] * half_amp : 0.0f;
+                auto const v2 = (frame_p1 != num_frames) ? b + (m_lfo_amounts[frame_p1] * half_amp) : 0.0f;
                 f32x4 v {v1, v1, v2, v2};
                 v = Min<f32x4>(v, 1.0f);
                 v = Max<f32x4>(v, 0.0f);
@@ -873,7 +895,7 @@ class ChunkwiseVoiceProcessor {
 
                 auto cut =
                     m_voice.smoothing_system.Value(m_voice.sv_filter_linear_cutoff_smoother_id, frame) +
-                    (env - 0.5f) * m_voice.controller->fil_env_amount;
+                    ((env - 0.5f) * m_voice.controller->fil_env_amount);
                 auto const res =
                     m_voice.smoothing_system.Value(m_voice.sv_filter_resonance_smoother_id, frame);
 
@@ -942,7 +964,7 @@ class ChunkwiseVoiceProcessor {
     f32 m_position_for_gui = 0;
 
     alignas(16) Array<f32, k_num_frames_in_voice_processing_chunk + 1> m_lfo_amounts;
-    alignas(16) Array<f32, k_num_frames_in_voice_processing_chunk * 2 + 2> m_buffer;
+    alignas(16) Array<f32, (k_num_frames_in_voice_processing_chunk * 2) + 2> m_buffer;
 };
 
 inline void ProcessBuffer(Voice& voice, u32 num_frames, AudioProcessingContext const& context) {
@@ -1006,8 +1028,8 @@ ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& con
         if (v.written_to_buffer_this_block) {
             if constexpr (RUNTIME_SAFETY_CHECKS_ON && PRODUCTION_BUILD) {
                 for (auto const frame : Range(num_frames)) {
-                    auto const& l = pool.buffer_pool[v.index][frame * 2 + 0];
-                    auto const& r = pool.buffer_pool[v.index][frame * 2 + 1];
+                    auto const& l = pool.buffer_pool[v.index][(frame * 2) + 0];
+                    auto const& r = pool.buffer_pool[v.index][(frame * 2) + 1];
                     ASSERT(l >= -k_erroneous_sample_value && l <= k_erroneous_sample_value);
                     ASSERT(r >= -k_erroneous_sample_value && r <= k_erroneous_sample_value);
                 }

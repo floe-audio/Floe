@@ -16,7 +16,7 @@ namespace graphics {
 constexpr u32 k_max_u16_codepoint = 0xFFFF;
 
 static inline f32 InvLength(f32x2 const& lhs, f32 fail_value) {
-    f32 const d = lhs.x * lhs.x + lhs.y * lhs.y;
+    f32 const d = (lhs.x * lhs.x) + (lhs.y * lhs.y);
     if (d > 0.0f) return 1.0f / Sqrt(d);
     return fail_value;
 }
@@ -447,9 +447,9 @@ void DrawList::AddPolyline(f32x2 const* points,
             if (!closed) {
                 temp_points[0] = points[0] + temp_normals[0] * aa_size;
                 temp_points[1] = points[0] - temp_normals[0] * aa_size;
-                temp_points[(points_count - 1) * 2 + 0] =
+                temp_points[((points_count - 1) * 2) + 0] =
                     points[points_count - 1] + temp_normals[points_count - 1] * aa_size;
-                temp_points[(points_count - 1) * 2 + 1] =
+                temp_points[((points_count - 1) * 2) + 1] =
                     points[points_count - 1] - temp_normals[points_count - 1] * aa_size;
             }
 
@@ -461,15 +461,15 @@ void DrawList::AddPolyline(f32x2 const* points,
 
                 // Average normals
                 f32x2 dm = (temp_normals[i1] + temp_normals[i2]) * 0.5f;
-                f32 const dmr2 = dm.x * dm.x + dm.y * dm.y;
+                f32 const dmr2 = (dm.x * dm.x) + (dm.y * dm.y);
                 if (dmr2 > 0.000001f) {
                     f32 scale = 1.0f / dmr2;
                     if (scale > 100.0f) scale = 100.0f;
                     dm *= scale;
                 }
                 dm *= aa_size;
-                temp_points[i2 * 2 + 0] = points[i2] + dm;
-                temp_points[i2 * 2 + 1] = points[i2] - dm;
+                temp_points[(i2 * 2) + 0] = points[i2] + dm;
+                temp_points[(i2 * 2) + 1] = points[i2] - dm;
 
                 // Add indexes
                 idx_write_ptr[0] = (DrawIdx)(idx2 + 0);
@@ -494,10 +494,10 @@ void DrawList::AddPolyline(f32x2 const* points,
                 vtx_write_ptr[0].pos = points[i];
                 vtx_write_ptr[0].uv = uv;
                 vtx_write_ptr[0].col = col;
-                vtx_write_ptr[1].pos = temp_points[i * 2 + 0];
+                vtx_write_ptr[1].pos = temp_points[(i * 2) + 0];
                 vtx_write_ptr[1].uv = uv;
                 vtx_write_ptr[1].col = col_trans;
-                vtx_write_ptr[2].pos = temp_points[i * 2 + 1];
+                vtx_write_ptr[2].pos = temp_points[(i * 2) + 1];
                 vtx_write_ptr[2].uv = uv;
                 vtx_write_ptr[2].col = col_trans;
                 vtx_write_ptr += 3;
@@ -509,14 +509,14 @@ void DrawList::AddPolyline(f32x2 const* points,
                 temp_points[1] = points[0] + temp_normals[0] * (half_inner_thickness);
                 temp_points[2] = points[0] - temp_normals[0] * (half_inner_thickness);
                 temp_points[3] = points[0] - temp_normals[0] * (half_inner_thickness + aa_size);
-                temp_points[(points_count - 1) * 4 + 0] =
+                temp_points[((points_count - 1) * 4) + 0] =
                     points[points_count - 1] +
                     temp_normals[points_count - 1] * (half_inner_thickness + aa_size);
-                temp_points[(points_count - 1) * 4 + 1] =
+                temp_points[((points_count - 1) * 4) + 1] =
                     points[points_count - 1] + temp_normals[points_count - 1] * (half_inner_thickness);
-                temp_points[(points_count - 1) * 4 + 2] =
+                temp_points[((points_count - 1) * 4) + 2] =
                     points[points_count - 1] - temp_normals[points_count - 1] * (half_inner_thickness);
-                temp_points[(points_count - 1) * 4 + 3] =
+                temp_points[((points_count - 1) * 4) + 3] =
                     points[points_count - 1] -
                     temp_normals[points_count - 1] * (half_inner_thickness + aa_size);
             }
@@ -529,7 +529,7 @@ void DrawList::AddPolyline(f32x2 const* points,
 
                 // Average normals
                 f32x2 dm = (temp_normals[i1] + temp_normals[i2]) * 0.5f;
-                f32 const dmr2 = dm.x * dm.x + dm.y * dm.y;
+                f32 const dmr2 = (dm.x * dm.x) + (dm.y * dm.y);
                 if (dmr2 > 0.000001f) {
                     f32 scale = 1.0f / dmr2;
                     if (scale > 100.0f) scale = 100.0f;
@@ -537,10 +537,10 @@ void DrawList::AddPolyline(f32x2 const* points,
                 }
                 f32x2 const dm_out = dm * (half_inner_thickness + aa_size);
                 f32x2 const dm_in = dm * half_inner_thickness;
-                temp_points[i2 * 4 + 0] = points[i2] + dm_out;
-                temp_points[i2 * 4 + 1] = points[i2] + dm_in;
-                temp_points[i2 * 4 + 2] = points[i2] - dm_in;
-                temp_points[i2 * 4 + 3] = points[i2] - dm_out;
+                temp_points[(i2 * 4) + 0] = points[i2] + dm_out;
+                temp_points[(i2 * 4) + 1] = points[i2] + dm_in;
+                temp_points[(i2 * 4) + 2] = points[i2] - dm_in;
+                temp_points[(i2 * 4) + 3] = points[i2] - dm_out;
 
                 // Add indexes
                 idx_write_ptr[0] = (DrawIdx)(idx2 + 1);
@@ -568,16 +568,16 @@ void DrawList::AddPolyline(f32x2 const* points,
 
             // Add vertices
             for (int i = 0; i < points_count; i++) {
-                vtx_write_ptr[0].pos = temp_points[i * 4 + 0];
+                vtx_write_ptr[0].pos = temp_points[(i * 4) + 0];
                 vtx_write_ptr[0].uv = uv;
                 vtx_write_ptr[0].col = col_trans;
-                vtx_write_ptr[1].pos = temp_points[i * 4 + 1];
+                vtx_write_ptr[1].pos = temp_points[(i * 4) + 1];
                 vtx_write_ptr[1].uv = uv;
                 vtx_write_ptr[1].col = col;
-                vtx_write_ptr[2].pos = temp_points[i * 4 + 2];
+                vtx_write_ptr[2].pos = temp_points[(i * 4) + 2];
                 vtx_write_ptr[2].uv = uv;
                 vtx_write_ptr[2].col = col;
-                vtx_write_ptr[3].pos = temp_points[i * 4 + 3];
+                vtx_write_ptr[3].pos = temp_points[(i * 4) + 3];
                 vtx_write_ptr[3].uv = uv;
                 vtx_write_ptr[3].col = col_trans;
                 vtx_write_ptr += 4;
@@ -681,7 +681,7 @@ void DrawList::AddConvexPolyFilled(f32x2 const* points, int const points_count, 
         // Anti-aliased Fill
         f32 const aa_size = context->fill_anti_alias;
         u32 const col_trans = col & ColU32(255, 255, 255, 0);
-        int const idx_count = (points_count - 2) * 3 + points_count * 6;
+        int const idx_count = ((points_count - 2) * 3) + (points_count * 6);
         int const vtx_count = (points_count * 2);
         PrimReserve(idx_count, vtx_count);
 
@@ -711,7 +711,7 @@ void DrawList::AddConvexPolyFilled(f32x2 const* points, int const points_count, 
             f32x2 const& n0 = temp_normals[i0];
             f32x2 const& n1 = temp_normals[i1];
             f32x2 dm = (n0 + n1) * 0.5f;
-            f32 const dmr2 = dm.x * dm.x + dm.y * dm.y;
+            f32 const dmr2 = (dm.x * dm.x) + (dm.y * dm.y);
             if (dmr2 > 0.000001f) {
                 f32 scale = 1.0f / dmr2;
                 if (scale > 100.0f) scale = 100.0f;
@@ -781,7 +781,7 @@ void DrawList::PathArcToFast(f32x2 const& centre, f32 radius, int amin, int amax
         path.Reserve(path.size + (amax - amin + 1));
         for (int a = amin; a <= amax; a++) {
             f32x2 const& c = circle_vtx[a % circle_vtx_count];
-            path.PushBack(f32x2 {centre.x + c.x * radius, centre.y + c.y * radius});
+            path.PushBack(f32x2 {centre.x + (c.x * radius), centre.y + (c.y * radius)});
         }
     }
 }
@@ -790,8 +790,8 @@ void DrawList::PathArcTo(f32x2 const& centre, f32 radius, f32 amin, f32 amax, in
     if (radius == 0.0f) path.PushBack(centre);
     path.Reserve(path.size + (num_segments + 1));
     for (int i = 0; i <= num_segments; i++) {
-        f32 const a = amin + ((f32)i / (f32)num_segments) * (amax - amin);
-        path.PushBack(f32x2 {centre.x + Cos(a) * radius, centre.y + Sin(a) * radius});
+        f32 const a = amin + (((f32)i / (f32)num_segments) * (amax - amin));
+        path.PushBack(f32x2 {centre.x + (Cos(a) * radius), centre.y + (Sin(a) * radius)});
     }
 }
 
@@ -808,8 +808,8 @@ static void PathBezierToCasteljau(Vector<f32x2>* path,
                                   int level) {
     f32 const dx = x4 - x1;
     f32 const dy = y4 - y1;
-    f32 d2 = ((x2 - x4) * dy - (y2 - y4) * dx);
-    f32 d3 = ((x3 - x4) * dy - (y3 - y4) * dx);
+    f32 d2 = (((x2 - x4) * dy) - ((y2 - y4) * dx));
+    f32 d3 = (((x3 - x4) * dy) - ((y3 - y4) * dx));
     d2 = (d2 >= 0) ? d2 : -d2;
     d3 = (d3 >= 0) ? d3 : -d3;
     if ((d2 + d3) * (d2 + d3) < tess_tol * (dx * dx + dy * dy)) {
@@ -857,26 +857,26 @@ void DrawList::PathBezierCurveTo(f32x2 const& p2, f32x2 const& p3, f32x2 const& 
             f32 const w2 = 3 * u * u * t;
             f32 const w3 = 3 * u * t * t;
             f32 const w4 = t * t * t;
-            path.PushBack(f32x2 {w1 * p1.x + w2 * p2.x + w3 * p3.x + w4 * p4.x,
-                                 w1 * p1.y + w2 * p2.y + w3 * p3.y + w4 * p4.y});
+            path.PushBack(f32x2 {(w1 * p1.x) + (w2 * p2.x) + (w3 * p3.x) + (w4 * p4.x),
+                                 (w1 * p1.y) + (w2 * p2.y) + (w3 * p3.y) + (w4 * p4.y)});
         }
     }
 }
 
 void DrawList::PathRect(f32x2 const& a, f32x2 const& b, f32 rounding, int rounding_corners) {
     f32 r = rounding;
-    r = Min(r,
-            Fabs(b.x - a.x) *
-                    (((rounding_corners & (1 | 2)) == (1 | 2)) || ((rounding_corners & (4 | 8)) == (4 | 8))
-                         ? 0.5f
-                         : 1.0f) -
-                1.0f);
-    r = Min(r,
-            Fabs(b.y - a.y) *
-                    (((rounding_corners & (1 | 8)) == (1 | 8)) || ((rounding_corners & (2 | 4)) == (2 | 4))
-                         ? 0.5f
-                         : 1.0f) -
-                1.0f);
+    r = Min(
+        r,
+        (Fabs(b.x - a.x) *
+         (((rounding_corners & (1 | 2)) == (1 | 2)) || ((rounding_corners & (4 | 8)) == (4 | 8)) ? 0.5f
+                                                                                                 : 1.0f)) -
+            1.0f);
+    r = Min(
+        r,
+        (Fabs(b.y - a.y) *
+         (((rounding_corners & (1 | 8)) == (1 | 8)) || ((rounding_corners & (2 | 4)) == (2 | 4)) ? 0.5f
+                                                                                                 : 1.0f)) -
+            1.0f);
 
     if (r <= 0.0f || rounding_corners == 0) {
         PathLineTo(a);
@@ -1401,7 +1401,7 @@ void DrawList::AddText(f32x2 const& pos, u32 col, String str) {
 
 static inline f32x2 Mul(f32x2 const& lhs, f32x2 const& rhs) { return f32x2 {lhs.x * rhs.x, lhs.y * rhs.y}; }
 static inline f32 LengthSqr(f32x2 const& lhs) { return (lhs.x * lhs.x) + (lhs.y * lhs.y); }
-static inline f32 Dot(f32x2 const& a, f32x2 const& b) { return a.x * b.x + a.y * b.y; }
+static inline f32 Dot(f32x2 const& a, f32x2 const& b) { return (a.x * b.x) + (a.y * b.y); }
 
 static void ShadeVertsLinearUV(DrawList* draw_list,
                                int vert_start_idx,
@@ -1451,10 +1451,10 @@ void DrawList::ShadeVertsLinearColorGradientSetAlpha(DrawList* draw_list,
     for (auto vert = vert_start; vert < vert_end; vert++) {
         auto const d = Dot(vert->pos - gradient_p0, gradient_extent);
         auto const t = Clamp(d * gradient_inv_length2, 0.0f, 1.0f);
-        auto const r = (u32)(col0_r + col_delta_r * t);
-        auto const g = (u32)(col0_g + col_delta_g * t);
-        auto const b = (u32)(col0_b + col_delta_b * t);
-        auto const a = (u32)(col0_a + col_delta_a * t);
+        auto const r = (u32)(col0_r + (col_delta_r * t));
+        auto const g = (u32)(col0_g + (col_delta_g * t));
+        auto const b = (u32)(col0_b + (col_delta_b * t));
+        auto const a = (u32)(col0_a + (col_delta_a * t));
         vert->col = (r << k_red_shift) | (g << k_green_shift) | (b << k_blue_shift) | (a << k_alpha_shift);
     }
 }
@@ -1866,8 +1866,8 @@ void FontAtlas::RenderCustomTexData(int pass, void* p_rects) {
     // The white texels on the top left are the ones we'll use everywhere in Gui to render filled shapes.
     int const tex_data_w = 2;
     int const tex_data_h = 2;
-    char const texture_data[tex_data_w * tex_data_h + 1] = {".."
-                                                            ".."};
+    char const texture_data[(tex_data_w * tex_data_h) + 1] = {".."
+                                                              ".."};
 
     Vector<stbrp_rect>& rects = *(Vector<stbrp_rect>*)p_rects;
     if (pass == 0) {
@@ -1882,7 +1882,7 @@ void FontAtlas::RenderCustomTexData(int pass, void* p_rects) {
         stbrp_rect const& r = rects[0];
         for (int y = 0, n = 0; y < tex_data_h; y++)
             for (int x = 0; x < tex_data_w; x++, n++) {
-                int const offset0 = (int)(r.x + x) + (int)(r.y + y) * tex_width;
+                int const offset0 = (int)(r.x + x) + ((int)(r.y + y) * tex_width);
                 int const offset1 = offset0 + 1 + tex_data_w;
                 tex_pixels_alpha8[offset0] = texture_data[n] == '.' ? 0xFF : 0x00;
                 tex_pixels_alpha8[offset1] = texture_data[n] == 'X' ? 0xFF : 0x00;
@@ -2169,8 +2169,8 @@ void Font::RenderChar(DrawList* draw_list, f32 size, f32x2 pos, u32 col, Char16 
         f32 const scale = (size >= 0.0f) ? (size / font_size) : 1.0f;
         pos.x = (f32)(int)pos.x + display_offset.x;
         pos.y = (f32)(int)pos.y + display_offset.y;
-        f32x2 const pos_tl {pos.x + glyph->x0 * scale, pos.y + glyph->y0 * scale};
-        f32x2 const pos_br {pos.x + glyph->x1 * scale, pos.y + glyph->y1 * scale};
+        f32x2 const pos_tl {pos.x + (glyph->x0 * scale), pos.y + (glyph->y0 * scale)};
+        f32x2 const pos_br {pos.x + (glyph->x1 * scale), pos.y + (glyph->y1 * scale)};
         draw_list->PrimReserve(6, 4);
         draw_list->PrimRectUV(pos_tl,
                               pos_br,
@@ -2283,10 +2283,10 @@ void Font::RenderText(DrawList* draw_list,
             if (c != ' ' && c != '\t') {
                 // We don't do a second finer clipping test on the Y axis as we've already skipped anything
                 // before clip_rect.y and exit once we pass clip_rect.w
-                f32 x1 = x + glyph->x0 * scale;
-                f32 x2 = x + glyph->x1 * scale;
-                f32 y1 = y + glyph->y0 * scale;
-                f32 y2 = y + glyph->y1 * scale;
+                f32 x1 = x + (glyph->x0 * scale);
+                f32 x2 = x + (glyph->x1 * scale);
+                f32 y1 = y + (glyph->y0 * scale);
+                f32 y2 = y + (glyph->y1 * scale);
                 if (x1 <= clip_rect.z && x2 >= clip_rect.x) {
                     // Render a character
                     f32 u1 = glyph->u0;

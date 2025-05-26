@@ -92,33 +92,31 @@ bool EffectIsOn(Parameters const& params, Effect* effect) {
 }
 
 bool IsMidiCCLearnActive(AudioProcessor const& processor) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     return processor.midi_learn_param_index.Load(LoadMemoryOrder::Relaxed).HasValue();
 }
 
 void LearnMidiCC(AudioProcessor& processor, ParamIndex param) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     processor.midi_learn_param_index.Store((s32)param, StoreMemoryOrder::Relaxed);
 }
 
 void CancelMidiCCLearn(AudioProcessor& processor) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     processor.midi_learn_param_index.Store(k_nullopt, StoreMemoryOrder::Relaxed);
 }
 
 void UnlearnMidiCC(AudioProcessor& processor, ParamIndex param, u7 cc_num_to_remove) {
-    ASSERT(IsMainThread(processor.host));
-    processor.events_for_audio_thread.Push(RemoveMidiLearn {.param = param, .midi_cc = cc_num_to_remove});
-    processor.host.request_process(&processor.host);
+    processor.param_learned_ccs[ToInt(param)].Clear(cc_num_to_remove);
 }
 
 Bitset<128> GetLearnedCCsBitsetForParam(AudioProcessor const& processor, ParamIndex param) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     return processor.param_learned_ccs[ToInt(param)].GetBlockwise();
 }
 
 bool CcControllerMovedParamRecently(AudioProcessor const& processor, ParamIndex param) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     return (processor.time_when_cc_moved_param[ToInt(param)].Load(LoadMemoryOrder::Relaxed) + 0.4) >
            TimePoint::Now();
 }
@@ -186,7 +184,7 @@ static void HandleMuteSolo(AudioProcessor& processor) {
 }
 
 void SetAllParametersToDefaultValues(AudioProcessor& processor) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     for (auto& param : processor.params)
         param.SetLinearValue(param.DefaultLinearValue());
 
@@ -497,10 +495,11 @@ static void ProcessorOnParamChange(AudioProcessor& processor, ChangedParams chan
     }
 
     for (auto [index, l] : Enumerate(processor.layer_processors)) {
-        OnParamChange(l,
-                      processor.audio_processing_context,
-                      processor.voice_pool,
-                      changed_params.Subsection<k_num_layer_parameters>(0 + index * k_num_layer_parameters));
+        OnParamChange(
+            l,
+            processor.audio_processing_context,
+            processor.voice_pool,
+            changed_params.Subsection<k_num_layer_parameters>(0 + (index * k_num_layer_parameters)));
     }
 
     for (auto effect : processor.effects_ordered_by_type)
@@ -508,7 +507,7 @@ static void ProcessorOnParamChange(AudioProcessor& processor, ChangedParams chan
 }
 
 void ParameterJustStartedMoving(AudioProcessor& processor, ParamIndex index) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     auto host_params =
         (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS);
     if (!host_params) return;
@@ -517,7 +516,7 @@ void ParameterJustStartedMoving(AudioProcessor& processor, ParamIndex index) {
 }
 
 void ParameterJustStoppedMoving(AudioProcessor& processor, ParamIndex index) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     auto host_params =
         (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS);
     if (!host_params) return;
@@ -526,7 +525,7 @@ void ParameterJustStoppedMoving(AudioProcessor& processor, ParamIndex index) {
 }
 
 bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, ParamChangeFlags flags) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     auto& param = processor.params[ToInt(index)];
 
     bool const changed =
@@ -634,9 +633,7 @@ HandleNoteOff(AudioProcessor& processor, MidiChannelNote note, f32 velocity, boo
 }
 
 static void FlushEventsForAudioThread(AudioProcessor& processor) {
-    for (auto const& event : processor.events_for_audio_thread.PopAll())
-        if (auto remove_midi_learn = event.TryGet<RemoveMidiLearn>())
-            processor.param_learned_ccs[ToInt(remove_midi_learn->param)].Clear(remove_midi_learn->midi_cc);
+    auto _ = processor.events_for_audio_thread.PopAll();
 }
 
 static void Deactivate(AudioProcessor& processor) {
@@ -648,7 +645,7 @@ static void Deactivate(AudioProcessor& processor) {
 }
 
 void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const& instrument) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
 
     // If we currently have a sampler instrument, we keep it alive by storing it and releasing at a later
     // time.
@@ -685,7 +682,7 @@ void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const&
 }
 
 void SetConvolutionIrAudioData(AudioProcessor& processor, AudioData const* audio_data) {
-    ASSERT(IsMainThread(processor.host));
+    ASSERT(g_is_logical_main_thread);
     processor.convo.ConvolutionIrDataLoaded(audio_data);
     processor.events_for_audio_thread.Push(EventForAudioThreadType::ConvolutionIRChanged);
     processor.host.request_process(&processor.host);
@@ -768,10 +765,7 @@ ResetProcessor(AudioProcessor& processor, Bitset<k_num_parameters> processing_ch
 }
 
 static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
-    if (args.sample_rate <= 0 || args.max_block_size == 0) {
-        PanicIfReached();
-        return false;
-    }
+    ASSERT(args.sample_rate > 0);
 
     processor.audio_processing_context.process_block_size_max = args.max_block_size;
     processor.audio_processing_context.sample_rate = (f32)args.sample_rate;
@@ -920,7 +914,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                     for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
                         if (v.midi_key_trigger.channel == channel) {
                             SetVoicePitch(v,
-                                          v.controller->tune + pitch_pos * k_pitch_bend_semitones,
+                                          v.controller->tune_semitones + (pitch_pos * k_pitch_bend_semitones),
                                           processor.audio_processing_context.sample_rate);
                         }
                     }
@@ -1093,8 +1087,7 @@ static void ConsumeParamEventsFromGui(AudioProcessor& processor,
             case EventForAudioThreadType::ConvolutionIRChanged:
             case EventForAudioThreadType::LayerInstrumentChanged:
             case EventForAudioThreadType::StartNote:
-            case EventForAudioThreadType::EndNote:
-            case EventForAudioThreadType::RemoveMidiLearn: PanicIfReached();
+            case EventForAudioThreadType::EndNote: PanicIfReached();
         }
     }
 }
@@ -1117,12 +1110,12 @@ FlushParameterEvents(AudioProcessor& processor, clap_input_events const& in, cla
 clap_process_status Process(AudioProcessor& processor, clap_process const& process) {
     ZoneScoped;
     ASSERT_EQ(process.audio_outputs_count, 1u);
+    ASSERT_HOT(processor.activated);
 
-    if (process.audio_outputs->channel_count != 2) return CLAP_PROCESS_ERROR;
+    if (process.frames_count == 0) return CLAP_PROCESS_CONTINUE;
 
     clap_process_status result = CLAP_PROCESS_CONTINUE;
     auto const num_sample_frames = process.frames_count;
-    auto outputs = process.audio_outputs->data32;
 
     // Handle transport changes
     {
@@ -1191,11 +1184,6 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
             }
             case EventForAudioThreadType::ConvolutionIRChanged: {
                 mark_convolution_for_fade_out = true;
-                break;
-            }
-            case EventForAudioThreadType::RemoveMidiLearn: {
-                auto const& remove_midi_learn = e.Get<RemoveMidiLearn>();
-                processor.param_learned_ccs[ToInt(remove_midi_learn.param)].Clear(remove_midi_learn.midi_cc);
                 break;
             }
             case EventForAudioThreadType::ParamChanged:
@@ -1356,8 +1344,8 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         SimdZeroAlignedBuffer(interleaved_outputs.data, num_sample_frames * 2);
     } else if constexpr (RUNTIME_SAFETY_CHECKS_ON && !PRODUCTION_BUILD) {
         for (auto const frame : Range(num_sample_frames)) {
-            auto const& l = interleaved_outputs[frame * 2 + 0];
-            auto const& r = interleaved_outputs[frame * 2 + 1];
+            auto const& l = interleaved_outputs[(frame * 2) + 0];
+            auto const& r = interleaved_outputs[(frame * 2) + 1];
             ASSERT(l >= -k_erroneous_sample_value && l <= k_erroneous_sample_value);
             ASSERT(r >= -k_erroneous_sample_value && r <= k_erroneous_sample_value);
         }
@@ -1428,8 +1416,12 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 
     //
     // ======================================================================================================
-    if (outputs)
+    if (process.audio_outputs->channel_count == 2 && process.audio_outputs->data32 &&
+        (((uintptr)process.audio_outputs->data32 % alignof(f32*)) == 0) && process.audio_outputs->data32[0] &&
+        process.audio_outputs->data32[1]) {
+        auto outputs = process.audio_outputs->data32;
         CopyInterleavedToSeparateChannels(outputs[0], outputs[1], interleaved_outputs, num_sample_frames);
+    }
 
     // Mark gui dirty
     {

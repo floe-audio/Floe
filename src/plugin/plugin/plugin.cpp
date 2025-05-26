@@ -83,6 +83,8 @@ struct FloePluginInstance : PluginInstanceMessages {
     bool initialised {false};
     bool active {false};
     bool processing {false};
+    u32 min_block_size {};
+    u32 max_block_size {};
 
     TracyMessageConfig trace_config {
         .category = "clap",
@@ -91,7 +93,7 @@ struct FloePluginInstance : PluginInstanceMessages {
     };
 
     void UpdateGui() override {
-        ASSERT(IsMainThread(host));
+        ASSERT(g_is_logical_main_thread);
         if (gui_platform)
             gui_platform->last_result.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::Animate);
     }
@@ -166,11 +168,15 @@ bool ClapStateSave(clap_plugin const* plugin, clap_ostream const* stream) {
             if (!Check(f, k_func, "plugin ptr is invalid")) return false;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
         if (!Check(floe, stream, k_func, "stream is null")) return false;
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return false;
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
+            return false;
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
+        DEFER { LeaveLogicalMainThread(); };
         if (!Check(floe, floe.initialised, k_func, "not initialised")) return false;
+
+        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
         return g_engine_callbacks.save_state(*floe.engine, *stream);
     } catch (PanicException) {
@@ -190,11 +196,16 @@ static bool ClapStateLoad(clap_plugin const* plugin, clap_istream const* stream)
             if (!Check(f, k_func, "plugin ptr is invalid")) return false;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
         if (!Check(floe, stream, k_func, "stream is null")) return false;
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return false;
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
+            return false;
         if (!Check(floe, floe.initialised, k_func, "not initialised")) return false;
+
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
+        DEFER { LeaveLogicalMainThread(); };
+
+        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
         return g_engine_callbacks.load_state(*floe.engine, *stream);
     } catch (PanicException) {
@@ -303,20 +314,24 @@ static bool ClapGuiCreate(clap_plugin_t const* plugin, char const* api, bool is_
             if (!Check(f, k_func, "plugin ptr is invalid")) return false;
             f;
         });
-        LogClapFunction(floe,
-                        ClapFunctionType::NonRecurring,
-                        k_func,
-                        "api: {}, is_floating: {}",
-                        api,
-                        is_floating);
 
         if (!Check(floe,
                    NullTermStringsEqual(k_supported_gui_api, api) && !is_floating,
                    k_func,
                    "unsupported api"))
             return false;
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return false;
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
+            return false;
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
+        DEFER { LeaveLogicalMainThread(); };
         if (!Check(floe, floe.initialised, k_func, "not initialised")) return false;
+
+        LogClapFunction(floe,
+                        ClapFunctionType::NonRecurring,
+                        k_func,
+                        "api: {}, is_floating: {}",
+                        api,
+                        is_floating);
 
         if (floe.gui_platform) return true;
 
@@ -339,9 +354,13 @@ static void ClapGuiDestroy(clap_plugin const* plugin) {
             if (!Check(f, k_func, "plugin ptr is invalid")) return;
             f;
         });
+
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread")) return;
+
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return;
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return;
+        DEFER { LeaveLogicalMainThread(); };
 
         if (!floe.gui_platform) return;
 
@@ -382,11 +401,15 @@ static bool ClapGuiGetSize(clap_plugin_t const* plugin, u32* width, u32* height)
             if (!Check(f, k_func, "plugin ptr is invalid")) return false;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
         if (!Check(floe, width || height, k_func, "width and height both null")) return false;
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return false;
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
+            return false;
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
+        DEFER { LeaveLogicalMainThread(); };
         if (!Check(floe, floe.gui_platform.HasValue(), k_func, "no gui created")) return false;
+
+        LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
         auto const size = GetSize(*floe.gui_platform);
         auto const clap_size = PhysicalPixelsToClapPixels(floe.gui_platform->view, size);
@@ -433,10 +456,15 @@ static bool ClapGuiGetResizeHints(clap_plugin_t const* plugin, clap_gui_resize_h
             if (!Check(f, k_func, "plugin ptr is invalid")) return false;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
         if (!Check(floe, hints, k_func, "hints is null")) return false;
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return false;
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
+            return false;
+
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
+        DEFER { LeaveLogicalMainThread(); };
+
+        LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
         hints->can_resize_vertically = true;
         hints->can_resize_horizontally = true;
@@ -480,9 +508,14 @@ static bool ClapGuiAdjustSize(clap_plugin_t const* plugin, u32* clap_width, u32*
             if (!Check(f, k_func, "plugin ptr is invalid")) return false;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func, "{} x {}", *clap_width, *clap_height);
 
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return false;
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
+            return false;
+
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
+        DEFER { LeaveLogicalMainThread(); };
+
+        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func, "{} x {}", *clap_width, *clap_height);
 
         if (!floe.gui_platform || !floe.gui_platform->view) {
             // We've been called before we have the ability to check our scaling factor, we can still give a
@@ -521,10 +554,15 @@ static bool ClapGuiSetSize(clap_plugin_t const* plugin, u32 clap_width, u32 clap
             if (!Check(f, k_func, "plugin ptr is invalid")) return false;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func, "{} x {}", clap_width, clap_height);
 
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return false;
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
+            return false;
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
+        DEFER { LeaveLogicalMainThread(); };
+
         if (!Check(floe, floe.gui_platform.HasValue(), k_func, "no gui created")) return false;
+
+        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func, "{} x {}", clap_width, clap_height);
 
         auto size = ClapPixelsToPhysicalPixels(floe.gui_platform->view, clap_width, clap_height);
 
@@ -559,12 +597,16 @@ static bool ClapGuiSetParent(clap_plugin_t const* plugin, clap_window_t const* w
             if (!Check(f, k_func, "plugin ptr is invalid")) return false;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
         if (!Check(floe, window, k_func, "window is null")) return false;
         if (!Check(floe, window->ptr, k_func, "window ptr is null")) return false;
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return false;
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
+            return false;
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
+        DEFER { LeaveLogicalMainThread(); };
         if (!Check(floe, floe.gui_platform.HasValue(), k_func, "no gui created")) return false;
+
+        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
         auto const result = LogIfError(SetParent(*floe.gui_platform, *window), "SetParent");
 
@@ -630,10 +672,16 @@ static bool ClapGuiShow(clap_plugin_t const* plugin) {
             if (!Check(f, k_func, "plugin ptr is invalid")) return false;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return false;
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
+            return false;
+
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
+        DEFER { LeaveLogicalMainThread(); };
+
         if (!Check(floe, floe.gui_platform.HasValue(), k_func, "no gui created")) return false;
+
+        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
         bool const result = LogIfError(SetVisible(*floe.gui_platform, true, *floe.engine), "SetVisible");
         if (result) {
@@ -663,10 +711,14 @@ static bool ClapGuiHide(clap_plugin_t const* plugin) {
             if (!Check(f, k_func, "plugin ptr is invalid")) return false;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return false;
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
+            return false;
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
+        DEFER { LeaveLogicalMainThread(); };
         if (!Check(floe, floe.gui_platform.HasValue(), k_func, "no gui created")) return false;
+
+        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
         return LogIfError(SetVisible(*floe.gui_platform, false, *floe.engine), "SetVisible");
     } catch (PanicException) {
@@ -731,10 +783,11 @@ static bool ClapParamsGetInfo(clap_plugin_t const* plugin, u32 param_index, clap
             if (!Check(f, k_func, "plugin ptr is invalid")) return false;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::Any, k_func, "index: {}", param_index);
 
         if (!Check(floe, param_info, k_func, "param_info is null")) return false;
         if (!Check(floe, param_index < k_num_parameters, k_func, "param_index out of range")) return false;
+
+        LogClapFunction(floe, ClapFunctionType::Any, k_func, "index: {}", param_index);
 
         // This callback should be main-thread only, but we don't care since we don't use any shared state.
 
@@ -789,14 +842,19 @@ static bool ClapParamsGetValue(clap_plugin_t const* plugin, clap_id param_id, f6
             if (!Check(f, k_func, "plugin ptr is invalid")) return false;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::Any, k_func, "id: {}", param_id);
 
         auto const opt_index = ParamIdToIndex(param_id);
         if (!opt_index) return false;
 
         if (!Check(floe, out_value, k_func, "out_value is null")) return false;
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
+            return false;
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
+        DEFER { LeaveLogicalMainThread(); };
+
         if (!Check(floe, floe.initialised, k_func, "not initialised")) return false;
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return false;
+
+        LogClapFunction(floe, ClapFunctionType::Any, k_func, "id: {}", param_id);
 
         auto const index = (usize)*opt_index;
 
@@ -899,16 +957,23 @@ ClapParamsFlush(clap_plugin_t const* plugin, clap_input_events_t const* in, clap
             if (!Check(f, k_func, "plugin ptr is invalid")) return;
             f;
         });
-        if (!floe.active) LogClapFunction(floe, ClapFunctionType::Any, k_func, "num in: {}", in->size(in));
 
         if (!in) return;
         if (!out) return;
         if (!floe.initialised) return;
 
-        if (floe.active && IsAudioThread(floe.host) == IsAudioThreadResult::No)
+        if (floe.active && IsAudioThread(floe.host) == IsThreadResult::No)
             return;
-        else if (!floe.active && !IsMainThread(floe.host))
+        else if (!floe.active && IsMainThread(floe.host) == IsThreadResult::No)
             return;
+
+        if (!floe.active)
+            if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return;
+        DEFER {
+            if (!floe.active) LeaveLogicalMainThread();
+        };
+
+        if (!floe.active) LogClapFunction(floe, ClapFunctionType::Any, k_func, "num in: {}", in->size(in));
 
         if (!CheckInputEvents(in)) return;
 
@@ -963,15 +1028,15 @@ ClapAudioPortsGet(clap_plugin_t const* plugin, u32 index, bool is_input, clap_au
             if (!Check(f, k_func, "plugin ptr is invalid")) return false;
             f;
         });
+        if (!Check(floe, index == 0, k_func, "index out of range")) return false;
+        if (!Check(floe, info, k_func, "info is null")) return false;
+
         LogClapFunction(floe,
                         ClapFunctionType::Any,
                         "audio_ports.get",
                         "index: {}, is_input: {}",
                         index,
                         is_input);
-
-        if (!Check(floe, index == 0, k_func, "index out of range")) return false;
-        if (!Check(floe, info, k_func, "info is null")) return false;
 
         if (is_input) {
             info->id = k_input_port_id;
@@ -1034,11 +1099,12 @@ ClapNotePortsGet(clap_plugin_t const* plugin, u32 index, bool is_input, clap_not
             if (!Check(f, k_func, "plugin ptr is invalid")) return false;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
         if (!Check(floe, index == 0, k_func, "index out of range")) return false;
         if (!Check(floe, info, k_func, "info is null")) return false;
         if (!Check(floe, is_input, k_func, "output ports not supported")) return false;
+
+        LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
         info->id = k_main_note_port_id;
         info->supported_dialects = CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI;
@@ -1088,10 +1154,14 @@ static void ClapTimerSupportOnTimer(clap_plugin_t const* plugin, clap_id timer_i
             if (!Check(f, k_func, "plugin ptr is invalid")) return;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return;
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread")) return;
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return;
+        DEFER { LeaveLogicalMainThread(); };
+
         if (!Check(floe, floe.initialised, k_func, "not initialised")) return;
+
+        LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
         // We don't care about the timer_id, we just want to poll.
         prefs::PollForExternalChanges(g_shared_engine_systems->prefs);
@@ -1118,10 +1188,13 @@ static void ClapFdSupportOnFd(clap_plugin_t const* plugin, int fd, clap_posix_fd
             if (!Check(f, k_func, "plugin ptr is invalid")) return;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return;
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread")) return;
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return;
+        DEFER { LeaveLogicalMainThread(); };
         if (!Check(floe, floe.initialised, k_func, "not initialised")) return;
+
+        LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
         if (floe.gui_platform) OnPosixFd(*floe.gui_platform, fd);
     } catch (PanicException) {
@@ -1165,23 +1238,25 @@ static bool ClapInit(const struct clap_plugin* plugin) {
         if (!Check(floe, floe.host.name && floe.host.name[0], k_func, "host name is null")) return false;
         if (!Check(floe, floe.host.version && floe.host.version[0], k_func, "host version is null"))
             return false;
+
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
+            return false;
+
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
+        DEFER { LeaveLogicalMainThread(); };
+
         LogClapFunction(floe,
                         ClapFunctionType::NonRecurring,
                         k_func,
-                        "{} {}",
+                        "{} {}, thread ID: {}",
                         floe.host.name,
-                        floe.host.version);
+                        floe.host.version,
+                        CurrentThreadId());
 
         if (floe.initialised) return true;
 
-        if (auto const thread_check =
-                (clap_host_thread_check const*)floe.host.get_extension(&floe.host, CLAP_EXT_THREAD_CHECK);
-            thread_check)
-            if (!Check(floe, thread_check->is_main_thread(&floe.host), k_func, "not main thread"))
-                return false;
-
         if (g_floe_instances_initialised++ == 0) {
-            SetThreadName("main");
+            SetThreadName("main", FinalBinaryIsPlugin());
 
             DynamicArrayBounded<sentry::Tag, 4> tags {};
             {
@@ -1197,8 +1272,6 @@ static bool ClapInit(const struct clap_plugin* plugin) {
 
             // TODO: remove this before release
             if constexpr (!PRODUCTION_BUILD) ReportError(ErrorLevel::Info, k_nullopt, "Floe plugin loaded"_s);
-        } else {
-            if (!Check(ThreadName() == "main", k_func, "multiple main threads")) return false;
         }
 
         floe.engine.Emplace(floe.host, *g_shared_engine_systems, floe);
@@ -1227,14 +1300,28 @@ static bool ClapActivate(const struct clap_plugin* plugin,
             if (!Check(f, k_func, "plugin ptr is invalid")) return false;
             f;
         });
+
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
+            return false;
+        if (!Check(floe, sample_rate > 0, k_func, "sample rate is invalid")) return false;
+
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
+        DEFER { LeaveLogicalMainThread(); };
+        if (!Check(floe, floe.initialised, k_func, "not initialised")) return false;
+
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
-        if (!Check(floe, floe.initialised, k_func, "not initialised")) return false;
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return false;
-        if (!Check(floe, sample_rate > 0, k_func, "sample rate is invalid")) return false;
-        if (max_frames_count == 0) return false;
-
         if (floe.active) return true;
+
+        // The CLAP spec says neither min nor max can be 0. But we found this can be the case. It's easy
+        // enough for us to handle this case so we do.
+
+        // Let's be a little lenient and allow for min/max to be swapped.
+        min_frames_count = Min(min_frames_count, max_frames_count);
+        max_frames_count = Max(min_frames_count, max_frames_count);
+
+        floe.min_block_size = min_frames_count;
+        floe.max_block_size = max_frames_count;
 
         auto& processor = floe.engine->processor;
         if (!g_processor_callbacks.activate(processor,
@@ -1262,12 +1349,15 @@ static void ClapDeactivate(const struct clap_plugin* plugin) {
             if (!Check(f, k_func, "plugin ptr is invalid")) return;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread")) return;
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return;
+        DEFER { LeaveLogicalMainThread(); };
         if (!Check(floe, floe.initialised, k_func, "not initialised")) return;
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return;
 
         if (!floe.active) return;
+
+        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
         auto& processor = floe.engine->processor;
         g_processor_callbacks.deactivate(processor);
@@ -1287,14 +1377,14 @@ static void ClapDestroy(const struct clap_plugin* plugin) {
             if (!Check(f, k_func, "plugin ptr is invalid")) return;
             f;
         });
+
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread")) return;
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return;
+        DEFER { LeaveLogicalMainThread(); };
+
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
         if (floe.initialised) {
-            // We check if it's the main thread but we continue anyway. This has triggered in Logic Pro with
-            // the CLAP-wrapper AUv2 plugin. In terms of our code we don't require the main thread, we just
-            // require that this funciton is not called at the same time as any other of our functions; we
-            // suspect that is the case here.
-            Check(floe, IsMainThread(floe.host), k_func, "not main thread");
 
             // These shouldn't be necessary, but we can easily handle them so we do.
             if (floe.active) ClapDeactivate(plugin);
@@ -1328,7 +1418,7 @@ static bool ClapStartProcessing(const struct clap_plugin* plugin) {
             f;
         });
 
-        if (!Check(floe, IsAudioThread(floe.host) != IsAudioThreadResult::No, k_func, "not audio thread"))
+        if (!Check(floe, IsAudioThread(floe.host) != IsThreadResult::No, k_func, "not audio thread"))
             return false;
 
         if (!floe.active) return false;
@@ -1356,8 +1446,7 @@ static void ClapStopProcessing(const struct clap_plugin* plugin) {
             f;
         });
 
-        if (!Check(floe, IsAudioThread(floe.host) != IsAudioThreadResult::No, k_func, "not audio thread"))
-            return;
+        if (!Check(floe, IsAudioThread(floe.host) != IsThreadResult::No, k_func, "not audio thread")) return;
         if (!floe.active) return;
 
         if (!floe.processing) return;
@@ -1380,8 +1469,7 @@ static void ClapReset(const struct clap_plugin* plugin) {
             f;
         });
 
-        if (!Check(floe, IsAudioThread(floe.host) != IsAudioThreadResult::No, k_func, "not audio thread"))
-            return;
+        if (!Check(floe, IsAudioThread(floe.host) != IsThreadResult::No, k_func, "not audio thread")) return;
         if (!floe.active) return;
 
         auto& processor = floe.engine->processor;
@@ -1406,13 +1494,22 @@ static clap_process_status ClapProcess(const struct clap_plugin* plugin, clap_pr
         ZoneKeyNum("events", process->in_events->size(process->in_events));
         ZoneKeyNum("num_frames", process->frames_count);
 
-        if (!Check(floe, IsAudioThread(floe.host) != IsAudioThreadResult::No, k_func, "not audio thread"))
+        if (!Check(floe, IsAudioThread(floe.host) != IsThreadResult::No, k_func, "not audio thread"))
             return CLAP_PROCESS_ERROR;
         if (!Check(floe, floe.active, k_func, "not active")) return CLAP_PROCESS_ERROR;
         if (!Check(floe, floe.processing, k_func, "not processing")) return CLAP_PROCESS_ERROR;
         if (!Check(floe, process, k_func, "process is null")) return CLAP_PROCESS_ERROR;
         if (!Check(floe, CheckInputEvents(process->in_events), k_func, "invalid events"))
             return CLAP_PROCESS_ERROR;
+        if (!Check(floe,
+                   process->frames_count <= floe.max_block_size,
+                   k_func,
+                   "given process block too large"))
+            return CLAP_PROCESS_ERROR;
+
+        // The CLAP spec says the process block size should also be >= the min_block_size passed to
+        // activate(). For one, VST3-Validator on Windows will send blocks smaller than this. It's easy for us
+        // to handle so we do.
 
         ScopedNoDenormals const no_denormals;
         return g_processor_callbacks.process(floe.engine->processor, *process);
@@ -1432,8 +1529,8 @@ static void const* ClapGetExtension(const struct clap_plugin* plugin, char const
             if (!Check(f, k_func, "plugin ptr is invalid")) return nullptr;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::Any, k_func, "id: {}", id);
         if (!Check(id, k_func, "id is null")) return nullptr;
+        LogClapFunction(floe, ClapFunctionType::Any, k_func, "id: {}", id);
 
         if (NullTermStringsEqual(id, CLAP_EXT_STATE)) return &floe_plugin_state;
         if (NullTermStringsEqual(id, CLAP_EXT_GUI)) return &floe_gui;
@@ -1461,9 +1558,12 @@ static void ClapOnMainThread(const struct clap_plugin* plugin) {
             if (!Check(f, k_func, "plugin ptr is invalid")) return;
             f;
         });
-        LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
-        if (!Check(floe, IsMainThread(floe.host), k_func, "not main thread")) return;
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread")) return;
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return;
+        DEFER { LeaveLogicalMainThread(); };
+
+        LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
         if (floe.engine) {
             prefs::PollForExternalChanges(g_shared_engine_systems->prefs);
@@ -1525,7 +1625,7 @@ void OnPreferenceChanged(FloeInstanceIndex index, prefs::Key const& key, prefs::
     ZoneScoped;
     if (PanicOccurred()) return;
     auto& floe = *g_floe_instances[index];
-    ASSERT(IsMainThread(floe.host));
+    ASSERT(g_is_logical_main_thread);
     ASSERT(floe.engine);
 
     if (floe.gui_platform) {

@@ -131,7 +131,7 @@ struct VoiceProcessingController {
     };
     Loop loop {};
 
-    f32 tune = 1;
+    f32 tune_semitones = 1;
     FloeSmoothedValueSystem::FloatId const pan_pos_smoother_id; // -1 to 1
 
     f32 sv_filter_cutoff_linear = 0;
@@ -176,7 +176,7 @@ struct LayerProcessor {
     }
 
     String InstName() const {
-        ASSERT(IsMainThread(host));
+        ASSERT(g_is_logical_main_thread);
         switch (instrument_id.tag) {
             case InstrumentType::WaveformSynth: {
                 return k_waveform_type_names[ToInt(instrument_id.Get<WaveformType>())];
@@ -190,7 +190,7 @@ struct LayerProcessor {
     }
 
     String InstTypeName() const {
-        ASSERT(IsMainThread(host));
+        ASSERT(g_is_logical_main_thread);
         switch (instrument.tag) {
             case InstrumentType::WaveformSynth: return "Oscillator waveform"_s;
             case InstrumentType::Sampler: {
@@ -205,7 +205,7 @@ struct LayerProcessor {
     }
 
     bool UsesTimbreLayering() const {
-        ASSERT(IsMainThread(host));
+        ASSERT(g_is_logical_main_thread);
         switch (instrument.tag) {
             case InstrumentType::WaveformSynth: return false;
             case InstrumentType::Sampler: {
@@ -220,7 +220,7 @@ struct LayerProcessor {
     bool VolumeEnvelopeIsOn(bool is_audio_thread);
 
     Optional<sample_lib::LibraryIdRef> LibId() const {
-        ASSERT(IsMainThread(host));
+        ASSERT(g_is_logical_main_thread);
         if (auto sampled_inst = instrument.TryGetFromTag<InstrumentType::Sampler>())
             return (*sampled_inst)->instrument.library.Id();
         return k_nullopt;
@@ -266,7 +266,7 @@ struct LayerProcessor {
             return (sample_lib::LoadedInstrument const*)v;
         }
         static constexpr u64 ValForWaveform(WaveformType w) {
-            auto const v = 1 + alignof(sample_lib::LoadedInstrument) * ((u64)w + 1);
+            auto const v = 1 + (alignof(sample_lib::LoadedInstrument) * ((u64)w + 1));
             ASSERT(v % alignof(sample_lib::LoadedInstrument) != 0, "needs to be an invalid ptr");
             return v;
         }

@@ -102,6 +102,8 @@ SystemStats GetSystemStats() {
     if (!result.page_size) {
         result.num_logical_cpus = (u32)sysconf(_SC_NPROCESSORS_ONLN);
         result.page_size = (u32)sysconf(_SC_PAGESIZE);
+        ASSERT(result.num_logical_cpus);
+        ASSERT(result.page_size);
         FillCpuInfo(result, "/proc/cpuinfo");
     }
     return result;

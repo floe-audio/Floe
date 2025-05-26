@@ -2,12 +2,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Contains a section of code from the LLVM project that is licenced differently, see below for full details.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Copyright (c) LLVM Project contributors
 
 #include "debug.hpp"
 
+#if ZIG_BACKTRACE
+#include <unwind.h>
+
+#include "utils/debug_info/debug_info.h"
+#else
 #include <backtrace.h>
 #include <cxxabi.h>
-#include <stdlib.h> // free
+#endif
+#include <signal.h>
+#include <stdlib.h> // EXIT_FAILURE
 
 #include "foundation/foundation.hpp"
 #include "os/filesystem.hpp"
@@ -34,25 +43,66 @@ Atomic<PanicHook> g_panic_hook = DefaultPanicHook;
 void SetPanicHook(PanicHook hook) { g_panic_hook.Store(hook, StoreMemoryOrder::Release); }
 PanicHook GetPanicHook() { return g_panic_hook.Load(LoadMemoryOrder::Acquire); }
 
-thread_local bool g_in_signal_handler {};
+thread_local bool g_in_crash_handler {};
 
 static Atomic<bool> g_panic_occurred {};
 
 bool PanicOccurred() { return g_panic_occurred.Load(LoadMemoryOrder::Acquire); }
 void ResetPanic() { g_panic_occurred.Store(false, StoreMemoryOrder::Release); }
 
+// signal-safe
+static void WriteDisasterFile(char const* message_c_str, String additional_message, SourceLocation loc) {
+    auto _ = StdPrint(StdStream::Err, additional_message);
+    static thread_local bool writing_disaster_file {};
+    if (writing_disaster_file) return;
+    writing_disaster_file = true;
+    DEFER { writing_disaster_file = false; };
+    auto const log_folder = TRY_OPT_OR(LogFolder(), return);
+    auto const message = FromNullTerminated(message_c_str);
+    auto const hash = Hash(message);
+    DynamicArrayBounded<char, 1000> filepath {log_folder};
+    dyn::Append(filepath, path::k_dir_separator);
+    fmt::Append(filepath, ConcatArrays("{}."_ca, k_floe_disaster_file_extension), hash);
+    auto file = TRY_OR(OpenFile(filepath, FileMode::Write()), return);
+
+    BufferedWriter<1000> buffered_writer {file.Writer()};
+    auto writer = buffered_writer.Writer();
+    DEFER { buffered_writer.FlushReset(); };
+
+    auto _ = writer.WriteChars(message);
+    auto _ = writer.WriteChars("\n");
+    if (additional_message.size) {
+        auto _ = writer.WriteChars(additional_message);
+        auto _ = writer.WriteChars("\n");
+    }
+    auto _ = writer.WriteChars(FromNullTerminated(loc.file));
+    auto _ = writer.WriteChars(":");
+    auto _ = writer.WriteChars(fmt::IntToString(loc.line, fmt::IntToStringOptions {}));
+    auto _ = writer.WriteChars("\n");
+    auto _ = writer.WriteChars("os:");
+    auto _ = writer.WriteChars(({
+        String s {};
+        if constexpr (IS_WINDOWS)
+            s = "Windows"_s;
+        else if constexpr (IS_LINUX)
+            s = "Linux"_s;
+        else if constexpr (IS_MACOS)
+            s = "macOS"_s;
+        s;
+    }));
+}
+
 // noinline because we want __builtin_return_address(0) to return the address of the call site
 [[noreturn]] __attribute__((noinline)) void Panic(char const* message, SourceLocation loc) {
-    if (g_in_signal_handler) {
-        auto _ = StdPrint(StdStream::Err, "Panic occurred while in a signal handler, aborting\n");
-        __builtin_abort();
+    static thread_local u8 in_panic_hook {};
+    if (g_in_crash_handler) {
+        WriteDisasterFile(message, "Panic occurred while in a signal handler", loc);
+        _Exit(EXIT_FAILURE);
     }
 
-    static thread_local u8 in_panic_hook {};
-
     switch (in_panic_hook) {
+        // First time we've panicked.
         case 0: {
-            // First time we've panicked.
             ++in_panic_hook;
             g_panic_hook.Load(LoadMemoryOrder::Acquire)(message, loc, CALL_SITE_PROGRAM_COUNTER);
             --in_panic_hook;
@@ -60,17 +110,26 @@ void ResetPanic() { g_panic_occurred.Store(false, StoreMemoryOrder::Release); }
             g_panic_occurred.Store(true, StoreMemoryOrder::Release);
             throw PanicException();
         }
+
+        // Panicked inside the panic hook.
         default: {
-            auto _ = StdPrint(StdStream::Err, "Panic occurred while handling a panic, aborting\n");
-            if constexpr (IS_WINDOWS) {
-                // TODO: we do a null dereference here to trigger the windows vectored exception handler. This
-                // is a workaround because we don't have a signal handler installed on Windows and therefore
-                // SIGABRT is not caught. We should installer a signal handler on Windows.
-                int* pointer = nullptr;
-                *pointer = 42;
-            }
-            __builtin_abort();
-            break;
+            --in_panic_hook;
+            g_panic_occurred.Store(true, StoreMemoryOrder::Release);
+
+            // We try to get our crash system to handle this as that is probably the best way to get some
+            // information out of it.
+            auto _ =
+                StdPrint(StdStream::Err,
+                         "Panic occurred while handling a panic, raising unrecoverable exception/SIGABRT\n");
+
+            if constexpr (IS_WINDOWS)
+                WindowsRaiseException(k_windows_nested_panic_code);
+            else
+                raise(SIGABRT);
+
+            // While the above options are probably no-return, on Windows at least it's possible control
+            // returns to this point after the exception handler runs.
+            throw PanicException();
         }
     }
 }
@@ -87,11 +146,9 @@ namespace ubsan {
 
 // Code taken based LLVM's UBSan runtime implementation.
 // https://github.com/llvm/llvm-project/blob/main/compiler-rt/lib/ubsan/ubsan_handlers.h
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// Copyright (c) LLVM Project contributors
-//
 // Modified by Sam Windell to integrate with the rest of the codebase
 // Copyright 2018-2024 Sam Windell
+// Start of LLVM-based code
 // =============================================================================================================
 
 struct SourceLocation {
@@ -330,7 +387,11 @@ ErrorCodeCategory const g_stacktrace_error_category {
 
 struct BacktraceState {
     Optional<DynamicArrayBounded<char, 256>> failed_init_error {};
+#if ZIG_BACKTRACE
+    void* state = nullptr;
+#else
     backtrace_state* state = nullptr;
+#endif
 };
 
 alignas(BacktraceState) static u8 g_backtrace_state_storage[sizeof(BacktraceState)] {};
@@ -370,6 +431,15 @@ Optional<String> InitStacktraceState(Optional<String> current_binary_path) {
         }
 
         auto state = PLACEMENT_NEW(g_backtrace_state_storage) BacktraceState;
+#if ZIG_BACKTRACE
+        state->failed_init_error.Emplace();
+        state->state =
+            CreateSelfModuleInfo(state->failed_init_error->data, state->failed_init_error->Capacity());
+        if (state->state)
+            state->failed_init_error.Clear();
+        else
+            state->failed_init_error->size = NullTerminatedSize(state->failed_init_error->data);
+#else
         state->state = backtrace_create_state(
             g_current_binary_path.data, // filename must be a permanent, null-terminated buffer
             true,
@@ -399,6 +469,7 @@ Optional<String> InitStacktraceState(Optional<String> current_binary_path) {
                 [](void*, char const*, int) -> void {},
                 nullptr);
         }
+#endif
 
         g_backtrace_state.Store(state, StoreMemoryOrder::Release);
     });
@@ -416,6 +487,9 @@ void ShutdownStacktraceState() {
     CountedDeinit(g_init, [] {
         if (auto state = g_backtrace_state.Exchange(nullptr, RmwMemoryOrder::AcquireRelease)) {
             if (g_current_binary_path.size) StateAllocator().Free(g_current_binary_path.ToByteSpan());
+#if ZIG_BACKTRACE
+            DestroySelfModuleInfo(state->state);
+#endif
             state->~BacktraceState();
         }
     });
@@ -430,6 +504,7 @@ static void SkipUntil(StacktraceStack& stack, uintptr pc) {
         }
 }
 
+#if !ZIG_BACKTRACE
 static int NumSkipFrames(StacktraceSkipOptions skip) {
     return CheckedCast<int>(skip.TryGetOpt<StacktraceFrames>().ValueOr(StacktraceFrames {1}));
 }
@@ -447,6 +522,7 @@ static String Filename(char const* filename) {
         TrimStartIfMatches(result, ConcatArrays(FLOE_PROJECT_ROOT_PATH ""_ca, path::k_dir_separator_str));
     return result;
 }
+#endif
 
 Optional<StacktraceStack> CurrentStacktrace(StacktraceSkipOptions skip) {
     auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
@@ -454,6 +530,28 @@ Optional<StacktraceStack> CurrentStacktrace(StacktraceSkipOptions skip) {
     if (!state || state->failed_init_error) return k_nullopt;
 
     StacktraceStack result;
+#if ZIG_BACKTRACE
+    _Unwind_Backtrace(
+        [](struct _Unwind_Context* context, void* user) -> _Unwind_Reason_Code {
+            auto& stack = *(StacktraceStack*)user;
+            int ip_before = 0;
+            auto pc = _Unwind_GetIPInfo(context, &ip_before);
+            if (pc == 0) return _URC_END_OF_STACK;
+            if (!ip_before) --pc;
+
+            if (stack.size != stack.Capacity()) dyn::Append(stack, pc);
+
+            return _URC_NO_REASON;
+        },
+        &result);
+
+    switch (skip.tag) {
+        case StacktraceSkipType::Frames: dyn::Remove(result, 0, ToInt(skip.Get<StacktraceFrames>())); break;
+        case StacktraceSkipType::UntilProgramCounter:
+            SkipUntil(result, ToInt(skip.Get<ProgramCounter>()));
+            break;
+    }
+#else
     backtrace_simple(
         state->state,
         NumSkipFrames(skip),
@@ -467,6 +565,7 @@ Optional<StacktraceStack> CurrentStacktrace(StacktraceSkipOptions skip) {
             // printed
         },
         &result);
+#endif
 
     if (auto const pc = skip.TryGet<ProgramCounter>()) SkipUntil(result, (uintptr)*pc);
 
@@ -480,6 +579,7 @@ struct StacktraceContext {
     ErrorCodeOr<void> return_value;
 };
 
+#if !ZIG_BACKTRACE
 static int HandleStacktraceLine(void* data,
                                 [[maybe_unused]] uintptr_t program_counter,
                                 char const* filename,
@@ -498,9 +598,12 @@ static int HandleStacktraceLine(void* data,
     if (!function_name.size) function_name = function ? FromNullTerminated(function) : ""_s;
 
     FrameInfo const frame {
+        .address = program_counter,
         .function_name = function_name,
         .filename = filename ? Filename(filename) : "unknown-file"_s,
         .line = lineno,
+        .column = -1,
+        .in_self_module = true, // TODO: we don't actually know
     };
     ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
 
@@ -515,6 +618,15 @@ static void HandleStacktraceError(void* data, char const* message, [[maybe_unuse
                                  ctx.line_num++,
                                  FromNullTerminated(message));
 }
+#else
+// Our Zig code calls this function when it panics.
+void PanicHandler(char const* message, size_t message_length) {
+    char buffer[256];
+    CopyStringIntoBufferWithNullTerm(buffer, String {message, message_length});
+    Panic(buffer, SourceLocation::Current());
+}
+
+#endif
 
 ErrorCodeOr<void> WriteStacktrace(Span<uintptr const> stack, Writer writer, StacktracePrintOptions options) {
     auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
@@ -523,10 +635,33 @@ ErrorCodeOr<void> WriteStacktrace(Span<uintptr const> stack, Writer writer, Stac
     if (state->failed_init_error) return fmt::FormatToWriter(writer, "{}", *state->failed_init_error);
 
     StacktraceContext ctx {.options = options, .writer = writer};
+
+#if ZIG_BACKTRACE
+    SymbolInfo(state->state,
+               stack.data,
+               stack.size,
+               &ctx,
+               [](void* user_data, struct SymbolInfoData const* symbol) {
+                   auto& ctx = *(StacktraceContext*)user_data;
+                   if (ctx.return_value.HasError()) return;
+                   FrameInfo const frame {
+                       .address = symbol->address,
+                       .function_name = FromNullTerminated(symbol->name),
+                       .filename = symbol->file ? FromNullTerminated(symbol->file)
+                                                : FromNullTerminated(symbol->compile_unit_name),
+                       .line = symbol->line,
+                       .column = symbol->column,
+                       .in_self_module = symbol->address_in_self_module != 0,
+                   };
+                   ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
+               });
+    if (ctx.return_value.HasError()) return ctx.return_value;
+#else
     for (auto const pc : stack) {
         backtrace_pcinfo(state->state, pc, HandleStacktraceLine, HandleStacktraceError, &ctx);
         if (ctx.return_value.HasError()) return ctx.return_value;
     }
+#endif
 
     return k_success;
 }
@@ -544,8 +679,29 @@ MutableString StacktraceString(Span<uintptr const> stack, Allocator& a, Stacktra
 
     DynamicArray<char> result {a};
     StacktraceContext ctx {.options = options, .writer = dyn::WriterFor(result)};
+#if ZIG_BACKTRACE
+    SymbolInfo(state->state,
+               stack.data,
+               stack.size,
+               &ctx,
+               [](void* user_data, struct SymbolInfoData const* symbol) {
+                   auto& ctx = *(StacktraceContext*)user_data;
+                   if (ctx.return_value.HasError()) return;
+                   FrameInfo const frame {
+                       .address = symbol->address,
+                       .function_name = FromNullTerminated(symbol->name),
+                       .filename = symbol->file ? FromNullTerminated(symbol->file)
+                                                : FromNullTerminated(symbol->compile_unit_name),
+                       .line = symbol->line,
+                       .column = symbol->column,
+                       .in_self_module = symbol->address_in_self_module != 0,
+                   };
+                   ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
+               });
+#else
     for (auto const pc : stack)
         backtrace_pcinfo(state->state, pc, HandleStacktraceLine, HandleStacktraceError, &ctx);
+#endif
 
     return result.ToOwnedSpan();
 }
@@ -570,6 +726,25 @@ void StacktraceToCallback(Span<uintptr const> stack,
     };
     Context context {callback, options};
 
+#if ZIG_BACKTRACE
+    SymbolInfo(state->state,
+               stack.data,
+               stack.size,
+               &context,
+               [](void* data, struct SymbolInfoData const* symbol) {
+                   auto& ctx = *(Context*)data;
+                   FrameInfo const frame {
+                       .address = symbol->address,
+                       .function_name = FromNullTerminated(symbol->name),
+                       .filename = symbol->file ? FromNullTerminated(symbol->file)
+                                                : FromNullTerminated(symbol->compile_unit_name),
+                       .line = symbol->line,
+                       .column = symbol->column,
+                       .in_self_module = symbol->address_in_self_module != 0,
+                   };
+                   ctx.callback(frame);
+               });
+#else
     for (auto const pc : stack)
         backtrace_pcinfo(
             state->state,
@@ -591,12 +766,20 @@ void StacktraceToCallback(Span<uintptr const> stack,
                 }
                 if (!function_name.size) function_name = function ? FromNullTerminated(function) : ""_s;
 
-                ctx.callback({function_name, Filename(filename), lineno});
+                ctx.callback({
+                    .address = program_counter,
+                    .function_name = function_name,
+                    .filename = Filename(filename),
+                    .line = lineno,
+                    .column = -1,
+                    .in_self_module = true, // TODO: we don't actually know
+                });
 
                 return 0;
             },
             [](void*, char const*, int) {},
             &context);
+#endif
 }
 
 void CurrentStacktraceToCallback(FunctionRef<void(FrameInfo const&)> callback,
@@ -609,4 +792,28 @@ void CurrentStacktraceToCallback(FunctionRef<void(FrameInfo const&)> callback,
 ErrorCodeOr<void>
 PrintCurrentStacktrace(StdStream stream, StacktracePrintOptions options, StacktraceSkipOptions skip) {
     return WriteCurrentStacktrace(StdWriter(stream), options, skip);
+}
+
+bool HasAddressesInCurrentModule(Span<uintptr const> addresses) {
+    auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
+    if (!state || state->failed_init_error) return true;
+#if ZIG_BACKTRACE
+    for (auto const address : addresses)
+        if (IsAddressInCurrentModule(state->state, address)) return true;
+    return false;
+#else
+    (void)addresses;
+    return true; // TODO: we don't have this information in libbacktrace so we say yes.
+#endif
+}
+
+bool IsAddressInCurrentModule(usize address) {
+    auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
+    if (!state || state->failed_init_error) return false;
+#if ZIG_BACKTRACE
+    return IsAddressInCurrentModule(state->state, address);
+#else
+    (void)address;
+    return true; // TODO: we don't have this information in libbacktrace so we say yes.
+#endif
 }

@@ -164,7 +164,7 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
     if (!called_before) {
         called_before = true;
         standalone->audio_thread_id.Store(CurrentThreadId(), StoreMemoryOrder::Relaxed);
-        SetThreadName("audio");
+        SetThreadName("audio", false);
         standalone->plugin.start_processing(&standalone->plugin);
         standalone->audio_stream_state.Store(Standalone::AudioStreamState::Open, StoreMemoryOrder::Release);
     }
@@ -624,6 +624,7 @@ static ErrorCodeOr<void> Main(String exe_path_rel) {
 }
 
 int main(int, char** argv) {
+    auto _ = EnterLogicalMainThread();
     auto const o = Main(FromNullTerminated(argv[0]));
     if (o.HasError()) {
         LogError(ModuleName::Standalone, "Standalone error: {}", o.Error());

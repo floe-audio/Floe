@@ -35,11 +35,12 @@ void Semaphore::Signal(int count) { ReleaseSemaphore(m_sema.As<HANDLE>(), count,
 void SleepThisThread(int milliseconds) { ::Sleep((DWORD)milliseconds); }
 void YieldThisThread() { Sleep(0); }
 
-Mutex::Mutex() { InitializeCriticalSection(&mutex.As<CRITICAL_SECTION>()); }
-Mutex::~Mutex() { DeleteCriticalSection(&mutex.As<CRITICAL_SECTION>()); }
-void Mutex::Lock() { EnterCriticalSection(&mutex.As<CRITICAL_SECTION>()); }
-bool Mutex::TryLock() { return TryEnterCriticalSection(&mutex.As<CRITICAL_SECTION>()) != FALSE; }
-void Mutex::Unlock() { LeaveCriticalSection(&mutex.As<CRITICAL_SECTION>()); }
+Mutex::Mutex() { mutex.As<SRWLOCK>() = SRWLOCK_INIT; }
+Mutex::~Mutex() {}
+void Mutex::Lock() { AcquireSRWLockExclusive(&mutex.As<SRWLOCK>()); }
+bool Mutex::TryLock() { return TryAcquireSRWLockExclusive(&mutex.As<SRWLOCK>()) != FALSE; }
+void Mutex::Unlock() { ReleaseSRWLockExclusive(&mutex.As<SRWLOCK>()); }
+
 RecursiveMutex::RecursiveMutex() { InitializeCriticalSection(&mutex.As<CRITICAL_SECTION>()); }
 RecursiveMutex::~RecursiveMutex() { DeleteCriticalSection(&mutex.As<CRITICAL_SECTION>()); }
 void RecursiveMutex::Lock() { EnterCriticalSection(&mutex.As<CRITICAL_SECTION>()); }
@@ -97,9 +98,14 @@ static unsigned __stdcall ThreadProc(void* data) {
     return 0;
 }
 
-void SetThreadName(String name) { detail::SetThreadLocalThreadName(name); }
+void SetThreadName(String name, bool tag_only) {
+    (void)tag_only; // We don't set the thread name in the OS anyways.
+    detail::SetThreadLocalThreadName(name);
+}
 
-Optional<DynamicArrayBounded<char, k_max_thread_name_size>> ThreadName() {
+Optional<DynamicArrayBounded<char, k_max_thread_name_size>> ThreadName(bool tag_only) {
+    if (g_is_logical_main_thread) return "main"_s;
+    (void)tag_only; // We don't set the thread name in the OS anyways.
     auto const name = detail::GetThreadLocalThreadName();
     if (name) return *name;
     return k_nullopt;
@@ -139,15 +145,17 @@ ConditionVariable::ConditionVariable() { InitializeConditionVariable(&m_cond_var
 ConditionVariable::~ConditionVariable() {}
 
 void ConditionVariable::Wait(ScopedMutexLock& lock) {
-    SleepConditionVariableCS(&m_cond_var.As<CONDITION_VARIABLE>(),
-                             &lock.mutex.mutex.As<CRITICAL_SECTION>(),
-                             INFINITE);
+    SleepConditionVariableSRW(&m_cond_var.As<CONDITION_VARIABLE>(),
+                              &lock.mutex.mutex.As<SRWLOCK>(),
+                              INFINITE,
+                              0);
 }
 void ConditionVariable::TimedWait(ScopedMutexLock& lock, u64 wait_ms) {
     if (wait_ms > 0)
-        SleepConditionVariableCS(&m_cond_var.As<CONDITION_VARIABLE>(),
-                                 &lock.mutex.mutex.As<CRITICAL_SECTION>(),
-                                 CheckedCast<DWORD>(wait_ms));
+        SleepConditionVariableSRW(&m_cond_var.As<CONDITION_VARIABLE>(),
+                                  &lock.mutex.mutex.As<SRWLOCK>(),
+                                  CheckedCast<DWORD>(wait_ms),
+                                  0);
 }
 void ConditionVariable::WakeOne() { WakeConditionVariable(&m_cond_var.As<CONDITION_VARIABLE>()); }
 void ConditionVariable::WakeAll() { WakeAllConditionVariable(&m_cond_var.As<CONDITION_VARIABLE>()); }

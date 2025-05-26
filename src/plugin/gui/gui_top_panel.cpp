@@ -379,6 +379,15 @@ void TopPanel(Gui* g) {
         auto btn_r = layout::GetRect(g->layout, info);
         if (buttons::Button(g, btn_id, btn_r, ICON_FA_INFO_CIRCLE, large_icon_button_style))
             g->info_panel_state.open = true;
+        if (check_for_update::ShowNewVersionIndicator(g->shared_engine_systems.check_for_update_state,
+                                                      g->prefs)) {
+            auto const r = g->imgui.GetRegisteredAndConvertedRect(btn_r);
+            auto const dot_radius = r.size.x / 8;
+            auto const dot_pos = r.pos + f32x2 {r.size.x - dot_radius, dot_radius};
+            g->imgui.graphics->AddCircleFilled(dot_pos,
+                                               dot_radius,
+                                               LiveCol(g->imgui, UiColMap::TopPanelIconDot));
+        }
         Tooltip(g, btn_id, btn_r, "Open information window"_s);
     }
 

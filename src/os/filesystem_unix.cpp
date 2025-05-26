@@ -50,6 +50,7 @@ ErrorCodeOr<FileType> GetFileType(String path) {
 namespace dir_iterator {
 
 ErrorCodeOr<Iterator> Create(ArenaAllocator& arena, String path, Options options) {
+    path = path::TrimDirectorySeparatorsEnd(path);
     auto result = TRY(Iterator::InternalCreate(arena, path, options));
 
     ArenaAllocatorWithInlineStorage<1024> scratch_arena {Malloc::Instance()};
@@ -147,7 +148,7 @@ ErrorCodeOr<s128> File::LastModifiedTimeNsSinceEpoch() {
 #elif IS_MACOS
     auto const modified_time = file_stat.st_mtimespec;
 #endif
-    return (s128)modified_time.tv_sec * (s128)1'000'000'000 + (s128)modified_time.tv_nsec;
+    return ((s128)modified_time.tv_sec * (s128)1'000'000'000) + (s128)modified_time.tv_nsec;
 }
 
 ErrorCodeOr<void> File::SetLastModifiedTimeNsSinceEpoch(s128 ns_since_epoch) {

@@ -64,7 +64,7 @@ PUBLIC void ConvertRGBtoHSV(f32 r, f32 g, f32 b, f32& out_h, f32& out_s, f32& ou
     }
 
     f32 const chroma = r - (g < b ? g : b);
-    out_h = Fabs(k + (g - b) / (6.f * chroma + 1e-20f));
+    out_h = Fabs(k + ((g - b) / (6.f * chroma + 1e-20f)));
     out_s = chroma / (r + 1e-20f);
     out_v = r;
 }

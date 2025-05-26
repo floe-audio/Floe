@@ -72,8 +72,8 @@ struct Rect {
     void SetRightByMoving(f32 r) { x = r - w; }
     f32 Bottom() const { return pos.y + h; }
     f32 Right() const { return pos.x + w; }
-    f32 CentreX() const { return pos.x + w / 2; }
-    f32 CentreY() const { return pos.y + h / 2; }
+    f32 CentreX() const { return pos.x + (w / 2); }
+    f32 CentreY() const { return pos.y + (h / 2); }
     f32x2 Min() const { return pos; }
     f32x2 Max() const { return pos + size; }
     f32x2 Centre() const { return pos + (size * 0.5f); }
@@ -191,7 +191,7 @@ struct Line {
     Optional<f32x2> IntersectionWithVerticalLine(f32 vertical_line_x) const {
         if (auto line_equation = this->LineEquation()) {
             auto& v = line_equation.Value();
-            return f32x2 {vertical_line_x, v.m * vertical_line_x + v.c};
+            return f32x2 {vertical_line_x, (v.m * vertical_line_x) + v.c};
         }
         return {};
     }

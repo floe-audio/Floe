@@ -150,7 +150,7 @@ void MidPanel(Gui* g) {
                 for (auto layer_index : Range(k_num_layers)) {
                     if (auto const lib_id = g->engine.Layer(layer_index).LibId(); lib_id) {
                         if (*lib_id == overall_lib) continue;
-                        auto const layer_r = Rect {.x = r.x + (f32)layer_index * layer_width_without_pad,
+                        auto const layer_r = Rect {.x = r.x + ((f32)layer_index * layer_width_without_pad),
                                                    .y = r.y,
                                                    .w = layer_width_without_pad,
                                                    .h = r.h}
@@ -171,7 +171,7 @@ void MidPanel(Gui* g) {
                                     {r.Right(), r.y + mid_panel_title_height},
                                     LiveCol(imgui, UiColMap::LayerDividerLine));
             for (u32 i = 1; i < k_num_layers; ++i) {
-                auto const x_pos = r.x + (f32)i * layer_width_without_pad - 1;
+                auto const x_pos = r.x + ((f32)i * layer_width_without_pad) - 1;
                 imgui.graphics->AddLine({x_pos, r.y + mid_panel_title_height},
                                         {x_pos, r.Bottom()},
                                         LiveCol(imgui, UiColMap::LayerDividerLine));

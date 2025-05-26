@@ -478,13 +478,13 @@ void ColoursGUISliders(EditorGUI* gui, String search) {
         Rect col_preview_r = {.xywh {x_pos, gui->y_pos, h - pad, h}};
         x_pos += col_preview_r.w + pad;
         auto remaining_w = imgui->Width() - x_pos;
-        Rect const edit_button_r = {.xywh {x_pos, gui->y_pos, (remaining_w / 12) * 2 - pad, h}};
+        Rect const edit_button_r = {.xywh {x_pos, gui->y_pos, ((remaining_w / 12) * 2) - pad, h}};
         x_pos += edit_button_r.w + pad;
-        Rect const based_on_r = {.xywh {x_pos, gui->y_pos, (remaining_w / 12) * 6 - pad, h}};
+        Rect const based_on_r = {.xywh {x_pos, gui->y_pos, ((remaining_w / 12) * 6) - pad, h}};
         x_pos += based_on_r.w + pad;
-        Rect const bright_r = {.xywh {x_pos, gui->y_pos, (remaining_w / 12) * 2 - pad, h}};
+        Rect const bright_r = {.xywh {x_pos, gui->y_pos, ((remaining_w / 12) * 2) - pad, h}};
         x_pos += bright_r.w + pad;
-        Rect const alpha_r = {.xywh {x_pos, gui->y_pos, (remaining_w / 12) * 2 - pad, h}};
+        Rect const alpha_r = {.xywh {x_pos, gui->y_pos, ((remaining_w / 12) * 2) - pad, h}};
 
         bool hex_code_changed = false;
         bool hsv_changed = false;
@@ -543,7 +543,7 @@ void ColoursGUISliders(EditorGUI* gui, String search) {
                 imgui->Text(imgui::DefText(), {.xywh {0, pop_pos, text_size, h}}, "Alpha");
                 hsv_changed |=
                     imgui->TextInputDraggerFloat(dragger_set,
-                                                 {.xywh {text_size + 0 * itm_w, pop_pos, itm_w - pad, h}},
+                                                 {.xywh {text_size + (0 * itm_w), pop_pos, itm_w - pad, h}},
                                                  imgui->GetID((uintptr)&alpha),
                                                  0,
                                                  1,
@@ -553,7 +553,7 @@ void ColoursGUISliders(EditorGUI* gui, String search) {
                 imgui->Text(imgui::DefText(), {.xywh {0, pop_pos, text_size, h}}, "Hue");
                 hsv_changed |=
                     imgui->TextInputDraggerFloat(dragger_set,
-                                                 {.xywh {text_size + 0 * itm_w, pop_pos, itm_w - pad, h}},
+                                                 {.xywh {text_size + (0 * itm_w), pop_pos, itm_w - pad, h}},
                                                  imgui->GetID((uintptr)&hue),
                                                  0,
                                                  1,
@@ -563,7 +563,7 @@ void ColoursGUISliders(EditorGUI* gui, String search) {
                 imgui->Text(imgui::DefText(), {.xywh {0, pop_pos, text_size, h}}, "Sat");
                 hsv_changed |=
                     imgui->TextInputDraggerFloat(dragger_set,
-                                                 {.xywh {text_size + 0 * itm_w, pop_pos, itm_w - pad, h}},
+                                                 {.xywh {text_size + (0 * itm_w), pop_pos, itm_w - pad, h}},
                                                  imgui->GetID((uintptr)&sat),
                                                  0,
                                                  1,
@@ -573,7 +573,7 @@ void ColoursGUISliders(EditorGUI* gui, String search) {
                 imgui->Text(imgui::DefText(), {.xywh {0, pop_pos, text_size, h}}, "Val");
                 hsv_changed |=
                     imgui->TextInputDraggerFloat(dragger_set,
-                                                 {.xywh {text_size + 0 * itm_w, pop_pos, itm_w - pad, h}},
+                                                 {.xywh {text_size + (0 * itm_w), pop_pos, itm_w - pad, h}},
                                                  imgui->GetID((uintptr)&val),
                                                  0,
                                                  1,

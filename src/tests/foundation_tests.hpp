@@ -1825,7 +1825,7 @@ TEST_CASE(TestFormat) {
         CHECK_EQ(fmt::PrettyFileSize(1524), "1 kB"_s);
         CHECK_EQ(fmt::PrettyFileSize(1024 * 1024), "1 MB"_s);
         CHECK_EQ(fmt::PrettyFileSize(1024 * 1024 * 1024), "1.00 GB"_s);
-        CHECK_EQ(fmt::PrettyFileSize(1024 * 1024 * 1024 + 1024 * 1024 * 100), "1.10 GB"_s);
+        CHECK_EQ(fmt::PrettyFileSize((1024 * 1024 * 1024) + (1024 * 1024 * 100)), "1.10 GB"_s);
     }
 
     return k_success;
@@ -2229,8 +2229,8 @@ TEST_CASE(TestRandomFloatGenerator) {
 }
 
 TEST_CASE(TestVersion) {
-    CHECK(Version {1, 0, 0}.ToString(tester.scratch_arena) == "1.0.0"_s);
-    CHECK(Version {10, 99, 99}.ToString(tester.scratch_arena) == "10.99.99"_s);
+    CHECK(fmt::Format(tester.scratch_arena, "{}", Version {1, 0, 0}) == "1.0.0"_s);
+    CHECK(fmt::Format(tester.scratch_arena, "{}", Version {10, 99, 98}) == "10.99.98"_s);
 
     CHECK(Version {1, 0, 0} == Version {1, 0, 0});
     CHECK(Version {1, 1, 0} > Version {1, 0, 0});
@@ -2243,8 +2243,6 @@ TEST_CASE(TestVersion) {
         CAPTURE(str);
         auto const parsed_ver = ParseVersionString(str);
         REQUIRE(parsed_ver.HasValue());
-        CAPTURE(parsed_ver->ToString(tester.scratch_arena));
-        CAPTURE(ver.ToString(tester.scratch_arena));
         CHECK(ver == *parsed_ver);
     };
 
@@ -2856,7 +2854,7 @@ TEST_CASE(TestAllocatorTypes) {
 
         for (auto const cycle : Range(k_num_cycles))
             for (auto const i : Range(ArraySize(sizes)))
-                allocations[cycle * ArraySize(sizes) + i] = a.Allocate({sizes[i], k_alignment, true});
+                allocations[(cycle * ArraySize(sizes)) + i] = a.Allocate({sizes[i], k_alignment, true});
 
         if constexpr (!Same<ArenaAllocator, AllocatorType>)
             for (auto& alloc : allocations)

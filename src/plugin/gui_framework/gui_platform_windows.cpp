@@ -33,8 +33,9 @@ void detail::CloseNativeFilePicker(GuiPlatform& platform) {
     auto& native = platform.native_file_picker->As<NativeFilePicker>();
     if (native.thread) {
         PostThreadMessageW(GetThreadId(native.thread), WM_CLOSE, 0, 0);
+        // Blocking wait for the thread to finish.
         auto const wait_result = WaitForSingleObject(native.thread, INFINITE);
-        ASSERT_EQ(wait_result, WAIT_OBJECT_0);
+        ASSERT_NEQ(wait_result, WAIT_FAILED);
         CloseHandle(native.thread);
     }
     native.~NativeFilePicker();
@@ -81,15 +82,19 @@ RunFilePicker(FilePickerDialogOptions const& args, ArenaAllocator& arena, HWND p
             auto dir = WidenAllocNullTerm(temp_path_arena, *narrow_dir).Value();
             Replace(dir, L'/', L'\\');
             IShellItem* item = nullptr;
-            HRESULT_TRY(SHCreateItemFromParsingName(dir.data, nullptr, IID_PPV_ARGS(&item)));
-            ASSERT(item);
-            DEFER { item->Release(); };
+            // SHCreateItemFromParsingName can fail with ERROR_FILE_NOT_FOUND. We only set the default folder
+            // if it succeeds.
+            if (auto const hr = SHCreateItemFromParsingName(dir.data, nullptr, IID_PPV_ARGS(&item));
+                SUCCEEDED(hr)) {
+                ASSERT(item);
+                DEFER { item->Release(); };
 
-            constexpr bool k_forced_default_folder = true;
-            if constexpr (k_forced_default_folder)
-                f->SetFolder(item);
-            else
-                f->SetDefaultFolder(item);
+                constexpr bool k_forced_default_folder = false;
+                if constexpr (k_forced_default_folder)
+                    f->SetFolder(item);
+                else
+                    f->SetDefaultFolder(item);
+            }
         }
 
         if (args.type == FilePickerDialogOptions::Type::SaveFile) {
@@ -151,7 +156,7 @@ RunFilePicker(FilePickerDialogOptions const& args, ArenaAllocator& arena, HWND p
         DEFER { CoTaskMemFree(wide_path); };
 
         auto narrow_path = Narrow(arena, FromNullTerminated(wide_path)).Value();
-        ASSERT(!path::IsDirectorySeparator(Last(narrow_path)));
+        narrow_path.size = path::TrimDirectorySeparatorsEnd(narrow_path).size;
         ASSERT(path::IsAbsolute(narrow_path));
         return narrow_path;
     };
@@ -184,7 +189,7 @@ RunFilePicker(FilePickerDialogOptions const& args, ArenaAllocator& arena, HWND p
 }
 
 bool detail::NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data1, uintptr data2) {
-    ASSERT(ThreadName() == "main");
+    ASSERT(g_is_logical_main_thread);
 
     if (data1 != k_file_picker_message_data) return false;
     if (data2 != k_file_picker_message_data) return false;
@@ -194,7 +199,7 @@ bool detail::NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data
 
     // The thread should have exited by now so this should be immediate.
     auto const wait_result = WaitForSingleObject(native_file_picker.thread, INFINITE);
-    ASSERT_EQ(wait_result, WAIT_OBJECT_0);
+    ASSERT_NEQ(wait_result, WAIT_FAILED);
     CloseHandle(native_file_picker.thread);
     native_file_picker.thread = nullptr;
 
@@ -240,7 +245,7 @@ bool detail::NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data
 //   otherwise IFileDialog::Show() will block forever, and never show it's own dialog.
 
 ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& args) {
-    ASSERT(ThreadName() == "main");
+    ASSERT(g_is_logical_main_thread);
 
     NativeFilePicker* native_file_picker = nullptr;
 
@@ -267,34 +272,42 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePicker
         nullptr,
         0,
         [](void* p) -> DWORD {
-            auto& platform = *(GuiPlatform*)p;
-            auto& native_file_picker = platform.native_file_picker->As<NativeFilePicker>();
+            try {
+                auto& platform = *(GuiPlatform*)p;
+                auto& native_file_picker = platform.native_file_picker->As<NativeFilePicker>();
 
-            auto const hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-            ASSERT(SUCCEEDED(hr), "new thread couldn't initialise COM");
-            DEFER { CoUninitialize(); };
+                auto const hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+                ASSERT(SUCCEEDED(hr), "new thread couldn't initialise COM");
+                DEFER { CoUninitialize(); };
 
-            native_file_picker.result = TRY_OR(
-                RunFilePicker(native_file_picker.args,
-                              native_file_picker.thread_arena,
-                              native_file_picker.parent),
-                {
-                    ReportError(ErrorLevel::Error, SourceLocationHash(), "file picker failed: {}", error);
-                    return 0;
-                });
-
-            // We have results, now we need to send them back to the main thread.
-            PuglEvent const event {
-                .client =
+                native_file_picker.result = TRY_OR(
+                    RunFilePicker(native_file_picker.args,
+                                  native_file_picker.thread_arena,
+                                  native_file_picker.parent),
                     {
-                        .type = PUGL_CLIENT,
-                        .flags = PUGL_IS_SEND_EVENT,
-                        .data1 = k_file_picker_message_data,
-                        .data2 = k_file_picker_message_data,
-                    },
-            };
-            ASSERT(puglSendEvent(platform.view, &event) == PUGL_SUCCESS);
+                        ReportError(ErrorLevel::Error, SourceLocationHash(), "file picker failed: {}", error);
+                        return 0;
+                    });
 
+                // We have results, now we need to send them back to the main thread.
+                PuglEvent const event {
+                    .client =
+                        {
+                            .type = PUGL_CLIENT,
+                            .flags = PUGL_IS_SEND_EVENT,
+                            .data1 = k_file_picker_message_data,
+                            .data2 = k_file_picker_message_data,
+                        },
+                };
+                // This can fail in very rare cases. I don't know the exact reason, but I don't think it is a
+                // problem. It just means the file picker result won't be processed. I think this occurs when
+                // the GUI is being destroyed - a case where we don't care about the file picker result
+                // anyways.
+                puglSendEvent(platform.view, &event);
+
+                return 0;
+            } catch (PanicException) {
+            }
             return 0;
         },
         &platform,
@@ -306,68 +319,77 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePicker
 }
 
 static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
-    // "If code is HC_ACTION, the hook procedure must process the message"
-    if (code != HC_ACTION) return false;
+    if (PanicOccurred()) return false;
 
-    // "The message has been removed from the queue." We only want to process messages that aren't otherwise
-    // going to be processed.
-    if (w_param != PM_REMOVE) return false;
+    if (!EnterLogicalMainThread()) return false;
+    DEFER { LeaveLogicalMainThread(); };
 
-    if (!msg.hwnd) return false;
+    try {
+        // "If code is HC_ACTION, the hook procedure must process the message"
+        if (code != HC_ACTION) return false;
 
-    // We only care about keyboard messages.
-    {
-        constexpr auto k_accepted_messages =
-            Array {(UINT)WM_KEYDOWN, WM_SYSKEYDOWN, WM_KEYUP, WM_SYSKEYUP, WM_CHAR, WM_SYSCHAR};
-        if (!Contains(k_accepted_messages, msg.message)) return false;
-    }
+        // "The message has been removed from the queue." We only want to process messages that aren't
+        // otherwise going to be processed.
+        if (w_param != PM_REMOVE) return false;
 
-    // We only care about messages to our window.
-    {
-        constexpr auto k_floe_class_name_len = NullTerminatedSize(GuiPlatform::k_window_class_name);
-        char class_name[k_floe_class_name_len + 1];
-        auto const class_name_len = GetClassNameA(msg.hwnd, class_name, sizeof(class_name));
-        if (class_name_len == 0) {
-            ReportError(ErrorLevel::Warning,
-                        SourceLocationHash(),
-                        "failed to get class name for hwnd, {}",
-                        Win32ErrorCode(GetLastError()));
-            return false;
+        if (!msg.hwnd) return false;
+
+        // We only care about keyboard messages.
+        {
+            constexpr auto k_accepted_messages =
+                Array {(UINT)WM_KEYDOWN, WM_SYSKEYDOWN, WM_KEYUP, WM_SYSKEYUP, WM_CHAR, WM_SYSCHAR};
+            if (!Contains(k_accepted_messages, msg.message)) return false;
         }
 
-        if (class_name_len != k_floe_class_name_len) return false; // Not our window.
-        if (!MemoryIsEqual(class_name, GuiPlatform::k_window_class_name, k_floe_class_name_len))
-            return false; // Not our window.
-    }
+        // We only care about messages to our window.
+        {
+            constexpr auto k_floe_class_name_len = NullTerminatedSize(GuiPlatform::k_window_class_name);
+            char class_name[k_floe_class_name_len + 1];
+            auto const class_name_len = GetClassNameA(msg.hwnd, class_name, sizeof(class_name));
+            if (class_name_len == 0) {
+                ReportError(ErrorLevel::Warning,
+                            SourceLocationHash(),
+                            "failed to get class name for hwnd, {}",
+                            Win32ErrorCode(GetLastError()));
+                return false;
+            }
 
-    ASSERT(ThreadName() == "main");
-
-    // We only want messages when wants_keyboard_input is true.
-    {
-        // WARNING: doing this is not part of Pugl's public API - it might break.
-        auto view = (PuglView*)GetWindowLongPtrW(msg.hwnd, GWLP_USERDATA);
-
-        auto& platform = *(GuiPlatform*)puglGetHandle(view);
-
-        if (!platform.last_result.wants_keyboard_input) return false;
-    }
-
-    // "If the message is translated (that is, a character message is posted to the thread's message queue),
-    // the return value is nonzero. If the message is WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, or WM_SYSKEYUP, the
-    // return value is nonzero, regardless of the translation."
-    if (TranslateMessage(&msg)) {
-        // We don't want the message in the message queue because it might reach other windows - we want to
-        // consume it for ourselves.
-        MSG peeked {};
-        if (PeekMessageW(&peeked, msg.hwnd, WM_CHAR, WM_DEADCHAR, PM_REMOVE) ||
-            PeekMessageW(&peeked, msg.hwnd, WM_SYSCHAR, WM_SYSDEADCHAR, PM_REMOVE)) {
-            SendMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
-            return true;
+            if (class_name_len != k_floe_class_name_len) return false; // Not our window.
+            if (!MemoryIsEqual(class_name, GuiPlatform::k_window_class_name, k_floe_class_name_len))
+                return false; // Not our window.
         }
-    }
-    SendMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
 
-    return true;
+        ASSERT(g_is_logical_main_thread);
+
+        // We only want messages when wants_keyboard_input is true.
+        {
+            // WARNING: doing this is not part of Pugl's public API - it might break.
+            auto view = (PuglView*)GetWindowLongPtrW(msg.hwnd, GWLP_USERDATA);
+
+            auto& platform = *(GuiPlatform*)puglGetHandle(view);
+
+            if (!platform.last_result.wants_keyboard_input) return false;
+        }
+
+        // "If the message is translated (that is, a character message is posted to the thread's message
+        // queue), the return value is nonzero. If the message is WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, or
+        // WM_SYSKEYUP, the return value is nonzero, regardless of the translation."
+        if (TranslateMessage(&msg)) {
+            // We don't want the message in the message queue because it might reach other windows - we want
+            // to consume it for ourselves.
+            MSG peeked {};
+            if (PeekMessageW(&peeked, msg.hwnd, WM_CHAR, WM_DEADCHAR, PM_REMOVE) ||
+                PeekMessageW(&peeked, msg.hwnd, WM_SYSCHAR, WM_SYSDEADCHAR, PM_REMOVE)) {
+                SendMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
+                return true;
+            }
+        }
+        SendMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
+
+        return true;
+    } catch (PanicException) {
+        return false;
+    }
 }
 
 // GetMsgProc
@@ -387,7 +409,7 @@ static HHOOK g_keyboard_hook {};
 static u32 g_keyboard_hook_ref_count {};
 
 void detail::AddWindowsKeyboardHook(GuiPlatform& platform) {
-    ASSERT(ThreadName() == "main");
+    ASSERT(g_is_logical_main_thread);
 
     if (g_keyboard_hook_ref_count++ > 0) return;
 
@@ -416,7 +438,7 @@ void detail::AddWindowsKeyboardHook(GuiPlatform& platform) {
 }
 
 void detail::RemoveWindowsKeyboardHook(GuiPlatform&) {
-    ASSERT(ThreadName() == "main");
+    ASSERT(g_is_logical_main_thread);
 
     if (--g_keyboard_hook_ref_count > 0) return;
 

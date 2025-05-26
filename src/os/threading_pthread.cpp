@@ -62,21 +62,25 @@ Thread& Thread::operator=(Thread&& other) {
     return *this;
 }
 
-void SetThreadName(String name) {
+void SetThreadName(String name, bool tag_only) {
     detail::SetThreadLocalThreadName(name);
-    char buffer[k_max_thread_name_size];
-    CopyStringIntoBufferWithNullTerm(buffer, name);
+
+    if (!tag_only) {
+        char buffer[k_max_thread_name_size];
+        CopyStringIntoBufferWithNullTerm(buffer, name);
 #if __APPLE__
-    pthread_setname_np(buffer);
+        pthread_setname_np(buffer);
 #else
-    // On Linux, even though we don't use pthread_getname_np to fetch the name, let's still set it because it
-    // might help out external tools.
-    pthread_setname_np(pthread_self(), buffer);
+        // On Linux, even though we don't use pthread_getname_np to fetch the name, let's still set it because
+        // it might help out external tools.
+        pthread_setname_np(pthread_self(), buffer);
 #endif
+    }
 }
 
-Optional<DynamicArrayBounded<char, k_max_thread_name_size>> ThreadName() {
-    if constexpr (IS_LINUX) {
+Optional<DynamicArrayBounded<char, k_max_thread_name_size>> ThreadName(bool tag_only) {
+    if (g_is_logical_main_thread) return "main"_s;
+    if (IS_LINUX || tag_only) {
         // On Linux, if the thread wasn't explicity name, pthread_getname_np will return the name of the
         // executable which is confusing, better to have nothing and fetch the TID.
         auto const name = detail::GetThreadLocalThreadName();
@@ -93,7 +97,7 @@ Optional<DynamicArrayBounded<char, k_max_thread_name_size>> ThreadName() {
 static void* ThreadStartProc(void* data) {
     try {
         auto d = (Thread::ThreadStartData*)data;
-        SetThreadName(d->thread_name);
+        SetThreadName(d->thread_name, false);
         d->StartThread();
         delete d;
     } catch (PanicException) {

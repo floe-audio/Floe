@@ -85,5 +85,5 @@ using WString = Span<wchar_t const>;
 using MutableString = Span<char>;
 using MutableWString = Span<wchar_t>;
 
-constexpr String operator"" _s(char const* str, usize size) noexcept { return {str, size}; }
-constexpr WString operator"" _s(wchar_t const* str, usize size) noexcept { return {str, size}; }
+constexpr String operator""_s(char const* str, usize size) noexcept { return {str, size}; }
+constexpr WString operator""_s(wchar_t const* str, usize size) noexcept { return {str, size}; }

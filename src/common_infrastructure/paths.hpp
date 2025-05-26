@@ -4,6 +4,7 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
+#include "constants.hpp"
 #include "preferences.hpp"
 
 enum class ScanFolderType : u8 { Presets, Libraries, Count };
@@ -19,8 +20,6 @@ struct FloePaths {
 };
 
 FloePaths CreateFloePaths(ArenaAllocator& arena);
-
-constexpr usize k_max_extra_scan_folders {16};
 
 // String. Use this with prefs::GetString and prefs::SetValue
 prefs::Descriptor

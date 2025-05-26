@@ -27,6 +27,7 @@
 80s
 AAX
 ADSR
+ARM64
 AUv2
 Ableton
 AppData
@@ -63,6 +64,7 @@ GitHub
 Harpe
 IDM
 IRs
+Intel
 Jérémy
 Kergourlay
 Kickdrum
@@ -71,6 +73,8 @@ LD
 LFO
 LFOs
 Lua
+M1
+M2
 MBSF
 MDATA
 MIDI2
@@ -115,6 +119,7 @@ async
 automatable
 autosave
 autosaves
+br
 c1
 c4
 center
@@ -157,6 +162,7 @@ img
 impactful
 incrementing
 installable
+intel
 ir
 isn
 json
@@ -229,6 +235,7 @@ wasn
 waveforms
 wavetable
 webpage
+weren
 wouldn
 x86
 zig

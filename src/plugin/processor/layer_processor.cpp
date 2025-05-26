@@ -120,7 +120,7 @@ static void SetVelocityMapping(LayerProcessor& layer, param_values::VelocityMapp
 }
 
 static f32 GetVelocityRegionLevel(LayerProcessor& layer, f32 velocity, f32 velocity_to_volume) {
-    auto mod = MapFrom01(velocity, (1 - velocity_to_volume), 1);
+    auto mod = MapFrom01(velocity, 1 - velocity_to_volume, 1);
     if (layer.num_velocity_regions == 2) {
         mod *= ProcessVeloRegions(k_velo_regions_half.Items(), layer.active_velocity_regions, velocity * 127);
     } else if (layer.num_velocity_regions == 3) {
@@ -184,9 +184,9 @@ void OnParamChange(LayerProcessor& layer,
         }
         if (set_tune) {
             auto const tune = layer.tune_semitone + (layer.tune_cents / 100.0f);
-            layer.voice_controller.tune = tune;
+            layer.voice_controller.tune_semitones = tune;
             for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
-                SetVoicePitch(v, vmst.tune, sample_rate);
+                SetVoicePitch(v, vmst.tune_semitones, sample_rate);
         }
     }
 
@@ -492,7 +492,7 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
     }
 
     p.disable_vol_env = trigger_event == sample_lib::TriggerEvent::NoteOff;
-    p.initial_pitch = layer.voice_controller.tune;
+    p.initial_pitch = layer.voice_controller.tune_semitones;
     p.midi_key_trigger = note;
     p.note_num = (u7)Clamp(note.note + layer.midi_transpose, 0, 127);
     p.note_vel = note_vel_float;

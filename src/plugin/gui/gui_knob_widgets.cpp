@@ -13,12 +13,12 @@ namespace knobs {
 
 static void DrawKnob(Gui* g, imgui::Id id, Rect r, f32 percent, Style const& style) {
     auto const& imgui = g->imgui;
-    auto const c = f32x2 {r.CentreX(), r.y + r.w / 2};
+    auto const c = f32x2 {r.CentreX(), r.y + (r.w / 2)};
     auto const start_radians = (3 * k_pi<>) / 4;
-    auto const end_radians = k_tau<> + k_pi<> / 4;
+    auto const end_radians = k_tau<> + (k_pi<> / 4);
     auto const delta = end_radians - start_radians;
-    auto const angle = start_radians + (1 - percent) * delta;
-    auto const angle2 = start_radians + percent * delta;
+    auto const angle = start_radians + ((1 - percent) * delta);
+    auto const angle2 = start_radians + (percent * delta);
     ASSERT(percent >= 0 && percent <= 1);
     ASSERT(angle >= start_radians && angle <= end_radians);
 
@@ -39,20 +39,20 @@ static void DrawKnob(Gui* g, imgui::Id id, Rect r, f32 percent, Style const& sty
     auto const outer_arc_radius_mid = r.w * 0.5f;
     if (!style.overload_position) {
         imgui.graphics->PathArcTo(c,
-                                  outer_arc_radius_mid - outer_arc_thickness / 2,
+                                  outer_arc_radius_mid - (outer_arc_thickness / 2),
                                   start_radians,
                                   end_radians,
                                   32);
         imgui.graphics->PathStroke(LiveCol(imgui, UiColMap::KnobOuterArcEmpty), false, outer_arc_thickness);
     } else {
-        auto const overload_radians = start_radians + delta * *style.overload_position;
+        auto const overload_radians = start_radians + (delta * *style.overload_position);
         auto const radians_per_px = k_tau<> * r.w / 2;
         auto const desired_px_width = 15;
-        auto const overload_radians_end = overload_radians + desired_px_width / radians_per_px;
+        auto const overload_radians_end = overload_radians + (desired_px_width / radians_per_px);
 
         {
             imgui.graphics->PathArcTo(c,
-                                      outer_arc_radius_mid - outer_arc_thickness / 2,
+                                      outer_arc_radius_mid - (outer_arc_thickness / 2),
                                       start_radians,
                                       overload_radians,
                                       32);
@@ -87,8 +87,8 @@ static void DrawKnob(Gui* g, imgui::Id id, Rect r, f32 percent, Style const& sty
             auto const line_weight = LiveSize(imgui, UiSizeId::KnobLineWeight);
             auto const line_height = outer_arc_thickness * 1.4f;
 
-            auto const arc_radius_outer = outer_arc_radius_mid + line_height / 2;
-            auto const arc_radius_inner = outer_arc_radius_mid - outer_arc_thickness / 2;
+            auto const arc_radius_outer = outer_arc_radius_mid + (line_height / 2);
+            auto const arc_radius_inner = outer_arc_radius_mid - (outer_arc_thickness / 2);
 
             // NOTE: the x is using cos and y is using sin, I'm just following what PathArcTo() does. I don't
             // know why PathToArc() does it that way.
@@ -108,14 +108,14 @@ static void DrawKnob(Gui* g, imgui::Id id, Rect r, f32 percent, Style const& sty
     if (!style.is_fake) {
         if (!style.bidirectional) {
             imgui.graphics->PathArcTo(c,
-                                      outer_arc_radius_mid - outer_arc_thickness / 2,
+                                      outer_arc_radius_mid - (outer_arc_thickness / 2),
                                       start_radians,
                                       angle2,
                                       32);
         } else {
-            auto const mid_radians = start_radians + delta / 2;
+            auto const mid_radians = start_radians + (delta / 2);
             imgui.graphics->PathArcTo(c,
-                                      outer_arc_radius_mid - outer_arc_thickness / 2,
+                                      outer_arc_radius_mid - (outer_arc_thickness / 2),
                                       Min(mid_radians, angle2),
                                       Max(mid_radians, angle2),
                                       32);
@@ -133,12 +133,12 @@ static void DrawKnob(Gui* g, imgui::Id id, Rect r, f32 percent, Style const& sty
     if (!style.is_fake) {
         auto const line_weight = LiveSize(imgui, UiSizeId::KnobLineWeight);
 
-        auto const inner_arc_radius_outer = inner_arc_radius_mid + inner_arc_thickness / 2;
-        auto const inner_arc_radius_inner = inner_arc_radius_mid - inner_arc_thickness / 2;
+        auto const inner_arc_radius_outer = inner_arc_radius_mid + (inner_arc_thickness / 2);
+        auto const inner_arc_radius_inner = inner_arc_radius_mid - (inner_arc_thickness / 2);
 
         f32x2 offset;
-        offset.x = Sin(angle - k_pi<> / 2);
-        offset.y = Cos(angle - k_pi<> / 2);
+        offset.x = Sin(angle - (k_pi<> / 2));
+        offset.y = Cos(angle - (k_pi<> / 2));
         auto const outer_point = c + (offset * f32x2 {inner_arc_radius_outer, inner_arc_radius_outer});
         auto const inner_point = c + (offset * f32x2 {inner_arc_radius_inner, inner_arc_radius_inner});
 

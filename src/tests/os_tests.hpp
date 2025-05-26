@@ -18,7 +18,7 @@ TEST_CASE(TestEpochTime) {
     };
 
     auto check_against_std = [&](DateAndTime t, tm const& std_time) {
-        check_approx(t.year, (std_time.tm_year + 1900), {});
+        check_approx(t.year, std_time.tm_year + 1900, {});
         check_approx(t.months_since_jan, std_time.tm_mon, 11);
         check_approx(t.day_of_month, std_time.tm_mday, 31);
         check_approx(t.hour, std_time.tm_hour, 23);

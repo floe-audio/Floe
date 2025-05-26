@@ -32,3 +32,12 @@ constexpr String ToString(FinalBinaryType type) {
 }
 
 extern FinalBinaryType const g_final_binary_type;
+
+constexpr bool FinalBinaryIsPlugin() {
+    switch (g_final_binary_type) {
+        case FinalBinaryType::Clap:
+        case FinalBinaryType::Vst3:
+        case FinalBinaryType::AuV2: return true;
+        default: return false;
+    }
+}

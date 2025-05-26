@@ -787,7 +787,7 @@ PUBLIC IMGUI_DRAW_BUTTON(DefaultDrawPopupButton) {
     imgui.graphics->AddRectFilled(r.Min(), r.Max(), col);
 
     auto font_size = imgui.graphics->context->CurrentFontSize();
-    imgui.graphics->AddText(f32x2 {r.x + 4, r.y + (r.h - font_size) / 2}, 0xff000000, str);
+    imgui.graphics->AddText(f32x2 {r.x + 4, r.y + ((r.h - font_size) / 2)}, 0xff000000, str);
 
     imgui.graphics->AddTriangleFilled({r.Right() - 14, r.y + 4},
                                       {r.Right() - 4, r.y + (r.h / 2)},
@@ -798,7 +798,7 @@ PUBLIC IMGUI_DRAW_BUTTON(DefaultDrawPopupButton) {
 PUBLIC void DefaultDrawSlider(Context const& s, Rect r, Id, f32 percent, SliderSettings const*) {
     s.graphics->AddRectFilled(r.Min(), r.Max(), 0xffffffff);
 
-    s.graphics->AddRectFilled(f32x2 {r.x, (r.y + r.h) - percent * r.h}, r.Max(), 0xff3f3f3f);
+    s.graphics->AddRectFilled(f32x2 {r.x, (r.y + r.h) - (percent * r.h)}, r.Max(), 0xff3f3f3f);
 }
 
 PUBLIC void DefaultDrawTextInput(Context const& s, Rect r, Id id, String text, TextInputResult* result) {

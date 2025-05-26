@@ -328,12 +328,12 @@ ErrorCodeOr<void> WriteWaveFile(String filename, ArenaAllocator& scratch_arena, 
             auto const value = args.data[chan][frame];
             auto const clamped = Clamp(value, -1.0f, 1.0f);
             auto const pcm = (s16)(clamped * 32767.0f);
-            data_pcm_16_interleaved[frame * args.num_channels + chan] = pcm;
+            data_pcm_16_interleaved[(frame * args.num_channels) + chan] = pcm;
         }
     }
 
     TRY(file.Write("RIFF"));
-    TRY(file.WriteBinaryNumber<u32>((u32)36 + args.num_frames * args.num_channels * sizeof(s16)));
+    TRY(file.WriteBinaryNumber<u32>((u32)36 + (args.num_frames * args.num_channels * sizeof(s16))));
     TRY(file.Write("WAVEfmt "));
     TRY(file.WriteBinaryNumber<u32>(16)); // fmt chunk size
     TRY(file.WriteBinaryNumber<u16>(1)); // PCM mode

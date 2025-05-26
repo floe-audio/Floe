@@ -19,20 +19,8 @@ constexpr u16 k_rgba_channels = 4;
 struct ImageBytes {
     usize NumPixels() const { return (usize)(size.width * size.height); }
     usize NumBytes() const { return NumPixels() * k_rgba_channels; }
-    u8* rgba;
-    UiSize size;
-};
-
-struct ImageBytesManaged final : ImageBytes {
-    NON_COPYABLE(ImageBytesManaged);
-    ~ImageBytesManaged() {
-        if (rgba) stbi_image_free(rgba);
-    }
-    ImageBytesManaged() {}
-    ImageBytesManaged(ImageBytes image) : ImageBytes {image} {}
-    ImageBytesManaged(ImageBytesManaged&& other) : ImageBytes {.rgba = other.rgba, .size = other.size} {
-        other.rgba = nullptr;
-    }
+    u8* rgba {};
+    UiSize size {};
 };
 
 struct ImageF32 {
@@ -42,8 +30,11 @@ struct ImageF32 {
     UiSize size;
 };
 
-static ErrorCodeOr<ImageBytesManaged> DecodeJpgOrPng(Span<u8 const> image_data) {
-    if (!image_data.size) return ImageBytes {};
+// NOTE: sadly we can't use an arena allocator with stb_image. So we have to free the image data using
+// FreeDecodedImage.
+
+static ErrorCodeOr<ImageBytes> DecodeJpgOrPng(Span<u8 const> image_data) {
+    if (!image_data.size) return ErrorCode(CommonError::InvalidFileFormat);
 
     // always returns rgba because we specify k_rgba_channels as the output channels
     int actual_number_channels;
@@ -58,23 +49,28 @@ static ErrorCodeOr<ImageBytesManaged> DecodeJpgOrPng(Span<u8 const> image_data) 
 
     if (!rgba) return ErrorCode(CommonError::InvalidFileFormat);
 
+    if (!width || !height) {
+        stbi_image_free(rgba);
+        return ErrorCode(CommonError::InvalidFileFormat);
+    }
+
     return ImageBytes {
         .rgba = rgba,
         .size = {CheckedCast<u16>(width), CheckedCast<u16>(height)},
     };
 }
 
-PUBLIC ErrorCodeOr<ImageBytesManaged> DecodeImage(Span<u8 const> image_data) {
-    return DecodeJpgOrPng(image_data);
+PUBLIC ErrorCodeOr<ImageBytes> DecodeImage(Span<u8 const> image_data) { return DecodeJpgOrPng(image_data); }
+
+PUBLIC ErrorCodeOr<ImageBytes> DecodeImageFromFile(String filename, ArenaAllocator& scratch_arena) {
+    auto const cursor = scratch_arena.TotalUsed();
+    DEFER { scratch_arena.TryShrinkTotalUsed(cursor); };
+    auto const file_data = TRY(ReadEntireFile(filename, scratch_arena));
+    return DecodeImage(file_data.ToByteSpan());
 }
 
-PUBLIC ErrorCodeOr<ImageBytesManaged> DecodeImageFromFile(String filename) {
-    PageAllocator allocator;
-    auto const file_data = TRY(ReadEntireFile(filename, allocator));
-    DEFER {
-        if (file_data.size) allocator.Free(file_data.ToByteSpan());
-    };
-    return DecodeImage(file_data.ToByteSpan());
+PUBLIC void FreeDecodedImage(ImageBytes image) {
+    if (image.size.width && image.size.height) stbi_image_free(image.rgba);
 }
 
 PUBLIC ImageBytes ShrinkImageIfNeeded(ImageBytes image,
@@ -154,7 +150,7 @@ static inline void BlurAxis(BlurAxisArgs const args) {
         auto const line_data_offset = line_number * args.line_data_stride;
 
         auto data_index = [&](u16 element_index) ALWAYS_INLINE {
-            return line_data_offset + element_index * args.element_data_stride;
+            return line_data_offset + (element_index * args.element_data_stride);
         };
 
         // Rather than calculate the average for every pixel, we can just keep a running average. For each
@@ -255,7 +251,7 @@ static f32x4* CreateBlurredImage(ArenaAllocator& arena, ImageF32 original, u16 b
 static ImageF32 ImageBytesToImageF32(ImageBytes image, ArenaAllocator& arena) {
     auto const result = arena.AllocateExactSizeUninitialised<f32x4>(image.NumPixels());
     for (auto [pixel_index, pixel] : Enumerate(result)) {
-        auto const bytes = LoadUnalignedToType<u8x4>(image.rgba + pixel_index * k_rgba_channels);
+        auto const bytes = LoadUnalignedToType<u8x4>(image.rgba + (pixel_index * k_rgba_channels));
         pixel = ConvertVector(bytes, f32x4) / 255.0f;
     }
     return {.rgba = result, .size = image.size};
@@ -269,7 +265,7 @@ static inline f32x4 MakeOpaque(f32x4 pixel) {
 static void WriteImageF32AsBytesNoAlpha(ImageF32 image, u8* out) {
     for (auto [pixel_index, pixel] : Enumerate(image.rgba)) {
         auto bytes = ConvertVector(MakeOpaque(pixel) * 255.0f, u8x4);
-        StoreToUnaligned(out + pixel_index * k_rgba_channels, bytes);
+        StoreToUnaligned(out + (pixel_index * k_rgba_channels), bytes);
     }
 }
 

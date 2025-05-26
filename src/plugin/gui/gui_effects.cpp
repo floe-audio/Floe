@@ -230,7 +230,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
                                                .contents_align = layout::Alignment::Start,
                                            });
 
-    int const switches_left_col_size = k_num_effect_types / 2 + (k_num_effect_types % 2);
+    int const switches_left_col_size = (k_num_effect_types / 2) + (k_num_effect_types % 2);
 
     {
         auto const fx_switch_board_margin_l = LiveSize(imgui, FXSwitchBoardMarginL);
@@ -691,7 +691,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
         auto r1 = imgui.GetRegisteredAndConvertedRect(layout::GetRect(lay, knob1));
         auto r2 = imgui.GetRegisteredAndConvertedRect(layout::GetRect(lay, knob2));
         f32x2 const start {r1.Right() + fx_knob_joining_line_pad_lr,
-                           r1.CentreY() - fx_knob_joining_line_thickness / 2};
+                           r1.CentreY() - (fx_knob_joining_line_thickness / 2)};
         f32x2 const end {r2.x - fx_knob_joining_line_pad_lr, start.y};
         imgui.graphics->AddLine(start,
                                 end,
@@ -1125,7 +1125,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
                     auto const delta = current_pos - click_pos;
 
                     constexpr f32 k_wiggle_room = 3;
-                    if (Sqrt(delta.x * delta.x + delta.y * delta.y) > k_wiggle_room) {
+                    if (Sqrt((delta.x * delta.x) + (delta.y * delta.y)) > k_wiggle_room) {
                         dragging_fx =
                             DraggingFX {id, fx, slot, g->frame_input.cursor_pos - converted_slot_r.pos};
                     }

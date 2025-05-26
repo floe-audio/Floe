@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
+#include "engine/check_for_update.hpp"
 #include "gui2_common_modal_panel.hpp"
 #include "gui2_info_panel_state.hpp"
 #include "gui_framework/gui_box_system.hpp"
@@ -12,6 +13,8 @@ struct InfoPanelContext {
     sample_lib_server::Server& server;
     VoicePool& voice_pool;
     ArenaAllocator& scratch_arena;
+    check_for_update::State& check_for_update_state;
+    prefs::Preferences& prefs;
     Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;
 };
 
@@ -147,7 +150,7 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
           });
 }
 
-static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&) {
+static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context) {
     auto const root = DoBox(box_system,
                             {
                                 .layout {
@@ -187,6 +190,66 @@ static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&) {
 
         if (TextButton(box_system, button_box, "Source code", FLOE_SOURCE_CODE_URL))
             OpenUrlInBrowser(FLOE_SOURCE_CODE_URL);
+    }
+
+    if (auto const new_version =
+            check_for_update::NewerVersionAvailable(context.check_for_update_state, context.prefs)) {
+        {
+            auto const text_row = DoBox(box_system,
+                                        {
+                                            .parent = root,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                .contents_gap = style::k_spacing / 4,
+                                                .contents_direction = layout::Direction::Row,
+                                                .contents_align = layout::Alignment::Start,
+                                            },
+                                        });
+            if (!new_version->is_ignored) {
+                DoBox(box_system,
+                      {
+                          .parent = text_row,
+                          .background_shape = BackgroundShape::Circle,
+                          .background_fill = style::Colour::Red,
+                          .layout {
+                              .size = 5,
+                          },
+                      });
+            }
+            DoBox(
+                box_system,
+                {
+                    .parent = text_row,
+                    .text = fmt::Format(box_system.arena, "New version available: v{}", new_version->version),
+                    .size_from_text = true,
+                });
+        }
+        {
+            auto const button_box = DoBox(box_system,
+                                          {
+                                              .parent = root,
+                                              .layout {
+                                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                  .contents_gap = style::k_spacing,
+                                                  .contents_direction = layout::Direction::Row,
+                                                  .contents_align = layout::Alignment::Start,
+                                              },
+                                          });
+
+            if (!new_version->is_ignored) {
+                if (TextButton(box_system,
+                               button_box,
+                               "Ignore",
+                               "Hide the red indicator dots for this version"))
+                    check_for_update::IgnoreUpdatesUntilAfter(context.prefs, new_version->version);
+            }
+
+            if (TextButton(box_system, button_box, "Download page", FLOE_DOWNLOAD_URL))
+                OpenUrlInBrowser(FLOE_DOWNLOAD_URL);
+
+            if (TextButton(box_system, button_box, "Changelog", FLOE_CHANGELOG_URL))
+                OpenUrlInBrowser(FLOE_CHANGELOG_URL);
+        }
     }
 }
 
@@ -379,6 +442,11 @@ static void InfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoP
 
 PUBLIC void DoInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoPanelState& state) {
     if (state.open) {
+        if (!state.opened_before) {
+            state.opened_before = true;
+            if (check_for_update::ShowNewVersionIndicator(context.check_for_update_state, context.prefs))
+                state.tab = InfoPanelState::Tab::About;
+        }
         RunPanel(box_system,
                  Panel {
                      .run = [&context, &state](GuiBoxSystem& b) { InfoPanel(b, context, state); },

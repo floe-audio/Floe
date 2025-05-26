@@ -41,7 +41,6 @@ enum class EventForAudioThreadType : u8 {
     LayerInstrumentChanged,
     StartNote,
     EndNote,
-    RemoveMidiLearn,
 };
 
 struct GuiChangedParam {
@@ -83,8 +82,7 @@ using EventForAudioThread =
                 TypeAndTag<GuiEndedChangingParam, EventForAudioThreadType::ParamGestureEnd>,
                 TypeAndTag<GuiNoteClicked, EventForAudioThreadType::StartNote>,
                 TypeAndTag<GuiNoteClickReleased, EventForAudioThreadType::EndNote>,
-                TypeAndTag<LayerInstrumentChanged, EventForAudioThreadType::LayerInstrumentChanged>,
-                TypeAndTag<RemoveMidiLearn, EventForAudioThreadType::RemoveMidiLearn>>;
+                TypeAndTag<LayerInstrumentChanged, EventForAudioThreadType::LayerInstrumentChanged>>;
 
 using EffectsArray = Array<Effect*, k_num_effect_types>;
 

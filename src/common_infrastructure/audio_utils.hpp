@@ -26,7 +26,10 @@ static inline f32 FrequencyToMidiNote(f32 frequency) {
     return k_notes_per_octave * Log(frequency / k_midi_0_frequency) * k_inv_log_of_2;
 }
 
-static inline f32 MsToHz(f32 ms) { return 1.0f / (ms / 1000.0f); }
+static inline f32 MsToHz(f32 ms) {
+    ASSERT(ms > 0.0f);
+    return 1.0f / (ms / 1000.0f);
+}
 
 // Does seem to be slightly faster than the std::pow version
 // Degree 10 approximation of f(x) = 10^(x/20)
@@ -44,7 +47,7 @@ constexpr f64 DbToAmpApprox(f64 x) {
     u = u * x + 0.00025499434891803805;
     u = u * x + 0.0066832945699735963;
     u = u * x + 0.11512732505952211;
-    return u * x + 0.99783786294442656;
+    return (u * x) + 0.99783786294442656;
 }
 
 // res in range (0, 1) outputs to a curve in range (0.5, infinity)
@@ -53,6 +56,7 @@ static inline f32 ResonanceToQ(f32 res) { return 1.0f / (2.0f * (1.0f - res)); }
 template <typename SpanType>
 inline void
 CopyInterleavedToSeparateChannels(f32* dest_l, f32* dest_r, SpanType interleaved_source, usize num_frames) {
+    ASSERT(interleaved_source.size >= num_frames * 2);
     usize pos = 0;
     for (auto const i : Range(num_frames)) {
         dest_l[i] = interleaved_source[pos];
@@ -71,5 +75,5 @@ CopySeparateChannelsToInterleaved(SpanType interleaved_dest, f32* src_l, f32* sr
     for (auto const i : Range(num_frames))
         interleaved_dest[i * 2] = src_l[i];
     for (auto const i : Range(num_frames))
-        interleaved_dest[1 + i * 2] = src_r[i];
+        interleaved_dest[1 + (i * 2)] = src_r[i];
 }

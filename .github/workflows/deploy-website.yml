@@ -9,7 +9,7 @@ on:
     branches:
       - main
   release:
-    types: [released] # our website needs to update its download links
+    types: [released, created] # our website needs to update its download links
 
 jobs:
   generate-docs:
@@ -31,6 +31,14 @@ jobs:
       - run: just build native
 
       - run: just install-docs-preprocessor
+
+      - name: Generate API files
+        run: |
+          mkdir -p docs/src/api/v1
+          version=$(cat version.txt)
+          cat > docs/src/api/v1/version << EOF
+          latest=$version
+          EOF
 
       - name: Deploy GitHub Pages
         env:

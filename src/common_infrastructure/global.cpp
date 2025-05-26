@@ -3,6 +3,8 @@
 
 #include "global.hpp"
 
+#include "utils/debug_info/debug_info.h"
+
 #include "error_reporting.hpp"
 
 static void StartupTracy() {
@@ -22,7 +24,7 @@ static u32 g_tracy_init = 0;
 void GlobalInit(GlobalInitOptions options) {
     if (g_tracy_init++ == 0) StartupTracy();
 
-    if (options.set_main_thread) SetThreadName("main");
+    if (options.set_main_thread) SetThreadName("main", FinalBinaryIsPlugin());
 
     SetPanicHook([](char const* message_c_str, SourceLocation loc, uintptr loc_pc) {
         // We don't have to be signal-safe here.
@@ -32,16 +34,18 @@ void GlobalInit(GlobalInitOptions options) {
         ArenaAllocatorWithInlineStorage<2000> arena {PageAllocator::Instance()};
 
         auto const stacktrace = CurrentStacktrace(ProgramCounter {loc_pc});
-        DynamicArray<char> message {arena};
-        fmt::Assign(message,
-                    "[panic] ({}) {}\n",
-                    ToString(g_final_binary_type),
-                    FromNullTerminated(message_c_str));
-        auto _ = FrameInfo::FromSourceLocation(loc).Write(0, dyn::WriterFor(message), {});
+        auto const thread_id = CurrentThreadId();
 
         // Step 1: log the error for easier local debugging.
         Log(ModuleName::ErrorReporting, LogLevel::Error, [&](Writer writer) -> ErrorCodeOr<void> {
-            TRY(writer.WriteChars(message));
+            TRY(fmt::FormatToWriter(writer,
+                                    "[panic] ({}) {} (address: 0x{x}, thread: {})\n",
+                                    ToString(g_final_binary_type),
+                                    FromNullTerminated(message_c_str),
+                                    loc_pc,
+                                    thread_id));
+            auto _ = FrameInfo::FromSourceLocation(loc, loc_pc, IsAddressInCurrentModule(loc_pc))
+                         .Write(0, writer, {});
             if (stacktrace) {
                 auto stack = stacktrace->Items();
                 if (stack[0] == loc_pc) stack.RemovePrefix(1);
@@ -57,11 +61,21 @@ void GlobalInit(GlobalInitOptions options) {
 
         // Step 2: send an error report to Sentry.
         {
+            auto const thread_name = ThreadName(false);
             sentry::SentryOrFallback sentry {};
             DynamicArray<char> response {arena};
             TRY_OR(sentry::SubmitCrash(*sentry,
                                        stacktrace,
-                                       message,
+                                       sentry::ErrorEvent::Thread {
+                                           .id = thread_id,
+                                           .is_main = g_is_logical_main_thread != 0,
+                                           .name = thread_name.Transform([](String s) { return s; }),
+                                       },
+                                       sentry::ErrorEvent::Exception {
+                                           .type = "Panic",
+                                           .value = FromNullTerminated(message_c_str),
+                                       },
+                                       "",
                                        arena,
                                        {
                                            .write_to_file_if_needed = true,
@@ -105,22 +119,36 @@ void GlobalInit(GlobalInitOptions options) {
     InitLogFolderIfNeeded();
 
     // after tracy
-    BeginCrashDetection([](String crash_message, Optional<StacktraceStack> stacktrace) {
+    BeginCrashDetection([](String crash_message, uintptr error_program_counter) {
         // This function is async-signal-safe.
+
+        auto const stacktrace = CurrentStacktrace(ProgramCounter {error_program_counter});
+
+        // We might be running as a shared library and the crash could have occurred in a callstack
+        // completely unrelated to us. We don't want to write a crash report in that case.
+        if (stacktrace && !HasAddressesInCurrentModule(*stacktrace)) return;
 
         if (!PRODUCTION_BUILD && IsRunningUnderDebugger()) __builtin_debugtrap();
 
         FixedSizeAllocator<4000> allocator {nullptr};
 
-        auto const message =
-            fmt::Format(allocator, "[crash] ({}) {}", ToString(g_final_binary_type), crash_message);
+        auto const thread_id = CurrentThreadId();
 
-        // Step 1: dump info to stderr.
+        // Step 1: dump info to stderr. This is useful for debugging: either us as developers, host
+        // developers, or if this code is running in a CLI - the user.
         {
-            auto writer = StdWriter(StdStream::Err);
-            auto _ = fmt::FormatToWriter(writer,
-                                         "\n" ANSI_COLOUR_SET_FOREGROUND_RED "{}" ANSI_COLOUR_RESET "\n",
-                                         message);
+            auto buffered_writer = BufferedWriter<1000> {StdWriter(StdStream::Err)};
+            auto writer = buffered_writer.Writer();
+            DEFER { buffered_writer.FlushReset(); };
+
+            auto _ =
+                fmt::FormatToWriter(writer,
+                                    "\n" ANSI_COLOUR_SET_FOREGROUND_RED
+                                    "[crash] ({}) {} (address: 0x{x}, thread: {})" ANSI_COLOUR_RESET "\n",
+                                    ToString(g_final_binary_type),
+                                    crash_message,
+                                    error_program_counter,
+                                    thread_id);
             if (stacktrace) {
                 auto _ = WriteStacktrace(*stacktrace,
                                          writer,
@@ -141,7 +169,18 @@ void GlobalInit(GlobalInitOptions options) {
             }
 
             sentry::SentryOrFallback sentry {};
-            auto _ = sentry::WriteCrashToFile(*sentry, stacktrace, *log_folder, message, allocator);
+            auto _ = sentry::WriteCrashToFile(*sentry,
+                                              stacktrace,
+                                              sentry::ErrorEvent::Thread {
+                                                  .id = thread_id,
+                                              },
+                                              sentry::ErrorEvent::Exception {
+                                                  .type = "Crash",
+                                                  .value = crash_message,
+                                              },
+                                              *log_folder,
+                                              "",
+                                              allocator);
         }
     });
 

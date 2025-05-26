@@ -66,6 +66,7 @@ Writer StdWriter(StdStream stream) {
 
 #if !IS_WINDOWS
 bool IsRunningUnderWine() { return false; }
+void WindowsRaiseException(u32) {}
 #endif
 
 DynamicArrayBounded<char, fmt::k_timestamp_str_size> Timestamp() {
@@ -81,11 +82,11 @@ DynamicArrayBounded<char, fmt::k_timestamp_str_size> TimestampUtc() {
 
 constexpr auto CountLeapYears(s16 year) {
     // Count years divisible by 4 (including 1970)
-    auto const years_div_4 = (year - 1) / 4 - 1969 / 4;
+    auto const years_div_4 = ((year - 1) / 4) - (1969 / 4);
     // Subtract years divisible by 100
-    auto const years_div_100 = (year - 1) / 100 - 1969 / 100;
+    auto const years_div_100 = ((year - 1) / 100) - (1969 / 100);
     // Add back years divisible by 400
-    auto const years_div_400 = (year - 1) / 400 - 1969 / 400;
+    auto const years_div_400 = ((year - 1) / 400) - (1969 / 400);
 
     return years_div_4 - years_div_100 + years_div_400;
 }

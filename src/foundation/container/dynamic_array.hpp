@@ -484,7 +484,7 @@ struct DynamicArray {
     constexpr bool Reserve(usize new_capacity) {
         auto const current_capacity = Capacity();
         if (new_capacity <= current_capacity) return true;
-        new_capacity = Max<usize>(4, current_capacity + current_capacity / 2, new_capacity);
+        new_capacity = Max<usize>(4, current_capacity + (current_capacity / 2), new_capacity);
 
         auto mem = allocator.Reallocate<Type>(new_capacity, AllocatedSpan(), size, true);
         ASSERT(mem.data != nullptr);

@@ -60,7 +60,7 @@ class SmoothedValueSystem {
         ASSERT(frame_index < m_num_valid_frames);
 
         if (m_processed_filter_this_frame[u16(smoother)])
-            return m_filter_result_buffer[u16(smoother) * m_num_valid_frames + frame_index];
+            return m_filter_result_buffer[(u16(smoother) * m_num_valid_frames) + frame_index];
         else
             return {m_smoothed_filters[u16(smoother)].Coeffs(), 1};
     }
@@ -124,7 +124,7 @@ class SmoothedValueSystem {
                 if (m_smoothed_filters[filter_smoother_id].NeedsUpdate()) {
                     m_processed_filter_this_frame[filter_smoother_id] = true;
                     for (auto const i : Range(block_size)) {
-                        m_filter_result_buffer[filter_smoother_id * block_size + i] =
+                        m_filter_result_buffer[(filter_smoother_id * block_size) + i] =
                             m_smoothed_filters[filter_smoother_id].Value();
                     }
                 }
@@ -190,7 +190,7 @@ class SmoothedValueSystem {
             ASSERT(frame_index < block_size);
 
             if (frame_index < num_frames_smoothed_this_block[u16(smoother)])
-                return result_buffer[u16(smoother) * block_size + frame_index];
+                return result_buffer[(u16(smoother) * block_size) + frame_index];
             else
                 return smoothed_values[u16(smoother)].target;
         }
@@ -230,7 +230,7 @@ class SmoothedValueSystem {
                         auto& v = smoothed_values[smoother_index];
                         v.current += (v.target - v.current) / (Type)remaining;
                         --remaining;
-                        result_buffer[smoother_index * (usize)block_size + i] = v.current;
+                        result_buffer[(smoother_index * (usize)block_size) + i] = v.current;
                     }
                     num_frames_smoothed_this_block[smoother_index] = initial_remaining - remaining;
                 }

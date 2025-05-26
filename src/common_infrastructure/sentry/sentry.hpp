@@ -39,6 +39,18 @@ struct ErrorEvent {
         Info,
         Debug,
     };
+
+    struct Thread {
+        u64 id;
+        Optional<bool> is_main;
+        Optional<String> name;
+    };
+
+    struct Exception {
+        String type;
+        String value;
+    };
+
     String LevelString() const {
         switch (level) {
             case Level::Fatal: return "fatal"_s;
@@ -53,6 +65,8 @@ struct ErrorEvent {
     Level level;
     String message;
     Optional<StacktraceStack> stacktrace;
+    Optional<Thread> thread;
+    Optional<Exception> exception;
     Span<Tag const> tags;
 };
 
@@ -125,6 +139,94 @@ static String UniqueErrorFilepath(String folder, Atomic<u64>& seed, Allocator& a
     auto const filename = UniqueFilename("", ConcatArrays("."_ca, k_report_file_extension), s);
     seed.Store(s, StoreMemoryOrder::Relaxed);
     return path::Join(allocator, Array {folder, filename});
+}
+
+enum class SubmitFileResult {
+    DeleteFile,
+    LeaveFile,
+    HideFile,
+};
+
+static ErrorCodeOr<void> ConsumeAndSubmitFiles(Sentry& sentry,
+                                               String folder,
+                                               String wildcard,
+                                               ArenaAllocator& scratch_arena,
+                                               FunctionRef<SubmitFileResult(String file_data)> submit_file) {
+    if constexpr (!k_online_reporting) return k_success;
+    if (sentry.online_reporting_disabled.Load(LoadMemoryOrder::Relaxed)) return k_success;
+    ASSERT(path::IsAbsolute(folder));
+    ASSERT(IsValidUtf8(folder));
+
+    auto const entries = TRY(FindEntriesInFolder(scratch_arena,
+                                                 folder,
+                                                 {
+                                                     .options {
+                                                         .wildcard = wildcard,
+                                                     },
+                                                     .recursive = false,
+                                                     .only_file_type = FileType::File,
+                                                 }));
+
+    if (entries.size) {
+        auto const temp_dir = TRY(TemporaryDirectoryOnSameFilesystemAs(folder, scratch_arena));
+        DEFER { auto _ = Delete(temp_dir, {.type = DeleteOptions::Type::DirectoryRecursively}); };
+
+        DynamicArray<char> full_path {scratch_arena};
+        dyn::Assign(full_path, folder);
+        dyn::Append(full_path, path::k_dir_separator);
+        auto const full_path_len = full_path.size;
+        full_path.Reserve(full_path.size + 40);
+
+        DynamicArray<char> temp_full_path {scratch_arena};
+        dyn::Assign(temp_full_path, temp_dir);
+        dyn::Append(temp_full_path, path::k_dir_separator);
+        auto const temp_full_path_len = temp_full_path.size;
+        temp_full_path.Reserve(temp_full_path.size + 40);
+
+        for (auto const entry : entries) {
+            // construct the full path
+            dyn::Resize(full_path, full_path_len);
+            dyn::AppendSpan(full_path, entry.subpath);
+
+            // construct the new temp path
+            dyn::Resize(temp_full_path, temp_full_path_len);
+            dyn::AppendSpan(temp_full_path, entry.subpath);
+
+            // Move the file into the temporary directory, this will be atomic so that other processes don't
+            // try and submit the same report file.
+            if (auto const o = Rename(full_path, temp_full_path); o.HasError()) {
+                if (o.Error() == FilesystemError::PathDoesNotExist) continue;
+                LogError(ModuleName::ErrorReporting, "Couldn't move report file: {}", o.Error());
+                continue;
+            }
+
+            // We now have exclusive access to the file.
+
+            auto file_data = TRY_OR(ReadEntireFile(temp_full_path, scratch_arena), {
+                LogError(ModuleName::ErrorReporting, "Couldn't read report file: {}", error);
+                auto _ = Rename(temp_full_path, full_path); // Put it back where we found it.
+                continue;
+            });
+
+            switch (submit_file(file_data)) {
+                case SubmitFileResult::DeleteFile: {
+                    break;
+                }
+                case SubmitFileResult::LeaveFile: {
+                    auto _ = Rename(temp_full_path, full_path); // Put it back where we found it.
+                    break;
+                }
+                case SubmitFileResult::HideFile: {
+                    auto destination = full_path.Items();
+                    destination.RemoveSuffix(path::Extension(full_path).size);
+                    auto _ = Rename(temp_full_path, destination); // Put it back but without the extension.
+                    break;
+                }
+            }
+        }
+    }
+
+    return k_success;
 }
 
 } // namespace detail
@@ -339,20 +441,8 @@ struct AddEventOptions {
 // checking for Windows filepaths.
 static bool ShouldSendFilepath(String path) {
     if (path.size == 0) return false;
-
-    if (path::IsAbsolute(path)) {
-        // We allow paths from Zig's global cache. These are paths from the build machine and are therefore
-        // safe. They will contain information about our external dependencies.
-        String const zig_cache_path = FLOE_GLOBAL_ZIG_CACHE_PATH;
-        if (path.size > zig_cache_path.size && StartsWithSpan(path, zig_cache_path) &&
-            path::IsDirectorySeparator(path[zig_cache_path.size]))
-            return true;
-
-        return false;
-    }
-
-    // Relative paths are ok.
-    return true;
+    if (path::IsAbsolute(path)) return false;
+    return true; // Relative paths are ok.
 }
 
 // thread-safe (for Sentry), signal-safe if signal_safe is true
@@ -409,7 +499,7 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
     for (auto const tags : Array {
              event.tags,
              options.diagnostics ? sentry.tags : Span<Tag> {},
-             app_type_arr,
+             options.diagnostics ? Span<Tag const> {app_type_arr} : Span<Tag const> {},
          }) {
         for (auto const& tag : tags) {
             if (!tag.key.size) continue;
@@ -430,9 +520,43 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
         TRY(json::WriteObjectEnd(json_writer));
     }
 
+    // exception
+    if (event.exception) {
+        TRY(json::WriteKeyObjectBegin(json_writer, "exception"));
+        TRY(json::WriteKeyArrayBegin(json_writer, "values"));
+        TRY(json::WriteObjectBegin(json_writer));
+        TRY(json::WriteKeyValue(json_writer, "type", event.exception->type));
+        TRY(json::WriteKeyValue(json_writer, "value", event.exception->value));
+        if (event.thread) TRY(json::WriteKeyValue(json_writer, "thread_id", event.thread->id));
+        TRY(json::WriteObjectEnd(json_writer));
+        TRY(json::WriteArrayEnd(json_writer));
+        TRY(json::WriteObjectEnd(json_writer));
+    }
+
     auto fingerprint = HashInit();
 
-    // stacktrace
+    if (event.thread) {
+        auto const& thread = *event.thread;
+        TRY(json::WriteKeyObjectBegin(json_writer, "threads"));
+        TRY(json::WriteKeyArrayBegin(json_writer, "values"));
+
+        // NOTE: Sentry doesn't show the thread ID on their web UI if there's only one thread in this object.
+        // So we add a fake thread.
+        TRY(json::WriteObjectBegin(json_writer));
+        TRY(json::WriteKeyValue(json_writer, "id", 999999));
+        TRY(json::WriteKeyValue(json_writer, "name", "fake"));
+        TRY(json::WriteKeyObjectBegin(json_writer, "stacktrace"));
+        TRY(json::WriteObjectEnd(json_writer));
+        TRY(json::WriteObjectEnd(json_writer));
+
+        TRY(json::WriteObjectBegin(json_writer));
+        TRY(json::WriteKeyValue(json_writer, "id", thread.id));
+        TRY(json::WriteKeyValue(json_writer, "current", true));
+        if (thread.name) TRY(json::WriteKeyValue(json_writer, "name", *thread.name));
+        if (thread.is_main) TRY(json::WriteKeyValue(json_writer, "main", *thread.is_main));
+        if (event.exception) TRY(json::WriteKeyValue(json_writer, "crashed", true));
+    }
+    // Stacktrace. this lives inside the thread object where possible, but it can also be top-level.
     if (event.stacktrace && event.stacktrace->size) {
         TRY(json::WriteKeyObjectBegin(json_writer, "stacktrace"));
         TRY(json::WriteKeyArrayBegin(json_writer, "frames"));
@@ -445,11 +569,23 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
 
                     if (ShouldSendFilepath(frame.filename)) {
                         TRY(json::WriteKeyValue(json_writer, "filename", frame.filename));
-                        TRY(json::WriteKeyValue(json_writer, "in_app", true));
-                        TRY(json::WriteKeyValue(json_writer, "lineno", frame.line));
+                        TRY(json::WriteKeyValue(json_writer, "in_app", frame.in_self_module));
 
-                        HashUpdate(fingerprint, frame.filename);
-                        HashUpdate(fingerprint, frame.line);
+                        if (frame.line > 0) {
+                            TRY(json::WriteKeyValue(json_writer, "lineno", frame.line));
+                            if (frame.in_self_module) HashUpdate(fingerprint, frame.line);
+                        }
+
+                        if (frame.column > 0) {
+                            TRY(json::WriteKeyValue(json_writer, "colno", frame.column));
+                            if (frame.in_self_module) HashUpdate(fingerprint, frame.column);
+                        }
+
+                        TRY(json::WriteKeyValue(json_writer,
+                                                "instruction_addr",
+                                                fmt::FormatInline<32>("0x{x}", frame.address)));
+
+                        if (frame.in_self_module) HashUpdate(fingerprint, frame.filename);
 
                         if (frame.function_name.size)
                             TRY(json::WriteKeyValue(json_writer, "function", frame.function_name));
@@ -468,6 +604,11 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
                 .demangle = !options.signal_safe,
             });
         TRY(stacktrace_error);
+        TRY(json::WriteArrayEnd(json_writer));
+        TRY(json::WriteObjectEnd(json_writer));
+    }
+    if (event.thread) {
+        TRY(json::WriteObjectEnd(json_writer));
         TRY(json::WriteArrayEnd(json_writer));
         TRY(json::WriteObjectEnd(json_writer));
     }
@@ -671,6 +812,8 @@ PUBLIC ErrorCodeOr<fmt::UuidArray> SubmitEnvelope(Sentry& sentry,
 // thread-safe, signal-safe on Unix
 PUBLIC ErrorCodeOr<void> WriteCrashToFile(Sentry& sentry,
                                           Optional<StacktraceStack> const& stacktrace,
+                                          Optional<ErrorEvent::Thread> thread,
+                                          Optional<ErrorEvent::Exception> exception,
                                           String folder,
                                           String message,
                                           Allocator& scratch_allocator) {
@@ -685,6 +828,8 @@ PUBLIC ErrorCodeOr<void> WriteCrashToFile(Sentry& sentry,
                              .level = ErrorEvent::Level::Fatal,
                              .message = message,
                              .stacktrace = stacktrace,
+                             .thread = thread,
+                             .exception = exception,
                          },
                          {
                              .signal_safe = !IS_WINDOWS,
@@ -698,6 +843,8 @@ PUBLIC ErrorCodeOr<void> WriteCrashToFile(Sentry& sentry,
 // thread-safe, not signal-safe
 PUBLIC ErrorCodeOr<void> SubmitCrash(Sentry& sentry,
                                      Optional<StacktraceStack> const& stacktrace,
+                                     Optional<ErrorEvent::Thread> thread,
+                                     Optional<ErrorEvent::Exception> exception,
                                      String message,
                                      ArenaAllocator& scratch_arena,
                                      SubmissionOptions options) {
@@ -710,6 +857,8 @@ PUBLIC ErrorCodeOr<void> SubmitCrash(Sentry& sentry,
                              .level = ErrorEvent::Level::Fatal,
                              .message = message,
                              .stacktrace = stacktrace,
+                             .thread = thread,
+                             .exception = exception,
                          },
                          {
                              .signal_safe = false,
@@ -747,75 +896,66 @@ PUBLIC ErrorCodeOr<void> WriteFeedbackToFile(Sentry& sentry, FeedbackEvent const
 }
 
 PUBLIC ErrorCodeOr<void>
+ConsumeAndSubmitDisasterFiles(Sentry& sentry, String folder, ArenaAllocator& scratch_arena) {
+    constexpr auto k_wildcard = ConcatArrays("*."_ca, k_floe_disaster_file_extension);
+    return detail::ConsumeAndSubmitFiles(
+        sentry,
+        folder,
+        k_wildcard,
+        scratch_arena,
+        [&scratch_arena, &sentry](String file_data) -> detail::SubmitFileResult {
+            // We have a message to send to Sentry - the file_data.
+
+            DynamicArray<char> envelope {scratch_arena};
+            EnvelopeWriter writer = {.writer = dyn::WriterFor(envelope)};
+            TRY_OR(EnvelopeAddEvent(sentry,
+                                    writer,
+                                    {
+                                        .level = ErrorEvent::Level::Warning,
+                                        .message = file_data,
+                                        .exception =
+                                            ErrorEvent::Exception {
+                                                .type = "Disaster",
+                                                .value = file_data,
+                                            },
+                                    },
+                                    {
+                                        .signal_safe = false,
+                                        .diagnostics = false,
+                                    }),
+                   return detail::SubmitFileResult::LeaveFile);
+            DynamicArray<char> response {scratch_arena};
+            TRY_OR(SubmitEnvelope(sentry,
+                                  envelope,
+                                  &writer,
+                                  scratch_arena,
+                                  {
+                                      .write_to_file_if_needed = false,
+                                      .response = dyn::WriterFor(response),
+                                  }),
+                   {
+                       LogError(ModuleName::ErrorReporting,
+                                "Couldn't send disaster to Sentry: {}. {}",
+                                error,
+                                response);
+                       return detail::SubmitFileResult::LeaveFile;
+                   });
+            return detail::SubmitFileResult::DeleteFile;
+        });
+}
+
+PUBLIC ErrorCodeOr<void>
 ConsumeAndSubmitErrorFiles(Sentry& sentry, String folder, ArenaAllocator& scratch_arena) {
-    if constexpr (!k_online_reporting) return k_success;
-    if (sentry.online_reporting_disabled.Load(LoadMemoryOrder::Relaxed)) return k_success;
-    ASSERT(path::IsAbsolute(folder));
-    ASSERT(IsValidUtf8(folder));
-
-    constexpr auto k_wildcard = ConcatArrays("*."_ca, detail::k_report_file_extension);
-    auto const entries = TRY(FindEntriesInFolder(scratch_arena,
-                                                 folder,
-                                                 {
-                                                     .options {
-                                                         .wildcard = k_wildcard,
-                                                     },
-                                                     .recursive = false,
-                                                     .only_file_type = FileType::File,
-                                                 }));
-
-    if (entries.size) {
-        auto const temp_dir = TRY(TemporaryDirectoryOnSameFilesystemAs(folder, scratch_arena));
-        DEFER { auto _ = Delete(temp_dir, {.type = DeleteOptions::Type::DirectoryRecursively}); };
-
-        DynamicArray<char> full_path {scratch_arena};
-        dyn::Assign(full_path, folder);
-        dyn::Append(full_path, path::k_dir_separator);
-        auto const full_path_len = full_path.size;
-        full_path.Reserve(full_path.size + 40);
-
-        DynamicArray<char> temp_full_path {scratch_arena};
-        dyn::Assign(temp_full_path, temp_dir);
-        dyn::Append(temp_full_path, path::k_dir_separator);
-        auto const temp_full_path_len = temp_full_path.size;
-        temp_full_path.Reserve(temp_full_path.size + 40);
-
-        for (auto const entry : entries) {
-            // construct the full path
-            dyn::Resize(full_path, full_path_len);
-            dyn::AppendSpan(full_path, entry.subpath);
-
-            // construct the new temp path
-            dyn::Resize(temp_full_path, temp_full_path_len);
-            dyn::AppendSpan(temp_full_path, entry.subpath);
-
-            // Move the file into the temporary directory, this will be atomic so that other processes don't
-            // try and submit the same report file.
-            if (auto const o = Rename(full_path, temp_full_path); o.HasError()) {
-                if (o.Error() == FilesystemError::PathDoesNotExist) continue;
-                LogError(ModuleName::ErrorReporting, "Couldn't move report file: {}", o.Error());
-                continue;
-            }
-
-            // We now have exclusive access to the file, read it and try sending it to Sentry. If we fail, put
-            // the file back where we found it, it can be tried again later.
-            bool success = false;
-            DEFER {
-                if (!success) auto _ = Rename(temp_full_path, full_path);
-            };
-
-            auto envelope_without_header = TRY_OR(ReadEntireFile(temp_full_path, scratch_arena), {
-                LogError(ModuleName::ErrorReporting, "Couldn't read report file: {}", error);
-                continue;
-            });
-
+    return detail::ConsumeAndSubmitFiles(
+        sentry,
+        folder,
+        ConcatArrays("*."_ca, detail::k_report_file_extension),
+        scratch_arena,
+        [&scratch_arena, &sentry](String envelope_without_header) -> detail::SubmitFileResult {
             // Remove the envelope header, SendSentryEnvelope will add another one with correct sent_at.
             // This is done by removing everything up to and including the first newline.
             auto const newline = Find(envelope_without_header, '\n');
-            if (!newline) {
-                success = true; // file is invalid, ignore it
-                continue;
-            }
+            if (!newline) return detail::SubmitFileResult::DeleteFile; // File is invalid, delete it.
             envelope_without_header.RemovePrefix(*newline + 1);
 
             DynamicArray<char> response {scratch_arena};
@@ -837,22 +977,22 @@ ConsumeAndSubmitErrorFiles(Sentry& sentry, String folder, ArenaAllocator& scratc
                                 "Couldn't send report to Sentry: {}. {}",
                                 error,
                                 response);
+
                        if (error == WebError::Non200Response) {
-                           // There's something wrong with the envelope, we shall keep it but with a new name
-                           // so we don't try to send it again.
-                           auto destination = full_path.Items();
-                           destination.RemoveSuffix(path::Extension(full_path).size);
-                           auto _ = Rename(temp_full_path, destination);
-                           success = true;
+                           // There's something wrong with the envelope. We shall keep it, but hidden from
+                           // this function finding it again. This leaves us with the option for users to
+                           // submit these files manually for debugging.
+                           return detail::SubmitFileResult::HideFile;
                        }
-                       continue;
+
+                       // We failed for a probably transient reason. Keep the file around for next time this
+                       // function runs.
+                       return detail::SubmitFileResult::LeaveFile;
                    });
 
-            success = true;
-        }
-    }
-
-    return k_success;
+            // We successfully sent the envelope. We can delete the file.
+            return detail::SubmitFileResult::DeleteFile;
+        });
 }
 
 } // namespace sentry

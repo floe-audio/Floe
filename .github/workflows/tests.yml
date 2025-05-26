@@ -37,7 +37,7 @@ jobs:
           cache-directories: |
             .floe-cache
 
-      - run: just build mac_ub
+      - run: just build native
       - run: just install-docs-preprocessor
       - run: |
           just install-au 0
@@ -124,7 +124,10 @@ jobs:
         run: just build windows
 
       - if: '!cancelled()'
-        run: just build mac_ub
+        run: just build mac_arm
+
+      - if: '!cancelled()'
+        run: just build mac_x86
 
       - if: '!cancelled()'
         run: just install-docs-preprocessor

@@ -156,7 +156,7 @@ struct DirectXDrawContext : public DrawContext {
             for (u16 y = 0; y < size.height; y++) {
                 memcpy((unsigned char*)locked_rect.pBits + locked_rect.Pitch * y,
                        data + (size.width * bytes_per_pixel) * y,
-                       (size.width * bytes_per_pixel));
+                       size.width * bytes_per_pixel);
             }
         } else if (bytes_per_pixel == 3) {
             for (u16 y = 0; y < size.height; y++) {
@@ -212,7 +212,7 @@ struct DirectXDrawContext : public DrawContext {
         for (u16 y = 0; y < height; y++) {
             memcpy((unsigned char*)tex_locked_rect.pBits + tex_locked_rect.Pitch * y,
                    pixels + (width * bytes_per_pixel) * y,
-                   ((u16)width * (u16)bytes_per_pixel));
+                   (u16)width * (u16)bytes_per_pixel);
         }
         auto r = font_texture->UnlockRect(0);
         ASSERT_EQ(r, D3D_OK);

@@ -48,10 +48,10 @@ static void DrawKeyboardIcon(Gui* g, Style const& style, Rect r, imgui::Id id, b
     auto const black_height = LiveSize(im, UiSizeId::KeyboardIconBlackHeight) / 100.0f * r.w;
     auto const gap = Max(1.0f, LiveSize(im, UiSizeId::KeyboardIconGap) / 100.0f * r.w);
 
-    auto const total_width = white_width * 3 + gap * 2;
+    auto const total_width = (white_width * 3) + (gap * 2);
     auto const total_height = white_height;
 
-    f32x2 const start_pos {r.CentreX() - total_width / 2, r.CentreY() - total_height / 2};
+    f32x2 const start_pos {r.CentreX() - (total_width / 2), r.CentreY() - (total_height / 2)};
 
     auto col = GetCol(g, style, style.main_cols, id, state);
 

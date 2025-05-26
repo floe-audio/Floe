@@ -464,7 +464,6 @@ struct Iterator {
         ASSERT(path::IsAbsolute(path));
         ASSERT(options.wildcard.size);
         ASSERT(IsValidUtf8(options.wildcard));
-        ASSERT(!path::EndsWithDirectorySeparator(path));
         Iterator result {
             .options = options.Clone(arena, CloneType::Deep),
             .base_path = arena.Clone(path),

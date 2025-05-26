@@ -4,21 +4,27 @@
 {
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
+    nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils = {
       url = "github:numtide/flake-utils";
     };
+    zig.url = "github:mitchellh/zig-overlay";
   };
 
   outputs =
     {
       self,
       nixpkgs,
+      nixpkgs-unstable,
       flake-utils,
+      zig,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = import nixpkgs { inherit system; };
+        pkgs-unstable = import nixpkgs-unstable { inherit system; };
+        zigpkgs = zig.packages.${system};
 
         nativeBinSubdir = "zig-out/${builtins.replaceStrings [ "darwin" ] [ "macos" ] system}";
 
@@ -147,8 +153,8 @@
               clang-build-analyzer
               pkgs.zip
               pkgs.unzip
-              pkgs.llvmPackages_18.bintools-unwrapped # llvm-lipo, llvm-addr2line, dsymutil
-              pkgs.llvmPackages_18.clang-unwrapped # clangd, clang-tidy, clang-format
+              pkgs.llvmPackages_19.bintools-unwrapped # llvm-lipo, llvm-addr2line, dsymutil
+              pkgs.llvmPackages_19.clang-unwrapped # clangd, clang-tidy, clang-format
               pkgs.cppcheck
               pkgs.codespell
               pkgs.parallel
@@ -165,8 +171,8 @@
               pkgs.hunspell
               pkgs.hunspellDicts.en_GB-ise
               pkgs.lychee # link checker
-              pkgs.zig
-              pkgs.zls
+              zigpkgs."0.14.0"
+              pkgs-unstable.zls
               pkgs.sentry-cli
 
               # dsymutil internally calls "lipo", so we have to make sure it's available under that name

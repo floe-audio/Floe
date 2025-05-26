@@ -45,7 +45,7 @@ void GUIDoEnvelope(Gui* g,
     auto const padded_y = handle_size / 2;
     auto const padded_height = imgui.Height() - handle_size;
     auto const padded_width = imgui.Width() - handle_size;
-    auto const padded_bottom = imgui.Height() - handle_size / 2;
+    auto const padded_bottom = imgui.Height() - (handle_size / 2);
 
     auto const attack_imgui_id = imgui.GetID("attack");
     auto const dec_sus_imgui_id = imgui.GetID("dec-sus");
@@ -72,7 +72,7 @@ void GUIDoEnvelope(Gui* g,
 
         auto const get_x_coord_at_percent = [&](f32 percent) {
             auto const min_x = padded_x;
-            auto const max_x = min_x + max_attack_percent * padded_width;
+            auto const max_x = min_x + (max_attack_percent * padded_width);
             return MapFrom01(percent, min_x, max_x);
         };
 
@@ -124,7 +124,7 @@ void GUIDoEnvelope(Gui* g,
 
         auto const get_x_coord_at_percent = [&](f32 percent) {
             auto const min_x = attack_point.x;
-            auto const max_x = min_x + max_decay_percent * padded_width;
+            auto const max_x = min_x + (max_decay_percent * padded_width);
             return MapFrom01(percent, min_x, max_x);
         };
 
@@ -136,14 +136,14 @@ void GUIDoEnvelope(Gui* g,
 
         decay_point = {get_x_coord_at_percent(decay_norm_value),
                        get_y_coord_at_percent(1 - sustain_norm_value)};
-        sustain_point = {padded_x + sustain_point_percent * padded_width, decay_point.y};
+        sustain_point = {padded_x + (sustain_point_percent * padded_width), decay_point.y};
 
         decay_x_range.min = get_x_coord_at_percent(0);
         decay_x_range.max = get_x_coord_at_percent(1);
 
-        auto const grabber_y = decay_point.y - handle_size / 2;
+        auto const grabber_y = decay_point.y - (handle_size / 2);
 
-        f32x2 const grabber_min {Min(decay_point.x - handle_size / 2, attack_point.x + handle_size / 2),
+        f32x2 const grabber_min {Min(decay_point.x - (handle_size / 2), attack_point.x + (handle_size / 2)),
                                  grabber_y};
         f32x2 const grabber_max {sustain_point.x, imgui.Height()};
         auto grabber = Rect::FromMinMax(grabber_min, grabber_max);
@@ -208,7 +208,7 @@ void GUIDoEnvelope(Gui* g,
 
         auto const get_x_coord_at_percent = [&](f32 percent) {
             auto const min_x = sustain_point.x;
-            auto const max_x = min_x + max_release_percent * padded_width;
+            auto const max_x = min_x + (max_release_percent * padded_width);
             return MapFrom01(percent, min_x, max_x);
         };
 
@@ -217,8 +217,10 @@ void GUIDoEnvelope(Gui* g,
         release_x_range.min = get_x_coord_at_percent(0);
         release_x_range.max = get_x_coord_at_percent(1);
 
-        Rect grabber {
-            .xywh {sustain_point.x, 0, max_release_percent * padded_width + handle_size / 2, imgui.Height()}};
+        Rect grabber {.xywh {sustain_point.x,
+                             0,
+                             (max_release_percent * padded_width) + (handle_size / 2),
+                             imgui.Height()}};
         auto const grabber_unregistered = grabber;
 
         MidiLearnMenu(g, release_param_id, grabber_unregistered);
@@ -397,7 +399,7 @@ void GUIDoEnvelope(Gui* g,
         };
 
         auto const cut = imgui.Width() / 3;
-        Rect const edit_r {.xywh {cut, 0, imgui.Width() - cut * 2, imgui.Height()}};
+        Rect const edit_r {.xywh {cut, 0, imgui.Width() - (cut * 2), imgui.Height()}};
         HandleShowingTextEditorForParams(g, edit_r, params);
     }
 }

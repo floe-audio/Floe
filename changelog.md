@@ -8,13 +8,67 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 0.9.9-beta
+- Sample library creation: add start_offset_frames to add_region
+- Sample library creation: add tune_cents to add_region
+- Normalise waveform GUI so that quiet samples are easier to see
+- Fix rare crash related to sample library folder scanning
+
+## 0.9.8-beta
+- Fix rare error on Windows when closing the GUI when there's a file picker open
+- Fix rare errors in some VST3 hosts
+- Fix rare crash related to sample library folder scanning
+
+## 0.9.7-beta
+- Fix rare crash related to closing the GUI on Floe AU
+- Fix rare crash related to library images
+- Fix rare crash related to voice stealing
+- Fix edge cases related to file paths on Windows
+
+## 0.9.6-beta
+- Check for updates on startup; a small indicator on the Info button will appear - leading to more information on the Info panel. Can be disabled in the preferences.
+- Fix file picker on Windows not opened when there's missing folders
+- Fix rare crash in Floe AU in Ableton Live
+
+## 0.9.5-beta
+- Fix potential crash in Floe AU format
+- Fix errors related to filesystem watching on Windows
+- Fix error related to sample library folders - could happen when installing a package
+
+## 0.9.4-beta
+- Offer separate downloads for Intel and Apple Silicon Macs rather than a universal binary, this reduces the size of the download to ~50 MB.
+- Fix missing diagnostic information on macOS
+
+## 0.9.3-beta
+- Fix more errors with threads
+- Fix memory leaks
+- Fix some edge cases with certain hosts
+- Improve automatic error reporting allowing us to fix bugs faster
+- Protect against hosts that try to use multiple main threads
+
+## 0.9.2-beta
+- Slightly improve performance of Intel Mac builds
+- Fix crash with Intel Mac builds
+- Fix errors with threads
+
+## 0.9.1-beta
+- AU: fix crash when trying to open the file/folder picker
+- Fix missing logo on macOS
 
 ## 0.9.0-beta
 - Library creation: fix specifying loop end points relative to the end of the file.
-- Library creation: *breaking change*: replace always_loop, never_loop field with enum `loop_requirement`.
+- Library creation: replace always_loop, never_loop field with enum `loop_requirement`.
 - Library creation: add round_robin_sequencing_group field to allow for different sets of variations.
 - Library creation: separate note-off round-robin sequencing group from note-on round-robin sequencing group.
 - Library creation: disable volume envelope for note-off regions
+- Library creation: improve memory usage when reading Lua scripts
+- Library creation: fix crash when an image file is empty
+- VST3: fix not responding to note-on/note-off messages when they weren't on channel 0
+- GUI: on the Save Preset dialog, add the ability to store/load a preset author
+- GUI: make the Save Preset dialog larger and scroll to top when a new preset is loaded
+- Fix potential crash when reporting an error
+- Rename parameter right-click menu Set Value to Enter Value
+- Support CLAP reset() function
 
 ## 0.8.3-beta
 - Fix crash when error occurs in the Windows native file picker

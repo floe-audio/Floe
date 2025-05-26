@@ -219,7 +219,7 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
                                              "[Download {}]({}) ({} MB)",
                                              asset.name,
                                              asset.url,
-                                             asset.size / 1024 / 1024),
+                                             Max(1uz, asset.size / 1024 / 1024)),
                                  scratch);
             }
         }
@@ -374,6 +374,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
 }
 
 int main(int argc, char** argv) {
+    auto _ = EnterLogicalMainThread();
     GlobalInit({.init_error_reporting = false, .set_main_thread = true});
     DEFER { GlobalDeinit({.shutdown_error_reporting = false}); };
     auto result = Main({argc, argv});
