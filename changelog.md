@@ -8,10 +8,11 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
-## 0.10.0-beta
+## 0.9.9-beta
 - Sample library creation: add start_offset_frames to add_region
 - Sample library creation: add tune_cents to add_region
 - Normalise waveform GUI so that quiet samples are easier to see
+- Fix rare crash related to sample library folder scanning
 
 ## 0.9.8-beta
 - Fix rare error on Windows when closing the GUI when there's a file picker open
