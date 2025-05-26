@@ -149,7 +149,6 @@ static void DoScanFolderJob(PendingLibraryJobs::Job::ScanFolder& job,
                             LibrariesList& lib_list) {
     auto folder = job.args.folder;
     ASSERT(folder);
-    ASSERT(folder->state.Load(LoadMemoryOrder::Acquire) == ScanFolder::State::Scanning);
 
     auto const& path = folder->path;
     ZoneScoped;
