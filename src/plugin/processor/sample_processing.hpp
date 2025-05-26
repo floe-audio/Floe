@@ -389,6 +389,14 @@ PUBLIC Span<u8> CreateWaveformImage(WaveformAudioSource source,
                                     UiSize size,
                                     Allocator& a,
                                     ArenaAllocator& scratch_allocator) {
+    f32x2 normalise_scale = 1.0f;
+    if (source.tag == WaveformAudioSourceType::AudioData) {
+        auto const& audio_data = *source.Get<AudioData const*>();
+        f32 max_amp = 0;
+        for (auto const& sample : audio_data.interleaved_samples)
+            max_amp = Max(max_amp, Abs(sample));
+        if (max_amp > 0) normalise_scale = 1.0f / max_amp;
+    }
 
     auto const px_size = (s32)(size.width * size.height * 4);
     auto px = a.AllocateExactSizeUninitialised<u8>((usize)px_size);
@@ -443,6 +451,7 @@ PUBLIC Span<u8> CreateWaveformImage(WaveformAudioSource source,
                     }
 
                     levels /= (f32)Max(1, num_sampled);
+                    levels *= normalise_scale;
 
                     if (x == 0) {
                         // hard-set the history so that the filter doesn't have to ramp up and therefore

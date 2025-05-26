@@ -8,6 +8,9 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 0.10.0-beta
+- Normalise waveform GUI so that quiet samples are easier to see
+
 ## 0.9.8-beta
 - Fix rare error on Windows when closing the GUI when there's a file picker open
 - Fix rare errors in some VST3 hosts
