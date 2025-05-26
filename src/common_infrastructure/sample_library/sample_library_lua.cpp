@@ -409,6 +409,7 @@ struct TableFields<Region::AudioProperties> {
 
     enum class Field : u32 {
         GainDb,
+        StartOffsetFrames,
         TuneCents,
         Count,
     };
@@ -424,6 +425,22 @@ struct TableFields<Region::AudioProperties> {
                     .required = false,
                     .set =
                         [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.gain_db = (f32)luaL_checknumber(ctx.lua, -1); },
+                };
+            case Field::StartOffsetFrames:
+                return {
+                    .name = "start_offset_frames",
+                    .description_sentence = "The number of frames to skip at the start of the audio data.",
+                    .example = "0",
+                    .default_value = "0",
+                    .lua_type = LUA_TNUMBER,
+                    .required = false,
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            auto const val = luaL_checkinteger(ctx.lua, -1);
+                            if (val < 0)
+                                luaL_error(ctx.lua, "'%s' should be a positive integer", info.name.data);
+                            FIELD_OBJ.start_offset_frames = (u32)val;
+                        },
                 };
             case Field::TuneCents:
                 return {

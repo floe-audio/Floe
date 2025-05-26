@@ -377,7 +377,8 @@ void StartVoice(VoicePool& pool,
                     s.pitch_ratio_smoother_id,
                     CalculatePitchRatio(RootKey(voice, s), &s, params.initial_pitch, sample_rate));
                 auto const offs =
-                    (f64)(sampler.initial_sample_offset_01 * ((f32)s.sampler.data->num_frames - 1));
+                    (f64)(sampler.initial_sample_offset_01 * ((f32)s.sampler.data->num_frames - 1)) +
+                    s_params.region.audio_props.start_offset_frames;
                 s.pos = offs;
                 if (voice.controller->reverse) s.pos = (f64)(s.sampler.data->num_frames - Max(offs, 1.0));
             }
