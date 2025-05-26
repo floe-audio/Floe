@@ -308,7 +308,35 @@ ErrorCodeOr<void> ScanFolder(PresetServer& server,
         auto const preset_format = PresetFormatFromPath(entry.subpath);
 
         auto reader = Reader::FromMemory(file_data);
-        auto const snapshot = TRY_OR(LoadPresetFile(preset_format, reader, scratch_arena, true), continue);
+        auto const snapshot = TRY_OR(LoadPresetFile(preset_format, reader, scratch_arena, false), continue);
+
+        if (preset_format == PresetFormat::Mirage) {
+            auto new_snapshot = snapshot;
+
+            // Swap from the Mirage author to the Floe author
+            for (auto& id : new_snapshot.inst_ids) {
+                if (auto sampled_inst_id = id.TryGet<sample_lib::InstrumentId>()) {
+                    if (sampled_inst_id->library.author == sample_lib::k_mdata_library_author)
+                        sampled_inst_id->library.author = "FrozenPlain"_s;
+                }
+            }
+            if (new_snapshot.ir_id) {
+                if (new_snapshot.ir_id->library.author == sample_lib::k_mdata_library_author)
+                    new_snapshot.ir_id->library.author = "FrozenPlain"_s;
+            }
+
+            auto const out_path = path::Join(scratch_arena,
+                                             Array {"/home/sam/Projects/mdata-to-floe/presets"_s,
+                                                    subfolder_of_scan_folder,
+                                                    entry.subpath});
+            ASSERT(CreateDirectory(*path::Directory(out_path),
+                                   {
+                                       .create_intermediate_directories = true,
+                                       .fail_if_exists = false,
+                                   })
+                       .Succeeded());
+            ASSERT(SavePresetFile(out_path, new_snapshot).Succeeded());
+        }
 
         if (!preset_folder) {
             preset_folder = server.folder_pool.PrependUninitialised();

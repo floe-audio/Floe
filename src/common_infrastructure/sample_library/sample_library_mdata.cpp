@@ -385,7 +385,7 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
                                            mdata::SampleLoopingModeAlwaysLoopWholeRegion)
                                     l = BuiltinLoop {
                                         .start_frame = 0,
-                                        .end_frame = file_info.num_frames,
+                                        .end_frame = -1,
                                         .crossfade_frames = 0,
                                         .mode = LoopMode::Standard,
                                         .lock_loop_points = true,
