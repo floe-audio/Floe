@@ -914,7 +914,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                     for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
                         if (v.midi_key_trigger.channel == channel) {
                             SetVoicePitch(v,
-                                          v.controller->tune + (pitch_pos * k_pitch_bend_semitones),
+                                          v.controller->tune_semitones + (pitch_pos * k_pitch_bend_semitones),
                                           processor.audio_processing_context.sample_rate);
                         }
                     }

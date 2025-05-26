@@ -409,6 +409,7 @@ struct TableFields<Region::AudioProperties> {
 
     enum class Field : u32 {
         GainDb,
+        TuneCents,
         Count,
     };
     static constexpr FieldInfo FieldInfo(Field f) {
@@ -423,6 +424,19 @@ struct TableFields<Region::AudioProperties> {
                     .required = false,
                     .set =
                         [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.gain_db = (f32)luaL_checknumber(ctx.lua, -1); },
+                };
+            case Field::TuneCents:
+                return {
+                    .name = "tune_cents",
+                    .description_sentence = "Tune the audio data in cents.",
+                    .example = "0",
+                    .default_value = "0",
+                    .lua_type = LUA_TNUMBER,
+                    .required = false,
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            FIELD_OBJ.tune_cents = (f32)luaL_checknumber(ctx.lua, -1);
+                        },
                 };
             case Field::Count: break;
         }

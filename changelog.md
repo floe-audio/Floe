@@ -9,6 +9,8 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 0.10.0-beta
+- Sample library creation: add start_offset_frames to add_region
+- Sample library creation: add tune_cents to add_region
 - Normalise waveform GUI so that quiet samples are easier to see
 
 ## 0.9.8-beta
