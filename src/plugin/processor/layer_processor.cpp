@@ -184,9 +184,9 @@ void OnParamChange(LayerProcessor& layer,
         }
         if (set_tune) {
             auto const tune = layer.tune_semitone + (layer.tune_cents / 100.0f);
-            layer.voice_controller.tune = tune;
+            layer.voice_controller.tune_semitones = tune;
             for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
-                SetVoicePitch(v, vmst.tune, sample_rate);
+                SetVoicePitch(v, vmst.tune_semitones, sample_rate);
         }
     }
 
@@ -492,7 +492,7 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
     }
 
     p.disable_vol_env = trigger_event == sample_lib::TriggerEvent::NoteOff;
-    p.initial_pitch = layer.voice_controller.tune;
+    p.initial_pitch = layer.voice_controller.tune_semitones;
     p.midi_key_trigger = note;
     p.note_num = (u7)Clamp(note.note + layer.midi_transpose, 0, 127);
     p.note_vel = note_vel_float;

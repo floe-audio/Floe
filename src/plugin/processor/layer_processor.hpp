@@ -131,7 +131,7 @@ struct VoiceProcessingController {
     };
     Loop loop {};
 
-    f32 tune = 1;
+    f32 tune_semitones = 1;
     FloeSmoothedValueSystem::FloatId const pan_pos_smoother_id; // -1 to 1
 
     f32 sv_filter_cutoff_linear = 0;

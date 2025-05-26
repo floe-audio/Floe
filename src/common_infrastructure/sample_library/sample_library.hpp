@@ -88,6 +88,8 @@ struct Region {
 
     struct AudioProperties {
         f32 gain_db {0};
+        f32 tune_cents {0};
+        u32 start_offset_frames {};
 
         // IMPROVE: add pan
         // IMPROVE: add tune

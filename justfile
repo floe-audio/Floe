@@ -44,10 +44,9 @@ default:
 
 alias pre-debug := default
 
-build target_os='native' mode='development':
+build *args:
   zig build compile \
-      -Dtargets={{target_os}} \
-      -Dbuild-mode={{mode}} \
+      {{args}} \
       -Dexternal-resources="{{external_resources}}" \
       --global-cache-dir {{zig_global_cache_dir}}
   just patch-rpath

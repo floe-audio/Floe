@@ -104,7 +104,7 @@ void SetFilterRes(Voice& v, f32 res) {
 
 static f64 MidiNoteToFrequency(f64 note) { return 440.0 * Exp2((note - 69.0) / 12.0); }
 
-inline f64 CalculatePitchRatio(int note, VoiceSample const* s, f32 pitch, f32 sample_rate) {
+inline f64 CalculatePitchRatio(int note, VoiceSample const* s, f32 pitch_semitones, f32 sample_rate) {
     switch (s->generator) {
         case InstrumentType::None: {
             PanicIfReached();
@@ -114,13 +114,16 @@ inline f64 CalculatePitchRatio(int note, VoiceSample const* s, f32 pitch, f32 sa
             auto const& sampler = s->sampler;
             auto const source_root_note = sampler.region->root_key;
             auto const source_sample_rate = (f64)sampler.data->sample_rate;
-            auto const pitch_delta = (((f64)note + (f64)pitch) - source_root_note) / 12.0;
+            auto const pitch_delta =
+                (((f64)note + (f64)pitch_semitones + ((f64)sampler.region->audio_props.tune_cents / 100.0)) -
+                 source_root_note) /
+                12.0;
             auto const exp = Exp2(pitch_delta);
             auto const result = exp * source_sample_rate / (f64)sample_rate;
             return result;
         }
         case InstrumentType::WaveformSynth: {
-            auto const freq = MidiNoteToFrequency((f64)note + (f64)pitch);
+            auto const freq = MidiNoteToFrequency((f64)note + (f64)pitch_semitones);
             auto const result = freq / (f64)sample_rate;
             return result;
         }
@@ -144,12 +147,12 @@ static int RootKey(Voice const& v, VoiceSample const& s) {
     return k;
 }
 
-void SetVoicePitch(Voice& v, f32 pitch, f32 sample_rate) {
+void SetVoicePitch(Voice& v, f32 pitch_semitones, f32 sample_rate) {
     for (auto& s : v.voice_samples) {
         if (!s.is_active) continue;
 
         v.smoothing_system.Set(s.pitch_ratio_smoother_id,
-                               CalculatePitchRatio(RootKey(v, s), &s, pitch, sample_rate),
+                               CalculatePitchRatio(RootKey(v, s), &s, pitch_semitones, sample_rate),
                                10);
     }
 }
@@ -374,7 +377,8 @@ void StartVoice(VoicePool& pool,
                     s.pitch_ratio_smoother_id,
                     CalculatePitchRatio(RootKey(voice, s), &s, params.initial_pitch, sample_rate));
                 auto const offs =
-                    (f64)(sampler.initial_sample_offset_01 * ((f32)s.sampler.data->num_frames - 1));
+                    (f64)(sampler.initial_sample_offset_01 * ((f32)s.sampler.data->num_frames - 1)) +
+                    s_params.region.audio_props.start_offset_frames;
                 s.pos = offs;
                 if (voice.controller->reverse) s.pos = (f64)(s.sampler.data->num_frames - Max(offs, 1.0));
             }

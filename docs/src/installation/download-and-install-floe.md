@@ -67,5 +67,5 @@ Normally you'll want to use the installer, but there could be some cases where y
 
 Download links can also be found on the [Github releases page](https://github.com/floe-audio/Floe/releases/latest).
 
-[^mac-arm]: For computers with Apple Silicon chips; Apple's line of M processors (M1, M2, etc.); ARM64 architecture.
+[^mac-arm]: For computers with [Apple Silicon](https://support.apple.com/en-us/116943) chips; Apple's line of M processors (M1, M2, etc.); ARM64 architecture.
 [^mac-intel]: For computers with Intel chips; x86_64 architecture.
