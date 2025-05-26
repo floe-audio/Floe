@@ -1,0 +1,2130 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Floe</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="Floe is a free, open-source sample library engine. Available as an audio plugin for Windows and macOS.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/floe-theme.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "ayu" : "rust";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="home.html">Home</a></li><li class="chapter-item expanded "><div><strong aria-hidden="true">1.</strong> Installation</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="installation/requirements.html"><strong aria-hidden="true">1.1.</strong> Requirements</a></li><li class="chapter-item expanded "><a href="installation/download-and-install-floe.html"><strong aria-hidden="true">1.2.</strong> Download & Install Floe</a></li><li class="chapter-item expanded "><a href="installation/uninstalling.html"><strong aria-hidden="true">1.3.</strong> Uninstalling</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">2.</strong> Packages</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="packages/about-packages.html"><strong aria-hidden="true">2.1.</strong> Packages</a></li><li class="chapter-item expanded "><a href="packages/install-packages.html"><strong aria-hidden="true">2.2.</strong> Install Libraries & Presets</a></li><li class="chapter-item expanded "><a href="packages/available-packages.html"><strong aria-hidden="true">2.3.</strong> Available Libraries & Presets</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">3.</strong> Usage</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="usage/sample-libraries.html"><strong aria-hidden="true">3.1.</strong> Sample Libraries</a></li><li class="chapter-item expanded "><a href="usage/presets.html"><strong aria-hidden="true">3.2.</strong> Presets</a></li><li class="chapter-item expanded "><a href="usage/layers.html"><strong aria-hidden="true">3.3.</strong> Layers</a></li><li class="chapter-item expanded "><a href="usage/effects.html"><strong aria-hidden="true">3.4.</strong> Effects</a></li><li class="chapter-item expanded "><a href="usage/midi.html"><strong aria-hidden="true">3.5.</strong> MIDI</a></li><li class="chapter-item expanded "><a href="usage/looping.html"><strong aria-hidden="true">3.6.</strong> Looping</a></li><li class="chapter-item expanded "><a href="usage/parameters.html"><strong aria-hidden="true">3.7.</strong> Parameters</a></li><li class="chapter-item expanded "><a href="usage/autosave.html"><strong aria-hidden="true">3.8.</strong> Autosave</a></li><li class="chapter-item expanded "><a href="usage/attribution.html"><strong aria-hidden="true">3.9.</strong> Attribution</a></li><li class="chapter-item expanded "><a href="usage/error-reporting.html"><strong aria-hidden="true">3.10.</strong> Error Reporting</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">4.</strong> Library Development</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="develop/develop-libraries.html"><strong aria-hidden="true">4.1.</strong> Develop Libraries</a></li><li class="chapter-item expanded "><a href="develop/library-lua-scripts.html"><strong aria-hidden="true">4.2.</strong> Library Lua Scripts</a></li><li class="chapter-item expanded "><a href="develop/develop-preset-packs.html"><strong aria-hidden="true">4.3.</strong> Develop Preset Packs</a></li><li class="chapter-item expanded "><a href="develop/packaging.html"><strong aria-hidden="true">4.4.</strong> Packaging for Distribution</a></li><li class="chapter-item expanded "><a href="develop/tags-and-folders.html"><strong aria-hidden="true">4.5.</strong> Tags and Folders</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">5.</strong> About the Project</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="about-the-project/mirage.html"><strong aria-hidden="true">5.1.</strong> Previously known as Mirage</a></li><li class="chapter-item expanded "><a href="about-the-project/roadmap.html"><strong aria-hidden="true">5.2.</strong> Roadmap</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="changelog.html">Changelog</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Floe</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/floe-audio/Floe" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<div class="warning">
+Floe is currently in beta — please give it a try today.
+</div>
+<div style="padding-bottom: 30px;"></div>
+<p align="left">
+    <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/floe-audio/Floe-Logos/HEAD/horizontal_transparent.svg">
+        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/floe-audio/Floe-Logos/HEAD/horizontal_transparent_dark.svg">
+        <img alt="Floe" src="https://raw.githubusercontent.com/floe-audio/Floe-Logos/HEAD/horizontal_background.svg" width="350" height="auto" style="max-width: 100%;">
+    </picture>
+</p>
+<h1 style="font-size: 3.1rem">Streamlined sample-based instrument platform</h1>
+<p style="font-size: 2rem; margin-bottom: 4px;">Floe lets you find, perform and transform sounds from sample libraries — from realistic instruments to synthesised tones. Handmade with care, Floe is no-hassle, open-source and <strong>always free</strong>.</p>
+<div style="padding-bottom: 10px;"></div>
+<p style="text-align: center; margin-top: 40px;">
+<a href="https://floe.audio/installation/download-and-install-floe.html" style="
+  background-color: #555e85; 
+  border: none; 
+  border-radius: 4px; 
+  color: white; 
+  padding: 15px 32px; 
+  text-align: center; 
+  text-decoration: none; 
+  display: inline-block; 
+  font-size: 16px; 
+  font-weight: bold; 
+  margin: 4px 2px; 
+  cursor: pointer; 
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2); 
+  transition: all 0.3s ease;">Download Now</a>
+</p>
+<h2 id="find-the-right-sound-quickly"><a class="header" href="#find-the-right-sound-quickly">Find the right sound quickly</a></h2>
+<p>Floe’s intuitive browsing system works across all your <a href="./usage/sample-libraries.html">Floe sample libraries</a>, bringing together instruments and presets through categories, tags, and powerful search. The sound you need is always a few clicks away.</p>
+<p><img src="./images/inst-picker-gui.png" alt="Picker GUI" /></p>
+<h2 id="transform-sounds"><a class="header" href="#transform-sounds">Transform sounds</a></h2>
+<p>With three distinct layers, Floe lets you blend instruments across different libraries. Transform sounds with loop and crossfade controls that bridge the gap between multisampling and synthesis. Process your sounds further with a rack of 10 built-in effects.</p>
+<p><img src="./images/transform-sounds.png" alt="Transform sounds GUI" /></p>
+<h2 id="focus-on-making-music"><a class="header" href="#focus-on-making-music">Focus on making music</a></h2>
+<p>Available as a plugin for your DAW (CLAP, VST3, and AU) on Windows and macOS. No accounts, no subscriptions, no interruptions — just musical creation. Openness is at the core of Floe and its libraries.</p>
+<h2 id="expanding-library-selection"><a class="header" href="#expanding-library-selection">Expanding library selection</a></h2>
+<p>The list of <a href="./packages/available-packages.html">libraries available</a> for Floe is growing. And they’re installable in a few clicks. If you’re a developer, you can make your own libraries for Floe and request adding them to the list.</p>
+<p><img src="./images/expanding-libraries-list.png" alt="Libraries list GUI" /></p>
+<h2 id="handmade-software"><a class="header" href="#handmade-software">Handmade software</a></h2>
+<p>Handmade and detail-focused, Floe is a professional-grade tool available to everyone. It’s made by Sam Windell, who also runs a sample library development company: <a href="https://frozenplain.com">FrozenPlain</a>.</p>
+<p>Anyone can make libraries for Floe and contribute to the open source project. By consolidating our efforts into improving this engine, we improve the capabilities of all of its libraries for everyone.</p>
+<h2 id="built-on-a-solid-foundation"><a class="header" href="#built-on-a-solid-foundation">Built on a solid foundation</a></h2>
+<p>Built on the architecture of FrozenPlain’s Mirage, used in professional productions for years. Floe is the next evolution, designed with careful attention to reliability and performance. We’re committed to further expanding its capabilities while maintaining backwards compatibility.</p>
+<h2 id="about-this-website"><a class="header" href="#about-this-website">About this website</a></h2>
+<p>This website contains everything you need to know about Floe. It’s presented in a book-like format, with chapters in the sidebar.</p>
+<p>If you’re viewing this online, you might find the search feature useful: open it by clicking the <i class="fa fa-search"></i> magnifying glass icon at the top-left of the page. Additionally, there is a <i class="fa fa-print"></i> print icon at the top-right for either printing this book, or saving it to a PDF.</p>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="requirements"><a class="header" href="#requirements">Requirements</a></h1>
+<h3 id="windows"><a class="header" href="#windows"><i class="fa fa-windows"></i> Windows</a></h3>
+<p>On Windows, Floe is available in the CLAP and VST3 formats. We recommend using the CLAP version where possible. Requirements:</p>
+<ul>
+<li>Windows 10 or later</li>
+<li>64-bit computer</li>
+<li>x86-64 processor with SSE2 support (almost all processors in a Windows PC since ~2006 have this)</li>
+<li>64-bit CLAP or VST3 host</li>
+</ul>
+<h3 id="macos"><a class="header" href="#macos"><i class="fa fa-apple"></i> macOS</a></h3>
+<p>On macOS, Floe is available in the CLAP, VST3 and AU (v2) formats. We recommend using the CLAP version where possible. Requirements:</p>
+<ul>
+<li>macOS 11 (Big Sur) or later</li>
+<li>Apple Silicon or Intel</li>
+<li>CLAP, AU (v2) or VST3 host</li>
+</ul>
+<h3 id="plugin-hosts-daws"><a class="header" href="#plugin-hosts-daws">Plugin Hosts (DAWs)</a></h3>
+<p>Here are some examples of plugin hosts that can run Floe. There are many more than this.</p>
+<ul>
+<li><strong>CLAP</strong> hosts on Windows &amp; macOS: Reaper, Bitwig, FL Studio (2024 or newer) and Studio One Pro (v7 or newer).</li>
+<li><strong>VST3</strong> hosts on Windows &amp; macOS: Cubase, Ableton Live, Reason, and more.</li>
+<li><strong>AU</strong> hosts on macOS include: Logic Pro, GarageBand, and more.</li>
+</ul>
+<h3 id="not-supported"><a class="header" href="#not-supported">Not supported</a></h3>
+<p>Just for clarity: there’s no Linux, no ‘standalone’ application and no AAX (Pro Tools) support. We hope to expand Floe’s compatibility in the future.</p>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="download--install-floe"><a class="header" href="#download--install-floe">Download &amp; Install Floe</a></h1>
+<div class="warning">
+Floe is feature-complete, but we're still in the beta phase - there may be bugs.</br>
+See the <a href="https://github.com/floe-audio/Floe/issues?q=is%3Aissue%20state%3Aopen%20type%3ABug%20milestone%3Av1.0.0">bug tracker</a>.
+</div>
+<p>There’s two ways to install Floe: use the installer, or manually move files.</p>
+<p>Either way, Floe is backwards-compatible<sup class="footnote-reference"><a href="#pre-releases">1</a></sup>. This means that you can replace an old version of Floe with a new version and everything will work.</p>
+<p>Please check the <a href="installation/requirements.html">requirements</a> before downloading.</p>
+<p>Additional information:</p>
+<ul>
+<li>Floe is totally free, there’s no signup or account needed; just download and install.</li>
+<li>Sample libraries and presets are installed separately via <a href="installation/../packages/install-packages.html">packages</a>.</li>
+<li>The latest released version of Floe is v0.9.9-beta.</li>
+</ul>
+<div class="footnote-definition" id="pre-releases"><sup class="footnote-definition-label">1</sup>
+<p>Main releases are backwards compatible, but alpha and beta versions do not have this guarantee.</p>
+</div>
+<h2 id="installer-recommended"><a class="header" href="#installer-recommended">Installer (recommended)</a></h2>
+<img src="installation/../images/installer-macos-gui.png" width="49%" style="display: inline;">
+<img src="installation/../images/installer-windows-gui.png" width="49%" style="display: inline;">
+<blockquote>
+<p><strong><i class="fa fa-windows"></i> Floe Installer Windows</strong>:<br><a href="https://github.com/floe-audio/Floe/releases/download/v0.9.9-beta/Floe-Installer-v0.9.9-beta-Windows.zip">Download Floe-Installer-v0.9.9-beta-Windows.zip</a> (44 MB)</p>
+<p><strong><i class="fa fa-apple"></i> Floe Installer macOS Apple Silicon<sup class="footnote-reference"><a href="#mac-arm">2</a></sup></strong>:<br><a href="https://github.com/floe-audio/Floe/releases/download/v0.9.9-beta/Floe-Installer-v0.9.9-beta-macOS-Apple-Silicon.zip">Download Floe-Installer-v0.9.9-beta-macOS-Apple-Silicon.zip</a> (49 MB)</p>
+<p><strong><i class="fa fa-apple"></i> Floe Installer macOS Intel<sup class="footnote-reference"><a href="#mac-intel">3</a></sup></strong>:<br><a href="https://github.com/floe-audio/Floe/releases/download/v0.9.9-beta/Floe-Installer-v0.9.9-beta-macOS-Intel.zip">Download Floe-Installer-v0.9.9-beta-macOS-Intel.zip</a> (50 MB)</p>
+</blockquote>
+<p>Download, unzip, and run the installer program. The installer will guide you through the installation process, including choosing the plugin formats you want to install.</p>
+<p>Once the installation is complete you might need to restart your DAW in order for it to find the Floe plugins.</p>
+<h2 id="manually-install-advanced"><a class="header" href="#manually-install-advanced">Manually Install (advanced)</a></h2>
+<blockquote>
+<p><strong><i class="fa fa-windows"></i> Floe Manual Install Windows</strong>:<br><a href="https://github.com/floe-audio/Floe/releases/download/v0.9.9-beta/Floe-Manual-Install-v0.9.9-beta-Windows.zip">Download Floe-Manual-Install-v0.9.9-beta-Windows.zip</a> (37 MB)</p>
+<p><strong><i class="fa fa-apple"></i> Floe Manual Install macOS Apple Silicon<sup class="footnote-reference"><a href="#mac-arm">2</a></sup></strong>:<br><a href="https://github.com/floe-audio/Floe/releases/download/v0.9.9-beta/Floe-Manual-Install-v0.9.9-beta-macOS-Apple-Silicon.zip">Download Floe-Manual-Install-v0.9.9-beta-macOS-Apple-Silicon.zip</a> (49 MB)</p>
+<p><strong><i class="fa fa-apple"></i> Floe Manual Install macOS Intel<sup class="footnote-reference"><a href="#mac-intel">3</a></sup></strong>:<br><a href="https://github.com/floe-audio/Floe/releases/download/v0.9.9-beta/Floe-Manual-Install-v0.9.9-beta-macOS-Intel.zip">Download Floe-Manual-Install-v0.9.9-beta-macOS-Intel.zip</a> (51 MB)</p>
+</blockquote>
+<p>Normally you’ll want to use the installer, but there could be some cases where you’d prefer to install Floe manually. To allow for this, we provide a zip file that contains Floe’s plugin files. Extract it and move the files to your plugin folders.</p>
+<h5 id="windows-1"><a class="header" href="#windows-1">Windows:</a></h5>
+<ul>
+<li>CLAP: Move <code>Floe.clap</code> into <code>C:\Program Files\Common Files\CLAP</code></li>
+<li>VST3: Move <code>Floe.vst3</code> into <code>C:\Program Files\Common Files\VST3</code></li>
+</ul>
+<h5 id="macos-1"><a class="header" href="#macos-1">macOS:</a></h5>
+<ul>
+<li>CLAP: Move <code>Floe.clap</code> into <code>/Library/Audio/Plug-Ins/CLAP</code></li>
+<li>VST3: Move <code>Floe.vst3</code> into <code>/Library/Audio/Plug-Ins/VST3</code></li>
+<li>AU: Move <code>Floe.component</code> into <code>/Library/Audio/Plug-Ins/Components</code></li>
+</ul>
+<h2 id=""><a class="header" href="#"></a></h2>
+<hr />
+<p>Download links can also be found on the <a href="https://github.com/floe-audio/Floe/releases/latest">Github releases page</a>.</p>
+<div class="footnote-definition" id="mac-arm"><sup class="footnote-definition-label">2</sup>
+<p>For computers with <a href="https://support.apple.com/en-us/116943">Apple Silicon</a> chips; Apple’s line of M processors (M1, M2, etc.); ARM64 architecture.</p>
+</div>
+<div class="footnote-definition" id="mac-intel"><sup class="footnote-definition-label">3</sup>
+<p>For computers with Intel chips; x86_64 architecture.</p>
+</div>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="uninstalling"><a class="header" href="#uninstalling">Uninstalling</a></h1>
+<h2 id="uninstall-plugins"><a class="header" href="#uninstall-plugins">Uninstall plugins</a></h2>
+<h5 id="windows-2"><a class="header" href="#windows-2">Windows</a></h5>
+<p>On Windows, Floe can be uninstalled using the standard method for uninstalling software, via the ‘Add or Remove Programs’ control panel. See the <a href="https://support.microsoft.com/en-gb/windows/uninstall-or-remove-apps-and-programs-in-windows-4b55f974-2cc6-2d2b-d092-5905080eaf98">Windows documentation here</a>.</p>
+<p>Close your DAW before running the uninstaller.</p>
+<p>This uninstalls Floe, but not libraries or presets. Follow the instructions below to delete libraries and presets.</p>
+<p>This uninstaller also supports uninstalling Mirage, the predecessor to Floe.</p>
+<h5 id="macos-2"><a class="header" href="#macos-2">macOS</a></h5>
+<p>We don’t have an uninstaller program for macOS. Please follow the manual uninstall instructions below.</p>
+<h2 id="uninstall-libraries-and-presets"><a class="header" href="#uninstall-libraries-and-presets">Uninstall libraries and presets</a></h2>
+<h5 id="windows-and-macos"><a class="header" href="#windows-and-macos">Windows and macOS</a></h5>
+<ol>
+<li>Open Floe</li>
+<li>Click on the cog icon <i class="fa fa-cog"></i> at the top.</li>
+<li>Open the ‘Folders’ tab.</li>
+<li>For each of the paths click the ‘open folder’ icon: <i class="fa fa-external-link-square"></i>. This will open the folder in your file manager.</li>
+<li>Delete all files in the folder.</li>
+</ol>
+<p>Repeat this for each folder in Floe preferences panel.</p>
+<h2 id="manually-uninstall-plugins"><a class="header" href="#manually-uninstall-plugins">Manually uninstall plugins</a></h2>
+<h3 id="delete-floe"><a class="header" href="#delete-floe">Delete Floe</a></h3>
+<p>Floe consists of plugin files, and a preferences file. The preferences file is normally tiny: around 1 Kb in size. Plugins files are normally around 15 MB in size.</p>
+<p>Delete the following files if they exist:</p>
+<h5 id="macos-3"><a class="header" href="#macos-3">macOS</a></h5>
+<ul>
+<li>Preferences: <code>/Users/Shared/Floe/Preferences/floe.ini</code></li>
+<li>CLAP: <code>/Library/Audio/Plug-Ins/CLAP/Floe.clap</code></li>
+<li>VST3: <code>/Library/Audio/Plug-Ins/VST3/Floe.vst3</code></li>
+<li>AU: <code>/Library/Audio/Plug-Ins/Components/Floe.component</code></li>
+</ul>
+<h5 id="windows-3"><a class="header" href="#windows-3">Windows</a></h5>
+<p>For Windows, use the uninstaller program described above. If you want to manually delete Floe, delete the following files:</p>
+<ul>
+<li>Preferences: <code>C:\Users\Public\Floe\Preferences\floe.ini</code></li>
+<li>CLAP: <code>C:\Program Files\Common Files\CLAP\Floe.clap</code></li>
+<li>VST3: <code>C:\Program Files\Common Files\VST3\Floe.vst3</code></li>
+</ul>
+<h3 id="delete-mirage"><a class="header" href="#delete-mirage">Delete Mirage</a></h3>
+<p>If you used to have <a href="installation/../about-the-project/mirage.html">Mirage</a> installed then some additional files may be present. To uninstall Mirage, delete the following files. Some of these files may not exist.</p>
+<h5 id="macos-4"><a class="header" href="#macos-4">macOS</a></h5>
+<ul>
+<li>Preferences: <code>/Library/Application Support/FrozenPlain/Mirage/Settings/mirage.json</code></li>
+<li>Preferences (alternate): <code>/Users/&lt;your-name&gt;/Music/Audio Music Apps/Plug-In Settings/FrozenPlain/mirage.json</code></li>
+<li>Preferences (alternate): <code>/Users/&lt;your-name&gt;/Library/Application Support/FrozenPlain/Mirage/Settings/mirage.json</code></li>
+<li>VST2: <code>/Library/Audio/Plug-Ins/VST/Mirage.vst</code></li>
+<li>AU: <code>/Library/Audio/Plug-Ins/Components/FrozenPlain Mirage.component</code></li>
+</ul>
+<h5 id="windows-4"><a class="header" href="#windows-4">Windows</a></h5>
+<ul>
+<li>Preferences: <code>C:\ProgramData\Mirage\Settings\mirage.json</code></li>
+<li>Preferences (alternate): <code>C:\Users\&lt;your-name&gt;\AppData\Local\FrozenPlain\Mirage\mirage.json</code></li>
+<li>VST2: <code>C:\Program Files\VSTPlugins\mirage64.dll</code></li>
+<li>VST2 (alternate): <code>C:\Program Files\Steinberg\VSTPlugins\mirage64.dll</code></li>
+<li>VST2 (alternate): <code>C:\Program Files\Common Files\VST2\mirage64.dll</code></li>
+<li>VST2 (alternate): <code>C:\Program Files\Common Files\Steinberg\VST2\mirage64.dll</code></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="packages"><a class="header" href="#packages">Packages</a></h1>
+<p>Sample libraries and presets are typically put into ZIP files called <em>Floe packages</em>. This makes them convenient for downloading and installing.</p>
+<p>Floe can easily <a href="packages/./install-packages.html">extract and install these packages</a>.</p>
+<p>The <a href="packages/../packages/available-packages.html">available packages</a> page lists some of the packages available for download.</p>
+<h2 id="additional-information"><a class="header" href="#additional-information">Additional Information</a></h2>
+<p>Packages are just normal ZIP files, but they contain subfolders in a particular structure that Floe knows how to handle.</p>
+<p>Because they are just ZIP files, Floe is actually not required; you can unzip the package yourself and use the libraries for something unrelated to Floe if you wanted.</p>
+<p>A package can contain any number of libraries and/or presets. Typically though, a package contains one library and a folder of factory presets for that library.</p>
+<p>Just like the libraries and presets themselves, packages are portable - you can copy them to other computers or operating systems.</p>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="installing-packages"><a class="header" href="#installing-packages">Installing Packages</a></h1>
+<p>Floe can install sample libraries and presets from ZIP files called <em>Floe packages</em>.</p>
+<h2 id="install-package-button"><a class="header" href="#install-package-button">‘Install package’ button</a></h2>
+<p><img src="packages/../images/install-package-gui.png" alt="Floe’s GUI" /></p>
+<p>If you don’t already have Floe, <a href="packages/../installation/download-and-install-floe.html">install</a> it first, and open it in your DAW.</p>
+<p>Next, download your chosen package(s). Remember, <a href="packages/./about-packages.html">packages</a> are ZIP files that contain sample libraries and presets.</p>
+<p><strong>Don’t extract it though</strong>. Instead, use the ‘Install package’ button in the preferences panel of Floe and direct it to the ZIP file. It will extract the package into the correct folders. The library/presets will be available immediately, no need to restart Floe.</p>
+<h3 id="heres-the-full-steps"><a class="header" href="#heres-the-full-steps">Here’s the full steps:</a></h3>
+<ol>
+<li>Open Floe.</li>
+<li>Open the Preferences panel using the <i class="fa fa-cog"></i> cog icon at the top.</li>
+<li>Open the Packages tab.</li>
+<li>Click the ‘Install package’ button. A file browser will open. Use it to select the <a href="packages/./about-packages.html">package(s)</a> you want to install. Packages are ZIP files that contain sample libraries and presets. They normally follow this naming scheme <code>Developer Name - Library Name Package.zip</code>.</li>
+<li>Done. After installation, you may delete the package ZIP file. No need to restart Floe.</li>
+</ol>
+<h3 id="mirage-compatibility"><a class="header" href="#mirage-compatibility">Mirage Compatibility</a></h3>
+<p>If the package is a Mirage library you will also need to install the Mirage Compatibility package. Download and install it the same way as the main package. <a href="https://github.com/FrozenPlain/floe-mirage-compatibility/releases/download/v1.1/FrozenPlain.-.Mirage.Compatibility.Package.zip">Download Mirage Compatibility Package.zip</a>.</p>
+<h3 id="floe-handles-the-details"><a class="header" href="#floe-handles-the-details">Floe handles the details</a></h3>
+<p>Floe handles the installation process intelligently. It will check existing installations across all known folders, check for conflicts and handle upgrades. It will even detect if you’ve modified a library and give you the option to keep your modified version. It will ask you about skipping or overwriting if it needs too. It will never duplicate libraries unnecessarily.</p>
+<h2 id="manually-installing"><a class="header" href="#manually-installing">Manually installing</a></h2>
+<p>Alternatively, you can manually install libraries and presets by extracting the ZIP file into the correct folders.</p>
+<ol>
+<li>Extract the package ZIP file.</li>
+<li>Open Floe.</li>
+<li>Open the Preferences panel using the gear icon at the top.</li>
+<li>Open the Folders tab.</li>
+<li>Here you can control which folders Floe looks for libraries and presets in. Copy/move the contents of this package’s Libraries into one of Floe’s library folders, and the same for Presets into one Floe’s presets folder.</li>
+<li>Done. No need to restart Floe.</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="available-packages"><a class="header" href="#available-packages">Available Packages</a></h1>
+<p>Floe can <a href="packages/./install-packages.html">install libraries and presets</a> from ZIP files called <em>Floe packages</em>.</p>
+<p>Here are some available packages. This is not an exhaustive list.</p>
+<h2 id="music-box-suite-free---free"><a class="header" href="#music-box-suite-free---free">Music Box Suite Free - Free</a></h2>
+<p><img src="packages/../images/mbsf-gui.png" alt="MBSF GUI" /></p>
+<p>Free multisampled music box from <a href="https://www.frozenplain.com/">FrozenPlain</a>.</p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Music Box Suite Free</th><th style="text-align: left"></th></tr></thead><tbody>
+<tr><td style="text-align: left">Cost</td><td style="text-align: left">Free - no attribution required (FrozenPlain’s license)</td></tr>
+<tr><td style="text-align: left">Instruments</td><td style="text-align: left">1</td></tr>
+<tr><td style="text-align: left">Presets</td><td style="text-align: left">12</td></tr>
+<tr><td style="text-align: left">Impulse Responses</td><td style="text-align: left">0</td></tr>
+<tr><td style="text-align: left">Download</td><td style="text-align: left"><a href="https://www.frozenplain.com/product/music-box-suite-free">Go to webpage</a></td></tr>
+<tr><td style="text-align: left">Download Size</td><td style="text-align: left">5.0 MB</td></tr>
+</tbody></table>
+</div>
+<h2 id="celtic-harp---free-attribution-required"><a class="header" href="#celtic-harp---free-attribution-required">Celtic Harp - Free (attribution required)</a></h2>
+<p><img src="packages/../images/harp-gui.png" alt="Celtic Harp GUI" /></p>
+<p><em>The background image is <a href="https://commons.wikimedia.org/wiki/File:Harpe_Celtique_Telenn_Genta%C3%B1_-_Alan_Stivell_-_04.jpg">Harpe Celtique Telenn Gentañ - Alan Stivell - 04</a> by Jérémy Kergourlay, and is licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.en">CC BY-SA 4.0</a>.</em></p>
+<p>We made a Floe-compatible version of <a href="https://versilian-studios.com/etherealwinds-harp/">Etherealwinds Harp 2: Community Edition</a> by <a href="https://versilian-studios.com/">Versilian Studios</a> which is licensed under a <a href="https://creativecommons.org/licenses/by/4.0/deed.en">Creative Commons Attribution 4.0 International License</a>. It’s a high-quality multisampled harp with velocity layers and round robins. Versilian Studios have a more advanced version of this harp available for purchase.</p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Celtic Harp</th><th style="text-align: left"></th></tr></thead><tbody>
+<tr><td style="text-align: left">Cost</td><td style="text-align: left">Free -  <a href="packages/../usage/attribution.html">attribution required</a> (<a href="https://creativecommons.org/licenses/by/4.0/deed.en">CC-BY</a>)</td></tr>
+<tr><td style="text-align: left">Repository</td><td style="text-align: left"><a href="https://github.com/floe-audio/Harp">floe-audio/Harp</a></td></tr>
+<tr><td style="text-align: left">Instruments</td><td style="text-align: left">1</td></tr>
+<tr><td style="text-align: left">Presets</td><td style="text-align: left">0</td></tr>
+<tr><td style="text-align: left">Impulse Responses</td><td style="text-align: left">0</td></tr>
+<tr><td style="text-align: left">Download</td><td style="text-align: left"><a href="https://github.com/floe-audio/Harp/releases/download/v1.3/Floe.Ports.-.Celtic.Harp.Package.zip">Download Floe Ports - Celtic Harp Package.zip</a></td></tr>
+<tr><td style="text-align: left">Download Size</td><td style="text-align: left">120.4 MB</td></tr>
+</tbody></table>
+</div>
+<h2 id="xylophone---free"><a class="header" href="#xylophone---free">Xylophone - Free</a></h2>
+<p><img src="packages/../images/xylophone-gui.png" alt="Xylophone GUI" /></p>
+<p><em>The background image is <a href="https://www.flickr.com/photos/crashingwaves/688290359">Xylophone and percussion</a> by CrashingWaves, licensed under <a href="https://creativecommons.org/licenses/by/2.0/">CC BY 2.0</a>.</em></p>
+<p>This is a basic free multisampled xylophone from <a href="https://freepats.zenvoid.org/">FreePats</a>, converted into a Floe library.</p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Xylophone</th><th style="text-align: left"></th></tr></thead><tbody>
+<tr><td style="text-align: left">Cost</td><td style="text-align: left">Free - no attribution required (public domain)</td></tr>
+<tr><td style="text-align: left">Repository</td><td style="text-align: left"><a href="https://github.com/floe-audio/Xylophone">floe-audio/Xylophone</a></td></tr>
+<tr><td style="text-align: left">Instruments</td><td style="text-align: left">1</td></tr>
+<tr><td style="text-align: left">Presets</td><td style="text-align: left">0</td></tr>
+<tr><td style="text-align: left">Impulse Responses</td><td style="text-align: left">0</td></tr>
+<tr><td style="text-align: left">Download</td><td style="text-align: left"><a href="https://github.com/floe-audio/Xylophone/releases/download/v1.3/Floe.Ports.-.Xylophone.Package.zip">Download Floe Ports - Xylophone Package.zip</a></td></tr>
+<tr><td style="text-align: left">Download Size</td><td style="text-align: left">2.6 MB</td></tr>
+</tbody></table>
+</div>
+<h2 id="ocarina---free"><a class="header" href="#ocarina---free">Ocarina - Free</a></h2>
+<p><img src="packages/../images/ocarina-gui.png" alt="Ocarina GUI" /></p>
+<p>This is a basic free ocarina from <a href="https://freepats.zenvoid.org/">FreePats</a>, converted into a Floe library.</p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Ocarina</th><th style="text-align: left"></th></tr></thead><tbody>
+<tr><td style="text-align: left">Cost</td><td style="text-align: left">Free - no attribution required (public domain)</td></tr>
+<tr><td style="text-align: left">Repository</td><td style="text-align: left"><a href="https://github.com/floe-audio/Ocarina">floe-audio/Ocarina</a></td></tr>
+<tr><td style="text-align: left">Instruments</td><td style="text-align: left">1</td></tr>
+<tr><td style="text-align: left">Presets</td><td style="text-align: left">0</td></tr>
+<tr><td style="text-align: left">Impulse Responses</td><td style="text-align: left">0</td></tr>
+<tr><td style="text-align: left">Download</td><td style="text-align: left"><a href="https://github.com/floe-audio/Ocarina/releases/download/v1.3/Floe.Ports.-.Ocarina.Package.zip">Download Floe Ports - Ocarina Package.zip</a></td></tr>
+<tr><td style="text-align: left">Download Size</td><td style="text-align: left">4.3 MB</td></tr>
+</tbody></table>
+</div>
+<h2 id="antique-irs---free"><a class="header" href="#antique-irs---free">Antique IRs - Free</a></h2>
+<p><img src="packages/../images/antique-irs-gui.png" alt="Antique IRs GUI" /></p>
+<p>Give your presets a vintage sound using this library of impulse responses that simulate old audio equipment.</p>
+<p>It’s a Floe port of NoiseCollector’s impulses response library; created with the use of public domain recordings of historical events. Vintage equipment like dicta-phones, old film reels, vintage vinyl, wax cylinders, and magnetic wire.</p>
+<p>Impulses can be used to simulate war reports, old radio broadcasts, space missions, and other vintage sounds with a convolution reverb.</p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Antique IRs</th><th style="text-align: left"></th></tr></thead><tbody>
+<tr><td style="text-align: left">Cost</td><td style="text-align: left">Free - no attribution required (public domain)</td></tr>
+<tr><td style="text-align: left">Repository</td><td style="text-align: left"><a href="https://github.com/floe-audio/Antique-IRs">floe-audio/Antique-IRs</a></td></tr>
+<tr><td style="text-align: left">Instruments</td><td style="text-align: left">0</td></tr>
+<tr><td style="text-align: left">Presets</td><td style="text-align: left">0</td></tr>
+<tr><td style="text-align: left">Impulse Responses</td><td style="text-align: left">27</td></tr>
+<tr><td style="text-align: left">Download</td><td style="text-align: left"><a href="https://github.com/floe-audio/Antique-IRs/releases/download/v1.0/Floe.Ports.-.Antique.IRs.Package.zip">Download Floe Ports - Antique IRs Package.zip</a></td></tr>
+<tr><td style="text-align: left">Download Size</td><td style="text-align: left">1.1 MB</td></tr>
+</tbody></table>
+</div>
+<h2 id="mirage-compatibility---free"><a class="header" href="#mirage-compatibility---free">Mirage Compatibility - Free</a></h2>
+<p>Enables full compatibility when using FrozenPlain’s Mirage libraries inside Floe.</p>
+<p>For Mirage libraries to fully work inside Floe, the Mirage Compatibility library is needed. This library will normally be included alongside Mirage libraries, but it can also be installed separately.</p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Mirage Compatibility</th><th style="text-align: left"></th></tr></thead><tbody>
+<tr><td style="text-align: left">Cost</td><td style="text-align: left">Free - no attribution required (FrozenPlain’s license)</td></tr>
+<tr><td style="text-align: left">Download</td><td style="text-align: left"><a href="https://github.com/FrozenPlain/floe-mirage-compatibility/releases/download/v1.1/FrozenPlain.-.Mirage.Compatibility.Package.zip">Download FrozenPlain - Mirage Compatibility Package.zip</a></td></tr>
+<tr><td style="text-align: left">Download Size</td><td style="text-align: left">8.9 MB</td></tr>
+</tbody></table>
+</div>
+<h2 id="mirage-libraries"><a class="header" href="#mirage-libraries">Mirage Libraries</a></h2>
+<p>Floe fully supports all Mirage libraries: <a href="https://www.frozenplain.com/products">FrozenPlain shop</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="sample-libraries"><a class="header" href="#sample-libraries">Sample Libraries</a></h1>
+<p>Floe is an engine that requires <em>Floe sample libraries</em> to make sound. This page describes Floe’s sample library format and how to manage your libraries.</p>
+<p>Related pages:</p>
+<ul>
+<li><a href="usage/../packages/available-packages.html">Available libraries</a></li>
+<li><a href="usage/../packages/install-packages.html">How to install libraries</a></li>
+<li><a href="usage/../develop/develop-libraries.html">Develop your own libraries</a> (programming required)</li>
+</ul>
+<p><em>Floe also supports the legacy <a href="usage/../about-the-project/mirage.html">Mirage</a> library format</em>.</p>
+<h2 id="custom-open-format"><a class="header" href="#custom-open-format">Custom open format</a></h2>
+<p>Floe sample libraries use a custom, open format consisting of a folder of audio files and a file in the <a href="https://en.wikipedia.org/wiki/Lua_(programming_language)">Lua</a> programming language called <code>floe.lua</code>.</p>
+<p>Access to the audio files gives you the freedom to use a library’s sounds in other software too.</p>
+<blockquote>
+<p>Openness is a key goal of Floe sample libraries.</p>
+<p>There’s no proprietary file formats. There’s just FLAC, WAV and Lua. By using widely-used file formats we ensure the longevity of libraries.</p>
+</blockquote>
+<h2 id="portable"><a class="header" href="#portable">Portable</a></h2>
+<p>Sample libraries are just normal folders. They don’t reference anything outside their folder, meaning they totally portable; you can move libraries to other locations, or even to other computers/operating systems due to their cross-platform nature.</p>
+<h2 id="view-installed-libraries"><a class="header" href="#view-installed-libraries">View installed libraries</a></h2>
+<p>You can view your installed libraries by clicking the <i class="fa fa-info-circle"></i> info button on Floe’s main window.</p>
+<h2 id="library-folders"><a class="header" href="#library-folders">Library folders</a></h2>
+<p><img src="usage/../images/folder-preferences.png" alt="Folder Preferences GUI" /></p>
+<p>Floe automatically scans for sample libraries in a set of folders. You can configure these folders in Floe’s preferences panel, which is opened by clicking the <i class="fa fa-cog"></i> cog icon at the top of Floe’s window. Subfolders are scanned too.</p>
+<p>The default library folder cannot be removed, but you can add and remove any other folders you like.</p>
+<h2 id="moving-and-rearranging-libraries"><a class="header" href="#moving-and-rearranging-libraries">Moving and rearranging libraries</a></h2>
+<p>You may rearrange your libraries within your folders as you see fit. Floe will automatically detect changes and apply them. For example, you might want to create subfolders for different types of libraries, or to separate libraries from different developers.</p>
+<p>You can also move your existing libraries to another location, such as an external drive.</p>
+<p>To do this, you will need to move the libraries in File Explorer/Finder, and then add the new location in Floe’s preferences.</p>
+<p>Here’s that process in more detail:</p>
+<ol>
+<li>Create your new library folder at your desired location. For example, create “Floe Libraries” somewhere on your external drive.</li>
+<li>Open the Preferences panel by clicking the <i class="fa fa-cog"></i> cog icon at the top of Floe’s window.</li>
+<li>Under ‘Folders’, click on the <i class="fa fa-external-link"></i> link button for the folder that you want to move libraries out of. A File Explorer/Finder window will open.</li>
+<li>Use File Explorer/Finder to move the libraries to your desired new location (libraries are folders — typically with this naming pattern: ‘Developer - Library-name’).</li>
+<li>Go back into Floe, and add the new location by clicking the ‘Add Folder’ button. Remember, Floe will find libraries inside subfolders as well as the top-level, so select the “Floe Libraries” folder (or whatever name you chose), instead of the individual library folders.</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="presets"><a class="header" href="#presets">Presets</a></h1>
+<p>Floe can save its current state as a preset file, which can be loaded later. It’s the same file type regardless of what sample libraries you’re using; a <code>.floe-preset</code> file. When you load a preset, Floe will check that you have the required libraries installed, and if not, it will show an error.</p>
+<p>Presets are portable - you can copy them to other computers or operating systems. You can rearrange them into folders and rename them as you like.</p>
+<h2 id="preset-browser"><a class="header" href="#preset-browser">Preset browser</a></h2>
+<p><img src="usage/../images/preset-browser.png" alt="Preset Browser GUI" /></p>
+<p>Floe features a browser for conveniently navigating and loading presets from your preset folders. Filter presets using the left-hand panel, and select presets from the right-hand panel. You can also search for presets using the search bar at the top.</p>
+<h2 id="preset-folders"><a class="header" href="#preset-folders">Preset folders</a></h2>
+<p><img src="usage/../images/folder-preferences.png" alt="Folder Preferences GUI" /></p>
+<p>Floe automatically scans for presets in a set of folders - including subfolders. This works in the exact same way as your <a href="usage/./sample-libraries.html">library folders</a>.</p>
+<p>Presets are tiny files and so there’s typically no need to move then to an external hard-drive.</p>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="layers"><a class="header" href="#layers">Layers</a></h1>
+<p>Floe is built around an architecture of three layers. These are displayed in three columns starting from the left of the main panel. Each layer is identical. Floe’s layers are the first things in the processing chain; each layer is processed in parallel, and then the three streams of audio are mixed together and fed through the effects rack, from top to bottom.</p>
+<p><img src="usage/../images/layers.png" alt="Layers GUI" /></p>
+<h2 id="instruments"><a class="header" href="#instruments">Instruments</a></h2>
+<p>Each layer can contain an instrument. The instrument is the sound generator. It’s like an oscillator in a traditional synthesizer. However, for Floe, instruments are sample-based. Sometimes an instrument is a realistic, complex multisampled real musical instrument, sometimes it’s a single looping sample. Floe also has a couple of basic synth waveforms designed for layering with other instruments.</p>
+<p>To load an instrument, click the menu button at the top of the layer. Change it from ‘None’ to an instrument of your choice. You will be able to pick from any of the instruments that are available in the libraries that you have installed.</p>
+<p>How an instrument works is defined in the library that it comes from. Most instrument allow for adding or customising sample loops.</p>
+<h2 id="sound-shaping"><a class="header" href="#sound-shaping">Sound shaping</a></h2>
+<p>You can shape the sound of each layer in quite a few ways.</p>
+<p><img src="usage/../images/layer-main.png" alt="Layer Main" />
+<img src="usage/../images/layer-filter.png" alt="Layer Filter" />
+<img src="usage/../images/layer-eq.png" alt="Layer EQ" />
+<img src="usage/../images/layer-lfo.png" alt="Layer LFO" />
+<img src="usage/../images/layer-midi.png" alt="Layer MIDI" /></p>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="effects"><a class="header" href="#effects">Effects</a></h1>
+<p><img src="usage/../images/effects.png" alt="Effects" /></p>
+<p>Floe has a selection of 10 effects that can be applied to the audio. These effects are applied to the mix of the three layers. The effects are shown in a list on the right-hand side of the main panel. You can change the ordering of the effects by dragging and dropping the effect names — either the name in the rack or the name next to the on/off switch.</p>
+<div class="table-wrapper"><table><thead><tr><th>Name</th><th>Description</th></tr></thead><tbody>
+<tr><td>Distortion</td><td>Distort the audio using various algorithms.</td></tr>
+<tr><td>Bit Crush</td><td>Apply a lo-fi effect to the signal by either reducing the sample rate or by reducing the sample resolution. Doing either distorts the signal.</td></tr>
+<tr><td>Compressor</td><td>Compress the signal to make the quiet sections louder.</td></tr>
+<tr><td>Filter</td><td>Adjust the volume frequency bands in the signal, or cut out frequency bands altogether. The filter type can be selected with the menu.</td></tr>
+<tr><td>Stereo Widen</td><td>Increase or decrease the stereo width of the signal.</td></tr>
+<tr><td>Chorus</td><td>An effect that changes the character of the signal by adding a modulated and pitch-varying duplicate signal.</td></tr>
+<tr><td>Reverb</td><td>Algorithmically simulate the reflections and reverberations of a real room.</td></tr>
+<tr><td>Delay</td><td>Simulate an echo effect, as if the sound is reflecting off of a distant surface.</td></tr>
+<tr><td>Convol Reverb</td><td>The Convolution reverb effect applies a reverb to the signal. The characteristic of the reverb is determined by the impulse response (IR). The IR can be selected from the menu.</td></tr>
+<tr><td>Phaser</td><td>Modulate the sound using a series of moving filters</td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="midi"><a class="header" href="#midi">MIDI</a></h1>
+<h2 id="map-parameters-to-midi-cc"><a class="header" href="#map-parameters-to-midi-cc">Map parameters to MIDI CC</a></h2>
+<p>All automatable parameters in Floe can be assigned to a MIDI CC. This allows you to control Floe from a MIDI controller for example.</p>
+<p>To do this, right-click on the parameter you want to assign, and select ‘MIDI Learn’. Then move the control on your MIDI controller that you want to assign to that parameter. This will create a mapping between the parameter and the MIDI CC.</p>
+<p>You can remove this mapping by right-clicking on the parameter and selecting ‘Remove MIDI Learn’.</p>
+<p>This mapping is saved with your DAW project. But it’s not permanent. It only applies to the current instance of Floe in your DAW, and it won’t be the applied if you load a new instance of Floe.</p>
+<p>Preset files do not save MIDI CC mappings. So you can load presets and your MIDI CC mappings will remain.</p>
+<p><img src="usage/../images/midi-learn.png" alt="MIDI Learn" /></p>
+<h2 id="make-midi-cc-mapping-more-permanent"><a class="header" href="#make-midi-cc-mapping-more-permanent">Make MIDI CC mapping more permanent</a></h2>
+<p>You can make the MIDI CC mapping more permanent by right clicking on a ‘MIDI learned’ parameter and selecting ‘Always set MIDI CC to this when Floe opens’. As the name suggests, when you open Floe, the MIDI CC mapping will be added.</p>
+<h2 id="sustain-pedal"><a class="header" href="#sustain-pedal">Sustain Pedal</a></h2>
+<div class="warning">
+There's some bugs with sustain pedal at the moment.
+</div>
+<p>Floe can be controlled with a sustain pedal. A sustain pedal is a special kind of MIDI controller that sends MIDI CC-64 messages. These messages represent an on or off state.</p>
+<p>When Floe receives a sustain pedal on message, all notes that are currently held will sustain until a corresponding sustain pedal off message is received. The notes will persist even if the notes are released from the keyboard. Only releasing the sustain pedal will trigger them to stop. This is a common behaviour for synths and samplers alike. It roughly simulates the behaviour of a real piano sustain pedal.</p>
+<h2 id="sustain-pedal-retrigger-mode"><a class="header" href="#sustain-pedal-retrigger-mode">Sustain Pedal Retrigger Mode</a></h2>
+<p>Each layer in Floe has a switch that changes the behaviour when pressing the same note multiple times while the sustain pedal is held down. This parameter can be found in the MIDI tab of each layer and is called ‘CC64 Retrig’.</p>
+<p>When ‘CC64 Retrig’ is turned off, and you are holding the sustain pedal down, nothing happens if you press the same key multiple times — the new up and down is ignored — the sound continues to sustain just as it did before.</p>
+<p>However, when ‘CC64 Retrig’ is on, the note is retriggered (the sound ends and a new one starts); this behaviour tends to be the more intuitive option. Note that this switch is per-layer, not global. This allows for more powerful customisation of a preset.</p>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="looping"><a class="header" href="#looping">Looping</a></h1>
+<p>One of the ways that Floe extends into the realm of sample-based synthesis is by offering some powerful looping features.</p>
+<p>These looping features adapt to whichever instrument is loaded (the instrument being the sound generator that was loaded into a layer). The GUI makes it clear what the available looping options are.</p>
+<p>Most instruments allow you to loop the sound in some way - even when the instrument is a multisampled instrument. However, sample library developers can choose to offer built-in loops, only allow certain modes or disable looping altogether.</p>
+<p>There are 2 loop modes available in Floe: standard wrap-around looping, and ping-pong looping. In the standard mode, the sound will jump back to the start of the loop when it reaches the end. In ping-pong mode, the sound will alternate playing forwards and backwards through the loop. A crossfade can be applied to smooth the boundary - even in ping-pong mode.</p>
+<p>As well as looping, you can control whether the sounds are reversed or have their start position offset.</p>
+<p><img src="usage/../images/loop-gui.png" alt="Loop GUI" />
+<img src="usage/../images/loop-mode-menu.png" alt="Loop Mode Menu" /></p>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="parameters"><a class="header" href="#parameters">Parameters</a></h1>
+<p>For reference, here is a list of all parameters in Floe.</p>
+<div class="table-wrapper"><table><thead><tr><th>Module</th><th>Name</th><th>ID</th><th>Description</th></tr></thead><tbody>
+<tr><td>Layer 1</td><td>Volume</td><td>160</td><td>Layer volume</td></tr>
+<tr><td>Layer 1</td><td>Mute</td><td>161</td><td>Mute this layer</td></tr>
+<tr><td>Layer 1</td><td>Solo</td><td>162</td><td>Mute all other layers</td></tr>
+<tr><td>Layer 1</td><td>Pan</td><td>163</td><td>Left/right balance</td></tr>
+<tr><td>Layer 1</td><td>Detune Cents</td><td>164</td><td>Layer pitch in cents; hold shift for finer adjustment</td></tr>
+<tr><td>Layer 1</td><td>Pitch Semitones</td><td>165</td><td>Layer pitch in semitones</td></tr>
+<tr><td>Layer 1/Loop</td><td>Start</td><td>167</td><td>Loop-start</td></tr>
+<tr><td>Layer 1/Loop</td><td>End</td><td>168</td><td>Loop-end</td></tr>
+<tr><td>Layer 1/Loop</td><td>Crossfade Size</td><td>169</td><td>Crossfade length; this smooths the transition from the loop-end to the loop-start</td></tr>
+<tr><td>Layer 1/Loop</td><td>Sample Start Offset</td><td>171</td><td>Change the starting point of the sample</td></tr>
+<tr><td>Layer 1/Loop</td><td>Reverse On</td><td>172</td><td>Play the sound in reverse</td></tr>
+<tr><td>Layer 1/Volume Envelope</td><td>On</td><td>173</td><td>Enable/disable the volume envelope; when disabled, each sound will play out entirely</td></tr>
+<tr><td>Layer 1/Volume Envelope</td><td>Attack</td><td>174</td><td>Volume fade-in length</td></tr>
+<tr><td>Layer 1/Volume Envelope</td><td>Decay</td><td>175</td><td>Volume ramp-down length (after the attack)</td></tr>
+<tr><td>Layer 1/Volume Envelope</td><td>Sustain</td><td>176</td><td>Volume level to sustain (after decay)</td></tr>
+<tr><td>Layer 1/Volume Envelope</td><td>Release</td><td>177</td><td>Volume fade-out length (after the note is released)</td></tr>
+<tr><td>Layer 1/Filter</td><td>On</td><td>178</td><td>Enable/disable the filter</td></tr>
+<tr><td>Layer 1/Filter</td><td>Cutoff Frequency</td><td>179</td><td>The frequency at which the filter should take effect</td></tr>
+<tr><td>Layer 1/Filter</td><td>Resonance</td><td>180</td><td>The intensity of the volume peak at the cutoff frequency</td></tr>
+<tr><td>Layer 1/Filter</td><td>Type</td><td>181</td><td>Filter type</td></tr>
+<tr><td>Layer 1/Filter</td><td>Envelope Amount</td><td>182</td><td>How strongly the envelope should control the filter cutoff</td></tr>
+<tr><td>Layer 1/Filter</td><td>Attack</td><td>183</td><td>Length of initial ramp-up</td></tr>
+<tr><td>Layer 1/Filter</td><td>Decay</td><td>184</td><td>Length ramp-down after attack</td></tr>
+<tr><td>Layer 1/Filter</td><td>Sustain</td><td>185</td><td>Level to sustain after decay has completed</td></tr>
+<tr><td>Layer 1/Filter</td><td>Release</td><td>186</td><td>Length of ramp-down after note is released</td></tr>
+<tr><td>Layer 1/LFO</td><td>On</td><td>187</td><td>Enable/disable the Low Frequency Oscillator (LFO)</td></tr>
+<tr><td>Layer 1/LFO</td><td>Shape</td><td>188</td><td>Oscillator shape</td></tr>
+<tr><td>Layer 1/LFO</td><td>Mode</td><td>189</td><td>Oscillator phase mode. Retrigger: each voice has its own phase, Free: all voices that are playing simultaneously will have the same phase</td></tr>
+<tr><td>Layer 1/LFO</td><td>Amount</td><td>190</td><td>Intensity of the LFO effect</td></tr>
+<tr><td>Layer 1/LFO</td><td>Target</td><td>191</td><td>The parameter that the LFO will modulate</td></tr>
+<tr><td>Layer 1/LFO</td><td>Time (Tempo Synced)</td><td>192</td><td>LFO rate (synced to the host)</td></tr>
+<tr><td>Layer 1/LFO</td><td>Time (Hz)</td><td>193</td><td>LFO rate (in Hz)</td></tr>
+<tr><td>Layer 1/LFO</td><td>Sync On</td><td>194</td><td>Sync the LFO speed to the host</td></tr>
+<tr><td>Layer 1/EQ</td><td>On</td><td>195</td><td>Turn on or off the equaliser effect for this layer</td></tr>
+<tr><td>Layer 1/EQ/Band 1</td><td>Frequency</td><td>196</td><td>Band 1: frequency of this band</td></tr>
+<tr><td>Layer 1/EQ/Band 1</td><td>Resonance</td><td>197</td><td>Band 1: sharpness of the peak</td></tr>
+<tr><td>Layer 1/EQ/Band 1</td><td>Gain</td><td>198</td><td>Band 1: volume gain at the frequency</td></tr>
+<tr><td>Layer 1/EQ/Band 1</td><td>Type</td><td>199</td><td>Band 1: type of EQ band</td></tr>
+<tr><td>Layer 1/EQ/Band 2</td><td>Frequency</td><td>200</td><td>Band 2: frequency of this band</td></tr>
+<tr><td>Layer 1/EQ/Band 2</td><td>Resonance</td><td>201</td><td>Band 2: sharpness of the peak</td></tr>
+<tr><td>Layer 1/EQ/Band 2</td><td>Gain</td><td>202</td><td>Band 2: volume gain at the frequency</td></tr>
+<tr><td>Layer 1/EQ/Band 2</td><td>Type</td><td>203</td><td>Band 2: type of EQ band</td></tr>
+<tr><td>Layer 1/MIDI</td><td>Velocity Mapping</td><td>204</td><td>Choose how MIDI velocity should affect the volume of this layer. There are 6 modes that can be selected for this parameter via the buttons on the GUI. By setting one layer to be quiet at high velocities and another layer to be quiet at low velocities you can create an instrument that sounds different based on how hard the notes are played. (0) Ignore velocity, always play full volume. (1) Loudest at high velocity, quietist at low velocity (2) Loudest at low velocity, quietist at high velocity (3) Loudest at high velocity, quietist at middle velocity and below (4) Loudest at middle velocity, quietist at both high and low velocities (5) Loudest at bottom velocity, quietist at middle velocity and above,</td></tr>
+<tr><td>Layer 1/MIDI</td><td>Keytrack On</td><td>205</td><td>Tune the sound to match the key played; if disabled it will always play the sound at its root pitch</td></tr>
+<tr><td>Layer 1/MIDI</td><td>Monophonic On</td><td>206</td><td>Only allow one voice of each sound to play at a time</td></tr>
+<tr><td>Layer 1/MIDI</td><td>MIDI Transpose On</td><td>208</td><td>Transpose the mapping of samples by the given semitone offset, meaning a higher/lower sample may be triggered instead of stretching/shrinking the audio by large amounts (only useful if the instrument is multi-sampled)</td></tr>
+<tr><td>Layer 1/Loop</td><td>Loop Mode</td><td>209</td><td>The mode for looping the samples</td></tr>
+<tr><td>Layer 2</td><td>Volume</td><td>320</td><td>Layer volume</td></tr>
+<tr><td>Layer 2</td><td>Mute</td><td>321</td><td>Mute this layer</td></tr>
+<tr><td>Layer 2</td><td>Solo</td><td>322</td><td>Mute all other layers</td></tr>
+<tr><td>Layer 2</td><td>Pan</td><td>323</td><td>Left/right balance</td></tr>
+<tr><td>Layer 2</td><td>Detune Cents</td><td>324</td><td>Layer pitch in cents; hold shift for finer adjustment</td></tr>
+<tr><td>Layer 2</td><td>Pitch Semitones</td><td>325</td><td>Layer pitch in semitones</td></tr>
+<tr><td>Layer 2/Loop</td><td>Start</td><td>327</td><td>Loop-start</td></tr>
+<tr><td>Layer 2/Loop</td><td>End</td><td>328</td><td>Loop-end</td></tr>
+<tr><td>Layer 2/Loop</td><td>Crossfade Size</td><td>329</td><td>Crossfade length; this smooths the transition from the loop-end to the loop-start</td></tr>
+<tr><td>Layer 2/Loop</td><td>Sample Start Offset</td><td>331</td><td>Change the starting point of the sample</td></tr>
+<tr><td>Layer 2/Loop</td><td>Reverse On</td><td>332</td><td>Play the sound in reverse</td></tr>
+<tr><td>Layer 2/Volume Envelope</td><td>On</td><td>333</td><td>Enable/disable the volume envelope; when disabled, each sound will play out entirely</td></tr>
+<tr><td>Layer 2/Volume Envelope</td><td>Attack</td><td>334</td><td>Volume fade-in length</td></tr>
+<tr><td>Layer 2/Volume Envelope</td><td>Decay</td><td>335</td><td>Volume ramp-down length (after the attack)</td></tr>
+<tr><td>Layer 2/Volume Envelope</td><td>Sustain</td><td>336</td><td>Volume level to sustain (after decay)</td></tr>
+<tr><td>Layer 2/Volume Envelope</td><td>Release</td><td>337</td><td>Volume fade-out length (after the note is released)</td></tr>
+<tr><td>Layer 2/Filter</td><td>On</td><td>338</td><td>Enable/disable the filter</td></tr>
+<tr><td>Layer 2/Filter</td><td>Cutoff Frequency</td><td>339</td><td>The frequency at which the filter should take effect</td></tr>
+<tr><td>Layer 2/Filter</td><td>Resonance</td><td>340</td><td>The intensity of the volume peak at the cutoff frequency</td></tr>
+<tr><td>Layer 2/Filter</td><td>Type</td><td>341</td><td>Filter type</td></tr>
+<tr><td>Layer 2/Filter</td><td>Envelope Amount</td><td>342</td><td>How strongly the envelope should control the filter cutoff</td></tr>
+<tr><td>Layer 2/Filter</td><td>Attack</td><td>343</td><td>Length of initial ramp-up</td></tr>
+<tr><td>Layer 2/Filter</td><td>Decay</td><td>344</td><td>Length ramp-down after attack</td></tr>
+<tr><td>Layer 2/Filter</td><td>Sustain</td><td>345</td><td>Level to sustain after decay has completed</td></tr>
+<tr><td>Layer 2/Filter</td><td>Release</td><td>346</td><td>Length of ramp-down after note is released</td></tr>
+<tr><td>Layer 2/LFO</td><td>On</td><td>347</td><td>Enable/disable the Low Frequency Oscillator (LFO)</td></tr>
+<tr><td>Layer 2/LFO</td><td>Shape</td><td>348</td><td>Oscillator shape</td></tr>
+<tr><td>Layer 2/LFO</td><td>Mode</td><td>349</td><td>Oscillator phase mode. Retrigger: each voice has its own phase, Free: all voices that are playing simultaneously will have the same phase</td></tr>
+<tr><td>Layer 2/LFO</td><td>Amount</td><td>350</td><td>Intensity of the LFO effect</td></tr>
+<tr><td>Layer 2/LFO</td><td>Target</td><td>351</td><td>The parameter that the LFO will modulate</td></tr>
+<tr><td>Layer 2/LFO</td><td>Time (Tempo Synced)</td><td>352</td><td>LFO rate (synced to the host)</td></tr>
+<tr><td>Layer 2/LFO</td><td>Time (Hz)</td><td>353</td><td>LFO rate (in Hz)</td></tr>
+<tr><td>Layer 2/LFO</td><td>Sync On</td><td>354</td><td>Sync the LFO speed to the host</td></tr>
+<tr><td>Layer 2/EQ</td><td>On</td><td>355</td><td>Turn on or off the equaliser effect for this layer</td></tr>
+<tr><td>Layer 2/EQ/Band 1</td><td>Frequency</td><td>356</td><td>Band 1: frequency of this band</td></tr>
+<tr><td>Layer 2/EQ/Band 1</td><td>Resonance</td><td>357</td><td>Band 1: sharpness of the peak</td></tr>
+<tr><td>Layer 2/EQ/Band 1</td><td>Gain</td><td>358</td><td>Band 1: volume gain at the frequency</td></tr>
+<tr><td>Layer 2/EQ/Band 1</td><td>Type</td><td>359</td><td>Band 1: type of EQ band</td></tr>
+<tr><td>Layer 2/EQ/Band 2</td><td>Frequency</td><td>360</td><td>Band 2: frequency of this band</td></tr>
+<tr><td>Layer 2/EQ/Band 2</td><td>Resonance</td><td>361</td><td>Band 2: sharpness of the peak</td></tr>
+<tr><td>Layer 2/EQ/Band 2</td><td>Gain</td><td>362</td><td>Band 2: volume gain at the frequency</td></tr>
+<tr><td>Layer 2/EQ/Band 2</td><td>Type</td><td>363</td><td>Band 2: type of EQ band</td></tr>
+<tr><td>Layer 2/MIDI</td><td>Velocity Mapping</td><td>364</td><td>Choose how MIDI velocity should affect the volume of this layer. There are 6 modes that can be selected for this parameter via the buttons on the GUI. By setting one layer to be quiet at high velocities and another layer to be quiet at low velocities you can create an instrument that sounds different based on how hard the notes are played. (0) Ignore velocity, always play full volume. (1) Loudest at high velocity, quietist at low velocity (2) Loudest at low velocity, quietist at high velocity (3) Loudest at high velocity, quietist at middle velocity and below (4) Loudest at middle velocity, quietist at both high and low velocities (5) Loudest at bottom velocity, quietist at middle velocity and above,</td></tr>
+<tr><td>Layer 2/MIDI</td><td>Keytrack On</td><td>365</td><td>Tune the sound to match the key played; if disabled it will always play the sound at its root pitch</td></tr>
+<tr><td>Layer 2/MIDI</td><td>Monophonic On</td><td>366</td><td>Only allow one voice of each sound to play at a time</td></tr>
+<tr><td>Layer 2/MIDI</td><td>MIDI Transpose On</td><td>368</td><td>Transpose the mapping of samples by the given semitone offset, meaning a higher/lower sample may be triggered instead of stretching/shrinking the audio by large amounts (only useful if the instrument is multi-sampled)</td></tr>
+<tr><td>Layer 2/Loop</td><td>Loop Mode</td><td>369</td><td>The mode for looping the samples</td></tr>
+<tr><td>Layer 3</td><td>Volume</td><td>480</td><td>Layer volume</td></tr>
+<tr><td>Layer 3</td><td>Mute</td><td>481</td><td>Mute this layer</td></tr>
+<tr><td>Layer 3</td><td>Solo</td><td>482</td><td>Mute all other layers</td></tr>
+<tr><td>Layer 3</td><td>Pan</td><td>483</td><td>Left/right balance</td></tr>
+<tr><td>Layer 3</td><td>Detune Cents</td><td>484</td><td>Layer pitch in cents; hold shift for finer adjustment</td></tr>
+<tr><td>Layer 3</td><td>Pitch Semitones</td><td>485</td><td>Layer pitch in semitones</td></tr>
+<tr><td>Layer 3/Loop</td><td>Start</td><td>487</td><td>Loop-start</td></tr>
+<tr><td>Layer 3/Loop</td><td>End</td><td>488</td><td>Loop-end</td></tr>
+<tr><td>Layer 3/Loop</td><td>Crossfade Size</td><td>489</td><td>Crossfade length; this smooths the transition from the loop-end to the loop-start</td></tr>
+<tr><td>Layer 3/Loop</td><td>Sample Start Offset</td><td>491</td><td>Change the starting point of the sample</td></tr>
+<tr><td>Layer 3/Loop</td><td>Reverse On</td><td>492</td><td>Play the sound in reverse</td></tr>
+<tr><td>Layer 3/Volume Envelope</td><td>On</td><td>493</td><td>Enable/disable the volume envelope; when disabled, each sound will play out entirely</td></tr>
+<tr><td>Layer 3/Volume Envelope</td><td>Attack</td><td>494</td><td>Volume fade-in length</td></tr>
+<tr><td>Layer 3/Volume Envelope</td><td>Decay</td><td>495</td><td>Volume ramp-down length (after the attack)</td></tr>
+<tr><td>Layer 3/Volume Envelope</td><td>Sustain</td><td>496</td><td>Volume level to sustain (after decay)</td></tr>
+<tr><td>Layer 3/Volume Envelope</td><td>Release</td><td>497</td><td>Volume fade-out length (after the note is released)</td></tr>
+<tr><td>Layer 3/Filter</td><td>On</td><td>498</td><td>Enable/disable the filter</td></tr>
+<tr><td>Layer 3/Filter</td><td>Cutoff Frequency</td><td>499</td><td>The frequency at which the filter should take effect</td></tr>
+<tr><td>Layer 3/Filter</td><td>Resonance</td><td>500</td><td>The intensity of the volume peak at the cutoff frequency</td></tr>
+<tr><td>Layer 3/Filter</td><td>Type</td><td>501</td><td>Filter type</td></tr>
+<tr><td>Layer 3/Filter</td><td>Envelope Amount</td><td>502</td><td>How strongly the envelope should control the filter cutoff</td></tr>
+<tr><td>Layer 3/Filter</td><td>Attack</td><td>503</td><td>Length of initial ramp-up</td></tr>
+<tr><td>Layer 3/Filter</td><td>Decay</td><td>504</td><td>Length ramp-down after attack</td></tr>
+<tr><td>Layer 3/Filter</td><td>Sustain</td><td>505</td><td>Level to sustain after decay has completed</td></tr>
+<tr><td>Layer 3/Filter</td><td>Release</td><td>506</td><td>Length of ramp-down after note is released</td></tr>
+<tr><td>Layer 3/LFO</td><td>On</td><td>507</td><td>Enable/disable the Low Frequency Oscillator (LFO)</td></tr>
+<tr><td>Layer 3/LFO</td><td>Shape</td><td>508</td><td>Oscillator shape</td></tr>
+<tr><td>Layer 3/LFO</td><td>Mode</td><td>509</td><td>Oscillator phase mode. Retrigger: each voice has its own phase, Free: all voices that are playing simultaneously will have the same phase</td></tr>
+<tr><td>Layer 3/LFO</td><td>Amount</td><td>510</td><td>Intensity of the LFO effect</td></tr>
+<tr><td>Layer 3/LFO</td><td>Target</td><td>511</td><td>The parameter that the LFO will modulate</td></tr>
+<tr><td>Layer 3/LFO</td><td>Time (Tempo Synced)</td><td>512</td><td>LFO rate (synced to the host)</td></tr>
+<tr><td>Layer 3/LFO</td><td>Time (Hz)</td><td>513</td><td>LFO rate (in Hz)</td></tr>
+<tr><td>Layer 3/LFO</td><td>Sync On</td><td>514</td><td>Sync the LFO speed to the host</td></tr>
+<tr><td>Layer 3/EQ</td><td>On</td><td>515</td><td>Turn on or off the equaliser effect for this layer</td></tr>
+<tr><td>Layer 3/EQ/Band 1</td><td>Frequency</td><td>516</td><td>Band 1: frequency of this band</td></tr>
+<tr><td>Layer 3/EQ/Band 1</td><td>Resonance</td><td>517</td><td>Band 1: sharpness of the peak</td></tr>
+<tr><td>Layer 3/EQ/Band 1</td><td>Gain</td><td>518</td><td>Band 1: volume gain at the frequency</td></tr>
+<tr><td>Layer 3/EQ/Band 1</td><td>Type</td><td>519</td><td>Band 1: type of EQ band</td></tr>
+<tr><td>Layer 3/EQ/Band 2</td><td>Frequency</td><td>520</td><td>Band 2: frequency of this band</td></tr>
+<tr><td>Layer 3/EQ/Band 2</td><td>Resonance</td><td>521</td><td>Band 2: sharpness of the peak</td></tr>
+<tr><td>Layer 3/EQ/Band 2</td><td>Gain</td><td>522</td><td>Band 2: volume gain at the frequency</td></tr>
+<tr><td>Layer 3/EQ/Band 2</td><td>Type</td><td>523</td><td>Band 2: type of EQ band</td></tr>
+<tr><td>Layer 3/MIDI</td><td>Velocity Mapping</td><td>524</td><td>Choose how MIDI velocity should affect the volume of this layer. There are 6 modes that can be selected for this parameter via the buttons on the GUI. By setting one layer to be quiet at high velocities and another layer to be quiet at low velocities you can create an instrument that sounds different based on how hard the notes are played. (0) Ignore velocity, always play full volume. (1) Loudest at high velocity, quietist at low velocity (2) Loudest at low velocity, quietist at high velocity (3) Loudest at high velocity, quietist at middle velocity and below (4) Loudest at middle velocity, quietist at both high and low velocities (5) Loudest at bottom velocity, quietist at middle velocity and above,</td></tr>
+<tr><td>Layer 3/MIDI</td><td>Keytrack On</td><td>525</td><td>Tune the sound to match the key played; if disabled it will always play the sound at its root pitch</td></tr>
+<tr><td>Layer 3/MIDI</td><td>Monophonic On</td><td>526</td><td>Only allow one voice of each sound to play at a time</td></tr>
+<tr><td>Layer 3/MIDI</td><td>MIDI Transpose On</td><td>528</td><td>Transpose the mapping of samples by the given semitone offset, meaning a higher/lower sample may be triggered instead of stretching/shrinking the audio by large amounts (only useful if the instrument is multi-sampled)</td></tr>
+<tr><td>Layer 3/Loop</td><td>Loop Mode</td><td>529</td><td>The mode for looping the samples</td></tr>
+<tr><td>Effect/Distortion</td><td>Type</td><td>3</td><td>Distortion algorithm type</td></tr>
+<tr><td>Effect/Distortion</td><td>Drive</td><td>4</td><td>Distortion amount</td></tr>
+<tr><td>Effect/Distortion</td><td>On</td><td>5</td><td>Enable/disable the distortion effect</td></tr>
+<tr><td>Effect/Bitcrush</td><td>Bits</td><td>6</td><td>Audio resolution</td></tr>
+<tr><td>Effect/Bitcrush</td><td>Sample Rate</td><td>7</td><td>Sample rate</td></tr>
+<tr><td>Effect/Bitcrush</td><td>Wet</td><td>8</td><td>Processed signal volume</td></tr>
+<tr><td>Effect/Bitcrush</td><td>Dry</td><td>9</td><td>Unprocessed signal volume</td></tr>
+<tr><td>Effect/Bitcrush</td><td>On</td><td>10</td><td>Enable/disable the bitcrush effect</td></tr>
+<tr><td>Effect/Compressor</td><td>Threshold</td><td>11</td><td>The threshold that the audio has to pass above before the compression should start taking place</td></tr>
+<tr><td>Effect/Compressor</td><td>Ratio</td><td>12</td><td>The intensity of compression (high ratios mean more compression)</td></tr>
+<tr><td>Effect/Compressor</td><td>Gain</td><td>13</td><td>Additional control for volume after compression</td></tr>
+<tr><td>Effect/Compressor</td><td>Auto Gain</td><td>14</td><td>Automatically re-adjust the gain to stay consistent regardless of compression intensity</td></tr>
+<tr><td>Effect/Compressor</td><td>On</td><td>15</td><td>Enable/disable the compression effect</td></tr>
+<tr><td>Effect/Filter</td><td>On</td><td>16</td><td>Enable/disable the filter</td></tr>
+<tr><td>Effect/Filter</td><td>Cutoff Frequency</td><td>17</td><td>Frequency of filter effect</td></tr>
+<tr><td>Effect/Filter</td><td>Resonance</td><td>18</td><td>The intensity of the volume peak at the cutoff frequency</td></tr>
+<tr><td>Effect/Filter</td><td>Gain</td><td>19</td><td>Volume gain of shelf filter</td></tr>
+<tr><td>Effect/Filter</td><td>Type</td><td>20</td><td>Filter type</td></tr>
+<tr><td>Effect/StereoWiden</td><td>Width</td><td>21</td><td>Increase or decrease the stereo width</td></tr>
+<tr><td>Effect/StereoWiden</td><td>On</td><td>22</td><td>Turn the stereo widen effect on or off</td></tr>
+<tr><td>Effect/Chorus</td><td>Rate</td><td>23</td><td>Chorus modulation rate</td></tr>
+<tr><td>Effect/Chorus</td><td>High-pass</td><td>24</td><td>High-pass filter cutoff</td></tr>
+<tr><td>Effect/Chorus</td><td>Depth</td><td>25</td><td>Chorus effect intensity</td></tr>
+<tr><td>Effect/Chorus</td><td>Wet</td><td>26</td><td>Processed signal volume</td></tr>
+<tr><td>Effect/Chorus</td><td>Dry</td><td>27</td><td>Unprocessed signal volume</td></tr>
+<tr><td>Effect/Chorus</td><td>On</td><td>28</td><td>Enable/disable the chorus effect</td></tr>
+<tr><td>Effect/Convolution Reverb</td><td>High-pass</td><td>65</td><td>Wet high-pass filter cutoff</td></tr>
+<tr><td>Effect/Convolution Reverb</td><td>Wet</td><td>66</td><td>Processed signal volume</td></tr>
+<tr><td>Effect/Convolution Reverb</td><td>Dry</td><td>67</td><td>Unprocessed signal volume</td></tr>
+<tr><td>Effect/Convolution Reverb</td><td>On</td><td>68</td><td>Enable/disable the convolution reverb effect</td></tr>
+<tr><td>Effect/Reverb</td><td>Decay Time</td><td>69</td><td>Reverb decay time</td></tr>
+<tr><td>Effect/Reverb</td><td>Pre Low Cutoff</td><td>70</td><td>Low-pass filter cutoff before reverb</td></tr>
+<tr><td>Effect/Reverb</td><td>Pre High Cutoff</td><td>71</td><td>High-pass filter cutoff before reverb</td></tr>
+<tr><td>Effect/Reverb</td><td>Low Cutoff</td><td>72</td><td>Low-pass filter cutoff after reverb</td></tr>
+<tr><td>Effect/Reverb</td><td>Low Gain</td><td>73</td><td>Low-pass filter gain</td></tr>
+<tr><td>Effect/Reverb</td><td>High Cutoff</td><td>74</td><td>High-pass filter cutoff after reverb</td></tr>
+<tr><td>Effect/Reverb</td><td>High Gain</td><td>75</td><td>High-pass filter gain</td></tr>
+<tr><td>Effect/Reverb</td><td>Chorus Amount</td><td>76</td><td>Chorus effect amount</td></tr>
+<tr><td>Effect/Reverb</td><td>Chorus Frequency</td><td>77</td><td>Chorus effect frequency</td></tr>
+<tr><td>Effect/Reverb</td><td>Size</td><td>78</td><td>Reverb size</td></tr>
+<tr><td>Effect/Reverb</td><td>Delay</td><td>79</td><td>Reverb delay</td></tr>
+<tr><td>Effect/Reverb</td><td>Mix</td><td>80</td><td>Processed signal volume</td></tr>
+<tr><td>Effect/Reverb</td><td>On</td><td>81</td><td>Enable/disable the new reverb effect</td></tr>
+<tr><td>Effect/Phaser</td><td>Feedback</td><td>82</td><td>Feedback amount</td></tr>
+<tr><td>Effect/Phaser</td><td>Mod Rate</td><td>83</td><td>Speed at which the phaser filters modulate</td></tr>
+<tr><td>Effect/Phaser</td><td>Center Frequency</td><td>84</td><td>Center frequency of the phaser filters</td></tr>
+<tr><td>Effect/Phaser</td><td>Shape</td><td>85</td><td>Shape of the phaser filter’s peaks</td></tr>
+<tr><td>Effect/Phaser</td><td>Mod Depth</td><td>86</td><td>The range over which the phaser filters modulate</td></tr>
+<tr><td>Effect/Phaser</td><td>Stereo Amount</td><td>87</td><td>Adds a stereo effect by offsetting the left and right filters</td></tr>
+<tr><td>Effect/Phaser</td><td>Mix</td><td>88</td><td>Mix between the wet and dry signals</td></tr>
+<tr><td>Effect/Phaser</td><td>On</td><td>89</td><td>Enable/disable the phaser effect</td></tr>
+<tr><td>Effect/Delay</td><td>Mode</td><td>90</td><td>Delay type</td></tr>
+<tr><td>Effect/Delay</td><td>Filter Cutoff</td><td>91</td><td>High/low frequency reduction</td></tr>
+<tr><td>Effect/Delay</td><td>Filter Spread</td><td>92</td><td>Width of the filter</td></tr>
+<tr><td>Effect/Delay</td><td>Time Left (ms)</td><td>93</td><td>Left delay time (in milliseconds)</td></tr>
+<tr><td>Effect/Delay</td><td>Legacy Time Right (ms)</td><td>94</td><td>Right delay time (in milliseconds)</td></tr>
+<tr><td>Effect/Delay</td><td>Time Left (Tempo Synced)</td><td>95</td><td>Left delay time (synced to the host tempo)</td></tr>
+<tr><td>Effect/Delay</td><td>Time Right (Tempo Synced)</td><td>96</td><td>Right delay time (synced to the host tempo)</td></tr>
+<tr><td>Effect/Delay</td><td>On</td><td>97</td><td>Synchronise timings to the host’s BPM</td></tr>
+<tr><td>Effect/Delay</td><td>Mix</td><td>98</td><td>Level of processed signal</td></tr>
+<tr><td>Effect/Delay</td><td>On</td><td>99</td><td>Enable/disable the delay effect</td></tr>
+<tr><td>Effect/Delay</td><td>Feedback</td><td>100</td><td>How much the signal repeats</td></tr>
+<tr><td>Master</td><td>Volume</td><td>0</td><td>Master volume</td></tr>
+<tr><td>Master</td><td>Velocity To Volume Strength</td><td>1</td><td>The amount that the MIDI velocity affects the volume of notes; 100% means notes will be silent when the velocity is very soft, and 0% means that notes will play full volume regardless of the velocity</td></tr>
+<tr><td>Master</td><td>Timbre</td><td>2</td><td>The intstruments timbre. Not every instrument contains timbre information; instruments that do will be highlighted when you click on this knob.</td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="autosave"><a class="header" href="#autosave">Autosave</a></h1>
+<p>Floe reduces the chance of you losing your work by automatically saving its state frequently.</p>
+<p>Autosaves are useful if either Floe or the DAW crashes unexpectedly — hopefully a very rare occurrence. But they’re also useful for other reasons such as accidentally removing a track, or changing parameters in a way you didn’t intend.</p>
+<p>Every instance of Floe has an auto-generated name, for example: dawn-205. You can see this in the top panel of Floe’s window. This is useful because it helps identify which instance of Floe an autosave came from so that you can correctly restore it. Autosave files also contain the date and time they were created.</p>
+<p>The autosave feature has reasonable default settings, but you can edit them in the Preferences panel too.</p>
+<p>Autosaves are just preset files. You can load them as you would a preset file. Autosaves can be found here:</p>
+<ul>
+<li>Windows: <code>C:\Users\Public\Floe\Autosaves</code></li>
+<li>macOS: <code>/Users/Shared/Floe/Autosaves</code></li>
+</ul>
+<p>Some additional things to note:</p>
+<ul>
+<li>The autosave system is efficient - it shouldn’t noticeably slow your computer down.</li>
+<li>Floe will automatically delete autosaves older than a given number of days.</li>
+<li>Floe will only keep a certain number of autosaves per instance. If the limit is reached, the oldest autosave will be deleted to make room for the new one.</li>
+<li>Autosaves are tiny files, typically around 2 Kb in size. Your computer won’t run out of space because of them.</li>
+</ul>
+<p>In the future we’d like to add a friendly interface for browsing and restoring autosaves.</p>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="attribution"><a class="header" href="#attribution">Attribution</a></h1>
+<h2 id="at-a-glance"><a class="header" href="#at-a-glance">At a glance</a></h2>
+<p>If a sample library requires attribution:</p>
+<ul>
+<li>Floe will show you the required attribution text.</li>
+<li>Copy-and-paste this text alongside wherever you share your music.</li>
+<li>You own your music (sell it, relicense it, etc.) - you just need to credit the creator of the sounds.</li>
+</ul>
+<p>The above bullet points assume the license is the “Creative Commons Attribution 4.0 International” license — a very common attribution-required license.</p>
+<h2 id="about-attribution-required-licenses"><a class="header" href="#about-attribution-required-licenses">About attribution-required licenses</a></h2>
+<p>A license tells you what you can and can’t do with a sample library. Most developers choose a license that allows you to use the sounds in your music without having to credit them.</p>
+<p>However, some developers choose an attribution-required license such as the widely-used <a href="https://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution</a> license (also known as “CC BY”).</p>
+<p>This license allows you to use the sounds for free, even in commercial projects, as long as you credit the creator by including a bit of attribution text along with your music. For example, you might include the text in a caption on your website, in the album notes or in a credits roll (or any <a href="https://creativecommons.org/licenses/by/4.0/legalcode.en#s3a2">“reasonable manner”</a>). The music that you create with sounds under this license is yours: you can sell it, stream it, relicense it or give it away; you are just required to credit the sound’s creator.</p>
+<p>For some people, giving attribution is a deal-breaker. But here’s some reasons why it might not be so bad:</p>
+<ul>
+<li>Attributions can support the creators of sounds - providing them with recognition, traffic, and potential customers.</li>
+<li>Sharing where your sounds come from helps other musicians find great sounds too - increasing the quality of music everywhere.</li>
+<li>Attributions can look professional and show a high level of care in your work.</li>
+</ul>
+<h2 id="how-floe-helps"><a class="header" href="#how-floe-helps">How Floe helps</a></h2>
+<p>Floe makes it dead-easy to comply with attribution requirements. When you load a sound from a library that requires attribution, Floe will show a small icon in the top of the window. Clicking this will show you the exact text that you can copy-and-paste wherever you need to. Floe tracks all attribution requirements across all instances of Floe, so you only need to do it once.</p>
+<p><img src="usage/../images/attributions-gui.png" alt="Attribution GUI" /></p>
+<p><em>Example of the attribution GUI in Floe</em></p>
+<h2 id="disclaimer"><a class="header" href="#disclaimer">Disclaimer</a></h2>
+<p>Whilst this page is based on careful research and understanding of the topic, it is not legal advice.</p>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="error-reporting"><a class="header" href="#error-reporting">Error Reporting</a></h1>
+<p>Floe strives to be reliable for professional work. To help us achieve this we have various systems in place.</p>
+<h2 id="error-reports"><a class="header" href="#error-reports">Error reports</a></h2>
+<p>If Floe detects that something has gone wrong, it will submit a totally anonymous error report to us. This report contains information about the error, the state of Floe leading up to the error, and information about the computer Floe is running on.</p>
+<p>This enables us to get the key information to fix bugs quickly without having to get you to manually gather and send us information.</p>
+<p>You can disable all online reporting in the Preferences panel if you wish. Floe is open source, so you can also inspect the code to see how this works.</p>
+<h2 id="send-feedback"><a class="header" href="#send-feedback">Send feedback</a></h2>
+<p>Floe has a form that you can use to submit bug reports, feature requests, or general feedback. This is found by clicking on the ‘Send Feedback’ button in the <i class="fa fa-ellipsis-v"></i> three-dots menu at the top of Floe’s window.</p>
+<p>Please use this to report any issues you encounter. We want to know about it and want to fix it.</p>
+<h2 id="crash-protection"><a class="header" href="#crash-protection">Crash protection</a></h2>
+<p>Floe tries to never crash the host. If Floe detects that something has gone wrong, it will enter an unresponsive mode rather than crashing the host. It won’t produce any sound and it can’t be interacted with.</p>
+<p>In this rare situation, make note of the instance name at the top of Floe’s window, such as ‘dawn-205’. Then, remove the plugin from your DAW and re-add it. You can then restore your work from an <a href="usage/./autosave.html">autosave</a> with the instance name you just noted. Anonymous crash information will usually be reported to us automatically for us to address the issue.</p>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="developing-libraries-for-floe"><a class="header" href="#developing-libraries-for-floe">Developing Libraries for Floe</a></h1>
+<p>This page explains how to develop sample libraries for Floe. Some basic programming knowledge is required.</p>
+<h2 id="floes-sample-library-format"><a class="header" href="#floes-sample-library-format">Floe’s sample library format</a></h2>
+<p>Floe’s format is designed for configuring audio files into playable instruments. It does not add any audio-manipulation or custom GUIs. Floe has a ready-to-use GUI and lots of audio parameters. In the future we might add more advanced scripting/GUI creation features to the format. The format is designed to be extended whilst retaining backwards compatibility.</p>
+<p>Floe’s sample library format currently supports the following features:</p>
+<ul>
+<li>Velocity layers</li>
+<li>Round-robin</li>
+<li>Crossfade layers</li>
+<li>Loop points with crossfade</li>
+<li>Convolution reverb IRs</li>
+<li>Velocity layer feathering</li>
+<li>Trigger samples on note-off</li>
+</ul>
+<h3 id="why-a-new-format"><a class="header" href="#why-a-new-format">Why a new format?</a></h3>
+<p>No existing format met our requirements for Floe, which are:</p>
+<ul>
+<li>Libraries should be plain folders of audio files.</li>
+<li>Libraries should be portable across filesystems &amp; operating systems.</li>
+<li>Libraries should be configured using a proper programming language to enable creating complex libraries in a maintainable way.</li>
+<li>The format should be extensible - allowing us to innovate in the field of sampling.</li>
+<li>The solution should easily integrate into Floe’s codebase.</li>
+</ul>
+<h3 id="developer-friendly"><a class="header" href="#developer-friendly">Developer friendly</a></h3>
+<p>Floe’s format is designed to be developer-friendly. It plays well into the tooling and experience of people who are used to dealing with code:</p>
+<ul>
+<li>Works with version control: libraries are just folders of files, they’re portable across filesystems and operating systems.</li>
+<li>Hot reloading: Floe automatically reloads the library whenever you change a file: Lua, audio, or images. It creates a very fast feedback loop.</li>
+<li>Uses a full programming language: Lua is simple, powerful, and widely used. You can use variables, functions, loops, and conditionals to configure your library.</li>
+<li>Floe’s Lua API is simple and concise.</li>
+</ul>
+<h2 id="the-structure"><a class="header" href="#the-structure">The structure</a></h2>
+<p>Let’s look at the structure of a Floe sample library:</p>
+<pre><code>📂FrozenPlain - Slow/
+├── 📄slow.floe.lua
+├── 📄Licence.pdf
+├── 📄About Slow.html
+├── 📁Samples/
+│   ├── 📄synth_sustain_c4.flac
+│   └── 📄synth_sustain_d4.flac
+└── 📁Images/
+    ├── 📄background.png
+    └── 📄icon.png
+</code></pre>
+<p>There’s only one essential part of a Floe sample library: the <code>floe.lua</code> file. This file can have a custom name so long as it ends with <code>.floe.lua</code> - for example, <code>woodwind-textures.floe.lua</code>.</p>
+<p>The rest of the structure are conventions that are recommended but not required:</p>
+<ul>
+<li><strong>Licence</strong>: Sample libraries are recommended to have a file called Licence that describes the terms-of-use of the library. It can be any format: PDF, TXT, etc.</li>
+<li><strong>About</strong>: A file that describes the library. Any file format. Information about a library is useful for when someone might not have Floe’s GUI available. Use this document to explain what the library contains, website links and any other information that might be useful. Floe’s <a href="develop/./packaging.html#packager-command-line-tool">packager tool</a> can automatically generate this file.</li>
+<li><strong>Library folder name</strong>: The folder containing the <code>floe.lua</code> file should be named: “Developer - Library Name”.</li>
+<li><strong>Subfolders</strong>: Subfolders are up to the developer. We recommend ‘Samples’ for audio files and ‘Images’ for images. These can have any number of subfolders. Your <code>floe.lua</code> file can reference any file in these subfolders.</li>
+</ul>
+<h2 id="the-floelua-file"><a class="header" href="#the-floelua-file">The <code>floe.lua</code> file</a></h2>
+<p>The <code>floe.lua</code> file is the most important part of a library. It’s a script that maps and configures the audio files into playable instruments, written in the Lua 5.4 programming language.</p>
+<p>This file uses <a href="develop/library-lua-scripts.html">Floe’s Lua functions</a> to create the library, create instruments, and add regions and impulse responses. It can reference any file in the library using relative paths.</p>
+<p>Here’s a made-up example of a <code>floe.lua</code> file:</p>
+<pre><code class="language-lua">local library = floe.new_library({
+    name = "Iron Vibrations",
+    tagline = "Organic sounds from resonating metal objects",
+    library_url = "https://example.com/iron-vibrations",
+    description = "A collection of resonating metal objects sampled using a handheld stereo recorder.",
+    author = "Found-sound Labs",
+    author_url = "https://example.com",
+    minor_version = 1,
+    background_image_path = "Images/background.jpg",
+    icon_image_path = "Images/icon.png",
+})
+
+local instrument = floe.new_instrument(library, {
+    name = "Metal Fence Strike",
+    folder = "Fences/Steel",
+    description = "Tonal pluck metallic pluck made from striking a steel fence.",
+    tags = { "found sounds", "tonal percussion", "metal", "keys", "cold", "ambient", "IDM", "cinematic" },
+    waveform_audio_path = "Samples/file1.flac",
+})
+
+floe.add_region(instrument, {
+    path = "Samples/One-shots/Resonating String.flac",
+    root_key = 60,
+    trigger_criteria = {
+        trigger_event = "note-on",
+        key_range = { 60, 64 },
+        velocity_range = { 0, 100 },
+        round_robin_index = 0,
+        round_robin_sequencing_group = "group1",
+        feather_overlapping_velocity_layers = false,
+        auto_map_key_range_group = "group1",
+    },
+    loop = {
+        builtin_loop = {
+            start_frame = 24,
+            end_frame = 6600,
+            crossfade = 100,
+            mode = "standard",
+            lock_loop_points = false,
+            lock_mode = false,
+        },
+        loop_requirement = "always-loop",
+    },
+    timbre_layering = {
+        layer_range = { 0, 50 },
+    },
+    audio_properties = {
+        gain_db = -3,
+        start_offset_frames = 0,
+        tune_cents = 0,
+    },
+    playback = {
+        keytrack_requirement = "default",
+    },
+})
+
+floe.set_attribution_requirement("Samples/bell.flac", {
+    title = "Bell Strike",
+    license_name = "CC-BY-4.0",
+    license_url = "https://creativecommons.org/licenses/by/4.0/",
+    attributed_to = "John Doe",
+    attribution_url = "https://example.com",
+})
+
+floe.add_ir(library, {
+    name = "Cathedral",
+    path = "irs/cathedral.flac",
+    folder = "Cathedrals",
+    tags = { "acoustic", "cathedral" },
+    description = "Sine sweep in St. Paul's Cathedral.",
+})
+
+return library
+
+</code></pre>
+<p><code>floe.new_library()</code> must be called and returned it at the end of the script. All other features are optional. When Floe runs your Lua file, it will show you any errors that occur along with a line number and a description.</p>
+<h2 id="how-to-get-started"><a class="header" href="#how-to-get-started">How to get started</a></h2>
+<p>For now, we’ll assume that you have a folder of audio samples and know what notes they correspond to.</p>
+<ol>
+<li>Create a new folder in one of Floe’s <a href="develop/../usage/sample-libraries.html">sample library folders</a>. We recommend naming it ‘Author Name - Library Name’.</li>
+<li>Create a file in that folder called <code>my-library.floe.lua</code>.</li>
+<li>Create a subfolder called <code>Samples</code> and put your audio files in there.</li>
+<li>Open the Lua file in your text editor. If you’re not already familiar with a editor, then Sublime Text or Visual Studio Code are reasonable choices.</li>
+<li>Use the <code>floe.new_library()</code> function to create your library, filling in all the fields marked <code>[required]</code> in the <a href="develop/library-lua-scripts.html">Floe’s Lua reference</a>.</li>
+<li>Use <code>floe.new_instrument()</code> to create an instrument, and then add regions to it using <code>floe.add_region()</code>, again, filling in the fields that are documented.</li>
+<li>At the end of the file, return the library object you just created: <code>return library</code>.</li>
+<li>Floe automatically detects whenever any library file changes and will tell you if there’s any errors. If a library is correctly configured, it will instantly appear in Floe.</li>
+</ol>
+<h2 id="creating-high-quality-samples"><a class="header" href="#creating-high-quality-samples">Creating high-quality samples</a></h2>
+<h3 id="levels"><a class="header" href="#levels">Levels</a></h3>
+<p>It’s important to ensure your audio samples have the the right levels. This makes browsing and switching samples in Floe a consistent, nice experience. Additionally, Floe offers the ability to layer sounds together; this process is more ergonomic when instruments have similar volume levels.</p>
+<p><a href="https://github.com/SamWindell/Signet">Signet</a> can be a useful tool for changing the levels of your samples.</p>
+<p>When changing the volume levels of a realistic multi-sampled instrument, you probably don’t want to normalise each sample individually because part of the character of the instrument is its volume variation. Instead, you should change the gain of the instrument <em>as a whole</em>. Signet has features for this. It also has features for proportionally moving levels towards a target level. This allows you to keep some of the character of an instrument while nudging it towards a more consistent level.</p>
+<p>Here are some guidelines for levels:</p>
+<ul>
+<li>Each samples’s peak level should be less than -3 dB.</li>
+<li>Playing the instrument should barely cause Floe’s peak meter to reach its yellow region. Another way to levels could be this: RMS levels for an instrument <em>as a whole</em> should be around -18 dB. Play the instrument polyphonically and watch the RMS level. If the instrument is designed to be monophonic, then adjust for that.</li>
+<li>The noise floor should be as low as possible: -60 dB is a good target. Use high-quality noise reduction tools to remove noise from your samples if you need to. Noise levels can quickly stack up with a multi-sampled instrument played polyphonically. Being too aggressive with algorithmic noise reduction can make your samples sound unnatural - so it’s a balance.</li>
+<li>Impulse responses should be normalised by their energy (power) levels: <code>signet my-impulses norm -100 --mode energy --independently &amp;&amp; signet my-impulses norm 0</code>. Or if not using Signet, then adjust their levels so that they feel similar to the volume levels of Floe’s built-in IRs.</li>
+</ul>
+<h3 id="sample-rate-bit-depth-and-file-format"><a class="header" href="#sample-rate-bit-depth-and-file-format">Sample rate, bit depth, and file format</a></h3>
+<p>Floe only supports FLAC and WAV files. We recommend using FLAC for your samples. It’s lossless and can reduce the file size by 50% to 70% compared to WAV. Floe loads FLAC files very quickly.</p>
+<p>We find 44.1 kHz and 16-bit is often a perfectly reasonable choice. 48 kHz and 24-bit might also be appropriate in certain cases.</p>
+<h3 id="volume-envelopes-of-samples"><a class="header" href="#volume-envelopes-of-samples">Volume envelopes of samples</a></h3>
+<p>Floe blurs the line between a sampler and a sample-based synthesizer. It has lots of parameters for manipulating the sound in real-time.</p>
+<p>If your sample is a single continuous sound, then don’t include a fade-in or fade-out in the sample. Floe has a GUI for volume envelopes that offer more control: they can be adjusted to any value, automated by the DAW, and they are independent of the playback speed of the sample. If you have a sample that is stretched across a keyboard range, it will be sped-up or slowed-down in order to be the correct pitch. If there’s a volume fade, then the speed of the fade will change depending on the pitch of the voice. This is not normally a desirable effect.</p>
+<p>If your sound has important timbral variation over time, then don’t cut that away. Only if the sound is a constant tone should you remove the fade in/out.</p>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="library-lua-scripts"><a class="header" href="#library-lua-scripts">Library Lua Scripts</a></h1>
+<p>The <code>floe.lua</code> file is the most important part of a Floe sample library. This page serves as documentation for all of the functions that you can use in your script to create and configure the library and its instruments.</p>
+<p>Floe runs your script using Lua v5.4, providing you with access to these <a href="https://www.lua.org/manual/5.4/manual.html#6">standard libraries</a>: <code>math</code>, <code>string</code>, <code>table</code> and <code>utf8</code>. The other standard libraries are not available - including the <code>require</code> function. This is to minimise security risks.</p>
+<p>If there are any errors in your script, Floe will show them on the GUI along with a line number and a description of the problem.</p>
+<h2 id="library-functions"><a class="header" href="#library-functions">Library Functions</a></h2>
+<p>Use these functions to create your sample library. Take note of the <code>[required]</code> annotations - omitting fields marked with these will cause an error.</p>
+<h3 id="floenew_library"><a class="header" href="#floenew_library"><code>floe.new_library</code></a></h3>
+<p>Creates a new library. It takes one parameter: a table of configuration. It returns a new library object. You should only create one library in your script. Return the library at the end of your script.</p>
+<p>The library is the top-level object. It contains all the instruments, regions, and impulse responses.</p>
+<pre><code class="language-lua">local library = floe.new_library({
+    -- The name of the library. Keep it short and use tagline for more details. 
+    -- [required]
+    name = "Iron Vibrations",
+
+    -- A few words to describe the library. [required]
+    tagline = "Organic sounds from resonating metal objects",
+
+    -- The URL for this Floe library.
+    -- [optional, default: no url]
+    library_url = "https://example.com/iron-vibrations",
+
+    -- A description of the library. You can be verbose and use newlines (\n).
+    -- [optional, default: no description]
+    description = "A collection of resonating metal objects sampled using a handheld stereo recorder.",
+
+    -- Who created this library. Keep it short, use the description for more 
+    -- details. [required]
+    author = "Found-sound Labs",
+
+    -- URL relating to the author or their work.
+    -- [optional, default: ]
+    author_url = "https://example.com",
+
+    -- The minor version of this library - backwards-compatible changes are 
+    -- allowed on a library; this field represents that. Non-backwards-compatibile 
+    -- changes are not allowed: you'd need to create a new library such as: 
+    -- "Strings 2".
+    -- [optional, default: 1]
+    minor_version = 1,
+
+    -- Path relative to this script for the background image. It should be a jpg 
+    -- or png.
+    -- [optional, default: ]
+    background_image_path = "Images/background.jpg",
+
+    -- Path relative to this script for the icon image. It should be a square jpg 
+    -- or png.
+    -- [optional, default: ]
+    icon_image_path = "Images/icon.png",
+})
+</code></pre>
+<h3 id="floenew_instrument"><a class="header" href="#floenew_instrument"><code>floe.new_instrument</code></a></h3>
+<p>Creates a new instrument on the library. It takes 2 parameters: the library object and a table of configuration. It returns a new instrument object. You can call this function multiple times to create multiple instruments.</p>
+<p>An instrument is like a musical instrument. It is a sound-producing entity that consists of one or more samples (samples are specified in regions). Each library can have multiple instruments.</p>
+<pre><code class="language-lua">local instrument = floe.new_instrument(library, {
+    -- The name of the instrument. Must be unique. [required]
+    name = "Metal Fence Strike",
+
+    -- Specify a folder to group instruments under a common heading. It may 
+    -- contain slashes to represent a hierarchy. See 
+    -- https://floe.audio/develop/tags-and-folders.html for more information.
+    -- [optional, default: no folders]
+    folder = "Fences/Steel",
+
+    -- A description of the instrument. Start with a capital letter an end with a 
+    -- period.
+    -- [optional, default: no description]
+    description = "Tonal pluck metallic pluck made from striking a steel fence.",
+
+    -- An array of strings to denote properties of the instrument. See 
+    -- https://floe.audio/develop/tags-and-folders.html for more information.
+    -- [optional, default: no tags]
+    tags = { "found sounds", "tonal percussion", "metal", "keys", "cold", "ambient", "IDM", "cinematic" },
+
+    -- Path to an audio file relative to this script that should be used as the 
+    -- waveform on Floe's GUI.
+    -- [optional, default: first region path]
+    waveform_audio_path = "Samples/file1.flac",
+})
+</code></pre>
+<h3 id="floeadd_region"><a class="header" href="#floeadd_region"><code>floe.add_region</code></a></h3>
+<p>Adds a region to an instrument. It takes 2 parameters: the instrument object and a table of configuration. Doesn’t return anything. You can call this function multiple times to create multiple regions.</p>
+<p>A region is a part of an instrument. It defines an audio file and the conditions under which it will be played. For example, you might have a region that plays the audio file <code>Piano_C3.flac</code> when the note C3 is played. Each instrument must have one or more regions.</p>
+<pre><code class="language-lua">floe.add_region(instrument, {
+    -- A path to an audio file, relative to this current lua file. [required]
+    path = "Samples/One-shots/Resonating String.flac",
+
+    -- The pitch of the audio file as a number from 0 to 127 (a MIDI note number). 
+    -- On a range from 0 to 127. [required]
+    root_key = 60,
+
+    -- How this region should be triggered.
+    -- [optional, default: defaults]
+    trigger_criteria = {
+        -- What event triggers this region. Must be one of: "note-on" or 
+        -- "note-off".
+        -- [optional, default: note-on]
+        trigger_event = "note-on",
+
+        -- The pitch range of the keyboard that this region is mapped to. These 
+        -- should be MIDI note numbers, from 0 to 128. The start number is 
+        -- inclusive, the end is exclusive.
+        -- [optional, default: { 60, 64 }]
+        key_range = { 60, 64 },
+
+        -- The velocity range of the keyboard that this region is mapped to. This 
+        -- should be an array of 2 numbers ranging from 0 to 100. The start number 
+        -- is inclusive, the end is exclusive.
+        -- [optional, default: { 0, 100 }]
+        velocity_range = { 0, 100 },
+
+        -- Trigger this region only on this round-robin index. For example, if 
+        -- this index is 0 and there are 2 other groups with round-robin indices 
+        -- of 1 and 2 with the same round_robin_sequencing_group and 
+        -- trigger_event, then this region will trigger on every third press of a 
+        -- key only. round_robin_index should begin at 0 and be consecutive. The 
+        -- total number of round-robins is calculated automatically.
+        -- [optional, default: no round-robin]
+        round_robin_index = 0,
+
+        -- Group together regions that have this same string, so that their 
+        -- round_robin_index is part of a separate sequence to other 
+        -- round_robin_sequencing_groups. Use this when you have multiple sets of 
+        -- regions that have a different number of round-robins with the same 
+        -- trigger_event.
+        -- [optional, default: instrument-wide group]
+        round_robin_sequencing_group = "group1",
+
+        -- If another region in this instrument is triggered at the same time as 
+        -- this one and is overlapping this, and also has this option enabled, 
+        -- then both regions will play crossfaded in a proportional amount for the 
+        -- overlapping area, creating a smooth transition between velocity layers. 
+        -- Only works if there's exactly 2 overlapping layers.
+        -- [optional, default: false]
+        feather_overlapping_velocity_layers = false,
+
+        -- For every region that has this same string, automatically set the start 
+        -- and end values for each region's key range based on its root key.
+        -- [optional, default: no auto-map]
+        auto_map_key_range_group = "group1",
+    },
+
+    -- Loop configuration.
+    -- [optional, default: defaults]
+    loop = {
+        -- Define a built-in loop.
+        -- [optional, default: no built-in loop]
+        builtin_loop = {
+            -- The start of the loop in frames. Inclusive. It can be negative 
+            -- meaning index the file from the end rather than the start. 
+            -- [required]
+            start_frame = 24,
+
+            -- The end of the loop in frames. Exclusive. It can be negative 
+            -- meaning index the file from the end rather than the start. 0 means 
+            -- the end of the file. [required]
+            end_frame = 6600,
+
+            -- The number of frames to crossfade. [required]
+            crossfade = 100,
+
+            -- The mode of the loop. Must be one of: "standard" or "ping-pong".
+            -- [optional, default: standard]
+            mode = "standard",
+
+            -- If true, the start, end and crossfade values cannot be overriden by 
+            -- a custom loop from Floe's GUI.
+            -- [optional, default: ]
+            lock_loop_points = false,
+
+            -- If true, the loop mode value cannot be overriden by a custom mode 
+            -- from Floe's GUI.
+            -- [optional, default: ]
+            lock_mode = false,
+        },
+
+        -- The requirement for this region to loop. Must be one of: 
+        -- "default" =&gt; Default looping behaviour.
+        -- "always-loop" =&gt; This region will always loop - either using the built 
+        -- in loop, a user defined loop, or a default built-in loop.
+        -- "never-loop" =&gt; This region will never loop even if there is a 
+        -- user-defined loop. Set all regions of an instrument to this to entirely 
+        -- disable looping for the instrument.
+        -- [optional, default: default]
+        loop_requirement = "always-loop",
+    },
+
+    -- Timbre layering configuration.
+    -- [optional, default: no timbre layering]
+    timbre_layering = {
+        -- The start and end point, from 0 to 100, of the Timbre knob on Floe's 
+        -- GUI that this region should be heard. You should overlap this range 
+        -- with other timbre layer ranges. Floe will create an even crossfade of 
+        -- all overlapping sounds. The start number is inclusive, end is 
+        -- exclusive. This region's velocity_range should be 0-100.
+        -- [optional, default: no timbre layering]
+        layer_range = { 0, 50 },
+    },
+
+    -- Audio properties.
+    -- [optional, default: defaults]
+    audio_properties = {
+        -- Apply a gain to the audio data in decibels.
+        -- [optional, default: 0]
+        gain_db = -3,
+
+        -- The number of frames to skip at the start of the audio data.
+        -- [optional, default: 0]
+        start_offset_frames = 0,
+
+        -- Tune the audio data in cents.
+        -- [optional, default: 0]
+        tune_cents = 0,
+    },
+
+    -- Playback configuration.
+    -- [optional, default: defaults]
+    playback = {
+        -- The requirement for keytracking. Must be one of: "default", "always" or 
+        -- "never".
+        -- [optional, default: default]
+        keytrack_requirement = "default",
+    },
+})
+</code></pre>
+<h3 id="floeadd_ir"><a class="header" href="#floeadd_ir"><code>floe.add_ir</code></a></h3>
+<p>Adds an reverb impulse response to the library. It takes 2 parameters: the library object and a table of configuration. Doesn’t return anything. You can call this function multiple times to create multiple impulse responses.</p>
+<pre><code class="language-lua">floe.add_ir(library, {
+    -- The name of the IR. Must be unique. [required]
+    name = "Cathedral",
+
+    -- File path to the impulse response file, relative to this script. [required]
+    path = "irs/cathedral.flac",
+
+    -- Specify a folder to group IRs under a common heading. It may contain 
+    -- slashes to represent a hierarchy. See 
+    -- https://floe.audio/develop/tags-and-folders.html for more information.
+    -- [optional, default: no folders]
+    folder = "Cathedrals",
+
+    -- An array of strings to denote properties of the IR. See 
+    -- https://floe.audio/develop/tags-and-folders.html for more information.
+    -- [optional, default: no tags]
+    tags = { "acoustic", "cathedral" },
+
+    -- A description of the IR. Start with a capital letter an end with a period.
+    -- [optional, default: no description]
+    description = "Sine sweep in St. Paul's Cathedral.",
+})
+</code></pre>
+<h3 id="floeset_attribution_requirement"><a class="header" href="#floeset_attribution_requirement"><code>floe.set_attribution_requirement</code></a></h3>
+<p>Sets the attribution information for a particular audio file or folder. It takes 2 parameters: a path to the file or folder whose license information you want to set, and a table of configuration. If the path is a folder, the attribution requirement will be applied to all audio files in that folder and its subfolders.</p>
+<pre><code class="language-lua">floe.set_attribution_requirement("Samples/bell.flac", {
+    -- The title of the work. [required]
+    title = "Bell Strike",
+
+    -- Name of the license. [required]
+    license_name = "CC-BY-4.0",
+
+    -- URL to the license. [required]
+    license_url = "https://creativecommons.org/licenses/by/4.0/",
+
+    -- The name/identification of the persons or entities to attribute the work 
+    -- to. [required]
+    attributed_to = "John Doe",
+
+    -- URL to the original work if possible.
+    -- [optional, default: ]
+    attribution_url = "https://example.com",
+})
+</code></pre>
+<h2 id="support-function"><a class="header" href="#support-function">Support Function</a></h2>
+<p>Floe provides some additional functions to make developing libraries easier.</p>
+<h3 id="floeextend_table"><a class="header" href="#floeextend_table"><code>floe.extend_table</code></a></h3>
+<p>Extends a table with another table, including all sub-tables. It takes 2 parameters: the base table and the table to extend it with. The base table is not modified. The extension table is modified and returned. It has all the keys of the base table plus all the keys of the extended table. If a key exists in both tables, the value from the extension table is used.</p>
+<p>Floe doesn’t have the concept of ‘groups’ like other formats like SFZ or Kontakt have. Instead, this function offers a way to apply a similar configuration to multiple regions. Alternatively, you can use functions and loops in Lua to add regions in a more dynamic way.</p>
+<pre><code class="language-lua">local group1 = {
+    trigger_criteria = {
+        trigger_event = "note-on",
+        velocity_range = { 0, 100 },
+        auto_map_key_range_group = "group1",
+        feather_overlapping_velocity_regions = false,
+    },
+}
+
+floe.add_region(instrument, floe.extend_table(group1, {
+    path = "One-shots/Resonating String 2.flac",
+    root_key = 65,
+}))
+
+floe.add_region(instrument, floe.extend_table(group1, {
+    path = "One-shots/Resonating String 3.flac",
+    root_key = 68,
+}))
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="develop-preset-packs"><a class="header" href="#develop-preset-packs">Develop Preset Packs</a></h1>
+<p>Developing preset packs is simply a matter of saving preset files into a folder and then packaging them into a <a href="develop/./packaging.html">Floe Package</a>.</p>
+<p>Best practices for presets:</p>
+<ul>
+<li>Makes presets all feel the same volume: the master peak meter on Floe’s GUI should just be the yellow zone when the preset is played at its fullest.</li>
+<li>Give each preset a unique, descriptive name suggesting its tone or usage. Don’t use all capital letters. Don’t include a ‘type’ prefix such as “PAD - “ or “LD - “.</li>
+<li>Add as many tags as is relevant to the preset. Read more about tags on the <a href="develop/./tags-and-folders.html">tags and folders</a> page.</li>
+<li>Keep the description short and ending with a period.</li>
+<li>Organise presets into folders using your file browser. You can rename presets and folders as you like. See the best practises for folders on the <a href="develop/./tags-and-folders.html">tags and folders</a> page.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="package-libraries--presets-for-distribution"><a class="header" href="#package-libraries--presets-for-distribution">Package libraries &amp; presets for distribution</a></h1>
+<p>The easiest and most reliable way to distribute your Floe sample libraries and presets is with <a href="develop/../packages/about-packages.html">Floe Packages</a>.</p>
+<p>Floe Packages are ZIP files that contain Floe sample libraries and/or presets. Packages are the files that users will download and use to install new libraries and presets into Floe.</p>
+<p>Floe offers an easy-to-use GUI for <a href="develop/../packages/install-packages.html">installing these Packages</a>. This installation process carefully considers the user’s existing libraries and presets, their versions, their installation preferences, even whether their installed libraries have been modified or not. The result is something that should ‘just work’ or at least provide clear instructions on what to do next.</p>
+<p>As with Floe’s sample library format, openness is key. That’s why Floe Packages are just normal ZIP files with a specific structure. Anyone can create them and anyone can open them. Additionally, it gives the user the option to extract them manually rather than use Floe’s GUI if they wish.</p>
+<p>Create Floe Packages using our command-line tool or any ZIP program.</p>
+<h2 id="packager-command-line-tool"><a class="header" href="#packager-command-line-tool">Packager command-line tool</a></h2>
+<p>If you’re comfortable with such things, we have a command-line tool to create Floe Packages. It ensures everything is set up correctly and adds a couple of nice-to-have features, particularly for users who want to install the package manually rather than with Floe’s GUI.</p>
+<p>However, you can use any ZIP program to create Floe Packages. Just make sure they follow the structure described in the next section.</p>
+<h4 id="download"><a class="header" href="#download">Download</a></h4>
+<blockquote>
+<p><strong><i class="fa fa-windows"></i> Floe Packager Windows</strong>:<br><a href="https://github.com/floe-audio/Floe/releases/download/v0.9.9-beta/Floe-Packager-v0.9.9-beta-Windows.zip">Download Floe-Packager-v0.9.9-beta-Windows.zip</a> (9 MB)</p>
+<p><strong><i class="fa fa-apple"></i> Floe Packager macOS Apple Silicon</strong>:<br><a href="https://github.com/floe-audio/Floe/releases/download/v0.9.9-beta/Floe-Packager-v0.9.9-beta-macOS-Apple-Silicon.zip">Download Floe-Packager-v0.9.9-beta-macOS-Apple-Silicon.zip</a> (1 MB)</p>
+<p><strong><i class="fa fa-apple"></i> Floe Packager macOS Intel</strong>:<br><a href="https://github.com/floe-audio/Floe/releases/download/v0.9.9-beta/Floe-Packager-v0.9.9-beta-macOS-Intel.zip">Download Floe-Packager-v0.9.9-beta-macOS-Intel.zip</a> (1 MB)</p>
+</blockquote>
+<p>Download the program, extract it, and run it from the command line.</p>
+<h4 id="usage"><a class="header" href="#usage">Usage</a></h4>
+<p>Here’s the output of <code>floe-packager --help</code>:</p>
+<pre><code>Takes libraries and presets and turns them into a Floe package file (ZIP).
+You can specify multiple libraries and preset-folders. Additionally:
+- Validates any Lua files.
+- Ensures libraries have a License file.
+- Adds an 'About' document for each library.
+- Adds a 'Installation' document for the package.
+- Embeds a checksum file into the package for better change detection if the package
+  is installed manually.
+
+Usage: floe-packager [ARGS]
+
+Optional arguments:
+  --library-folders &lt;path&gt;...  One or more library folders
+  --presets-folders &lt;path&gt;...  One or more presets folders
+  --output-folder &lt;path&gt;       Folder to write the created package to
+  --package-name &lt;name&gt;        Package name - inferred from library name if not provided
+</code></pre>
+<h4 id="examples"><a class="header" href="#examples">Examples</a></h4>
+<p>These examples use bash syntax.</p>
+<pre><code class="language-bash"># Creates a Floe Package from the Slow library and the Slow Factory Presets.
+# Slow and "Slow Factory Presets" are folders in the current directory.
+./floe-packager --library-folders "Slow" \
+                --preset-folders "Slow Factory Presets" \
+                --output-folder .
+
+# Creates a Floe Package containing multiple libraries and no presets
+./floe-packager --library-folders "C:/Users/Sam/Floe-Dev/Strings" \
+                                  "C:/Users/Sam/Floe-Dev/Common-IRs" \
+                --output-folder "C:/Users/Sam/Floe-Dev/Releases" \
+                --package-name "FrozenPlain - Strings"
+</code></pre>
+<h2 id="package-structure"><a class="header" href="#package-structure">Package structure</a></h2>
+<p>If you’re not using the packager tool, you need to know the structure of the Floe Package. It’s very simple.</p>
+<p>Requirements of a floe package:</p>
+<ul>
+<li>The ZIP must contain a folder called <code>Libraries</code> and/or a folder called <code>Presets</code>. If present, these folders must contain the libraries and presets respectively.</li>
+</ul>
+<p>Be careful that your ZIP program is not adding an extra folder when you create the ZIP file. There should not be a top-level folder in the ZIP file, just the <code>Libraries</code> and/or <code>Presets</code> folders.</p>
+<h4 id="example-single-library--factory-presets"><a class="header" href="#example-single-library--factory-presets">Example: single library &amp; factory presets</a></h4>
+<pre><code>📦FrozenPlain - Arctic Strings Package.zip/
+├── 📁Libraries
+│   └── 📁Arctic Strings
+│       ├── 📄arctic-strings.floe.lua
+│       ├── 📁Samples
+│       │   ├── 📄strings_c4.flac
+│       │   └── 📄strings_d4.flac
+│       └── 📁Images
+│           ├── 📄background.png
+│           └── 📄icon.png
+└── 📁Presets
+    └── 📁Arctic Strings Factory
+        ├── 📁Realistic
+        │   ├── 📄Octaved.floe-preset
+        │   └── 📄Soft.floe-preset
+        └── 📁Synthetic
+            ├── 📄Bright.floe-preset
+            └── 📄Warm.floe-preset
+</code></pre>
+<h4 id="example-multiple-libraries"><a class="header" href="#example-multiple-libraries">Example: multiple libraries</a></h4>
+<pre><code>📦Audioata - Synthwave Bundle Package.zip/
+├── 📁Libraries
+│   ├── 📁Synthwave Bass
+│   │   ├── 📄synthwave-bass.floe.lua
+│   │   └── 📁Samples
+│   │       ├── 📄bass_c1.flac
+│   │       └── 📄bass_d1.flac
+│   ├── 📁Synthwave Drums
+│   │   ├── 📄synthwave-drums.floe.lua
+│   │   └── 📁Samples
+│   │       ├── 📄kick.flac
+│   │       └── 📄snare.flac
+│   └── 📁Synthwave Synths
+│       ├── 📄synthwave-synths.floe.lua
+│       └── 📁Samples/
+│           ├── 📄synth_c4.flac
+│           └── 📄synth_d4.flac
+└── 📁Presets
+    └── 📁Synthwave Factory
+        ├── 📄Clean Pad.floe-preset
+        ├── 📄Dirty Lead.floe-preset
+        ├── 📄Nebula Drone.floe-preset
+        ├── 📄Punchy Kickdrum.floe-preset
+        ├── 📄Backing FX.floe-preset
+        └── 📄Full Effect.floe-preset
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<div class="warning">
+The tags and folder features of Floe are under development. Some of the features on this page aren't implemented yet.
+</div>
+<h1 id="tags-and-folders"><a class="header" href="#tags-and-folders">Tags and folders</a></h1>
+<p>Floe has 2 complimentary features for browsing, searching and filtering: tags and folders. These apply to a few different features of Floe: presets, instruments and impulse responses.</p>
+<p>For developers, there are best practises for how to use tags and folders to offer the best experience for the user.</p>
+<p>On this page, we use the term ‘item’ to mean either preset, instrument or impulse response: these all use tags and folders in a similar way.</p>
+<h2 id="folders"><a class="header" href="#folders">Folders</a></h2>
+<p>Folders are used to group items under a common heading. Items are often displayed in folders, even when other filtering has been applied.</p>
+<p>Folders should be categories that relate to the theme or objective of the library. For example, for Lost Reveries, we wanted to explore the technique of using three complimentary timbres to layer into a full-spectrum sound, so we choose folders: “Low”, “Mid” and “Air”. Another example might be a library of field recordings, folders might be “Urban/London”, “Urban/York” or “Nature/New Forest”.</p>
+<p>Folders may contain slashes to represent a hierarchy, just like a filepath. For example: “Piano/1978 Steinway”. Use this to specify broad categories that narrow down to specific categories. It’s not usually best to have more than 2 levels of hierarchy.</p>
+<p>It’s best to have 5 to 30 items per folder. Folders with not many items clutter the GUI and don’t offer much value. Folders with too many items loose their focus.</p>
+<p>Folders might overlap with tags but, in general, they are more abstract and can use phrases that only make sense in the context of the library as a whole. However, if it makes sense to group items under a common heading such as ‘Percussion’ (a common tag), then that’s fine too — but you should also add this as a tag.</p>
+<h2 id="tags"><a class="header" href="#tags">Tags</a></h2>
+<p>Tags are the properties of an item. They are used for filtering and searching items across all libraries. Therefore, tags should normally come from the standard pool of tags so that there is a common language that enables standard usage across all libraries. Custom tags are allowed, but they should only be used for a good reason.</p>
+<p>Add as many relevant tags as possible.</p>
+<p>Tags are case-insensitive.</p>
+<h2 id="standard-tags"><a class="header" href="#standard-tags">Standard tags</a></h2>
+<p>We take a pragmatic approach to defining this set of standard tags. Rather than try to be completely comprehensive and technically accurate, we instead aim to strike a balance between correctness and common usage within the music production space. The goal of tags is to help users find the item they need. You can suggest edits to this list via Github or other means.</p>
+<p>For best results setting tags, go over each of the following questions and add all tags that apply to the item.</p>
+<h3 id="1-where-did-the-sound-come-from-sound-source"><a class="header" href="#1-where-did-the-sound-come-from-sound-source">1. Where did the sound come from? (Sound source)</a></h3>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Description</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>synthesized</code></td><td style="text-align: left">Generated by algorithms or circuits</td></tr>
+<tr><td style="text-align: left"><code>acoustic</code></td><td style="text-align: left">Originating from a real instrument</td></tr>
+<tr><td style="text-align: left"><code>vocal</code></td><td style="text-align: left">Originating from a human voice</td></tr>
+<tr><td style="text-align: left"><code>hybrid</code></td><td style="text-align: left">Combines acoustic/vocal sounds with processed/synthesized elements</td></tr>
+<tr><td style="text-align: left"><code>field recording</code></td><td style="text-align: left">Environmental or location recordings</td></tr>
+<tr><td style="text-align: left"><code>found sounds</code></td><td style="text-align: left">Real objects not traditionally used for music</td></tr>
+</tbody></table>
+</div>
+<p>It’s strongly recommended to specify a sound-source for instruments and impulse responses. This is sometimes not applicable for presets.</p>
+<h3 id="2-does-it-fit-in-a-real-instrument-category-real-instrument-type"><a class="header" href="#2-does-it-fit-in-a-real-instrument-category-real-instrument-type">2. Does it fit in a real instrument category? (Real instrument type)</a></h3>
+<p><code>piano</code>,
+<code>keys</code>,
+<code>strings</code><sup class="footnote-reference"><a href="#bowed-strings">1</a></sup>,
+<code>violin</code>,
+<code>cello</code>,
+<code>plucked strings</code><sup class="footnote-reference"><a href="#plucked-strings">2</a></sup>,
+<code>struck strings</code><sup class="footnote-reference"><a href="#struck-strings">3</a></sup>,
+<code>guitar</code>,
+<code>bass</code>,
+<code>brass</code>,
+<code>wind</code>,
+<code>percussion</code>,
+<code>drums</code>,
+<code>vocal</code>,
+<code>choir</code>,
+<code>folk</code>,
+<code>organ</code>,
+<code>tonal percussion</code></p>
+<p>Number of instruments: <code>solo</code>, <code>ensemble</code>.</p>
+<p>These are mostly relevant for acoustic or hybrid sounds, but can be used for synthesized sounds that emulate these instruments.</p>
+<div class="footnote-definition" id="bowed-strings"><sup class="footnote-definition-label">1</sup>
+<p>Bowed strings such as violin, viola, cello, double bass.</p>
+</div>
+<div class="footnote-definition" id="plucked-strings"><sup class="footnote-definition-label">2</sup>
+<p>Plucked strings such as guitar, harp, mandolin.</p>
+</div>
+<div class="footnote-definition" id="struck-strings"><sup class="footnote-definition-label">3</sup>
+<p>Struck strings such as hammered dulcimer, santur.</p>
+</div>
+<h3 id="3-is-it-made-from-a-specific-material-material"><a class="header" href="#3-is-it-made-from-a-specific-material-material">3. Is it made from a specific material? (Material)</a></h3>
+<p><code>wood</code>,
+<code>metal</code>,
+<code>glass</code>,
+<code>plastic</code>,
+<code>rubber</code>,
+<code>stone</code>,
+<code>ice</code>.</p>
+<p>This is typically used for non-standard instruments in the <code>acoustic</code> or <code>found sounds</code> categories.</p>
+<h3 id="3-what-reverb-type-is-it-reverb-type"><a class="header" href="#3-what-reverb-type-is-it-reverb-type">3. What reverb type is it? (Reverb type)</a></h3>
+<p><code>small room</code>,
+<code>large room</code>,
+<code>chamber</code>,
+<code>studio</code>,
+<code>hall</code>,
+<code>church</code>,
+<code>cathedral</code>,
+<code>unusual</code>,
+<code>open air</code>.</p>
+<p>Strongly recommended for impulse responses. Not applicable for instruments or presets.</p>
+<h3 id="4-what-mood-does-the-item-evoke-mood"><a class="header" href="#4-what-mood-does-the-item-evoke-mood">4. What mood does the item evoke? (Mood)</a></h3>
+<p>Positive moods:
+<code>bright</code><sup class="footnote-reference"><a href="#bright">4</a></sup>,
+<code>dreamy</code>,
+<code>ethereal</code>,
+<code>hopeful</code>,
+<code>nostalgic</code>,
+<code>peaceful</code>,
+<code>playful</code>.
+Negative moods:
+<code>aggressive</code>,
+<code>chaotic</code>,
+<code>dark</code><sup class="footnote-reference"><a href="#dark">5</a></sup>,
+<code>disturbing</code>,
+<code>eerie</code>,
+<code>melancholic</code>,
+<code>menacing</code>,
+<code>tense</code>.
+Mixed moods:
+<code>bittersweet</code>,
+<code>hypnotic</code>,
+<code>mysterious</code>,
+<code>quirky</code>.
+Thematic moods:
+<code>dramatic</code>,
+<code>dystopian</code>,
+<code>epic</code>,
+<code>experimental</code>,
+<code>fantasy</code>,
+<code>heroic</code>,
+<code>noir</code>,
+<code>romantic</code>,
+<code>sci-fi</code>,
+<code>western</code>.</p>
+<p>It’s usually recommended to specify moods for synthesised instruments and presets. Not typically used for well-known acoustic instruments.</p>
+<div class="footnote-definition" id="bright"><sup class="footnote-definition-label">4</sup>
+<p>‘bright’ as in: positive, uplifting, clear</p>
+</div>
+<div class="footnote-definition" id="dark"><sup class="footnote-definition-label">5</sup>
+<p>‘dark’ as in: unhappy, dim, unpleasant</p>
+</div>
+<h3 id="3-what-are-its-pitch-characteristics-pitch"><a class="header" href="#3-what-are-its-pitch-characteristics-pitch">3. What are its pitch characteristics? (Pitch)</a></h3>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>multi-pitched</code></td><td style="text-align: left">Contains multiple distinct notes</td></tr>
+<tr><td style="text-align: left"><code>non-pitched</code></td><td style="text-align: left">Lacks identifiable musical pitch</td></tr>
+<tr><td style="text-align: left"><code>dissonant</code></td><td style="text-align: left">Contains harmonically clashing pitches</td></tr>
+</tbody></table>
+</div>
+<p>Useful for non-typical sounds that have notable pitch characteristics. A sound is assumed to possess a musical pitch unless otherwise stated.</p>
+<h3 id="5-what-type-of-sound-is-it-sound-type"><a class="header" href="#5-what-type-of-sound-is-it-sound-type">5. What type of sound is it? (Sound type)</a></h3>
+<h4 id="51-does-it-have-a-long-duration"><a class="header" href="#51-does-it-have-a-long-duration">5.1. Does it have a long duration?</a></h4>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>pad</code></td><td style="text-align: left">Sustained, pitched background harmonic element</td></tr>
+<tr><td style="text-align: left"><code>texture</code></td><td style="text-align: left">Sustained atmospheric element, typically less of a musical pitch than <code>pad</code></td></tr>
+<tr><td style="text-align: left"><code>soundscape</code></td><td style="text-align: left">Complex and rich sonic environment</td></tr>
+<tr><td style="text-align: left"><code>underscore</code></td><td style="text-align: left">Background tones or sequences for underneath dialogue</td></tr>
+<tr><td style="text-align: left"><code>noise</code></td><td style="text-align: left">Non-pitched and constant, similar to white noise</td></tr>
+</tbody></table>
+</div>
+<h4 id="52-does-it-have-a-short-duration"><a class="header" href="#52-does-it-have-a-short-duration">5.2. Does it have a short duration?</a></h4>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>hit</code></td><td style="text-align: left">Single impactful sound with pitch and percussive elements</td></tr>
+<tr><td style="text-align: left"><code>keys</code></td><td style="text-align: left">Piano or keyboard-like</td></tr>
+<tr><td style="text-align: left"><code>oneshot</code></td><td style="text-align: left">Non-looping single sound, typically not for playing chromatically</td></tr>
+<tr><td style="text-align: left"><code>percussion</code></td><td style="text-align: left">Rhythmic element, typically non-pitched</td></tr>
+<tr><td style="text-align: left"><code>pluck</code></td><td style="text-align: left">Short melodic notes</td></tr>
+<tr><td style="text-align: left"><code>stab</code></td><td style="text-align: left">Extra-short melodic notes</td></tr>
+</tbody></table>
+</div>
+<h4 id="53-is-it-a-sequence-or-pattern"><a class="header" href="#53-is-it-a-sequence-or-pattern">5.3. Is it a sequence or pattern?</a></h4>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>arp</code></td><td style="text-align: left">Arpeggiated pattern of notes</td></tr>
+<tr><td style="text-align: left"><code>sequence</code></td><td style="text-align: left">Sequenced pattern timbre changes</td></tr>
+<tr><td style="text-align: left"><code>underscore</code></td><td style="text-align: left">Background tones or sequences for underneath dialogue</td></tr>
+<tr><td style="text-align: left"><code>loop</code></td><td style="text-align: left">Sampled repeating phrase</td></tr>
+</tbody></table>
+</div>
+<h4 id="54-does-it-play-a-standard-role-in-a-track"><a class="header" href="#54-does-it-play-a-standard-role-in-a-track">5.4. Does it play a standard role in a track?</a></h4>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>lead</code></td><td style="text-align: left">Foreground melodic element</td></tr>
+<tr><td style="text-align: left"><code>bass</code></td><td style="text-align: left">Low-frequency foundation</td></tr>
+<tr><td style="text-align: left"><code>riser</code></td><td style="text-align: left">Building tension element</td></tr>
+<tr><td style="text-align: left"><code>downer</code></td><td style="text-align: left">Descending tension element</td></tr>
+<tr><td style="text-align: left"><code>sound-fx</code></td><td style="text-align: left">Special effect sound</td></tr>
+<tr><td style="text-align: left"><code>transition</code></td><td style="text-align: left">Section change element</td></tr>
+</tbody></table>
+</div>
+<h3 id="6-what-is-its-timbre-like-timbre"><a class="header" href="#6-what-is-its-timbre-like-timbre">6. What is its timbre like? (Timbre)</a></h3>
+<h4 id="61-is-the-sound-modulated-in-some-way"><a class="header" href="#61-is-the-sound-modulated-in-some-way">6.1. Is the sound modulated in some way?</a></h4>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>pulsing</code></td><td style="text-align: left">Rhythmic modulation</td></tr>
+<tr><td style="text-align: left"><code>evolving</code></td><td style="text-align: left">Changing over time</td></tr>
+<tr><td style="text-align: left"><code>glitched</code></td><td style="text-align: left">Digital error artefacts</td></tr>
+<tr><td style="text-align: left"><code>grainy</code></td><td style="text-align: left">Fine textural irregularities</td></tr>
+</tbody></table>
+</div>
+<h4 id="62-does-it-have-a-tone-similar-to-a-real-instrument"><a class="header" href="#62-does-it-have-a-tone-similar-to-a-real-instrument">6.2. Does it have a tone similar to a real instrument?</a></h4>
+<p>Only use these if the sound isn’t actually from that instrument, but has a similar character.</p>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>brassy</code></td><td style="text-align: left">Like brass instruments</td></tr>
+<tr><td style="text-align: left"><code>breathy</code></td><td style="text-align: left">Containing air noise, like wind instruments</td></tr>
+<tr><td style="text-align: left"><code>strings-like</code></td><td style="text-align: left">Characteristic resonance of string instruments</td></tr>
+<tr><td style="text-align: left"><code>reedy</code></td><td style="text-align: left">Characteristic of reed instruments</td></tr>
+</tbody></table>
+</div>
+<h4 id="63-is-it-related-to-a-synthesis-technique"><a class="header" href="#63-is-it-related-to-a-synthesis-technique">6.3. Is it related to a synthesis technique?</a></h4>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>analog</code></td><td style="text-align: left">Warm, imprecise, vintage character</td></tr>
+<tr><td style="text-align: left"><code>fm</code></td><td style="text-align: left">Frequency modulation synthesis</td></tr>
+<tr><td style="text-align: left"><code>granular</code></td><td style="text-align: left">Granular synthesis</td></tr>
+<tr><td style="text-align: left"><code>physical modelling</code></td><td style="text-align: left">Simulating real-world physics</td></tr>
+</tbody></table>
+</div>
+<h4 id="64-what-are-the-frequencies-and-harmonics-like"><a class="header" href="#64-what-are-the-frequencies-and-harmonics-like">6.4. What are the frequencies and harmonics like?</a></h4>
+<div class="table-wrapper"><table><thead><tr><th style="text-align: left">Tag</th><th style="text-align: left">Notes</th></tr></thead><tbody>
+<tr><td style="text-align: left"><code>airy</code></td><td style="text-align: left">Open, spacious, light</td></tr>
+<tr><td style="text-align: left"><code>circuit-bent</code></td><td style="text-align: left">Characteristic of modified electronic devices</td></tr>
+<tr><td style="text-align: left"><code>cold</code></td><td style="text-align: left">Thin, clinical, lacking warmth</td></tr>
+<tr><td style="text-align: left"><code>digital</code></td><td style="text-align: left">Clean, precise, computer-generated character</td></tr>
+<tr><td style="text-align: left"><code>distorted</code></td><td style="text-align: left">Overdriven, crushed, non-linear</td></tr>
+<tr><td style="text-align: left"><code>fuzzy</code></td><td style="text-align: left">Indistinct, soft-edged, unclear</td></tr>
+<tr><td style="text-align: left"><code>glassy</code></td><td style="text-align: left">Clear, fragile, transparent</td></tr>
+<tr><td style="text-align: left"><code>gritty</code></td><td style="text-align: left">Rough, textured, unpolished</td></tr>
+<tr><td style="text-align: left"><code>harsh</code></td><td style="text-align: left">Abrasive, aggressive high frequencies</td></tr>
+<tr><td style="text-align: left"><code>lo-fi</code></td><td style="text-align: left">Intentionally degraded quality</td></tr>
+<tr><td style="text-align: left"><code>lush</code></td><td style="text-align: left">Full, rich, densely layered</td></tr>
+<tr><td style="text-align: left"><code>metallic</code></td><td style="text-align: left">Resonant, hard, bright, like metal</td></tr>
+<tr><td style="text-align: left"><code>muddy</code></td><td style="text-align: left">Unclear low-mid frequencies</td></tr>
+<tr><td style="text-align: left"><code>muffled</code></td><td style="text-align: left">Dampened high frequencies</td></tr>
+<tr><td style="text-align: left"><code>nasal</code></td><td style="text-align: left">Strong mid-range resonance</td></tr>
+<tr><td style="text-align: left"><code>noisy</code></td><td style="text-align: left">Contains noise components, imperfect. If the sound is 100% noise use <code>noise</code> instead.</td></tr>
+<tr><td style="text-align: left"><code>pure</code></td><td style="text-align: left">Free from noise, clean sine-like quality</td></tr>
+<tr><td style="text-align: left"><code>resonant</code></td><td style="text-align: left">Strong resonant peaks in frequency</td></tr>
+<tr><td style="text-align: left"><code>saturated</code></td><td style="text-align: left">Subtly distorted, harmonically enhanced</td></tr>
+<tr><td style="text-align: left"><code>smooth</code></td><td style="text-align: left">Even, consistent, without sharp edges</td></tr>
+<tr><td style="text-align: left"><code>thin</code></td><td style="text-align: left">Lacking in fullness, narrow frequency range</td></tr>
+<tr><td style="text-align: left"><code>warm</code></td><td style="text-align: left">Rich in harmonics, pleasant mid-range</td></tr>
+</tbody></table>
+</div>
+<h3 id="7-what-genres-might-this-item-fit-best-into-genre"><a class="header" href="#7-what-genres-might-this-item-fit-best-into-genre">7. What genres might this item fit best into? (Genre)</a></h3>
+<p><code>80s</code>,
+<code>EDM</code>,
+<code>IDM</code>,
+<code>ambient</code>,
+<code>blues</code>,
+<code>chillout</code>,
+<code>chiptune</code>,
+<code>cinematic</code>,
+<code>disco</code>,
+<code>downtempo</code>,
+<code>drum &amp; bass</code>,
+<code>dubstep</code>,
+<code>electronic</code>,
+<code>folk</code>,
+<code>funk</code>,
+<code>future bass</code>,
+<code>glitch</code>,
+<code>hip-hop</code>,
+<code>house</code>,
+<code>industrial</code>,
+<code>jazz</code>,
+<code>lo-fi</code>,
+<code>metal</code>,
+<code>orchestral</code>,
+<code>pop</code>,
+<code>rock</code>,
+<code>synthwave</code>,
+<code>techno</code>,
+<code>trance</code>,
+<code>trap</code>,
+<code>vaporwave</code>,
+<code>world</code></p>
+<p>Specifying at least one genre is recommended for all presets and instruments.</p>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="previously-known-as-mirage"><a class="header" href="#previously-known-as-mirage">Previously known as Mirage</a></h1>
+<p>Floe is a continuation of FrozenPlain’s Mirage plugin (developed from 2018 to 2024). It adds <a href="about-the-project/../changelog.html#mirage">new features and improvements</a> but is similar in a lot of ways. Floe is backwards-compatible with Mirage libraries and presets. Mirage will no longer be developed.</p>
+<h3 id="why-the-name-change"><a class="header" href="#why-the-name-change">Why the name change?</a></h3>
+<p>The project has taken a new direction and so we decided to give it a new name.</p>
+<ul>
+<li>Floe is free and open-source, whereas Mirage was closed-source.</li>
+<li>Floe is not directly tied to FrozenPlain. It’s a separate project that’s open to anyone - we want to encourage growth of Floe without being tied to a specific company.</li>
+<li>Mirage is already the name of a hardware sampler from the 80s - we want to avoid confusion.</li>
+</ul>
+<h3 id="backwards-compatible-with-mirage"><a class="header" href="#backwards-compatible-with-mirage">Backwards-compatible with Mirage</a></h3>
+<p>Floe can load Mirage’s libraries, presets and preferences file. If you have Mirage installed already, Floe will be able to find the same libraries and presets as Mirage.</p>
+<p>For this backwards-compatibility to work, you will need to install the Mirage Compatibility package available from FrozenPlain’s website.</p>
+<p>You can leave Mirage installed if you want to keep using it: Floe will not interfere with Mirage’s installation.</p>
+<p>Floe is a new plugin with a new name and new internals, targeting new plugin formats. Floe can’t replace Mirage automatically in your old, saved DAW projects.</p>
+<h3 id="installation-is-different"><a class="header" href="#installation-is-different">Installation is different</a></h3>
+<p>Floe has a new, offline installer. Sample libraries are installed separately using Floe Packages.</p>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h1>
+<p>Floe is an ongoing project that will have lots of backwards-compatible updates. We want to be able to release new features and improvements as soon as they’re ready.</p>
+<p>We’re planning to release Floe v1.0 in Q1 2025. Here’s what we’re working on:</p>
+<ul>
+<li>Finish VST3 and AU support</li>
+<li>Complete the GUI for adding multiple libraries to a single instance</li>
+<li>Recreate the presets infrastructure and GUI</li>
+<li>Comprehensive testing of all plugin formats in all DAWs and operating systems</li>
+<li>Prepare a couple of Floe sample libraries ready for release</li>
+</ul>
+<p>Later down the line, we’re planning to:</p>
+<ul>
+<li>Refresh the GUI: make it more consistent and performant, and refactor the code for easier expansion</li>
+<li>Overhaul the audio &amp; MIDI processing engine for easier expansion, such as: MIDI MPE, MIDI2, polyphonic modulation, sample-accurate automation, MIDI learn.</li>
+<li>Add more features to the sample library format to allow for more complex instruments: legato, key-switches, drums, etc.</li>
+</ul>
+<p>Even further down the line, we’re looking into:</p>
+<ul>
+<li>Allow for creating custom GUIs ‘views’ using the library Lua API</li>
+<li>Adding wavetable oscillators/granular synthesis as a option to layer with sampled instruments</li>
+<li>Adding a more comprehensive modulation system</li>
+</ul>
+<p>Give us feedback on these using <a href="https://github.com/floe-audio/Floe/discussions">Github’s discussions</a> section. FrozenPlain also have a Floe section on their <a href="https://forum.frozenplain.com/t/floe">forum</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div><!--
+SPDX-FileCopyrightText: 2018-2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<!--
+SPDX-FileCopyrightText: 2018-2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+
+IMPORTANT: Our release process expects this file to contain heading that exactly match the released version numbers. 
+For instance: 0.0.1. Don't change the headings.
+
+-->
+<h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
+<h2 id="099-beta"><a class="header" href="#099-beta">0.9.9-beta</a></h2>
+<ul>
+<li>Sample library creation: add start_offset_frames to add_region</li>
+<li>Sample library creation: add tune_cents to add_region</li>
+<li>Normalise waveform GUI so that quiet samples are easier to see</li>
+<li>Fix rare crash related to sample library folder scanning</li>
+</ul>
+<h2 id="098-beta"><a class="header" href="#098-beta">0.9.8-beta</a></h2>
+<ul>
+<li>Fix rare error on Windows when closing the GUI when there’s a file picker open</li>
+<li>Fix rare errors in some VST3 hosts</li>
+<li>Fix rare crash related to sample library folder scanning</li>
+</ul>
+<h2 id="097-beta"><a class="header" href="#097-beta">0.9.7-beta</a></h2>
+<ul>
+<li>Fix rare crash related to closing the GUI on Floe AU</li>
+<li>Fix rare crash related to library images</li>
+<li>Fix rare crash related to voice stealing</li>
+<li>Fix edge cases related to file paths on Windows</li>
+</ul>
+<h2 id="096-beta"><a class="header" href="#096-beta">0.9.6-beta</a></h2>
+<ul>
+<li>Check for updates on startup; a small indicator on the Info button will appear - leading to more information on the Info panel. Can be disabled in the preferences.</li>
+<li>Fix file picker on Windows not opened when there’s missing folders</li>
+<li>Fix rare crash in Floe AU in Ableton Live</li>
+</ul>
+<h2 id="095-beta"><a class="header" href="#095-beta">0.9.5-beta</a></h2>
+<ul>
+<li>Fix potential crash in Floe AU format</li>
+<li>Fix errors related to filesystem watching on Windows</li>
+<li>Fix error related to sample library folders - could happen when installing a package</li>
+</ul>
+<h2 id="094-beta"><a class="header" href="#094-beta">0.9.4-beta</a></h2>
+<ul>
+<li>Offer separate downloads for Intel and Apple Silicon Macs rather than a universal binary, this reduces the size of the download to ~50 MB.</li>
+<li>Fix missing diagnostic information on macOS</li>
+</ul>
+<h2 id="093-beta"><a class="header" href="#093-beta">0.9.3-beta</a></h2>
+<ul>
+<li>Fix more errors with threads</li>
+<li>Fix memory leaks</li>
+<li>Fix some edge cases with certain hosts</li>
+<li>Improve automatic error reporting allowing us to fix bugs faster</li>
+<li>Protect against hosts that try to use multiple main threads</li>
+</ul>
+<h2 id="092-beta"><a class="header" href="#092-beta">0.9.2-beta</a></h2>
+<ul>
+<li>Slightly improve performance of Intel Mac builds</li>
+<li>Fix crash with Intel Mac builds</li>
+<li>Fix errors with threads</li>
+</ul>
+<h2 id="091-beta"><a class="header" href="#091-beta">0.9.1-beta</a></h2>
+<ul>
+<li>AU: fix crash when trying to open the file/folder picker</li>
+<li>Fix missing logo on macOS</li>
+</ul>
+<h2 id="090-beta"><a class="header" href="#090-beta">0.9.0-beta</a></h2>
+<ul>
+<li>Library creation: fix specifying loop end points relative to the end of the file.</li>
+<li>Library creation: replace always_loop, never_loop field with enum <code>loop_requirement</code>.</li>
+<li>Library creation: add round_robin_sequencing_group field to allow for different sets of variations.</li>
+<li>Library creation: separate note-off round-robin sequencing group from note-on round-robin sequencing group.</li>
+<li>Library creation: disable volume envelope for note-off regions</li>
+<li>Library creation: improve memory usage when reading Lua scripts</li>
+<li>Library creation: fix crash when an image file is empty</li>
+<li>VST3: fix not responding to note-on/note-off messages when they weren’t on channel 0</li>
+<li>GUI: on the Save Preset dialog, add the ability to store/load a preset author</li>
+<li>GUI: make the Save Preset dialog larger and scroll to top when a new preset is loaded</li>
+<li>Fix potential crash when reporting an error</li>
+<li>Rename parameter right-click menu Set Value to Enter Value</li>
+<li>Support CLAP reset() function</li>
+</ul>
+<h2 id="083-beta"><a class="header" href="#083-beta">0.8.3-beta</a></h2>
+<ul>
+<li>Fix crash when error occurs in the Windows native file picker</li>
+<li>Fix crash when given invalid arguments to CLAP activate</li>
+<li>Fix crash when opening VST3 in FL Studio on Windows</li>
+</ul>
+<h2 id="082-beta"><a class="header" href="#082-beta">0.8.2-beta</a></h2>
+<ul>
+<li>Fix crash when trying to randomise instruments, presets or IRs when there’s only one of them</li>
+<li>Fix presets folder still showing tags after a folder is removed. #120</li>
+<li>Fix crash when first opening the GUI</li>
+</ul>
+<h2 id="081-beta"><a class="header" href="#081-beta">0.8.1-beta</a></h2>
+<p>See the <a href="https://github.com/floe-audio/Floe/releases/tag/v0.8.0-beta">main release notes</a>.</p>
+<ul>
+<li>Fix issue where Mirage and Floe libraries with the same name would conflict</li>
+</ul>
+<h2 id="080-beta"><a class="header" href="#080-beta">0.8.0-beta</a></h2>
+<p>First beta release of Floe. This release is feature-complete. We are looking for feedback on the new features and any bugs you find.</p>
+<ul>
+<li>Add AU (Audio Unit v2) support</li>
+<li>Brand new instrument browser supporting tags, search, and filtering by library</li>
+<li>Brand new impulse response browser featuring all the options of the instrument browser</li>
+<li>Brand new preset browser with tags, search, and filtering by library. Preset metadata is tracked, library information is tracked, file changes are detected, duplicate presets are hidden.</li>
+<li>New built-in convolution reverb impulse library with 33 impulse responses</li>
+<li>New save preset dialog with author, description, and tags</li>
+<li>Fix instrument left/right and randomise buttons</li>
+<li>Fix instance ID not retaining</li>
+<li>Fix freeze when trying to resize GUI</li>
+<li>Fix GUI opening but only ever showing black</li>
+<li>Fix randomise parameters</li>
+</ul>
+<p>Note: we have jumped from 0.0.7 to 0.8.0. This is to signify the change from alpha to beta but also because it wasn’t really right in the first place only incrementing by the patch number. To make the jump obvious we start the minor version at 0.8.0 rather than 0.1.0.</p>
+<h2 id="007-alpha"><a class="header" href="#007-alpha">0.0.7-alpha</a></h2>
+<p>The focus of this version has been bug fixes; in particular around loading Mirage libraries and presets.</p>
+<ul>
+<li>Max voice is increased from 32 to 256 allowing for more complex instruments</li>
+<li>Show the instrument type on the GUI: single sample, multisample or oscillator waveform</li>
+<li>Rename ‘Dynamics’ knob to ‘Timbre’ and fix its behaviour - for instruments such as Arctic Strings, it can be used to crossfade between different sets of samples.</li>
+<li>Fix missing code signing on Windows installer resulting in ‘Unknown Publisher’ warning</li>
+<li>Fix layer filter type menu being the incorrect width</li>
+<li>Fix crash when loop points were very close together</li>
+<li>Improve loop modes on GUI: it’s obvious when a loop is built-in or custom, what modes are available for a given instrument, why loop modes are invalid.</li>
+<li>Add docs about looping</li>
+<li>Fix sustain pedal incorrectly ending notes</li>
+</ul>
+<p>Mirage loading:</p>
+<ul>
+<li>Fix incorrect loading of Mirage on/off switches - resulting in parameters being on when they should be off</li>
+<li>Fix incorrect handling of Mirage’s ‘always loop’ instruments</li>
+<li>Fix incorrect conversion from Mirage’s effects to Floe’s effects</li>
+<li>Improve sound matching when loading Mirage presets</li>
+<li>Fix failure loading some FrozenPlain Squeaky Gate instruments</li>
+</ul>
+<p>Library creation:</p>
+<ul>
+<li>Re-organise the fields for add_region - grouping better into correct sections and allowing for easier expansion in the future.</li>
+<li>Sample library region loops now are custom tables with <code>start_frame</code>, <code>end_frame</code>, <code>crossfade</code> and <code>mode</code> fields instead of an array.</li>
+<li>Add <code>always_loop</code> and <code>never_loop</code> fields to sample library regions allowing for more control over custom loop usage on Floe’s GUI.</li>
+<li>Show an error if there’s more than 2 velocity layers that are using ‘feathering’ mode. We don’t support this yet. Same for timbre layers.</li>
+</ul>
+<h2 id="006-alpha"><a class="header" href="#006-alpha">0.0.6-alpha</a></h2>
+<ul>
+<li>Add VST3 support</li>
+<li>Standardise how tags and folders will be used in instruments, presets and impulse responses: https://floe.audio/develop/tags-and-folders.html</li>
+<li>Fix sustain pedal</li>
+<li>Remove ‘retrig CC 64’ parameter from layer MIDI. This was mostly a legacy workaround from Mirage. Instead, we just use the typical behaviour that when you play the same note multiple times while holding the sustain pedal, the note plays again - stacking up.</li>
+<li>Fix package installation crash after removing folders</li>
+<li>Fix markers staying on ADSR envelope even when sound is silent</li>
+<li>Fix MIDI transpose causing notes to never stop</li>
+<li>Fix peak meters dropping to zero unexpectedly</li>
+<li>Fix not finding Mirage libraries/presets folders</li>
+</ul>
+<h2 id="005-alpha"><a class="header" href="#005-alpha">0.0.5-alpha</a></h2>
+<ul>
+<li>Fix text being pasted into text field when just pressing ‘V’ rather than ‘Ctrl+V’</li>
+<li>Windows: fix unable to use spacebar in text fields due to the host stealing the keypress</li>
+<li>Fix crash when trying to load or save a preset from file</li>
+<li>Improve the default background image</li>
+</ul>
+<h2 id="004-alpha"><a class="header" href="#004-alpha">0.0.4-alpha</a></h2>
+<p>Fix crash when opening the preset browser.</p>
+<h2 id="003-alpha"><a class="header" href="#003-alpha">0.0.3-alpha</a></h2>
+<p>Version 0.0.3-alpha is a big step towards a stable release. There’s been 250 changed files with 17,898 code additions and 7,634 deletions since the last release.</p>
+<p>It’s still alpha quality, and CLAP only. But if you’re feeling adventurous, we’d love for you to try it out and give us feedback:</p>
+<ul>
+<li><a href="https://floe.audio/installation/download-and-install-floe.html">Download Floe</a></li>
+<li><a href="https://floe.audio/packages/available-packages.html">Download some libraries</a></li>
+<li><a href="https://floe.audio/packages/install-packages.html">Install libraries</a></li>
+</ul>
+<p>Error reporting has been a significant focus of this release. We want to be able to fix bugs quickly and make Floe as stable as possible. A part of this is a new a Share Feedback panel on the GUI - please use this!</p>
+<p>Floe’s website has been filled out a lot too.</p>
+<p>New/edited documentation pages:</p>
+<ul>
+<li><a href="https://floe.audio/usage/attribution.html">Floe support for using CC BY libraries</a></li>
+<li><a href="https://floe.audio/usage/autosave.html">Autosave feature added</a></li>
+<li><a href="https://floe.audio/usage/error-reporting.html">New error reports, crash protection, feedback form</a></li>
+<li><a href="https://floe.audio/installation/uninstalling.html">New uninstaller for Windows</a></li>
+</ul>
+<h3 id="highlights"><a class="header" href="#highlights">Highlights</a></h3>
+<ul>
+<li>Add new Info panel featuring info about installed libraries. ‘About’, ‘Metrics’ and ‘Licenses’ have been moved here too instead of being separate panels.</li>
+<li>Add new Share Feedback panel for submitting bug reports and feature requests</li>
+<li>Add attribution-required panel which appears when needed with generated copyable text for fulfilling attribution requirements. Synchronised between all instances of Floe. Makes complying with licenses like CC BY easy.</li>
+<li>Add new fields to the Lua API to support license info and attribution, such as CC BY</li>
+<li>Add lots of new content to floe.audio</li>
+<li>Add error reporting. We are now better able to fix bugs. When an error occurs, an anonymous report is sent to us. You can disable this in the preferences. This pairs with the new Share Feedback panel - that form can also be used to report bugs.</li>
+<li>Add autosave feature, which efficiently saves the current state of Floe at a configurable interval. This is useful for recovering from crashes. Configurable in the preferences.</li>
+<li>Add a Floe uninstaller for Windows, integrated into Windows’ ‘Add or Remove Programs’ control panel</li>
+<li>Preferences system is more robust and flexible. Preferences are saved in a small file. It syncs between all instances of Floe - even if the instances are in different processes. Additionally, you can edit the preferences file directly if you want to; the results will be instantly reflected in Floe.</li>
+<li>Improve window resizing: fixed aspect ratio, correct remembering of previous size, correct keyboard show/hide, resizable to any size within a reasonable range.</li>
+</ul>
+<h3 id="other-changes"><a class="header" href="#other-changes">Other changes</a></h3>
+<ul>
+<li>Add support for packaging and installing MDATA libraries (Mirage)</li>
+<li>Add tooltips to the preferences GUI</li>
+<li>Add ability to select multiple packages to install at once</li>
+<li>Rename ‘settings’ to ‘preferences’ everywhere</li>
+<li>Rename ‘Appearance’ preferences to ‘General’ since it’s small and can be used for other preferences</li>
+<li>Make notifications dismiss themselves after a few seconds</li>
+<li>Fix externally deleted or moved-to-trash libraries not being removed from Floe</li>
+<li>Fix not installing to the chosen location</li>
+<li>Fix Windows installer creating nonsense CLAP folder</li>
+<li>Fix packager adding documents into the actual library rather than the package</li>
+</ul>
+<h2 id="002"><a class="header" href="#002">0.0.2</a></h2>
+<ul>
+<li>Fix Windows installer crash</li>
+<li>Don’t show a console window with the Windows installer</li>
+<li>Better logo for Windows installer</li>
+<li>Remove unnecessary ‘Floe Folders’ component from macOS installer</li>
+</ul>
+<h2 id="001"><a class="header" href="#001">0.0.1</a></h2>
+<p>This is the first release of Floe. It’s ‘alpha quality’ at the moment - there will be bugs and there are a couple of missing features. This release is designed mostly to test our release process.</p>
+<p>This release only contains the CLAP plugin. The VST3 and AU plugins will be released soon.</p>
+<h2 id="mirage"><a class="header" href="#mirage">Mirage</a></h2>
+<p>Floe used to be called <a href="https://floe.audio/about-the-project/mirage.html">Mirage</a>. Mirage contained many of the same features seen in Floe v0.0.1. But there are large structural changes, and some new features and improvements:</p>
+<ul>
+<li>Use multiple different libraries in the same instance.</li>
+<li>CLAP version added - VST3 and AU coming soon, VST2 support dropped.</li>
+<li>New installer: offline, no account/download-tickets needed. Libraries are installed separately.</li>
+<li>Ability for anyone to develop sample libraries using new Lua-based sample library format. The new format features a new system to tag instruments and libraries. Hot-reload library development: changes to a library are instantly applied to Floe.</li>
+<li>New <a href="https://floe.audio">comprehensive documentation</a>.</li>
+<li>Floe now can have multiple library and preset folders. It will scan all of them for libraries and presets. This is a much more robust and flexible way to manage assets rather than trying to track individual files.</li>
+<li>New, robust infrastructure:
+<ul>
+<li>Floe settings are saved in a more robust way avoiding issues with permissions/missing files.</li>
+<li>Improved default locations for saving libraries and presets to avoid permissions issues.</li>
+<li>New format for saving presets and DAW state - smaller and faster than before and allows for more expandability.</li>
+</ul>
+</li>
+<li>New settings GUI.</li>
+<li>Floe packages: a robust way to install libraries and presets. Floe packages are zip files with a particular layout that contain libraries and presets. In the settings of Floe, you can install these packages. It handles all the details of installing/updating libraries and presets. It checks for existing installations and updates them if needed. It even checks if the files of any existing installation have been modified and will ask if you want to replace them. Everything just works as you’d expect.</li>
+</ul>
+<p>Technical changes:</p>
+<ul>
+<li>Huge refactor of the codebase to be more maintainable and expandable. There’s still more to be done yet though.</li>
+<li>New build system using Zig; cross-compilation, dependency management, etc.</li>
+<li>Comprehensive CI/CD pipeline for testing and creating release builds.</li>
+<li>New ‘sample library server’, our system for providing libraries and audio files to Floe in a fast, async way.</li>
+</ul>
+<!--
+Notable changes from the last Mirage version to Floe v1.0.0:
+- CLAP and VST3
+- Load instruments from different libraries in same patch
+- New format for creating sample libraries - open to everyone
+- New settings GUI
+- Sample libraries can add impulse responses
+- New installer, offline and hassle-free
+- Ability to install libraries and presets (packages) with a button - handles all the details automatically
+- Voice count increased from 32 to 256
+- New comprehensive documentation: https://floe.audio
+- Add ability to have multiple library and preset folders
+- Show the type of instrument below the waveform: multisample, single sample or waveform oscillator
+- 'CC64 Retrigger' parameter removed - retrigger is the default now
+- Change behaviour when a volume envelope if off - it now plays the sample all the way through, without any loops, playing the same note again will stack the sound
+- Show the loop mode more clearly on the GUI - it's obvious when a loop is built-in or custom, what modes are available for a given instrument, why loop modes are invalid.
+- New format for saving presets and DAW state - smaller and faster than before and allows for more expandability
+- Improved default locations for saving libraries and presets to avoid permissions issues
+- New GUI for picking instruments, presets and convolution reverb impulse responses: filter by library, tags; search.
+- Floe is open source
+- Floe's codebase is vastly more maintainable and better designed - huge work was put into creating a solid foundation to build on.
+- Floe has systems in place for regularly releasing updates and new features
+- Fixed issue with FrozenPlain - Arctic Strings crossfade layers not working
+- Fixed issue where loop crossfade wouldn't be applied - resulting in pops
+- Fixed issue where Mirage would spend forever trying to open
+-->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+    </div>
+    </body>
+</html>

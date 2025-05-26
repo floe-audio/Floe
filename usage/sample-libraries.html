@@ -1,0 +1,271 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Sample Libraries - Floe</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="Floe is a free, open-source sample library engine. Available as an audio plugin for Windows and macOS.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/floe-theme.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "ayu" : "rust";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../home.html">Home</a></li><li class="chapter-item expanded "><div><strong aria-hidden="true">1.</strong> Installation</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="../installation/requirements.html"><strong aria-hidden="true">1.1.</strong> Requirements</a></li><li class="chapter-item expanded "><a href="../installation/download-and-install-floe.html"><strong aria-hidden="true">1.2.</strong> Download & Install Floe</a></li><li class="chapter-item expanded "><a href="../installation/uninstalling.html"><strong aria-hidden="true">1.3.</strong> Uninstalling</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">2.</strong> Packages</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="../packages/about-packages.html"><strong aria-hidden="true">2.1.</strong> Packages</a></li><li class="chapter-item expanded "><a href="../packages/install-packages.html"><strong aria-hidden="true">2.2.</strong> Install Libraries & Presets</a></li><li class="chapter-item expanded "><a href="../packages/available-packages.html"><strong aria-hidden="true">2.3.</strong> Available Libraries & Presets</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">3.</strong> Usage</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="../usage/sample-libraries.html" class="active"><strong aria-hidden="true">3.1.</strong> Sample Libraries</a></li><li class="chapter-item expanded "><a href="../usage/presets.html"><strong aria-hidden="true">3.2.</strong> Presets</a></li><li class="chapter-item expanded "><a href="../usage/layers.html"><strong aria-hidden="true">3.3.</strong> Layers</a></li><li class="chapter-item expanded "><a href="../usage/effects.html"><strong aria-hidden="true">3.4.</strong> Effects</a></li><li class="chapter-item expanded "><a href="../usage/midi.html"><strong aria-hidden="true">3.5.</strong> MIDI</a></li><li class="chapter-item expanded "><a href="../usage/looping.html"><strong aria-hidden="true">3.6.</strong> Looping</a></li><li class="chapter-item expanded "><a href="../usage/parameters.html"><strong aria-hidden="true">3.7.</strong> Parameters</a></li><li class="chapter-item expanded "><a href="../usage/autosave.html"><strong aria-hidden="true">3.8.</strong> Autosave</a></li><li class="chapter-item expanded "><a href="../usage/attribution.html"><strong aria-hidden="true">3.9.</strong> Attribution</a></li><li class="chapter-item expanded "><a href="../usage/error-reporting.html"><strong aria-hidden="true">3.10.</strong> Error Reporting</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">4.</strong> Library Development</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="../develop/develop-libraries.html"><strong aria-hidden="true">4.1.</strong> Develop Libraries</a></li><li class="chapter-item expanded "><a href="../develop/library-lua-scripts.html"><strong aria-hidden="true">4.2.</strong> Library Lua Scripts</a></li><li class="chapter-item expanded "><a href="../develop/develop-preset-packs.html"><strong aria-hidden="true">4.3.</strong> Develop Preset Packs</a></li><li class="chapter-item expanded "><a href="../develop/packaging.html"><strong aria-hidden="true">4.4.</strong> Packaging for Distribution</a></li><li class="chapter-item expanded "><a href="../develop/tags-and-folders.html"><strong aria-hidden="true">4.5.</strong> Tags and Folders</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">5.</strong> About the Project</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="../about-the-project/mirage.html"><strong aria-hidden="true">5.1.</strong> Previously known as Mirage</a></li><li class="chapter-item expanded "><a href="../about-the-project/roadmap.html"><strong aria-hidden="true">5.2.</strong> Roadmap</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="../changelog.html">Changelog</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Floe</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/floe-audio/Floe" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="sample-libraries"><a class="header" href="#sample-libraries">Sample Libraries</a></h1>
+<p>Floe is an engine that requires <em>Floe sample libraries</em> to make sound. This page describes Floe’s sample library format and how to manage your libraries.</p>
+<p>Related pages:</p>
+<ul>
+<li><a href="../packages/available-packages.html">Available libraries</a></li>
+<li><a href="../packages/install-packages.html">How to install libraries</a></li>
+<li><a href="../develop/develop-libraries.html">Develop your own libraries</a> (programming required)</li>
+</ul>
+<p><em>Floe also supports the legacy <a href="../about-the-project/mirage.html">Mirage</a> library format</em>.</p>
+<h2 id="custom-open-format"><a class="header" href="#custom-open-format">Custom open format</a></h2>
+<p>Floe sample libraries use a custom, open format consisting of a folder of audio files and a file in the <a href="https://en.wikipedia.org/wiki/Lua_(programming_language)">Lua</a> programming language called <code>floe.lua</code>.</p>
+<p>Access to the audio files gives you the freedom to use a library’s sounds in other software too.</p>
+<blockquote>
+<p>Openness is a key goal of Floe sample libraries.</p>
+<p>There’s no proprietary file formats. There’s just FLAC, WAV and Lua. By using widely-used file formats we ensure the longevity of libraries.</p>
+</blockquote>
+<h2 id="portable"><a class="header" href="#portable">Portable</a></h2>
+<p>Sample libraries are just normal folders. They don’t reference anything outside their folder, meaning they totally portable; you can move libraries to other locations, or even to other computers/operating systems due to their cross-platform nature.</p>
+<h2 id="view-installed-libraries"><a class="header" href="#view-installed-libraries">View installed libraries</a></h2>
+<p>You can view your installed libraries by clicking the <i class="fa fa-info-circle"></i> info button on Floe’s main window.</p>
+<h2 id="library-folders"><a class="header" href="#library-folders">Library folders</a></h2>
+<p><img src="../images/folder-preferences.png" alt="Folder Preferences GUI" /></p>
+<p>Floe automatically scans for sample libraries in a set of folders. You can configure these folders in Floe’s preferences panel, which is opened by clicking the <i class="fa fa-cog"></i> cog icon at the top of Floe’s window. Subfolders are scanned too.</p>
+<p>The default library folder cannot be removed, but you can add and remove any other folders you like.</p>
+<h2 id="moving-and-rearranging-libraries"><a class="header" href="#moving-and-rearranging-libraries">Moving and rearranging libraries</a></h2>
+<p>You may rearrange your libraries within your folders as you see fit. Floe will automatically detect changes and apply them. For example, you might want to create subfolders for different types of libraries, or to separate libraries from different developers.</p>
+<p>You can also move your existing libraries to another location, such as an external drive.</p>
+<p>To do this, you will need to move the libraries in File Explorer/Finder, and then add the new location in Floe’s preferences.</p>
+<p>Here’s that process in more detail:</p>
+<ol>
+<li>Create your new library folder at your desired location. For example, create “Floe Libraries” somewhere on your external drive.</li>
+<li>Open the Preferences panel by clicking the <i class="fa fa-cog"></i> cog icon at the top of Floe’s window.</li>
+<li>Under ‘Folders’, click on the <i class="fa fa-external-link"></i> link button for the folder that you want to move libraries out of. A File Explorer/Finder window will open.</li>
+<li>Use File Explorer/Finder to move the libraries to your desired new location (libraries are folders — typically with this naming pattern: ‘Developer - Library-name’).</li>
+<li>Go back into Floe, and add the new location by clicking the ‘Add Folder’ button. Remember, Floe will find libraries inside subfolders as well as the top-level, so select the “Floe Libraries” folder (or whatever name you chose), instead of the individual library folders.</li>
+</ol>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../packages/available-packages.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../usage/presets.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../packages/available-packages.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../usage/presets.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

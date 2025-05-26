@@ -1,0 +1,530 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Library Lua Scripts - Floe</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="Floe is a free, open-source sample library engine. Available as an audio plugin for Windows and macOS.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/floe-theme.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "ayu" : "rust";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../home.html">Home</a></li><li class="chapter-item expanded "><div><strong aria-hidden="true">1.</strong> Installation</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="../installation/requirements.html"><strong aria-hidden="true">1.1.</strong> Requirements</a></li><li class="chapter-item expanded "><a href="../installation/download-and-install-floe.html"><strong aria-hidden="true">1.2.</strong> Download & Install Floe</a></li><li class="chapter-item expanded "><a href="../installation/uninstalling.html"><strong aria-hidden="true">1.3.</strong> Uninstalling</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">2.</strong> Packages</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="../packages/about-packages.html"><strong aria-hidden="true">2.1.</strong> Packages</a></li><li class="chapter-item expanded "><a href="../packages/install-packages.html"><strong aria-hidden="true">2.2.</strong> Install Libraries & Presets</a></li><li class="chapter-item expanded "><a href="../packages/available-packages.html"><strong aria-hidden="true">2.3.</strong> Available Libraries & Presets</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">3.</strong> Usage</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="../usage/sample-libraries.html"><strong aria-hidden="true">3.1.</strong> Sample Libraries</a></li><li class="chapter-item expanded "><a href="../usage/presets.html"><strong aria-hidden="true">3.2.</strong> Presets</a></li><li class="chapter-item expanded "><a href="../usage/layers.html"><strong aria-hidden="true">3.3.</strong> Layers</a></li><li class="chapter-item expanded "><a href="../usage/effects.html"><strong aria-hidden="true">3.4.</strong> Effects</a></li><li class="chapter-item expanded "><a href="../usage/midi.html"><strong aria-hidden="true">3.5.</strong> MIDI</a></li><li class="chapter-item expanded "><a href="../usage/looping.html"><strong aria-hidden="true">3.6.</strong> Looping</a></li><li class="chapter-item expanded "><a href="../usage/parameters.html"><strong aria-hidden="true">3.7.</strong> Parameters</a></li><li class="chapter-item expanded "><a href="../usage/autosave.html"><strong aria-hidden="true">3.8.</strong> Autosave</a></li><li class="chapter-item expanded "><a href="../usage/attribution.html"><strong aria-hidden="true">3.9.</strong> Attribution</a></li><li class="chapter-item expanded "><a href="../usage/error-reporting.html"><strong aria-hidden="true">3.10.</strong> Error Reporting</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">4.</strong> Library Development</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="../develop/develop-libraries.html"><strong aria-hidden="true">4.1.</strong> Develop Libraries</a></li><li class="chapter-item expanded "><a href="../develop/library-lua-scripts.html" class="active"><strong aria-hidden="true">4.2.</strong> Library Lua Scripts</a></li><li class="chapter-item expanded "><a href="../develop/develop-preset-packs.html"><strong aria-hidden="true">4.3.</strong> Develop Preset Packs</a></li><li class="chapter-item expanded "><a href="../develop/packaging.html"><strong aria-hidden="true">4.4.</strong> Packaging for Distribution</a></li><li class="chapter-item expanded "><a href="../develop/tags-and-folders.html"><strong aria-hidden="true">4.5.</strong> Tags and Folders</a></li></ol></li><li class="chapter-item expanded "><div><strong aria-hidden="true">5.</strong> About the Project</div></li><li><ol class="section"><li class="chapter-item expanded "><a href="../about-the-project/mirage.html"><strong aria-hidden="true">5.1.</strong> Previously known as Mirage</a></li><li class="chapter-item expanded "><a href="../about-the-project/roadmap.html"><strong aria-hidden="true">5.2.</strong> Roadmap</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="../changelog.html">Changelog</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Floe</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/floe-audio/Floe" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="library-lua-scripts"><a class="header" href="#library-lua-scripts">Library Lua Scripts</a></h1>
+<p>The <code>floe.lua</code> file is the most important part of a Floe sample library. This page serves as documentation for all of the functions that you can use in your script to create and configure the library and its instruments.</p>
+<p>Floe runs your script using Lua v5.4, providing you with access to these <a href="https://www.lua.org/manual/5.4/manual.html#6">standard libraries</a>: <code>math</code>, <code>string</code>, <code>table</code> and <code>utf8</code>. The other standard libraries are not available - including the <code>require</code> function. This is to minimise security risks.</p>
+<p>If there are any errors in your script, Floe will show them on the GUI along with a line number and a description of the problem.</p>
+<h2 id="library-functions"><a class="header" href="#library-functions">Library Functions</a></h2>
+<p>Use these functions to create your sample library. Take note of the <code>[required]</code> annotations - omitting fields marked with these will cause an error.</p>
+<h3 id="floenew_library"><a class="header" href="#floenew_library"><code>floe.new_library</code></a></h3>
+<p>Creates a new library. It takes one parameter: a table of configuration. It returns a new library object. You should only create one library in your script. Return the library at the end of your script.</p>
+<p>The library is the top-level object. It contains all the instruments, regions, and impulse responses.</p>
+<pre><code class="language-lua">local library = floe.new_library({
+    -- The name of the library. Keep it short and use tagline for more details. 
+    -- [required]
+    name = "Iron Vibrations",
+
+    -- A few words to describe the library. [required]
+    tagline = "Organic sounds from resonating metal objects",
+
+    -- The URL for this Floe library.
+    -- [optional, default: no url]
+    library_url = "https://example.com/iron-vibrations",
+
+    -- A description of the library. You can be verbose and use newlines (\n).
+    -- [optional, default: no description]
+    description = "A collection of resonating metal objects sampled using a handheld stereo recorder.",
+
+    -- Who created this library. Keep it short, use the description for more 
+    -- details. [required]
+    author = "Found-sound Labs",
+
+    -- URL relating to the author or their work.
+    -- [optional, default: ]
+    author_url = "https://example.com",
+
+    -- The minor version of this library - backwards-compatible changes are 
+    -- allowed on a library; this field represents that. Non-backwards-compatibile 
+    -- changes are not allowed: you'd need to create a new library such as: 
+    -- "Strings 2".
+    -- [optional, default: 1]
+    minor_version = 1,
+
+    -- Path relative to this script for the background image. It should be a jpg 
+    -- or png.
+    -- [optional, default: ]
+    background_image_path = "Images/background.jpg",
+
+    -- Path relative to this script for the icon image. It should be a square jpg 
+    -- or png.
+    -- [optional, default: ]
+    icon_image_path = "Images/icon.png",
+})
+</code></pre>
+<h3 id="floenew_instrument"><a class="header" href="#floenew_instrument"><code>floe.new_instrument</code></a></h3>
+<p>Creates a new instrument on the library. It takes 2 parameters: the library object and a table of configuration. It returns a new instrument object. You can call this function multiple times to create multiple instruments.</p>
+<p>An instrument is like a musical instrument. It is a sound-producing entity that consists of one or more samples (samples are specified in regions). Each library can have multiple instruments.</p>
+<pre><code class="language-lua">local instrument = floe.new_instrument(library, {
+    -- The name of the instrument. Must be unique. [required]
+    name = "Metal Fence Strike",
+
+    -- Specify a folder to group instruments under a common heading. It may 
+    -- contain slashes to represent a hierarchy. See 
+    -- https://floe.audio/develop/tags-and-folders.html for more information.
+    -- [optional, default: no folders]
+    folder = "Fences/Steel",
+
+    -- A description of the instrument. Start with a capital letter an end with a 
+    -- period.
+    -- [optional, default: no description]
+    description = "Tonal pluck metallic pluck made from striking a steel fence.",
+
+    -- An array of strings to denote properties of the instrument. See 
+    -- https://floe.audio/develop/tags-and-folders.html for more information.
+    -- [optional, default: no tags]
+    tags = { "found sounds", "tonal percussion", "metal", "keys", "cold", "ambient", "IDM", "cinematic" },
+
+    -- Path to an audio file relative to this script that should be used as the 
+    -- waveform on Floe's GUI.
+    -- [optional, default: first region path]
+    waveform_audio_path = "Samples/file1.flac",
+})
+</code></pre>
+<h3 id="floeadd_region"><a class="header" href="#floeadd_region"><code>floe.add_region</code></a></h3>
+<p>Adds a region to an instrument. It takes 2 parameters: the instrument object and a table of configuration. Doesn’t return anything. You can call this function multiple times to create multiple regions.</p>
+<p>A region is a part of an instrument. It defines an audio file and the conditions under which it will be played. For example, you might have a region that plays the audio file <code>Piano_C3.flac</code> when the note C3 is played. Each instrument must have one or more regions.</p>
+<pre><code class="language-lua">floe.add_region(instrument, {
+    -- A path to an audio file, relative to this current lua file. [required]
+    path = "Samples/One-shots/Resonating String.flac",
+
+    -- The pitch of the audio file as a number from 0 to 127 (a MIDI note number). 
+    -- On a range from 0 to 127. [required]
+    root_key = 60,
+
+    -- How this region should be triggered.
+    -- [optional, default: defaults]
+    trigger_criteria = {
+        -- What event triggers this region. Must be one of: "note-on" or 
+        -- "note-off".
+        -- [optional, default: note-on]
+        trigger_event = "note-on",
+
+        -- The pitch range of the keyboard that this region is mapped to. These 
+        -- should be MIDI note numbers, from 0 to 128. The start number is 
+        -- inclusive, the end is exclusive.
+        -- [optional, default: { 60, 64 }]
+        key_range = { 60, 64 },
+
+        -- The velocity range of the keyboard that this region is mapped to. This 
+        -- should be an array of 2 numbers ranging from 0 to 100. The start number 
+        -- is inclusive, the end is exclusive.
+        -- [optional, default: { 0, 100 }]
+        velocity_range = { 0, 100 },
+
+        -- Trigger this region only on this round-robin index. For example, if 
+        -- this index is 0 and there are 2 other groups with round-robin indices 
+        -- of 1 and 2 with the same round_robin_sequencing_group and 
+        -- trigger_event, then this region will trigger on every third press of a 
+        -- key only. round_robin_index should begin at 0 and be consecutive. The 
+        -- total number of round-robins is calculated automatically.
+        -- [optional, default: no round-robin]
+        round_robin_index = 0,
+
+        -- Group together regions that have this same string, so that their 
+        -- round_robin_index is part of a separate sequence to other 
+        -- round_robin_sequencing_groups. Use this when you have multiple sets of 
+        -- regions that have a different number of round-robins with the same 
+        -- trigger_event.
+        -- [optional, default: instrument-wide group]
+        round_robin_sequencing_group = "group1",
+
+        -- If another region in this instrument is triggered at the same time as 
+        -- this one and is overlapping this, and also has this option enabled, 
+        -- then both regions will play crossfaded in a proportional amount for the 
+        -- overlapping area, creating a smooth transition between velocity layers. 
+        -- Only works if there's exactly 2 overlapping layers.
+        -- [optional, default: false]
+        feather_overlapping_velocity_layers = false,
+
+        -- For every region that has this same string, automatically set the start 
+        -- and end values for each region's key range based on its root key.
+        -- [optional, default: no auto-map]
+        auto_map_key_range_group = "group1",
+    },
+
+    -- Loop configuration.
+    -- [optional, default: defaults]
+    loop = {
+        -- Define a built-in loop.
+        -- [optional, default: no built-in loop]
+        builtin_loop = {
+            -- The start of the loop in frames. Inclusive. It can be negative 
+            -- meaning index the file from the end rather than the start. 
+            -- [required]
+            start_frame = 24,
+
+            -- The end of the loop in frames. Exclusive. It can be negative 
+            -- meaning index the file from the end rather than the start. 0 means 
+            -- the end of the file. [required]
+            end_frame = 6600,
+
+            -- The number of frames to crossfade. [required]
+            crossfade = 100,
+
+            -- The mode of the loop. Must be one of: "standard" or "ping-pong".
+            -- [optional, default: standard]
+            mode = "standard",
+
+            -- If true, the start, end and crossfade values cannot be overriden by 
+            -- a custom loop from Floe's GUI.
+            -- [optional, default: ]
+            lock_loop_points = false,
+
+            -- If true, the loop mode value cannot be overriden by a custom mode 
+            -- from Floe's GUI.
+            -- [optional, default: ]
+            lock_mode = false,
+        },
+
+        -- The requirement for this region to loop. Must be one of: 
+        -- "default" =&gt; Default looping behaviour.
+        -- "always-loop" =&gt; This region will always loop - either using the built 
+        -- in loop, a user defined loop, or a default built-in loop.
+        -- "never-loop" =&gt; This region will never loop even if there is a 
+        -- user-defined loop. Set all regions of an instrument to this to entirely 
+        -- disable looping for the instrument.
+        -- [optional, default: default]
+        loop_requirement = "always-loop",
+    },
+
+    -- Timbre layering configuration.
+    -- [optional, default: no timbre layering]
+    timbre_layering = {
+        -- The start and end point, from 0 to 100, of the Timbre knob on Floe's 
+        -- GUI that this region should be heard. You should overlap this range 
+        -- with other timbre layer ranges. Floe will create an even crossfade of 
+        -- all overlapping sounds. The start number is inclusive, end is 
+        -- exclusive. This region's velocity_range should be 0-100.
+        -- [optional, default: no timbre layering]
+        layer_range = { 0, 50 },
+    },
+
+    -- Audio properties.
+    -- [optional, default: defaults]
+    audio_properties = {
+        -- Apply a gain to the audio data in decibels.
+        -- [optional, default: 0]
+        gain_db = -3,
+
+        -- The number of frames to skip at the start of the audio data.
+        -- [optional, default: 0]
+        start_offset_frames = 0,
+
+        -- Tune the audio data in cents.
+        -- [optional, default: 0]
+        tune_cents = 0,
+    },
+
+    -- Playback configuration.
+    -- [optional, default: defaults]
+    playback = {
+        -- The requirement for keytracking. Must be one of: "default", "always" or 
+        -- "never".
+        -- [optional, default: default]
+        keytrack_requirement = "default",
+    },
+})
+</code></pre>
+<h3 id="floeadd_ir"><a class="header" href="#floeadd_ir"><code>floe.add_ir</code></a></h3>
+<p>Adds an reverb impulse response to the library. It takes 2 parameters: the library object and a table of configuration. Doesn’t return anything. You can call this function multiple times to create multiple impulse responses.</p>
+<pre><code class="language-lua">floe.add_ir(library, {
+    -- The name of the IR. Must be unique. [required]
+    name = "Cathedral",
+
+    -- File path to the impulse response file, relative to this script. [required]
+    path = "irs/cathedral.flac",
+
+    -- Specify a folder to group IRs under a common heading. It may contain 
+    -- slashes to represent a hierarchy. See 
+    -- https://floe.audio/develop/tags-and-folders.html for more information.
+    -- [optional, default: no folders]
+    folder = "Cathedrals",
+
+    -- An array of strings to denote properties of the IR. See 
+    -- https://floe.audio/develop/tags-and-folders.html for more information.
+    -- [optional, default: no tags]
+    tags = { "acoustic", "cathedral" },
+
+    -- A description of the IR. Start with a capital letter an end with a period.
+    -- [optional, default: no description]
+    description = "Sine sweep in St. Paul's Cathedral.",
+})
+</code></pre>
+<h3 id="floeset_attribution_requirement"><a class="header" href="#floeset_attribution_requirement"><code>floe.set_attribution_requirement</code></a></h3>
+<p>Sets the attribution information for a particular audio file or folder. It takes 2 parameters: a path to the file or folder whose license information you want to set, and a table of configuration. If the path is a folder, the attribution requirement will be applied to all audio files in that folder and its subfolders.</p>
+<pre><code class="language-lua">floe.set_attribution_requirement("Samples/bell.flac", {
+    -- The title of the work. [required]
+    title = "Bell Strike",
+
+    -- Name of the license. [required]
+    license_name = "CC-BY-4.0",
+
+    -- URL to the license. [required]
+    license_url = "https://creativecommons.org/licenses/by/4.0/",
+
+    -- The name/identification of the persons or entities to attribute the work 
+    -- to. [required]
+    attributed_to = "John Doe",
+
+    -- URL to the original work if possible.
+    -- [optional, default: ]
+    attribution_url = "https://example.com",
+})
+</code></pre>
+<h2 id="support-function"><a class="header" href="#support-function">Support Function</a></h2>
+<p>Floe provides some additional functions to make developing libraries easier.</p>
+<h3 id="floeextend_table"><a class="header" href="#floeextend_table"><code>floe.extend_table</code></a></h3>
+<p>Extends a table with another table, including all sub-tables. It takes 2 parameters: the base table and the table to extend it with. The base table is not modified. The extension table is modified and returned. It has all the keys of the base table plus all the keys of the extended table. If a key exists in both tables, the value from the extension table is used.</p>
+<p>Floe doesn’t have the concept of ‘groups’ like other formats like SFZ or Kontakt have. Instead, this function offers a way to apply a similar configuration to multiple regions. Alternatively, you can use functions and loops in Lua to add regions in a more dynamic way.</p>
+<pre><code class="language-lua">local group1 = {
+    trigger_criteria = {
+        trigger_event = "note-on",
+        velocity_range = { 0, 100 },
+        auto_map_key_range_group = "group1",
+        feather_overlapping_velocity_regions = false,
+    },
+}
+
+floe.add_region(instrument, floe.extend_table(group1, {
+    path = "One-shots/Resonating String 2.flac",
+    root_key = 65,
+}))
+
+floe.add_region(instrument, floe.extend_table(group1, {
+    path = "One-shots/Resonating String 3.flac",
+    root_key = 68,
+}))
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../develop/develop-libraries.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../develop/develop-preset-packs.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../develop/develop-libraries.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../develop/develop-preset-packs.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
