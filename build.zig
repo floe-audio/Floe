@@ -2058,6 +2058,7 @@ pub fn build(b: *std.Build) void {
             docs_preprocessor.linkLibrary(common_infrastructure);
             docs_preprocessor.addIncludePath(b.path("src"));
             docs_preprocessor.addConfigHeader(build_config_step);
+            docs_preprocessor.addIncludePath(build_context.dep_icon_font_cpp_headers.path(""));
             join_compile_commands.step.dependOn(&docs_preprocessor.step);
             applyUniversalSettings(&build_context, docs_preprocessor);
             b.getInstallStep().dependOn(&b.addInstallArtifact(docs_preprocessor, .{ .dest_dir = install_subfolder }).step);

@@ -164,16 +164,40 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
                       });
 
             auto const info = Tags(category);
-            DoBox(box_system,
-                  {
-                      .parent = category_box,
-                      .text = fmt::FormatInline<k_max_tag_size + 3>("{}:", info.name),
-                      .font = FontType::Body,
-                      .size_from_text = true,
-                      .layout {
-                          .line_break = true,
-                      },
-                  });
+
+            {
+
+                auto const heading_box =
+                    DoBox(box_system,
+                          {
+                              .parent = category_box,
+                              .layout {
+                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                  .contents_gap = style::k_spacing / 3,
+                                  .contents_direction = layout::Direction::Row,
+                                  .contents_align = layout::Alignment::Start,
+                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                              },
+                          });
+                DoBox(box_system,
+                      {
+                          .parent = heading_box,
+                          .text = info.font_awesome_icon,
+                          .font = FontType::Icons,
+                          .size_from_text = true,
+                      });
+
+                DoBox(box_system,
+                      {
+                          .parent = heading_box,
+                          .text = fmt::FormatInline<k_max_tag_size + 3>("{}:", info.name),
+                          .font = FontType::Body,
+                          .size_from_text = true,
+                          .layout {
+                              .line_break = true,
+                          },
+                      });
+            }
 
             auto const tags_list = DoBox(box_system,
                                          {
@@ -188,13 +212,18 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
                                              },
                                          });
 
+            // TODO: take into account the category's selection mode - if it's single we should grey-out all
+            // other buttons in the category if one is selected. The buttons should still be clickable though,
+            // it's just not typically recommended to select multiple tags in a single category.
+
             for (auto const& tag : info.tags) {
-                auto const is_selected = Contains(state.metadata.tags, tag.tag);
+                auto const tag_text = TagText(tag.tag);
+                auto const is_selected = Contains(state.metadata.tags, tag_text);
 
                 auto const button = DoBox(box_system,
                                           BoxConfig {
                                               .parent = tags_list,
-                                              .text = tag.tag,
+                                              .text = tag_text,
                                               .font = FontType::Body,
                                               .size_from_text = true,
                                               .background_fill = is_selected ? style::Colour::Highlight
@@ -208,9 +237,9 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
 
                 if (button.button_fired) {
                     if (is_selected)
-                        dyn::RemoveValue(state.metadata.tags, tag.tag);
+                        dyn::RemoveValue(state.metadata.tags, tag_text);
                     else
-                        dyn::Append(state.metadata.tags, tag.tag);
+                        dyn::Append(state.metadata.tags, tag_text);
                 }
             }
         }

@@ -298,7 +298,7 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
         for (auto const category : EnumIterator<TagCategory>()) {
             auto const tags = Tags(category);
             fmt::Append(tags_md,
-                        "### {} {}. {}: {}\n",
+                        "### {}. {} {}: {}\n",
                         category_number++,
                         tags.emoji,
                         tags.name,
@@ -329,7 +329,7 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
                 for (auto const [tag_index, tag] : Enumerate(tags.tags)) {
                     fmt::Append(tags_md, "`{}`", tag.tag);
                     if (tag.description.size)
-                        fmt::Append(tags_md, "[^{}]", MakeMarkdownNote(tag.tag, scratch));
+                        fmt::Append(tags_md, "[^{}]", MakeMarkdownNote(TagText(tag.tag), scratch));
                     if (tag_index + 1 < tags.tags.size)
                         fmt::Append(tags_md, ", ");
                     else
@@ -342,7 +342,7 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
                     if (tag.description.size) {
                         fmt::Append(tags_md,
                                     "[^{}]: {}\n",
-                                    MakeMarkdownNote(tag.tag, scratch),
+                                    MakeMarkdownNote(TagText(tag.tag), scratch),
                                     tag.description);
                     }
                 }
