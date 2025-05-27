@@ -15,6 +15,7 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/global.hpp"
 #include "common_infrastructure/sample_library/sample_library.hpp"
+#include "common_infrastructure/tags.hpp"
 
 #include "config.h"
 #include "packager_tool/packager.hpp"
@@ -58,6 +59,13 @@ static void ExpandIdentifiersBasedOnLuaSections(DynamicArray<char>& markdown_blo
             ExpandIdentifier(markdown_blob, Identifier(identifier, *current_section_name), section, scratch);
         }
     }
+}
+
+static String MakeMarkdownNote(String text, Allocator& alloc) {
+    auto result = alloc.Clone(text);
+    for (auto& c : result)
+        if (!IsAlphanum(c)) c = '-';
+    return result;
 }
 
 // We just replace the placeholders with the actual content.
@@ -281,6 +289,68 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
     }
 
     ExpandIdentifier(result, Identifier("effects-count"), fmt::IntToString(k_num_effect_types), scratch);
+
+    {
+        DynamicArray<char> tags_md {scratch};
+
+        u8 category_number = 1;
+
+        for (auto const category : EnumIterator<TagCategory>()) {
+            auto const tags = Tags(category);
+            fmt::Append(tags_md, "### {}. {}: {}\n", category_number++, tags.name, tags.question);
+
+            // If more than 25% tags have descriptions we use a table rather than notes.
+            bool use_table = false;
+            {
+                u8 num_descriptions = 0;
+                for (auto const tag : tags.tags) {
+                    if (tag.description.size) {
+                        ++num_descriptions;
+                        if (num_descriptions > tags.tags.size / 4) {
+                            use_table = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (use_table) {
+                fmt::Append(tags_md, "| Tag | Description |\n");
+                fmt::Append(tags_md, "|:--|:--|\n");
+                for (auto const tag : tags.tags)
+                    fmt::Append(tags_md, "| `{}` | {} |\n", tag.tag, tag.description);
+                dyn::Append(tags_md, '\n');
+            } else {
+                for (auto const [tag_index, tag] : Enumerate(tags.tags)) {
+                    fmt::Append(tags_md, "`{}`", tag.tag);
+                    if (tag.description.size)
+                        fmt::Append(tags_md, "[^{}]", MakeMarkdownNote(tag.tag, scratch));
+                    if (tag_index + 1 < tags.tags.size)
+                        fmt::Append(tags_md, ", ");
+                    else
+                        fmt::Append(tags_md, ".\n");
+                }
+
+                dyn::Append(tags_md, '\n');
+
+                for (auto const tag : tags.tags) {
+                    if (tag.description.size) {
+                        fmt::Append(tags_md,
+                                    "[^{}]: {}\n",
+                                    MakeMarkdownNote(tag.tag, scratch),
+                                    tag.description);
+                    }
+                }
+
+                dyn::Append(tags_md, '\n');
+            }
+
+            fmt::Append(tags_md, "{}\n", tags.recommendation);
+            dyn::Append(tags_md, '\n');
+        }
+
+        ExpandIdentifier(result, Identifier("tags-listing"), tags_md, scratch);
+    }
 
     return result.ToOwnedSpan();
 }
