@@ -7,15 +7,19 @@
 
 #include "foundation/foundation.hpp"
 
-enum class TagSelectionModeAllowed {
+enum class TagSelectionModeAllowed : u8 {
     Single, // Only one tag can be selected in this category.
     Multiple, // Multiple tags can be selected in this category.
 };
 
-enum class TagCategory {
+enum class TagCategory : u8 {
     SoundSource,
     RealInstrument,
     NumberOfPlayers,
+    SoundTypeLong,
+    SoundTypeShort,
+    SoundTypeSequence,
+    SoundTypeRole,
     Material,
     ReverbType,
     MoodPositive,
@@ -23,10 +27,6 @@ enum class TagCategory {
     MoodMixed,
     MoodThematic,
     Pitch,
-    SoundTypeLong,
-    SoundTypeShort,
-    SoundTypeSequence,
-    SoundTypeRole,
     TimbreModulation,
     TimbreRealTone,
     TimbreSynthTechnique,
@@ -51,7 +51,7 @@ enum class TagType : u16 {
     Drums,
     Folk,
     Guitar,
-    Keys,
+    Keyboard,
     Organ,
     Percussion,
     Piano,
@@ -66,7 +66,7 @@ enum class TagType : u16 {
     Ensemble,
 
     Wood,
-    Metal,
+    MetalMaterial,
     Glass,
     Plastic,
     Rubber,
@@ -128,7 +128,7 @@ enum class TagType : u16 {
     Noise,
 
     Hit,
-    // Keys,
+    Keys,
     Oneshot,
     // Percussion,
     Pluck,
@@ -205,7 +205,7 @@ enum class TagType : u16 {
     Industrial,
     Jazz,
     // LoFi,
-    // Metal,
+    MetalGenre,
     Orchestral,
     Pop,
     Rock,
@@ -232,6 +232,23 @@ struct TagCategoryInfo {
     String font_awesome_icon;
 };
 
+PUBLIC bool DisallowTagSelection(TagCategory category,
+                                 Array<bool, ToInt(TagCategory::Count)> const& has_selections_in_category) {
+    switch (category) {
+        case TagCategory::SoundTypeLong:
+        case TagCategory::SoundTypeShort:
+        case TagCategory::SoundTypeSequence:
+        case TagCategory::SoundTypeRole: {
+            return has_selections_in_category[ToInt(TagCategory::SoundTypeLong)] ||
+                   has_selections_in_category[ToInt(TagCategory::SoundTypeShort)] ||
+                   has_selections_in_category[ToInt(TagCategory::SoundTypeSequence)] ||
+                   has_selections_in_category[ToInt(TagCategory::SoundTypeRole)];
+        }
+        default: break;
+    }
+    return has_selections_in_category[ToInt(category)];
+}
+
 PUBLIC String TagText(TagType t) {
     switch (t) {
         case TagType::Acoustic: return "acoustic"_s;
@@ -249,7 +266,7 @@ PUBLIC String TagText(TagType t) {
         case TagType::Drums: return "drums"_s;
         case TagType::Folk: return "folk"_s;
         case TagType::Guitar: return "guitar"_s;
-        case TagType::Keys: return "keys"_s;
+        case TagType::Keyboard: return "keyboard"_s;
         case TagType::Organ: return "organ"_s;
         case TagType::Percussion: return "percussion"_s;
         case TagType::Piano: return "piano"_s;
@@ -264,7 +281,7 @@ PUBLIC String TagText(TagType t) {
         case TagType::Ensemble: return "ensemble"_s;
 
         case TagType::Wood: return "wood"_s;
-        case TagType::Metal: return "metal"_s;
+        case TagType::MetalMaterial: return "metal"_s;
         case TagType::Glass: return "glass"_s;
         case TagType::Plastic: return "plastic"_s;
         case TagType::Rubber: return "rubber"_s;
@@ -347,6 +364,7 @@ PUBLIC String TagText(TagType t) {
         // Sound types (role in a track)
         case TagType::Lead: return "lead"_s;
         case TagType::Bass: return "bass"_s;
+        case TagType::Keys: return "keys"_s;
         case TagType::Riser: return "riser"_s;
         case TagType::Downer: return "downer"_s;
         case TagType::SoundFx: return "sound fx"_s;
@@ -386,7 +404,7 @@ PUBLIC String TagText(TagType t) {
         case TagType::Muddy: return "muddy"_s;
         case TagType::Muffled: return "muffled"_s;
         case TagType::Nasal: return "nasal"_s;
-        case TagType::Noisy: return "noisy"_s; // Note that this is not the same as noise.
+        case TagType::Noisy: return "noisy"_s;
         case TagType::Pure: return "pure"_s;
         case TagType::Resonant: return "resonant"_s;
         case TagType::Saturated: return "saturated"_s;
@@ -417,6 +435,7 @@ PUBLIC String TagText(TagType t) {
         case TagType::Jazz: return "jazz"_s;
         case TagType::Orchestral: return "orchestral"_s;
         case TagType::Pop: return "pop"_s;
+        case TagType::MetalGenre: return "metal"_s;
         case TagType::Rock: return "rock"_s;
         case TagType::Synthwave: return "synthwave"_s;
         case TagType::Techno: return "techno"_s;
@@ -452,24 +471,24 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
         }
         case TagCategory::RealInstrument: {
             static constexpr auto k_tags = ArrayT<Tag>({
-                {ElectricBass, ""},
-                {DoubleBass, ""},
                 {Brass, ""},
                 {Cello, ""},
                 {Choir, ""},
+                {DoubleBass, ""},
                 {Drums, ""},
+                {ElectricBass, ""},
                 {Folk, ""},
                 {Guitar, ""},
-                {Keys, ""},
+                {Keyboard, ""},
                 {Organ, ""},
                 {Percussion, ""},
                 {Piano, ""},
                 {PluckedStrings, "Plucked strings such as guitar, harp, mandolin"},
                 {Strings, "Bowed strings such as violin, viola, cello, double bass"},
                 {StruckStrings, "Struck strings such as hammered dulcimer, santur"},
+                {TonalPercussion, ""},
                 {Violin, ""},
                 {Wind, ""},
-                {TonalPercussion, ""},
             });
             return {
                 .name = "Real instrument category",
@@ -500,13 +519,13 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
         }
         case TagCategory::Material: {
             static constexpr auto k_tags = ArrayT<Tag>({
-                {Wood, ""},
-                {Metal, ""},
                 {Glass, ""},
+                {Ice, ""},
+                {MetalMaterial, ""},
                 {Plastic, ""},
                 {Rubber, ""},
                 {Stone, ""},
-                {Ice, ""},
+                {Wood, ""},
             });
             return {
                 .name = "Material",
@@ -521,15 +540,15 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
         }
         case TagCategory::ReverbType: {
             static constexpr auto k_tags = ArrayT<Tag>({
-                {SmallRoom, ""},
-                {LargeRoom, ""},
-                {Chamber, ""},
-                {Studio, ""},
-                {Hall, ""},
-                {Church, ""},
                 {Cathedral, ""},
-                {Unusual, ""},
+                {Chamber, ""},
+                {Church, ""},
+                {Hall, ""},
+                {LargeRoom, ""},
                 {OpenAir, ""},
+                {SmallRoom, ""},
+                {Studio, ""},
+                {Unusual, ""},
             });
             return {
                 .name = "Reverb type",
@@ -810,7 +829,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 {Chillout, ""},    {Chiptune, ""},  {Cinematic, ""},  {Disco, ""},      {Downtempo, ""},
                 {DrumAndBass, ""}, {Dubstep, ""},   {Electronic, ""}, {Folk, ""},       {Funk, ""},
                 {FutureBass, ""},  {Glitch, ""},    {HipHop, ""},     {House, ""},      {Industrial, ""},
-                {Jazz, ""},        {LoFi, ""},      {Metal, ""},      {Orchestral, ""}, {Pop, ""},
+                {Jazz, ""},        {LoFi, ""},      {MetalGenre, ""}, {Orchestral, ""}, {Pop, ""},
                 {Rock, ""},        {Synthwave, ""}, {Techno, ""},     {Trance, ""},     {Trap, ""},
                 {Vaporwave, ""},   {World, ""},
             });

@@ -146,6 +146,20 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
     }
 
     {
+        Array<bool, ToInt(TagCategory::Count)> has_category_selected = {};
+        for (auto const tag : state.metadata.tags) {
+            for (auto const category : EnumIterator<TagCategory>()) {
+                if (category == TagCategory::ReverbType) continue;
+
+                auto const info = Tags(category);
+                for (auto const& tag_info : info.tags) {
+                    if (TagText(tag_info.tag) == tag) {
+                        has_category_selected[ToInt(category)] = true;
+                        break;
+                    }
+                }
+            }
+        }
 
         for (auto const category : EnumIterator<TagCategory>()) {
             if (category == TagCategory::ReverbType) continue;
@@ -212,28 +226,32 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
                                              },
                                          });
 
-            // TODO: take into account the category's selection mode - if it's single we should grey-out all
-            // other buttons in the category if one is selected. The buttons should still be clickable though,
-            // it's just not typically recommended to select multiple tags in a single category.
-
             for (auto const& tag : info.tags) {
                 auto const tag_text = TagText(tag.tag);
                 auto const is_selected = Contains(state.metadata.tags, tag_text);
 
-                auto const button = DoBox(box_system,
-                                          BoxConfig {
-                                              .parent = tags_list,
-                                              .text = tag_text,
-                                              .font = FontType::Body,
-                                              .size_from_text = true,
-                                              .background_fill = is_selected ? style::Colour::Highlight
-                                                                             : style::Colour::Background1,
-                                              .background_fill_auto_hot_active_overlay = true,
-                                              .round_background_corners = 0b1100,
-                                              .activate_on_click_button = MouseButton::Left,
-                                              .activation_click_event = ActivationClickEvent::Up,
-                                              .tooltip = tag.description,
-                                          });
+                bool grey_out = false;
+                if (info.selection_mode == TagSelectionModeAllowed::Single &&
+                    DisallowTagSelection(category, has_category_selected) && !is_selected) {
+                    grey_out = true;
+                }
+
+                auto const button =
+                    DoBox(box_system,
+                          BoxConfig {
+                              .parent = tags_list,
+                              .text = tag_text,
+                              .font = FontType::Body,
+                              .text_fill = grey_out ? style::Colour::Surface1 : style::Colour::Text,
+                              .size_from_text = true,
+                              .background_fill =
+                                  is_selected ? style::Colour::Highlight : style::Colour::Background1,
+                              .background_fill_auto_hot_active_overlay = true,
+                              .round_background_corners = 0b1100,
+                              .activate_on_click_button = MouseButton::Left,
+                              .activation_click_event = ActivationClickEvent::Up,
+                              .tooltip = tag.description,
+                          });
 
                 if (button.button_fired) {
                     if (is_selected)
