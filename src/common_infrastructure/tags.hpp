@@ -37,6 +37,7 @@ struct TagCategoryInfo {
     String question;
     String recommendation;
     Span<Tag const> tags;
+    String emoji;
 };
 
 PUBLIC TagCategoryInfo Tags(TagCategory category) {
@@ -56,6 +57,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .recommendation =
                     "It's strongly recommended to specify a sound-source for instruments and impulse responses. This is sometimes not applicable for presets.",
                 .tags = k_tags,
+                .emoji = "🔊",
             };
         }
         case TagCategory::RealInstrument: {
@@ -87,6 +89,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .recommendation =
                     "These are mostly relevant for acoustic or hybrid sounds, but can be used for synthesized sounds that emulate these instruments.",
                 .tags = k_tags,
+                .emoji = "🎻",
             };
         }
         case TagCategory::Material: {
@@ -105,6 +108,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .recommendation =
                     "This is typically used for non-standard instruments in the `acoustic` or `found sounds` categories.",
                 .tags = k_tags,
+                .emoji = "🪵",
             };
         }
         case TagCategory::ReverbType: {
@@ -125,6 +129,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .recommendation =
                     "Strongly recommended for impulse responses. Not applicable for instruments or presets.",
                 .tags = k_tags,
+                .emoji = "🏛️",
             };
         }
         case TagCategory::MoodPositive: {
@@ -143,6 +148,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .recommendation =
                     "It's usually recommended to specify moods for synthesised instruments and presets. Not typically used for well-known acoustic instruments.",
                 .tags = k_tags,
+                .emoji = "🙂",
             };
         }
         case TagCategory::MoodNegative: {
@@ -162,6 +168,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .recommendation =
                     "It's usually recommended to specify moods for synthesised instruments and presets. Not typically used for well-known acoustic instruments.",
                 .tags = k_tags,
+                .emoji = "😟",
             };
         }
         case TagCategory::MoodMixed: {
@@ -177,6 +184,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .recommendation =
                     "It's usually recommended to specify moods for synthesised instruments and presets. Not typically used for well-known acoustic instruments.",
                 .tags = k_tags,
+                .emoji = "😐",
             };
         }
         case TagCategory::MoodThematic: {
@@ -198,6 +206,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .recommendation =
                     "It's usually recommended to specify moods for synthesised instruments and presets. Not typically used for well-known acoustic instruments.",
                 .tags = k_tags,
+                .emoji = "🎭",
             };
         }
         case TagCategory::Pitch: {
@@ -212,6 +221,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .recommendation =
                     "Useful for non-typical sounds that have notable pitch characteristics. A sound is assumed to possess a musical pitch unless otherwise stated.",
                 .tags = k_tags,
+                .emoji = "🎶",
             };
         }
         case TagCategory::SoundTypeLong: {
@@ -227,6 +237,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .question = "What type of sound is it?",
                 .recommendation = "",
                 .tags = k_tags,
+                .emoji = "🎹",
             };
         }
         case TagCategory::SoundTypeShort: {
@@ -243,6 +254,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .question = "What type of sound is it?",
                 .recommendation = "",
                 .tags = k_tags,
+                .emoji = "🎸",
             };
         }
         case TagCategory::SoundTypeSequence: {
@@ -256,6 +268,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .question = "What type of sound is it?",
                 .recommendation = "",
                 .tags = k_tags,
+                .emoji = "🔁",
             };
         }
         case TagCategory::SoundTypeRole: {
@@ -272,6 +285,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .question = "What type of sound is it?",
                 .recommendation = "",
                 .tags = k_tags,
+                .emoji = "🎛️",
             };
         }
         case TagCategory::TimbreModulation: {
@@ -286,6 +300,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .question = "What is its timbre like?",
                 .recommendation = "",
                 .tags = k_tags,
+                .emoji = "🚂",
             };
         }
         case TagCategory::TimbreRealTone: {
@@ -300,6 +315,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .question = "What is its timbre like?",
                 .recommendation = "",
                 .tags = k_tags,
+                .emoji = "🎷",
             };
         }
         case TagCategory::TimbreSynthTechnique: {
@@ -314,6 +330,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .question = "What is its timbre like?",
                 .recommendation = "",
                 .tags = k_tags,
+                .emoji = "🎚️",
             };
         }
         case TagCategory::TimbreFrequency: {
@@ -347,6 +364,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .question = "What is its timbre like?",
                 .recommendation = "",
                 .tags = k_tags,
+                .emoji = "💎",
             };
         }
         case TagCategory::Genre: {
@@ -366,6 +384,7 @@ PUBLIC TagCategoryInfo Tags(TagCategory category) {
                 .recommendation =
                     "Specifying at least one genre is recommended for all presets and instruments.",
                 .tags = k_tags,
+                .emoji = "🎵",
             };
         }
         case TagCategory::Count: break;

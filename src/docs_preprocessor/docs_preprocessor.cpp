@@ -297,7 +297,12 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
 
         for (auto const category : EnumIterator<TagCategory>()) {
             auto const tags = Tags(category);
-            fmt::Append(tags_md, "### {}. {}: {}\n", category_number++, tags.name, tags.question);
+            fmt::Append(tags_md,
+                        "### {} {}. {}: {}\n",
+                        category_number++,
+                        tags.emoji,
+                        tags.name,
+                        tags.question);
 
             // If more than 25% tags have descriptions we use a table rather than notes.
             bool use_table = false;
