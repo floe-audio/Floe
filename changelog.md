@@ -8,6 +8,9 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 0.9.10-beta
+- Add right-click menu to the instrument picker button with 'unload instrument' option.
+
 ## 0.9.9-beta
 - Sample library creation: add start_offset_frames to add_region
 - Sample library creation: add tune_cents to add_region

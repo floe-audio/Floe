@@ -8,6 +8,7 @@
 #include "engine/engine.hpp"
 #include "engine/loop_modes.hpp"
 #include "gui.hpp"
+#include "gui/gui_menu.hpp"
 #include "gui2_inst_picker.hpp"
 #include "gui_button_widgets.hpp"
 #include "gui_dragger_widgets.hpp"
@@ -24,6 +25,37 @@
 #include "processor/layer_processor.hpp"
 
 namespace layer_gui {
+
+static void DoInstSelectorRightClickMenu(Gui* g, Rect r, u32 layer) {
+    auto& imgui = g->imgui;
+    auto layer_obj = &g->engine.Layer(layer);
+    auto const popup_id = imgui.GetID("inst selector popup");
+    auto const right_clicker_id = imgui.GetID("inst selector right clicker");
+
+    imgui.RegisterAndConvertRect(&r);
+    imgui.PopupButtonBehavior(r,
+                              right_clicker_id,
+                              popup_id,
+                              {.right_mouse = true, .triggers_on_mouse_up = true});
+
+    if (imgui.IsPopupOpen(popup_id)) {
+        auto const items = Array {"Unload instrument"_s};
+
+        PopupMenuItems menu(g, items);
+
+        auto settings = PopupWindowSettings(imgui);
+        settings.flags =
+            imgui::WindowFlags_AutoWidth | imgui::WindowFlags_AutoHeight | imgui::WindowFlags_AutoPosition;
+        if (imgui.BeginWindowPopup(settings, popup_id, r)) {
+            DEFER { imgui.EndWindow(); };
+
+            if (layer_obj->instrument_id.tag == InstrumentType::None)
+                menu.DoFakeButton(items[0]);
+            else if (menu.DoButton(items[0]))
+                LoadInstrument(g->engine, layer, InstrumentType::None);
+        }
+    }
+}
 
 static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
     g->imgui.PushID("inst selector");
@@ -71,6 +103,8 @@ static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
                             "Instrument: {}\nChange or remove the instrument for this layer",
                             inst_name));
     }
+
+    DoInstSelectorRightClickMenu(g, r, layer);
 }
 
 static void DoLoopModeSelectorGui(Gui* g, Rect r, LayerProcessor& layer) {
