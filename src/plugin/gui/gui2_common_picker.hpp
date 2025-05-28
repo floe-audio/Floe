@@ -134,6 +134,7 @@ PUBLIC Box DoFilterButton(GuiBoxSystem& box_system,
 struct PickerItemsSectionOptions {
     Box parent;
     Optional<String> heading;
+    Optional<String> icon;
     bool heading_is_folder;
     bool multiline_contents;
 };
@@ -149,6 +150,28 @@ static Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSe
                                              .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                          },
                                  });
+
+    auto const heading_container = DoBox(box_system,
+                                         {
+                                             .parent = container,
+                                             .layout {
+                                                 .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                 .contents_gap = k_picker_spacing / 2,
+                                                 .contents_direction = layout::Direction::Row,
+                                                 .contents_align = layout::Alignment::Start,
+                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                             },
+                                         });
+    if (options.icon) {
+        DoBox(box_system,
+              {
+                  .parent = heading_container,
+                  .text = *options.icon,
+                  .font_size = style::k_font_icons_size * 0.7f,
+                  .font = FontType::Icons,
+                  .size_from_text = true,
+              });
+    }
 
     if (options.heading) {
         DynamicArrayBounded<char, 200> buf;
@@ -166,7 +189,7 @@ static Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSe
 
         DoBox(box_system,
               {
-                  .parent = container,
+                  .parent = heading_container,
                   .text = text,
                   .font = FontType::Heading3,
                   .size_from_text = true,
@@ -277,41 +300,51 @@ PUBLIC void
 DoPickerTagsFilters(GuiBoxSystem& box_system, Box const& parent, TagsFilters const& tags_filters) {
     if (!tags_filters.tags.size) return;
 
-    // TODO: use a hash table or something perhaps
+    // TODO: use a hash table or something perhaps. We want to look up a tag+category by name.
 
-    DynamicHashTable<TagCategory, DynamicArray<TagType>*, HashTagCategory> standard_tags {box_system.arena};
+    struct Category {
+        TagCategory category;
+        DynamicArray<TagType> tags;
+    };
+
+    DynamicArray<Category> standard_tags {box_system.arena};
     for (auto const category : EnumIterator<TagCategory>()) {
         auto const category_info = Tags(category);
         for (auto const tag : category_info.tags) {
             auto const tag_info = GetTagInfo(tag);
             if (tags_filters.tags.Contains(tag_info.name)) {
-                if (auto arr_pp = standard_tags.Find(category)) {
-                    auto arr = *arr_pp;
-                    dyn::AppendIfNotAlreadyThere(*arr, tag);
+                if (auto const i =
+                        FindIf(standard_tags, [&](Category const& c) { return c.category == category; })) {
+                    auto& cat = standard_tags[*i];
+                    dyn::Append(cat.tags, tag);
                 } else {
-                    auto arr = box_system.arena.New<DynamicArray<TagType>>(box_system.arena);
-                    dyn::Append(*arr, tag);
-                    standard_tags.Insert(category, arr);
+                    dyn::Append(standard_tags,
+                                Category {
+                                    .category = category,
+                                    .tags = {Span {&tag, 1}, box_system.arena},
+                                });
                 }
             }
         }
     }
 
+    Sort(standard_tags,
+         [](Category const& a, Category const& b) { return ToInt(a.category) < ToInt(b.category); });
+
     // IMPROVE: add a heading around all of this for TAGS, then these sections are sub-sections
 
-    for (auto const [category, tags_pp] : standard_tags) {
-        auto const tags = *tags_pp;
-
-        auto const category_info = Tags(category);
+    for (auto const& category : standard_tags) {
+        auto const category_info = Tags(category.category);
         auto const section = DoPickerItemsSectionContainer(box_system,
                                                            {
                                                                .parent = parent,
                                                                .heading = category_info.name,
+                                                               .icon = category_info.font_awesome_icon,
                                                                .heading_is_folder = true,
                                                                .multiline_contents = true,
                                                            });
 
-        for (auto const tag : *tags) {
+        for (auto const tag : category.tags) {
             auto const tag_info = GetTagInfo(tag);
             auto const tag_hash = Hash(tag_info.name);
             auto const is_selected = Contains(tags_filters.selected_tags_hashes, tag_hash);
