@@ -908,6 +908,7 @@ fn applyUniversalSettings(context: *BuildContext, step: *std.Build.Step.Compile)
     step.addIncludePath(context.dep_xxhash.path(""));
     step.addIncludePath(context.dep_stb.path(""));
     step.addIncludePath(context.dep_clap.path("include"));
+    step.addIncludePath(context.dep_icon_font_cpp_headers.path(""));
     step.addIncludePath(context.dep_dr_libs.path(""));
     step.addIncludePath(context.dep_flac.path("include"));
     step.addIncludePath(context.dep_libbacktrace.path(""));
@@ -2016,7 +2017,6 @@ pub fn build(b: *std.Build) void {
 
             plugin.addIncludePath(b.path("src/plugin"));
             plugin.addIncludePath(b.path("src"));
-            plugin.addIncludePath(build_context.dep_icon_font_cpp_headers.path(""));
             plugin.addConfigHeader(build_config_step);
             plugin.linkLibrary(library);
             plugin.linkLibrary(common_infrastructure);
@@ -2058,7 +2058,6 @@ pub fn build(b: *std.Build) void {
             docs_preprocessor.linkLibrary(common_infrastructure);
             docs_preprocessor.addIncludePath(b.path("src"));
             docs_preprocessor.addConfigHeader(build_config_step);
-            docs_preprocessor.addIncludePath(build_context.dep_icon_font_cpp_headers.path(""));
             join_compile_commands.step.dependOn(&docs_preprocessor.step);
             applyUniversalSettings(&build_context, docs_preprocessor);
             b.getInstallStep().dependOn(&b.addInstallArtifact(docs_preprocessor, .{ .dest_dir = install_subfolder }).step);

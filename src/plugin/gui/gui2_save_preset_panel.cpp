@@ -146,15 +146,14 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
     }
 
     {
-        Array<bool, ToInt(TagCategory::Count)> has_category_selected = {};
+        Bitset<ToInt(TagType::Count)> selected_tags = {};
         for (auto const tag : state.metadata.tags) {
             for (auto const category : EnumIterator<TagCategory>()) {
                 if (category == TagCategory::ReverbType) continue;
 
-                auto const info = Tags(category);
-                for (auto const& tag_info : info.tags) {
-                    if (TagText(tag_info.tag) == tag) {
-                        has_category_selected[ToInt(category)] = true;
+                for (auto const& category_tag : Tags(category).tags) {
+                    if (GetTagInfo(category_tag).name == tag) {
+                        selected_tags.Set(ToInt(category_tag));
                         break;
                     }
                 }
@@ -226,23 +225,22 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
                                              },
                                          });
 
-            for (auto const& tag : info.tags) {
-                auto const tag_text = TagText(tag.tag);
-                auto const is_selected = Contains(state.metadata.tags, tag_text);
+            bool category_disallow_more_selection = ShouldGreyOutTagCategory(category, selected_tags);
 
-                bool grey_out = false;
-                if (info.selection_mode == TagSelectionModeAllowed::Single &&
-                    DisallowTagSelection(category, has_category_selected) && !is_selected) {
-                    grey_out = true;
-                }
+            for (auto const& tag : info.tags) {
+                auto const tag_info = GetTagInfo(tag);
+                auto const is_selected = selected_tags.Get(ToInt(tag));
+
+                bool grey_out = category_disallow_more_selection;
+                if (is_selected) grey_out = false;
 
                 auto const button =
                     DoBox(box_system,
                           BoxConfig {
                               .parent = tags_list,
-                              .text = tag_text,
+                              .text = tag_info.name,
                               .font = FontType::Body,
-                              .text_fill = grey_out ? style::Colour::Surface1 : style::Colour::Text,
+                              .text_fill = grey_out ? style::Colour::Overlay2 : style::Colour::Text,
                               .size_from_text = true,
                               .background_fill =
                                   is_selected ? style::Colour::Highlight : style::Colour::Background1,
@@ -250,14 +248,14 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
                               .round_background_corners = 0b1100,
                               .activate_on_click_button = MouseButton::Left,
                               .activation_click_event = ActivationClickEvent::Up,
-                              .tooltip = tag.description,
+                              .tooltip = tag_info.description,
                           });
 
                 if (button.button_fired) {
                     if (is_selected)
-                        dyn::RemoveValue(state.metadata.tags, tag_text);
+                        dyn::RemoveValue(state.metadata.tags, tag_info.name);
                     else
-                        dyn::Append(state.metadata.tags, tag_text);
+                        dyn::Append(state.metadata.tags, tag_info.name);
                 }
             }
         }

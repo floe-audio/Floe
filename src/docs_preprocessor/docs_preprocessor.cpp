@@ -309,7 +309,8 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
             {
                 u8 num_descriptions = 0;
                 for (auto const tag : tags.tags) {
-                    if (tag.description.size) {
+                    auto const tag_info = GetTagInfo(tag);
+                    if (tag_info.description.size) {
                         ++num_descriptions;
                         if (num_descriptions > tags.tags.size / 4) {
                             use_table = true;
@@ -322,14 +323,17 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
             if (use_table) {
                 fmt::Append(tags_md, "| Tag | Description |\n");
                 fmt::Append(tags_md, "|:--|:--|\n");
-                for (auto const tag : tags.tags)
-                    fmt::Append(tags_md, "| `{}` | {} |\n", tag.tag, tag.description);
+                for (auto const tag : tags.tags) {
+                    auto const tag_info = GetTagInfo(tag);
+                    fmt::Append(tags_md, "| `{}` | {} |\n", tag_info.name, tag_info.description);
+                }
                 dyn::Append(tags_md, '\n');
             } else {
                 for (auto const [tag_index, tag] : Enumerate(tags.tags)) {
-                    fmt::Append(tags_md, "`{}`", tag.tag);
-                    if (tag.description.size)
-                        fmt::Append(tags_md, "[^{}]", MakeMarkdownNote(TagText(tag.tag), scratch));
+                    auto const tag_info = GetTagInfo(tag);
+                    fmt::Append(tags_md, "`{}`", tag_info.name);
+                    if (tag_info.description.size)
+                        fmt::Append(tags_md, "[^{}]", MakeMarkdownNote(tag_info.name, scratch));
                     if (tag_index + 1 < tags.tags.size)
                         fmt::Append(tags_md, ", ");
                     else
@@ -339,11 +343,12 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
                 dyn::Append(tags_md, '\n');
 
                 for (auto const tag : tags.tags) {
-                    if (tag.description.size) {
+                    auto const tag_info = GetTagInfo(tag);
+                    if (tag_info.description.size) {
                         fmt::Append(tags_md,
                                     "[^{}]: {}\n",
-                                    MakeMarkdownNote(TagText(tag.tag), scratch),
-                                    tag.description);
+                                    MakeMarkdownNote(tag_info.name, scratch),
+                                    tag_info.description);
                     }
                 }
 

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "common_infrastructure/tags.hpp"
+
 #include "gui/gui2_common_modal_panel.hpp"
 #include "gui/gui_library_images.hpp"
 #include "gui_framework/gui_box_system.hpp"
@@ -266,28 +268,59 @@ PUBLIC void DoPickerLibraryFilters(GuiBoxSystem& box_system,
     }
 }
 
+static constexpr u64 HashTagCategory(TagCategory const& category) {
+    auto const i = ToInt(category);
+    return Hash(Span {&i, 1});
+}
+
 PUBLIC void
 DoPickerTagsFilters(GuiBoxSystem& box_system, Box const& parent, TagsFilters const& tags_filters) {
     if (!tags_filters.tags.size) return;
 
-    auto const section = DoPickerItemsSectionContainer(box_system,
-                                                       {
-                                                           .parent = parent,
-                                                           .heading = "TAGS",
-                                                           .multiline_contents = true,
-                                                       });
-    for (auto const element : tags_filters.tags.Elements()) {
-        if (!element.active) continue;
+    // TODO: use a hash table or something perhaps
 
-        auto const tag = element.key;
-        auto const tag_hash = element.hash;
+    DynamicHashTable<TagCategory, DynamicArray<TagType>*, HashTagCategory> standard_tags {box_system.arena};
+    for (auto const category : EnumIterator<TagCategory>()) {
+        auto const category_info = Tags(category);
+        for (auto const tag : category_info.tags) {
+            auto const tag_info = GetTagInfo(tag);
+            if (tags_filters.tags.Contains(tag_info.name)) {
+                if (auto arr_pp = standard_tags.Find(category)) {
+                    auto arr = *arr_pp;
+                    dyn::AppendIfNotAlreadyThere(*arr, tag);
+                } else {
+                    auto arr = box_system.arena.New<DynamicArray<TagType>>(box_system.arena);
+                    dyn::Append(*arr, tag);
+                    standard_tags.Insert(category, arr);
+                }
+            }
+        }
+    }
 
-        auto const is_selected = Contains(tags_filters.selected_tags_hashes, tag_hash);
-        if (DoFilterButton(box_system, section, is_selected, {}, tag).button_fired) {
-            if (is_selected)
-                dyn::RemoveValue(tags_filters.selected_tags_hashes, tag_hash);
-            else
-                dyn::Append(tags_filters.selected_tags_hashes, tag_hash);
+    // IMPROVE: add a heading around all of this for TAGS, then these sections are sub-sections
+
+    for (auto const [category, tags_pp] : standard_tags) {
+        auto const tags = *tags_pp;
+
+        auto const category_info = Tags(category);
+        auto const section = DoPickerItemsSectionContainer(box_system,
+                                                           {
+                                                               .parent = parent,
+                                                               .heading = category_info.name,
+                                                               .heading_is_folder = true,
+                                                               .multiline_contents = true,
+                                                           });
+
+        for (auto const tag : *tags) {
+            auto const tag_info = GetTagInfo(tag);
+            auto const tag_hash = Hash(tag_info.name);
+            auto const is_selected = Contains(tags_filters.selected_tags_hashes, tag_hash);
+            if (DoFilterButton(box_system, section, is_selected, {}, tag_info.name).button_fired) {
+                if (is_selected)
+                    dyn::RemoveValue(tags_filters.selected_tags_hashes, tag_hash);
+                else
+                    dyn::Append(tags_filters.selected_tags_hashes, tag_hash);
+            }
         }
     }
 }
