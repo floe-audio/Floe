@@ -333,7 +333,8 @@ DoPickerTagsFilters(GuiBoxSystem& box_system, Box const& parent, TagsFilters con
 
     // IMPROVE: add a heading around all of this for TAGS, then these sections are sub-sections
 
-    for (auto const& category : standard_tags) {
+    for (auto& category : standard_tags) {
+        Sort(category.tags, [](TagType const& a, TagType const& b) { return ToInt(a) < ToInt(b); });
         auto const category_info = Tags(category.category);
         auto const section = DoPickerItemsSectionContainer(box_system,
                                                            {
