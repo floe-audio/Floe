@@ -455,14 +455,14 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
     };
     switch (category) {
         case TagCategory::SoundSource: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Acoustic,
                 FieldRecording,
                 FoundSounds,
                 Hybrid,
                 Synthesized,
                 Vocal,
-            });
+            };
             static constexpr auto k_exclude_categories = Array {
                 TagCategory::SoundSource,
             };
@@ -520,10 +520,10 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::NumberOfPlayers: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Solo,
                 Ensemble,
-            });
+            };
             static constexpr auto k_exclude_categories = Array {
                 TagCategory::NumberOfPlayers,
             };
@@ -546,7 +546,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::Material: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Glass,
                 Ice,
                 MetalMaterial,
@@ -554,7 +554,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 Rubber,
                 Stone,
                 Wood,
-            });
+            };
             static constexpr auto k_exclude_tags = Array {
                 Synthesized,
                 Vocal,
@@ -571,7 +571,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::ReverbType: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Cathedral,
                 Chamber,
                 Church,
@@ -581,7 +581,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 SmallRoom,
                 Studio,
                 Unusual,
-            });
+            };
             static constexpr auto k_exclude_categories = Array {
                 TagCategory::ReverbType,
             };
@@ -597,7 +597,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::MoodPositive: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Bright,
                 Dreamy,
                 Ethereal,
@@ -605,7 +605,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 Nostalgic,
                 Peaceful,
                 Playful,
-            });
+            };
             return {
                 .name = "Mood (positive)",
                 .question = "What mood does the item evoke?",
@@ -617,7 +617,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::MoodNegative: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Aggressive,
                 Chaotic,
                 Dark,
@@ -626,7 +626,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 Melancholic,
                 Menacing,
                 Tense,
-            });
+            };
             return {
                 .name = "Mood (negative)",
                 .question = "What mood does the item evoke?",
@@ -638,13 +638,13 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::MoodMixed: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Bittersweet,
                 Hypnotic,
                 Mysterious,
                 Quirky,
                 Subdued,
-            });
+            };
             return {
                 .name = "Mood (mixed)",
                 .question = "What mood does the item evoke?",
@@ -656,7 +656,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::MoodThematic: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Dramatic,
                 Dystopian,
                 Epic,
@@ -667,7 +667,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 Romantic,
                 SciFi,
                 Western,
-            });
+            };
             return {
                 .name = "Mood (thematic)",
                 .question = "What mood does the item evoke?",
@@ -679,11 +679,11 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::Pitch: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 MultiPitched,
                 NonPitched,
                 Dissonant,
-            });
+            };
             return {
                 .name = "Pitch",
                 .question = "What are its pitch characteristics?",
@@ -695,13 +695,13 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::SoundTypeLong: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Pad,
                 Texture,
                 Soundscape,
                 Underscore,
                 Noise,
-            });
+            };
             return {
                 .name = "Sound type (long duration)",
                 .question = "What type of sound is it?",
@@ -713,13 +713,13 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::SoundTypeShort: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Hit,
                 Keys,
                 Oneshot,
                 Pluck,
                 Stab,
-            });
+            };
             return {
                 .name = "Sound type (short duration)",
                 .question = "What type of sound is it?",
@@ -731,11 +731,11 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::SoundTypeSequence: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Arp,
                 Sequence,
                 Loop,
-            });
+            };
             return {
                 .name = "Sound type (sequence or pattern)",
                 .question = "What type of sound is it?",
@@ -747,14 +747,14 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::SoundTypeRole: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Lead,
                 Bass,
                 Riser,
                 Downer,
                 SoundFx,
                 Transition,
-            });
+            };
             return {
                 .name = "Sound type (role in a track)",
                 .question = "What type of sound is it?",
@@ -766,12 +766,12 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::TimbreModulation: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Pulsing,
                 Evolving,
                 Glitched,
                 Grainy,
-            });
+            };
             return {
                 .name = "Timbre (modulation)",
                 .question = "What is its timbre like?",
@@ -782,12 +782,12 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::TimbreRealTone: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Brassy,
                 Breathy,
                 StringsLike,
                 Reedy,
-            });
+            };
             static constexpr auto k_exclude_tags = Array {
                 Acoustic,
             };
@@ -802,12 +802,12 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::TimbreSynthTechnique: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Analog,
                 Fm,
                 Granular,
                 PhysicalModelling,
-            });
+            };
             static constexpr auto k_exclude_tags = Array {
                 Acoustic,
             };
@@ -822,11 +822,11 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::TimbreFrequency: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Airy,  CircuitBent, Cold,      Digital,  Distorted, Fuzzy,   Glassy, Gritty,
                 Harsh, LoFi,        Lush,      Metallic, Muddy,     Muffled, Nasal,  Noisy,
                 Pure,  Resonant,    Saturated, Smooth,   Thin,      Warm,
-            });
+            };
             static constexpr auto k_exclude_tags = Array {
                 Acoustic,
             };
@@ -841,12 +841,12 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
         }
         case TagCategory::Genre: {
-            static constexpr auto k_tags = ArrayT<TagType>({
+            static constexpr auto k_tags = Array {
                 Eighties, EDM,       IDM,         Ambient,    Blues,      Chillout, Chiptune,   Cinematic,
                 Disco,    Downtempo, DrumAndBass, Dubstep,    Electronic, Folk,     Funk,       FutureBass,
                 Glitch,   HipHop,    House,       Industrial, Jazz,       LoFi,     MetalGenre, Orchestral,
                 Pop,      Rock,      Synthwave,   Techno,     Trance,     Trap,     Vaporwave,  World,
-            });
+            };
             return {
                 .name = "Genre",
                 .question = "What genres might this item fit best into?",
