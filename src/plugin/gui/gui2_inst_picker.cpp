@@ -393,9 +393,14 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                 dyn::Append(tab_config,
                             {
                                 .text = context.has_mirage_libraries ? "Floe Instruments"_s : "Instruments",
+                                .index = ToInt(InstPickerState::Tab::FloeLibaries),
                             });
-                if (context.has_mirage_libraries) dyn::Append(tab_config, {.text = "Mirage Instruments"});
-                dyn::Append(tab_config, {.text = "Waveforms"});
+                if (context.has_mirage_libraries)
+                    dyn::Append(tab_config,
+                                {.text = "Mirage Instruments",
+                                 .index = ToInt(InstPickerState::Tab::MirageLibraries)});
+                dyn::Append(tab_config,
+                            {.text = "Waveforms", .index = ToInt(InstPickerState::Tab::Waveforms)});
                 tab_config.ToOwnedSpan();
             }),
             .current_tab_index = &ToIntRef(state.tab),

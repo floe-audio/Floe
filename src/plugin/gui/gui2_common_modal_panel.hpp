@@ -81,6 +81,7 @@ PUBLIC Box DoModalDivider(GuiBoxSystem& box_system, Box parent, DividerType type
 struct ModalTabConfig {
     Optional<String> icon;
     String text;
+    u32 index;
 };
 
 struct ModalTabBarConfig {
@@ -105,8 +106,8 @@ PUBLIC Box DoModalTabBar(GuiBoxSystem& box_system, ModalTabBarConfig const& conf
                                          },
                                      });
 
-    for (auto const [i, tab] : Enumerate<u32>(config.tabs)) {
-        bool const is_current = i == config.current_tab_index;
+    for (auto const tab : config.tabs) {
+        bool const is_current = tab.index == config.current_tab_index;
 
         auto const tab_box = DoBox(
             box_system,
@@ -126,8 +127,9 @@ PUBLIC Box DoModalTabBar(GuiBoxSystem& box_system, ModalTabBarConfig const& conf
             });
 
         if (tab_box.button_fired)
-            dyn::Append(box_system.state->deferred_actions,
-                        [&current_tab = config.current_tab_index, i]() { current_tab = i; });
+            dyn::Append(
+                box_system.state->deferred_actions,
+                [&current_tab = config.current_tab_index, index = tab.index]() { current_tab = index; });
 
         if (tab.icon) {
             DoBox(box_system,

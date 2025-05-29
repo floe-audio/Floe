@@ -703,6 +703,7 @@ PreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context, Pre
                     break;
                 case PreferencesPanelState::Tab::Count: PanicIfReached();
             }
+            tabs[index].index = index;
         }
         return tabs;
     }();

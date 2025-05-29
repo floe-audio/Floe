@@ -399,6 +399,7 @@ static void InfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoP
                     break;
                 case InfoPanelState::Tab::Count: PanicIfReached();
             }
+            tabs[index].index = index;
         }
         return tabs;
     }();
