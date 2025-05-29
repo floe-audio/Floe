@@ -20,10 +20,14 @@ concept TriviallyCopyableOrDummy = TriviallyCopyable<T> || Same<DummyValueType, 
 template <typename KeyType>
 using HashFunction = u64 (*)(KeyType const&);
 
-template <TriviallyCopyable KeyType,
-          TriviallyCopyableOrDummy ValueType,
-          HashFunction<KeyType> k_hash_function = nullptr>
+template <TriviallyCopyable KeyType_,
+          TriviallyCopyableOrDummy ValueType_,
+          HashFunction<KeyType_> k_hash_function_ = nullptr>
 struct HashTable {
+    using KeyType = KeyType_;
+    using ValueType = ValueType_;
+    static constexpr HashFunction<KeyType> k_hash_function = k_hash_function_;
+
     struct Element {
         [[no_unique_address]] ValueType data {};
         KeyType key {};
@@ -315,16 +319,43 @@ struct HashTable {
         };
     }
 
+    void Assign(HashTable const& other, Allocator& allocator) {
+        if (this == &other) return; // self-assign
+
+        Free(allocator);
+        elems = allocator.Clone(other.Elements(), CloneType::Deep).data;
+        mask = other.mask;
+        size = other.size;
+        num_dead = other.num_dead;
+    }
+
+    // Takes another HashTable and intersects it with this one: only elements that are present in both tables
+    // will remain.
+    void IntersectWith(HashTable const& other) {
+        if (!elems || !other.elems) return;
+
+        for (usize i = 0; i < mask + 1; ++i) {
+            auto& element = elems[i];
+            if (element.active) {
+                Element* other_element = other.Lookup(element.key, element.hash, 0);
+                if (!other_element || !other_element->active) DeleteIndex(i);
+            }
+        }
+    }
+
     Element* elems {};
     usize mask {};
     usize size {};
     usize num_dead {};
 };
 
-template <TriviallyCopyable KeyType,
-          TriviallyCopyableOrDummy ValueType,
-          HashFunction<KeyType> k_hash_function = nullptr>
+template <TriviallyCopyable KeyType_,
+          TriviallyCopyableOrDummy ValueType_,
+          HashFunction<KeyType_> k_hash_function_ = nullptr>
 struct DynamicHashTable {
+    using KeyType = KeyType_;
+    using ValueType = ValueType_;
+    static constexpr HashFunction<KeyType> k_hash_function = k_hash_function_;
     using Table = HashTable<KeyType, ValueType, k_hash_function>;
 
     DynamicHashTable(Allocator& alloc, usize initial_capacity = 0) : allocator(alloc) {
@@ -379,6 +410,8 @@ struct DynamicHashTable {
     void DeleteIndex(usize i) { table.DeleteIndex(i); }
     void DeleteAll() { table.DeleteAll(); }
 
+    void Assign(Table const& other) { table.Assign(other, allocator); }
+
     Span<typename Table::Element const> Elements() const { return table.Elements(); }
 
     bool Insert(KeyType key, ValueType value) { return table.InsertGrowIfNeeded(allocator, key, value); }
@@ -389,12 +422,16 @@ struct DynamicHashTable {
     auto begin() const { return table.begin(); }
     auto end() const { return table.end(); }
 
+    operator Table() const { return this->table; }
+
     Allocator& allocator;
     Table table {};
 };
 
-template <TriviallyCopyable KeyType, HashFunction<KeyType> k_hash_function = nullptr>
-struct Set : HashTable<KeyType, DummyValueType, k_hash_function> {
+template <TriviallyCopyable KeyType_, HashFunction<KeyType_> k_hash_function_ = nullptr>
+struct Set : HashTable<KeyType_, DummyValueType, k_hash_function_> {
+    using KeyType = KeyType_;
+    static constexpr HashFunction<KeyType> k_hash_function = k_hash_function_;
     using Table = HashTable<KeyType, DummyValueType, k_hash_function>;
 
     // delete methods that don't make sense for a set
@@ -412,8 +449,10 @@ struct Set : HashTable<KeyType, DummyValueType, k_hash_function> {
     bool Contains(KeyType key) const { return this->FindElement(key); }
 };
 
-template <TriviallyCopyable KeyType, HashFunction<KeyType> k_hash_function = nullptr>
-struct DynamicSet : DynamicHashTable<KeyType, DummyValueType, k_hash_function> {
+template <TriviallyCopyable KeyType_, HashFunction<KeyType_> k_hash_function_ = nullptr>
+struct DynamicSet : DynamicHashTable<KeyType_, DummyValueType, k_hash_function_> {
+    using KeyType = KeyType_;
+    static constexpr HashFunction<KeyType> k_hash_function = k_hash_function_;
     using Set = Set<KeyType, k_hash_function>;
 
     DynamicSet(Allocator& alloc, usize initial_capacity = 0)
@@ -428,6 +467,8 @@ struct DynamicSet : DynamicHashTable<KeyType, DummyValueType, k_hash_function> {
         this->table = {};
         return (Set)result;
     }
+
+    operator Set() const { return this->table; }
 
     DummyValueType* Find(KeyType key) const = delete;
     Set::Element* FindElement(KeyType key) const = delete;

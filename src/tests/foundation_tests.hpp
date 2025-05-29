@@ -1250,6 +1250,14 @@ TEST_CASE(TestHashTable) {
             int const count = stbsp_snprintf(buffer, 32, "key%zu", i);
             CHECK(tab.Insert({buffer, (usize)count}, i));
         }
+
+        // test Assign()
+        DynamicHashTable<String, usize> other {a, 16u};
+        CHECK(other.table.size == 0);
+        CHECK(other.Insert("foo", 42));
+
+        tab.Assign(other);
+        CHECK(tab.table.size == 1);
     }
 
     SUBCASE("no initial size") {
@@ -1298,6 +1306,21 @@ TEST_CASE(TestHashTable) {
             auto v = tab2.Find("foo");
             REQUIRE(v);
         }
+    }
+
+    SUBCASE("Intersect") {
+        DynamicHashTable<String, int> tab1 {a};
+        CHECK(tab1.Insert("foo", 100));
+        CHECK(tab1.Insert("bar", 200));
+
+        DynamicHashTable<String, int> tab2 {a};
+        CHECK(tab2.Insert("bar", 200));
+        CHECK(tab2.Insert("baz", 400));
+
+        tab1.table.IntersectWith(tab2);
+        CHECK(tab1.table.size == 1);
+        auto v = tab1.Find("bar");
+        REQUIRE(v);
     }
 
     return k_success;
