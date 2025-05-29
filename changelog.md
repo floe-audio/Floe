@@ -11,6 +11,7 @@ For instance: 0.0.1. Don't change the headings.
 ## 0.9.10-beta
 - Add right-click menu to the instrument picker button with 'unload instrument' option.
 - Section-out tag categories in the picker panels
+- Fix instrument picker not showing waveform instruments when no Mirage libraries installed
 
 ## 0.9.9-beta
 - Sample library creation: add start_offset_frames to add_region
