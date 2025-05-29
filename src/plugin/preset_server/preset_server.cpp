@@ -70,11 +70,26 @@ PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
     server.mutex.Lock();
     DEFER { server.mutex.Unlock(); };
     auto const folders = arena.Clone(server.folders);
+
+    auto const clone_used_tags = [&](auto& table) {
+        DynamicHashTable<u64, Set<String>, NoHash> cloned_table {arena, table.table.Capacity()};
+        for (auto const [key, tags_pp] : table) {
+            auto tags = *tags_pp;
+            Set<String> cloned_tags {};
+            cloned_tags.Assign(*tags, arena);
+            cloned_table.Insert(key, cloned_tags);
+        }
+        return cloned_table.ToOwnedTable();
+    };
+
     return {
         .folders = {(PresetFolder const**)folders.data, folders.size},
         .used_tags = {server.used_tags.table.Clone(arena, CloneType::Deep)},
         .used_libraries = {server.used_libraries.table.Clone(arena, CloneType::Deep)},
         .authors = {server.authors.table.Clone(arena, CloneType::Deep)},
+        .used_tags_by_library_hash = clone_used_tags(server.used_tags_by_library),
+        .used_tags_by_library_author_hash = clone_used_tags(server.used_tags_by_library_author),
+        .used_tags_by_preset_author_hash = clone_used_tags(server.used_tags_by_preset_author),
         .has_preset_type = server.has_preset_type,
     };
 }
@@ -179,35 +194,76 @@ static void AddPresetToFolder(PresetFolder& folder,
 struct FoldersAggregateInfo {
     FoldersAggregateInfo(ArenaAllocator& arena)
         : used_tags {arena}
+        , used_tags_by_library {arena}
+        , used_tags_by_library_author {arena}
+        , used_tags_by_preset_author {arena}
         , used_libraries {arena}
         , authors {arena} {}
 
-    void AddPreset(PresetFolder::Preset const& preset) {
+    void AddPreset(PresetFolder::Preset const& preset, ArenaAllocator& arena) {
         for (auto const& tag : preset.metadata.tags)
             used_tags.Insert(tag);
-        for (auto const& library_id : preset.used_libraries)
+
+        // Inserts tags into a the used_tags_by* tables.
+        auto const find_or_insert = [&](auto& table, auto const& key, Span<String> tags) {
+            DynamicSet<String>* tag_set = nullptr;
+            if (auto tags_pp = table.Find(key)) {
+                tag_set = *tags_pp;
+            } else {
+                tag_set = arena.New<DynamicSet<String>>(arena);
+                table.Insert(key, tag_set);
+            }
+
+            for (auto const& tag : tags)
+                tag_set->Insert(tag);
+        };
+
+        for (auto const& library_id : preset.used_libraries) {
             used_libraries.Insert(library_id);
-        if (preset.metadata.author.size) authors.Insert(preset.metadata.author);
+
+            find_or_insert(used_tags_by_library, library_id.Hash(), preset.metadata.tags);
+            find_or_insert(used_tags_by_library_author, Hash(library_id.author), preset.metadata.tags);
+        }
+
+        if (preset.metadata.author.size) {
+            authors.Insert(preset.metadata.author);
+
+            find_or_insert(used_tags_by_preset_author, Hash(preset.metadata.author), preset.metadata.tags);
+        }
+
         has_preset_type[ToInt(preset.file_format)] = true;
     }
 
     void CopyToServer(PresetServer& server) const {
-        server.used_tags.DeleteAll();
-        for (auto const [tag, _] : used_tags)
-            server.used_tags.Insert(tag);
+        server.used_tags.Assign(used_tags);
+        server.used_libraries.Assign(used_libraries);
+        server.authors.Assign(authors);
 
-        server.used_libraries.DeleteAll();
-        for (auto const [lib_id, _] : used_libraries)
-            server.used_libraries.Insert(lib_id);
+        server.used_tags_arena.ResetCursorAndConsolidateRegions();
 
-        server.authors.DeleteAll();
-        for (auto const [author, _] : authors)
-            server.authors.Insert(author);
+        auto const copy_used_tags_by =
+            [&](DynamicHashTable<u64, DynamicSet<String>*, NoHash> const& used_tags_by_table,
+                DynamicHashTable<u64, DynamicSet<String>*, NoHash>& server_table) {
+                server_table.DeleteAll();
+                // We need to clone each pointer into the server's arena.
+                for (auto const [lib_id, tags_pp] : used_tags_by_table) {
+                    auto const tags = *tags_pp;
+                    auto new_tags = server.used_tags_arena.New<DynamicSet<String>>(server.used_tags_arena);
+                    new_tags->Assign(*tags);
+                    server_table.Insert(lib_id, new_tags);
+                }
+            };
+        copy_used_tags_by(used_tags_by_library, server.used_tags_by_library);
+        copy_used_tags_by(used_tags_by_library_author, server.used_tags_by_library_author);
+        copy_used_tags_by(used_tags_by_preset_author, server.used_tags_by_preset_author);
 
         server.has_preset_type = has_preset_type;
     }
 
     DynamicSet<String> used_tags;
+    DynamicHashTable<u64, DynamicSet<String>*, NoHash> used_tags_by_library;
+    DynamicHashTable<u64, DynamicSet<String>*, NoHash> used_tags_by_library_author;
+    DynamicHashTable<u64, DynamicSet<String>*, NoHash> used_tags_by_preset_author;
     DynamicSet<sample_lib::LibraryIdRef, sample_lib::Hash> used_libraries;
     DynamicSet<String> authors;
     Array<bool, ToInt(PresetFormat::Count)> has_preset_type {};
@@ -223,7 +279,7 @@ AppendFolderAndPublish(PresetServer& server, PresetFolder* new_preset_folder, Ar
          Array {server.folders.Items(), Span<PresetFolder*> {&new_preset_folder, 1}}) {
         for (auto const folder : folder_set)
             for (auto const& preset : folder->presets)
-                info.AddPreset(preset);
+                info.AddPreset(preset, scratch_arena);
     }
 
     server.mutex.Lock();
@@ -248,7 +304,7 @@ static void RemoveFolderAndPublish(PresetServer& server, usize index, ArenaAlloc
         if (existing_folder == &folder) continue;
 
         for (auto const& preset : existing_folder->presets)
-            info.AddPreset(preset);
+            info.AddPreset(preset, scratch_arena);
     }
 
     server.mutex.Lock();

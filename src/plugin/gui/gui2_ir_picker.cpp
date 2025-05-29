@@ -234,6 +234,12 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
 
     DynamicSet<String> all_tags {box_system.arena};
     for (auto const& l_ptr : context.libraries) {
+        if (state.selected_library_hashes.size &&
+            !Contains(state.selected_library_hashes, l_ptr->Id().Hash()))
+            continue;
+        if (state.selected_library_author_hashes.size &&
+            !Contains(state.selected_library_author_hashes, Hash(l_ptr->author)))
+            continue;
         auto const& lib = *l_ptr;
         for (auto const& ir : lib.sorted_irs)
             for (auto const& tag : ir->tags)

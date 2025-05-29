@@ -241,6 +241,9 @@ PUBLIC void DoPickerLibraryFilters(GuiBoxSystem& box_system,
 
         for (auto const& lib : libraries) {
             auto const lib_id_hash = lib.Hash();
+            if (library_filters.selected_library_author_hashes.size) {
+                if (!Contains(library_filters.selected_library_author_hashes, Hash(lib.author))) continue;
+            }
             auto const is_selected = Contains(library_filters.selected_library_hashes, lib_id_hash);
 
             auto const button = DoFilterButton(
@@ -259,33 +262,50 @@ PUBLIC void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                 lib.name);
             if (button.is_hot) hovering_library = &lib;
             if (button.button_fired) {
-                if (is_selected)
-                    dyn::RemoveValue(library_filters.selected_library_hashes, lib_id_hash);
-                else
-                    dyn::Append(library_filters.selected_library_hashes, lib_id_hash);
+                dyn::Append(box_system.state->deferred_actions,
+                            [&hashes = library_filters.selected_library_hashes, lib_id_hash, is_selected]() {
+                                if (is_selected)
+                                    dyn::RemoveValue(hashes, lib_id_hash);
+                                else
+                                    dyn::Append(hashes, lib_id_hash);
+                            });
             }
         }
     }
 
     {
         DynamicSet<String> library_authors {box_system.arena};
-        for (auto const& lib : libraries)
+        for (auto const& lib : libraries) {
+            if (library_filters.selected_library_hashes.size) {
+                if (!Contains(library_filters.selected_library_hashes, lib.Hash())) continue;
+            }
             library_authors.Insert(lib.author);
+        }
 
-        auto const section = DoPickerItemsSectionContainer(box_system,
-                                                           {
-                                                               .parent = parent,
-                                                               .heading = "LIBRARY AUTHORS"_s,
-                                                               .multiline_contents = true,
-                                                           });
-        for (auto const& author : library_authors.Elements()) {
-            if (!author.active) continue;
-            auto const is_selected = Contains(library_filters.selected_library_author_hashes, author.hash);
-            if (DoFilterButton(box_system, section, is_selected, {}, author.key).button_fired) {
-                if (is_selected)
-                    dyn::RemoveValue(library_filters.selected_library_author_hashes, author.hash);
-                else
-                    dyn::Append(library_filters.selected_library_author_hashes, author.hash);
+        // Every library has an author, so if there is only one author it makes no sense to show it -
+        // selecting it will do nothing.
+        if (library_authors.table.size != 1) {
+            auto const section = DoPickerItemsSectionContainer(box_system,
+                                                               {
+                                                                   .parent = parent,
+                                                                   .heading = "LIBRARY AUTHORS"_s,
+                                                                   .multiline_contents = true,
+                                                               });
+            for (auto const& author : library_authors.Elements()) {
+                if (!author.active) continue;
+                auto const is_selected =
+                    Contains(library_filters.selected_library_author_hashes, author.hash);
+                if (DoFilterButton(box_system, section, is_selected, {}, author.key).button_fired) {
+                    dyn::Append(box_system.state->deferred_actions,
+                                [&hashes = library_filters.selected_library_author_hashes,
+                                 is_selected,
+                                 author_hash = author.hash]() {
+                                    if (is_selected)
+                                        dyn::RemoveValue(hashes, author_hash);
+                                    else
+                                        dyn::Append(hashes, author_hash);
+                                });
+                }
             }
         }
     }

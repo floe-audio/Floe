@@ -316,6 +316,18 @@ void DoPresetPicker(GuiBoxSystem& box_system,
     context.Init(box_system.arena);
     DEFER { context.Deinit(); };
 
+    Set<String> used_tags {};
+    used_tags.Assign(context.presets_snapshot.used_tags, box_system.arena);
+    for (auto const hash : state.selected_library_author_hashes)
+        if (auto tags = context.presets_snapshot.used_tags_by_library_author_hash.Find(hash))
+            used_tags.IntersectWith(*tags);
+    for (auto const hash : state.selected_author_hashes)
+        if (auto tags = context.presets_snapshot.used_tags_by_preset_author_hash.Find(hash))
+            used_tags.IntersectWith(*tags);
+    for (auto const hash : state.selected_library_hashes)
+        if (auto tags = context.presets_snapshot.used_tags_by_library_hash.Find(hash))
+            used_tags.IntersectWith(*tags);
+
     // IMPORTANT: we create the options struct inside the call so that lambdas and values from
     // statement-expressions live long enough.
     DoPickerPopup(
@@ -352,7 +364,7 @@ void DoPresetPicker(GuiBoxSystem& box_system,
             .tags_filters =
                 TagsFilters {
                     .selected_tags_hashes = state.selected_tags_hashes,
-                    .tags = context.presets_snapshot.used_tags,
+                    .tags = used_tags,
                 },
             .do_extra_filters =
                 [&](GuiBoxSystem& box_system, Box const& parent) {

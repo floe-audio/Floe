@@ -54,16 +54,20 @@ struct PresetServer {
 
     Mutex mutex;
 
-    // We're using a sort of basic epoch-based reclamation to delete folders that are no longer in use
+    // We're using a sort of basic "epoch-based reclamation" to delete folders that are no longer in use
     // without the reader having to do much locking.
     Atomic<u64> published_version {};
     Atomic<u64> version_in_use = k_no_version;
 
-    // The next 3 fields are versioned and mutex protected
+    // The next fields are versioned and mutex protected
     DynamicArray<PresetFolder*> folders {arena};
     DynamicSet<String> used_tags {arena};
     DynamicSet<sample_lib::LibraryIdRef, sample_lib::Hash> used_libraries {arena};
     DynamicSet<String> authors {arena};
+    ArenaAllocator used_tags_arena {(Allocator&)arena};
+    DynamicHashTable<u64, DynamicSet<String>*, NoHash> used_tags_by_library {arena};
+    DynamicHashTable<u64, DynamicSet<String>*, NoHash> used_tags_by_library_author {arena};
+    DynamicHashTable<u64, DynamicSet<String>*, NoHash> used_tags_by_preset_author {arena};
 
     DynamicSet<u64, NoHash> preset_file_hashes {arena};
     Array<bool, ToInt(PresetFormat::Count)> has_preset_type {};
@@ -90,6 +94,9 @@ struct PresetsSnapshot {
     Set<String> used_tags;
     Set<sample_lib::LibraryIdRef, sample_lib::Hash> used_libraries;
     Set<String> authors;
+    HashTable<u64, Set<String>, NoHash> used_tags_by_library_hash;
+    HashTable<u64, Set<String>, NoHash> used_tags_by_library_author_hash;
+    HashTable<u64, Set<String>, NoHash> used_tags_by_preset_author_hash;
     Array<bool, ToInt(PresetFormat::Count)> has_preset_type {};
 };
 
