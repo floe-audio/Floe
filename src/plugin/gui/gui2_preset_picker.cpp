@@ -79,7 +79,7 @@ static Optional<PresetCursor> IteratePreset(PresetPickerContext const& context,
                 continue;
 
             // If multiple preset types exist, we offer a way to filter by them.
-            if (!Contains(context.presets_snapshot.has_preset_type, false) &&
+            if (context.presets_snapshot.has_preset_type.NumSet() > 1 &&
                 Contains(state.selected_preset_types, true) &&
                 !state.selected_preset_types[ToInt(preset.file_format)])
                 continue;
@@ -253,9 +253,13 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
 void PresetPickerExtraFilters(GuiBoxSystem& box_system,
                               PresetPickerContext& context,
                               PresetPickerState& state,
-                              Box const& parent) {
+                              Box const& parent,
+                              u8& num_sections) {
     // We only show the preset type filter if we have both types of presets.
-    if (!Contains(context.presets_snapshot.has_preset_type, false)) {
+    if (context.presets_snapshot.has_preset_type.NumSet() > 1) {
+        if (num_sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
+        ++num_sections;
+
         auto const section = DoPickerItemsSectionContainer(box_system,
                                                            {
                                                                .parent = parent,
@@ -276,12 +280,29 @@ void PresetPickerExtraFilters(GuiBoxSystem& box_system,
                                    s;
                                }))
                     .button_fired) {
-                state.selected_preset_types[type_index] = !is_selected;
+                dyn::Append(box_system.state->deferred_actions,
+                            [&selected_preset_types = state.selected_preset_types,
+                             type_index,
+                             is_selected,
+                             select_mode = state.filter_select_mode]() {
+                                switch (select_mode) {
+                                    case FilterSelectMode::Single:
+                                        selected_preset_types = {};
+                                        selected_preset_types[type_index] = !is_selected;
+                                        break;
+                                    case FilterSelectMode::Multi:
+                                        selected_preset_types[type_index] = !is_selected;
+                                        break;
+                                }
+                            });
             }
         }
     }
 
     if (context.presets_snapshot.authors.size) {
+        if (num_sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
+        ++num_sections;
+
         auto const section = DoPickerItemsSectionContainer(box_system,
                                                            {
                                                                .parent = parent,
@@ -297,10 +318,13 @@ void PresetPickerExtraFilters(GuiBoxSystem& box_system,
             auto const is_selected = Contains(state.selected_author_hashes, author_hash);
 
             if (DoFilterButton(box_system, section, is_selected, k_nullopt, author).button_fired) {
-                if (is_selected)
-                    dyn::RemoveValue(state.selected_author_hashes, author_hash);
-                else
-                    dyn::Append(state.selected_author_hashes, author_hash);
+                dyn::Append(box_system.state->deferred_actions,
+                            [&selected_authors = state.selected_author_hashes,
+                             author_hash,
+                             is_selected,
+                             select_mode = state.filter_select_mode]() {
+                                FilterClicked(selected_authors, author_hash, is_selected, select_mode);
+                            });
             }
         }
     }
@@ -342,6 +366,7 @@ void DoPresetPicker(GuiBoxSystem& box_system,
             .filters_col_width = 320,
             .item_type_name = "preset",
             .items_section_heading = "Presets",
+            .filter_select_mode = state.filter_select_mode,
             .rhs_do_items = [&](GuiBoxSystem& box_system) { PresetPickerItems(box_system, context, state); },
             .search = &state.search,
             .on_load_previous = [&]() { LoadAdjacentPreset(context, state, SearchDirection::Backward); },
@@ -350,8 +375,23 @@ void DoPresetPicker(GuiBoxSystem& box_system,
             .on_scroll_to_show_selected = [&]() { state.scroll_to_show_selected = true; },
             .libraries = ({
                 DynamicArray<sample_lib::LibraryIdRef> libraries {box_system.arena};
-                for (auto const [lib, _] : context.presets_snapshot.used_libraries)
+                for (auto const [lib, _] : context.presets_snapshot.used_libraries) {
+                    if (state.selected_tags_hashes.size) {
+                        if (auto lib_tags =
+                                context.presets_snapshot.used_tags_by_library_hash.Find(lib.Hash())) {
+                            bool found = false;
+                            for (auto const& tag_element : lib_tags->Elements()) {
+                                if (!tag_element.active) continue;
+                                if (Contains(state.selected_tags_hashes, tag_element.hash)) {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (!found) continue;
+                        }
+                    }
                     dyn::Append(libraries, lib);
+                }
                 libraries.ToOwnedSpan();
             }),
             .library_filters =
@@ -367,10 +407,15 @@ void DoPresetPicker(GuiBoxSystem& box_system,
                     .tags = used_tags,
                 },
             .do_extra_filters =
-                [&](GuiBoxSystem& box_system, Box const& parent) {
-                    PresetPickerExtraFilters(box_system, context, state, parent);
+                [&](GuiBoxSystem& box_system, Box const& parent, u8& num_sections) {
+                    PresetPickerExtraFilters(box_system, context, state, parent, num_sections);
                 },
-            .on_clear_all_filters = [&]() { state.ClearAllFilters(); },
+            .has_extra_filters = state.selected_author_hashes.size != 0,
+            .on_clear_all_filters =
+                [&]() {
+                    dyn::Clear(state.selected_author_hashes);
+                    state.selected_preset_types = {};
+                },
             .status_bar_height = 58,
             .status = [&]() -> Optional<String> {
                 Optional<String> status {};

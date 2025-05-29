@@ -6,6 +6,8 @@
 
 #include "common_infrastructure/sample_library/sample_library.hpp"
 
+#include "gui2_common_picker.hpp"
+
 struct InstPickerState {
     enum class Tab : u32 {
         FloeLibaries,
@@ -24,13 +26,6 @@ struct InstPickerState {
         return k_nullopt;
     }
 
-    void ClearAllFilters() {
-        dyn::Clear(selected_library_hashes);
-        dyn::Clear(selected_mirage_library_hashes);
-        dyn::Clear(selected_tags_hashes);
-        dyn::Clear(search);
-    }
-
     bool HasFilters() const {
         return selected_library_hashes.size || selected_mirage_library_hashes.size ||
                selected_tags_hashes.size || search.size;
@@ -44,4 +39,5 @@ struct InstPickerState {
     DynamicArray<u64> selected_tags_hashes {Malloc::Instance()};
     DynamicArrayBounded<char, 100> search;
     bool scroll_to_show_selected = false;
+    FilterSelectMode filter_select_mode = FilterSelectMode::Single;
 };

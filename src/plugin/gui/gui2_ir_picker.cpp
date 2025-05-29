@@ -258,6 +258,7 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
             .filters_col_width = 200,
             .item_type_name = "impulse response",
             .items_section_heading = "IRs",
+            .filter_select_mode = state.filter_select_mode,
             .rhs_top_button = ({
                 Optional<PickerPopupOptions::Button> unload_button {};
                 if (ir_id) {
@@ -298,7 +299,7 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
                     .selected_tags_hashes = state.selected_tags_hashes,
                     .tags = {all_tags.table},
                 },
-            .on_clear_all_filters = [&]() { state.ClearAllFilters(); },
+            .on_clear_all_filters = [&]() {},
             .status_bar_height = 58,
             .status = [&]() -> Optional<String> {
                 Optional<String> status {};

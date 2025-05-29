@@ -30,8 +30,6 @@ struct PresetFolder {
     Optional<u64> delete_after_version {};
 };
 
-u64 NoHash(u64 const&);
-
 struct PresetServer {
     struct ScanFolder {
         bool always_scanned_folder {};
@@ -65,12 +63,12 @@ struct PresetServer {
     DynamicSet<sample_lib::LibraryIdRef, sample_lib::Hash> used_libraries {arena};
     DynamicSet<String> authors {arena};
     ArenaAllocator used_tags_arena {(Allocator&)arena};
-    DynamicHashTable<u64, DynamicSet<String>*, NoHash> used_tags_by_library {arena};
-    DynamicHashTable<u64, DynamicSet<String>*, NoHash> used_tags_by_library_author {arena};
-    DynamicHashTable<u64, DynamicSet<String>*, NoHash> used_tags_by_preset_author {arena};
+    DynamicHashTable<u64, Set<String>, NoHash> used_tags_by_library {arena};
+    DynamicHashTable<u64, Set<String>, NoHash> used_tags_by_library_author {arena};
+    DynamicHashTable<u64, Set<String>, NoHash> used_tags_by_preset_author {arena};
 
     DynamicSet<u64, NoHash> preset_file_hashes {arena};
-    Array<bool, ToInt(PresetFormat::Count)> has_preset_type {};
+    Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
 
     DynamicArray<ScanFolder> scan_folders {arena};
 
@@ -97,7 +95,7 @@ struct PresetsSnapshot {
     HashTable<u64, Set<String>, NoHash> used_tags_by_library_hash;
     HashTable<u64, Set<String>, NoHash> used_tags_by_library_author_hash;
     HashTable<u64, Set<String>, NoHash> used_tags_by_preset_author_hash;
-    Array<bool, ToInt(PresetFormat::Count)> has_preset_type {};
+    Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
 };
 
 PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena);

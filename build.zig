@@ -1546,6 +1546,7 @@ pub fn build(b: *std.Build) void {
                 library_path ++ "/utils/debug/debug.cpp",
                 library_path ++ "/utils/cli_arg_parse.cpp",
                 library_path ++ "/utils/leak_detecting_allocator.cpp",
+                library_path ++ "/utils/no_hash.cpp",
                 library_path ++ "/tests/framework.cpp",
                 library_path ++ "/utils/logger/logger.cpp",
                 library_path ++ "/foundation/utils/string.cpp",

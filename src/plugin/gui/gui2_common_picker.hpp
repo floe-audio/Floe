@@ -15,6 +15,8 @@ constexpr auto k_picker_spacing = 8.0f;
 
 enum class SearchDirection { Forward, Backward };
 
+enum class FilterSelectMode : u8 { Single, Multi };
+
 struct PickerItemOptions {
     Box parent;
     String text;
@@ -137,19 +139,23 @@ struct PickerItemsSectionOptions {
     Optional<String> icon;
     bool heading_is_folder;
     bool multiline_contents;
+    bool subsection;
 };
 
 static Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSectionOptions const& options) {
-    auto const container = DoBox(box_system,
-                                 {
-                                     .parent = options.parent,
-                                     .layout =
-                                         {
-                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                             .contents_direction = layout::Direction::Column,
-                                             .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                         },
-                                 });
+    auto const container =
+        DoBox(box_system,
+              {
+                  .parent = options.parent,
+                  .layout =
+                      {
+                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                          .margins = {.b = options.subsection ? k_picker_spacing / 2 : 0},
+                          .contents_padding = {.l = options.subsection ? k_picker_spacing / 2 : 0},
+                          .contents_direction = layout::Direction::Column,
+                          .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                      },
+              });
 
     auto const heading_container = DoBox(box_system,
                                          {
@@ -226,12 +232,32 @@ struct LibraryFilters {
     sample_lib_server::Server& sample_library_server;
 };
 
+PUBLIC void
+FilterClicked(DynamicArray<u64>& hashes, u64 clicked_hash, bool is_selected, FilterSelectMode select_mode) {
+    if (is_selected) {
+        dyn::RemoveValue(hashes, clicked_hash);
+    } else {
+        switch (select_mode) {
+            case FilterSelectMode::Multi: dyn::Append(hashes, clicked_hash); break;
+            case FilterSelectMode::Single:
+                dyn::Clear(hashes);
+                dyn::Append(hashes, clicked_hash);
+                break;
+        }
+    }
+}
+
 PUBLIC void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                                    Box const& parent,
                                    Span<sample_lib::LibraryIdRef const> libraries,
                                    LibraryFilters const& library_filters,
-                                   sample_lib::LibraryIdRef const*& hovering_library) {
-    {
+                                   sample_lib::LibraryIdRef const*& hovering_library,
+                                   FilterSelectMode select_mode,
+                                   u8& sections) {
+    if (libraries.size) {
+        if (sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
+        ++sections;
+
         auto const section = DoPickerItemsSectionContainer(box_system,
                                                            {
                                                                .parent = parent,
@@ -262,13 +288,12 @@ PUBLIC void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                 lib.name);
             if (button.is_hot) hovering_library = &lib;
             if (button.button_fired) {
-                dyn::Append(box_system.state->deferred_actions,
-                            [&hashes = library_filters.selected_library_hashes, lib_id_hash, is_selected]() {
-                                if (is_selected)
-                                    dyn::RemoveValue(hashes, lib_id_hash);
-                                else
-                                    dyn::Append(hashes, lib_id_hash);
-                            });
+                dyn::Append(
+                    box_system.state->deferred_actions,
+                    [&hashes = library_filters.selected_library_hashes,
+                     lib_id_hash,
+                     is_selected,
+                     select_mode]() { FilterClicked(hashes, lib_id_hash, is_selected, select_mode); });
             }
         }
     }
@@ -282,30 +307,25 @@ PUBLIC void DoPickerLibraryFilters(GuiBoxSystem& box_system,
             library_authors.Insert(lib.author);
         }
 
-        // Every library has an author, so if there is only one author it makes no sense to show it -
-        // selecting it will do nothing.
-        if (library_authors.table.size != 1) {
-            auto const section = DoPickerItemsSectionContainer(box_system,
-                                                               {
-                                                                   .parent = parent,
-                                                                   .heading = "LIBRARY AUTHORS"_s,
-                                                                   .multiline_contents = true,
-                                                               });
-            for (auto const& author : library_authors.Elements()) {
-                if (!author.active) continue;
-                auto const is_selected =
-                    Contains(library_filters.selected_library_author_hashes, author.hash);
-                if (DoFilterButton(box_system, section, is_selected, {}, author.key).button_fired) {
-                    dyn::Append(box_system.state->deferred_actions,
-                                [&hashes = library_filters.selected_library_author_hashes,
-                                 is_selected,
-                                 author_hash = author.hash]() {
-                                    if (is_selected)
-                                        dyn::RemoveValue(hashes, author_hash);
-                                    else
-                                        dyn::Append(hashes, author_hash);
-                                });
-                }
+        if (sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
+        ++sections;
+
+        auto const section = DoPickerItemsSectionContainer(box_system,
+                                                           {
+                                                               .parent = parent,
+                                                               .heading = "LIBRARY AUTHORS"_s,
+                                                               .multiline_contents = true,
+                                                           });
+        for (auto const& author : library_authors.Elements()) {
+            if (!author.active) continue;
+            auto const is_selected = Contains(library_filters.selected_library_author_hashes, author.hash);
+            if (DoFilterButton(box_system, section, is_selected, {}, author.key).button_fired) {
+                dyn::Append(
+                    box_system.state->deferred_actions,
+                    [&hashes = library_filters.selected_library_author_hashes,
+                     author_hash = author.hash,
+                     is_selected,
+                     select_mode]() { FilterClicked(hashes, author_hash, is_selected, select_mode); });
             }
         }
     }
@@ -316,9 +336,15 @@ static constexpr u64 HashTagCategory(TagCategory const& category) {
     return Hash(Span {&i, 1});
 }
 
-PUBLIC void
-DoPickerTagsFilters(GuiBoxSystem& box_system, Box const& parent, TagsFilters const& tags_filters) {
+PUBLIC void DoPickerTagsFilters(GuiBoxSystem& box_system,
+                                Box const& parent,
+                                TagsFilters const& tags_filters,
+                                FilterSelectMode select_mode,
+                                u8& sections) {
     if (!tags_filters.tags.size) return;
+
+    if (sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
+    ++sections;
 
     // TODO: use a hash table or something perhaps. We want to look up a tag+category by name.
 
@@ -352,17 +378,26 @@ DoPickerTagsFilters(GuiBoxSystem& box_system, Box const& parent, TagsFilters con
          [](Category const& a, Category const& b) { return ToInt(a.category) < ToInt(b.category); });
 
     // IMPROVE: add a heading around all of this for TAGS, then these sections are sub-sections
+    //
+    auto const tags_container = DoPickerItemsSectionContainer(box_system,
+                                                              {
+                                                                  .parent = parent,
+                                                                  .heading = "TAGS",
+                                                                  .heading_is_folder = true,
+                                                                  .multiline_contents = false,
+                                                              });
 
     for (auto& category : standard_tags) {
         Sort(category.tags, [](TagType const& a, TagType const& b) { return ToInt(a) < ToInt(b); });
         auto const category_info = Tags(category.category);
         auto const section = DoPickerItemsSectionContainer(box_system,
                                                            {
-                                                               .parent = parent,
+                                                               .parent = tags_container,
                                                                .heading = category_info.name,
                                                                .icon = category_info.font_awesome_icon,
                                                                .heading_is_folder = true,
                                                                .multiline_contents = true,
+                                                               .subsection = true,
                                                            });
 
         for (auto const tag : category.tags) {
@@ -370,10 +405,12 @@ DoPickerTagsFilters(GuiBoxSystem& box_system, Box const& parent, TagsFilters con
             auto const tag_hash = Hash(tag_info.name);
             auto const is_selected = Contains(tags_filters.selected_tags_hashes, tag_hash);
             if (DoFilterButton(box_system, section, is_selected, {}, tag_info.name).button_fired) {
-                if (is_selected)
-                    dyn::RemoveValue(tags_filters.selected_tags_hashes, tag_hash);
-                else
-                    dyn::Append(tags_filters.selected_tags_hashes, tag_hash);
+                dyn::Append(
+                    box_system.state->deferred_actions,
+                    [&tags_filters = tags_filters.selected_tags_hashes,
+                     tag_hash,
+                     is_selected,
+                     select_mode]() { FilterClicked(tags_filters, tag_hash, is_selected, select_mode); });
             }
         }
     }
@@ -450,6 +487,8 @@ struct PickerPopupOptions {
     Span<ModalTabConfig const> tab_config {};
     u32* current_tab_index;
 
+    FilterSelectMode& filter_select_mode;
+
     Optional<Button> rhs_top_button {};
     TrivialFunctionRef<void(GuiBoxSystem&)> rhs_do_items {};
     DynamicArrayBounded<char, 100>* search {};
@@ -462,7 +501,8 @@ struct PickerPopupOptions {
     Span<sample_lib::LibraryIdRef const> libraries;
     Optional<LibraryFilters> library_filters {};
     Optional<TagsFilters> tags_filters {};
-    TrivialFunctionRef<void(GuiBoxSystem&, Box const& parent)> do_extra_filters {};
+    TrivialFunctionRef<void(GuiBoxSystem&, Box const& parent, u8& num_sections)> do_extra_filters {};
+    bool has_extra_filters {};
     TrivialFunctionRef<void()> on_clear_all_filters {};
 
     f32 status_bar_height {};
@@ -540,11 +580,28 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupOptions const& options, Picke
                       },
                   });
 
+            if (IconButton(box_system,
+                           lhs_top,
+                           ICON_FA_TASKS,
+                           "Multi-select mode",
+                           style::k_font_heading2_size * 0.9f,
+                           style::k_font_heading2_size)
+                    .button_fired) {
+                switch (options.filter_select_mode) {
+                    case FilterSelectMode::Single:
+                        options.filter_select_mode = FilterSelectMode::Multi;
+                        break;
+                    case FilterSelectMode::Multi:
+                        options.filter_select_mode = FilterSelectMode::Single;
+                        break;
+                }
+            }
+
             if (options.on_clear_all_filters && (options.library_filters.AndThen([](LibraryFilters const& f) {
-                    return f.selected_library_hashes.size;
+                    return f.selected_library_hashes.size || f.selected_library_author_hashes.size;
                 }) || options.tags_filters.AndThen([](TagsFilters const& f) {
                     return f.selected_tags_hashes.size;
-                }))) {
+                }) || options.has_extra_filters)) {
                 if (IconButton(box_system,
                                lhs_top,
                                ICON_FA_TIMES,
@@ -553,7 +610,17 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupOptions const& options, Picke
                                style::k_font_heading2_size)
                         .button_fired) {
                     dyn::Append(box_system.state->deferred_actions,
-                                [clear = options.on_clear_all_filters]() { clear(); });
+                                [clear = options.on_clear_all_filters,
+                                 &library_filters = options.library_filters,
+                                 &tags_filters = options.tags_filters]() {
+                                    if (library_filters) {
+                                        dyn::Clear(library_filters->selected_library_hashes);
+                                        dyn::Clear(library_filters->selected_library_author_hashes);
+                                    }
+                                    if (tags_filters) dyn::Clear(tags_filters->selected_tags_hashes);
+
+                                    clear();
+                                });
                 }
             }
         }
@@ -656,16 +723,25 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupOptions const& options, Picke
 
                              auto const root = DoPickerItemsRoot(box_system);
 
+                             u8 num_lhs_sections = 0;
+
                              if (options.library_filters)
                                  DoPickerLibraryFilters(box_system,
                                                         root,
                                                         options.libraries,
                                                         *options.library_filters,
-                                                        context.hovering_lib);
+                                                        context.hovering_lib,
+                                                        options.filter_select_mode,
+                                                        num_lhs_sections);
                              if (options.tags_filters)
-                                 DoPickerTagsFilters(box_system, root, *options.tags_filters);
+                                 DoPickerTagsFilters(box_system,
+                                                     root,
+                                                     *options.tags_filters,
+                                                     options.filter_select_mode,
+                                                     num_lhs_sections);
 
-                             if (options.do_extra_filters) options.do_extra_filters(box_system, root);
+                             if (options.do_extra_filters)
+                                 options.do_extra_filters(box_system, root, num_lhs_sections);
                          },
                      .data =
                          Subpanel {

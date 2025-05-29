@@ -412,6 +412,7 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                 tab_config.ToOwnedSpan();
             }),
             .current_tab_index = &ToIntRef(state.tab),
+            .filter_select_mode = state.filter_select_mode,
             .rhs_top_button = ({
                 Optional<PickerPopupOptions::Button> unload_button {};
                 if (context.layer.instrument_id.tag != InstrumentType::None) {
@@ -471,7 +472,7 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                 }
                 f;
             }),
-            .on_clear_all_filters = [&]() { state.ClearAllFilters(); },
+            .on_clear_all_filters = [&]() {},
             .status_bar_height = 58,
             .status = [&]() -> Optional<String> {
                 Optional<String> status {};

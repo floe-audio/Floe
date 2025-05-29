@@ -128,7 +128,7 @@ struct BoxSystemCurrentPanelState {
     // prevent that. We should fix this by perhaps turning the boxes field into a hashmap and requiring each
     // box to have a unique ID. This way, we lookup the box by ID and can know when something is missing and
     // skip it.
-    DynamicArray<TrivialFixedSizeFunction<32, void()>> deferred_actions;
+    DynamicArray<TrivialFixedSizeFunction<40, void()>> deferred_actions;
 };
 
 struct GuiBoxSystem {

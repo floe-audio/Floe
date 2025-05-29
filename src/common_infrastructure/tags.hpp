@@ -842,10 +842,10 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
         }
         case TagCategory::Genre: {
             static constexpr auto k_tags = Array {
-                Eighties, EDM,       IDM,         Ambient,    Blues,      Chillout, Chiptune,   Cinematic,
-                Disco,    Downtempo, DrumAndBass, Dubstep,    Electronic, Folk,     Funk,       FutureBass,
-                Glitch,   HipHop,    House,       Industrial, Jazz,       LoFi,     MetalGenre, Orchestral,
-                Pop,      Rock,      Synthwave,   Techno,     Trance,     Trap,     Vaporwave,  World,
+                Eighties, EDM,       IDM,         Ambient,    Blues,      Chillout,  Chiptune,   Cinematic,
+                Disco,    Downtempo, DrumAndBass, Dubstep,    Electronic, FolkGenre, Funk,       FutureBass,
+                Glitch,   HipHop,    House,       Industrial, Jazz,       LoFi,      MetalGenre, Orchestral,
+                Pop,      Rock,      Synthwave,   Techno,     Trance,     Trap,      Vaporwave,  World,
             };
             return {
                 .name = "Genre",

@@ -38,18 +38,13 @@ struct PresetPickerContext {
 
 // Persistent
 struct PresetPickerState {
-    void ClearAllFilters() {
-        dyn::Clear(selected_library_hashes);
-        dyn::Clear(selected_tags_hashes);
-        dyn::Clear(search);
-    }
-
     DynamicArray<u64> selected_library_hashes {Malloc::Instance()};
     DynamicArray<u64> selected_library_author_hashes {Malloc::Instance()};
     DynamicArray<u64> selected_tags_hashes {Malloc::Instance()};
     DynamicArray<u64> selected_author_hashes {Malloc::Instance()};
     DynamicArrayBounded<char, 100> search;
     bool scroll_to_show_selected = false;
+    FilterSelectMode filter_select_mode = FilterSelectMode::Single;
 
     // Only valid if we have both types of presets
     Array<bool, ToInt(PresetFormat::Count)> selected_preset_types {};

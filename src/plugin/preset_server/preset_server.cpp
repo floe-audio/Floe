@@ -42,8 +42,6 @@ String PresetFolder::FullPathForPreset(PresetFolder::Preset const& preset, Alloc
     return path;
 }
 
-u64 NoHash(u64 const& v) { return v; }
-
 // Reader thread
 PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
     // Trigger the server to start the scanning process if its not already doing so.
@@ -76,7 +74,7 @@ PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
         for (auto const [key, tags_pp] : table) {
             auto tags = *tags_pp;
             Set<String> cloned_tags {};
-            cloned_tags.Assign(*tags, arena);
+            cloned_tags.Assign(tags, arena);
             cloned_table.Insert(key, cloned_tags);
         }
         return cloned_table.ToOwnedTable();
@@ -206,16 +204,9 @@ struct FoldersAggregateInfo {
 
         // Inserts tags into a the used_tags_by* tables.
         auto const find_or_insert = [&](auto& table, auto const& key, Span<String> tags) {
-            DynamicSet<String>* tag_set = nullptr;
-            if (auto tags_pp = table.Find(key)) {
-                tag_set = *tags_pp;
-            } else {
-                tag_set = arena.New<DynamicSet<String>>(arena);
-                table.Insert(key, tag_set);
-            }
-
+            auto& tag_set = table.FindOrInsert(key, {}).element->data;
             for (auto const& tag : tags)
-                tag_set->Insert(tag);
+                tag_set.InsertGrowIfNeeded(arena, tag);
         };
 
         for (auto const& library_id : preset.used_libraries) {
@@ -231,7 +222,7 @@ struct FoldersAggregateInfo {
             find_or_insert(used_tags_by_preset_author, Hash(preset.metadata.author), preset.metadata.tags);
         }
 
-        has_preset_type[ToInt(preset.file_format)] = true;
+        has_preset_type.Set(ToInt(preset.file_format));
     }
 
     void CopyToServer(PresetServer& server) const {
@@ -241,18 +232,15 @@ struct FoldersAggregateInfo {
 
         server.used_tags_arena.ResetCursorAndConsolidateRegions();
 
-        auto const copy_used_tags_by =
-            [&](DynamicHashTable<u64, DynamicSet<String>*, NoHash> const& used_tags_by_table,
-                DynamicHashTable<u64, DynamicSet<String>*, NoHash>& server_table) {
-                server_table.DeleteAll();
-                // We need to clone each pointer into the server's arena.
-                for (auto const [lib_id, tags_pp] : used_tags_by_table) {
-                    auto const tags = *tags_pp;
-                    auto new_tags = server.used_tags_arena.New<DynamicSet<String>>(server.used_tags_arena);
-                    new_tags->Assign(*tags);
-                    server_table.Insert(lib_id, new_tags);
-                }
-            };
+        auto const copy_used_tags_by = [&](auto const& used_tags_by_table, auto& server_table) {
+            server_table.DeleteAll();
+            // We need to clone each set using the server's arena.
+            for (auto const [lib_id, tags_pp] : used_tags_by_table) {
+                auto const tags = *tags_pp;
+                auto new_tags = tags.Clone(server.used_tags_arena, CloneType::Deep);
+                server_table.Insert(lib_id, Set<String> {new_tags});
+            }
+        };
         copy_used_tags_by(used_tags_by_library, server.used_tags_by_library);
         copy_used_tags_by(used_tags_by_library_author, server.used_tags_by_library_author);
         copy_used_tags_by(used_tags_by_preset_author, server.used_tags_by_preset_author);
@@ -261,12 +249,12 @@ struct FoldersAggregateInfo {
     }
 
     DynamicSet<String> used_tags;
-    DynamicHashTable<u64, DynamicSet<String>*, NoHash> used_tags_by_library;
-    DynamicHashTable<u64, DynamicSet<String>*, NoHash> used_tags_by_library_author;
-    DynamicHashTable<u64, DynamicSet<String>*, NoHash> used_tags_by_preset_author;
+    DynamicHashTable<u64, Set<String>, NoHash> used_tags_by_library;
+    DynamicHashTable<u64, Set<String>, NoHash> used_tags_by_library_author;
+    DynamicHashTable<u64, Set<String>, NoHash> used_tags_by_preset_author;
     DynamicSet<sample_lib::LibraryIdRef, sample_lib::Hash> used_libraries;
     DynamicSet<String> authors;
-    Array<bool, ToInt(PresetFormat::Count)> has_preset_type {};
+    Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
 };
 
 static void

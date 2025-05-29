@@ -20,6 +20,8 @@ concept TriviallyCopyableOrDummy = TriviallyCopyable<T> || Same<DummyValueType, 
 template <typename KeyType>
 using HashFunction = u64 (*)(KeyType const&);
 
+u64 NoHash(u64 const&);
+
 template <TriviallyCopyable KeyType_,
           TriviallyCopyableOrDummy ValueType_,
           HashFunction<KeyType_> k_hash_function_ = nullptr>
@@ -203,18 +205,18 @@ struct HashTable {
         return;
     }
 
-    bool InsertWithoutGrowing(KeyType key, ValueType value) {
+    Element* InsertWithoutGrowing(KeyType key, ValueType value) {
         if (!elems) {
             PanicIfReached();
-            return false;
+            return nullptr;
         }
         auto const hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
 
-        if (element->active) return false; // already exists
+        if (element->active) return nullptr; // already exists
         if (size + num_dead > mask - mask / 4) {
             PanicIfReached();
-            return false; // too full
+            return nullptr; // too full
         }
 
         if (element->hash == k_tombstone) --num_dead;
@@ -223,15 +225,15 @@ struct HashTable {
         element->active = true;
         element->data = value;
         element->hash = hash;
-        return true;
+        return element;
     }
 
     // allocator must be the same as created this table
-    bool InsertGrowIfNeeded(Allocator& allocator, KeyType key, ValueType value) {
+    Element* InsertGrowIfNeeded(Allocator& allocator, KeyType key, ValueType value) {
         if (!elems) IncreaseCapacity(allocator, k_min_size);
         auto const hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
-        if (element->active) return false; // already exists
+        if (element->active) return nullptr; // already exists
 
         auto const old_hash = element->hash; // save old hash in case it's tombstone marker
         element->active = true;
@@ -245,7 +247,7 @@ struct HashTable {
             // re-used tomb
             --num_dead;
         }
-        return true;
+        return element;
     }
 
     struct FindOrInsertResult {
@@ -414,7 +416,9 @@ struct DynamicHashTable {
 
     Span<typename Table::Element const> Elements() const { return table.Elements(); }
 
-    bool Insert(KeyType key, ValueType value) { return table.InsertGrowIfNeeded(allocator, key, value); }
+    Table::Element* Insert(KeyType key, ValueType value) {
+        return table.InsertGrowIfNeeded(allocator, key, value);
+    }
     Table::FindOrInsertResult FindOrInsert(KeyType key, ValueType value) {
         return table.FindOrInsertGrowIfNeeded(allocator, key, value);
     }
@@ -435,15 +439,15 @@ struct Set : HashTable<KeyType_, DummyValueType, k_hash_function_> {
     using Table = HashTable<KeyType, DummyValueType, k_hash_function>;
 
     // delete methods that don't make sense for a set
-    bool InsertWithoutGrowing(KeyType key, DummyValueType) = delete;
-    bool InsertGrowIfNeeded(Allocator& allocator, KeyType key, DummyValueType) = delete;
+    Table::Element* InsertWithoutGrowing(KeyType key, DummyValueType) = delete;
+    Table::Element* InsertGrowIfNeeded(Allocator& allocator, KeyType key, DummyValueType) = delete;
     DummyValueType* Find(KeyType key) const = delete;
 
     // replace with methods that make sense for a set
     static Set Create(Allocator& a, usize size) { return Set {Table::Create(a, size)}; }
-    bool InsertWithoutGrowing(KeyType key) { return Table::InsertWithoutGrowing(key, {}); }
+    Table::Element* InsertWithoutGrowing(KeyType key) { return Table::InsertWithoutGrowing(key, {}); }
     // allocator must be the same as created this table
-    bool InsertGrowIfNeeded(Allocator& allocator, KeyType key) {
+    Table::Element* InsertGrowIfNeeded(Allocator& allocator, KeyType key) {
         return Table::InsertGrowIfNeeded(allocator, key, {});
     }
     bool Contains(KeyType key) const { return this->FindElement(key); }
@@ -458,7 +462,7 @@ struct DynamicSet : DynamicHashTable<KeyType_, DummyValueType, k_hash_function_>
     DynamicSet(Allocator& alloc, usize initial_capacity = 0)
         : DynamicHashTable<KeyType, DummyValueType, k_hash_function>(alloc, initial_capacity) {}
 
-    bool Insert(KeyType key) {
+    Set::Element* Insert(KeyType key) {
         return DynamicHashTable<KeyType, DummyValueType, k_hash_function>::Insert(key, {});
     }
 
