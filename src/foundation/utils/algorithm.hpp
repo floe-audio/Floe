@@ -89,7 +89,12 @@ PUBLIC constexpr u32 HashMultipleDbj(ContiguousContainerOfContiguousContainers a
     return hash;
 }
 
-PUBLIC constexpr u64 Hash(auto data) { return HashFnv1a(data); }
+PUBLIC constexpr u64 Hash(auto data) {
+    if constexpr (Fundamental<RemoveReference<decltype(data)>> || Enum<RemoveReference<decltype(data)>>)
+        return HashFnv1a(Span {(u8 const*)&data, sizeof(data)});
+    else
+        return HashFnv1a(data);
+}
 PUBLIC constexpr u32 Hash32(auto data) { return HashDbj(data); }
 
 PUBLIC constexpr u64 HashMultiple(auto const& data) { return HashMultipleFnv1a(data); }
