@@ -502,22 +502,22 @@ ReadMdata(Reader& reader, String filepath, ArenaAllocator& result_arena, ArenaAl
     // In the MDATA format when velocity-feathering was enabled for an instrument, adjacent velocity layers
     // were automatically made to overlap. We recreate that old behaviour here, taking into account that now
     // velocity feathering is a per-region setting.
-    for (auto [key, inst_ptr_ptr] : library->insts_by_name) {
-        auto inst = *inst_ptr_ptr;
+    for (auto [key, inst_ptr, _] : library->insts_by_name) {
+        auto inst = *inst_ptr;
 
         // With MDATA, the velocity feathering feature was instrument-wide rather then per-region so we can
         // just check that first.
-        if (!inst->regions.size || !inst->regions[0].trigger.feather_overlapping_velocity_layers) continue;
+        if (!inst.regions.size || !inst.regions[0].trigger.feather_overlapping_velocity_layers) continue;
 
-        Sort(inst->regions, [](Region const& a, Region const& b) {
+        Sort(inst.regions, [](Region const& a, Region const& b) {
             return a.trigger.velocity_range.start < b.trigger.velocity_range.start;
         });
 
         for (auto const trigger_event_index : ::Range(ToInt(TriggerEvent::Count))) {
-            for (auto const rr_group : inst->round_robin_sequence_groups[trigger_event_index]) {
+            for (auto const rr_group : inst.round_robin_sequence_groups[trigger_event_index]) {
                 for (auto const rr_index : ::Range(rr_group.max_rr_pos + 1)) {
                     DynamicArray<Region*> group {scratch_arena};
-                    for (auto& region : inst->regions)
+                    for (auto& region : inst.regions)
                         if (!region.trigger.round_robin_index ||
                             region.trigger.round_robin_index.Value() == rr_index)
                             dyn::Append(group, &region);

@@ -436,7 +436,7 @@ ErrorCodeOr<void> WritePreferencesTable(PreferencesTable const& table, Writer wr
     };
 
     // Write sectionless keys first
-    for (auto const [key, value_list_ptr] : table) {
+    for (auto const [key, value_list, _] : table) {
         KeyValueUnion key_value {""_s};
         switch (key.tag) {
             case KeyType::GlobalString: key_value = key.Get<String>(); break;
@@ -444,13 +444,13 @@ ErrorCodeOr<void> WritePreferencesTable(PreferencesTable const& table, Writer wr
             case KeyType::Sectioned: continue;
         }
 
-        TRY(WriteKeyValLineValueList(key_value, *value_list_ptr, writer));
-        set_dirty(*value_list_ptr);
+        TRY(WriteKeyValLineValueList(key_value, value_list, writer));
+        set_dirty(value_list);
     }
 
     // Write sectioned keys
-    for (auto const [key_union, value_list_ptr] : table) {
-        if (is_dirty(*value_list_ptr)) continue;
+    for (auto const [key_union, value_list, _] : table) {
+        if (is_dirty(value_list)) continue;
 
         String section {};
 
@@ -465,8 +465,8 @@ ErrorCodeOr<void> WritePreferencesTable(PreferencesTable const& table, Writer wr
         TRY(writer.WriteChars("]\n"));
 
         // Write all keys in this section
-        for (auto const [other_key_union, other_value_list_ptr] : table) {
-            if (is_dirty(*other_value_list_ptr)) continue;
+        for (auto const [other_key_union, other_value_list, _] : table) {
+            if (is_dirty(other_value_list)) continue;
 
             switch (other_key_union.tag) {
                 case KeyType::GlobalString:
@@ -477,15 +477,15 @@ ErrorCodeOr<void> WritePreferencesTable(PreferencesTable const& table, Writer wr
             auto const [other_section, other_key] = other_key_union.Get<SectionedKey>();
             if (section != other_section) continue;
 
-            TRY(WriteKeyValLineValueList(other_key, *other_value_list_ptr, writer));
-            set_dirty(*other_value_list_ptr);
+            TRY(WriteKeyValLineValueList(other_key, other_value_list, writer));
+            set_dirty(other_value_list);
         }
     }
 
     // Un-dirty
-    for (auto const [key, value_list_ptr] : table) {
-        ASSERT(is_dirty(*value_list_ptr));
-        clear_dirty(*value_list_ptr);
+    for (auto const [key, value_list, _] : table) {
+        ASSERT(is_dirty(value_list));
+        clear_dirty(value_list);
     }
 
     return k_success;
@@ -953,12 +953,11 @@ void WriteIfNeeded(Preferences& prefs) {
 
 void ReplacePreferences(Preferences& prefs, PreferencesTable const& new_table, ReplaceOptions options) {
     if (options.remove_keys_not_in_new_table) {
-        for (auto const [key, value] : prefs)
+        for (auto const [key, value, _] : prefs)
             if (!new_table.Find(key)) Remove(prefs, key);
     }
 
-    for (auto const [key, new_value_list_ptr] : new_table) {
-        auto const new_value_list = *new_value_list_ptr;
+    for (auto const [key, new_value_list, _] : new_table) {
 
         bool changed = false;
 
@@ -1673,8 +1672,8 @@ TEST_CASE(TestPreferences) {
                                          int_descriptor.key,
                                          tester.scratch_arena.New<Value>((s64)7));
 
-                auto first_item = *(*prefs.begin()).value_ptr;
-                auto const opt = Match(int_descriptor.key, first_item, int_descriptor);
+                auto const& first_item = *(*prefs.begin()).value;
+                auto const opt = Match(int_descriptor.key, &first_item, int_descriptor);
                 REQUIRE(opt);
                 CHECK_EQ(opt->Get<s64>(), 7);
             }
@@ -1690,8 +1689,8 @@ TEST_CASE(TestPreferences) {
                                          int_descriptor.key,
                                          tester.scratch_arena.New<Value>((s64)100));
 
-                auto first_item = *(*prefs.begin()).value_ptr;
-                auto const opt = Match(int_descriptor.key, first_item, int_descriptor);
+                auto const& first_item = *(*prefs.begin()).value;
+                auto const opt = Match(int_descriptor.key, &first_item, int_descriptor);
                 REQUIRE(opt);
                 CHECK_EQ(opt->Get<s64>(), 10);
             }

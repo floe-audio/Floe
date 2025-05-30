@@ -20,6 +20,9 @@ concept TriviallyCopyableOrDummy = TriviallyCopyable<T> || Same<DummyValueType, 
 template <typename KeyType>
 using HashFunction = u64 (*)(KeyType const&);
 
+template <typename KeyType>
+using LessThanFunction = bool (*)(KeyType const&, KeyType const&);
+
 u64 NoHash(u64 const&);
 
 enum HashTableOrdering { Unordered, Ordered };
@@ -27,7 +30,8 @@ enum HashTableOrdering { Unordered, Ordered };
 template <TriviallyCopyable KeyType_,
           TriviallyCopyableOrDummy ValueType_,
           HashFunction<KeyType_> k_hash_function_ = nullptr,
-          HashTableOrdering k_ordering_ = HashTableOrdering::Unordered>
+          HashTableOrdering k_ordering_ = HashTableOrdering::Unordered,
+          LessThanFunction<KeyType_> k_less_than_function = nullptr>
 struct HashTable {
     using KeyType = KeyType_;
     using ValueType = ValueType_;
@@ -65,36 +69,43 @@ struct HashTable {
         friend bool operator!=(Iterator const& a, Iterator const& b) {
             return &a.table != &b.table || a.index != b.index;
         }
-        struct Item {
-            KeyType key;
-            [[no_unique_address]] Conditional<Same<DummyValueType, ValueType>, DummyValueType, ValueType*>
-                value_ptr;
-        };
-        Item operator*() const { return item; }
+        auto operator*() const {
+            if constexpr (Same<DummyValueType, ValueType>) {
+                struct Item {
+                    KeyType const& key;
+                    u64 hash;
+                };
+                return Item {.key = element->key, .hash = element->hash};
+            } else {
+                struct Item {
+                    KeyType const& key;
+                    ValueType& value;
+                    u64 hash;
+                };
+                return Item {.key = element->key, .value = element->data, .hash = element->hash};
+            }
+        }
         Iterator& operator++() {
             ++index;
 
             if constexpr (k_ordering == HashTableOrdering::Unordered) {
                 for (; index < table.mask + 1; ++index) {
-                    auto& element = table.elems[index];
-                    if (element.active) {
-                        item.key = element.key;
-                        if constexpr (!Same<DummyValueType, ValueType>) item.value_ptr = &element.data;
+                    auto& e = table.elems[index];
+                    if (e.active) {
+                        element = &e;
                         break;
                     }
                 }
             } else if (index < table.order_indices.items.size) {
                 auto const elem_index = table.order_indices.items[index];
-                auto& element = table.elems[elem_index];
-                item.key = element.key;
-                if constexpr (!Same<DummyValueType, ValueType>) item.value_ptr = &element.data;
+                element = &table.elems[elem_index];
             }
 
             return *this;
         }
 
         HashTable const& table;
-        Item item {};
+        Element* element {};
         usize index {};
     };
 
@@ -107,9 +118,13 @@ struct HashTable {
         // if Hash is consistent accross different compilation units. It might be a header-only function in
         // which case the _type_ of the HashTable will vary depending on the compilation unit leading to
         // cryptic linker errors.
-        if constexpr (k_hash_function == nullptr)
-            return ::Hash(k);
-        else
+        if constexpr (k_hash_function == nullptr) {
+            // if the KeyType has a Hash() method, use it
+            if constexpr (requires { k.Hash(); })
+                return k.Hash();
+            else
+                return ::Hash(k);
+        } else
             return k_hash_function(k);
     }
 
@@ -138,11 +153,40 @@ struct HashTable {
         return element;
     }
 
-    Element* FindElement(KeyType key) const {
+    Element* FindElement(KeyType key, u64 hash = 0) const {
         if (!elems) return nullptr;
-        Element* element = Lookup(key, Hash(key), 0);
+        if (!hash) hash = Hash(key);
+        Element* element = Lookup(key, hash, 0);
         if (element->active) return element;
         return nullptr;
+    }
+
+    bool Contains(KeyType key, u64 hash = 0) const { return FindElement(key, hash) != nullptr; }
+
+    // Finds an element but doens't protect against hash collisions.
+    bool ContainsNoKeyCheck(u64 hash) const {
+        ASSERT(hash);
+        if (!elems) return false;
+
+        Element* element;
+        usize index = hash;
+        usize step = 1;
+
+        while (true) {
+            element = elems + (index & mask);
+
+            if (!element->active) {
+                if (!element->hash) break;
+                if (element->hash == 0) break;
+            }
+
+            if (element->hash == hash) break;
+
+            index += step;
+            step++;
+        }
+
+        return element->active;
     }
 
     static usize PowerOf2Capacity(usize capacity) {
@@ -162,7 +206,8 @@ struct HashTable {
         table.mask = cap - 1;
 
         if constexpr (k_ordering == HashTableOrdering::Ordered) {
-            table.order_indices.items = a.AllocateExactSizeUninitialised<usize>(size);
+            auto allocation = a.AllocateExactSizeUninitialised<usize>(size);
+            table.order_indices.items = {allocation.data, 0};
             table.order_indices.capacity = size;
         }
 
@@ -186,10 +231,10 @@ struct HashTable {
     }
     Span<Element> Elements() { return elems ? Span<Element> {elems, mask + 1} : Span<Element> {}; }
 
-    ValueType* Find(KeyType key) const {
+    ValueType* Find(KeyType key, u64 hash = 0) const {
         static_assert(!Same<ValueType, DummyValueType>,
                       "HashTable::Find called on a set, use FindElement instead");
-        Element* element = FindElement(key);
+        Element* element = FindElement(key, hash);
         if (!element) return nullptr;
         return &element->data;
     }
@@ -256,12 +301,12 @@ struct HashTable {
         return;
     }
 
-    bool InsertWithoutGrowing(KeyType key, ValueType value) {
+    bool InsertWithoutGrowing(KeyType key, ValueType value, u64 hash = 0) {
         if (!elems) {
             PanicIfReached();
             return false;
         }
-        auto const hash = Hash(key);
+        if (!hash) hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
 
         if (element->active) return false; // already exists
@@ -290,9 +335,9 @@ struct HashTable {
     }
 
     // allocator must be the same as created this table
-    bool InsertGrowIfNeeded(Allocator& allocator, KeyType key, ValueType value) {
+    bool InsertGrowIfNeeded(Allocator& allocator, KeyType key, ValueType value, u64 hash = 0) {
         if (!elems) IncreaseCapacity(allocator, k_min_size);
-        auto const hash = Hash(key);
+        if (!hash) hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
         if (element->active) return false; // already exists
 
@@ -319,8 +364,12 @@ struct HashTable {
         bool inserted;
     };
 
-    FindOrInsertResult FindOrInsertWithoutGrowing(KeyType key, ValueType value) {
-        auto const hash = Hash(key);
+    FindOrInsertResult FindOrInsertWithoutGrowing(KeyType key, ValueType value, u64 hash = 0) {
+        if (!elems) {
+            PanicIfReached();
+            return {}; // not initialized
+        }
+        if (!hash) hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
         if (element->active) return {.element = element, .inserted = false};
 
@@ -347,9 +396,10 @@ struct HashTable {
         return {.element = element, .inserted = true};
     }
 
-    FindOrInsertResult FindOrInsertGrowIfNeeded(Allocator& allocator, KeyType key, ValueType value) {
+    FindOrInsertResult
+    FindOrInsertGrowIfNeeded(Allocator& allocator, KeyType key, ValueType value, u64 hash = 0) {
         if (!elems) IncreaseCapacity(allocator, k_min_size);
-        auto const hash = Hash(key);
+        if (!hash) hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
         if (element->active) return {.element = element, .inserted = false};
 
@@ -373,28 +423,21 @@ struct HashTable {
 
     Iterator begin() const {
         if (!elems) return end();
-        typename Iterator::Item item {};
 
         if constexpr (k_ordering == HashTableOrdering::Unordered) {
             usize index = 0;
             for (; index < mask + 1; ++index) {
                 auto& element = elems[index];
-                if (element.active) {
-                    item.key = element.key;
-                    if constexpr (!Same<DummyValueType, ValueType>) item.value_ptr = &element.data;
-                    break;
-                }
+                if (element.active) return Iterator {*this, &element, index};
             }
 
-            return Iterator {*this, item, index};
+            return Iterator {*this, nullptr, index};
         } else {
             if (order_indices.items.size == 0) return end();
             auto const element_index = order_indices.items[0];
             auto& element = elems[element_index];
-            item.key = element.key;
-            if constexpr (!Same<DummyValueType, ValueType>) item.value_ptr = &element.data;
 
-            return Iterator {*this, item, 0};
+            return Iterator {*this, &element, 0};
         }
     }
     Iterator end() const {
@@ -468,7 +511,10 @@ struct HashTable {
 
             auto const insert_index = BinarySearchForSlotToInsert(order_indices.items, [&](usize elem_index) {
                 auto const& key = elems[elem_index].key;
-                if (key < new_key) return -1;
+                if constexpr (k_less_than_function != nullptr) {
+                    if (k_less_than_function(key, new_key)) return -1;
+                } else if (key < new_key)
+                    return -1;
                 // keys are unique in a hash table, so we don't need to check for equality
                 return 1;
             });
@@ -491,13 +537,14 @@ struct HashTable {
 template <TriviallyCopyable KeyType_,
           TriviallyCopyableOrDummy ValueType_,
           HashFunction<KeyType_> k_hash_function_ = nullptr,
-          HashTableOrdering k_ordering_ = HashTableOrdering::Unordered>
+          HashTableOrdering k_ordering_ = HashTableOrdering::Unordered,
+          LessThanFunction<KeyType_> k_less_than_function = nullptr>
 struct DynamicHashTable {
     using KeyType = KeyType_;
     using ValueType = ValueType_;
     static constexpr HashFunction<KeyType> k_hash_function = k_hash_function_;
     static constexpr HashTableOrdering k_ordering = k_ordering_;
-    using Table = HashTable<KeyType, ValueType, k_hash_function, k_ordering>;
+    using Table = HashTable<KeyType, ValueType, k_hash_function, k_ordering, k_less_than_function>;
 
     DynamicHashTable(Allocator& alloc, usize initial_capacity = 0) : allocator(alloc) {
         if (initial_capacity) IncreaseCapacity(initial_capacity);
@@ -554,10 +601,13 @@ struct DynamicHashTable {
 
     Span<typename Table::Element const> Elements() const { return table.Elements(); }
 
-    auto Insert(KeyType key, ValueType value) { return table.InsertGrowIfNeeded(allocator, key, value); }
-    Table::FindOrInsertResult FindOrInsert(KeyType key, ValueType value) {
-        return table.FindOrInsertGrowIfNeeded(allocator, key, value);
+    auto Insert(KeyType key, ValueType value, u64 hash = 0) {
+        return table.InsertGrowIfNeeded(allocator, key, value, hash);
     }
+    Table::FindOrInsertResult FindOrInsert(KeyType key, ValueType value, u64 hash = 0) {
+        return table.FindOrInsertGrowIfNeeded(allocator, key, value, hash);
+    }
+    bool Contains(KeyType key, u64 hash = 0) const { return table.Contains(key, hash); }
 
     auto begin() const { return table.begin(); }
     auto end() const { return table.end(); }
@@ -570,42 +620,54 @@ struct DynamicHashTable {
 
 template <TriviallyCopyable KeyType_,
           HashFunction<KeyType_> k_hash_function_ = nullptr,
-          HashTableOrdering k_ordering_ = HashTableOrdering::Unordered>
+          HashTableOrdering k_ordering_ = HashTableOrdering::Unordered,
+          LessThanFunction<KeyType_> k_less_than_function = nullptr>
 struct Set : HashTable<KeyType_, DummyValueType, k_hash_function_, k_ordering_> {
     using KeyType = KeyType_;
     static constexpr HashFunction<KeyType> k_hash_function = k_hash_function_;
     static constexpr HashTableOrdering k_ordering = k_ordering_;
-    using Table = HashTable<KeyType, DummyValueType, k_hash_function, k_ordering>;
+    using Table = HashTable<KeyType, DummyValueType, k_hash_function, k_ordering, k_less_than_function>;
 
     // delete methods that don't make sense for a set
-    Table::Element* InsertWithoutGrowing(KeyType key, DummyValueType) = delete;
-    Table::Element* InsertGrowIfNeeded(Allocator& allocator, KeyType key, DummyValueType) = delete;
+    bool InsertWithoutGrowing(KeyType key, DummyValueType, u64 hash = 0) = delete;
+    bool InsertGrowIfNeeded(Allocator& allocator, KeyType key, DummyValueType, u64 hash = 0) = delete;
+    Table::FindOrInsertResult FindOrInsertWithoutGrowing(KeyType key, DummyValueType, u64 hash = 0) = delete;
+    Table::FindOrInsertResult
+    FindOrInsertGrowIfNeeded(Allocator& allocator, KeyType key, DummyValueType, u64 hash = 0) = delete;
     DummyValueType* Find(KeyType key) const = delete;
 
     // replace with methods that make sense for a set
     static Set Create(Allocator& a, usize size) { return Set {Table::Create(a, size)}; }
-    auto InsertWithoutGrowing(KeyType key) { return Table::InsertWithoutGrowing(key, {}); }
-    // allocator must be the same as created this table
-    auto InsertGrowIfNeeded(Allocator& allocator, KeyType key) {
-        return Table::InsertGrowIfNeeded(allocator, key, {});
+    auto InsertWithoutGrowing(KeyType key, u64 hash = 0) {
+        return Table::InsertWithoutGrowing(key, {}, hash);
     }
-    bool Contains(KeyType key) const { return this->FindElement(key); }
+    // allocator must be the same as created this table
+    auto InsertGrowIfNeeded(Allocator& allocator, KeyType key, u64 hash = 0) {
+        return Table::InsertGrowIfNeeded(allocator, key, {}, hash);
+    }
+    auto FindOrInsertWithoutGrowing(KeyType key, u64 hash = 0) {
+        return Table::FindOrInsertWithoutGrowing(key, {}, hash);
+    }
+    auto FindOrInsertGrowIfNeeded(Allocator& allocator, KeyType key, u64 hash = 0) {
+        return Table::FindOrInsertGrowIfNeeded(allocator, key, {}, hash);
+    }
 };
 
 template <TriviallyCopyable KeyType_,
           HashFunction<KeyType_> k_hash_function_ = nullptr,
-          HashTableOrdering k_ordering_ = HashTableOrdering::Unordered>
+          HashTableOrdering k_ordering_ = HashTableOrdering::Unordered,
+          LessThanFunction<KeyType_> k_less_than_function = nullptr>
 struct DynamicSet : DynamicHashTable<KeyType_, DummyValueType, k_hash_function_, k_ordering_> {
     using KeyType = KeyType_;
     static constexpr HashFunction<KeyType> k_hash_function = k_hash_function_;
     static constexpr HashTableOrdering k_ordering = k_ordering_;
-    using Set = Set<KeyType, k_hash_function, k_ordering>;
+    using Set = Set<KeyType, k_hash_function, k_ordering, k_less_than_function>;
 
     DynamicSet(Allocator& alloc, usize initial_capacity = 0)
         : DynamicHashTable<KeyType, DummyValueType, k_hash_function>(alloc, initial_capacity) {}
 
-    auto Insert(KeyType key) {
-        return DynamicHashTable<KeyType, DummyValueType, k_hash_function>::Insert(key, {});
+    auto Insert(KeyType key, u64 hash = 0) {
+        return DynamicHashTable<KeyType, DummyValueType, k_hash_function>::Insert(key, {}, hash);
     }
 
     Set ToOwnedSet() {
@@ -618,6 +680,33 @@ struct DynamicSet : DynamicHashTable<KeyType_, DummyValueType, k_hash_function_,
 
     DummyValueType* Find(KeyType key) const = delete;
     Set::Element* FindElement(KeyType key) const = delete;
-
-    bool Contains(KeyType key) const { return this->table.FindElement(key); }
 };
+
+// Ordered versions
+template <TriviallyCopyable KeyType,
+          TriviallyCopyableOrDummy ValueType,
+          HashFunction<KeyType> k_hash_function = nullptr,
+          LessThanFunction<KeyType> k_less_than_function = nullptr>
+using OrderedHashTable =
+    HashTable<KeyType, ValueType, k_hash_function, HashTableOrdering::Ordered, k_less_than_function>;
+
+template <TriviallyCopyable KeyType,
+          TriviallyCopyableOrDummy ValueType,
+          HashFunction<KeyType> k_hash_function = nullptr,
+          LessThanFunction<KeyType> k_less_than_function = nullptr>
+using DynamicOrderedHashTable =
+    DynamicHashTable<KeyType, ValueType, k_hash_function, HashTableOrdering::Ordered, k_less_than_function>;
+
+template <TriviallyCopyable KeyType,
+          HashFunction<KeyType> k_hash_function = nullptr,
+          LessThanFunction<KeyType> k_less_than_function = nullptr>
+using OrderedSet = Set<KeyType, k_hash_function, HashTableOrdering::Ordered, k_less_than_function>;
+
+template <TriviallyCopyable KeyType,
+          HashFunction<KeyType> k_hash_function = nullptr,
+          LessThanFunction<KeyType> k_less_than_function = nullptr>
+using DynamicOrderedSet = DynamicHashTable<KeyType,
+                                           DummyValueType,
+                                           k_hash_function,
+                                           HashTableOrdering::Ordered,
+                                           k_less_than_function>;

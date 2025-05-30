@@ -138,7 +138,7 @@ void RemovePersistentCcToParamMapping(prefs::Preferences& prefs, u8 cc_num, u32 
 Bitset<128> PersistentCcsForParam(prefs::PreferencesTable const& prefs, u32 param_id) {
     Bitset<128> result {};
 
-    for (auto const [key_union, value_list_ptr] : prefs) {
+    for (auto const [key_union, value_list, _] : prefs) {
         auto const sectioned_key = key_union.TryGet<prefs::SectionedKey>();
         if (!sectioned_key) continue;
         auto const [section, key] = *sectioned_key;
@@ -148,7 +148,7 @@ Bitset<128> PersistentCcsForParam(prefs::PreferencesTable const& prefs, u32 para
         auto const cc_num = key.Get<s64>();
         if (cc_num < 1 || cc_num > 127) continue;
 
-        for (auto value = *value_list_ptr; value; value = value->next) {
+        for (auto value = value_list; value; value = value->next) {
             if (*value == (s64)param_id) {
                 result.Set((usize)cc_num);
                 break;

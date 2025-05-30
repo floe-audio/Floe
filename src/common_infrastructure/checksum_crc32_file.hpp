@@ -41,10 +41,10 @@ PUBLIC String SerialiseChecksumsValues(HashTable<String, ChecksumValues> checksu
                                        String comment) {
     DynamicArray<char> buffer {allocator};
     if (comment.size) AppendCommentLine(buffer, comment);
-    for (auto const& [path, checksum] : checksum_values)
+    for (auto const& [path, checksum, _] : checksum_values)
         AppendChecksumLine(
             buffer,
-            ChecksumLine {.path = path, .crc32 = checksum->crc32, .file_size = checksum->file_size});
+            ChecksumLine {.path = path, .crc32 = checksum.crc32, .file_size = checksum.file_size});
     return buffer.ToOwnedSpan();
 }
 
@@ -155,8 +155,7 @@ ChecksumsForFolder(String folder, ArenaAllocator& arena, ArenaAllocator& scratch
 // All values in the authority table must be present in the test_table and have the same checksums.
 // test_table is allowed to have extra files.
 PUBLIC bool ChecksumsDiffer(ChecksumTable authority, ChecksumTable test_table, Optional<Writer> diff_log) {
-    for (auto const [key, val_ptr] : authority) {
-        auto const a_val = *val_ptr;
+    for (auto const [key, a_val, _] : authority) {
         if (auto const b_val = test_table.FindElement(key)) {
             if (a_val.crc32 != b_val->data.crc32 || a_val.file_size != b_val->data.file_size) {
                 if (diff_log) auto _ = fmt::FormatToWriter(*diff_log, "File has changed: {}\n", key);

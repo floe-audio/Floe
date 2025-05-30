@@ -69,25 +69,11 @@ PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
     DEFER { server.mutex.Unlock(); };
     auto const folders = arena.Clone(server.folders);
 
-    auto const clone_used_tags = [&](auto& table) {
-        DynamicHashTable<u64, Set<String>, NoHash> cloned_table {arena, table.table.Capacity()};
-        for (auto const [key, tags_pp] : table) {
-            auto tags = *tags_pp;
-            Set<String> cloned_tags {};
-            cloned_tags.Assign(tags, arena);
-            cloned_table.Insert(key, cloned_tags);
-        }
-        return cloned_table.ToOwnedTable();
-    };
-
     return {
         .folders = {(PresetFolder const**)folders.data, folders.size},
         .used_tags = {server.used_tags.table.Clone(arena, CloneType::Deep)},
         .used_libraries = {server.used_libraries.table.Clone(arena, CloneType::Deep)},
         .authors = {server.authors.table.Clone(arena, CloneType::Deep)},
-        .used_tags_by_library_hash = clone_used_tags(server.used_tags_by_library),
-        .used_tags_by_library_author_hash = clone_used_tags(server.used_tags_by_library_author),
-        .used_tags_by_preset_author_hash = clone_used_tags(server.used_tags_by_preset_author),
         .has_preset_type = server.has_preset_type,
     };
 }
@@ -149,10 +135,12 @@ static void AddPresetToFolder(PresetFolder& folder,
                     .name = folder.arena.Clone(path::FilenameWithoutExtension(entry.subpath)),
                     .metadata {
                         .tags = ({
-                            auto tags =
-                                folder.arena.AllocateExactSizeUninitialised<String>(state.metadata.tags.size);
-                            for (auto const i : Range(tags.size))
-                                tags[i] = folder.arena.Clone(state.metadata.tags[i]);
+                            auto tags = Set<String>::Create(folder.arena, state.metadata.tags.size);
+                            for (auto const tag : state.metadata.tags) {
+                                bool const inserted =
+                                    tags.InsertWithoutGrowing(folder.arena.Clone(String(tag)));
+                                ASSERT(inserted);
+                            }
                             tags;
                         }),
                         .author = folder.arena.Clone(state.metadata.author),
@@ -192,35 +180,17 @@ static void AddPresetToFolder(PresetFolder& folder,
 struct FoldersAggregateInfo {
     FoldersAggregateInfo(ArenaAllocator& arena)
         : used_tags {arena}
-        , used_tags_by_library {arena}
-        , used_tags_by_library_author {arena}
-        , used_tags_by_preset_author {arena}
         , used_libraries {arena}
         , authors {arena} {}
 
-    void AddPreset(PresetFolder::Preset const& preset, ArenaAllocator& arena) {
-        for (auto const& tag : preset.metadata.tags)
-            used_tags.Insert(tag);
+    void AddPreset(PresetFolder::Preset const& preset) {
+        for (auto const [tag, tag_hash] : preset.metadata.tags)
+            used_tags.Insert(tag, tag_hash);
 
-        // Inserts tags into a the used_tags_by* tables.
-        auto const find_or_insert = [&](auto& table, auto const& key, Span<String> tags) {
-            auto& tag_set = table.FindOrInsert(key, {}).element->data;
-            for (auto const& tag : tags)
-                tag_set.InsertGrowIfNeeded(arena, tag);
-        };
-
-        for (auto const& library_id : preset.used_libraries) {
+        for (auto const& library_id : preset.used_libraries)
             used_libraries.Insert(library_id);
 
-            find_or_insert(used_tags_by_library, library_id.Hash(), preset.metadata.tags);
-            find_or_insert(used_tags_by_library_author, Hash(library_id.author), preset.metadata.tags);
-        }
-
-        if (preset.metadata.author.size) {
-            authors.Insert(preset.metadata.author);
-
-            find_or_insert(used_tags_by_preset_author, Hash(preset.metadata.author), preset.metadata.tags);
-        }
+        if (preset.metadata.author.size) authors.Insert(preset.metadata.author);
 
         has_preset_type.Set(ToInt(preset.file_format));
     }
@@ -232,27 +202,11 @@ struct FoldersAggregateInfo {
 
         server.used_tags_arena.ResetCursorAndConsolidateRegions();
 
-        auto const copy_used_tags_by = [&](auto const& used_tags_by_table, auto& server_table) {
-            server_table.DeleteAll();
-            // We need to clone each set using the server's arena.
-            for (auto const [lib_id, tags_pp] : used_tags_by_table) {
-                auto const tags = *tags_pp;
-                auto new_tags = tags.Clone(server.used_tags_arena, CloneType::Deep);
-                server_table.Insert(lib_id, Set<String> {new_tags});
-            }
-        };
-        copy_used_tags_by(used_tags_by_library, server.used_tags_by_library);
-        copy_used_tags_by(used_tags_by_library_author, server.used_tags_by_library_author);
-        copy_used_tags_by(used_tags_by_preset_author, server.used_tags_by_preset_author);
-
         server.has_preset_type = has_preset_type;
     }
 
     DynamicSet<String> used_tags;
-    DynamicHashTable<u64, Set<String>, NoHash> used_tags_by_library;
-    DynamicHashTable<u64, Set<String>, NoHash> used_tags_by_library_author;
-    DynamicHashTable<u64, Set<String>, NoHash> used_tags_by_preset_author;
-    DynamicSet<sample_lib::LibraryIdRef, sample_lib::Hash> used_libraries;
+    DynamicSet<sample_lib::LibraryIdRef> used_libraries;
     DynamicSet<String> authors;
     Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
 };
@@ -267,7 +221,7 @@ AppendFolderAndPublish(PresetServer& server, PresetFolder* new_preset_folder, Ar
          Array {server.folders.Items(), Span<PresetFolder*> {&new_preset_folder, 1}}) {
         for (auto const folder : folder_set)
             for (auto const& preset : folder->presets)
-                info.AddPreset(preset, scratch_arena);
+                info.AddPreset(preset);
     }
 
     server.mutex.Lock();
@@ -292,7 +246,7 @@ static void RemoveFolderAndPublish(PresetServer& server, usize index, ArenaAlloc
         if (existing_folder == &folder) continue;
 
         for (auto const& preset : existing_folder->presets)
-            info.AddPreset(preset, scratch_arena);
+            info.AddPreset(preset);
     }
 
     server.mutex.Lock();

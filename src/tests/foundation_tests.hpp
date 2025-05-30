@@ -1235,10 +1235,9 @@ TEST_CASE(TestHashTable) {
         {
             usize count = 0;
             for (auto item : tab) {
-                CHECK(item.value_ptr);
                 CHECK(item.key.size);
-                tester.log.Debug("{} -> {}", item.key, *item.value_ptr);
-                if (item.key == "112") (*item.value_ptr)++;
+                tester.log.Debug("{} -> {}", item.key, item.value);
+                if (item.key == "112") item.value++;
                 ++count;
             }
             CHECK(count == 5);
@@ -1265,7 +1264,7 @@ TEST_CASE(TestHashTable) {
         DynamicHashTable<String, int, nullptr, k_ordering> tab {a};
         CHECK(tab.Insert("foo", 100));
         for (auto item : tab)
-            CHECK_EQ(*item.value_ptr, 100);
+            CHECK_EQ(item.value, 100);
         auto v = tab.Find("foo");
         REQUIRE(v);
         CHECK_EQ(*v, 100);

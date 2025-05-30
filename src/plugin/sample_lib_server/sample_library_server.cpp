@@ -1572,7 +1572,7 @@ static sample_lib::Library* BuiltinLibrary() {
 
     static bool init = false;
     if (!Exchange(init, true)) {
-        static FixedSizeAllocator<Kb(10)> alloc {nullptr};
+        static FixedSizeAllocator<Kb(20)> alloc {nullptr};
 
         auto const embedded_irs = GetEmbeddedIrs();
 
@@ -1584,10 +1584,9 @@ static sample_lib::Library* BuiltinLibrary() {
             if (embedded_ir.tag1.size) ++num_tags;
             if (embedded_ir.tag2.size) ++num_tags;
 
-            auto tags = alloc.AllocateExactSizeUninitialised<String>(num_tags);
-            usize tag_index = 0;
-            if (embedded_ir.tag1.size) tags[tag_index++] = ToString(embedded_ir.tag1);
-            if (embedded_ir.tag2.size) tags[tag_index++] = ToString(embedded_ir.tag2);
+            auto tags = Set<String>::Create(alloc, num_tags);
+            if (embedded_ir.tag1.size) tags.InsertWithoutGrowing(ToString(embedded_ir.tag1));
+            if (embedded_ir.tag2.size) tags.InsertWithoutGrowing(ToString(embedded_ir.tag2));
 
             auto const name = ToString(embedded_ir.name);
 

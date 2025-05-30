@@ -136,7 +136,7 @@ struct Instrument {
     String name {};
     Optional<String> folder {}; // may contain '/'
     Optional<String> description {};
-    Span<String> tags {};
+    Set<String> tags {};
     LibraryPath audio_file_path_for_waveform {};
     Span<Region> regions {};
     usize regions_allocated_capacity {}; // private
@@ -161,7 +161,7 @@ struct ImpulseResponse {
     String name {};
     LibraryPath path {};
     Optional<String> folder {}; // may contain '/'
-    Span<String> tags {};
+    Set<String> tags {};
     Optional<String> description {};
 };
 
@@ -189,6 +189,7 @@ using FileFormatSpecifics = TaggedUnion<FileFormat,
 
 struct LibraryIdRef {
     bool operator==(LibraryIdRef const& other) const = default;
+    friend bool operator<(LibraryIdRef const& a, LibraryIdRef const& b) { return a.name < b.name; }
     LibraryIdRef Clone(Allocator& arena, CloneType _ = CloneType::Shallow) const {
         return {.author = arena.Clone(author), .name = arena.Clone(name)};
     }
@@ -200,8 +201,6 @@ struct LibraryIdRef {
     String author;
     String name;
 };
-
-u64 Hash(LibraryIdRef const& id);
 
 struct FileAttribution {
     String title {}; // title of the work

@@ -18,7 +18,7 @@ struct StateMetadata {
 };
 
 struct StateMetadataRef {
-    Span<String> tags {};
+    Set<String> tags {};
     String author {};
     String description {};
 };

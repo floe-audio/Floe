@@ -55,11 +55,12 @@ static Optional<IrCursor> IterateIr(IrPickerContext const& context,
 
         if (lib.sorted_irs.size == 0) continue;
 
-        if (state.selected_library_hashes.size && !Contains(state.selected_library_hashes, lib.Id().Hash()))
+        if (state.common_state.selected_library_hashes.size &&
+            !Contains(state.common_state.selected_library_hashes, lib.Id().Hash()))
             continue;
 
-        if (state.selected_library_author_hashes.size &&
-            !Contains(state.selected_library_author_hashes, Hash(lib.author)))
+        if (state.common_state.selected_library_author_hashes.size &&
+            !Contains(state.common_state.selected_library_author_hashes, Hash(lib.author)))
             continue;
 
         for (; cursor.ir_index < lib.sorted_irs.size; (
@@ -76,15 +77,14 @@ static Optional<IrCursor> IterateIr(IrPickerContext const& context,
                 continue;
 
             if (state.selected_tags_hashes.size) {
-                bool found = false;
-                for (auto const tag : ir.tags) {
-                    auto const tag_hash = Hash(tag);
-                    if (Contains(state.selected_tags_hashes, tag_hash)) {
-                        found = true;
+                bool contains_all = true;
+                for (auto const selected_tag_hash : state.selected_tags_hashes) {
+                    if (!ir.tags.ContainsNoKeyCheck(selected_tag_hash)) {
+                        contains_all = false;
                         break;
                     }
                 }
-                if (!found) continue;
+                if (!contains_all) continue;
             }
 
             return cursor;
@@ -139,6 +139,29 @@ void LoadRandomIr(IrPickerContext const& context, IrPickerState& state) {
         cursor = *IterateIr(context, state, cursor, SearchDirection::Forward, false);
 
     LoadIr(context, state, cursor);
+}
+
+static void ForEachIr(IrPickerContext const& context,
+                      IrPickerState const& state,
+                      FunctionRef<void(sample_lib::ImpulseResponse const&)> callback) {
+    auto const first =
+        IterateIr(context, state, {.lib_index = 0, .ir_index = 0}, SearchDirection::Forward, true);
+    if (!first) return;
+
+    auto cursor = *first;
+    while (true) {
+        auto const& lib = *context.libraries[cursor.lib_index];
+        auto const& ir = *lib.sorted_irs[cursor.ir_index];
+
+        callback(ir);
+
+        if (auto next = IterateIr(context, state, cursor, SearchDirection::Forward, false)) {
+            cursor = *next;
+            if (cursor == *first) break;
+        } else {
+            break;
+        }
+    }
 }
 
 void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerState& state) {
@@ -232,33 +255,41 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
                      IrPickerState& state) {
     auto& ir_id = context.engine.processor.convo.ir_id;
 
-    DynamicSet<String> all_tags {box_system.arena};
+    HashTable<String, FilterItemInfo> tags {};
     for (auto const& l_ptr : context.libraries) {
-        if (state.selected_library_hashes.size &&
-            !Contains(state.selected_library_hashes, l_ptr->Id().Hash()))
-            continue;
-        if (state.selected_library_author_hashes.size &&
-            !Contains(state.selected_library_author_hashes, Hash(l_ptr->author)))
-            continue;
         auto const& lib = *l_ptr;
         for (auto const& ir : lib.sorted_irs)
-            for (auto const& tag : ir->tags)
-                all_tags.Insert(tag);
+            for (auto const& [tag, tag_hash] : ir->tags)
+                tags.InsertGrowIfNeeded(box_system.arena, tag, {.used_in_items_lists = false}, tag_hash);
     }
+
+    OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
+    for (auto const l : context.libraries) {
+        if (l->irs_by_name.size == 0) continue;
+        libraries.InsertGrowIfNeeded(box_system.arena, l->Id(), {.used_in_items_lists = false});
+    }
+    ForEachIr(context, state, [&](sample_lib::ImpulseResponse const& ir) {
+        libraries.Find(ir.library.Id())->used_in_items_lists = true;
+
+        for (auto const& [tag, tag_hash] : ir.tags)
+            tags.Find(tag, tag_hash)->used_in_items_lists = true;
+    });
 
     DoPickerPopup(
         box_system,
+        {
+            .sample_library_server = context.sample_library_server,
+            .state = state.common_state,
+        },
         popup_id,
         absolute_button_rect,
         PickerPopupOptions {
-            .sample_library_server = context.sample_library_server,
             .title = "Select Impulse Response",
             .height = box_system.imgui.PixelsToVw(box_system.imgui.frame_input.window_size.height * 0.5f),
             .rhs_width = 200,
             .filters_col_width = 200,
             .item_type_name = "impulse response",
             .items_section_heading = "IRs",
-            .filter_select_mode = state.filter_select_mode,
             .rhs_top_button = ({
                 Optional<PickerPopupOptions::Button> unload_button {};
                 if (ir_id) {
@@ -279,25 +310,15 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
             .on_load_next = [&]() { LoadAdjacentIr(context, state, SearchDirection::Forward); },
             .on_load_random = [&]() { LoadRandomIr(context, state); },
             .on_scroll_to_show_selected = [&]() { state.scroll_to_show_selected = true; },
-            .libraries = ({
-                DynamicArray<sample_lib::LibraryIdRef> libraries {box_system.arena};
-                for (auto const l : context.libraries) {
-                    if (l->irs_by_name.size == 0) continue;
-                    dyn::Append(libraries, l->Id());
-                }
-                libraries.ToOwnedSpan();
-            }),
+            .libraries = libraries,
             .library_filters =
                 LibraryFilters {
-                    .selected_library_hashes = state.selected_library_hashes,
-                    .selected_library_author_hashes = state.selected_library_author_hashes,
                     .library_images = context.library_images,
-                    .sample_library_server = context.sample_library_server,
                 },
             .tags_filters =
                 TagsFilters {
                     .selected_tags_hashes = state.selected_tags_hashes,
-                    .tags = {all_tags.table},
+                    .tags = tags,
                 },
             .on_clear_all_filters = [&]() {},
             .status_bar_height = 58,
@@ -309,7 +330,7 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
 
                     fmt::Append(buffer, "{}. Tags: ", context.hovering_ir->name);
                     if (context.hovering_ir->tags.size) {
-                        for (auto const& tag : context.hovering_ir->tags)
+                        for (auto const& [tag, _] : context.hovering_ir->tags)
                             fmt::Append(buffer, "{}, ", tag);
                         dyn::Pop(buffer, 2);
                     } else {

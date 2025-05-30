@@ -14,8 +14,6 @@ CustomValueToString(Writer writer, sample_lib::LibraryIdRef id, fmt::FormatOptio
 
 namespace sample_lib {
 
-u64 Hash(LibraryIdRef const& id) { return id.Hash(); }
-
 ErrorCodeOr<u64> Hash(Reader& reader, FileFormat format) {
     switch (format) {
         case FileFormat::Mdata: return MdataHash(reader);
@@ -71,8 +69,8 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
     {
         lib.sorted_instruments = arena.AllocateExactSizeUninitialised<Instrument*>(lib.insts_by_name.size);
         usize index = 0;
-        for (auto [key, value] : lib.insts_by_name) {
-            auto& inst = **value;
+        for (auto [key, value, _] : lib.insts_by_name) {
+            auto& inst = *value;
             lib.sorted_instruments[index++] = &inst;
         }
 
@@ -82,16 +80,16 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
     {
         lib.sorted_irs = arena.AllocateExactSizeUninitialised<ImpulseResponse*>(lib.irs_by_name.size);
         usize index = 0;
-        for (auto [key, value] : lib.irs_by_name) {
-            auto& ir = **value;
+        for (auto [key, value, _] : lib.irs_by_name) {
+            auto& ir = *value;
             lib.sorted_irs[index++] = &ir;
         }
 
         Sort(lib.sorted_irs, sort_function);
     }
 
-    for (auto [key, value] : lib.insts_by_name) {
-        auto& inst = **value;
+    for (auto [key, value, _] : lib.insts_by_name) {
+        auto& inst = *value;
 
         inst.loop_overview.all_regions_require_looping = true;
 
@@ -150,7 +148,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
         }
     }
 
-    for (auto [key, inst_ptr] : lib.insts_by_name) {
+    for (auto [key, inst_ptr, _] : lib.insts_by_name) {
         auto& inst = *inst_ptr;
         struct RoundRobinGroupInfo {
             u8 max_rr_pos;
@@ -160,7 +158,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
 
         Array<u8, ToInt(TriggerEvent::Count)> sequencing_group_counters {};
 
-        for (auto& region : inst->regions) {
+        for (auto& region : inst.regions) {
             if (!region.trigger.round_robin_index) continue;
 
             if (auto const e =
@@ -183,7 +181,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
                     return (String)fmt::Format(arena,
                                                "More than {} round robin groups in instrument {}",
                                                k_max_round_robin_sequence_groups,
-                                               inst->name);
+                                               inst.name);
                 }
 
                 auto& new_group = e.element->data;
@@ -197,25 +195,25 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
         }
 
         for (auto const i : ::Range(ToInt(TriggerEvent::Count))) {
-            inst->round_robin_sequence_groups[i] =
+            inst.round_robin_sequence_groups[i] =
                 arena.NewMultiple<RoundRobinGroup>(sequencing_group_counters[i]);
-            for (auto const& [group_key, group_info] : round_robin_group_infos[i]) {
-                auto& group = inst->round_robin_sequence_groups[i][group_info->sequencing_group];
+            for (auto const& [group_key, group_info, _] : round_robin_group_infos[i]) {
+                auto& group = inst.round_robin_sequence_groups[i][group_info.sequencing_group];
                 group = {
-                    .max_rr_pos = group_info->max_rr_pos,
+                    .max_rr_pos = group_info.max_rr_pos,
                 };
             }
         }
     }
 
-    for (auto [key, inst_ptr] : lib.insts_by_name) {
+    for (auto [key, inst_ptr, _] : lib.insts_by_name) {
         auto const& inst = *inst_ptr;
-        for (auto const& region : inst->regions) {
+        for (auto const& region : inst.regions) {
             if (!region.trigger.feather_overlapping_velocity_layers) continue;
             usize num_overlaps = 0;
             Region const* first_overlap {};
             Region const* second_overlap {};
-            for (auto const& other_region : inst->regions) {
+            for (auto const& other_region : inst.regions) {
                 if (&region == &other_region) continue;
                 if (!other_region.trigger.feather_overlapping_velocity_layers) continue;
                 if (region.trigger.trigger_event == other_region.trigger.trigger_event &&
@@ -257,14 +255,14 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
             }
         }
     }
-    for (auto [key, inst_ptr] : lib.insts_by_name) {
+    for (auto [key, inst_ptr, _] : lib.insts_by_name) {
         auto const& inst = *inst_ptr;
-        for (auto const& region : inst->regions) {
+        for (auto const& region : inst.regions) {
             if (!region.timbre_layering.layer_range) continue;
             usize num_overlaps = 0;
             Region const* first_overlap {};
             Region const* second_overlap {};
-            for (auto const& other_region : inst->regions) {
+            for (auto const& other_region : inst.regions) {
                 if (&region == &other_region) continue;
                 if (!other_region.timbre_layering.layer_range) continue;
                 if (region.trigger.trigger_event == other_region.trigger.trigger_event &&

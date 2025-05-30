@@ -1076,7 +1076,13 @@ struct TableFields<ImpulseResponse> {
                     .lua_type = LUA_TTABLE,
                     .required = false,
                     .is_array = true,
-                    .set = [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.tags = SetArrayOfStrings(ctx, info, true); },
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            auto const tags = SetArrayOfStrings(ctx, info, true);
+                            FIELD_OBJ.tags = Set<String>::Create(ctx.result_arena, tags.size);
+                            for (auto const& t : tags)
+                                FIELD_OBJ.tags.InsertWithoutGrowing(t);
+                        },
                 };
             case Field::Description:
                 return {
@@ -1159,7 +1165,13 @@ struct TableFields<Instrument> {
                     .lua_type = LUA_TTABLE,
                     .required = false,
                     .is_array = true,
-                    .set = [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.tags = SetArrayOfStrings(ctx, info, true); },
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            auto const tags = SetArrayOfStrings(ctx, info, true);
+                            FIELD_OBJ.tags = Set<String>::Create(ctx.result_arena, tags.size);
+                            for (auto const t : tags)
+                                FIELD_OBJ.tags.InsertWithoutGrowing(t);
+                        },
                 };
             case Field::WaveformFilepath:
                 return {
@@ -1721,7 +1733,7 @@ LibraryPtrOrError ReadLua(Reader& reader,
             });
         }
 
-        for (auto const [key, inst_ptr] : library->insts_by_name) {
+        for (auto const [key, inst_ptr, _] : library->insts_by_name) {
             auto const& inst = *inst_ptr;
             struct RegionRef {
                 Region* data;
@@ -1729,7 +1741,7 @@ LibraryPtrOrError ReadLua(Reader& reader,
             };
             HashTable<String, RegionRef*> auto_map_groups {};
 
-            for (auto& region : inst->regions) {
+            for (auto& region : inst.regions) {
                 if (!region.trigger.auto_map_key_range_group) continue;
 
                 auto new_ref = scratch_arena.New<RegionRef>(RegionRef {.data = &region});
@@ -1742,8 +1754,7 @@ LibraryPtrOrError ReadLua(Reader& reader,
                 }
             }
 
-            for (auto const [_, regions_ptr] : auto_map_groups) {
-                auto const regions = *regions_ptr;
+            for (auto const [_, regions, _] : auto_map_groups) {
 
                 SinglyLinkedListSort(
                     regions,
@@ -1767,26 +1778,26 @@ LibraryPtrOrError ReadLua(Reader& reader,
             };
         }
 
-        for (auto [key, inst_ptr] : library->insts_by_name) {
+        for (auto [key, inst_ptr, _] : library->insts_by_name) {
             auto const& inst = *inst_ptr;
-            if (inst->regions.size == 0) {
+            if (inst.regions.size == 0) {
                 return ErrorAndNotify(ctx, LuaErrorCode::Runtime, [&](DynamicArray<char>& message) {
-                    fmt::Append(message, "Instrument {} has no regions", inst->name);
+                    fmt::Append(message, "Instrument {} has no regions", inst.name);
                 });
             }
         }
 
         library->num_regions = 0;
-        for (auto [key, inst_ptr] : library->insts_by_name) {
+        for (auto [key, inst_ptr, _] : library->insts_by_name) {
             auto const& inst = *inst_ptr;
-            library->num_regions += inst->regions.size;
+            library->num_regions += inst.regions.size;
         }
 
         {
             auto audio_paths = Set<String>::Create(scratch_arena, library->num_regions);
-            for (auto [key, inst_ptr] : library->insts_by_name) {
+            for (auto [key, inst_ptr, _] : library->insts_by_name) {
                 auto const& inst = *inst_ptr;
-                for (auto& region : inst->regions)
+                for (auto& region : inst.regions)
                     audio_paths.InsertWithoutGrowing(region.path.str);
             }
             library->num_instrument_samples = (u32)audio_paths.size;
@@ -2094,15 +2105,15 @@ bool CheckAllReferencedFilesExist(Library const& lib, Writer error_writer) {
     if (lib.background_image_path) check_file(*lib.background_image_path);
     if (lib.icon_image_path) check_file(*lib.icon_image_path);
 
-    for (auto [key, inst_ptr] : lib.insts_by_name) {
+    for (auto [key, inst_ptr, _] : lib.insts_by_name) {
         auto inst = *inst_ptr;
-        for (auto& region : inst->regions)
+        for (auto& region : inst.regions)
             check_file(region.path);
     }
 
-    for (auto [key, ir_ptr] : lib.irs_by_name) {
+    for (auto [key, ir_ptr, _] : lib.irs_by_name) {
         auto ir = *ir_ptr;
-        check_file(ir->path);
+        check_file(ir.path);
     }
 
     return success;
@@ -2253,16 +2264,16 @@ TEST_CASE(TestAutoMapKeyRange) {
 
         auto library = r.Get<Library*>();
         REQUIRE(library->insts_by_name.size);
-        auto inst = *(*library->insts_by_name.begin()).value_ptr;
-        REQUIRE(inst->regions.size == 2);
+        auto const& inst = *(*library->insts_by_name.begin()).value;
+        REQUIRE(inst.regions.size == 2);
 
-        CHECK_EQ(inst->regions[0].root_key, 10);
-        CHECK_EQ(inst->regions[0].trigger.key_range.start, 0);
-        CHECK_EQ(inst->regions[0].trigger.key_range.end, 21);
+        CHECK_EQ(inst.regions[0].root_key, 10);
+        CHECK_EQ(inst.regions[0].trigger.key_range.start, 0);
+        CHECK_EQ(inst.regions[0].trigger.key_range.end, 21);
 
-        CHECK_EQ(inst->regions[1].root_key, 30);
-        CHECK_EQ(inst->regions[1].trigger.key_range.start, 21);
-        CHECK_EQ(inst->regions[1].trigger.key_range.end, 128);
+        CHECK_EQ(inst.regions[1].root_key, 30);
+        CHECK_EQ(inst.regions[1].trigger.key_range.start, 21);
+        CHECK_EQ(inst.regions[1].trigger.key_range.end, 128);
     }
 
     SUBCASE("1 file") {
@@ -2272,11 +2283,11 @@ TEST_CASE(TestAutoMapKeyRange) {
 
         auto library = r.Get<Library*>();
         REQUIRE(library->insts_by_name.size);
-        auto inst = *(*library->insts_by_name.begin()).value_ptr;
-        REQUIRE(inst->regions.size == 1);
+        auto const& inst = *(*library->insts_by_name.begin()).value;
+        REQUIRE(inst.regions.size == 1);
 
-        CHECK_EQ(inst->regions[0].trigger.key_range.start, 0);
-        CHECK_EQ(inst->regions[0].trigger.key_range.end, 128);
+        CHECK_EQ(inst.regions[0].trigger.key_range.start, 0);
+        CHECK_EQ(inst.regions[0].trigger.key_range.end, 128);
     }
 
     return k_success;
@@ -2347,8 +2358,8 @@ TEST_CASE(TestBasicFile) {
         auto inst2 = *inst2_ptr;
         CHECK_EQ(inst2->name, "Inst2"_s);
         REQUIRE(inst2->tags.size == 2);
-        CHECK_EQ(inst2->tags[0], "tag1"_s);
-        CHECK_EQ(inst2->tags[1], "tag2"_s);
+        CHECK(inst2->tags.Contains("tag1"_s));
+        CHECK(inst2->tags.Contains("tag2"_s));
     }
 
     {
@@ -2358,7 +2369,7 @@ TEST_CASE(TestBasicFile) {
         CHECK_EQ(inst1->name, "Inst1"_s);
         CHECK_EQ(inst1->folder, "Folders/Sub"_s);
         REQUIRE(inst1->tags.size == 1);
-        CHECK_EQ(inst1->tags[0], "tag1"_s);
+        CHECK(inst1->tags.Contains("tag1"_s));
 
         CHECK_EQ(inst1->audio_file_path_for_waveform, "foo/file.flac"_s);
 

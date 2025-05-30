@@ -215,7 +215,7 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
         };
     }
 
-    for (auto [key, values] : ArgsToKeyValueTable(arena, args)) {
+    for (auto const [key, values, _] : ArgsToKeyValueTable(arena, args)) {
         if (options.handle_help_option && key == "help") {
             TRY(PrintUsage(writer, program_name, options.description, arg_defs));
             return ErrorCode {CliError::HelpRequested};
@@ -234,7 +234,7 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
 
         auto const& arg = arg_defs[*arg_index];
 
-        if (arg.num_values != 0 && !values->size) {
+        if (arg.num_values != 0 && !values.size) {
             TRY(fmt::FormatToWriter(writer,
                                     "Option --{} requires {} value\n",
                                     key,
@@ -245,7 +245,7 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
             return error(CliError::InvalidArguments);
         }
 
-        result[*arg_index].values = *values;
+        result[*arg_index].values = values;
         result[*arg_index].was_provided = true;
     }
 
