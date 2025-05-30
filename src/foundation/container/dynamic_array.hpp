@@ -55,8 +55,12 @@ PUBLIC constexpr bool MakeUninitialisedGap(DynArray auto& array, usize pos, usiz
     if (!array.Reserve(desired_size)) return false;
     array.ResizeWithoutCtorDtor(desired_size);
 
-    for (usize i = initial_size - 1; i != (pos - 1); --i)
-        PLACEMENT_NEW(array.data + (i + count)) ValueType(Move(array.data[i]));
+    for (usize i = initial_size - 1; i != (pos - 1); --i) {
+        auto& old_item = array.data[i];
+        PLACEMENT_NEW(array.data + (i + count)) ValueType(Move(old_item));
+        old_item.~ValueType(); // Destroy moved-from object
+    }
+
     return true;
 }
 
