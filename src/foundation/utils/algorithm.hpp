@@ -277,6 +277,21 @@ PUBLIC constexpr usize BinarySearchForSlotToInsert(ContiguousContainer auto cons
     return (usize)left;
 }
 
+// You must ensure the data is in a region that can grow by at least num_to_insert elements.
+PUBLIC constexpr void MakeRoomForInsertion(auto& data, usize pos, usize num_to_insert) {
+    using ValueType = typename RemoveReference<decltype(data)>::ValueType;
+    ASSERT(pos <= data.size);
+
+    // Move elements from back to front to avoid overwrites
+    for (usize i = data.size; i > pos; --i) {
+        usize old_idx = i - 1;
+        usize new_idx = old_idx + num_to_insert;
+        PLACEMENT_NEW(data.data + new_idx) ValueType(Move(data.data[old_idx]));
+        data.data[old_idx].~ValueType(); // Destroy moved-from object
+    }
+    data.size += num_to_insert;
+}
+
 PUBLIC constexpr usize CountIf(auto& data, auto&& predicate) {
     usize count = 0;
     for (auto const& v : data)

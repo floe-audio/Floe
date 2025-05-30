@@ -1194,11 +1194,12 @@ TEST_CASE(TestFunctionQueue) {
     return k_success;
 }
 
+template <HashTableOrdering k_ordering>
 TEST_CASE(TestHashTable) {
     auto& a = tester.scratch_arena;
 
     SUBCASE("table") {
-        DynamicHashTable<String, usize> tab {a, 16u};
+        DynamicHashTable<String, usize, nullptr, k_ordering> tab {a, 16u};
 
         CHECK(tab.table.size == 0);
         CHECK(tab.table.Elements().size >= 16);
@@ -1252,7 +1253,7 @@ TEST_CASE(TestHashTable) {
         }
 
         // test Assign()
-        DynamicHashTable<String, usize> other {a, 16u};
+        DynamicHashTable<String, usize, nullptr, k_ordering> other {a, 16u};
         CHECK(other.table.size == 0);
         CHECK(other.Insert("foo", 42));
 
@@ -1261,7 +1262,7 @@ TEST_CASE(TestHashTable) {
     }
 
     SUBCASE("no initial size") {
-        DynamicHashTable<String, int> tab {a};
+        DynamicHashTable<String, int, nullptr, k_ordering> tab {a};
         CHECK(tab.Insert("foo", 100));
         for (auto item : tab)
             CHECK_EQ(*item.value_ptr, 100);
@@ -1284,24 +1285,24 @@ TEST_CASE(TestHashTable) {
         LeakDetectingAllocator a2;
 
         SUBCASE("construct") {
-            DynamicHashTable<String, int> tab1 {a2};
+            DynamicHashTable<String, int, nullptr, k_ordering> tab1 {a2};
             CHECK(tab1.Insert("foo", 100));
-            DynamicHashTable<String, int> const tab2 {Move(tab1)};
+            DynamicHashTable<String, int, nullptr, k_ordering> const tab2 {Move(tab1)};
             auto v = tab2.Find("foo");
             REQUIRE(v);
         }
         SUBCASE("assign same allocator") {
-            DynamicHashTable<String, int> tab1 {a2};
+            DynamicHashTable<String, int, nullptr, k_ordering> tab1 {a2};
             CHECK(tab1.Insert("foo", 100));
-            DynamicHashTable<String, int> tab2 {a2};
+            DynamicHashTable<String, int, nullptr, k_ordering> tab2 {a2};
             tab2 = Move(tab1);
             auto v = tab2.Find("foo");
             REQUIRE(v);
         }
         SUBCASE("assign different allocator") {
-            DynamicHashTable<String, int> tab1 {a2};
+            DynamicHashTable<String, int, nullptr, k_ordering> tab1 {a2};
             CHECK(tab1.Insert("foo", 100));
-            DynamicHashTable<String, int> tab2 {Malloc::Instance()};
+            DynamicHashTable<String, int, nullptr, k_ordering> tab2 {Malloc::Instance()};
             tab2 = Move(tab1);
             auto v = tab2.Find("foo");
             REQUIRE(v);
@@ -1309,11 +1310,11 @@ TEST_CASE(TestHashTable) {
     }
 
     SUBCASE("Intersect") {
-        DynamicHashTable<String, int> tab1 {a};
+        DynamicHashTable<String, int, nullptr, k_ordering> tab1 {a};
         CHECK(tab1.Insert("foo", 100));
         CHECK(tab1.Insert("bar", 200));
 
-        DynamicHashTable<String, int> tab2 {a};
+        DynamicHashTable<String, int, nullptr, k_ordering> tab2 {a};
         CHECK(tab2.Insert("bar", 200));
         CHECK(tab2.Insert("baz", 400));
 
@@ -1321,6 +1322,62 @@ TEST_CASE(TestHashTable) {
         CHECK(tab1.table.size == 1);
         auto v = tab1.Find("bar");
         REQUIRE(v);
+    }
+
+    if constexpr (k_ordering == HashTableOrdering::Ordered) {
+        SUBCASE("Ordered") {
+            DynamicHashTable<String, int, nullptr, k_ordering> tab1 {a};
+            CHECK(tab1.Insert("b", 0));
+            CHECK(tab1.Insert("c", 0));
+            CHECK(tab1.Insert("a", 0));
+            CHECK(tab1.Insert("d", 0));
+
+            CHECK(tab1.table.size == 4);
+
+            {
+                auto it = tab1.begin();
+                CHECK_EQ((*it).key, "a"_s);
+                ++it;
+                CHECK_EQ((*it).key, "b"_s);
+                ++it;
+                CHECK_EQ((*it).key, "c"_s);
+                ++it;
+                CHECK_EQ((*it).key, "d"_s);
+                ++it;
+                CHECK(it == tab1.end());
+            }
+
+            // Remove "b" and re-check
+            {
+                CHECK(tab1.Delete("b"));
+                CHECK(tab1.table.size == 3);
+                auto it = tab1.begin();
+                CHECK_EQ((*it).key, "a"_s);
+                ++it;
+                CHECK_EQ((*it).key, "c"_s);
+                ++it;
+                CHECK_EQ((*it).key, "d"_s);
+                ++it;
+                CHECK(it == tab1.end());
+            }
+
+            // Delete all, then add a couple items back
+            {
+                tab1.DeleteAll();
+                CHECK(tab1.table.size == 0);
+
+                CHECK(tab1.Insert("x", 100));
+                CHECK(tab1.Insert("y", 200));
+                CHECK(tab1.table.size == 2);
+
+                auto it = tab1.begin();
+                CHECK_EQ((*it).key, "x"_s);
+                ++it;
+                CHECK_EQ((*it).key, "y"_s);
+                ++it;
+                CHECK(it == tab1.end());
+            }
+        }
     }
 
     return k_success;
@@ -3121,7 +3178,8 @@ TEST_REGISTRATION(RegisterFoundationTests) {
     REGISTER_TEST(TestFormatStringReplace);
     REGISTER_TEST(TestFunction);
     REGISTER_TEST(TestFunctionQueue);
-    REGISTER_TEST(TestHashTable);
+    REGISTER_TEST(TestHashTable<HashTableOrdering::Unordered>);
+    REGISTER_TEST(TestHashTable<HashTableOrdering::Ordered>);
     REGISTER_TEST(TestIntToString);
     REGISTER_TEST(TestLinkedList);
     REGISTER_TEST(TestMatchWildcard);
