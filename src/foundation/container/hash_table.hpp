@@ -360,28 +360,19 @@ struct HashTable {
     }
 
     struct FindOrInsertResult {
-        Element* element;
+        Element& element;
         bool inserted;
     };
 
     FindOrInsertResult FindOrInsertWithoutGrowing(KeyType key, ValueType value, u64 hash = 0) {
-        if (!elems) {
-            PanicIfReached();
-            return {}; // not initialized
-        }
+        if (!elems) PanicIfReached(); // not initialized
         if (!hash) hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
-        if (element->active) return {.element = element, .inserted = false};
+        if (element->active) return {.element = *element, .inserted = false};
 
-        if (size + num_dead > mask - mask / 4) {
-            PanicIfReached();
-            return {}; // too full
-        }
+        if (size + num_dead > mask - mask / 4) PanicIfReached(); // too full
         if constexpr (k_ordering == HashTableOrdering::Ordered) {
-            if (order_indices.items.size == order_indices.capacity) {
-                PanicIfReached();
-                return {}; // too full
-            }
+            if (order_indices.items.size == order_indices.capacity) PanicIfReached(); // too full
         }
 
         if (element->hash == k_tombstone) --num_dead;
@@ -393,7 +384,7 @@ struct HashTable {
 
         AddToOrderedIndicesIfNeeded((usize)(element - elems), nullptr);
 
-        return {.element = element, .inserted = true};
+        return {.element = *element, .inserted = true};
     }
 
     FindOrInsertResult
@@ -401,7 +392,7 @@ struct HashTable {
         if (!elems) IncreaseCapacity(allocator, k_min_size);
         if (!hash) hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
-        if (element->active) return {.element = element, .inserted = false};
+        if (element->active) return {.element = *element, .inserted = false};
 
         auto const old_hash = element->hash; // save old hash in case it's tombstone marker
         element->active = true;
@@ -418,7 +409,7 @@ struct HashTable {
             --num_dead;
         }
 
-        return {.element = element, .inserted = true};
+        return {.element = *element, .inserted = true};
     }
 
     Iterator begin() const {

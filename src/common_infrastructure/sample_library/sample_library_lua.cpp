@@ -1750,12 +1750,11 @@ LibraryPtrOrError ReadLua(Reader& reader,
                                                                  *region.trigger.auto_map_key_range_group,
                                                                  new_ref);
                     !e.inserted) {
-                    SinglyLinkedListPrepend(e.element->data, new_ref);
+                    SinglyLinkedListPrepend(e.element.data, new_ref);
                 }
             }
 
             for (auto const [_, regions, _] : auto_map_groups) {
-
                 SinglyLinkedListSort(
                     regions,
                     SinglyLinkedListLast(regions),

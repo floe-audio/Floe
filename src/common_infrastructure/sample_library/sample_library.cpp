@@ -169,7 +169,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
                 !e.inserted) {
                 // This group already exists, so we need to update the max_rr_pos.
 
-                auto& existing = e.element->data;
+                auto& existing = e.element.data;
                 existing.max_rr_pos = Max(existing.max_rr_pos, *region.trigger.round_robin_index);
 
                 region.trigger.round_robin_sequencing_group = existing.sequencing_group;
@@ -184,7 +184,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
                                                inst.name);
                 }
 
-                auto& new_group = e.element->data;
+                auto& new_group = e.element.data;
                 new_group = {
                     .max_rr_pos = *region.trigger.round_robin_index,
                     .sequencing_group = counter++,
