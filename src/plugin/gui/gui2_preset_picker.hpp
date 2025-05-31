@@ -44,8 +44,9 @@ struct PresetPickerState {
     DynamicArrayBounded<char, 100> search;
     bool scroll_to_show_selected = false;
 
-    // Only valid if we have both types of presets
-    Bitset<ToInt(PresetFormat::Count)> selected_preset_types {};
+    // This is contains PresetFormat as u64. We use a dynamic array of u64 so we can share the same code as
+    // the other types of selected_* filters.
+    DynamicArray<u64> selected_preset_types {Malloc::Instance()};
 };
 
 void LoadAdjacentPreset(PresetPickerContext const& context,

@@ -15,9 +15,15 @@ constexpr auto k_picker_spacing = 8.0f;
 
 enum class SearchDirection { Forward, Backward };
 
+enum class FilterMode : u8 {
+    ProgressiveNarrowing, // AKA "match all", AND
+    AdditiveSelection, // AKA "match any", OR
+};
+
 struct CommonPickerState {
     DynamicArray<u64> selected_library_hashes {Malloc::Instance()};
     DynamicArray<u64> selected_library_author_hashes {Malloc::Instance()};
+    FilterMode filter_mode = FilterMode::ProgressiveNarrowing;
 };
 
 // Ephemeral
@@ -35,7 +41,7 @@ struct PickerItemOptions {
 };
 
 struct FilterItemInfo {
-    bool used_in_items_lists;
+    u32 num_used_in_items_lists;
 };
 
 struct TagsFilters {
@@ -45,6 +51,8 @@ struct TagsFilters {
 
 struct LibraryFilters {
     LibraryImagesArray& library_images;
+    OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
+    OrderedHashTable<String, FilterItemInfo> library_authors;
 };
 
 // IMPORTANT: we use FunctionRefs here, you need to make sure the lifetime of the functions outlives the
@@ -82,7 +90,6 @@ struct PickerPopupOptions {
     TrivialFunctionRef<void()> on_load_random {};
     TrivialFunctionRef<void()> on_scroll_to_show_selected {};
 
-    OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
     Optional<LibraryFilters> library_filters {};
     Optional<TagsFilters> tags_filters {};
     TrivialFunctionRef<void(GuiBoxSystem&, Box const& parent, u8& num_sections)> do_extra_filters {};
@@ -149,17 +156,23 @@ PUBLIC Box DoPickerItemsRoot(GuiBoxSystem& box_system) {
                  });
 }
 
-PUBLIC Box DoFilterButton(GuiBoxSystem& box_system,
-                          Box const& parent,
-                          bool is_selected,
-                          Optional<graphics::TextureHandle> icon,
-                          String text,
-                          bool greyed_out = false) {
+struct FilterButtonOptions {
+    Box parent;
+    bool is_selected;
+    Optional<graphics::TextureHandle> icon;
+    String text;
+    u32 num_used;
+    DynamicArray<u64>& hashes;
+    u64 clicked_hash;
+    FilterMode filter_mode;
+};
+
+PUBLIC Box DoFilterButton(GuiBoxSystem& box_system, FilterButtonOptions const& options) {
     auto const button =
         DoBox(box_system,
               {
-                  .parent = parent,
-                  .background_fill = is_selected ? style::Colour::Highlight : style::Colour::None,
+                  .parent = options.parent,
+                  .background_fill = options.is_selected ? style::Colour::Highlight : style::Colour::None,
                   .background_fill_active = style::Colour::Highlight,
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
@@ -172,11 +185,11 @@ PUBLIC Box DoFilterButton(GuiBoxSystem& box_system,
                   },
               });
 
-    if (icon) {
+    if (options.icon) {
         DoBox(box_system,
               {
                   .parent = button,
-                  .background_tex = icon,
+                  .background_tex = options.icon,
                   .layout {
                       .size = style::k_library_icon_standard_size,
                       .margins = {.r = 3},
@@ -187,18 +200,43 @@ PUBLIC Box DoFilterButton(GuiBoxSystem& box_system,
     DoBox(box_system,
           {
               .parent = button,
-              .text = text,
+              .text = fmt::FormatInline<70>("{} ({})", options.text, options.num_used),
               .font = FontType::Body,
-              .text_fill = greyed_out ? style::Colour::Surface1 : style::Colour::Text,
+              .text_fill = options.num_used == 0 ? style::Colour::Surface1 : style::Colour::Text,
               .text_fill_hot = style::Colour::Text,
               .text_fill_active = style::Colour::Text,
               .size_from_text = true,
               .parent_dictates_hot_and_active = true,
               .layout =
                   {
-                      .margins = {.l = icon ? 0 : k_picker_spacing / 2},
+                      .margins = {.l = options.icon ? 0 : k_picker_spacing / 2},
                   },
           });
+
+    if (button.button_fired) {
+        dyn::Append(box_system.state->deferred_actions,
+                    [&hashes = options.hashes,
+                     clicked_hash = options.clicked_hash,
+                     num_used = options.num_used,
+                     is_selected = options.is_selected,
+                     filter_mode = options.filter_mode]() {
+                        switch (filter_mode) {
+                            case FilterMode::ProgressiveNarrowing: {
+                                if (is_selected) {
+                                    dyn::RemoveValue(hashes, clicked_hash);
+                                } else {
+                                    if (num_used == 0) dyn::Clear(hashes);
+                                    dyn::Append(hashes, clicked_hash);
+                                }
+                                break;
+                            }
+                            case FilterMode::AdditiveSelection: {
+                                // TODO
+                                break;
+                            }
+                        }
+                    });
+    }
 
     return button;
 }
@@ -290,23 +328,12 @@ static Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSe
                  });
 }
 
-PUBLIC void
-FilterClicked(DynamicArray<u64>& hashes, u64 clicked_hash, bool is_selected, bool used_in_items_list) {
-    if (is_selected) {
-        dyn::RemoveValue(hashes, clicked_hash);
-    } else {
-        if (!used_in_items_list) dyn::Clear(hashes);
-        dyn::Append(hashes, clicked_hash);
-    }
-}
-
 PUBLIC void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                                    PickerPopupContext& context,
                                    Box const& parent,
-                                   OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries,
                                    LibraryFilters const& library_filters,
                                    u8& sections) {
-    if (libraries.size) {
+    if (library_filters.libraries.size) {
         if (sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
         ++sections;
 
@@ -317,47 +344,35 @@ PUBLIC void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                                                                .multiline_contents = true,
                                                            });
 
-        for (auto const& [lib_id, lib_info, lib_hash] : libraries) {
-            bool greyed_out = !lib_info.used_in_items_lists;
+        for (auto const& [lib_id, lib_info, lib_hash] : library_filters.libraries) {
             auto const is_selected = Contains(context.state.selected_library_hashes, lib_hash);
 
             auto const button = DoFilterButton(
                 box_system,
-                section,
-                is_selected,
-                LibraryImagesFromLibraryId(library_filters.library_images,
-                                           box_system.imgui,
-                                           lib_id,
-                                           context.sample_library_server,
-                                           box_system.arena,
-                                           true)
-                    .AndThen([&](LibraryImages const& imgs) {
-                        return box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(imgs.icon);
-                    }),
-                lib_id.name,
-                greyed_out);
+                {
+                    .parent = section,
+                    .is_selected = is_selected,
+                    .icon = LibraryImagesFromLibraryId(library_filters.library_images,
+                                                       box_system.imgui,
+                                                       lib_id,
+                                                       context.sample_library_server,
+                                                       box_system.arena,
+                                                       true)
+                                .AndThen([&](LibraryImages const& imgs) {
+                                    return box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
+                                        imgs.icon);
+                                }),
+                    .text = lib_id.name,
+                    .num_used = lib_info.num_used_in_items_lists,
+                    .hashes = context.state.selected_library_hashes,
+                    .clicked_hash = lib_hash,
+                    .filter_mode = context.state.filter_mode,
+                });
             if (button.is_hot) context.hovering_lib = &lib_id;
-            if (button.button_fired) {
-                dyn::Append(box_system.state->deferred_actions,
-                            [&hashes = context.state.selected_library_hashes,
-                             lib_hash,
-                             is_selected,
-                             used_in_items_lists = lib_info.used_in_items_lists]() {
-                                FilterClicked(hashes, lib_hash, is_selected, used_in_items_lists);
-                            });
-            }
         }
     }
 
-    {
-        OrderedHashTable<String, FilterItemInfo> library_authors {};
-        for (auto const& [lib_id, lib_info, _] : libraries) {
-            auto found_item = library_authors.FindOrInsertGrowIfNeeded(box_system.arena,
-                                                                       lib_id.author,
-                                                                       {lib_info.used_in_items_lists});
-            found_item.element->data.used_in_items_lists |= lib_info.used_in_items_lists;
-        }
-
+    if (library_filters.library_authors.size) {
         if (sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
         ++sections;
 
@@ -367,18 +382,18 @@ PUBLIC void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                                                                .heading = "LIBRARY AUTHORS"_s,
                                                                .multiline_contents = true,
                                                            });
-        for (auto const [author, author_info, author_hash] : library_authors) {
+        for (auto const [author, author_info, author_hash] : library_filters.library_authors) {
             auto const is_selected = Contains(context.state.selected_library_author_hashes, author_hash);
-            if (DoFilterButton(box_system, section, is_selected, {}, author, !author_info.used_in_items_lists)
-                    .button_fired) {
-                dyn::Append(box_system.state->deferred_actions,
-                            [&hashes = context.state.selected_library_author_hashes,
-                             author_hash,
-                             is_selected,
-                             used_in_items_list = author_info.used_in_items_lists]() {
-                                FilterClicked(hashes, author_hash, is_selected, used_in_items_list);
-                            });
-            }
+            DoFilterButton(box_system,
+                           {
+                               .parent = section,
+                               .is_selected = is_selected,
+                               .text = author,
+                               .num_used = author_info.num_used_in_items_lists,
+                               .hashes = context.state.selected_library_author_hashes,
+                               .clicked_hash = author_hash,
+                               .filter_mode = context.state.filter_mode,
+                           });
         }
     }
 }
@@ -417,7 +432,7 @@ PUBLIC void DoPickerTagsFilters(GuiBoxSystem& box_system,
             auto const tag_info = GetTagInfo(tag);
             if (auto t = tags_filters.tags.Find(tag_info.name)) {
                 Category::Tag const item = {.tag = tag,
-                                            .info = {.used_in_items_lists = t->used_in_items_lists}};
+                                            .info = {.num_used_in_items_lists = t->num_used_in_items_lists}};
                 if (auto const i =
                         FindIf(standard_tags, [&](Category const& c) { return c.category == category; })) {
                     auto& cat = standard_tags[*i];
@@ -458,21 +473,15 @@ PUBLIC void DoPickerTagsFilters(GuiBoxSystem& box_system,
             auto const tag_info = GetTagInfo(tag.tag);
             auto const tag_hash = Hash(tag_info.name);
             auto const is_selected = Contains(tags_filters.selected_tags_hashes, tag_hash);
-            if (DoFilterButton(box_system,
-                               section,
-                               is_selected,
-                               {},
-                               tag_info.name,
-                               !tag.info.used_in_items_lists)
-                    .button_fired) {
-                dyn::Append(box_system.state->deferred_actions,
-                            [&tags_filters = tags_filters.selected_tags_hashes,
-                             tag_hash,
-                             is_selected,
-                             used_in_items_list = tag.info.used_in_items_lists]() {
-                                FilterClicked(tags_filters, tag_hash, is_selected, used_in_items_list);
-                            });
-            }
+            DoFilterButton(box_system,
+                           {
+                               .parent = section,
+                               .is_selected = is_selected,
+                               .text = tag_info.name,
+                               .num_used = tag.info.num_used_in_items_lists,
+                               .hashes = tags_filters.selected_tags_hashes,
+                               .clicked_hash = tag_hash,
+                           });
         }
     }
 }
@@ -716,7 +725,6 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                                  DoPickerLibraryFilters(box_system,
                                                         context,
                                                         root,
-                                                        options.libraries,
                                                         *options.library_filters,
                                                         num_lhs_sections);
                              if (options.do_extra_filters)

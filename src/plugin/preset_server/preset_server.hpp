@@ -10,7 +10,8 @@ struct PresetFolder {
     struct Preset {
         String name {};
         StateMetadataRef metadata {};
-        DynamicArrayBounded<sample_lib::LibraryIdRef, k_num_layers + 1> used_libraries {};
+        Set<sample_lib::LibraryIdRef> used_libraries {};
+        Set<String> used_library_authors {};
         u64 file_hash {};
         String file_extension {}; // Only if file_format is Mirage. Mirage had variable extensions.
         PresetFormat file_format {};
@@ -24,6 +25,9 @@ struct PresetFolder {
     String scan_folder {};
     String folder {}; // subpath of scan_folder, if any
     Span<Preset> presets {};
+    Set<sample_lib::LibraryIdRef> used_libraries {};
+    Set<String> used_tags {};
+    Set<String> used_library_authors {};
 
     // private
     usize preset_array_capacity {};

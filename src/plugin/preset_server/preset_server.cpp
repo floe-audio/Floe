@@ -121,6 +121,21 @@ static void DeleteUnusedFolders(PresetServer& server) {
     });
 }
 
+static sample_lib::LibraryIdRef FindOrCloneLibraryIdRef(PresetFolder& folder,
+                                                        sample_lib::LibraryIdRef const& lib_id) {
+    // If we are the first to use this library, we need to clone it into the folder's arena.
+    auto found_result = folder.used_libraries.FindOrInsertGrowIfNeeded(folder.arena, lib_id);
+    if (found_result.inserted) found_result.element.key = lib_id.Clone(folder.arena);
+    return found_result.element.key;
+}
+
+static String FindOrCloneTag(PresetFolder& folder, String tag) {
+    // If we are the first to use this tag, we need to clone it into the folder's arena.
+    auto found_result = folder.used_tags.FindOrInsertGrowIfNeeded(folder.arena, tag);
+    if (found_result.inserted) found_result.element.key = folder.arena.Clone(tag);
+    return found_result.element.key;
+}
+
 static void AddPresetToFolder(PresetFolder& folder,
                               dir_iterator::Entry const& entry,
                               StateSnapshot const& state,
@@ -130,41 +145,43 @@ static void AddPresetToFolder(PresetFolder& folder,
                                                                      folder.preset_array_capacity,
                                                                      folder.arena);
 
+    auto used_libraries = Set<sample_lib::LibraryIdRef>::Create(folder.arena, k_num_layers + 1);
+    auto used_library_authors = Set<String>::Create(folder.arena, k_num_layers + 1);
+
+    for (auto const& inst_id : state.inst_ids) {
+        if (auto const& sampled_inst = inst_id.TryGet<sample_lib::InstrumentId>()) {
+            auto const lib_id =
+                FindOrCloneLibraryIdRef(folder, (sample_lib::LibraryIdRef)sampled_inst->library);
+            used_libraries.InsertWithoutGrowing(lib_id);
+
+            auto found_author =
+                folder.used_library_authors.FindOrInsertGrowIfNeeded(folder.arena, lib_id.author);
+            used_library_authors.InsertWithoutGrowing(found_author.element.key, found_author.element.hash);
+        }
+    }
+
+    if (state.ir_id) {
+        auto const lib_id = FindOrCloneLibraryIdRef(folder, (sample_lib::LibraryIdRef)state.ir_id->library);
+        used_libraries.InsertWithoutGrowing(lib_id);
+        auto found_author = folder.used_library_authors.FindOrInsertGrowIfNeeded(folder.arena, lib_id.author);
+        used_library_authors.InsertWithoutGrowing(found_author.element.key, found_author.element.hash);
+    }
+
     dyn::Append(presets,
                 PresetFolder::Preset {
                     .name = folder.arena.Clone(path::FilenameWithoutExtension(entry.subpath)),
                     .metadata {
                         .tags = ({
                             auto tags = Set<String>::Create(folder.arena, state.metadata.tags.size);
-                            for (auto const tag : state.metadata.tags) {
-                                bool const inserted =
-                                    tags.InsertWithoutGrowing(folder.arena.Clone(String(tag)));
-                                ASSERT(inserted);
-                            }
+                            for (auto const tag : state.metadata.tags)
+                                tags.InsertWithoutGrowing(FindOrCloneTag(folder, tag));
                             tags;
                         }),
                         .author = folder.arena.Clone(state.metadata.author),
                         .description = folder.arena.Clone(state.metadata.description),
                     },
-                    .used_libraries = ({
-                        decltype(PresetFolder::Preset::used_libraries) used_libraries {};
-
-                        for (auto const& inst_id : state.inst_ids) {
-                            if (auto const& sampled_inst = inst_id.TryGet<sample_lib::InstrumentId>()) {
-                                auto const lib_id = (sample_lib::LibraryIdRef)sampled_inst->library;
-                                if (!Contains(used_libraries, lib_id))
-                                    dyn::Append(used_libraries, lib_id.Clone(folder.arena));
-                            }
-                        }
-
-                        if (state.ir_id) {
-                            auto const lib_id = (sample_lib::LibraryIdRef)state.ir_id->library;
-                            if (!Contains(used_libraries, lib_id))
-                                dyn::Append(used_libraries, lib_id.Clone(folder.arena));
-                        }
-
-                        used_libraries;
-                    }),
+                    .used_libraries = used_libraries,
+                    .used_library_authors = used_library_authors,
                     .file_hash = file_hash,
                     .file_extension = file_format == PresetFormat::Mirage
                                           ? (String)folder.arena.Clone(path::Extension(entry.subpath))
@@ -187,8 +204,8 @@ struct FoldersAggregateInfo {
         for (auto const [tag, tag_hash] : preset.metadata.tags)
             used_tags.Insert(tag, tag_hash);
 
-        for (auto const& library_id : preset.used_libraries)
-            used_libraries.Insert(library_id);
+        for (auto const [lib_id, lib_id_hash] : preset.used_libraries)
+            used_libraries.Insert(lib_id, lib_id_hash);
 
         if (preset.metadata.author.size) authors.Insert(preset.metadata.author);
 

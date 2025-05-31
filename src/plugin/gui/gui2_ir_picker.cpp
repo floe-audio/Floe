@@ -55,6 +55,8 @@ static Optional<IrCursor> IterateIr(IrPickerContext const& context,
 
         if (lib.sorted_irs.size == 0) continue;
 
+        // TODO: handle state.common_state.filter_mode
+
         if (state.common_state.selected_library_hashes.size &&
             !Contains(state.common_state.selected_library_hashes, lib.Id().Hash()))
             continue;
@@ -260,19 +262,22 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
         auto const& lib = *l_ptr;
         for (auto const& ir : lib.sorted_irs)
             for (auto const& [tag, tag_hash] : ir->tags)
-                tags.InsertGrowIfNeeded(box_system.arena, tag, {.used_in_items_lists = false}, tag_hash);
+                tags.InsertGrowIfNeeded(box_system.arena, tag, {.num_used_in_items_lists = 0}, tag_hash);
     }
 
     OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
+    OrderedHashTable<String, FilterItemInfo> library_authors;
     for (auto const l : context.libraries) {
         if (l->irs_by_name.size == 0) continue;
-        libraries.InsertGrowIfNeeded(box_system.arena, l->Id(), {.used_in_items_lists = false});
+        libraries.InsertGrowIfNeeded(box_system.arena, l->Id(), {.num_used_in_items_lists = 0});
+        library_authors.InsertGrowIfNeeded(box_system.arena, l->author, {.num_used_in_items_lists = 0});
     }
     ForEachIr(context, state, [&](sample_lib::ImpulseResponse const& ir) {
-        libraries.Find(ir.library.Id())->used_in_items_lists = true;
+        ++libraries.Find(ir.library.Id())->num_used_in_items_lists;
+        ++library_authors.Find(ir.library.author)->num_used_in_items_lists;
 
         for (auto const& [tag, tag_hash] : ir.tags)
-            tags.Find(tag, tag_hash)->used_in_items_lists = true;
+            ++tags.Find(tag, tag_hash)->num_used_in_items_lists;
     });
 
     DoPickerPopup(
@@ -310,10 +315,11 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
             .on_load_next = [&]() { LoadAdjacentIr(context, state, SearchDirection::Forward); },
             .on_load_random = [&]() { LoadRandomIr(context, state); },
             .on_scroll_to_show_selected = [&]() { state.scroll_to_show_selected = true; },
-            .libraries = libraries,
             .library_filters =
                 LibraryFilters {
                     .library_images = context.library_images,
+                    .libraries = libraries,
+                    .library_authors = library_authors,
                 },
             .tags_filters =
                 TagsFilters {

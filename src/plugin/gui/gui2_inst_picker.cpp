@@ -64,6 +64,8 @@ static Optional<InstrumentCursor> IterateInstrument(InstPickerContext const& con
         if (lib.sorted_instruments.size == 0) continue;
         if (picker_gui_is_open && lib.file_format_specifics.tag != state.FileFormatForCurrentTab()) continue;
 
+        // TODO: handle state.common_state.filter_mode
+
         if (state.tab == InstPickerState::Tab::FloeLibaries) {
             if (state.common_state_floe_libraries.selected_library_hashes.size &&
                 !Contains(state.common_state_floe_libraries.selected_library_hashes, lib.Id().Hash())) {
@@ -400,23 +402,26 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
         auto const& lib = *l_ptr;
         for (auto const& inst : lib.sorted_instruments)
             for (auto const& [tag, tag_hash] : inst->tags)
-                tags.InsertGrowIfNeeded(box_system.arena, tag, {.used_in_items_lists = false}, tag_hash);
+                tags.InsertGrowIfNeeded(box_system.arena, tag, {.num_used_in_items_lists = 0}, tag_hash);
     }
 
     OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
+    OrderedHashTable<String, FilterItemInfo> library_authors;
     if (state.tab != InstPickerState::Tab::Waveforms) {
         for (auto const l : context.libraries) {
             if (l->sorted_instruments.size == 0) continue;
             if (l->file_format_specifics.tag != state.FileFormatForCurrentTab()) continue;
-            libraries.InsertGrowIfNeeded(box_system.arena, l->Id(), {.used_in_items_lists = false});
+            libraries.InsertGrowIfNeeded(box_system.arena, l->Id(), {.num_used_in_items_lists = 0});
+            library_authors.InsertGrowIfNeeded(box_system.arena, l->author, {.num_used_in_items_lists = 0});
         }
     }
 
     ForEachInst(context, state, [&](sample_lib::Instrument const& inst) {
-        libraries.Find(inst.library.Id())->used_in_items_lists = true;
+        ++libraries.Find(inst.library.Id())->num_used_in_items_lists;
+        ++library_authors.Find(inst.library.author)->num_used_in_items_lists;
 
         for (auto const& [tag, tag_hash] : inst.tags)
-            tags.Find(tag, tag_hash)->used_in_items_lists = true;
+            ++tags.Find(tag, tag_hash)->num_used_in_items_lists;
     });
 
     // IMPORTANT: we create the options struct inside the call so that lambdas and values from
@@ -475,12 +480,13 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
             .on_load_next = [&]() { LoadAdjacentInstrument(context, state, SearchDirection::Forward, true); },
             .on_load_random = [&]() { LoadRandomInstrument(context, state, true); },
             .on_scroll_to_show_selected = [&]() { state.scroll_to_show_selected = true; },
-            .libraries = libraries,
             .library_filters = ({
                 Optional<LibraryFilters> f {};
                 if (state.tab != InstPickerState::Tab::Waveforms) {
                     f = LibraryFilters {
                         .library_images = context.library_images,
+                        .libraries = libraries,
+                        .library_authors = library_authors,
                     };
                 }
                 f;
