@@ -399,3 +399,114 @@ PUBLIC Optional<s64> IntField(GuiBoxSystem& builder,
     if (value != initial_value) return value;
     return k_nullopt;
 }
+
+struct MenuButtonOptions {
+    String text;
+    String tooltip;
+    f32 width = layout::k_hug_contents;
+};
+
+PUBLIC Box MenuButton(GuiBoxSystem& box_system, Box parent, MenuButtonOptions const& options) {
+    auto const button =
+        DoBox(box_system,
+              {
+                  .parent = parent,
+                  .background_fill = style::Colour::Background2,
+                  .background_fill_auto_hot_active_overlay = true,
+                  .round_background_corners = 0b1111,
+                  .activate_on_click_button = MouseButton::Left,
+                  .activation_click_event = ActivationClickEvent::Up,
+                  .layout {
+                      .size = {options.width, layout::k_hug_contents},
+                      .contents_padding = {.lr = style::k_button_padding_x, .tb = style::k_button_padding_y},
+                      .contents_gap = style::k_menu_item_padding_x,
+                      .contents_align = layout::Alignment::Justify,
+                  },
+                  .tooltip = options.tooltip,
+              });
+
+    DoBox(box_system,
+          {
+              .parent = button,
+              .text = options.text,
+              .font = FontType::Body,
+              .size_from_text = true,
+          });
+
+    DoBox(box_system,
+          {
+              .parent = button,
+              .text = ICON_FA_CARET_DOWN,
+              .font = FontType::Icons,
+              .size_from_text = true,
+          });
+
+    return button;
+}
+
+struct MenuItemOptions {
+    String text;
+    String tooltip;
+    Optional<String> subtext;
+    bool is_selected;
+};
+
+PUBLIC bool MenuItem(GuiBoxSystem& box_system, Box parent, MenuItemOptions const& options) {
+    auto const item = DoBox(box_system,
+                            {
+                                .parent = parent,
+                                .background_fill_auto_hot_active_overlay = true,
+                                .activate_on_click_button = MouseButton::Left,
+                                .activation_click_event = ActivationClickEvent::Up,
+                                .layout {
+                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                    .contents_direction = layout::Direction::Row,
+                                },
+                            });
+
+    if (item.button_fired) box_system.imgui.CloseTopPopupOnly();
+
+    DoBox(box_system,
+          {
+              .parent = item,
+              .text = options.is_selected ? String(ICON_FA_CHECK) : "",
+              .font = FontType::Icons,
+              .text_fill = style::Colour::Subtext0,
+              .layout {
+                  .size = style::k_prefs_icon_button_size,
+                  .margins {.l = style::k_menu_item_padding_x},
+              },
+              .tooltip = options.tooltip,
+          });
+
+    auto const text_container = DoBox(
+        box_system,
+        {
+            .parent = item,
+            .layout {
+                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                .contents_padding = {.lr = style::k_menu_item_padding_x, .tb = style::k_menu_item_padding_y},
+                .contents_direction = layout::Direction::Column,
+                .contents_align = layout::Alignment::Start,
+                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+            },
+        });
+    DoBox(box_system,
+          {
+              .parent = text_container,
+              .text = options.text,
+              .font = FontType::Body,
+              .size_from_text = true,
+          });
+    if (options.subtext && options.subtext->size) {
+        DoBox(box_system,
+              {
+                  .parent = text_container,
+                  .text = *options.subtext,
+                  .text_fill = style::Colour::Subtext0,
+                  .size_from_text = true,
+              });
+    }
+
+    return item.button_fired;
+}

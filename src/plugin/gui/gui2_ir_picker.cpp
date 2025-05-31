@@ -81,7 +81,7 @@ static Optional<IrCursor> IterateIr(IrPickerContext const& context,
             if (state.selected_tags_hashes.size) {
                 bool contains_all = true;
                 for (auto const selected_tag_hash : state.selected_tags_hashes) {
-                    if (!ir.tags.ContainsNoKeyCheck(selected_tag_hash)) {
+                    if (!ir.tags.ContainsSkipKeyCheck(selected_tag_hash)) {
                         contains_all = false;
                         break;
                     }

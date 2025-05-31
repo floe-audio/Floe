@@ -1743,7 +1743,7 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
                                           !(curr_window->flags & WindowFlags_ModalPopup);
 
             auto base_r = Rect {.pos = r.pos, .size = size};
-            if (has_parent_popup) {
+            if (has_parent_popup && !(flags & WindowFlags_PositionOnTopOfParentPopup)) {
                 rect_to_avoid = curr_window->bounds;
                 rect_to_avoid.y = 0;
                 rect_to_avoid.h = FLT_MAX;

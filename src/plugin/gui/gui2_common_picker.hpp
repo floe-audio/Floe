@@ -18,6 +18,7 @@ enum class SearchDirection { Forward, Backward };
 enum class FilterMode : u8 {
     ProgressiveNarrowing, // AKA "match all", AND
     AdditiveSelection, // AKA "match any", OR
+    Count,
 };
 
 struct CommonPickerState {
@@ -99,6 +100,22 @@ struct PickerPopupOptions {
     f32 status_bar_height {};
     TrivialFunctionRef<Optional<String>()> status {}; // Set if something is hovering
 };
+
+PUBLIC bool Match(auto const& table, Span<u64 const> selected_hashes, FilterMode filter_mode) {
+    switch (filter_mode) {
+        case FilterMode::ProgressiveNarrowing: {
+            for (auto const selected_hash : selected_hashes)
+                if (!table.ContainsSkipKeyCheck(selected_hash)) return false;
+            return true;
+        }
+        case FilterMode::AdditiveSelection: {
+            for (auto const selected_hash : selected_hashes)
+                if (table.ContainsSkipKeyCheck(selected_hash)) return true;
+            return false;
+        }
+        case FilterMode::Count: PanicIfReached();
+    }
+}
 
 PUBLIC Box DoPickerItem(GuiBoxSystem& box_system, PickerItemOptions const& options) {
     auto const item =
@@ -197,12 +214,15 @@ PUBLIC Box DoFilterButton(GuiBoxSystem& box_system, FilterButtonOptions const& o
               });
     }
 
+    bool grey_out = false;
+    if (options.filter_mode == FilterMode::ProgressiveNarrowing) grey_out = options.num_used == 0;
+
     DoBox(box_system,
           {
               .parent = button,
               .text = fmt::FormatInline<70>("{} ({})", options.text, options.num_used),
               .font = FontType::Body,
-              .text_fill = options.num_used == 0 ? style::Colour::Surface1 : style::Colour::Text,
+              .text_fill = grey_out ? style::Colour::Surface1 : style::Colour::Text,
               .text_fill_hot = style::Colour::Text,
               .text_fill_active = style::Colour::Text,
               .size_from_text = true,
@@ -231,9 +251,13 @@ PUBLIC Box DoFilterButton(GuiBoxSystem& box_system, FilterButtonOptions const& o
                                 break;
                             }
                             case FilterMode::AdditiveSelection: {
-                                // TODO
+                                if (is_selected)
+                                    dyn::RemoveValue(hashes, clicked_hash);
+                                else
+                                    dyn::Append(hashes, clicked_hash);
                                 break;
                             }
+                            case FilterMode::Count: PanicIfReached();
                         }
                     });
     }
@@ -528,6 +552,50 @@ PUBLIC void DoPickerStatusBar(GuiBoxSystem& box_system,
           });
 }
 
+static String FilterModeText(FilterMode mode) {
+    switch (mode) {
+        case FilterMode::ProgressiveNarrowing: return "Match all";
+        case FilterMode::AdditiveSelection: return "Match any";
+        case FilterMode::Count: break;
+    }
+    PanicIfReached();
+}
+
+static String FilterModeDescription(FilterMode mode) {
+    switch (mode) {
+        case FilterMode::ProgressiveNarrowing:
+            return "Show items that match all selected filters; progressive narrowing.";
+        case FilterMode::AdditiveSelection:
+            return "Show items that match any selected filter; additive selection.";
+        case FilterMode::Count: break;
+    }
+    PanicIfReached();
+}
+
+static void DoFilterModeMenu(GuiBoxSystem& box_system, PickerPopupContext& context) {
+    auto const root = DoBox(box_system,
+                            {
+                                .layout {
+                                    .size = layout::k_hug_contents,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    for (auto const filter_mode : EnumIterator<FilterMode>()) {
+        if (MenuItem(box_system,
+                     root,
+                     {
+                         .text = FilterModeText(filter_mode),
+                         .subtext = FilterModeDescription(filter_mode),
+                         .is_selected = context.state.filter_mode == filter_mode,
+                     })) {
+            dyn::Append(box_system.state->deferred_actions,
+                        [&mode = context.state.filter_mode, new_mode = filter_mode]() { mode = new_mode; });
+        }
+    }
+}
+
 static void
 DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopupOptions const& options) {
     auto const root = DoBox(box_system,
@@ -593,6 +661,31 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                           .size = {layout::k_fill_parent, style::k_font_heading2_size},
                       },
                   });
+
+            {
+                auto const popup_id = box_system.imgui.GetID("filtermode");
+                auto const popup_btn = MenuButton(box_system,
+                                                  lhs_top,
+                                                  {
+                                                      .text = FilterModeText(context.state.filter_mode),
+                                                      .tooltip = "Select filtering mode",
+                                                  });
+                if (popup_btn.button_fired) box_system.imgui.OpenPopup(popup_id, popup_btn.imgui_id);
+
+                AddPanel(box_system,
+                         Panel {
+                             .run = [&context](
+                                        GuiBoxSystem& box_system) { DoFilterModeMenu(box_system, context); },
+                             .data =
+                                 PopupPanel {
+                                     .debug_name = "filtermode",
+                                     .creator_layout_id = popup_btn.layout_id,
+                                     .popup_imgui_id = popup_id,
+                                     .additional_imgui_window_flags =
+                                         imgui::WindowFlags_PositionOnTopOfParentPopup,
+                                 },
+                         });
+            }
 
             if (options.on_clear_all_filters && (options.library_filters.AndThen([&](LibraryFilters const&) {
                     return context.state.selected_library_hashes.size ||

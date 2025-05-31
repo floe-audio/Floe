@@ -52,7 +52,8 @@ constexpr Id k_imgui_app_window_id = 4; // id of the full size window created wi
     X(Nested, 1, 14)                                                                                         \
     X(AlwaysDrawScrollX, 1, 15)                                                                              \
     X(AlwaysDrawScrollY, 1, 16)                                                                              \
-    X(ModalPopup, 1, 17)
+    X(PositionOnTopOfParentPopup, 1, 17)                                                                     \
+    X(ModalPopup, 1, 18)
 
 enum WindowFlagsEnum : u32 {
 #define X(name, val, num) WindowFlags_##name = val << num,

@@ -85,41 +85,18 @@ static Optional<PresetCursor> IteratePreset(PresetPickerContext const& context,
             }
 
             if (state.common_state.selected_library_hashes.size) {
-                switch (state.common_state.filter_mode) {
-                    case FilterMode::ProgressiveNarrowing:
-                        // TODO
-
-                    case FilterMode::AdditiveSelection: {
-                        bool found = false;
-                        for (auto const [lib_id, lib_id_hash] : preset.used_libraries) {
-                            if (Contains(state.common_state.selected_library_hashes, lib_id_hash)) {
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) continue;
-                        break;
-                    }
+                if (!Match(preset.used_libraries,
+                           state.common_state.selected_library_hashes,
+                           state.common_state.filter_mode)) {
+                    continue;
                 }
             }
 
             if (state.common_state.selected_library_author_hashes.size) {
-                switch (state.common_state.filter_mode) {
-                    case FilterMode::ProgressiveNarrowing:
-                        // TODO
-
-                    case FilterMode::AdditiveSelection: {
-                        bool found = false;
-                        for (auto const [lib_id, lib_id_hash] : preset.used_libraries) {
-                            auto const author_hash = Hash(lib_id.author);
-                            if (Contains(state.common_state.selected_library_author_hashes, author_hash)) {
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) continue;
-                        break;
-                    }
+                if (!Match(preset.used_library_authors,
+                           state.common_state.selected_library_author_hashes,
+                           state.common_state.filter_mode)) {
+                    continue;
                 }
             }
 
@@ -130,30 +107,8 @@ static Optional<PresetCursor> IteratePreset(PresetPickerContext const& context,
             }
 
             if (state.selected_tags_hashes.size) {
-                switch (state.common_state.filter_mode) {
-                    case FilterMode::ProgressiveNarrowing: {
-                        bool contains_all = true;
-                        for (auto const selected_tag_hash : state.selected_tags_hashes) {
-                            if (!preset.metadata.tags.ContainsNoKeyCheck(selected_tag_hash)) {
-                                contains_all = false;
-                                break;
-                            }
-                        }
-                        if (!contains_all) continue;
-                        break;
-                    }
-                    case FilterMode::AdditiveSelection: {
-                        bool found = false;
-                        for (auto const selected_tag_hash : state.selected_tags_hashes) {
-                            if (preset.metadata.tags.ContainsNoKeyCheck(selected_tag_hash)) {
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) continue;
-                        break;
-                    }
-                }
+                if (!Match(preset.metadata.tags, state.selected_tags_hashes, state.common_state.filter_mode))
+                    continue;
             }
 
             return cursor;

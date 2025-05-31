@@ -43,43 +43,6 @@ static void PreferencesRhsText(GuiBoxSystem& box_system, Box parent, String text
           });
 }
 
-static Box PreferencesMenuButton(GuiBoxSystem& box_system, Box parent, String text, String tooltip) {
-    auto const button =
-        DoBox(box_system,
-              {
-                  .parent = parent,
-                  .background_fill = style::Colour::Background2,
-                  .background_fill_auto_hot_active_overlay = true,
-                  .round_background_corners = 0b1111,
-                  .activate_on_click_button = MouseButton::Left,
-                  .activation_click_event = ActivationClickEvent::Up,
-                  .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
-                      .contents_padding = {.lr = style::k_button_padding_x, .tb = style::k_button_padding_y},
-                      .contents_align = layout::Alignment::Justify,
-                  },
-                  .tooltip = tooltip,
-              });
-
-    DoBox(box_system,
-          {
-              .parent = button,
-              .text = text,
-              .font = FontType::Body,
-              .size_from_text = true,
-          });
-
-    DoBox(box_system,
-          {
-              .parent = button,
-              .text = ICON_FA_CARET_DOWN,
-              .font = FontType::Icons,
-              .size_from_text = true,
-          });
-
-    return button;
-}
-
 static Box PreferencesRow(GuiBoxSystem& box_system, Box parent) {
     return DoBox(box_system,
                  {
@@ -344,80 +307,39 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
 
     DynamicArrayBounded<char, 200> subtext_buffer {};
 
-    auto const menu_item = [&](String path, String subtext) {
-        auto const item = DoBox(box_system,
-                                {
-                                    .parent = root,
-                                    .background_fill_auto_hot_active_overlay = true,
-                                    .activate_on_click_button = MouseButton::Left,
-                                    .activation_click_event = ActivationClickEvent::Up,
-                                    .layout {
-                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                        .contents_direction = layout::Direction::Row,
-                                    },
-                                });
-
-        if (item.button_fired) {
-            prefs::SetValue(context.prefs,
-                            InstallLocationDescriptor(context.paths, context.prefs, scan_folder_type),
-                            path);
-            box_system.imgui.CloseTopPopupOnly();
-        }
-
-        auto const current_install_location =
-            prefs::GetString(context.prefs,
-                             InstallLocationDescriptor(context.paths, context.prefs, scan_folder_type));
-
-        DoBox(box_system,
-              {
-                  .parent = item,
-                  .text = path::Equal(path, current_install_location) ? String(ICON_FA_CHECK) : "",
-                  .font = FontType::Icons,
-                  .text_fill = style::Colour::Subtext0,
-                  .layout {
-                      .size = style::k_prefs_icon_button_size,
-                      .margins {.l = style::k_menu_item_padding_x},
-                  },
-
-              });
-
-        auto const text_container = DoBox(box_system,
-                                          {
-                                              .parent = item,
-                                              .layout {
-                                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                  .contents_padding = {.lr = style::k_menu_item_padding_x,
-                                                                       .tb = style::k_menu_item_padding_y},
-                                                  .contents_direction = layout::Direction::Column,
-                                                  .contents_align = layout::Alignment::Start,
-                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                              },
-                                          });
-        DoBox(box_system,
-              {
-                  .parent = text_container,
-                  .text = path,
-                  .font = FontType::Body,
-                  .size_from_text = true,
-              });
-        DoBox(box_system,
-              {
-                  .parent = text_container,
-                  .text = subtext,
-                  .text_fill = style::Colour::Subtext0,
-                  .size_from_text = true,
-              });
-    };
+    auto const current_install_location =
+        prefs::GetString(context.prefs,
+                         InstallLocationDescriptor(context.paths, context.prefs, scan_folder_type));
 
     {
         auto const dir = context.paths.always_scanned_folder[ToInt(scan_folder_type)];
         SetFolderSubtext(subtext_buffer, dir, true, scan_folder_type, context.sample_lib_server);
-        menu_item(dir, subtext_buffer);
+        if (MenuItem(box_system,
+                     root,
+                     {
+                         .text = dir,
+                         .subtext = subtext_buffer,
+                         .is_selected = path::Equal(dir, current_install_location),
+                     })) {
+            prefs::SetValue(context.prefs,
+                            InstallLocationDescriptor(context.paths, context.prefs, scan_folder_type),
+                            dir);
+        }
     }
 
     for (auto const dir : ExtraScanFolders(context.paths, context.prefs, scan_folder_type)) {
         SetFolderSubtext(subtext_buffer, dir, false, scan_folder_type, context.sample_lib_server);
-        menu_item(dir, subtext_buffer);
+        if (MenuItem(box_system,
+                     root,
+                     {
+                         .text = dir,
+                         .subtext = subtext_buffer,
+                         .is_selected = path::Equal(dir, current_install_location),
+                     })) {
+            prefs::SetValue(context.prefs,
+                            InstallLocationDescriptor(context.paths, context.prefs, scan_folder_type),
+                            dir);
+        }
     }
 
     DoBox(box_system,
@@ -500,7 +422,13 @@ static void PackagesPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelC
             menu_text = "Default";
         }
 
-        auto const btn = PreferencesMenuButton(box_system, row, menu_text, "Select install location");
+        auto const btn = MenuButton(box_system,
+                                    row,
+                                    {
+                                        .text = menu_text,
+                                        .tooltip = "Select install location",
+                                        .width = layout::k_fill_parent,
+                                    });
         if (btn.button_fired) box_system.imgui.OpenPopup(popup_id, btn.imgui_id);
 
         AddPanel(box_system,

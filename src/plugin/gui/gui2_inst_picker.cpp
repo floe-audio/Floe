@@ -107,7 +107,7 @@ static Optional<InstrumentCursor> IterateInstrument(InstPickerContext const& con
                 state.selected_tags_hashes.size) {
                 bool contains_all = true;
                 for (auto const selected_tag_hash : state.selected_tags_hashes) {
-                    if (!inst.tags.ContainsNoKeyCheck(selected_tag_hash)) {
+                    if (!inst.tags.ContainsSkipKeyCheck(selected_tag_hash)) {
                         contains_all = false;
                         break;
                     }

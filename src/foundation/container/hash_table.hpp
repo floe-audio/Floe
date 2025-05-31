@@ -164,7 +164,7 @@ struct HashTable {
     bool Contains(KeyType key, u64 hash = 0) const { return FindElement(key, hash) != nullptr; }
 
     // Finds an element but doens't protect against hash collisions.
-    bool ContainsNoKeyCheck(u64 hash) const {
+    bool ContainsSkipKeyCheck(u64 hash) const {
         ASSERT(hash);
         if (!elems) return false;
 

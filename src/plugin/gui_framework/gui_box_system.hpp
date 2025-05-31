@@ -69,9 +69,11 @@ struct ModalPanel {
 };
 
 struct PopupPanel {
+    String debug_name;
     layout::Id creator_layout_id;
     Optional<Rect> creator_absolute_rect; // instead of creator_layout_id
     imgui::Id popup_imgui_id;
+    u32 additional_imgui_window_flags {};
 };
 
 using PanelUnion = TaggedUnion<PanelType,
@@ -187,8 +189,13 @@ PUBLIC void Run(GuiBoxSystem& builder, Panel* panel) {
     };
 
     imgui::WindowSettings const popup_settings {
-        .flags =
-            imgui::WindowFlags_AutoWidth | imgui::WindowFlags_AutoHeight | imgui::WindowFlags_AutoPosition,
+        .flags = imgui::WindowFlags_AutoWidth | imgui::WindowFlags_AutoHeight |
+                 imgui::WindowFlags_AutoPosition | ({
+                     u32 additional_flags = 0;
+                     if (auto const popup_data = panel->data.TryGet<PopupPanel>())
+                         additional_flags |= popup_data->additional_imgui_window_flags;
+                     additional_flags;
+                 }),
         .pad_top_left = {1, builder.imgui.VwToPixels(style::k_panel_rounding)},
         .pad_bottom_right = {1, builder.imgui.VwToPixels(style::k_panel_rounding)},
         .scrollbar_padding = scrollbar_padding,
@@ -251,11 +258,11 @@ PUBLIC void Run(GuiBoxSystem& builder, Panel* panel) {
         }
         case PanelType::Popup: {
             auto const popup_data = panel->data.Get<PopupPanel>();
-            if (!builder.imgui.BeginWindowPopup(popup_settings,
-                                                popup_data.popup_imgui_id,
-                                                panel->rect ? *panel->rect
-                                                            : *popup_data.creator_absolute_rect,
-                                                "popup")) {
+            if (!builder.imgui.BeginWindowPopup(
+                    popup_settings,
+                    popup_data.popup_imgui_id,
+                    panel->rect ? *panel->rect : *popup_data.creator_absolute_rect,
+                    popup_data.debug_name.size ? popup_data.debug_name : "popup"_s)) {
                 return;
             }
             break;
