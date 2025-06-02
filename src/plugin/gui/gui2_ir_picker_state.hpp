@@ -8,7 +8,5 @@
 
 struct IrPickerState {
     CommonPickerState common_state;
-    DynamicArray<u64> selected_tags_hashes {Malloc::Instance()};
-    DynamicArrayBounded<char, 100> search;
     bool scroll_to_show_selected = false;
 };

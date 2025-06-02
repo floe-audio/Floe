@@ -20,8 +20,8 @@ concept TriviallyCopyableOrDummy = TriviallyCopyable<T> || Same<DummyValueType, 
 template <typename KeyType>
 using HashFunction = u64 (*)(KeyType const&);
 
-template <typename KeyType>
-using LessThanFunction = bool (*)(KeyType const&, KeyType const&);
+template <typename KeyType, typename ValueType>
+using LessThanFunction = bool (*)(KeyType const&, ValueType const&, KeyType const&, ValueType const&);
 
 u64 NoHash(u64 const&);
 
@@ -31,7 +31,7 @@ template <TriviallyCopyable KeyType_,
           TriviallyCopyableOrDummy ValueType_,
           HashFunction<KeyType_> k_hash_function_ = nullptr,
           HashTableOrdering k_ordering_ = HashTableOrdering::Unordered,
-          LessThanFunction<KeyType_> k_less_than_function = nullptr>
+          LessThanFunction<KeyType_, ValueType_> k_less_than_function = nullptr>
 struct HashTable {
     using KeyType = KeyType_;
     using ValueType = ValueType_;
@@ -39,10 +39,10 @@ struct HashTable {
     static constexpr HashTableOrdering k_ordering = k_ordering_;
 
     struct Element {
+        bool Active() const { return hash && hash != k_tombstone; }
         [[no_unique_address]] ValueType data {};
         KeyType key {};
-        u64 hash {};
-        bool active {};
+        u64 hash {}; // 0 == empty, k_tombstone == deleted, otherwise valid
     };
 
     struct OrderIndicesArray {
@@ -69,7 +69,20 @@ struct HashTable {
         friend bool operator!=(Iterator const& a, Iterator const& b) {
             return &a.table != &b.table || a.index != b.index;
         }
+        friend bool operator<(Iterator const& a, Iterator const& b) {
+            ASSERT(&a.table == &b.table);
+            return a.index < b.index;
+        }
         auto operator*() const {
+            Element* element;
+            if constexpr (k_ordering == HashTableOrdering::Unordered) {
+                element = &table.elems[index];
+            } else {
+                auto const elem_index = table.order_indices.items[index];
+                element = &table.elems[elem_index];
+            }
+            ASSERT_HOT(element->Active());
+
             if constexpr (Same<DummyValueType, ValueType>) {
                 struct Item {
                     KeyType const& key;
@@ -89,23 +102,25 @@ struct HashTable {
             ++index;
 
             if constexpr (k_ordering == HashTableOrdering::Unordered) {
-                for (; index < table.mask + 1; ++index) {
-                    auto& e = table.elems[index];
-                    if (e.active) {
-                        element = &e;
-                        break;
-                    }
-                }
-            } else if (index < table.order_indices.items.size) {
-                auto const elem_index = table.order_indices.items[index];
-                element = &table.elems[elem_index];
+                for (; index < table.mask + 1; ++index)
+                    if (table.elems[index].Active()) break;
+            }
+
+            return *this;
+        }
+        Iterator& operator--() {
+            static_assert(UnsignedInt<decltype(index)>, "we rely on wrap-around");
+            --index;
+
+            if constexpr (k_ordering == HashTableOrdering::Unordered) {
+                for (; index < table.mask + 1; --index)
+                    if (table.elems[index].Active()) break;
             }
 
             return *this;
         }
 
         HashTable const& table;
-        Element* element {};
         usize index {};
     };
 
@@ -114,6 +129,8 @@ struct HashTable {
     static constexpr u64 k_tombstone = 0xdeadc0de;
 
     static u64 Hash(KeyType k) {
+        u64 result;
+
         // IMPORTANT: we don't set Hash as the k_hash_function in the template arguments because we don't know
         // if Hash is consistent accross different compilation units. It might be a header-only function in
         // which case the _type_ of the HashTable will vary depending on the compilation unit leading to
@@ -121,34 +138,43 @@ struct HashTable {
         if constexpr (k_hash_function == nullptr) {
             // if the KeyType has a Hash() method, use it
             if constexpr (requires { k.Hash(); })
-                return k.Hash();
+                result = k.Hash();
             else
-                return ::Hash(k);
+                result = ::Hash(k);
         } else
-            return k_hash_function(k);
+            result = k_hash_function(k);
+
+        // Reserved hash values.
+        // IMPROVE: remap these?
+        ASSERT_HOT(result != 0);
+        ASSERT_HOT(result != k_tombstone);
+        return result;
     }
 
     // Quadratic probing is used if there's a hash collision
     Element* Lookup(KeyType key, u64 hash, u64 dead_hash_value) const {
         ASSERT(elems);
+        ASSERT(size <= Capacity());
 
         Element* element;
         usize index = hash;
         usize step = 1;
 
-        while (true) {
+        usize iterations = 0;
+        constexpr usize k_max_iterations = 1000000;
+
+        for (; iterations < k_max_iterations; ++iterations) {
             element = elems + (index & mask);
 
-            if (!element->active) {
-                if (!element->hash) break;
-                if (element->hash == dead_hash_value) break;
-            }
-
-            if (element->hash == hash && element->key == key) break;
+            if (element->hash == 0) break; // empty slot
+            if (element->hash == dead_hash_value) break; // deleted slot
+            if (element->hash == hash && element->key == key) break; // match
 
             index += step;
             step++;
         }
+
+        ASSERT(iterations < k_max_iterations);
 
         return element;
     }
@@ -157,7 +183,7 @@ struct HashTable {
         if (!elems) return nullptr;
         if (!hash) hash = Hash(key);
         Element* element = Lookup(key, hash, 0);
-        if (element->active) return element;
+        if (element->Active()) return element;
         return nullptr;
     }
 
@@ -168,25 +194,26 @@ struct HashTable {
         ASSERT(hash);
         if (!elems) return false;
 
-        Element* element;
         usize index = hash;
         usize step = 1;
 
-        while (true) {
-            element = elems + (index & mask);
+        usize iterations = 0;
+        constexpr usize k_max_iterations = 1000000;
 
-            if (!element->active) {
-                if (!element->hash) break;
-                if (element->hash == 0) break;
-            }
+        for (; iterations < k_max_iterations; ++iterations) {
+            auto element = elems + (index & mask);
 
-            if (element->hash == hash) break;
+            if (element->hash == 0) return false; // empty slot
+            if (element->hash == k_tombstone) return false; // deleted slot
+            if (element->hash == hash) return true; // match
 
             index += step;
             step++;
         }
 
-        return element->active;
+        ASSERT(iterations < k_max_iterations);
+
+        return false;
     }
 
     static usize PowerOf2Capacity(usize capacity) {
@@ -241,7 +268,6 @@ struct HashTable {
 
     void DeleteIndex(usize index) {
         RemoveFromOrderedIndicesIfNeeded(index);
-        elems[index].active = false;
         elems[index].hash = k_tombstone;
         --size;
         ++num_dead;
@@ -264,12 +290,8 @@ struct HashTable {
     void DeleteAll() {
         if (!elems) return;
 
-        for (auto& element : Elements()) {
-            if (element.active) {
-                element.active = false;
-                element.hash = k_tombstone;
-            }
-        }
+        for (auto& element : Elements())
+            element.hash = 0;
 
         if constexpr (k_ordering == HashTableOrdering::Ordered) order_indices.items.size = 0;
         size = 0;
@@ -280,7 +302,10 @@ struct HashTable {
     void IncreaseCapacity(Allocator& allocator, usize capacity) {
         auto old_elements = Elements();
 
-        if constexpr (k_ordering == HashTableOrdering::Ordered) order_indices.Reserve(capacity, allocator);
+        if constexpr (k_ordering == HashTableOrdering::Ordered) {
+            order_indices.items.size = 0;
+            order_indices.Reserve(capacity, allocator);
+        }
 
         capacity = PowerOf2Capacity(capacity);
         elems = allocator.template NewMultiple<Element>(capacity).data;
@@ -289,12 +314,13 @@ struct HashTable {
         if (old_elements.size) {
             Element* new_element;
             for (auto& old_element : old_elements)
-                if (old_element.active) {
+                if (old_element.Active()) {
                     for (u64 i = old_element.hash, j = 1;; i += j++) {
                         new_element = elems + (i & mask);
-                        if (!new_element->active) break;
+                        if (!new_element->Active()) break;
                     }
                     *new_element = old_element;
+                    AddToOrderedIndicesIfNeeded((usize)(new_element - elems), nullptr);
                 }
             allocator.Free(old_elements.ToByteSpan());
         }
@@ -309,7 +335,7 @@ struct HashTable {
         if (!hash) hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
 
-        if (element->active) return false; // already exists
+        if (element->Active()) return false; // already exists
         if (size + num_dead > mask - mask / 4) {
             PanicIfReached();
             return false; // too full
@@ -325,7 +351,6 @@ struct HashTable {
         if (element->hash == k_tombstone) --num_dead;
         ++size;
         element->key = key;
-        element->active = true;
         element->data = value;
         element->hash = hash;
 
@@ -339,10 +364,9 @@ struct HashTable {
         if (!elems) IncreaseCapacity(allocator, k_min_size);
         if (!hash) hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
-        if (element->active) return false; // already exists
+        if (element->Active()) return false; // already exists
 
         auto const old_hash = element->hash; // save old hash in case it's tombstone marker
-        element->active = true;
         element->key = key;
         element->data = value;
         element->hash = hash;
@@ -368,7 +392,7 @@ struct HashTable {
         if (!elems) PanicIfReached(); // not initialized
         if (!hash) hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
-        if (element->active) return {.element = *element, .inserted = false};
+        if (element->Active()) return {.element = *element, .inserted = false};
 
         if (size + num_dead > mask - mask / 4) PanicIfReached(); // too full
         if constexpr (k_ordering == HashTableOrdering::Ordered) {
@@ -378,7 +402,6 @@ struct HashTable {
         if (element->hash == k_tombstone) --num_dead;
         ++size;
         element->key = key;
-        element->active = true;
         element->data = value;
         element->hash = hash;
 
@@ -392,10 +415,9 @@ struct HashTable {
         if (!elems) IncreaseCapacity(allocator, k_min_size);
         if (!hash) hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
-        if (element->active) return {.element = *element, .inserted = false};
+        if (element->Active()) return {.element = *element, .inserted = false};
 
         auto const old_hash = element->hash; // save old hash in case it's tombstone marker
-        element->active = true;
         element->key = key;
         element->data = value;
         element->hash = hash;
@@ -417,25 +439,25 @@ struct HashTable {
 
         if constexpr (k_ordering == HashTableOrdering::Unordered) {
             usize index = 0;
-            for (; index < mask + 1; ++index) {
-                auto& element = elems[index];
-                if (element.active) return Iterator {*this, &element, index};
-            }
+            for (; index < mask + 1; ++index)
+                if (elems[index].Active()) return Iterator {*this, index};
 
-            return Iterator {*this, nullptr, index};
+            return end();
         } else {
             if (order_indices.items.size == 0) return end();
-            auto const element_index = order_indices.items[0];
-            auto& element = elems[element_index];
-
-            return Iterator {*this, &element, 0};
+            {
+                auto const element_index = order_indices.items[0];
+                auto& element = elems[element_index];
+                ASSERT_HOT(element.Active());
+            }
+            return Iterator {*this, 0};
         }
     }
     Iterator end() const {
         if constexpr (k_ordering == HashTableOrdering::Unordered)
-            return Iterator {*this, {}, mask + 1};
+            return Iterator {*this, mask + 1};
         else
-            return Iterator {*this, {}, order_indices.items.size};
+            return Iterator {*this, order_indices.items.size};
     }
 
     HashTable Clone(Allocator& allocator, CloneType type) const {
@@ -472,15 +494,16 @@ struct HashTable {
 
         for (usize i = 0; i < mask + 1; ++i) {
             auto& element = elems[i];
-            if (element.active) {
+            if (element.Active()) {
                 Element* other_element = other.Lookup(element.key, element.hash, 0);
-                if (!other_element || !other_element->active) DeleteIndex(i);
+                if (!other_element || !other_element->Active()) DeleteIndex(i);
             }
         }
     }
 
     void RemoveFromOrderedIndicesIfNeeded(usize elem_index) {
         if constexpr (k_ordering == HashTableOrdering::Ordered) {
+            bool found = false;
             // Find the element in the ordering array
             for (usize i = 0; i < order_indices.items.size; ++i) {
                 if (order_indices.items[i] == elem_index) {
@@ -488,9 +511,11 @@ struct HashTable {
                     for (usize j = i; j < order_indices.items.size - 1; ++j)
                         order_indices.items[j] = order_indices.items[j + 1];
                     --order_indices.items.size;
+                    found = true;
                     break;
                 }
             }
+            ASSERT_HOT(found);
         }
     }
 
@@ -498,13 +523,15 @@ struct HashTable {
         if constexpr (k_ordering == HashTableOrdering::Ordered) {
             if (a) order_indices.Reserve(order_indices.items.size + 1, *a);
 
-            auto const& new_key = elems[elem_index].key;
+            ASSERT_HOT(elems[elem_index].Active());
+
+            auto const& new_elem = elems[elem_index];
 
             auto const insert_index = BinarySearchForSlotToInsert(order_indices.items, [&](usize elem_index) {
-                auto const& key = elems[elem_index].key;
+                auto const& elem = elems[elem_index];
                 if constexpr (k_less_than_function != nullptr) {
-                    if (k_less_than_function(key, new_key)) return -1;
-                } else if (key < new_key)
+                    if (k_less_than_function(elem.key, elem.data, new_elem.key, new_elem.data)) return -1;
+                } else if (elem.key < new_elem.key)
                     return -1;
                 // keys are unique in a hash table, so we don't need to check for equality
                 return 1;
@@ -529,7 +556,7 @@ template <TriviallyCopyable KeyType_,
           TriviallyCopyableOrDummy ValueType_,
           HashFunction<KeyType_> k_hash_function_ = nullptr,
           HashTableOrdering k_ordering_ = HashTableOrdering::Unordered,
-          LessThanFunction<KeyType_> k_less_than_function = nullptr>
+          LessThanFunction<KeyType_, ValueType_> k_less_than_function = nullptr>
 struct DynamicHashTable {
     using KeyType = KeyType_;
     using ValueType = ValueType_;
@@ -612,7 +639,7 @@ struct DynamicHashTable {
 template <TriviallyCopyable KeyType_,
           HashFunction<KeyType_> k_hash_function_ = nullptr,
           HashTableOrdering k_ordering_ = HashTableOrdering::Unordered,
-          LessThanFunction<KeyType_> k_less_than_function = nullptr>
+          LessThanFunction<KeyType_, DummyValueType> k_less_than_function = nullptr>
 struct Set : HashTable<KeyType_, DummyValueType, k_hash_function_, k_ordering_> {
     using KeyType = KeyType_;
     static constexpr HashFunction<KeyType> k_hash_function = k_hash_function_;
@@ -647,7 +674,7 @@ struct Set : HashTable<KeyType_, DummyValueType, k_hash_function_, k_ordering_> 
 template <TriviallyCopyable KeyType_,
           HashFunction<KeyType_> k_hash_function_ = nullptr,
           HashTableOrdering k_ordering_ = HashTableOrdering::Unordered,
-          LessThanFunction<KeyType_> k_less_than_function = nullptr>
+          LessThanFunction<KeyType_, DummyValueType> k_less_than_function = nullptr>
 struct DynamicSet : DynamicHashTable<KeyType_, DummyValueType, k_hash_function_, k_ordering_> {
     using KeyType = KeyType_;
     static constexpr HashFunction<KeyType> k_hash_function = k_hash_function_;
@@ -677,25 +704,25 @@ struct DynamicSet : DynamicHashTable<KeyType_, DummyValueType, k_hash_function_,
 template <TriviallyCopyable KeyType,
           TriviallyCopyableOrDummy ValueType,
           HashFunction<KeyType> k_hash_function = nullptr,
-          LessThanFunction<KeyType> k_less_than_function = nullptr>
+          LessThanFunction<KeyType, ValueType> k_less_than_function = nullptr>
 using OrderedHashTable =
     HashTable<KeyType, ValueType, k_hash_function, HashTableOrdering::Ordered, k_less_than_function>;
 
 template <TriviallyCopyable KeyType,
           TriviallyCopyableOrDummy ValueType,
           HashFunction<KeyType> k_hash_function = nullptr,
-          LessThanFunction<KeyType> k_less_than_function = nullptr>
+          LessThanFunction<KeyType, ValueType> k_less_than_function = nullptr>
 using DynamicOrderedHashTable =
     DynamicHashTable<KeyType, ValueType, k_hash_function, HashTableOrdering::Ordered, k_less_than_function>;
 
 template <TriviallyCopyable KeyType,
           HashFunction<KeyType> k_hash_function = nullptr,
-          LessThanFunction<KeyType> k_less_than_function = nullptr>
+          LessThanFunction<KeyType, DummyValueType> k_less_than_function = nullptr>
 using OrderedSet = Set<KeyType, k_hash_function, HashTableOrdering::Ordered, k_less_than_function>;
 
 template <TriviallyCopyable KeyType,
           HashFunction<KeyType> k_hash_function = nullptr,
-          LessThanFunction<KeyType> k_less_than_function = nullptr>
+          LessThanFunction<KeyType, DummyValueType> k_less_than_function = nullptr>
 using DynamicOrderedSet = DynamicHashTable<KeyType,
                                            DummyValueType,
                                            k_hash_function,

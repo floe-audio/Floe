@@ -22,8 +22,27 @@ enum class FilterMode : u8 {
 };
 
 struct CommonPickerState {
+    bool HasFilters() const {
+        if (selected_library_hashes.size || selected_library_author_hashes.size || selected_tags_hashes.size)
+            return true;
+        for (auto const& hashes : other_selected_hashes)
+            if (hashes->size) return true;
+        return false;
+    }
+
+    void ClearAll() {
+        dyn::Clear(selected_library_hashes);
+        dyn::Clear(selected_library_author_hashes);
+        dyn::Clear(selected_tags_hashes);
+        for (auto other_hashes : other_selected_hashes)
+            dyn::Clear(*other_hashes);
+    }
+
     DynamicArray<u64> selected_library_hashes {Malloc::Instance()};
     DynamicArray<u64> selected_library_author_hashes {Malloc::Instance()};
+    DynamicArray<u64> selected_tags_hashes {Malloc::Instance()};
+    DynamicArrayBounded<char, 100> search {};
+    DynamicArrayBounded<DynamicArray<u64>*, 2> other_selected_hashes {};
     FilterMode filter_mode = FilterMode::ProgressiveNarrowing;
 };
 
@@ -43,10 +62,10 @@ struct PickerItemOptions {
 
 struct FilterItemInfo {
     u32 num_used_in_items_lists;
+    u32 total_available;
 };
 
 struct TagsFilters {
-    DynamicArray<u64>& selected_tags_hashes;
     HashTable<String, FilterItemInfo> tags;
 };
 
@@ -84,7 +103,7 @@ struct PickerPopupOptions {
 
     Optional<Button> rhs_top_button {};
     TrivialFunctionRef<void(GuiBoxSystem&)> rhs_do_items {};
-    DynamicArrayBounded<char, 100>* search {};
+    bool show_search {true};
 
     TrivialFunctionRef<void()> on_load_previous {};
     TrivialFunctionRef<void()> on_load_next {};
@@ -95,27 +114,10 @@ struct PickerPopupOptions {
     Optional<TagsFilters> tags_filters {};
     TrivialFunctionRef<void(GuiBoxSystem&, Box const& parent, u8& num_sections)> do_extra_filters {};
     bool has_extra_filters {};
-    TrivialFunctionRef<void()> on_clear_all_filters {};
 
     f32 status_bar_height {};
     TrivialFunctionRef<Optional<String>()> status {}; // Set if something is hovering
 };
-
-PUBLIC bool Match(auto const& table, Span<u64 const> selected_hashes, FilterMode filter_mode) {
-    switch (filter_mode) {
-        case FilterMode::ProgressiveNarrowing: {
-            for (auto const selected_hash : selected_hashes)
-                if (!table.ContainsSkipKeyCheck(selected_hash)) return false;
-            return true;
-        }
-        case FilterMode::AdditiveSelection: {
-            for (auto const selected_hash : selected_hashes)
-                if (table.ContainsSkipKeyCheck(selected_hash)) return true;
-            return false;
-        }
-        case FilterMode::Count: PanicIfReached();
-    }
-}
 
 PUBLIC Box DoPickerItem(GuiBoxSystem& box_system, PickerItemOptions const& options) {
     auto const item =
@@ -178,13 +180,25 @@ struct FilterButtonOptions {
     bool is_selected;
     Optional<graphics::TextureHandle> icon;
     String text;
-    u32 num_used;
     DynamicArray<u64>& hashes;
     u64 clicked_hash;
     FilterMode filter_mode;
 };
 
-PUBLIC Box DoFilterButton(GuiBoxSystem& box_system, FilterButtonOptions const& options) {
+PUBLIC Box DoFilterButton(GuiBoxSystem& box_system,
+                          CommonPickerState& state,
+                          FilterItemInfo const& info,
+                          FilterButtonOptions const& options) {
+    auto const num_used = ({
+        u32 n = 0;
+        switch (options.filter_mode) {
+            case FilterMode::ProgressiveNarrowing: n = info.num_used_in_items_lists; break;
+            case FilterMode::AdditiveSelection: n = info.total_available; break;
+            case FilterMode::Count: PanicIfReached();
+        }
+        n;
+    });
+
     auto const button =
         DoBox(box_system,
               {
@@ -215,12 +229,12 @@ PUBLIC Box DoFilterButton(GuiBoxSystem& box_system, FilterButtonOptions const& o
     }
 
     bool grey_out = false;
-    if (options.filter_mode == FilterMode::ProgressiveNarrowing) grey_out = options.num_used == 0;
+    if (options.filter_mode == FilterMode::ProgressiveNarrowing) grey_out = num_used == 0;
 
     DoBox(box_system,
           {
               .parent = button,
-              .text = fmt::FormatInline<70>("{} ({})", options.text, options.num_used),
+              .text = fmt::FormatInline<70>("{} ({})", options.text, num_used),
               .font = FontType::Body,
               .text_fill = grey_out ? style::Colour::Surface1 : style::Colour::Text,
               .text_fill_hot = style::Colour::Text,
@@ -236,8 +250,9 @@ PUBLIC Box DoFilterButton(GuiBoxSystem& box_system, FilterButtonOptions const& o
     if (button.button_fired) {
         dyn::Append(box_system.state->deferred_actions,
                     [&hashes = options.hashes,
+                     &state = state,
                      clicked_hash = options.clicked_hash,
-                     num_used = options.num_used,
+                     num_used = num_used,
                      is_selected = options.is_selected,
                      filter_mode = options.filter_mode]() {
                         switch (filter_mode) {
@@ -245,7 +260,7 @@ PUBLIC Box DoFilterButton(GuiBoxSystem& box_system, FilterButtonOptions const& o
                                 if (is_selected) {
                                     dyn::RemoveValue(hashes, clicked_hash);
                                 } else {
-                                    if (num_used == 0) dyn::Clear(hashes);
+                                    if (num_used == 0) state.ClearAll();
                                     dyn::Append(hashes, clicked_hash);
                                 }
                                 break;
@@ -370,9 +385,13 @@ PUBLIC void DoPickerLibraryFilters(GuiBoxSystem& box_system,
 
         for (auto const& [lib_id, lib_info, lib_hash] : library_filters.libraries) {
             auto const is_selected = Contains(context.state.selected_library_hashes, lib_hash);
+            ASSERT(lib_id.name.size);
+            ASSERT(lib_id.author.size);
 
             auto const button = DoFilterButton(
                 box_system,
+                context.state,
+                lib_info,
                 {
                     .parent = section,
                     .is_selected = is_selected,
@@ -387,7 +406,6 @@ PUBLIC void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                                         imgs.icon);
                                 }),
                     .text = lib_id.name,
-                    .num_used = lib_info.num_used_in_items_lists,
                     .hashes = context.state.selected_library_hashes,
                     .clicked_hash = lib_hash,
                     .filter_mode = context.state.filter_mode,
@@ -409,11 +427,12 @@ PUBLIC void DoPickerLibraryFilters(GuiBoxSystem& box_system,
         for (auto const [author, author_info, author_hash] : library_filters.library_authors) {
             auto const is_selected = Contains(context.state.selected_library_author_hashes, author_hash);
             DoFilterButton(box_system,
+                           context.state,
+                           author_info,
                            {
                                .parent = section,
                                .is_selected = is_selected,
                                .text = author,
-                               .num_used = author_info.num_used_in_items_lists,
                                .hashes = context.state.selected_library_author_hashes,
                                .clicked_hash = author_hash,
                                .filter_mode = context.state.filter_mode,
@@ -428,7 +447,7 @@ static constexpr u64 HashTagCategory(TagCategory const& category) {
 }
 
 PUBLIC void DoPickerTagsFilters(GuiBoxSystem& box_system,
-                                PickerPopupContext&,
+                                PickerPopupContext& context,
                                 Box const& parent,
                                 TagsFilters const& tags_filters,
                                 u8& sections) {
@@ -455,8 +474,7 @@ PUBLIC void DoPickerTagsFilters(GuiBoxSystem& box_system,
         for (auto const tag : category_info.tags) {
             auto const tag_info = GetTagInfo(tag);
             if (auto t = tags_filters.tags.Find(tag_info.name)) {
-                Category::Tag const item = {.tag = tag,
-                                            .info = {.num_used_in_items_lists = t->num_used_in_items_lists}};
+                Category::Tag const item = {.tag = tag, .info = *t};
                 if (auto const i =
                         FindIf(standard_tags, [&](Category const& c) { return c.category == category; })) {
                     auto& cat = standard_tags[*i];
@@ -496,15 +514,17 @@ PUBLIC void DoPickerTagsFilters(GuiBoxSystem& box_system,
         for (auto const tag : category.tags) {
             auto const tag_info = GetTagInfo(tag.tag);
             auto const tag_hash = Hash(tag_info.name);
-            auto const is_selected = Contains(tags_filters.selected_tags_hashes, tag_hash);
+            auto const is_selected = Contains(context.state.selected_tags_hashes, tag_hash);
             DoFilterButton(box_system,
+                           context.state,
+                           tag.info,
                            {
                                .parent = section,
                                .is_selected = is_selected,
                                .text = tag_info.name,
-                               .num_used = tag.info.num_used_in_items_lists,
-                               .hashes = tags_filters.selected_tags_hashes,
+                               .hashes = context.state.selected_tags_hashes,
                                .clicked_hash = tag_hash,
+                               .filter_mode = context.state.filter_mode,
                            });
         }
     }
@@ -563,10 +583,9 @@ static String FilterModeText(FilterMode mode) {
 
 static String FilterModeDescription(FilterMode mode) {
     switch (mode) {
-        case FilterMode::ProgressiveNarrowing:
-            return "Show items that match all selected filters; progressive narrowing.";
+        case FilterMode::ProgressiveNarrowing: return "Progressively narrow down the items. AND logic.";
         case FilterMode::AdditiveSelection:
-            return "Show items that match any selected filter; additive selection.";
+            return "Select any items that match any of the filters. OR logic.";
         case FilterMode::Count: break;
     }
     PanicIfReached();
@@ -662,7 +681,7 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                       },
                   });
 
-            {
+            if (options.library_filters || options.has_extra_filters) {
                 auto const popup_id = box_system.imgui.GetID("filtermode");
                 auto const popup_btn = MenuButton(box_system,
                                                   lhs_top,
@@ -687,12 +706,7 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                          });
             }
 
-            if (options.on_clear_all_filters && (options.library_filters.AndThen([&](LibraryFilters const&) {
-                    return context.state.selected_library_hashes.size ||
-                           context.state.selected_library_author_hashes.size;
-                }) || options.tags_filters.AndThen([](TagsFilters const& f) {
-                    return f.selected_tags_hashes.size;
-                }) || options.has_extra_filters)) {
+            if (context.state.HasFilters()) {
                 if (IconButton(box_system,
                                lhs_top,
                                ICON_FA_TIMES,
@@ -701,15 +715,7 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                                style::k_font_heading2_size)
                         .button_fired) {
                     dyn::Append(box_system.state->deferred_actions,
-                                [clear = options.on_clear_all_filters,
-                                 &context,
-                                 &tags_filters = options.tags_filters]() {
-                                    dyn::Clear(context.state.selected_library_hashes);
-                                    dyn::Clear(context.state.selected_library_author_hashes);
-                                    if (tags_filters) dyn::Clear(tags_filters->selected_tags_hashes);
-
-                                    clear();
-                                });
+                                [&context]() { context.state.ClearAll(); });
                 }
             }
         }
@@ -868,7 +874,7 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                     dyn::Append(box_system.state->deferred_actions, [&]() { btn->on_fired(); });
             }
 
-            if (auto const& search = options.search) {
+            if (options.show_search) {
                 auto const search_box =
                     DoBox(box_system,
                           {
@@ -898,7 +904,7 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                         DoBox(box_system,
                               {
                                   .parent = search_box,
-                                  .text = *search,
+                                  .text = context.state.search,
                                   .text_input_box = TextInputBox::SingleLine,
                                   .text_input_cursor = style::Colour::Text,
                                   .text_input_selection = style::Colour::Highlight,
@@ -908,12 +914,12 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                               });
                     text_input.text_input_result && text_input.text_input_result->buffer_changed) {
                     dyn::Append(box_system.state->deferred_actions,
-                                [&s = *search, new_text = text_input.text_input_result->text]() {
+                                [&s = context.state.search, new_text = text_input.text_input_result->text]() {
                                     dyn::AssignFitInCapacity(s, new_text);
                                 });
                 }
 
-                if (search->size) {
+                if (context.state.search.size) {
                     if (DoBox(box_system,
                               {
                                   .parent = search_box,
@@ -927,7 +933,8 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                                   .activation_click_event = ActivationClickEvent::Up,
                               })
                             .button_fired) {
-                        dyn::Append(box_system.state->deferred_actions, [&s = *search]() { dyn::Clear(s); });
+                        dyn::Append(box_system.state->deferred_actions,
+                                    [&s = context.state.search]() { dyn::Clear(s); });
                     }
                 }
             }

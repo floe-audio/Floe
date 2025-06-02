@@ -22,6 +22,57 @@ static Optional<InstrumentCursor> CurrentCursor(InstPickerContext const& context
     return k_nullopt;
 }
 
+static bool ShouldSkipInstrument(InstPickerState const& state,
+                                 sample_lib::Instrument const& inst,
+                                 bool picker_gui_is_open) {
+    auto& common_state = (state.tab == InstPickerState::Tab::FloeLibaries)
+                             ? state.common_state_floe_libraries
+                             : state.common_state_mirage_libraries;
+
+    if (common_state.search.size &&
+        (!ContainsCaseInsensitiveAscii(inst.name, common_state.search) &&
+         !ContainsCaseInsensitiveAscii(inst.folder.ValueOr({}), common_state.search)))
+        return true;
+
+    bool filtering_on = false;
+
+    if (common_state.selected_library_hashes.size) {
+        filtering_on = true;
+        if (!Contains(common_state.selected_library_hashes, inst.library.Id().Hash())) {
+            if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+        } else {
+            if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+        }
+    }
+
+    if (common_state.selected_library_author_hashes.size) {
+        filtering_on = true;
+        if (!Contains(common_state.selected_library_author_hashes, Hash(inst.library.author))) {
+            if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+        } else {
+            if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+        }
+    }
+
+    if ((!picker_gui_is_open || state.tab == InstPickerState::Tab::FloeLibaries) &&
+        common_state.selected_tags_hashes.size) {
+        filtering_on = true;
+        for (auto const selected_hash : common_state.selected_tags_hashes)
+            if (!inst.tags.ContainsSkipKeyCheck(selected_hash)) {
+                if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            } else {
+                if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+            }
+    }
+
+    if (filtering_on && common_state.filter_mode == FilterMode::AdditiveSelection) {
+        // Filtering is applied, but the item does not match any of the selected filters.
+        return true;
+    }
+
+    return false;
+}
+
 static Optional<InstrumentCursor> IterateInstrument(InstPickerContext const& context,
                                                     InstPickerState const& state,
                                                     InstrumentCursor cursor,
@@ -64,31 +115,8 @@ static Optional<InstrumentCursor> IterateInstrument(InstPickerContext const& con
         if (lib.sorted_instruments.size == 0) continue;
         if (picker_gui_is_open && lib.file_format_specifics.tag != state.FileFormatForCurrentTab()) continue;
 
-        // TODO: handle state.common_state.filter_mode
-
-        if (state.tab == InstPickerState::Tab::FloeLibaries) {
-            if (state.common_state_floe_libraries.selected_library_hashes.size &&
-                !Contains(state.common_state_floe_libraries.selected_library_hashes, lib.Id().Hash())) {
-                continue;
-            }
-            if (state.common_state_floe_libraries.selected_library_author_hashes.size &&
-                !Contains(state.common_state_floe_libraries.selected_library_author_hashes,
-                          Hash(lib.author))) {
-                continue;
-            }
-        }
-
-        if (state.tab == InstPickerState::Tab::MirageLibraries) {
-            if (state.common_state_mirage_libraries.selected_library_hashes.size &&
-                !Contains(state.common_state_mirage_libraries.selected_library_hashes, lib.Id().Hash())) {
-                continue;
-            }
-            if (state.common_state_mirage_libraries.selected_library_author_hashes.size &&
-                !Contains(state.common_state_mirage_libraries.selected_library_author_hashes,
-                          Hash(lib.author))) {
-                continue;
-            }
-        }
+        // PERF: we could skip early here based on the library and filters, but only for some filter
+        // modes.
 
         for (; cursor.inst_index < lib.sorted_instruments.size; (
                  {
@@ -99,21 +127,7 @@ static Optional<InstrumentCursor> IterateInstrument(InstPickerContext const& con
                  })) {
             auto const& inst = *lib.sorted_instruments[cursor.inst_index];
 
-            if (state.search.size && (!ContainsCaseInsensitiveAscii(inst.name, state.search) &&
-                                      !ContainsCaseInsensitiveAscii(inst.folder.ValueOr({}), state.search)))
-                continue;
-
-            if ((!picker_gui_is_open || state.tab == InstPickerState::Tab::FloeLibaries) &&
-                state.selected_tags_hashes.size) {
-                bool contains_all = true;
-                for (auto const selected_tag_hash : state.selected_tags_hashes) {
-                    if (!inst.tags.ContainsSkipKeyCheck(selected_tag_hash)) {
-                        contains_all = false;
-                        break;
-                    }
-                }
-                if (!contains_all) continue;
-            }
+            if (ShouldSkipInstrument(state, inst, picker_gui_is_open)) continue;
 
             return cursor;
         }
@@ -231,33 +245,6 @@ void LoadRandomInstrument(InstPickerContext const& context, InstPickerState& sta
             *IterateInstrument(context, state, cursor, SearchDirection::Forward, false, picker_gui_is_open);
 
     LoadInstrument(context, state, cursor, true);
-}
-
-static void ForEachInst(InstPickerContext const& context,
-                        InstPickerState const& state,
-                        FunctionRef<void(sample_lib::Instrument const&)> callback) {
-    auto const first = IterateInstrument(context,
-                                         state,
-                                         {.lib_index = 0, .inst_index = 0},
-                                         SearchDirection::Forward,
-                                         true,
-                                         true);
-    if (!first) return;
-
-    auto cursor = *first;
-    while (true) {
-        auto const& lib = *context.libraries[cursor.lib_index];
-        auto const& inst = *lib.sorted_instruments[cursor.inst_index];
-
-        callback(inst);
-
-        if (auto next = IterateInstrument(context, state, cursor, SearchDirection::Forward, false, true)) {
-            cursor = *next;
-            if (cursor == *first) break;
-        } else {
-            break;
-        }
-    }
 }
 
 static void InstPickerWaveformItems(GuiBoxSystem& box_system,
@@ -398,31 +385,38 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                        InstPickerState& state) {
 
     HashTable<String, FilterItemInfo> tags {};
-    for (auto const& l_ptr : context.libraries) {
-        auto const& lib = *l_ptr;
-        for (auto const& inst : lib.sorted_instruments)
-            for (auto const& [tag, tag_hash] : inst->tags)
-                tags.InsertGrowIfNeeded(box_system.arena, tag, {.num_used_in_items_lists = 0}, tag_hash);
-    }
-
     OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
     OrderedHashTable<String, FilterItemInfo> library_authors;
     if (state.tab != InstPickerState::Tab::Waveforms) {
         for (auto const l : context.libraries) {
             if (l->sorted_instruments.size == 0) continue;
             if (l->file_format_specifics.tag != state.FileFormatForCurrentTab()) continue;
-            libraries.InsertGrowIfNeeded(box_system.arena, l->Id(), {.num_used_in_items_lists = 0});
-            library_authors.InsertGrowIfNeeded(box_system.arena, l->author, {.num_used_in_items_lists = 0});
+
+            auto& lib = libraries.FindOrInsertGrowIfNeeded(box_system.arena, l->Id(), {}).element.data;
+            auto& author =
+                library_authors.FindOrInsertGrowIfNeeded(box_system.arena, l->author, {}).element.data;
+
+            for (auto const& inst : l->sorted_instruments) {
+                auto const skip = ShouldSkipInstrument(state, *inst, true);
+
+                {
+                    if (!skip) ++lib.num_used_in_items_lists;
+                    ++lib.total_available;
+                }
+
+                {
+                    if (!skip) ++author.num_used_in_items_lists;
+                    ++author.total_available;
+                }
+
+                for (auto const& [tag, tag_hash] : inst->tags) {
+                    auto& i = tags.FindOrInsertGrowIfNeeded(box_system.arena, tag, {}, tag_hash).element.data;
+                    if (!skip) ++i.num_used_in_items_lists;
+                    ++i.total_available;
+                }
+            }
         }
     }
-
-    ForEachInst(context, state, [&](sample_lib::Instrument const& inst) {
-        ++libraries.Find(inst.library.Id())->num_used_in_items_lists;
-        ++library_authors.Find(inst.library.author)->num_used_in_items_lists;
-
-        for (auto const& [tag, tag_hash] : inst.tags)
-            ++tags.Find(tag, tag_hash)->num_used_in_items_lists;
-    });
 
     // IMPORTANT: we create the options struct inside the call so that lambdas and values from
     // statement-expressions live long enough.
@@ -474,7 +468,7 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                 unload_button;
             }),
             .rhs_do_items = [&](GuiBoxSystem& box_system) { InstPickerItems(box_system, context, state); },
-            .search = state.tab != InstPickerState::Tab::Waveforms ? &state.search : nullptr,
+            .show_search = state.tab != InstPickerState::Tab::Waveforms,
             .on_load_previous =
                 [&]() { LoadAdjacentInstrument(context, state, SearchDirection::Backward, true); },
             .on_load_next = [&]() { LoadAdjacentInstrument(context, state, SearchDirection::Forward, true); },
@@ -495,13 +489,11 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                 Optional<TagsFilters> f {};
                 if (state.tab == InstPickerState::Tab::FloeLibaries) {
                     f = TagsFilters {
-                        .selected_tags_hashes = state.selected_tags_hashes,
                         .tags = tags,
                     };
                 }
                 f;
             }),
-            .on_clear_all_filters = [&]() {},
             .status_bar_height = 58,
             .status = [&]() -> Optional<String> {
                 Optional<String> status {};

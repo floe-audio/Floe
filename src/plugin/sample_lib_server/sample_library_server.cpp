@@ -20,10 +20,6 @@
 
 namespace sample_lib_server {
 
-namespace detail {
-u64 HashLibraryRef(sample_lib::LibraryIdRef const& id) { return id.Hash(); }
-} // namespace detail
-
 using namespace detail;
 constexpr String k_trace_category = "SLS";
 constexpr u32 k_trace_colour = 0xfcba03;
@@ -632,16 +628,15 @@ static bool UpdateLibraryJobs(Server& server,
         ZoneNamedN(rebuild_htab, "rehash", true);
         server.libraries_by_id_mutex.Lock();
         DEFER { server.libraries_by_id_mutex.Unlock(); };
-        auto& libs_by_name = server.libraries_by_id;
-        libs_by_name.DeleteAll();
+        server.libraries_by_id.DeleteAll();
         for (auto& n : server.libraries) {
             auto const& lib = *n.value.lib;
 
-            if (auto element = libs_by_name.FindElement(lib.Id())) {
+            auto found = server.libraries_by_id.FindOrInsert(lib.Id(), &n);
+            if (!found.inserted) {
                 // If it's already there, we replace it with the one that's more recent
-                if (n.value.scan_timepoint > element->data->value.scan_timepoint) element->data = &n;
-            } else {
-                libs_by_name.Insert(lib.Id(), &n);
+                if (n.value.scan_timepoint > found.element.data->value.scan_timepoint)
+                    found.element.data = &n;
             }
         }
     }

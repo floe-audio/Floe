@@ -25,6 +25,80 @@ static Optional<PresetCursor> CurrentCursor(PresetPickerContext const& context, 
     return k_nullopt;
 }
 
+static bool ShouldSkipPreset(PresetPickerContext const& context,
+                             PresetPickerState const& state,
+                             PresetFolder const& folder,
+                             PresetFolder::Preset const& preset) {
+    if (state.common_state.search.size &&
+        (!ContainsCaseInsensitiveAscii(preset.name, state.common_state.search) &&
+         !ContainsCaseInsensitiveAscii(folder.folder, state.common_state.search)))
+        return true;
+
+    bool filtering_on = false;
+
+    // If multiple preset types exist, we offer a way to filter by them.
+    if (context.presets_snapshot.has_preset_type.NumSet() > 1) {
+        if (state.selected_preset_types.size) {
+            filtering_on = true;
+            if (Contains(state.selected_preset_types, ToInt(preset.file_format))) {
+                if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+            } else {
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            }
+        }
+    }
+
+    if (state.common_state.selected_library_hashes.size) {
+        filtering_on = true;
+        for (auto const selected_hash : state.common_state.selected_library_hashes) {
+            if (!preset.used_libraries.ContainsSkipKeyCheck(selected_hash)) {
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            } else {
+                if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+            }
+        }
+    }
+
+    if (state.common_state.selected_library_author_hashes.size) {
+        filtering_on = true;
+        for (auto const selected_hash : state.common_state.selected_library_author_hashes) {
+            if (!preset.used_library_authors.ContainsSkipKeyCheck(selected_hash)) {
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            } else {
+                if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+            }
+        }
+    }
+
+    if (state.selected_author_hashes.size) {
+        filtering_on = true;
+        auto const author_hash = Hash(preset.metadata.author);
+        if (!Contains(state.selected_author_hashes, author_hash)) {
+            if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+        } else {
+            if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+        }
+    }
+
+    if (state.common_state.selected_tags_hashes.size) {
+        filtering_on = true;
+        for (auto const selected_hash : state.common_state.selected_tags_hashes) {
+            if (!preset.metadata.tags.ContainsSkipKeyCheck(selected_hash)) {
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            } else {
+                if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+            }
+        }
+    }
+
+    if (filtering_on && state.common_state.filter_mode == FilterMode::AdditiveSelection) {
+        // Filtering is applied, but the item does not match any of the selected filters.
+        return true;
+    }
+
+    return false;
+}
+
 static Optional<PresetCursor> IteratePreset(PresetPickerContext const& context,
                                             PresetPickerState const& state,
                                             PresetCursor cursor,
@@ -74,42 +148,7 @@ static Optional<PresetCursor> IteratePreset(PresetPickerContext const& context,
                  })) {
             auto const& preset = folder.presets[cursor.preset_index];
 
-            if (state.search.size && (!ContainsCaseInsensitiveAscii(preset.name, state.search) &&
-                                      !ContainsCaseInsensitiveAscii(folder.folder, state.search)))
-                continue;
-
-            // If multiple preset types exist, we offer a way to filter by them.
-            if (context.presets_snapshot.has_preset_type.NumSet() > 1 && state.selected_preset_types.size) {
-                // FilterMode is irrelevant here since presets can only be one or the other.
-                if (!Contains(state.selected_preset_types, ToInt(preset.file_format))) continue;
-            }
-
-            if (state.common_state.selected_library_hashes.size) {
-                if (!Match(preset.used_libraries,
-                           state.common_state.selected_library_hashes,
-                           state.common_state.filter_mode)) {
-                    continue;
-                }
-            }
-
-            if (state.common_state.selected_library_author_hashes.size) {
-                if (!Match(preset.used_library_authors,
-                           state.common_state.selected_library_author_hashes,
-                           state.common_state.filter_mode)) {
-                    continue;
-                }
-            }
-
-            if (state.selected_author_hashes.size) {
-                // FilterMode is irrelevant here since presets can only have one author.
-                auto const author_hash = Hash(preset.metadata.author);
-                if (!Contains(state.selected_author_hashes, author_hash)) continue;
-            }
-
-            if (state.selected_tags_hashes.size) {
-                if (!Match(preset.metadata.tags, state.selected_tags_hashes, state.common_state.filter_mode))
-                    continue;
-            }
+            if (ShouldSkipPreset(context, state, folder, preset)) continue;
 
             return cursor;
         }
@@ -179,31 +218,6 @@ void LoadRandomPreset(PresetPickerContext const& context, PresetPickerState& sta
     LoadPreset(context, state, cursor, true);
 }
 
-static void ForEachPreset(PresetPickerContext const& context,
-                          PresetPickerState const& state,
-                          FunctionRef<void(PresetFolder::Preset const&)> callback) {
-    ASSERT(context.init);
-
-    auto const first =
-        IteratePreset(context, state, {.folder_index = 0, .preset_index = 0}, SearchDirection::Forward, true);
-    if (!first) return;
-
-    auto cursor = *first;
-    while (true) {
-        auto const& preset_folder = *context.presets_snapshot.folders[cursor.folder_index];
-        auto const& preset = preset_folder.presets[cursor.preset_index];
-
-        callback(preset);
-
-        if (auto next = IteratePreset(context, state, cursor, SearchDirection::Forward, false)) {
-            cursor = *next;
-            if (cursor == *first) break;
-        } else {
-            break;
-        }
-    }
-}
-
 void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, PresetPickerState& state) {
     auto const root = DoPickerItemsRoot(box_system);
 
@@ -262,14 +276,13 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
     }
 }
 
-void PresetPickerExtraFilters(
-    GuiBoxSystem& box_system,
-    PresetPickerContext& context,
-    OrderedHashTable<String, FilterItemInfo>& preset_authors,
-    Array<FilterItemInfo, ToInt(PresetFormat::Count)>& preset_type_used_in_items_lists,
-    PresetPickerState& state,
-    Box const& parent,
-    u8& num_sections) {
+void PresetPickerExtraFilters(GuiBoxSystem& box_system,
+                              PresetPickerContext& context,
+                              OrderedHashTable<String, FilterItemInfo>& preset_authors,
+                              Array<FilterItemInfo, ToInt(PresetFormat::Count)>& preset_type_filter_info,
+                              PresetPickerState& state,
+                              Box const& parent,
+                              u8& num_sections) {
     // We only show the preset type filter if we have both types of presets.
     if (context.presets_snapshot.has_preset_type.NumSet() > 1) {
         if (num_sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
@@ -285,25 +298,25 @@ void PresetPickerExtraFilters(
         for (auto const type_index : Range(ToInt(PresetFormat::Count))) {
             auto const is_selected = Contains(state.selected_preset_types, type_index);
 
-            DoFilterButton(
-                box_system,
-                {
-                    .parent = section,
-                    .is_selected = is_selected,
-                    .text = ({
-                        String s {};
-                        switch ((PresetFormat)type_index) {
-                            case PresetFormat::Floe: s = "Floe"; break;
-                            case PresetFormat::Mirage: s = "Mirage"; break;
-                            default: PanicIfReached();
-                        }
-                        s;
-                    }),
-                    .num_used = preset_type_used_in_items_lists[type_index].num_used_in_items_lists,
-                    .hashes = state.selected_preset_types,
-                    .clicked_hash = type_index,
-                    .filter_mode = state.common_state.filter_mode,
-                });
+            DoFilterButton(box_system,
+                           state.common_state,
+                           preset_type_filter_info[type_index],
+                           {
+                               .parent = section,
+                               .is_selected = is_selected,
+                               .text = ({
+                                   String s {};
+                                   switch ((PresetFormat)type_index) {
+                                       case PresetFormat::Floe: s = "Floe"; break;
+                                       case PresetFormat::Mirage: s = "Mirage"; break;
+                                       default: PanicIfReached();
+                                   }
+                                   s;
+                               }),
+                               .hashes = state.selected_preset_types,
+                               .clicked_hash = type_index,
+                               .filter_mode = state.common_state.filter_mode,
+                           });
         }
     }
 
@@ -322,11 +335,12 @@ void PresetPickerExtraFilters(
             auto const is_selected = Contains(state.selected_author_hashes, author_hash);
 
             DoFilterButton(box_system,
+                           state.common_state,
+                           author_info,
                            {
                                .parent = section,
                                .is_selected = is_selected,
                                .text = author,
-                               .num_used = author_info.num_used_in_items_lists,
                                .hashes = state.selected_author_hashes,
                                .clicked_hash = author_hash,
                                .filter_mode = state.common_state.filter_mode,
@@ -369,21 +383,40 @@ void DoPresetPicker(GuiBoxSystem& box_system,
 
     Array<FilterItemInfo, ToInt(PresetFormat::Count)> preset_type_filter_info;
 
-    ForEachPreset(context, state, [&](PresetFolder::Preset const& preset) {
-        for (auto const [tag, tag_hash] : preset.metadata.tags)
-            ++tags.Find(tag, tag_hash)->num_used_in_items_lists;
+    for (auto const& folder : context.presets_snapshot.folders) {
+        for (auto const& preset : folder->presets) {
+            bool const skip = ShouldSkipPreset(context, state, *folder, preset);
+            for (auto const [tag, tag_hash] : preset.metadata.tags) {
+                auto i = tags.Find(tag, tag_hash);
+                if (!skip) ++i->num_used_in_items_lists;
+                ++i->total_available;
+            }
 
-        for (auto const [lib_id, lib_id_hash] : preset.used_libraries)
-            ++libraries.Find(lib_id, lib_id_hash)->num_used_in_items_lists;
+            for (auto const [lib_id, lib_id_hash] : preset.used_libraries) {
+                auto i = libraries.Find(lib_id, lib_id_hash);
+                if (!skip) ++i->num_used_in_items_lists;
+                ++i->total_available;
+            }
 
-        for (auto const [author, author_hash] : preset.used_library_authors)
-            ++library_authors.Find(author, author_hash)->num_used_in_items_lists;
+            for (auto const [author, author_hash] : preset.used_library_authors) {
+                auto i = library_authors.Find(author, author_hash);
+                if (!skip) ++i->num_used_in_items_lists;
+                ++i->total_available;
+            }
 
-        if (preset.metadata.author.size)
-            ++preset_authors.Find(preset.metadata.author)->num_used_in_items_lists;
+            if (preset.metadata.author.size) {
+                auto i = preset_authors.Find(preset.metadata.author);
+                if (!skip) ++i->num_used_in_items_lists;
+                ++i->total_available;
+            }
 
-        ++preset_type_filter_info[ToInt(preset.file_format)].num_used_in_items_lists;
-    });
+            {
+                auto& i = preset_type_filter_info[ToInt(preset.file_format)];
+                if (!skip) ++i.num_used_in_items_lists;
+                ++i.total_available;
+            }
+        }
+    }
 
     // IMPORTANT: we create the options struct inside the call so that lambdas and values from
     // statement-expressions live long enough.
@@ -403,7 +436,6 @@ void DoPresetPicker(GuiBoxSystem& box_system,
             .item_type_name = "preset",
             .items_section_heading = "Presets",
             .rhs_do_items = [&](GuiBoxSystem& box_system) { PresetPickerItems(box_system, context, state); },
-            .search = &state.search,
             .on_load_previous = [&]() { LoadAdjacentPreset(context, state, SearchDirection::Backward); },
             .on_load_next = [&]() { LoadAdjacentPreset(context, state, SearchDirection::Forward); },
             .on_load_random = [&]() { LoadRandomPreset(context, state); },
@@ -416,7 +448,6 @@ void DoPresetPicker(GuiBoxSystem& box_system,
                 },
             .tags_filters =
                 TagsFilters {
-                    .selected_tags_hashes = state.selected_tags_hashes,
                     .tags = tags,
                 },
             .do_extra_filters =
@@ -430,11 +461,6 @@ void DoPresetPicker(GuiBoxSystem& box_system,
                                              num_sections);
                 },
             .has_extra_filters = state.selected_author_hashes.size != 0,
-            .on_clear_all_filters =
-                [&]() {
-                    dyn::Clear(state.selected_author_hashes);
-                    dyn::Clear(state.selected_preset_types);
-                },
             .status_bar_height = 58,
             .status = [&]() -> Optional<String> {
                 Optional<String> status {};

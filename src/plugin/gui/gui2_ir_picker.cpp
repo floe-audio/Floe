@@ -15,6 +15,51 @@ static Optional<IrCursor> CurrentCursor(IrPickerContext const& context, sample_l
     return k_nullopt;
 }
 
+static bool ShouldSkipIr(IrPickerState const& state, sample_lib::ImpulseResponse const& ir) {
+    if (state.common_state.search.size &&
+        (!ContainsCaseInsensitiveAscii(ir.name, state.common_state.search) &&
+         !ContainsCaseInsensitiveAscii(ir.folder.ValueOr({}), state.common_state.search)))
+        return true;
+
+    bool filtering_on = false;
+
+    if (state.common_state.selected_library_hashes.size) {
+        filtering_on = true;
+        if (!Contains(state.common_state.selected_library_hashes, ir.library.Id().Hash())) {
+            if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+        } else {
+            if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+        }
+    }
+
+    if (state.common_state.selected_library_author_hashes.size) {
+        filtering_on = true;
+        if (!Contains(state.common_state.selected_library_author_hashes, Hash(ir.library.author))) {
+            if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+        } else {
+            if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+        }
+    }
+
+    if (state.common_state.selected_tags_hashes.size) {
+        filtering_on = true;
+        for (auto const selected_hash : state.common_state.selected_tags_hashes) {
+            if (!ir.tags.ContainsSkipKeyCheck(selected_hash)) {
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            } else {
+                if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+            }
+        }
+    }
+
+    if (filtering_on && state.common_state.filter_mode == FilterMode::AdditiveSelection) {
+        // Filtering is applied, but the item does not match any of the selected filters.
+        return true;
+    }
+
+    return false;
+}
+
 static Optional<IrCursor> IterateIr(IrPickerContext const& context,
                                     IrPickerState const& state,
                                     IrCursor cursor,
@@ -47,23 +92,15 @@ static Optional<IrCursor> IterateIr(IrPickerContext const& context,
                          --cursor.lib_index;
                          if (cursor.lib_index >= context.libraries.size) // check wraparound
                              cursor.lib_index = context.libraries.size - 1;
-                         cursor.ir_index = context.libraries[cursor.lib_index]->sorted_irs.size - 1;
+                         cursor.ir_index = context.libraries[cursor.lib_index]->irs_by_name.size - 1;
                          break;
                  }
              })) {
         auto const& lib = *context.libraries[cursor.lib_index];
 
-        if (lib.sorted_irs.size == 0) continue;
+        if (lib.irs_by_name.size == 0) continue;
 
-        // TODO: handle state.common_state.filter_mode
-
-        if (state.common_state.selected_library_hashes.size &&
-            !Contains(state.common_state.selected_library_hashes, lib.Id().Hash()))
-            continue;
-
-        if (state.common_state.selected_library_author_hashes.size &&
-            !Contains(state.common_state.selected_library_author_hashes, Hash(lib.author)))
-            continue;
+        // PERF: we could skip early here based on the library and filters, but only for some filter modes.
 
         for (; cursor.ir_index < lib.sorted_irs.size; (
                  {
@@ -74,20 +111,7 @@ static Optional<IrCursor> IterateIr(IrPickerContext const& context,
                  })) {
             auto const& ir = *lib.sorted_irs[cursor.ir_index];
 
-            if (state.search.size && (!ContainsCaseInsensitiveAscii(ir.name, state.search) &&
-                                      !ContainsCaseInsensitiveAscii(ir.folder.ValueOr({}), state.search)))
-                continue;
-
-            if (state.selected_tags_hashes.size) {
-                bool contains_all = true;
-                for (auto const selected_tag_hash : state.selected_tags_hashes) {
-                    if (!ir.tags.ContainsSkipKeyCheck(selected_tag_hash)) {
-                        contains_all = false;
-                        break;
-                    }
-                }
-                if (!contains_all) continue;
-            }
+            if (ShouldSkipIr(state, ir)) continue;
 
             return cursor;
         }
@@ -141,29 +165,6 @@ void LoadRandomIr(IrPickerContext const& context, IrPickerState& state) {
         cursor = *IterateIr(context, state, cursor, SearchDirection::Forward, false);
 
     LoadIr(context, state, cursor);
-}
-
-static void ForEachIr(IrPickerContext const& context,
-                      IrPickerState const& state,
-                      FunctionRef<void(sample_lib::ImpulseResponse const&)> callback) {
-    auto const first =
-        IterateIr(context, state, {.lib_index = 0, .ir_index = 0}, SearchDirection::Forward, true);
-    if (!first) return;
-
-    auto cursor = *first;
-    while (true) {
-        auto const& lib = *context.libraries[cursor.lib_index];
-        auto const& ir = *lib.sorted_irs[cursor.ir_index];
-
-        callback(ir);
-
-        if (auto next = IterateIr(context, state, cursor, SearchDirection::Forward, false)) {
-            cursor = *next;
-            if (cursor == *first) break;
-        } else {
-            break;
-        }
-    }
 }
 
 void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerState& state) {
@@ -269,16 +270,26 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
     OrderedHashTable<String, FilterItemInfo> library_authors;
     for (auto const l : context.libraries) {
         if (l->irs_by_name.size == 0) continue;
-        libraries.InsertGrowIfNeeded(box_system.arena, l->Id(), {.num_used_in_items_lists = 0});
-        library_authors.InsertGrowIfNeeded(box_system.arena, l->author, {.num_used_in_items_lists = 0});
-    }
-    ForEachIr(context, state, [&](sample_lib::ImpulseResponse const& ir) {
-        ++libraries.Find(ir.library.Id())->num_used_in_items_lists;
-        ++library_authors.Find(ir.library.author)->num_used_in_items_lists;
+        auto& lib_found = libraries.FindOrInsertGrowIfNeeded(box_system.arena, l->Id(), {}).element.data;
+        auto& author_found =
+            library_authors.FindOrInsertGrowIfNeeded(box_system.arena, l->author, {}).element.data;
+        for (auto const& ir : l->sorted_irs) {
+            auto const skip = ShouldSkipIr(state, *ir);
 
-        for (auto const& [tag, tag_hash] : ir.tags)
-            ++tags.Find(tag, tag_hash)->num_used_in_items_lists;
-    });
+            ++lib_found.total_available;
+            if (!skip) ++lib_found.num_used_in_items_lists;
+
+            ++author_found.total_available;
+            if (!skip) ++author_found.num_used_in_items_lists;
+
+            for (auto const& [tag, tag_hash] : ir->tags) {
+                auto& tag_found =
+                    tags.FindOrInsertGrowIfNeeded(box_system.arena, tag, {}, tag_hash).element.data;
+                ++tag_found.total_available;
+                if (!skip) ++tag_found.num_used_in_items_lists;
+            }
+        }
+    }
 
     DoPickerPopup(
         box_system,
@@ -310,7 +321,6 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
                 unload_button;
             }),
             .rhs_do_items = [&](GuiBoxSystem& box_system) { IrPickerItems(box_system, context, state); },
-            .search = &state.search,
             .on_load_previous = [&]() { LoadAdjacentIr(context, state, SearchDirection::Backward); },
             .on_load_next = [&]() { LoadAdjacentIr(context, state, SearchDirection::Forward); },
             .on_load_random = [&]() { LoadRandomIr(context, state); },
@@ -323,10 +333,8 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
                 },
             .tags_filters =
                 TagsFilters {
-                    .selected_tags_hashes = state.selected_tags_hashes,
                     .tags = tags,
                 },
-            .on_clear_all_filters = [&]() {},
             .status_bar_height = 58,
             .status = [&]() -> Optional<String> {
                 Optional<String> status {};

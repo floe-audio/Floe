@@ -225,8 +225,6 @@ struct QueuedRequest {
     AsyncCommsChannel& async_comms_channel;
 };
 
-u64 HashLibraryRef(sample_lib::LibraryIdRef const& id);
-
 } // namespace detail
 
 // Public API
@@ -248,8 +246,8 @@ struct Server {
     detail::ScanFolders scan_folders;
     detail::LibrariesList libraries;
     Mutex libraries_by_id_mutex;
-    DynamicHashTable<sample_lib::LibraryIdRef, detail::LibrariesList::Node*, detail::HashLibraryRef>
-        libraries_by_id {Malloc::Instance()};
+    DynamicHashTable<sample_lib::LibraryIdRef, detail::LibrariesList::Node*> libraries_by_id {
+        Malloc::Instance()};
     // Connection-independent errors. If we have access to a channel, we post to the channel's
     // error_notifications instead of this.
     ThreadsafeErrorNotifications& error_notifications;

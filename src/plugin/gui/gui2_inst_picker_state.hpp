@@ -26,16 +26,8 @@ struct InstPickerState {
         return k_nullopt;
     }
 
-    bool HasFilters() const {
-        return common_state_floe_libraries.selected_library_hashes.size ||
-               common_state_mirage_libraries.selected_library_hashes.size || selected_tags_hashes.size ||
-               search.size;
-    }
-
     Tab tab {Tab::FloeLibaries};
     CommonPickerState common_state_floe_libraries;
     CommonPickerState common_state_mirage_libraries;
-    DynamicArray<u64> selected_tags_hashes {Malloc::Instance()};
-    DynamicArrayBounded<char, 100> search;
     bool scroll_to_show_selected = false;
 };

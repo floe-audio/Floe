@@ -280,7 +280,7 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
         }
     }
 
-    library.insts_by_name = HashTable<String, Instrument*>::Create(arena, inst_infos.size);
+    library.insts_by_name = decltype(library.insts_by_name)::Create(arena, inst_infos.size);
     for (auto& i : inst_infos) {
         auto const path = GetString(library, i.virtual_filepath);
 
