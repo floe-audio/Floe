@@ -310,6 +310,7 @@ struct HashTable {
         capacity = PowerOf2Capacity(capacity);
         elems = allocator.template NewMultiple<Element>(capacity).data;
         mask = capacity - 1;
+        num_dead = 0;
 
         if (old_elements.size) {
             Element* new_element;
