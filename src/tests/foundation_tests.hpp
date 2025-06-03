@@ -1379,6 +1379,18 @@ TEST_CASE(TestHashTable) {
         }
     }
 
+    SUBCASE("correct retrieval") {
+        HashTable<int, int, nullptr, k_ordering> table {};
+        for (int i = 0; i < 1000; ++i) {
+            auto const result = table.FindOrInsertGrowIfNeeded(a, i, i * 2);
+            CHECK(result.inserted);
+        }
+
+        CHECK(table.size == 1000);
+        for (auto const& item : table)
+            CHECK(item.value == item.key * 2);
+    }
+
     return k_success;
 }
 
