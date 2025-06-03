@@ -127,3 +127,10 @@ PUBLIC auto& RandomElement(ContiguousContainer auto const& data, u64& seed) {
     ASSERT(data.size);
     return data[RandomIntInRange<usize>(seed, 0, data.size - 1)];
 }
+
+PUBLIC void FillRandomAsciiChars(u64& seed, auto& out) {
+    for (auto& c : out) {
+        // ASCII printable characters range from 32 to 126
+        c = (char)(RandomIntInRange<u64>(seed, 32, 126));
+    }
+}
