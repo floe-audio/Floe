@@ -304,8 +304,8 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
         PickerPopupOptions {
             .title = "Select Impulse Response",
             .height = box_system.imgui.PixelsToVw(box_system.imgui.frame_input.window_size.height * 0.5f),
-            .rhs_width = 200,
-            .filters_col_width = 200,
+            .rhs_width = 210,
+            .filters_col_width = 210,
             .item_type_name = "impulse response",
             .items_section_heading = "IRs",
             .rhs_top_button = ({
