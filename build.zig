@@ -2801,6 +2801,7 @@ pub fn build(b: *std.Build) void {
                         .{ .truncate = true },
                     ) catch @panic("could not create file");
                     defer file.close();
+                    // TODO: add CLAP_WRAPPER_EDITOR_NAME when we update clap-wrapper
                     file.writeAll(b.fmt(
                         \\ #pragma once
                         \\
