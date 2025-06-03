@@ -2801,7 +2801,6 @@ pub fn build(b: *std.Build) void {
                         .{ .truncate = true },
                     ) catch @panic("could not create file");
                     defer file.close();
-                    // TODO: add CLAP_WRAPPER_EDITOR_NAME when we update clap-wrapper
                     file.writeAll(b.fmt(
                         \\ #pragma once
                         \\
@@ -2809,11 +2808,13 @@ pub fn build(b: *std.Build) void {
                         \\ #define CLAP_WRAPPER_COCOA_CLASS {[name]s}
                         \\ #define CLAP_WRAPPER_TIMER_CALLBACK timerCallback_{[name]s}
                         \\ #define CLAP_WRAPPER_FILL_AUCV fillAUCV_{[name]s}
+                        \\ #define CLAP_WRAPPER_EDITOR_NAME "Floe"
                         \\ #include "detail/auv2/wrappedview.asinclude.mm"
                         \\ #undef CLAP_WRAPPER_COCOA_CLASS_NSVIEW
                         \\ #undef CLAP_WRAPPER_COCOA_CLASS
                         \\ #undef CLAP_WRAPPER_TIMER_CALLBACK
                         \\ #undef CLAP_WRAPPER_FILL_AUCV
+                        \\ #undef CLAP_WRAPPER_EDITOR_NAME
                         \\
                         \\ bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo, std::shared_ptr<Clap::Plugin> _plugin) {{
                         \\     if (strcmp(_plugin->_plugin->desc->id, "{[clap_id]s}") == 0) {{
