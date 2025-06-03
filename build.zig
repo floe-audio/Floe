@@ -2627,6 +2627,7 @@ pub fn build(b: *std.Build) void {
 
             vst3.addIncludePath(build_context.dep_clap_wrapper.path("include"));
             vst3.addIncludePath(build_context.dep_clap_wrapper.path("libs/fmt"));
+            vst3.addIncludePath(build_context.dep_clap_wrapper.path("libs/psl"));
             vst3.addIncludePath(build_context.dep_clap_wrapper.path("src"));
             vst3.addIncludePath(build_context.dep_vst3_sdk.path(""));
             vst3.linkLibCpp();
