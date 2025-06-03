@@ -385,16 +385,18 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                        InstPickerState& state) {
 
     HashTable<String, FilterItemInfo> tags {};
-    OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
-    OrderedHashTable<String, FilterItemInfo> library_authors;
+    auto libraries =
+        OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(box_system.arena,
+                                                                           context.libraries.size);
+    auto library_authors =
+        OrderedHashTable<String, FilterItemInfo>::Create(box_system.arena, context.libraries.size);
     if (state.tab != InstPickerState::Tab::Waveforms) {
         for (auto const l : context.libraries) {
             if (l->sorted_instruments.size == 0) continue;
             if (l->file_format_specifics.tag != state.FileFormatForCurrentTab()) continue;
 
-            auto& lib = libraries.FindOrInsertGrowIfNeeded(box_system.arena, l->Id(), {}).element.data;
-            auto& author =
-                library_authors.FindOrInsertGrowIfNeeded(box_system.arena, l->author, {}).element.data;
+            auto& lib = libraries.FindOrInsertWithoutGrowing(l->Id(), {}).element.data;
+            auto& author = library_authors.FindOrInsertWithoutGrowing(l->author, {}).element.data;
 
             for (auto const& inst : l->sorted_instruments) {
                 auto const skip = ShouldSkipInstrument(state, *inst, true);

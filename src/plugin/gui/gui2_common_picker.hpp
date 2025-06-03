@@ -61,8 +61,8 @@ struct PickerItemOptions {
 };
 
 struct FilterItemInfo {
-    u32 num_used_in_items_lists;
-    u32 total_available;
+    u32 num_used_in_items_lists {};
+    u32 total_available {};
 };
 
 struct TagsFilters {
@@ -666,6 +666,7 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                           .layout {
                               .size = {options.filters_col_width, layout::k_hug_contents},
                               .contents_padding = {.lr = k_picker_spacing, .tb = k_picker_spacing / 2},
+                              .contents_gap = k_picker_spacing / 2,
                               .contents_align = layout::Alignment::Start,
                               .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                           },

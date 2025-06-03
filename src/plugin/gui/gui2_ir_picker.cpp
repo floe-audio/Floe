@@ -266,13 +266,15 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
                 tags.InsertGrowIfNeeded(box_system.arena, tag, {.num_used_in_items_lists = 0}, tag_hash);
     }
 
-    OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
-    OrderedHashTable<String, FilterItemInfo> library_authors;
+    auto libraries =
+        OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(box_system.arena,
+                                                                           context.libraries.size);
+    auto library_authors =
+        OrderedHashTable<String, FilterItemInfo>::Create(box_system.arena, context.libraries.size);
     for (auto const l : context.libraries) {
         if (l->irs_by_name.size == 0) continue;
-        auto& lib_found = libraries.FindOrInsertGrowIfNeeded(box_system.arena, l->Id(), {}).element.data;
-        auto& author_found =
-            library_authors.FindOrInsertGrowIfNeeded(box_system.arena, l->author, {}).element.data;
+        auto& lib_found = libraries.FindOrInsertWithoutGrowing(l->Id(), {}).element.data;
+        auto& author_found = library_authors.FindOrInsertWithoutGrowing(l->author, {}).element.data;
         for (auto const& ir : l->sorted_irs) {
             auto const skip = ShouldSkipIr(state, *ir);
 
