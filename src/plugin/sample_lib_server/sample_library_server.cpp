@@ -123,7 +123,7 @@ static void DoReadLibraryJob(PendingLibraryJobs::Job::ReadLibrary& job, ArenaAll
         }
 
         auto reader = TRY_H(Reader::FromPathOrMemory(path_or_memory));
-        auto const file_hash = TRY_H(sample_lib::Hash(reader, args.format));
+        auto const file_hash = TRY_H(sample_lib::Hash(path, reader, args.format));
 
         for (auto& node : args.libraries) {
             if (auto l = node.TryScoped()) {
@@ -573,13 +573,22 @@ static bool UpdateLibraryJobs(Server& server,
                                                  lib.path,
                                                  lib.file_format_specifics.tag);
                             } else if (path::IsWithinDirectory(full_path, lib_dir)) {
-                                // Something within the library folder has changed
-                                dyn::AppendIfNotAlreadyThere(libraries_that_changed, &node);
+                                if (path::Equal(path::Extension(full_path), ".lua")) {
+                                    // If the file is a Lua file, it's probably a file used by the main lua
+                                    // file. We need to rescan the library.
+                                    ReadLibraryAsync(pending_library_jobs,
+                                                     server.libraries,
+                                                     lib.path,
+                                                     lib.file_format_specifics.tag);
+                                } else {
+                                    // Something within the library folder has changed
+                                    dyn::AppendIfNotAlreadyThere(libraries_that_changed, &node);
 
-                                for (auto& d : node.value.audio_datas) {
-                                    auto const full_audio_path =
-                                        path::Join(scratch_arena, Array {lib_dir, d.path.str});
-                                    if (path::Equal(full_audio_path, full_path)) d.file_modified = true;
+                                    for (auto& d : node.value.audio_datas) {
+                                        auto const full_audio_path =
+                                            path::Join(scratch_arena, Array {lib_dir, d.path.str});
+                                        if (path::Equal(full_audio_path, full_path)) d.file_modified = true;
+                                    }
                                 }
                             }
                         }

@@ -473,7 +473,7 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
     return library_ptr;
 }
 
-ErrorCodeOr<u64> MdataHash(Reader& reader) {
+ErrorCodeOr<u64> MdataHash(String, Reader& reader) {
     reader.pos = 0;
     mdata::MasterHeader header;
     TRY(reader.Read(&header, sizeof(mdata::MasterHeader)));

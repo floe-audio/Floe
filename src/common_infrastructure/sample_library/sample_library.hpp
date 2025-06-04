@@ -284,9 +284,9 @@ enum class LuaErrorCode {
 extern ErrorCodeCategory const lua_error_category;
 inline ErrorCodeCategory const& ErrorCategoryForEnum(LuaErrorCode) { return lua_error_category; }
 
-ErrorCodeOr<u64> MdataHash(Reader& reader);
-ErrorCodeOr<u64> LuaHash(Reader& reader);
-ErrorCodeOr<u64> Hash(Reader& reader, FileFormat format);
+ErrorCodeOr<u64> MdataHash(String path, Reader& reader);
+ErrorCodeOr<u64> LuaHash(String path, Reader& reader);
+ErrorCodeOr<u64> Hash(String path, Reader& reader, FileFormat format);
 
 struct Error {
     ErrorCode code;

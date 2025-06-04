@@ -11,6 +11,13 @@ Floe runs your script using Lua v==lua-version==, providing you with access to t
 
 If there are any errors in your script, Floe will show them on the GUI along with a line number and a description of the problem.
 
+## Multiple files
+`dofile()` is available, so you can split your script into multiple files if you want to. Floe's `dofile` implementation is the same as the standard Lua version except that you can only specify files relative to the library folder — that is, the folder that contains the `floe.lua` file.
+
+For example, you could have a folder next to `floe.lua` called `Lua` and put a file in there called `data.lua`. You could then load that file with `dofile("Lua/data.lua")`.
+
+To pass data between files, you would typically use the ["module" pattern](http://lua-users.org/wiki/ModuleDefinition) (except using dofile instead of require).
+
 ## Library Functions
 Use these functions to create your sample library. Take note of the `[required]` annotations - omitting fields marked with these will cause an error. 
 

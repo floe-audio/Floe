@@ -325,10 +325,11 @@ static MutableString StringFromTop(LuaState& ctx) {
 }
 
 static LibraryPath PathFromTop(LuaState& ctx) {
-    auto const path = FromNullTerminated(luaL_checkstring(ctx.lua, -1));
+    auto const path_c_str = luaL_checkstring(ctx.lua, -1);
+    auto const path = FromNullTerminated(path_c_str);
     // we wan't Floe libraries to be portable and therefore they shouldn't reference files outside the library
     if (path::IsAbsolute(path) || StartsWithSpan(path, ".."_s))
-        luaL_error(ctx.lua, "Path '{}' must be a relaive path to within the folder of floe.lua", path);
+        luaL_error(ctx.lua, "Path '%s' must be a relative path to within the folder of floe.lua", path_c_str);
     return {ctx.result_arena.Clone(path)};
 }
 
@@ -1533,6 +1534,13 @@ static VoidOrError<Error> TryRunLuaCode(LuaState& ctx, int r) {
     return Error {LuaErrorCode::Unexpected, {}};
 }
 
+static int ErrorHandler(lua_State* lua) {
+    char const* message = nullptr;
+    if (lua_isstring(lua, -1)) message = lua_tostring(lua, -1);
+    luaL_traceback(lua, lua, message, 1);
+    return 1;
+}
+
 static const struct luaL_Reg k_floe_lib[] = {
     {"new_library", NewLibrary},
     {"new_instrument", NewInstrument},
@@ -1541,6 +1549,45 @@ static const struct luaL_Reg k_floe_lib[] = {
     {"set_attribution_requirement", SetAttributionRequirement},
     {nullptr, nullptr},
 };
+
+static int FloeDoFile(lua_State* lua) {
+    auto& ctx = **(LuaState**)lua_getextraspace(lua);
+
+    char const* filename_c_str = luaL_checkstring(lua, 1);
+    String const filename = FromNullTerminated(filename_c_str);
+
+    if (path::IsAbsolute(filename)) return luaL_error(lua, "Floe's dofile does not support absolute paths");
+
+    if (StartsWithSpan(filename, "../"_s)) {
+        return luaL_error(lua,
+                          "Floe's dofile does not support relative paths outside of the library directory");
+    }
+
+    auto const full_path = path::Join(ctx.lua_arena, Array {path::Directory(ctx.filepath).Value(), filename});
+
+    auto const file_data = TRY_OR(ReadEntireFile(full_path, ctx.lua_arena), {
+        return luaL_error(lua,
+                          "Error reading file %s: %s",
+                          NullTerminated(full_path, ctx.lua_arena),
+                          fmt::Format(ctx.lua_arena, "{u}\0", error).data);
+    });
+
+    auto result = luaL_loadbuffer(lua, file_data.data, file_data.size, filename_c_str);
+    if (result != LUA_OK) return lua_error(lua);
+
+    lua_call(lua, 0, LUA_MULTRET);
+
+    return lua_gettop(lua) - 1;
+}
+
+static int FloeLoadFile(lua_State* lua) {
+    return luaL_error(lua, "Floe's loadfile is not supported. Use dofile instead.");
+}
+
+static void ReplaceBaseFunctions(lua_State* L) {
+    lua_register(L, "dofile", FloeDoFile);
+    lua_register(L, "loadfile", FloeLoadFile);
+}
 
 constexpr char const* k_floe_lua_helpers = R"aaa(
 floe.extend_table = function(base_table, t)
@@ -1595,18 +1642,36 @@ static VoidOrError<Error> OpenFloeLuaLibrary(LuaState& ctx) {
     return k_success;
 }
 
-static int ErrorHandler(lua_State* lua) {
-    char const* message = nullptr;
-    if (lua_isstring(lua, -1)) message = lua_tostring(lua, -1);
-    luaL_traceback(lua, lua, message, 1);
-    return 1;
-}
-
-ErrorCodeOr<u64> LuaHash(Reader& reader) {
+ErrorCodeOr<u64> LuaHash(String floe_lua_path, Reader& reader) {
     reader.pos = 0;
     ArenaAllocator scratch_arena {PageAllocator::Instance()};
-    auto data = TRY(reader.ReadOrFetchAll(scratch_arena));
-    return XXH3_64bits(data.data, data.size);
+
+    auto const hash_state = XXH64_createState();
+    ASSERT(hash_state);
+    DEFER { XXH64_freeState(hash_state); };
+
+    ASSERT(XXH64_reset(hash_state, 0) != XXH_ERROR);
+
+    if (auto const dir = path::Directory(floe_lua_path)) {
+        auto it = TRY(dir_iterator::RecursiveCreate(scratch_arena,
+                                                    *dir,
+                                                    {
+                                                        .wildcard = "*.lua",
+                                                        .get_file_size = false,
+                                                        .skip_dot_files = true,
+                                                    }));
+        DEFER { dir_iterator::Destroy(it); };
+
+        while (auto const entry = TRY(dir_iterator::Next(it, scratch_arena))) {
+            if (entry->type != FileType::File) continue;
+
+            auto const file_data =
+                TRY(ReadEntireFile(dir_iterator::FullPath(it, *entry, scratch_arena), scratch_arena));
+            ASSERT(XXH64_update(hash_state, file_data.data, file_data.size) != XXH_ERROR);
+        }
+    }
+
+    return XXH64_digest(hash_state);
 }
 
 LibraryPtrOrError ReadLua(Reader& reader,
@@ -1689,6 +1754,7 @@ LibraryPtrOrError ReadLua(Reader& reader,
             luaL_requiref(ctx.lua, lib.name, lib.func, 1);
             lua_pop(ctx.lua, 1);
         }
+        ReplaceBaseFunctions(ctx.lua);
         TRY(OpenFloeLuaLibrary(ctx));
 
         // Set up the traceback function as the error handler

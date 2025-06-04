@@ -13,6 +13,7 @@ For instance: 0.0.1. Don't change the headings.
 - Section-out tag categories in the picker panels and add icons
 - Progressively hide unused filters as you select filters
 - Fix instrument picker not showing waveform instruments when no Mirage libraries installed
+- Sample library creation: add support for multiple Lua files by using `dofile()`
 
 ## 0.9.9-beta
 - Sample library creation: add start_offset_frames to add_region

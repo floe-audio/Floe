@@ -14,10 +14,10 @@ CustomValueToString(Writer writer, sample_lib::LibraryIdRef id, fmt::FormatOptio
 
 namespace sample_lib {
 
-ErrorCodeOr<u64> Hash(Reader& reader, FileFormat format) {
+ErrorCodeOr<u64> Hash(String path, Reader& reader, FileFormat format) {
     switch (format) {
-        case FileFormat::Mdata: return MdataHash(reader);
-        case FileFormat::Lua: return LuaHash(reader);
+        case FileFormat::Mdata: return MdataHash(path, reader);
+        case FileFormat::Lua: return LuaHash(path, reader);
     }
     PanicIfReached();
     return {};
