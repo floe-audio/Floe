@@ -1841,7 +1841,7 @@ static Type& ExtractSuccess(tests::Tester& tester, LoadResult const& result, Loa
     return *opt_r;
 }
 
-TEST_CASE(TestSampleLibraryLoader) {
+TEST_CASE(TestSampleLibraryServer) {
     struct Fixture {
         [[maybe_unused]] Fixture(tests::Tester&) { thread_pool.Init("pool", 8u); }
         bool initialised = false;
@@ -2300,6 +2300,6 @@ TEST_CASE(TestSampleLibraryLoader) {
 
 } // namespace sample_lib_server
 
-TEST_REGISTRATION(RegisterSampleLibraryLoaderTests) {
-    REGISTER_TEST(sample_lib_server::TestSampleLibraryLoader);
+TEST_REGISTRATION(RegisterSampleLibraryServerTests) {
+    REGISTER_TEST(sample_lib_server::TestSampleLibraryServer);
 }
