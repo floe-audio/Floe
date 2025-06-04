@@ -17,6 +17,7 @@ struct LibraryDevPanelState {
     };
     bool open = false;
     Tab tab = Tab::TagBuilder;
+    bool modeless = true;
 };
 
 void DoLibraryDevPanel(GuiBoxSystem& box_system,

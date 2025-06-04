@@ -21,6 +21,7 @@ struct ModalHeaderConfig {
     Box parent;
     String title;
     TrivialFunctionRef<void()> on_close;
+    bool* modeless {};
 };
 
 // Creates a standard panel header with title and close button
@@ -32,23 +33,42 @@ PUBLIC Box DoModalHeader(GuiBoxSystem& box_system, ModalHeaderConfig const& conf
                                            .layout {
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
                                                .contents_padding = {.lrtb = style::k_spacing},
+                                               .contents_gap = style::k_spacing * 1.2f,
                                                .contents_direction = layout::Direction::Row,
                                                .contents_align = layout::Alignment::Justify,
                                            },
                                        });
 
     DoBox(box_system,
-          {
-              .parent = title_container,
-              .text = config.title,
-              .font = FontType::Heading1,
-              .size_from_text = true,
-          });
+          {.parent = title_container,
+           .text = config.title,
+           .font = FontType::Heading1,
+           .layout {
+               .size = {layout::k_fill_parent, style::k_font_heading1_size},
+           }});
+
+    if (config.modeless) {
+        if (DoBox(box_system,
+                  {
+                      .parent = title_container,
+                      .text = *config.modeless ? ICON_FA_UNLOCK : ICON_FA_LOCK,
+                      .font = FontType::Icons,
+                      .size_from_text = true,
+                      .background_fill_auto_hot_active_overlay = true,
+                      .round_background_corners = 0b1111,
+                      .activate_on_click_button = MouseButton::Left,
+                      .activation_click_event = ActivationClickEvent::Up,
+                      .extra_margin_for_mouse_events = 8,
+                  })
+                .button_fired) {
+            *config.modeless = !*config.modeless;
+        }
+    }
 
     if (auto const close = DoBox(box_system,
                                  {
                                      .parent = title_container,
-                                     .text = ICON_FA_TIMES,
+                                     .text = ICON_FA_XMARK,
                                      .font = FontType::Icons,
                                      .size_from_text = true,
                                      .background_fill_auto_hot_active_overlay = true,
@@ -157,6 +177,7 @@ PUBLIC Box DoModalTabBar(GuiBoxSystem& box_system, ModalTabBarConfig const& conf
 struct ModalConfig {
     String title;
     TrivialFunctionRef<void()> on_close;
+    bool* modeless {};
     Span<ModalTabConfig const> tabs;
     u32& current_tab_index;
 };
@@ -170,6 +191,7 @@ PUBLIC Box DoModal(GuiBoxSystem& box_system, ModalConfig const& config) {
                       .parent = root,
                       .title = config.title,
                       .on_close = config.on_close,
+                      .modeless = config.modeless,
                   });
 
     DoModalTabBar(box_system,

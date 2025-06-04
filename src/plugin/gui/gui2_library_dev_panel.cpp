@@ -157,10 +157,7 @@ static ErrorCodeOr<void> WriteTagsFile(TagsByInstrument const& tags,
 }
 
 static void
-DoTagBuilderPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, LibraryDevPanelState& state) {
-    (void)box_system;
-    (void)context;
-    (void)state;
+DoTagBuilderPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, LibraryDevPanelState&) {
     auto const root = DoBox(box_system,
                             {
                                 .layout {
@@ -173,15 +170,16 @@ DoTagBuilderPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Lib
                                 },
                             });
 
-    DoBox(box_system,
-          {
-              .parent = root,
-              .text =
-                  "Select tags the 1st layer's instrument. These are written to \"" GENERATED_TAGS_FILENAME
-                  "\" in the library's folder. Use this file when doing floe.new_instrument().",
-              .wrap_width = k_wrap_to_parent,
-              .size_from_text = true,
-          });
+    DoBox(
+        box_system,
+        {
+            .parent = root,
+            .text =
+                "Select tags for the 1st layer's instrument. These are written to \"" GENERATED_TAGS_FILENAME
+                "\" in the library's folder. Use this file when doing floe.new_instrument().",
+            .wrap_width = k_wrap_to_parent,
+            .size_from_text = true,
+        });
 
     if (context.engine.Layer(0).instrument.tag != InstrumentType::Sampler) return;
 
@@ -237,6 +235,7 @@ static void DoPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, L
                               {
                                   .title = "Library Developer Panel"_s,
                                   .on_close = [&state] { state.open = false; },
+                                  .modeless = &state.modeless,
                                   .tabs = k_tab_config,
                                   .current_tab_index = ToIntRef(state.tab),
                               });
@@ -270,9 +269,6 @@ static void DoPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, L
 void DoLibraryDevPanel(GuiBoxSystem& box_system,
                        LibraryDevPanelContext& context,
                        LibraryDevPanelState& state) {
-    (void)context;
-    (void)box_system;
-
     // While the tag builder panel is open we want to disable file watching so that the instrument doesn't
     // reload with every change of tags.
     context.engine.shared_engine_systems.sample_library_server.disable_file_watching.Store(
@@ -295,9 +291,9 @@ void DoLibraryDevPanel(GuiBoxSystem& box_system,
                          .r = {.pos = pos, .size = size},
                          .imgui_id = box_system.imgui.GetID("libdev-panel"),
                          .on_close = [&state]() { state.open = false; },
-                         .close_on_click_outside = false,
-                         .darken_background = false,
-                         .disable_other_interaction = false,
+                         .close_on_click_outside = !state.modeless,
+                         .darken_background = !state.modeless,
+                         .disable_other_interaction = !state.modeless,
                      },
              });
 }

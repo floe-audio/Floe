@@ -15,6 +15,7 @@ For instance: 0.0.1. Don't change the headings.
     - Fix instrument picker not showing waveform instruments when no Mirage libraries installed
 - Add "Library Developer Panel" on the GUI with tag-builder tool for generating instrument tags in Lua. 
 - Add right-click menu to the instrument picker button with 'unload instrument' option.
+- Add lock/unlock mode for Save Preset panel for allowing changing presets with it still open
 - Sample library creation: add support for multiple Lua files by using `dofile()`
 - Sample library creation: add set_required_floe_version function
 

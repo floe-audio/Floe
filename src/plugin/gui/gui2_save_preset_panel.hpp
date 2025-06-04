@@ -24,6 +24,7 @@ struct SavePresetPanelState {
     bool open;
     StateMetadata metadata;
     bool scroll_to_start;
+    bool modeless {};
 };
 
 void OnEngineStateChange(SavePresetPanelState& state, Engine const& engine);

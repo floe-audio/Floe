@@ -291,6 +291,7 @@ void DoSavePresetPanel(GuiBoxSystem& box_system,
                                            .parent = root,
                                            .title = "Save Preset",
                                            .on_close = [&state]() { state.open = false; },
+                                           .modeless = &state.modeless,
                                        });
 
                          DoModalDivider(box_system, root, DividerType::Horizontal);
@@ -374,9 +375,9 @@ void DoSavePresetPanel(GuiBoxSystem& box_system,
                              f32x2 {box_system.imgui.VwToPixels(640), box_system.imgui.VwToPixels(600)}),
                          .imgui_id = box_system.imgui.GetID("save-preset"),
                          .on_close = [&state]() { state.open = false; },
-                         .close_on_click_outside = true,
-                         .darken_background = true,
-                         .disable_other_interaction = true,
+                         .close_on_click_outside = !state.modeless,
+                         .darken_background = !state.modeless,
+                         .disable_other_interaction = !state.modeless,
                      },
              });
 }
