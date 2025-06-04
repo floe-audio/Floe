@@ -1576,7 +1576,7 @@ static sample_lib::Library* BuiltinLibrary() {
 
     static bool init = false;
     if (!Exchange(init, true)) {
-        static FixedSizeAllocator<Kb(20)> alloc {nullptr};
+        static FixedSizeAllocator<Kb(15)> alloc {nullptr};
 
         auto const embedded_irs = GetEmbeddedIrs();
 
