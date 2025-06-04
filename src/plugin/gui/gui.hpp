@@ -11,6 +11,7 @@
 #include "gui/gui2_info_panel_state.hpp"
 #include "gui/gui2_inst_picker_state.hpp"
 #include "gui/gui2_ir_picker_state.hpp"
+#include "gui/gui2_library_dev_panel.hpp"
 #include "gui/gui2_notifications.hpp"
 #include "gui/gui2_prefs_panel_state.hpp"
 #include "gui/gui2_preset_picker.hpp"
@@ -131,6 +132,7 @@ struct Gui {
     IrPickerState ir_picker_state {};
     SavePresetPanelState save_preset_panel_state {};
     PresetPickerState preset_picker_state {};
+    LibraryDevPanelState library_dev_panel_state {};
 
     GuiFrameInput& frame_input;
     GuiFrameResult frame_output;

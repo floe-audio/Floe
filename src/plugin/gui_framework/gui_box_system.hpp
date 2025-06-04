@@ -42,7 +42,7 @@
 
 struct GuiBoxSystem;
 
-using PanelFunction = TrivialFixedSizeFunction<16, void(GuiBoxSystem&)>;
+using PanelFunction = TrivialFixedSizeFunction<24, void(GuiBoxSystem&)>;
 
 enum class PanelType {
     Subpanel,

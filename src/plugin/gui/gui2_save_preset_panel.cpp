@@ -31,6 +31,122 @@ static prefs::Descriptor RememberedAuthorPrefsDescriptor() {
     return desc;
 }
 
+void DoTagsGui(GuiBoxSystem& box_system,
+               DynamicArrayBounded<DynamicArrayBounded<char, k_max_tag_size>, k_max_num_tags>& tags,
+               Box const& root) {
+    Bitset<ToInt(TagType::Count)> selected_tags = {};
+    for (auto const tag : tags) {
+        for (auto const category : EnumIterator<TagCategory>()) {
+            if (category == TagCategory::ReverbType) continue;
+
+            for (auto const& category_tag : Tags(category).tags) {
+                if (GetTagInfo(category_tag).name == tag) {
+                    selected_tags.Set(ToInt(category_tag));
+                    break;
+                }
+            }
+        }
+    }
+
+    for (auto const category : EnumIterator<TagCategory>()) {
+        if (category == TagCategory::ReverbType) continue;
+
+        auto const category_box = DoBox(box_system,
+                                        {
+                                            .parent = root,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                .contents_gap = style::k_spacing / 3,
+                                                .contents_direction = layout::Direction::Column,
+                                                .contents_align = layout::Alignment::Start,
+                                                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                            },
+                                        });
+
+        auto const info = Tags(category);
+
+        {
+
+            auto const heading_box =
+                DoBox(box_system,
+                      {
+                          .parent = category_box,
+                          .layout {
+                              .size = {layout::k_fill_parent, layout::k_hug_contents},
+                              .contents_gap = style::k_spacing / 3,
+                              .contents_direction = layout::Direction::Row,
+                              .contents_align = layout::Alignment::Start,
+                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                          },
+                      });
+            DoBox(box_system,
+                  {
+                      .parent = heading_box,
+                      .text = info.font_awesome_icon,
+                      .font = FontType::Icons,
+                      .size_from_text = true,
+                  });
+
+            DoBox(box_system,
+                  {
+                      .parent = heading_box,
+                      .text = fmt::FormatInline<k_max_tag_size + 3>("{}:", info.name),
+                      .font = FontType::Body,
+                      .size_from_text = true,
+                      .layout {
+                          .line_break = true,
+                      },
+                  });
+        }
+
+        auto const tags_list = DoBox(box_system,
+                                     {
+                                         .parent = category_box,
+                                         .layout {
+                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                             .contents_gap = style::k_spacing / 2.5f,
+                                             .contents_direction = layout::Direction::Row,
+                                             .contents_multiline = true,
+                                             .contents_align = layout::Alignment::Start,
+                                             .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                         },
+                                     });
+
+        bool category_disallow_more_selection = ShouldGreyOutTagCategory(category, selected_tags);
+
+        for (auto const& tag : info.tags) {
+            auto const tag_info = GetTagInfo(tag);
+            auto const is_selected = selected_tags.Get(ToInt(tag));
+
+            bool grey_out = category_disallow_more_selection;
+            if (is_selected) grey_out = false;
+
+            auto const button = DoBox(
+                box_system,
+                BoxConfig {
+                    .parent = tags_list,
+                    .text = tag_info.name,
+                    .font = FontType::Body,
+                    .text_fill = grey_out ? style::Colour::Overlay2 : style::Colour::Text,
+                    .size_from_text = true,
+                    .background_fill = is_selected ? style::Colour::Highlight : style::Colour::Background1,
+                    .background_fill_auto_hot_active_overlay = true,
+                    .round_background_corners = 0b1100,
+                    .activate_on_click_button = MouseButton::Left,
+                    .activation_click_event = ActivationClickEvent::Up,
+                    .tooltip = tag_info.description,
+                });
+
+            if (button.button_fired) {
+                if (is_selected)
+                    dyn::RemoveValue(tags, tag_info.name);
+                else
+                    dyn::Append(tags, tag_info.name);
+            }
+        }
+    }
+}
+
 static void
 SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SavePresetPanelState& state) {
     auto const root = DoBox(box_system,
@@ -145,121 +261,7 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
             dyn::AssignFitInCapacity(state.metadata.description, description_field.text_input_result->text);
     }
 
-    {
-        Bitset<ToInt(TagType::Count)> selected_tags = {};
-        for (auto const tag : state.metadata.tags) {
-            for (auto const category : EnumIterator<TagCategory>()) {
-                if (category == TagCategory::ReverbType) continue;
-
-                for (auto const& category_tag : Tags(category).tags) {
-                    if (GetTagInfo(category_tag).name == tag) {
-                        selected_tags.Set(ToInt(category_tag));
-                        break;
-                    }
-                }
-            }
-        }
-
-        for (auto const category : EnumIterator<TagCategory>()) {
-            if (category == TagCategory::ReverbType) continue;
-
-            auto const category_box =
-                DoBox(box_system,
-                      {
-                          .parent = root,
-                          .layout {
-                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                              .contents_gap = style::k_spacing / 3,
-                              .contents_direction = layout::Direction::Column,
-                              .contents_align = layout::Alignment::Start,
-                              .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                          },
-                      });
-
-            auto const info = Tags(category);
-
-            {
-
-                auto const heading_box =
-                    DoBox(box_system,
-                          {
-                              .parent = category_box,
-                              .layout {
-                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                  .contents_gap = style::k_spacing / 3,
-                                  .contents_direction = layout::Direction::Row,
-                                  .contents_align = layout::Alignment::Start,
-                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                              },
-                          });
-                DoBox(box_system,
-                      {
-                          .parent = heading_box,
-                          .text = info.font_awesome_icon,
-                          .font = FontType::Icons,
-                          .size_from_text = true,
-                      });
-
-                DoBox(box_system,
-                      {
-                          .parent = heading_box,
-                          .text = fmt::FormatInline<k_max_tag_size + 3>("{}:", info.name),
-                          .font = FontType::Body,
-                          .size_from_text = true,
-                          .layout {
-                              .line_break = true,
-                          },
-                      });
-            }
-
-            auto const tags_list = DoBox(box_system,
-                                         {
-                                             .parent = category_box,
-                                             .layout {
-                                                 .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                 .contents_gap = style::k_spacing / 2.5f,
-                                                 .contents_direction = layout::Direction::Row,
-                                                 .contents_multiline = true,
-                                                 .contents_align = layout::Alignment::Start,
-                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                             },
-                                         });
-
-            bool category_disallow_more_selection = ShouldGreyOutTagCategory(category, selected_tags);
-
-            for (auto const& tag : info.tags) {
-                auto const tag_info = GetTagInfo(tag);
-                auto const is_selected = selected_tags.Get(ToInt(tag));
-
-                bool grey_out = category_disallow_more_selection;
-                if (is_selected) grey_out = false;
-
-                auto const button =
-                    DoBox(box_system,
-                          BoxConfig {
-                              .parent = tags_list,
-                              .text = tag_info.name,
-                              .font = FontType::Body,
-                              .text_fill = grey_out ? style::Colour::Overlay2 : style::Colour::Text,
-                              .size_from_text = true,
-                              .background_fill =
-                                  is_selected ? style::Colour::Highlight : style::Colour::Background1,
-                              .background_fill_auto_hot_active_overlay = true,
-                              .round_background_corners = 0b1100,
-                              .activate_on_click_button = MouseButton::Left,
-                              .activation_click_event = ActivationClickEvent::Up,
-                              .tooltip = tag_info.description,
-                          });
-
-                if (button.button_fired) {
-                    if (is_selected)
-                        dyn::RemoveValue(state.metadata.tags, tag_info.name);
-                    else
-                        dyn::Append(state.metadata.tags, tag_info.name);
-                }
-            }
-        }
-    }
+    DoTagsGui(box_system, state.metadata.tags, root);
 }
 
 constexpr u32 k_save_panel_contents_imgui_id = (u32)SourceLocationHash();

@@ -1927,6 +1927,7 @@ pub fn build(b: *std.Build) void {
                     plugin_path ++ "/gui/gui2_ir_picker.cpp",
                     plugin_path ++ "/gui/gui2_preset_picker.cpp",
                     plugin_path ++ "/gui/gui2_save_preset_panel.cpp",
+                    plugin_path ++ "/gui/gui2_library_dev_panel.cpp",
                     plugin_path ++ "/gui/gui_bot_panel.cpp",
                     plugin_path ++ "/gui/gui_button_widgets.cpp",
                     plugin_path ++ "/gui/gui_dragger_widgets.cpp",

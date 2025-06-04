@@ -237,7 +237,8 @@ struct Server {
     ~Server();
 
     // public
-    Atomic<u64> total_bytes_used_by_samples {};
+    Atomic<bool> disable_file_watching {false}; // set to true/false as needed
+    Atomic<u64> total_bytes_used_by_samples {}; // filled by the server thread
     Atomic<u32> num_insts_loaded {};
     Atomic<u32> num_samples_loaded {};
     Atomic<u32> is_scanning_libraries {}; // you can use WaitIfValueIsExpected

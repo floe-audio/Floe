@@ -346,6 +346,12 @@ GuiFrameResult GuiUpdate(Gui* g) {
 
     // GUI2 panels. This is the future.
     {
+        {
+            LibraryDevPanelContext context {
+                .engine = g->engine,
+            };
+            DoLibraryDevPanel(g->box_system, context, g->library_dev_panel_state);
+        }
 
         {
             PreferencesPanelContext context {

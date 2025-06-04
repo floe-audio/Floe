@@ -108,7 +108,7 @@ Here are some guidelines for levels:
 ### Sample rate, bit depth, and file format
 Floe only supports FLAC and WAV files. We recommend using FLAC for your samples. It's lossless and can reduce the file size by 50% to 70% compared to WAV. Floe loads FLAC files very quickly.
 
-We find 44.1 kHz and 16-bit is often a perfectly reasonable choice. 48 kHz and 24-bit might also be appropriate in certain cases.
+We find 44.1 kHz and 16-bit is often a perfectly reasonable choice. 48 kHz and 24-bit might also be appropriate in certain cases. FLAC also supports bit-depths between 16 and 24 bits (such as 20-bit). Floe supports these too.
 
 ### Volume envelopes of samples
 Floe blurs the line between a sampler and a sample-based synthesizer. It has lots of parameters for manipulating the sound in real-time.

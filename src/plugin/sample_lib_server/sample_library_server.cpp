@@ -501,7 +501,7 @@ static bool UpdateLibraryJobs(Server& server,
             LogDebug(ModuleName::SampleLibraryServer,
                      "Reading directory changes failed: {}",
                      outcome.Error());
-        } else {
+        } else if (!server.disable_file_watching.Load(LoadMemoryOrder::Relaxed)) {
             auto const dir_changes_span = outcome.Value();
             for (auto const& dir_changes : dir_changes_span) {
                 ASSERT(FindIf(pending_library_jobs.folders, [&](ScanFolder* f) {
