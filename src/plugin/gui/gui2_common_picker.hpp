@@ -710,7 +710,7 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
             if (context.state.HasFilters()) {
                 if (IconButton(box_system,
                                lhs_top,
-                               ICON_FA_TIMES,
+                               ICON_FA_XMARK,
                                "Clear all filters",
                                style::k_font_heading2_size * 0.9f,
                                style::k_font_heading2_size)
@@ -760,7 +760,7 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                          .on_fired = options.on_load_next,
                      },
                      {
-                         .text = ICON_FA_RANDOM,
+                         .text = ICON_FA_SHUFFLE,
                          .tooltip = fmt::Format(box_system.arena, "Load random {}", options.item_type_name),
                          .icon_scaling = 0.8f,
                          .on_fired = options.on_load_random,
@@ -894,7 +894,7 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                 DoBox(box_system,
                       {
                           .parent = search_box,
-                          .text = ICON_FA_SEARCH,
+                          .text = ICON_FA_MAGNIFYING_GLASS,
                           .font_size = k_picker_item_height * 0.9f,
                           .font = FontType::Icons,
                           .text_fill = style::Colour::Subtext0,
@@ -924,7 +924,7 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                     if (DoBox(box_system,
                               {
                                   .parent = search_box,
-                                  .text = ICON_FA_TIMES,
+                                  .text = ICON_FA_XMARK,
                                   .font_size = k_picker_item_height * 0.9f,
                                   .font = FontType::Icons,
                                   .text_fill = style::Colour::Subtext0,

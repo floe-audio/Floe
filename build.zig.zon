@@ -17,8 +17,8 @@
             .hash = "N-V-__8AAExyUgDx-txe2Gg6EHaVFT1HUCXO-WGf0FBABDq-",
         },
         .embedded_files_workaround = .{
-            .url = "git+https://github.com/floe-audio/floe-embedded-files-workaround#d3b73b5bb68ff08e6b6e0a12855a50eef0bae5b0",
-            .hash = "N-V-__8AABH8sAJj8dOv9vL32v4HTxQ3uIgyLF_PbtDgoYcL",
+            .url = "git+https://github.com/floe-audio/floe-embedded-files-workaround#b549f1964eae45ab72d1328b7c74bdde8b0ec442",
+            .hash = "N-V-__8AAMq7xgJ27dBD80RVMvPrRqCW4txdtcRKhxVl-Bb8",
         },
         .stb = .{
             .url = "git+https://github.com/nothings/stb#64e783d73879abe2e7589bc634bf6cb6f5e2baae",

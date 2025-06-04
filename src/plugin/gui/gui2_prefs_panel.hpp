@@ -123,7 +123,7 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
         result.delete_pressed = DoBox(box_system,
                                       {
                                           .parent = icon_button_container,
-                                          .text = ICON_FA_TRASH_ALT,
+                                          .text = ICON_FA_TRASH,
                                           .font = FontType::Icons,
                                           .text_fill = style::Colour::Subtext0,
                                           .text_fill_hot = style::Colour::Subtext0,
@@ -142,7 +142,7 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
         DoBox(box_system,
               {
                   .parent = icon_button_container,
-                  .text = ICON_FA_EXTERNAL_LINK_ALT,
+                  .text = ICON_FA_UP_RIGHT_FROM_SQUARE,
                   .font = FontType::Icons,
                   .text_fill = style::Colour::Subtext0,
                   .text_fill_hot = style::Colour::Subtext0,
@@ -621,7 +621,7 @@ PreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context, Pre
             auto const index = ToInt(tab);
             switch (tab) {
                 case PreferencesPanelState::Tab::General:
-                    tabs[index] = {.icon = ICON_FA_SLIDERS_H, .text = "General"};
+                    tabs[index] = {.icon = ICON_FA_SLIDERS, .text = "General"};
                     break;
                 case PreferencesPanelState::Tab::Folders:
                     tabs[index] = {.icon = ICON_FA_FOLDER_OPEN, .text = "Folders"};

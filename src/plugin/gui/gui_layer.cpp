@@ -3,7 +3,7 @@
 
 #include "gui_layer.hpp"
 
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 
 #include "engine/engine.hpp"
 #include "engine/loop_modes.hpp"
@@ -865,7 +865,7 @@ void Draw(Gui* g,
             if (buttons::Button(g,
                                 rand_id,
                                 rand_r,
-                                ICON_FA_RANDOM,
+                                ICON_FA_SHUFFLE,
                                 buttons::IconButton(g->imgui).WithRandomiseIconScaling())) {
                 InstPickerContext context {
                     .layer = *layer,

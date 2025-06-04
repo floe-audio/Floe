@@ -3,7 +3,7 @@
 
 #include "gui.hpp"
 
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 #include <stb_image.h>
 #include <stb_image_resize2.h>
 

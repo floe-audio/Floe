@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
@@ -125,7 +125,7 @@ PUBLIC Style SettingsWindowButton(imgui::Context const& imgui) {
     s.main_cols.active_on = s.main_cols.reg;
     s.main_cols.active_off = s.main_cols.active_on;
     s.main_cols.on = s.main_cols.reg;
-    s.icon_and_text.on_icon = ICON_FA_CHECK_SQUARE;
+    s.icon_and_text.on_icon = ICON_FA_SQUARE_CHECK;
     s.icon_and_text.off_icon = ICON_FA_SQUARE;
     s.icon_and_text.capitalise = false;
     return s;
@@ -180,7 +180,7 @@ PUBLIC Style LayerHeadingButton(imgui::Context const& imgui, u32 highlight_col =
     s.text_cols.hot_off = s.text_cols.hot_on;
     s.text_cols.active_on = s.text_cols.hot_on;
     s.text_cols.active_off = s.text_cols.active_on;
-    s.icon_and_text.on_icon = ICON_FA_CHECK_SQUARE;
+    s.icon_and_text.on_icon = ICON_FA_SQUARE_CHECK;
     s.icon_and_text.off_icon = ICON_FA_SQUARE;
     s.icon_and_text.capitalise = false;
     s.icon_scaling = 0.75f;
@@ -379,7 +379,7 @@ PUBLIC Style EffectButtonGrabber(imgui::Context const& imgui) {
     s.type = buttons::LayoutAndSizeType::IconOrText;
     s.icon_or_text.justification = TextJustification::CentredRight;
     s.icon_or_text.add_margin_x = false;
-    s.icon_or_text.default_icon = ICON_FA_ARROWS_ALT_V;
+    s.icon_or_text.default_icon = ICON_FA_ARROWS_UP_DOWN;
     s.icon_scaling = 0.7f;
     s.main_cols = {};
     s.main_cols.hot_on = LiveCol(imgui, UiColMap::FXButtonGripIcon);

@@ -205,7 +205,7 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
 
         if (IconButton(box_system,
                        author_box,
-                       ICON_FA_SAVE,
+                       ICON_FA_FLOPPY_DISK,
                        "Remember this author"_s,
                        style::k_font_body_size,
                        style::k_font_body_size)

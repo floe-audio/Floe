@@ -108,7 +108,7 @@ PUBLIC void NotificationsPanel(GuiBoxSystem& box_system, Notifications& notifica
                               case NotificationDisplayInfo::IconType::Info: str = ICON_FA_INFO; break;
                               case NotificationDisplayInfo::IconType::Success: str = ICON_FA_CHECK; break;
                               case NotificationDisplayInfo::IconType::Error:
-                                  str = ICON_FA_EXCLAMATION_TRIANGLE;
+                                  str = ICON_FA_TRIANGLE_EXCLAMATION;
                                   break;
                           }
                           str;
@@ -144,7 +144,7 @@ PUBLIC void NotificationsPanel(GuiBoxSystem& box_system, Notifications& notifica
             if (DoBox(box_system,
                       {
                           .parent = title_container,
-                          .text = ICON_FA_TIMES,
+                          .text = ICON_FA_XMARK,
                           .font = FontType::Icons,
                           .size_from_text = true,
                           .background_fill_auto_hot_active_overlay = true,

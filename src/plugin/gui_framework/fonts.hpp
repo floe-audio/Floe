@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 
 #include "build_resources/embedded_files.h"
 #include "gui_framework/draw_list.hpp"

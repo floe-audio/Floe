@@ -1,7 +1,7 @@
 // Copyright 2018-2024 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 
 #include "common_infrastructure/paths.hpp"
 
@@ -333,7 +333,7 @@ void TopPanel(Gui* g) {
             if (buttons::Button(g,
                                 btn_id,
                                 preset_rand_r,
-                                ICON_FA_RANDOM,
+                                ICON_FA_SHUFFLE,
                                 large_icon_button_style.WithIconScaling(0.8f))) {
                 PresetPickerContext context {
                     .sample_library_server = g->shared_engine_systems.sample_library_server,
@@ -351,7 +351,7 @@ void TopPanel(Gui* g) {
 
         {
             auto const btn_id = g->imgui.GetID("save");
-            if (buttons::Button(g, btn_id, preset_save_r, ICON_FA_SAVE, large_icon_button_style))
+            if (buttons::Button(g, btn_id, preset_save_r, ICON_FA_FLOPPY_DISK, large_icon_button_style))
                 g->save_preset_panel_state.open = true;
             Tooltip(g, btn_id, preset_save_r, "Save the current state as a preset"_s);
         }
@@ -370,7 +370,7 @@ void TopPanel(Gui* g) {
     {
         auto btn_id = g->imgui.GetID("sets");
         auto btn_r = layout::GetRect(g->layout, cog);
-        if (buttons::Button(g, btn_id, btn_r, ICON_FA_COG, large_icon_button_style))
+        if (buttons::Button(g, btn_id, btn_r, ICON_FA_GEAR, large_icon_button_style))
             g->preferences_panel_state.open = true;
         Tooltip(g, btn_id, btn_r, "Open preferences window"_s);
     }
@@ -378,7 +378,7 @@ void TopPanel(Gui* g) {
     {
         auto btn_id = g->imgui.GetID("info");
         auto btn_r = layout::GetRect(g->layout, info);
-        if (buttons::Button(g, btn_id, btn_r, ICON_FA_INFO_CIRCLE, large_icon_button_style))
+        if (buttons::Button(g, btn_id, btn_r, ICON_FA_CIRCLE_INFO, large_icon_button_style))
             g->info_panel_state.open = true;
         if (check_for_update::ShowNewVersionIndicator(g->shared_engine_systems.check_for_update_state,
                                                       g->prefs)) {
@@ -412,7 +412,7 @@ void TopPanel(Gui* g) {
                            additional_menu_id,
                            popup_id,
                            additonal_menu_r,
-                           ICON_FA_ELLIPSIS_V,
+                           ICON_FA_ELLIPSIS_VERTICAL,
                            large_icon_button_style)) {
             DoDotsMenu(g);
             g->imgui.EndWindow();

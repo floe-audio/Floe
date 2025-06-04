@@ -3,7 +3,7 @@
 
 #include "gui_effects.hpp"
 
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 #include <float.h>
 
 #include "os/threading.hpp"
@@ -754,7 +754,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
                 if (buttons::Button(g,
                                     close_id,
                                     r,
-                                    ICON_FA_TIMES,
+                                    ICON_FA_XMARK,
                                     buttons::IconButton(imgui).WithIconScaling(0.9f))) {
                     SetParameterValue(engine.processor, k_effect_info[ToInt(fx.type)].on_param_index, 0, {});
                 }

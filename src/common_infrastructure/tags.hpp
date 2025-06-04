@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 
 #include "foundation/foundation.hpp"
 
@@ -473,7 +473,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                     "It's strongly recommended to specify a sound-source for instruments and impulse responses. This is sometimes not applicable for presets.",
                 .tags = k_tags,
                 .emoji = "🔊",
-                .font_awesome_icon = ICON_FA_VOLUME_UP,
+                .font_awesome_icon = ICON_FA_VOLUME_HIGH,
                 .exclude_categories = k_exclude_categories,
             };
         }
@@ -613,7 +613,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                     "It's usually recommended to specify moods for synthesised instruments and presets. Not typically used for well-known acoustic instruments.",
                 .tags = k_tags,
                 .emoji = "🙂",
-                .font_awesome_icon = ICON_FA_SMILE,
+                .font_awesome_icon = ICON_FA_FACE_SMILE,
             };
         }
         case TagCategory::MoodNegative: {
@@ -634,7 +634,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                     "It's usually recommended to specify moods for synthesised instruments and presets. Not typically used for well-known acoustic instruments.",
                 .tags = k_tags,
                 .emoji = "😟",
-                .font_awesome_icon = ICON_FA_FROWN,
+                .font_awesome_icon = ICON_FA_FACE_FROWN,
             };
         }
         case TagCategory::MoodMixed: {
@@ -652,7 +652,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                     "It's usually recommended to specify moods for synthesised instruments and presets. Not typically used for well-known acoustic instruments.",
                 .tags = k_tags,
                 .emoji = "😐",
-                .font_awesome_icon = ICON_FA_MEH,
+                .font_awesome_icon = ICON_FA_FACE_MEH,
             };
         }
         case TagCategory::MoodThematic: {
@@ -675,7 +675,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                     "It's usually recommended to specify moods for synthesised instruments and presets. Not typically used for well-known acoustic instruments.",
                 .tags = k_tags,
                 .emoji = "🎭",
-                .font_awesome_icon = ICON_FA_THEATER_MASKS,
+                .font_awesome_icon = ICON_FA_MASKS_THEATER,
             };
         }
         case TagCategory::Pitch: {
@@ -742,7 +742,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .recommendation = "",
                 .tags = k_tags,
                 .emoji = "🔁",
-                .font_awesome_icon = ICON_FA_SYNC_ALT,
+                .font_awesome_icon = ICON_FA_REPEAT,
                 .exclude_categories = k_sound_type_exclude_categories,
             };
         }
@@ -817,7 +817,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .recommendation = "",
                 .tags = k_tags,
                 .emoji = "🎚️",
-                .font_awesome_icon = ICON_FA_SLIDERS_H,
+                .font_awesome_icon = ICON_FA_SLIDERS,
                 .exclude_tags = k_exclude_tags,
             };
         }

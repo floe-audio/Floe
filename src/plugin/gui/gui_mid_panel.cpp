@@ -1,7 +1,7 @@
 // Copyright 2018-2024 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 
 #include "gui.hpp"
 #include "gui/gui2_inst_picker.hpp"
@@ -120,7 +120,7 @@ void MidPanel(Gui* g) {
         if (buttons::Button(g,
                             id,
                             btn_r,
-                            ICON_FA_RANDOM,
+                            ICON_FA_SHUFFLE,
                             buttons::IconButton(imgui).WithRandomiseIconScaling()))
             return true;
         Tooltip(g, id, btn_r, tooltip);
