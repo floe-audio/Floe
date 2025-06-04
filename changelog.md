@@ -9,13 +9,14 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 0.9.10-beta
-- Add "Library Developer Panel" on the GUI with tag-builder tool for generating instrument tags in Lua. 
-- Add right-click menu to the instrument picker button with 'unload instrument' option.
 - Picker panels:
     - Put tags into categories and add icons
     - Add 2 filter modes: match-all and match-any, allowing for more powerful filtering. A label showing the number of matching items dynamically updates as you change the filters.
     - Fix instrument picker not showing waveform instruments when no Mirage libraries installed
+- Add "Library Developer Panel" on the GUI with tag-builder tool for generating instrument tags in Lua. 
+- Add right-click menu to the instrument picker button with 'unload instrument' option.
 - Sample library creation: add support for multiple Lua files by using `dofile()`
+- Sample library creation: add set_required_floe_version function
 
 ## 0.9.9-beta
 - Sample library creation: add start_offset_frames to add_region

@@ -90,6 +90,8 @@ PUBLIC constexpr Optional<Version> ParseVersionString(String str) {
     return result;
 }
 
+constexpr Version k_floe_version = ParseVersionString(FLOE_VERSION_STRING).Value();
+
 PUBLIC ErrorCodeOr<void>
 CustomValueToString(Writer writer, Version const& version, fmt::FormatOptions options) {
     ASSERT(!options.required_width);

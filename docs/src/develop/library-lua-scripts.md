@@ -66,6 +66,16 @@ Sets the attribution information for a particular audio file or folder. It takes
 ==sample-library-example-lua:set_attribution_requirement==
 ```
 
+### `floe.set_required_floe_version`
+Sets the minimum required version of Floe for this library. It takes one parameter: a string representing the version number (a [semantic version](https://semver.org/)).
+
+It's best to set this at the top of your `floe.lua` file so that Floe can check the version before running the script.
+
+Calling this function is recommended so that older versions of Floe behave predictably when trying to load an unsupported library.
+```lua
+==sample-library-example-lua:set_required_floe_version==
+```
+
 ## Support Function
 Floe provides some additional functions to make developing libraries easier.
 

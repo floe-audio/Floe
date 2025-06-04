@@ -1448,6 +1448,28 @@ static int SetAttributionRequirement(lua_State* lua) {
     return 0;
 }
 
+static int SetRequiredFloeVersion(lua_State* lua) {
+    // function takes 1 arg, a semver string
+    luaL_checktype(lua, 1, LUA_TSTRING);
+
+    auto const semver_str = LuaString(lua, 1);
+    auto const version = TRY_OPT_OR(ParseVersionString(semver_str), {
+        return luaL_error(lua,
+                          "Invalid version string: %s. It should be in the format 'major.minor.patch' "
+                          "where major, minor and patch are integers.",
+                          semver_str);
+    });
+
+    if (version > k_floe_version) {
+        return luaL_error(lua,
+                          "This library requires Floe version %s or higher, but the current version is %s.",
+                          semver_str.data,
+                          FLOE_VERSION_STRING);
+    }
+
+    return 0;
+}
+
 static int AddIr(lua_State* lua) {
     auto& ctx = **(LuaState**)lua_getextraspace(lua);
 
@@ -1547,6 +1569,7 @@ static const struct luaL_Reg k_floe_lib[] = {
     {"add_region", AddRegion},
     {"add_ir", AddIr},
     {"set_attribution_requirement", SetAttributionRequirement},
+    {"set_required_floe_version", SetRequiredFloeVersion},
     {nullptr, nullptr},
 };
 
@@ -2098,6 +2121,10 @@ struct LuaCodePrinter {
             TRY(writer.WriteChars("\n"));
             return k_success;
         };
+
+        TRY(begin_function("set_required_floe_version"));
+        TRY(writer.WriteChars("floe.set_required_floe_version(\"" FLOE_VERSION_STRING "\")\n"));
+        TRY(end_function("set_required_floe_version"));
 
         TRY(begin_function("new_library"));
         TRY(writer.WriteChars("local library = floe.new_library({\n"));
