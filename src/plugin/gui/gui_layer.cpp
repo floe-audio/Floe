@@ -75,6 +75,8 @@ static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
 
     auto const popup_imgui_id = imgui_id + 1;
 
+    DoInstSelectorRightClickMenu(g, r, layer);
+
     if (buttons::Button(g, imgui_id, r, inst_name, buttons::InstSelectorPopupButton(g->imgui, icon_tex)))
         g->imgui.OpenPopup(popup_imgui_id, imgui_id);
 
@@ -103,8 +105,6 @@ static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
                             "Instrument: {}\nChange or remove the instrument for this layer",
                             inst_name));
     }
-
-    DoInstSelectorRightClickMenu(g, r, layer);
 }
 
 static void DoLoopModeSelectorGui(Gui* g, Rect r, LayerProcessor& layer) {
