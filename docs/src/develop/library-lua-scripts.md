@@ -37,6 +37,8 @@ Creates a new instrument on the library. It takes 2 parameters: the library obje
 
 An instrument is like a musical instrument. It is a sound-producing entity that consists of one or more samples (samples are specified in regions). Each library can have multiple instruments.
 
+You can use Floe's [Tag Builder GUI](./tags-and-folders.md#instrument-tags) to generate tag tables.
+
 ```lua
 ==sample-library-example-lua:new_instrument==
 ```

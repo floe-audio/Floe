@@ -9,6 +9,7 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 0.9.10-beta
+- Add "Library Developer Panel" on the GUI with tag-builder tool for generating instrument tags in Lua. 
 - Add right-click menu to the instrument picker button with 'unload instrument' option.
 - Picker panels:
     - Put tags into categories and add icons

@@ -33,6 +33,27 @@ Add as many relevant tags as possible.
 
 Tags are case-insensitive.
 
+## Instrument tags
+Instrument tags are set in the sample library's Lua file when calling `floe.new_instrument`. However, writing tags manually is quite laborious.
+
+Floe has a utility that allows you to use the GUI to select tags and write them to a Lua file called `instrument_tags.lua` located in a subfolder, `Lua`, of your library folder. Then, in your `floe.lua` file, you can then use something like this:
+
+```lua
+local instrument_tags = dofile("Lua/instrument_tags.lua")
+
+-- ...
+
+local instrument_name = "My Instrument Name"
+local instrument = floe.new_instrument(library, {
+    name = instrument_name,
+    tags = instrument_tags[instrument_name],
+    -- ...
+})
+
+```
+
+This Tag Builder is found by clicking on the 3-dots menu at the top of Floe, and then selecting "Library Developer Panel".
+
 ## Standard tags
 We take a pragmatic approach to defining this set of standard tags. Rather than try to be completely comprehensive and technically accurate, we instead aim to strike a balance between correctness and common usage within the music production space. The goal of tags is to help users find the item they need. You can suggest edits to this list via Github or other means.
 
