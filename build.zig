@@ -1219,6 +1219,7 @@ pub fn build(b: *std.Build) void {
             .pic = true,
             .link_libc = true,
             .omit_frame_pointer = false,
+            .unwind_tables = .sync,
         };
 
         var stb_sprintf = b.addObject(.{
