@@ -881,3 +881,60 @@ PUBLIC bool ShouldGreyOutTagCategory(TagCategory category, Bitset<ToInt(TagType:
 
     return false;
 }
+
+PUBLIC Optional<TagAndCategory> LookupTagName(String name) {
+    struct TagLookup {
+        struct Element {
+            String key {};
+            TagAndCategory value {};
+            u64 hash {};
+        };
+
+        constexpr TagLookup() {
+            for (auto const tag_category : EnumIterator<TagCategory>()) {
+                auto const category_info = Tags(tag_category);
+                for (auto const tag : category_info.tags) {
+                    auto const tag_info = GetTagInfo(tag);
+                    Insert(tag_info.name, {tag, tag_category});
+                }
+            }
+        }
+
+        constexpr usize Lookup(String name, u64 hash) const {
+            auto const k_mask = elements.size - 1;
+
+            usize index = hash;
+            usize step = 1;
+
+            while (true) {
+                auto const array_index = index & k_mask;
+                auto& element = elements[array_index];
+                if (element.hash == 0) return array_index; // empty
+                if (element.hash == hash && element.key == name) return array_index; // found
+
+                // quadratic probing
+                index += step;
+                ++step;
+            }
+        }
+
+        constexpr void Insert(String name, TagAndCategory tag_and_category) {
+            auto const hash = Hash(name);
+            auto& element = elements[Lookup(name, hash)];
+            element.key = name;
+            element.value = tag_and_category;
+            element.hash = hash;
+        }
+
+        constexpr Optional<TagAndCategory> Find(String name) const {
+            auto& element = elements[Lookup(name, Hash(name))];
+            if (element.hash == 0) return k_nullopt;
+            return element.value;
+        }
+
+        Array<Element, NextPowerOf2((u32)TagType::Count) * 2> elements;
+    };
+
+    constexpr TagLookup k_tag_lookup;
+    return k_tag_lookup.Find(name);
+}

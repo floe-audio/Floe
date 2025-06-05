@@ -25,12 +25,22 @@ PUBLIC constexpr auto SpanFromContainerOfContainers(auto const& c_of_c) {
     return t2;
 }
 
+// This function allows for consteval usage if the data is already a single byte, otherwise, it has to do a
+// reinterpret_cast.
+template <Fundamental T>
+constexpr auto ToBytes(Span<T const> data) {
+    if constexpr (sizeof(T) == 1)
+        return data;
+    else
+        return data.ToByteSpan();
+}
+
 template <Fundamental T>
 PUBLIC constexpr u64 HashFnv1a(Span<T const> data) {
     // FNV-1a https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function#FNV-1a_hash
     u64 hash = 0xcbf29ce484222325;
-    for (auto& byte : data.ToByteSpan()) {
-        hash ^= byte;
+    for (auto& byte : ToBytes(data)) {
+        hash ^= (u8)byte;
         hash *= 0x100000001b3;
     }
     return hash;

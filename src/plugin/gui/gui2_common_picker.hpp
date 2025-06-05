@@ -457,38 +457,16 @@ PUBLIC void DoPickerTagsFilters(GuiBoxSystem& box_system,
     if (sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
     ++sections;
 
-    struct Category {
-        struct Tag {
-            TagType tag;
-            FilterItemInfo info;
-        };
+    OrderedHashTable<TagCategory, OrderedHashTable<TagType, FilterItemInfo>> standard_tags {};
+    OrderedHashTable<String, FilterItemInfo> non_standard_tags {};
 
-        TagCategory category;
-        DynamicArray<Tag> tags;
-    };
-
-    DynamicArray<Category> standard_tags {box_system.arena};
-
-    // TODO: use a hash table or something to look up a standard tag+category by name.
-    for (auto const category : EnumIterator<TagCategory>()) {
-        auto const category_info = Tags(category);
-        for (auto const tag : category_info.tags) {
-            auto const tag_info = GetTagInfo(tag);
-            if (auto t = tags_filters.tags.Find(tag_info.name)) {
-                Category::Tag const item = {.tag = tag, .info = *t};
-                if (auto const i =
-                        FindIf(standard_tags, [&](Category const& c) { return c.category == category; })) {
-                    auto& cat = standard_tags[*i];
-                    dyn::Append(cat.tags, item);
-                } else {
-                    auto first_tag = Array {item};
-                    dyn::Append(standard_tags,
-                                Category {
-                                    .category = category,
-                                    .tags = {first_tag, box_system.arena},
-                                });
-                }
-            }
+    for (auto const [name, info, _] : tags_filters.tags) {
+        if (auto const t = LookupTagName(name)) {
+            auto& tags_for_category =
+                standard_tags.FindOrInsertGrowIfNeeded(box_system.arena, t->category, {}).element.data;
+            tags_for_category.InsertGrowIfNeeded(box_system.arena, t->tag, info);
+        } else {
+            non_standard_tags.InsertGrowIfNeeded(box_system.arena, name, info);
         }
     }
 
@@ -500,8 +478,8 @@ PUBLIC void DoPickerTagsFilters(GuiBoxSystem& box_system,
                                                                   .multiline_contents = false,
                                                               });
 
-    for (auto& category : standard_tags) {
-        auto const category_info = Tags(category.category);
+    for (auto [category, tags_for_category, _] : standard_tags) {
+        auto const category_info = Tags(category);
         auto const section = DoPickerItemsSectionContainer(box_system,
                                                            {
                                                                .parent = tags_container,
@@ -512,13 +490,13 @@ PUBLIC void DoPickerTagsFilters(GuiBoxSystem& box_system,
                                                                .subsection = true,
                                                            });
 
-        for (auto const tag : category.tags) {
-            auto const tag_info = GetTagInfo(tag.tag);
+        for (auto const [tag, filter_item_info, _] : tags_for_category) {
+            auto const tag_info = GetTagInfo(tag);
             auto const tag_hash = Hash(tag_info.name);
             auto const is_selected = Contains(context.state.selected_tags_hashes, tag_hash);
             DoFilterButton(box_system,
                            context.state,
-                           tag.info,
+                           filter_item_info,
                            {
                                .parent = section,
                                .is_selected = is_selected,
