@@ -507,6 +507,31 @@ PUBLIC void DoPickerTagsFilters(GuiBoxSystem& box_system,
                            });
         }
     }
+
+    if (non_standard_tags.size) {
+        auto const section = DoPickerItemsSectionContainer(box_system,
+                                                           {
+                                                               .parent = tags_container,
+                                                               .heading = "Uncategorised",
+                                                               .heading_is_folder = true,
+                                                               .multiline_contents = true,
+                                                               .subsection = true,
+                                                           });
+        for (auto const [name, filter_item_info, _] : non_standard_tags) {
+            auto const is_selected = Contains(context.state.selected_tags_hashes, Hash(name));
+            DoFilterButton(box_system,
+                           context.state,
+                           filter_item_info,
+                           {
+                               .parent = section,
+                               .is_selected = is_selected,
+                               .text = name,
+                               .hashes = context.state.selected_tags_hashes,
+                               .clicked_hash = Hash(name),
+                               .filter_mode = context.state.filter_mode,
+                           });
+        }
+    }
 }
 
 PUBLIC void DoPickerStatusBar(GuiBoxSystem& box_system,
