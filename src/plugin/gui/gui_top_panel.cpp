@@ -32,6 +32,7 @@ static void PresetsWindowButton(Gui* g, Engine* a, Rect r) {
         .preset_server = g->shared_engine_systems.preset_server,
         .library_images = g->library_images,
         .engine = g->engine,
+        .unknown_library_icon = UnknownLibraryIcon(g),
     };
     DoPresetPicker(g->box_system,
                    popup_id,

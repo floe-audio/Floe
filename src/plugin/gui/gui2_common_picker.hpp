@@ -57,7 +57,7 @@ struct PickerItemOptions {
     Box parent;
     String text;
     bool is_current;
-    Optional<graphics::TextureHandle> icon;
+    Array<graphics::TextureHandle, k_num_layers + 1> icons;
 };
 
 struct FilterItemInfo {
@@ -136,11 +136,12 @@ PUBLIC Box DoPickerItem(GuiBoxSystem& box_system, PickerItemOptions const& optio
                       },
               });
 
-    if (options.icon) {
+    for (auto tex : options.icons) {
+        if (!tex) continue;
         DoBox(box_system,
               {
                   .parent = item,
-                  .background_tex = *options.icon,
+                  .background_tex = tex,
                   .layout {
                       .size = style::k_library_icon_standard_size,
                       .margins = {.r = k_picker_spacing / 2},

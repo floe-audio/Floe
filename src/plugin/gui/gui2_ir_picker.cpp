@@ -178,7 +178,7 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
     if (!first) return;
 
     sample_lib::Library const* previous_library {};
-    Optional<graphics::TextureHandle> lib_icon_tex {};
+    graphics::TextureHandle lib_icon_tex {};
     auto cursor = *first;
     while (true) {
         auto const& lib = *context.libraries[cursor.lib_index];
@@ -204,9 +204,9 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
                 .parent = folder_box,
                 .text = ir.name,
                 .is_current = is_current,
-                .icon = ({
+                .icons = ({
                     if (&lib != previous_library) {
-                        lib_icon_tex = k_nullopt;
+                        lib_icon_tex = nullptr;
                         previous_library = &lib;
                         if (auto const imgs = LibraryImagesFromLibraryId(context.library_images,
                                                                          box_system.imgui,
@@ -215,11 +215,12 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
                                                                          box_system.arena,
                                                                          true);
                             imgs && imgs->icon) {
-                            lib_icon_tex =
+                            auto opt =
                                 box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(imgs->icon);
+                            lib_icon_tex = opt ? *opt : nullptr;
                         }
                     }
-                    lib_icon_tex;
+                    decltype(PickerItemOptions::icons) {lib_icon_tex};
                 }),
             });
 

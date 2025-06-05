@@ -269,7 +269,6 @@ static void InstPickerWaveformItems(GuiBoxSystem& box_system,
                                            .parent = container,
                                            .text = k_waveform_type_names[ToInt(waveform_type)],
                                            .is_current = is_current,
-                                           .icon = k_nullopt,
                                        });
 
         if (item.is_hot) context.waveform_type_hovering = waveform_type;
@@ -304,7 +303,7 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
     if (!first) return;
 
     sample_lib::Library const* previous_library {};
-    Optional<graphics::TextureHandle> lib_icon_tex {};
+    graphics::TextureHandle lib_icon_tex {};
     auto cursor = *first;
     while (true) {
         auto const& lib = *context.libraries[cursor.lib_index];
@@ -330,9 +329,9 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
                 .parent = folder_box,
                 .text = inst.name,
                 .is_current = is_current,
-                .icon = ({
+                .icons = ({
                     if (&lib != previous_library) {
-                        lib_icon_tex = k_nullopt;
+                        lib_icon_tex = nullptr;
                         previous_library = &lib;
                         if (auto const imgs = LibraryImagesFromLibraryId(context.library_images,
                                                                          box_system.imgui,
@@ -341,11 +340,12 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
                                                                          box_system.arena,
                                                                          true);
                             imgs && imgs->icon) {
-                            lib_icon_tex =
+                            auto opt =
                                 box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(imgs->icon);
+                            lib_icon_tex = opt ? *opt : nullptr;
                         }
                     }
-                    lib_icon_tex;
+                    decltype(PickerItemOptions::icons) {lib_icon_tex};
                 }),
             });
 

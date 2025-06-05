@@ -251,13 +251,35 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
             c;
         });
 
-        auto const item = DoPickerItem(box_system,
-                                       {
-                                           .parent = folder_box,
-                                           .text = preset.name,
-                                           .is_current = is_current,
-                                           .icon = k_nullopt,
-                                       });
+        auto const item = DoPickerItem(
+            box_system,
+            {
+                .parent = folder_box,
+                .text = preset.name,
+                .is_current = is_current,
+                .icons = ({
+                    decltype(PickerItemOptions::icons) icons {};
+                    usize icons_index = 0;
+                    for (auto const [lib_id, _] : preset.used_libraries) {
+                        if (auto const imgs = LibraryImagesFromLibraryId(context.library_images,
+                                                                         box_system.imgui,
+                                                                         lib_id,
+                                                                         context.sample_library_server,
+                                                                         box_system.arena,
+                                                                         true);
+                            imgs && imgs->icon) {
+                            auto tex =
+                                box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(imgs->icon);
+                            if (tex) icons[icons_index++] = *tex;
+                        } else if (context.unknown_library_icon) {
+                            auto const tex = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
+                                *context.unknown_library_icon);
+                            if (tex) icons[icons_index++] = *tex;
+                        }
+                    }
+                    icons;
+                }),
+            });
 
         if (is_current && box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
             Exchange(state.scroll_to_show_selected, false)) {
