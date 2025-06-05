@@ -8,6 +8,8 @@
 #include "gui_framework/gui_box_system.hpp"
 #include "preset_server/preset_server.hpp"
 
+constexpr String k_no_preset_author = "<no author>"_s;
+
 struct PresetCursor {
     bool operator==(PresetCursor const& o) const = default;
     usize folder_index;
@@ -73,7 +75,9 @@ static bool ShouldSkipPreset(PresetPickerContext const& context,
     if (state.selected_author_hashes.size) {
         filtering_on = true;
         auto const author_hash = Hash(preset.metadata.author);
-        if (!Contains(state.selected_author_hashes, author_hash)) {
+        if (!(Contains(state.selected_author_hashes, author_hash) ||
+              (preset.metadata.author.size == 0 &&
+               Contains(state.selected_author_hashes, Hash(k_no_preset_author))))) {
             if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
         } else {
             if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
@@ -83,7 +87,8 @@ static bool ShouldSkipPreset(PresetPickerContext const& context,
     if (state.common_state.selected_tags_hashes.size) {
         filtering_on = true;
         for (auto const selected_hash : state.common_state.selected_tags_hashes) {
-            if (!preset.metadata.tags.ContainsSkipKeyCheck(selected_hash)) {
+            if (!(preset.metadata.tags.ContainsSkipKeyCheck(selected_hash) ||
+                  (selected_hash == Hash(k_untagged_tag_name) && preset.metadata.tags.size == 0))) {
                 if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
             } else {
                 if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
@@ -413,6 +418,12 @@ void DoPresetPicker(GuiBoxSystem& box_system,
                 if (!skip) ++i->num_used_in_items_lists;
                 ++i->total_available;
             }
+            if (!preset.metadata.tags.size) {
+                auto& i =
+                    tags.FindOrInsertGrowIfNeeded(box_system.arena, k_untagged_tag_name, {}).element.data;
+                if (!skip) ++i.num_used_in_items_lists;
+                ++i.total_available;
+            }
 
             for (auto const [lib_id, lib_id_hash] : preset.used_libraries) {
                 auto i = libraries.Find(lib_id, lib_id_hash);
@@ -430,6 +441,11 @@ void DoPresetPicker(GuiBoxSystem& box_system,
                 auto i = preset_authors.Find(preset.metadata.author);
                 if (!skip) ++i->num_used_in_items_lists;
                 ++i->total_available;
+            } else {
+                auto& i = preset_authors.FindOrInsertGrowIfNeeded(box_system.arena, k_no_preset_author, {})
+                              .element.data;
+                if (!skip) ++i.num_used_in_items_lists;
+                ++i.total_available;
             }
 
             {

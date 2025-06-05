@@ -13,6 +13,8 @@
 constexpr auto k_picker_item_height = 20.0f;
 constexpr auto k_picker_spacing = 8.0f;
 
+constexpr auto k_untagged_tag_name = "<untagged>"_s;
+
 enum class SearchDirection { Forward, Backward };
 
 enum class FilterMode : u8 {
@@ -773,7 +775,7 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                          .text = ICON_FA_LOCATION_ARROW,
                          .tooltip =
                              fmt::Format(box_system.arena, "Scroll to current {}", options.item_type_name),
-                         .icon_scaling = 0.7f,
+                         .icon_scaling = 0.8f,
                          .on_fired = options.on_scroll_to_show_selected,
                      },
                  })) {

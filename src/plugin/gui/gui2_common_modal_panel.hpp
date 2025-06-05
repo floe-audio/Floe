@@ -182,7 +182,7 @@ struct ModalConfig {
     u32& current_tab_index;
 };
 
-// High-level function that creates a complete modal layout
+// High-level function that creates a complete modal layout within an already open modal window.
 PUBLIC Box DoModal(GuiBoxSystem& box_system, ModalConfig const& config) {
     auto const root = DoModalRootBox(box_system);
 
