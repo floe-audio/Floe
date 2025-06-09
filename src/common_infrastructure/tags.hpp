@@ -707,8 +707,8 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .question = "What type of sound is it?",
                 .recommendation = "",
                 .tags = k_tags,
-                .emoji = "🎹",
-                .font_awesome_icon = ICON_FA_EXPAND,
+                .emoji = "➡️",
+                .font_awesome_icon = ICON_FA_RIGHT_LONG,
                 .exclude_categories = k_sound_type_exclude_categories,
             };
         }
@@ -726,7 +726,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .recommendation = "",
                 .tags = k_tags,
                 .emoji = "↔️",
-                .font_awesome_icon = ICON_FA_COMPRESS,
+                .font_awesome_icon = ICON_FA_ARROW_RIGHT,
                 .exclude_categories = k_sound_type_exclude_categories,
             };
         }
