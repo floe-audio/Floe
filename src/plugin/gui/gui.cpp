@@ -61,7 +61,7 @@ Optional<graphics::ImageID> LogoImage(Gui* g) {
     return g->floe_logo_image;
 }
 
-Optional<graphics::ImageID> UnknownLibraryIcon(Gui* g) {
+Optional<graphics::ImageID>& UnknownLibraryIcon(Gui* g) {
     if (!g->imgui.graphics->context->ImageIdIsValid(g->unknown_library_icon)) {
         auto const data = EmbeddedUnknownLibraryIcon();
         if (data.size) {

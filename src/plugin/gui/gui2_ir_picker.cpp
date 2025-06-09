@@ -213,10 +213,9 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
                                                                          lib.Id(),
                                                                          context.sample_library_server,
                                                                          box_system.arena,
-                                                                         true);
-                            imgs && imgs->icon) {
-                            auto opt =
-                                box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(imgs->icon);
+                                                                         true)) {
+                            auto opt = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
+                                (imgs && !imgs->icon_missing) ? imgs->icon : context.unknown_library_icon);
                             lib_icon_tex = opt ? *opt : nullptr;
                         }
                     }
@@ -333,6 +332,7 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
                     .library_images = context.library_images,
                     .libraries = libraries,
                     .library_authors = library_authors,
+                    .unknown_library_icon = context.unknown_library_icon,
                 },
             .tags_filters =
                 TagsFilters {

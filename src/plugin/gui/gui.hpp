@@ -184,7 +184,7 @@ Optional<LibraryImages>
 LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, bool only_icon_needed);
 
 Optional<graphics::ImageID> LogoImage(Gui* g);
-Optional<graphics::ImageID> UnknownLibraryIcon(Gui* g);
+Optional<graphics::ImageID>& UnknownLibraryIcon(Gui* g);
 
 void GUIPresetLoaded(Gui* g, Engine* a, bool is_first_preset);
 GuiFrameResult GuiUpdate(Gui* g);

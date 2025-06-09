@@ -85,6 +85,7 @@ static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
         .sample_library_server = g->shared_engine_systems.sample_library_server,
         .library_images = g->library_images,
         .engine = g->engine,
+        .unknown_library_icon = UnknownLibraryIcon(g),
     };
     context.Init(g->scratch_arena);
     DEFER { context.Deinit(); };
@@ -839,6 +840,7 @@ void Draw(Gui* g,
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .unknown_library_icon = UnknownLibraryIcon(g),
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
@@ -854,6 +856,7 @@ void Draw(Gui* g,
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .unknown_library_icon = UnknownLibraryIcon(g),
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
@@ -872,6 +875,7 @@ void Draw(Gui* g,
                     .sample_library_server = g->shared_engine_systems.sample_library_server,
                     .library_images = g->library_images,
                     .engine = g->engine,
+                    .unknown_library_icon = UnknownLibraryIcon(g),
                 };
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };

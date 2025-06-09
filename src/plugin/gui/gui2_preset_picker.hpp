@@ -29,7 +29,7 @@ struct PresetPickerContext {
     PresetServer& preset_server;
     LibraryImagesArray& library_images;
     Engine& engine;
-    Optional<graphics::ImageID> unknown_library_icon;
+    Optional<graphics::ImageID>& unknown_library_icon;
 
     u32 init = 0;
     Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;

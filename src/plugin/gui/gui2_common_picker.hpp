@@ -75,6 +75,7 @@ struct LibraryFilters {
     LibraryImagesArray& library_images;
     OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
     OrderedHashTable<String, FilterItemInfo> library_authors;
+    Optional<graphics::ImageID> unknown_library_icon;
 };
 
 // IMPORTANT: we use FunctionRefs here, you need to make sure the lifetime of the functions outlives the
@@ -398,16 +399,19 @@ PUBLIC void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                 {
                     .parent = section,
                     .is_selected = is_selected,
-                    .icon = LibraryImagesFromLibraryId(library_filters.library_images,
-                                                       box_system.imgui,
-                                                       lib_id,
-                                                       context.sample_library_server,
-                                                       box_system.arena,
-                                                       true)
-                                .AndThen([&](LibraryImages const& imgs) {
-                                    return box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
-                                        imgs.icon);
-                                }),
+                    .icon = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(({
+                        Optional<graphics::ImageID> tex = library_filters.unknown_library_icon;
+                        if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
+                                                                   box_system.imgui,
+                                                                   lib_id,
+                                                                   context.sample_library_server,
+                                                                   box_system.arena,
+                                                                   true);
+                            imgs && !imgs->icon_missing) {
+                            tex = imgs->icon;
+                        }
+                        tex;
+                    })),
                     .text = lib_id.name,
                     .hashes = context.state.selected_library_hashes,
                     .clicked_hash = lib_hash,

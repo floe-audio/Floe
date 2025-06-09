@@ -483,6 +483,7 @@ void DoPresetPicker(GuiBoxSystem& box_system,
                     .library_images = context.library_images,
                     .libraries = libraries,
                     .library_authors = library_authors,
+                    .unknown_library_icon = context.unknown_library_icon,
                 },
             .tags_filters =
                 TagsFilters {
