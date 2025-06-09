@@ -589,9 +589,8 @@ static String FilterModeText(FilterMode mode) {
 
 static String FilterModeDescription(FilterMode mode) {
     switch (mode) {
-        case FilterMode::ProgressiveNarrowing: return "Progressively narrow down the items. AND logic.";
-        case FilterMode::AdditiveSelection:
-            return "Select any items that match any of the filters. OR logic.";
+        case FilterMode::ProgressiveNarrowing: return "AND logic: progressively narrow down the items.";
+        case FilterMode::AdditiveSelection: return "OR logic: broaden the list of items.";
         case FilterMode::Count: break;
     }
     PanicIfReached();
