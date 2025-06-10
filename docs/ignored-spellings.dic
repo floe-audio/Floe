@@ -116,6 +116,7 @@ arp
 arpeggiated
 asc
 async
+autocompletion
 automatable
 autosave
 autosaves
@@ -138,6 +139,7 @@ cppcheck
 crossfade
 d1
 d4
+defs
 dev
 didn
 dll
@@ -156,6 +158,7 @@ floelua
 fm
 fx
 github
+globals
 gui
 h1
 href
@@ -171,7 +174,9 @@ json
 justfile
 keypress
 linux
+lsp
 lua
+luarc
 macOS
 macos
 malloc

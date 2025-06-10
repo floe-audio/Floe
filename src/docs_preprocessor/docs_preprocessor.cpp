@@ -84,6 +84,12 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
 
     {
         dyn::Clear(buffer);
+        TRY(sample_lib::WriteLuaLspDefintionsFile(dyn::WriterFor(buffer)));
+        ExpandIdentifier(result, Identifier("floe-lua-lsp-defs"), buffer, scratch);
+    }
+
+    {
+        dyn::Clear(buffer);
         TRY(sample_lib::WriteDocumentedLuaExample(dyn::WriterFor(buffer), false));
         ExpandIdentifier(result, Identifier("sample-library-example-lua-no-comments"), buffer, scratch);
     }

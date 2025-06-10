@@ -89,3 +89,30 @@ Floe doesn't have the concept of 'groups' like other formats like SFZ or Kontakt
 ==sample-library-example-lua:extend_table==
 ```
 
+## Lua Language Server
+If you are using the [Lua Language Server](https://luals.github.io/), you can get autocompletion and diagnostics for Floe's Lua API by using the following configuration. 
+
+We plan to make this configuration more user-friendly, but for now you can use the following steps to set it up.
+
+#### Step 1
+Create a file called `floe-api.lua` in the same folder as your `floe.lua` file. Paste the following code into it:
+```lua
+==floe-lua-lsp-defs==
+```
+
+#### Step 2
+Create a `.luarc.json` file next to your `floe.lua` file. Paste the following code into it:
+```json
+{
+    "workspace": {
+        "library": [
+            "floe-api.lua"
+        ]
+    },
+    "diagnostics": {
+        "globals": [
+            "floe"
+        ]
+    }
+}
+```

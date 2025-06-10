@@ -336,6 +336,7 @@ LibraryPtrOrError Read(Reader& reader,
 
 // Lua only
 ErrorCodeOr<void> WriteDocumentedLuaExample(Writer writer, bool include_comments = true);
+ErrorCodeOr<void> WriteLuaLspDefintionsFile(Writer writer);
 bool CheckAllReferencedFilesExist(Library const& lib, Writer error_writer);
 
 } // namespace sample_lib

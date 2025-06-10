@@ -236,7 +236,7 @@ struct FieldInfo {
     int lua_type;
     Optional<InterpretedTypes> subtype {};
     bool required;
-    bool is_array;
+    Optional<int> is_array; // if set, lua_type of array elements
     Range range {};
     Span<char const* const> enum_options {};
     Span<char const* const> enum_descriptions {};
@@ -516,6 +516,7 @@ struct TableFields<Region::TimbreLayering> {
                     .default_value = "no timbre layering",
                     .lua_type = LUA_TTABLE,
                     .required = false,
+                    .is_array = LUA_TNUMBER,
                     .set =
                         [](SET_FIELD_VALUE_ARGS) {
                             auto& region = FIELD_OBJ;
@@ -581,6 +582,7 @@ struct TableFields<Region::TriggerCriteria> {
                     .default_value = "{ 60, 64 }",
                     .lua_type = LUA_TTABLE,
                     .required = false,
+                    .is_array = LUA_TNUMBER,
                     .set =
                         [](SET_FIELD_VALUE_ARGS) {
                             auto const vals = ListOfInts(ctx, 2, info);
@@ -605,6 +607,7 @@ struct TableFields<Region::TriggerCriteria> {
                     .default_value = "{ 0, 100 }",
                     .lua_type = LUA_TTABLE,
                     .required = false,
+                    .is_array = LUA_TNUMBER,
                     .set =
                         [](SET_FIELD_VALUE_ARGS) {
                             // IMPROVE: support floats
@@ -1076,7 +1079,7 @@ struct TableFields<ImpulseResponse> {
                     .default_value = "no tags",
                     .lua_type = LUA_TTABLE,
                     .required = false,
-                    .is_array = true,
+                    .is_array = LUA_TSTRING,
                     .set =
                         [](SET_FIELD_VALUE_ARGS) {
                             auto const tags = SetArrayOfStrings(ctx, info, true);
@@ -1165,7 +1168,7 @@ struct TableFields<Instrument> {
                     .default_value = "no tags",
                     .lua_type = LUA_TTABLE,
                     .required = false,
-                    .is_array = true,
+                    .is_array = LUA_TSTRING,
                     .set =
                         [](SET_FIELD_VALUE_ARGS) {
                             auto const tags = SetArrayOfStrings(ctx, info, true);
@@ -1581,10 +1584,8 @@ static int FloeDoFile(lua_State* lua) {
 
     if (path::IsAbsolute(filename)) return luaL_error(lua, "Floe's dofile does not support absolute paths");
 
-    if (StartsWithSpan(filename, "../"_s)) {
-        return luaL_error(lua,
-                          "Floe's dofile does not support relative paths outside of the library directory");
-    }
+    if (StartsWithSpan(filename, "../"_s))
+        return luaL_error(lua, "Floe's dofile only supports paths relative to the library folder");
 
     auto const full_path = path::Join(ctx.lua_arena, Array {path::Directory(ctx.filepath).Value(), filename});
 
@@ -1975,7 +1976,147 @@ struct LuaCodePrinter {
         FieldIndex placeholder_field_index;
     };
 
+    struct Function {
+        String name;
+        DynamicArrayBounded<FieldInfo, 3> args;
+        Optional<FieldInfo> return_type;
+        String description;
+    };
+
+    static Span<Function const> Functions() {
+        static auto funcs = ArrayT<Function>({
+            {
+                .name = "new_library",
+                .args = ArrayT<FieldInfo>({
+                    {
+                        .name = "config",
+                        .subtype = InterpretedTypes::Library,
+                    },
+                }),
+                .return_type =
+                    FieldInfo {
+                        .name = "library",
+                        .example = "library",
+                        .lua_type = LUA_TLIGHTUSERDATA,
+                    },
+                .description = "Creates a new library. You should only create one library in your script. "
+                               "Return the library at the end of your script.",
+            },
+            {
+                .name = "new_instrument",
+                .args = ArrayT<FieldInfo>({
+                    {
+                        .name = "library",
+                        .example = "library",
+                        .lua_type = LUA_TLIGHTUSERDATA,
+                    },
+                    {
+                        .name = "config",
+                        .subtype = InterpretedTypes::Instrument,
+                    },
+                }),
+                .return_type =
+                    FieldInfo {
+                        .name = "instrument",
+                        .example = "instrument",
+                        .lua_type = LUA_TLIGHTUSERDATA,
+                    },
+                .description = "Creates a new instrument on the library. You can call this multiple times "
+                               "to create multiple instruments.",
+            },
+            {
+                .name = "add_region",
+                .args = ArrayT<FieldInfo>({
+                    {
+                        .name = "instrument",
+                        .example = "instrument",
+                        .lua_type = LUA_TLIGHTUSERDATA,
+                    },
+                    {
+                        .name = "config",
+                        .subtype = InterpretedTypes::Region,
+                    },
+                }),
+                .description = "Adds a region to an instrument. You can call this multiple times to create "
+                               "multiple regions. Each instrument must have one or more regions.",
+            },
+            {
+                .name = "add_ir",
+                .args = ArrayT<FieldInfo>({
+                    {
+                        .name = "library",
+                        .example = "library",
+                        .lua_type = LUA_TLIGHTUSERDATA,
+                    },
+                    {
+                        .name = "config",
+                        .subtype = InterpretedTypes::ImpulseResponse,
+                    },
+                }),
+                .description = "Adds a reverb impulse response to the library. You can call this multiple "
+                               "times to create multiple impulse responses.",
+            },
+            {
+                .name = "set_attribution_requirement",
+                .args = ArrayT<FieldInfo>({
+                    {
+                        .name = "file_path",
+                        .example = "\"Samples/bell.flac\"",
+                        .lua_type = LUA_TSTRING,
+                    },
+                    {
+                        .name = "attribution_config",
+                        .subtype = InterpretedTypes::FileAttribution,
+                    },
+                }),
+                .description = "Sets the attribution information for a particular audio file or folder. "
+                               "If the path is a folder, the attribution requirement will be applied to "
+                               "all audio files in that folder and its subfolders.",
+            },
+            {
+                .name = "set_required_floe_version",
+                .args = ArrayT<FieldInfo>({
+                    {
+                        .name = "version_string",
+                        .example = "\"" FLOE_VERSION_STRING "\"",
+                        .lua_type = LUA_TSTRING,
+                    },
+                }),
+                .description = "Sets the required Floe version for this library. If the current Floe version "
+                               "is lower than the required version, an error will be raised.",
+            },
+            {
+                .name = "extend_table",
+                .args = ArrayT<FieldInfo>({
+                    {
+                        .name = "base_table",
+                        .example = "{ foo = \"\" }",
+                        .lua_type = LUA_TTABLE,
+                    },
+                    {
+                        .name = "t",
+                        .example = "{}",
+                        .lua_type = LUA_TTABLE,
+                    },
+                }),
+                .return_type =
+                    FieldInfo {
+                        .name = "extended_table",
+                        .example = "{ foo = \"\" }",
+                        .lua_type = LUA_TTABLE,
+                    },
+                .description =
+                    "Extends a table with another table, including all sub-tables. The base table "
+                    "is not modified. The extension table is modified and returned with all keys "
+                    "from both tables. If a key exists in both, the extension table value is used.",
+            },
+
+        });
+        return funcs;
+    }
+
     LuaCodePrinter() {
+        // We use a loop and switch so we get compile-time errors if we forget to add a new InterpretedType.
         for (auto const i : ::Range(ToInt(InterpretedTypes::Count))) {
             switch ((InterpretedTypes)i) {
                 case InterpretedTypes::Library: struct_fields[i] = FieldInfosSpan<Library>(); break;
@@ -2004,6 +2145,145 @@ struct LuaCodePrinter {
                 case InterpretedTypes::Count: break;
             }
         }
+    }
+
+    static ErrorCodeOr<void> WriteCustomType(InterpretedTypes type, Writer writer) {
+        TRY(writer.WriteChars("Floe"));
+        TRY(writer.WriteChars(EnumToString(type)));
+        return k_success;
+    }
+
+    static String LuaTypeName(int t) {
+        switch (t) {
+            case LUA_TNIL: return "nil";
+            case LUA_TNUMBER: return "number";
+            case LUA_TSTRING: return "string";
+            case LUA_TBOOLEAN: return "boolean";
+            case LUA_TTABLE: return "table";
+            case LUA_TFUNCTION: return "function";
+            case LUA_TUSERDATA: return "userdata";
+            case LUA_TLIGHTUSERDATA: return "lightuserdata";
+            case LUA_TTHREAD: return "thread";
+        }
+        PanicIfReached();
+        return "";
+    }
+
+    static ErrorCodeOr<void> WriteFieldType(FieldInfo const& field, Writer writer) {
+        if (field.subtype) {
+            TRY(WriteCustomType(*field.subtype, writer));
+        } else if (field.is_array) {
+            TRY(writer.WriteChars(LuaTypeName(*field.is_array)));
+            TRY(writer.WriteChars("[]"));
+        } else if (field.enum_options.size) {
+            auto const count = ({
+                usize c = 0;
+                for (auto const& o : field.enum_options)
+                    if (o != nullptr) ++c;
+                c;
+            });
+            for (auto const [option_index, o] : Enumerate(field.enum_options)) {
+                if (o == nullptr) continue;
+                TRY(fmt::FormatToWriter(writer, "\"{}\"", o));
+                if (option_index != (count - 1)) TRY(writer.WriteChar('|'));
+            }
+        } else {
+            TRY(writer.WriteChars(LuaTypeName(field.lua_type)));
+        }
+        return k_success;
+    }
+
+    ErrorCodeOr<void> PrintDefinitions(Writer writer) {
+        TRY(writer.WriteChars("---@meta FloeAPI\n\n"));
+
+        // Write the class definition for all InterpretedTypes. We need to define the classes that are used in
+        // other class definitions first.
+        Bitset<ToInt(InterpretedTypes::Count)> printed_types {};
+        usize iterations = 0;
+        while (!printed_types.AllValuesSet()) {
+            for (auto const type : EnumIterator<InterpretedTypes>()) {
+                if (printed_types.Get(ToInt(type))) continue;
+
+                auto const& fields = struct_fields[ToInt(type)];
+
+                bool skip = false;
+                for (auto const& field : fields) {
+                    if (field.subtype) {
+                        if (!printed_types.Get(ToInt(*field.subtype))) {
+                            // We haven't printed the dependency yet, so we skip this field for now.
+                            skip = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (skip) continue;
+
+                TRY(writer.WriteChars("---@class "));
+                TRY(WriteCustomType(type, writer));
+                TRY(writer.WriteChars("\n"));
+                for (auto const& field : fields) {
+                    TRY(writer.WriteChars("---@field "));
+                    TRY(writer.WriteChars(field.name));
+                    if (!field.required) TRY(writer.WriteChars("?"));
+                    TRY(writer.WriteChars(" "));
+                    TRY(WriteFieldType(field, writer));
+                    if (field.description_sentence.size) {
+                        TRY(writer.WriteChars(" "));
+                        for (auto c : field.description_sentence) {
+                            if (c == '\n') c = ' ';
+                            TRY(writer.WriteChar(c));
+                        }
+                    }
+                    TRY(writer.WriteChars("\n"));
+                }
+                TRY(writer.WriteChars("\n"));
+
+                printed_types.Set(ToInt(type));
+            }
+            ++iterations;
+
+            ASSERT(iterations < 100, "we don't yet handle complex dependencies");
+        }
+
+        // Write the floe table definition
+        TRY(writer.WriteChars("---@class floe\n"));
+        TRY(writer.WriteChars("floe = {}\n\n"));
+
+        for (auto const& func : Functions()) {
+            // print description
+            if (func.description.size) TRY(PrintWordwrappedComment(writer, func.description, 0));
+
+            // params
+            for (auto const& arg : func.args) {
+                TRY(fmt::FormatToWriter(writer, "---@param {} ", arg.name));
+                TRY(WriteFieldType(arg, writer));
+                TRY(writer.WriteChars("\n"));
+            }
+
+            // return
+            if (func.return_type) {
+                TRY(writer.WriteChars("---@return "));
+                TRY(WriteFieldType(*func.return_type, writer));
+                TRY(writer.WriteChars(" "));
+                TRY(writer.WriteChars(func.return_type->name));
+                TRY(writer.WriteChars("\n"));
+            }
+
+            // function def
+            TRY(writer.WriteChars("function floe."));
+            TRY(writer.WriteChars(func.name));
+            TRY(writer.WriteChars("("));
+            for (auto const [arg_index, arg] : Enumerate(func.args)) {
+                TRY(writer.WriteChars(arg.name));
+                if (arg_index != func.args.size - 1) TRY(writer.WriteChars(", "));
+            }
+            TRY(writer.WriteChars(") end\n\n"));
+        }
+
+        TRY(writer.WriteChars("_G.floe = floe\n"));
+
+        return k_success;
     }
 
     static ErrorCodeOr<void> PrintIndent(Writer writer, u32 indent) {
@@ -2122,45 +2402,40 @@ struct LuaCodePrinter {
             return k_success;
         };
 
-        TRY(begin_function("set_required_floe_version"));
-        TRY(writer.WriteChars("floe.set_required_floe_version(\"" FLOE_VERSION_STRING "\")\n"));
-        TRY(end_function("set_required_floe_version"));
+        for (auto const& f : Functions()) {
+            TRY(begin_function(f.name));
 
-        TRY(begin_function("new_library"));
-        TRY(writer.WriteChars("local library = floe.new_library({\n"));
-        TRY(PrintStruct(writer, InterpretedTypes::Library, mode, 1));
-        TRY(writer.WriteChars("})\n"));
-        TRY(end_function("new_library"));
+            if (mode.mode_flags & PrintModeFlagsDocumentedExample)
+                TRY(PrintWordwrappedComment(writer, f.description, 0));
 
-        TRY(begin_function("new_instrument"));
-        TRY(writer.WriteChars("local instrument = floe.new_instrument(library, {\n"));
-        TRY(PrintStruct(writer, InterpretedTypes::Instrument, mode, 1));
-        TRY(writer.WriteChars("})\n"));
-        TRY(end_function("new_instrument"));
+            if (f.name == "extend_table") {
+                if (mode.mode_flags & PrintModeFlagsDocumentedExample) {
+                    TRY(begin_function(f.name));
+                    TRY(writer.WriteChars(k_example_extend_table_usage));
+                    TRY(end_function(f.name));
+                    continue;
+                }
+            }
 
-        TRY(begin_function("add_region"));
-        TRY(writer.WriteChars("floe.add_region(instrument, {\n"));
-        TRY(PrintStruct(writer, InterpretedTypes::Region, mode, 1));
-        TRY(writer.WriteChars("})\n"));
-        TRY(end_function("add_region"));
+            if (f.return_type) TRY(fmt::FormatToWriter(writer, "local {} = ", f.return_type->name));
 
-        TRY(begin_function("set_attribution_requirement"));
-        TRY(writer.WriteChars("floe.set_attribution_requirement(\"Samples/bell.flac\", {\n"));
-        TRY(PrintStruct(writer, InterpretedTypes::FileAttribution, mode, 1));
-        TRY(writer.WriteChars("})\n"));
-        TRY(end_function("set_attribution_requirement"));
+            TRY(fmt::FormatToWriter(writer, "floe.{}(", f.name));
 
-        if (mode.mode_flags & LuaCodePrinter::PrintModeFlagsDocumentedExample) {
-            TRY(begin_function("extend_table"));
-            TRY(writer.WriteChars(k_example_extend_table_usage));
-            TRY(end_function("extend_table"));
+            for (auto const [arg_index, arg] : Enumerate(f.args)) {
+                if (arg.subtype) {
+                    TRY(writer.WriteChars("{\n"));
+                    TRY(PrintStruct(writer, *arg.subtype, mode, 1));
+                    TRY(writer.WriteChars("}"));
+                } else {
+                    TRY(writer.WriteChars(arg.example));
+                }
+
+                if (arg_index != f.args.size - 1) TRY(writer.WriteChars(", "));
+            }
+
+            TRY(writer.WriteChars(")\n"));
+            TRY(end_function(f.name));
         }
-
-        TRY(begin_function("add_ir"));
-        TRY(writer.WriteChars("floe.add_ir(library, {\n"));
-        TRY(PrintStruct(writer, InterpretedTypes::ImpulseResponse, mode, 1));
-        TRY(writer.WriteChars("})\n"));
-        TRY(end_function("add_ir"));
 
         TRY(writer.WriteChars("return library\n"));
 
@@ -2180,6 +2455,12 @@ ErrorCodeOr<void> WriteDocumentedLuaExample(Writer writer, bool include_comments
         {
             .mode_flags = include_comments ? LuaCodePrinter::PrintModeFlagsDocumentedExample : 0,
         }));
+    return k_success;
+}
+
+ErrorCodeOr<void> WriteLuaLspDefintionsFile(Writer writer) {
+    LuaCodePrinter printer;
+    TRY(printer.PrintDefinitions(writer));
     return k_success;
 }
 
@@ -2218,6 +2499,12 @@ TEST_CASE(TestWordWrap) {
         dyn::WriterFor(buffer),
         30));
     tester.log.Debug("{}", buffer);
+    return k_success;
+}
+
+TEST_CASE(TestPrintDefinitions) {
+    DynamicArray<char> buf {tester.scratch_arena};
+    TRY(WriteLuaLspDefintionsFile(dyn::WriterFor(buf)));
     return k_success;
 }
 
@@ -2590,6 +2877,7 @@ TEST_CASE(TestErrorHandling) {
 
 TEST_REGISTRATION(RegisterLibraryLuaTests) {
     REGISTER_TEST(sample_lib::TestDocumentedExampleIsValid);
+    REGISTER_TEST(sample_lib::TestPrintDefinitions);
     REGISTER_TEST(sample_lib::TestWordWrap);
     REGISTER_TEST(sample_lib::TestBasicFile);
     REGISTER_TEST(sample_lib::TestIncorrectParameters);
