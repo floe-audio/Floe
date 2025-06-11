@@ -396,10 +396,10 @@ void DoPresetPicker(GuiBoxSystem& box_system,
         context.presets_snapshot.used_libraries.size);
     auto library_authors =
         OrderedHashTable<String, FilterItemInfo>::Create(box_system.arena,
-                                                         context.presets_snapshot.authors.size);
+                                                         context.presets_snapshot.used_libraries.size);
     for (auto const [lib, lib_hash] : context.presets_snapshot.used_libraries) {
         libraries.InsertWithoutGrowing(lib, {.num_used_in_items_lists = 0}, lib_hash);
-        library_authors.InsertWithoutGrowing(lib.author, {.num_used_in_items_lists = 0}, Hash(lib.author));
+        library_authors.InsertWithoutGrowing(lib.author, {.num_used_in_items_lists = 0});
     }
 
     auto preset_authors =
