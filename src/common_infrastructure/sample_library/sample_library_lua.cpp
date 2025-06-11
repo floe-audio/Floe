@@ -2460,9 +2460,11 @@ ErrorCodeOr<void> WriteDocumentedLuaExample(Writer writer, bool include_comments
 }
 
 String LuaDefinitionsFilepath(ArenaAllocator& arena) {
-    auto path = KnownDirectory(arena, KnownDirectoryType::UserData, {.create = true});
-    path = path::JoinAppendResizeAllocation(arena, path, Array {"floe_api.lua"_s});
-    return path;
+    return KnownDirectoryWithSubdirectories(arena,
+                                            KnownDirectoryType::UserData,
+                                            Array {"Floe"_s},
+                                            "floe_api.lua",
+                                            {.create = true});
 }
 
 ErrorCodeOr<void> WriteLuaLspDefintionsFile(ArenaAllocator& scratch) {
