@@ -2065,7 +2065,7 @@ struct LuaCodePrinter {
                         .lua_type = LUA_TSTRING,
                     },
                     {
-                        .name = "attribution_config",
+                        .name = "config",
                         .subtype = InterpretedTypes::FileAttribution,
                     },
                 }),
@@ -2150,6 +2150,7 @@ struct LuaCodePrinter {
     static ErrorCodeOr<void> WriteCustomType(InterpretedTypes type, Writer writer) {
         TRY(writer.WriteChars("Floe"));
         TRY(writer.WriteChars(EnumToString(type)));
+        TRY(writer.WriteChars("Config"));
         return k_success;
     }
 
@@ -2455,6 +2456,19 @@ ErrorCodeOr<void> WriteDocumentedLuaExample(Writer writer, bool include_comments
         {
             .mode_flags = include_comments ? LuaCodePrinter::PrintModeFlagsDocumentedExample : 0,
         }));
+    return k_success;
+}
+
+String LuaDefinitionsFilepath(ArenaAllocator& arena) {
+    auto path = KnownDirectory(arena, KnownDirectoryType::UserData, {.create = true});
+    path = path::JoinAppendResizeAllocation(arena, path, Array {"floe_api.lua"_s});
+    return path;
+}
+
+ErrorCodeOr<void> WriteLuaLspDefintionsFile(ArenaAllocator& scratch) {
+    auto const path = LuaDefinitionsFilepath(scratch);
+    auto file = TRY(OpenFile(path, FileMode::Write()));
+    TRY(WriteLuaLspDefintionsFile(file.Writer()));
     return k_success;
 }
 

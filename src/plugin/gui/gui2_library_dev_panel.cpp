@@ -9,9 +9,88 @@
 #include "engine/engine.hpp"
 #include "gui/gui2_save_preset_panel.hpp"
 #include "gui2_common_modal_panel.hpp"
+#include "gui2_notifications.hpp"
 #include "gui_framework/gui_box_system.hpp"
 
 #define GENERATED_TAGS_FILENAME "Lua/instrument_tags.lua"
+
+static void
+DoUtilitiesPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, LibraryDevPanelState&) {
+    auto const root = DoBox(box_system,
+                            {
+                                .layout {
+                                    .size = box_system.imgui.PixelsToVw(box_system.imgui.Size()),
+                                    .contents_padding = {.lrtb = style::k_spacing},
+                                    .contents_gap = style::k_spacing,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                },
+                            });
+
+    if (TextButton(
+            box_system,
+            root,
+            "Install Lua definitions",
+            "Generate Lua LSP definitions for Floe's API - used for autocompletion and diagnostics when editing floe.lua files")) {
+        auto const path = sample_lib::LuaDefinitionsFilepath(box_system.arena);
+
+        auto const try_install = [&]() -> ErrorCodeOr<void> {
+            auto file = TRY(OpenFile(path, FileMode::Write()));
+            TRY(sample_lib::WriteLuaLspDefintionsFile(file.Writer()));
+            return k_success;
+        };
+
+        auto const outcome = try_install();
+        if (outcome.Succeeded()) {
+            *context.notifications.AppendUninitalisedOverwrite() = {
+                .get_diplay_info =
+                    [p = DynamicArrayBounded<char, 200>(path)](ArenaAllocator&) {
+                        return NotificationDisplayInfo {
+                            .title = "Installed Lua definitions",
+                            .message = p,
+                            .dismissable = true,
+                            .icon = NotificationDisplayInfo::IconType::Success,
+                        };
+                    },
+                .id = SourceLocationHash(),
+            };
+        } else {
+            *context.notifications.AppendUninitalisedOverwrite() = {
+                .get_diplay_info =
+                    [error = outcome.Error()](ArenaAllocator& arena) {
+                        return NotificationDisplayInfo {
+                            .title = "Error installing Lua definitions",
+                            .message = fmt::Format(arena, "{}", error),
+                            .dismissable = true,
+                            .icon = NotificationDisplayInfo::IconType::Error,
+                        };
+                    },
+                .id = SourceLocationHash(),
+            };
+        }
+    }
+
+    if (TextButton(box_system,
+                   root,
+                   "Copy Lua definitions path",
+                   "Copy the path to the Lua definitions file to the clipboard")) {
+        auto const path = sample_lib::LuaDefinitionsFilepath(box_system.arena);
+        dyn::Assign(box_system.imgui.clipboard_for_os, path);
+        *context.notifications.AppendUninitalisedOverwrite() = {
+            .get_diplay_info =
+                [p = DynamicArrayBounded<char, 200>(path)](ArenaAllocator&) {
+                    return NotificationDisplayInfo {
+                        .title = "Copied to clipboard",
+                        .message = p,
+                        .dismissable = true,
+                        .icon = NotificationDisplayInfo::IconType::Success,
+                    };
+                },
+            .id = SourceLocationHash(),
+        };
+    }
+}
 
 using TagsArray = DynamicArrayBounded<DynamicArrayBounded<char, k_max_tag_size>, k_max_num_tags>;
 using TagsByInstrument = HashTable<String, Set<String>>;
@@ -224,6 +303,9 @@ static void DoPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, L
                 case LibraryDevPanelState::Tab::TagBuilder:
                     tabs[index] = {.icon = ICON_FA_TAG, .text = "Tag Builder"};
                     break;
+                case LibraryDevPanelState::Tab::Utilities:
+                    tabs[index] = {.icon = ICON_FA_TOOLBOX, .text = "Utilities"};
+                    break;
                 case LibraryDevPanelState::Tab::Count: PanicIfReached();
             }
             tabs[index].index = index;
@@ -247,6 +329,7 @@ static void DoPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, L
                      TabPanelFunction f {};
                      switch (state.tab) {
                          case LibraryDevPanelState::Tab::TagBuilder: f = DoTagBuilderPanel; break;
+                         case LibraryDevPanelState::Tab::Utilities: f = DoUtilitiesPanel; break;
                          case LibraryDevPanelState::Tab::Count: PanicIfReached();
                      }
                      [f, &context, &state](GuiBoxSystem& box_system) { f(box_system, context, state); };

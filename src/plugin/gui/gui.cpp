@@ -362,6 +362,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
         {
             LibraryDevPanelContext context {
                 .engine = g->engine,
+                .notifications = g->notifications,
             };
             DoLibraryDevPanel(g->box_system, context, g->library_dev_panel_state);
         }

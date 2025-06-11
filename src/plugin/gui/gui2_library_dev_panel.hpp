@@ -5,14 +5,17 @@
 
 struct Engine;
 struct GuiBoxSystem;
+struct Notifications;
 
 struct LibraryDevPanelContext {
     Engine& engine;
+    Notifications& notifications;
 };
 
 struct LibraryDevPanelState {
     enum class Tab : u32 {
         TagBuilder,
+        Utilities,
         Count,
     };
     bool open = false;
