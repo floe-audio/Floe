@@ -427,6 +427,7 @@ struct HashTable {
         if (++size + num_dead > mask - mask / 4) {
             IncreaseCapacity(allocator, 2 * size);
             num_dead = 0;
+            element = FindElement(key, hash); // re-lookup after resizing
         } else if (old_hash == k_tombstone) {
             // re-used tomb
             --num_dead;

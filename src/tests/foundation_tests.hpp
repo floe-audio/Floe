@@ -1391,6 +1391,44 @@ TEST_CASE(TestHashTable) {
             CHECK(item.value == item.key * 2);
     }
 
+    SUBCASE("find or insert") {
+        // Test when a table is grown - is the correct element still returned?
+        HashTable<String, usize, nullptr, k_ordering> table {};
+
+        usize index = 0;
+        for (auto const str : Array {
+                 "Vocal Ohh"_s,
+                 "Vocal Eee"_s,
+                 "Air - Restless Canopy"_s,
+                 "Low - Alien Kerogen"_s,
+                 "Low - Bass Arena"_s,
+                 "Mid - Tickseed Ambience"_s,
+                 "Noise - Electric Hiss"_s,
+                 "Noise - Static"_s,
+                 "Vocal Ooo"_s,
+                 "New value"_s,
+                 "Other"_s,
+                 "New"_s,
+                 "String"_s,
+                 "Link"_s,
+                 "List"_s,
+                 "Text"_s,
+                 "aaaa"_s,
+                 "bbbb"_s,
+                 "cccc"_s,
+                 "dddd"_s,
+                 "e"_s,
+                 "1"_s,
+                 "2"_s,
+             }) {
+            auto const result = table.FindOrInsertGrowIfNeeded(a, str, index);
+            CHECK(result.inserted);
+            CHECK(result.element.data == index);
+            ++index;
+            CHECK(table.size == index);
+        };
+    }
+
     return k_success;
 }
 
