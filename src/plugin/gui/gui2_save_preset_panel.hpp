@@ -33,6 +33,6 @@ void DoSavePresetPanel(GuiBoxSystem& box_system,
                        SavePresetPanelContext& context,
                        SavePresetPanelState& state);
 
-void DoTagsGui(GuiBoxSystem& box_system,
+bool DoTagsGui(GuiBoxSystem& box_system,
                DynamicArrayBounded<DynamicArrayBounded<char, k_max_tag_size>, k_max_num_tags>& tags,
                Box const& root);

@@ -14,6 +14,8 @@ For instance: 0.0.1. Don't change the headings.
     - Add 2 filter modes: match-all and match-any, allowing for more powerful filtering. A label showing the number of matching items dynamically updates as you change the filters.
     - Fix instrument picker not showing waveform instruments when no Mirage libraries installed
     - Show library icons for each library used by a preset
+    - Show (?) icon for missing libraries
+    - Add `<untagged>` filter for items that don't have any tags
 - Add "Library Developer Panel" on the GUI with tag-builder tool for generating instrument tags in Lua. 
 - Add right-click menu to the instrument picker button with 'unload instrument' option.
 - Add lock/unlock mode for Save Preset panel for allowing changing presets with it still open
