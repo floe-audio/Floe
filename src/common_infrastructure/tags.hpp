@@ -163,6 +163,7 @@ enum class TagType : u16 {
     Glassy,
     Gritty,
     Harsh,
+    Hissing,
     LoFi,
     Lush,
     Metallic,
@@ -172,6 +173,7 @@ enum class TagType : u16 {
     Noisy,
     Pure,
     Resonant,
+    Rumbly,
     Saturated,
     Smooth,
     Thin,
@@ -388,6 +390,7 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         case TagType::Digital: return {"digital"_s, "Clean, precise, computer-generated character"_s};
         case TagType::Distorted: return {"distorted"_s, "Overdriven, crushed, non-linear"_s};
         case TagType::Fuzzy: return {"fuzzy"_s, "Indistinct, soft-edged, unclear"_s};
+        case TagType::Hissing: return {"hissing"_s, "Sibilant, white noise"_s};
         case TagType::Glassy: return {"glassy"_s, "Clear, fragile, transparent"_s};
         case TagType::Gritty: return {"gritty"_s, "Rough, textured, unpolished"_s};
         case TagType::Harsh: return {"harsh"_s, "Abrasive, aggressive high frequencies"_s};
@@ -403,6 +406,7 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
                 "Contains noise components, imperfect. If the sound is 100% noise use `noise` instead."_s};
         case TagType::Pure: return {"pure"_s, "Free from noise, clean sine-like quality"_s};
         case TagType::Resonant: return {"resonant"_s, "Strong resonant peaks in frequency"_s};
+        case TagType::Rumbly: return {"rumbly"_s, "Low frequency non-pitch sustained noise"_s};
         case TagType::Saturated: return {"saturated"_s, "Subtly distorted, harmonically enhanced"_s};
         case TagType::Smooth: return {"smooth"_s, "Even, consistent, without sharp edges"_s};
         case TagType::Thin: return {"thin"_s, "Lacking in fullness, narrow frequency range"_s};
@@ -823,9 +827,9 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
         }
         case TagCategory::TimbreFrequency: {
             static constexpr auto k_tags = Array {
-                Airy,  CircuitBent, Cold,      Digital,  Distorted, Fuzzy,   Glassy, Gritty,
-                Harsh, LoFi,        Lush,      Metallic, Muddy,     Muffled, Nasal,  Noisy,
-                Pure,  Resonant,    Saturated, Smooth,   Thin,      Warm,
+                Airy,  CircuitBent, Cold,     Digital, Distorted, Fuzzy,  Glassy,  Gritty,
+                Harsh, Hissing,     LoFi,     Lush,    Metallic,  Muddy,  Muffled, Nasal,
+                Noisy, Pure,        Resonant, Rumbly,  Saturated, Smooth, Thin,    Warm,
             };
             static constexpr auto k_exclude_tags = Array {
                 Acoustic,
