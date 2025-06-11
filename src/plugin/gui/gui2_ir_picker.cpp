@@ -44,7 +44,8 @@ static bool ShouldSkipIr(IrPickerState const& state, sample_lib::ImpulseResponse
     if (state.common_state.selected_tags_hashes.size) {
         filtering_on = true;
         for (auto const selected_hash : state.common_state.selected_tags_hashes) {
-            if (!ir.tags.ContainsSkipKeyCheck(selected_hash)) {
+            if (!(ir.tags.ContainsSkipKeyCheck(selected_hash) ||
+                  (selected_hash == Hash(k_untagged_tag_name) && ir.tags.size == 0))) {
                 if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
             } else {
                 if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
@@ -287,6 +288,12 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
             for (auto const& [tag, tag_hash] : ir->tags) {
                 auto& tag_found =
                     tags.FindOrInsertGrowIfNeeded(box_system.arena, tag, {}, tag_hash).element.data;
+                ++tag_found.total_available;
+                if (!skip) ++tag_found.num_used_in_items_lists;
+            }
+            if (!ir->tags.size) {
+                auto& tag_found =
+                    tags.FindOrInsertGrowIfNeeded(box_system.arena, k_untagged_tag_name, {}).element.data;
                 ++tag_found.total_available;
                 if (!skip) ++tag_found.num_used_in_items_lists;
             }

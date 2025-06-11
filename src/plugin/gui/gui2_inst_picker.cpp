@@ -58,7 +58,8 @@ static bool ShouldSkipInstrument(InstPickerState const& state,
         common_state.selected_tags_hashes.size) {
         filtering_on = true;
         for (auto const selected_hash : common_state.selected_tags_hashes)
-            if (!inst.tags.ContainsSkipKeyCheck(selected_hash)) {
+            if (!(inst.tags.ContainsSkipKeyCheck(selected_hash) ||
+                  (selected_hash == Hash(k_untagged_tag_name) && inst.tags.size == 0))) {
                 if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
             } else {
                 if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
@@ -412,6 +413,12 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
 
                 for (auto const& [tag, tag_hash] : inst->tags) {
                     auto& i = tags.FindOrInsertGrowIfNeeded(box_system.arena, tag, {}, tag_hash).element.data;
+                    if (!skip) ++i.num_used_in_items_lists;
+                    ++i.total_available;
+                }
+                if (!inst->tags.size) {
+                    auto& i =
+                        tags.FindOrInsertGrowIfNeeded(box_system.arena, k_untagged_tag_name, {}).element.data;
                     if (!skip) ++i.num_used_in_items_lists;
                     ++i.total_available;
                 }
