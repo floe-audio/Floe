@@ -171,7 +171,7 @@
               pkgs.hunspell
               pkgs.hunspellDicts.en_GB-ise
               pkgs.lychee # link checker
-              zigpkgs."0.14.0"
+              zigpkgs."0.14.1"
               pkgs-unstable.zls
               pkgs.sentry-cli
 
