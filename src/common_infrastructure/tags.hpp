@@ -148,6 +148,8 @@ enum class TagType : u16 {
     Breathy,
     StringsLike,
     Reedy,
+    ChoirLike,
+    OrganLike,
 
     Analog,
     Fm,
@@ -159,6 +161,7 @@ enum class TagType : u16 {
     Cold,
     Digital,
     Distorted,
+    FullSpectrum,
     Fuzzy,
     Glassy,
     Gritty,
@@ -375,6 +378,8 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         case TagType::StringsLike:
             return {"strings-like"_s, "Characteristic resonance of string instruments"_s};
         case TagType::Reedy: return {"reedy"_s, "Characteristic of reed instruments"_s};
+        case TagType::ChoirLike: return {"choir-like"_s, "Characteristic of choral voices"_s};
+        case TagType::OrganLike: return {"organ-like"_s, "Characteristic of an organ"_s};
 
         // Timbre (synthesis technique)
         case TagType::Analog: return {"analog"_s, "Warm, imprecise, vintage character"_s};
@@ -389,6 +394,7 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         case TagType::Cold: return {"cold"_s, "Thin, clinical, lacking warmth"_s};
         case TagType::Digital: return {"digital"_s, "Clean, precise, computer-generated character"_s};
         case TagType::Distorted: return {"distorted"_s, "Overdriven, crushed, non-linear"_s};
+        case TagType::FullSpectrum: return {"full-spectrum"_s, "Wide frequency range"_s};
         case TagType::Fuzzy: return {"fuzzy"_s, "Indistinct, soft-edged, unclear"_s};
         case TagType::Hissing: return {"hissing"_s, "Sibilant, white noise"_s};
         case TagType::Glassy: return {"glassy"_s, "Clear, fragile, transparent"_s};
@@ -791,6 +797,8 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 Breathy,
                 StringsLike,
                 Reedy,
+                ChoirLike,
+                OrganLike,
             };
             static constexpr auto k_exclude_tags = Array {
                 Acoustic,
@@ -827,9 +835,9 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
         }
         case TagCategory::TimbreFrequency: {
             static constexpr auto k_tags = Array {
-                Airy,  CircuitBent, Cold,     Digital, Distorted, Fuzzy,  Glassy,  Gritty,
-                Harsh, Hissing,     LoFi,     Lush,    Metallic,  Muddy,  Muffled, Nasal,
-                Noisy, Pure,        Resonant, Rumbly,  Saturated, Smooth, Thin,    Warm,
+                Airy,  CircuitBent, Cold,   Digital,   Distorted, FullSpectrum, Fuzzy,   Glassy, Gritty,
+                Harsh, Hissing,     LoFi,   Lush,      Metallic,  Muddy,        Muffled, Nasal,  Noisy,
+                Pure,  Resonant,    Rumbly, Saturated, Smooth,    Thin,         Warm,
             };
             static constexpr auto k_exclude_tags = Array {
                 Acoustic,
