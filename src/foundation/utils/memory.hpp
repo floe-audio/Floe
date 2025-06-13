@@ -69,16 +69,12 @@ static constexpr usize k_destructive_interference_size = __GCC_DESTRUCTIVE_SIZE;
 
 PUBLIC constexpr bool IsPowerOfTwo(usize v) { return !(v & (v - 1)); }
 PUBLIC constexpr usize Power2Modulo(usize x, usize y) { return x & (y - 1); }
-// https://graphics.stanford.edu/%7Eseander/bithacks.html#RoundUpPowerOf2
-PUBLIC constexpr u32 NextPowerOf2(u32 x) {
-    x--;
-    x |= x >> 1;
-    x |= x >> 2;
-    x |= x >> 4;
-    x |= x >> 8;
-    x |= x >> 16;
-    x++;
-    return x;
+
+// https://jameshfisher.com/2018/03/30/round-up-power-2/
+template <Integral T>
+PUBLIC constexpr T NextPowerOf2(T x) {
+    if (x == 1) return 1;
+    return 1 << ((sizeof(T) * 8) - (usize)__builtin_clzg(x - 1));
 }
 
 // Finds the next value that is aligned to 'alignment'
