@@ -8,6 +8,97 @@
 #include "os/misc.hpp"
 #include "tests/framework.hpp"
 
+static u32 Mask(u32 val) { return val & (LogRingBuffer::k_buffer_size - 1); }
+
+void LogRingBuffer::Write(String message) {
+    // We allow indexes to grow continuously until they naturally wrap around. These are the requirements
+    // to make this work.
+    static_assert(IsPowerOfTwo(k_buffer_size));
+    static_assert(UnsignedInt<decltype(write)>);
+    static_assert(Same<decltype(write), decltype(read)>);
+    // The maximum capacity can only be half the range of the index data types. (So 2^31-1 when using 32
+    // bit unsigned integers)
+    static_assert(k_buffer_size <= ((1 << ((sizeof(write) * 8) - 1)) - 1));
+
+    if (message.size > k_max_message_size) [[unlikely]]
+        message.size = FindUtf8TruncationPoint(message, k_max_message_size);
+
+    if (!mutex.Lock(2000u)) throw PanicException {};
+    DEFER { mutex.Unlock(); };
+
+    constexpr usize k_prefix_bytes = 1 + sizeof(u64);
+
+    // if there's no room for this message, we remove the oldest messages until there is room
+    while (true) {
+        auto const used = (decltype(write))(write - read);
+        ASSERT_HOT(used <= buffer.size);
+        auto const remaining = buffer.size - used;
+
+        if (remaining >= (message.size + k_prefix_bytes))
+            // There's enough space.
+            break;
+
+        // Advance the read pointer to remove the oldest message.
+        auto const tail_message_size = buffer[Mask(read)];
+        read += 1; // message size byte
+        read += sizeof(u64); // timestamp
+        read += tail_message_size;
+    }
+
+    // Write the message size.
+    buffer[Mask(write++)] = (u8)message.size;
+
+    // Write the bytes of the u64 timestamp.
+    auto const seconds_since_epoch = (u64)MicrosecondsSinceEpoch() / 1'000'000;
+    for (usize i = 0; i < sizeof(u64); i++)
+        buffer[Mask(write++)] = (u8)(seconds_since_epoch >> (i * 8));
+
+    // Write the message.
+    for (auto c : message)
+        buffer[Mask(write++)] = (u8)c;
+}
+
+LogRingBuffer::Snapshot LogRingBuffer::TakeSnapshot() {
+    mutex.Lock();
+    DEFER { mutex.Unlock(); };
+
+    Snapshot snapshot {};
+
+    dyn::Resize(snapshot.buffer, write - read);
+
+    // We copy it so that there is no ring-buffer wrap-around issues.
+    u32 out_index = 0;
+    auto pos = read;
+    while (pos != write)
+        snapshot.buffer[out_index++] = buffer[Mask(pos++)];
+
+    return snapshot;
+}
+
+Optional<LogRingBuffer::Message> LogRingBuffer::Snapshot::Next(usize& pos) const {
+    if (pos >= buffer.size) return k_nullopt;
+
+    auto const message_size = (u8)buffer[pos++];
+    u64 seconds_since_epoch = 0;
+    for (usize i = 0; i < sizeof(u64); i++)
+        seconds_since_epoch |= ((u64)buffer[pos++]) << (i * 8);
+
+    auto const message_start = pos;
+    pos += message_size;
+
+    return LogRingBuffer::Message {
+        .seconds_since_epoch = seconds_since_epoch,
+        .message = String {(char const*)(u8 const*)buffer.data + message_start, message_size},
+    };
+}
+
+void LogRingBuffer::Reset() {
+    mutex.Lock();
+    DEFER { mutex.Unlock(); };
+    write = 0;
+    read = 0;
+}
+
 ErrorCodeOr<void> WriteLogLine(Writer writer,
                                ModuleName module_name,
                                LogLevel level,
@@ -159,9 +250,7 @@ void ShutdownLogger() {
     });
 }
 
-void GetLatestLogMessages(DynamicArrayBounded<char, LogRingBuffer::k_buffer_size>& out) {
-    g_message_ring_buffer.ReadToNullTerminatedStringList(out);
-}
+LogRingBuffer::Snapshot GetLatestLogMessages() { return g_message_ring_buffer.TakeSnapshot(); }
 
 void Log(ModuleName module_name, LogLevel level, FunctionRef<ErrorCodeOr<void>(Writer)> write_message) {
     if (level < g_config.min_level_allowed) return;
@@ -337,42 +426,52 @@ void Log(ModuleName module_name, LogLevel level, FunctionRef<ErrorCodeOr<void>(W
 
 TEST_CASE(TestLogRingBuffer) {
     LogRingBuffer ring;
-    DynamicArrayBounded<char, LogRingBuffer::k_buffer_size> buffer;
+    LogRingBuffer::Snapshot snapshot;
     usize count = 0;
+    usize pos = 0;
 
     SUBCASE("basics") {
-        ring.ReadToNullTerminatedStringList(buffer);
-        CHECK_EQ(buffer.size, 0u);
+        snapshot = ring.TakeSnapshot();
+        CHECK_EQ(snapshot.buffer.size, 0u);
 
         ring.Write("hello");
-        ring.ReadToNullTerminatedStringList(buffer);
+        snapshot = ring.TakeSnapshot();
         count = 0;
-        for (auto const message : SplitIterator {.whole = buffer, .token = '\0', .skip_consecutive = true}) {
-            CHECK_EQ(message, "hello"_s);
+        pos = 0;
+        while (true) {
+            auto const message = snapshot.Next(pos);
+            if (!message) break;
+            CHECK_EQ(message->message, "hello"_s);
             ++count;
         }
         CHECK_EQ(count, 1u);
 
         ring.Reset();
-        ring.ReadToNullTerminatedStringList(buffer);
-        CHECK_EQ(buffer.size, 0u);
+        snapshot = ring.TakeSnapshot();
+        CHECK_EQ(snapshot.buffer.size, 0u);
 
         ring.Write("world");
-        ring.ReadToNullTerminatedStringList(buffer);
+        snapshot = ring.TakeSnapshot();
         count = 0;
-        for (auto const message : SplitIterator {.whole = buffer, .token = '\0', .skip_consecutive = true}) {
-            CHECK_EQ(message, "world"_s);
+        pos = 0;
+        while (true) {
+            auto const message = snapshot.Next(pos);
+            if (!message) break;
+            CHECK_EQ(message->message, "world"_s);
             ++count;
         }
         CHECK_EQ(count, 1u);
 
         ring.Write("hello");
         count = 0;
-        ring.ReadToNullTerminatedStringList(buffer);
-        for (auto const message : SplitIterator {.whole = buffer, .token = '\0', .skip_consecutive = true}) {
+        pos = 0;
+        snapshot = ring.TakeSnapshot();
+        while (true) {
+            auto const message = snapshot.Next(pos);
+            if (!message) break;
             switch (count) {
-                case 0: CHECK_EQ(message, "world"_s); break;
-                case 1: CHECK_EQ(message, "hello"_s); break;
+                case 0: CHECK_EQ(message->message, "world"_s); break;
+                case 1: CHECK_EQ(message->message, "hello"_s); break;
                 default: CHECK(false);
             }
             ++count;
@@ -383,9 +482,12 @@ TEST_CASE(TestLogRingBuffer) {
     SUBCASE("wrap") {
         for (auto _ : Range(1000))
             ring.Write("abcdefghijklmnopqrstuvwxyz");
-        ring.ReadToNullTerminatedStringList(buffer);
-        for (auto const message : SplitIterator {.whole = buffer, .token = '\0', .skip_consecutive = true})
-            CHECK_EQ(message, "abcdefghijklmnopqrstuvwxyz"_s);
+        snapshot = ring.TakeSnapshot();
+        while (true) {
+            auto const message = snapshot.Next(pos);
+            if (!message) break;
+            CHECK_EQ(message->message, "abcdefghijklmnopqrstuvwxyz"_s);
+        }
     }
 
     SUBCASE("randomly add strings") {
@@ -399,7 +501,7 @@ TEST_CASE(TestLogRingBuffer) {
             }
             ring.Write(string);
         }
-        ring.ReadToNullTerminatedStringList(buffer);
+        snapshot = ring.TakeSnapshot();
     }
 
     SUBCASE("add too long string") {
@@ -407,9 +509,12 @@ TEST_CASE(TestLogRingBuffer) {
             tester.arena.AllocateExactSizeUninitialised<char>(LogRingBuffer::k_max_message_size + 1);
         FillMemory(str.data, 'a', str.size);
         ring.Write({str.data, str.size});
-        ring.ReadToNullTerminatedStringList(buffer);
-        for (auto const message : SplitIterator {.whole = buffer, .token = '\0', .skip_consecutive = true})
-            CHECK_EQ(message.size, LogRingBuffer::k_max_message_size);
+        snapshot = ring.TakeSnapshot();
+        while (true) {
+            auto const message = snapshot.Next(pos);
+            if (!message) break;
+            CHECK_EQ(message->message.size, LogRingBuffer::k_max_message_size);
+        }
     }
 
     return k_success;

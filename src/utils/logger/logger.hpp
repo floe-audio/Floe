@@ -26,63 +26,19 @@ struct LogRingBuffer {
     static constexpr usize k_buffer_size = 1 << 13; // must be a power of 2
     static constexpr usize k_max_message_size = LargestRepresentableValue<u8>();
 
-    u32 Mask(u32 val) { return val & (buffer.size - 1); }
+    struct Message {
+        u64 seconds_since_epoch {};
+        String message;
+    };
 
-    void Write(String message) {
-        // We allow indexes to grow continuously until they naturally wrap around. These are the requirements
-        // to make this work:
-        static_assert(IsPowerOfTwo(k_buffer_size));
-        static_assert(UnsignedInt<decltype(write)>);
-        static_assert(Same<decltype(write), decltype(read)>);
-        // The maximum capacity can only be half the range of the index data types. (So 2^31-1 when using 32
-        // bit unsigned integers)
-        static_assert(k_buffer_size <= ((1 << ((sizeof(write) * 8) - 1)) - 1));
+    struct Snapshot {
+        Optional<Message> Next(usize& pos) const;
+        DynamicArrayBounded<u8, k_buffer_size> buffer;
+    };
 
-        if (message.size > k_max_message_size) [[unlikely]]
-            message.size = FindUtf8TruncationPoint(message, k_max_message_size);
-
-        if (!mutex.Lock(2000u)) throw PanicException {};
-        DEFER { mutex.Unlock(); };
-
-        // if there's no room for this message, we remove the oldest messages until there is room
-        while (true) {
-            auto const used = (decltype(write))(write - read);
-            ASSERT_HOT(used <= buffer.size);
-            auto const remaining = buffer.size - used;
-            // we need the extra byte for prefixing the message with its size
-            if (remaining >= (message.size + 1)) break;
-            auto const tail_message_size = buffer[Mask(read)];
-            read += 1; // message size byte
-            read += tail_message_size;
-        }
-
-        buffer[Mask(write++)] = (u8)message.size;
-        for (auto c : message)
-            buffer[Mask(write++)] = (u8)c;
-    }
-
-    void ReadToNullTerminatedStringList(DynamicArrayBounded<char, k_buffer_size>& out) {
-        mutex.Lock();
-        DEFER { mutex.Unlock(); };
-
-        dyn::Resize(out, write - read);
-        usize out_index = 0;
-
-        auto pos = read;
-        while (pos != write) {
-            auto const message_size = (u8)buffer[Mask(pos++)];
-            for (u8 i = 0; i < message_size; i++)
-                out[out_index++] = (char)buffer[Mask(pos++)];
-            out[out_index++] = '\0';
-        }
-    }
-
-    void Reset() {
-        mutex.Lock();
-        DEFER { mutex.Unlock(); };
-        write = 0;
-        read = 0;
-    }
+    void Write(String message);
+    void Reset();
+    [[nodiscard]] Snapshot TakeSnapshot();
 
     Array<u8, k_buffer_size> buffer;
     MutexThin mutex {};
@@ -146,8 +102,8 @@ void Log(ModuleName module_name, LogLevel level, String format, Args const&... a
 }
 
 // thread-safe, not signal-safe
-// Returns log message strings in the order they were written, each message is separated by a null terminator.
-void GetLatestLogMessages(DynamicArrayBounded<char, LogRingBuffer::k_buffer_size>& out);
+// Returns log message strings in the order they were written.
+LogRingBuffer::Snapshot GetLatestLogMessages();
 
 void InitLogger(LogConfig);
 void ShutdownLogger();
