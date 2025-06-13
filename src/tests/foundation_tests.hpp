@@ -1429,6 +1429,536 @@ TEST_CASE(TestHashTable) {
         };
     }
 
+    SUBCASE("iteration") {
+        auto tags = HashTable<String, Set<String, nullptr, k_ordering>, nullptr, k_ordering>::Create(a, 16);
+
+        auto check = [&]() {
+            for (auto const [name, set, name_hash] : tags) {
+                CHECK(name.size);
+                CHECK(IsValidUtf8(name));
+                CHECK(name_hash != 0);
+                CHECK(set.size);
+
+                for (auto const [tag, tag_hash] : set) {
+                    REQUIRE(tag.size);
+                    REQUIRE(tag.size < 64);
+                    CHECK(IsValidUtf8(tag));
+                }
+            }
+        };
+
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Air - Tephra", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "bittersweet"_s,
+                     "bright",
+                     "chillout",
+                     "dreamy",
+                     "fuzzy",
+                     "nostalgic",
+                     "smooth",
+                     "strings-like",
+                     "synthesized",
+                     "texture",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Mid - Scattered World", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "ambient"_s,
+                     "dreamy",
+                     "eerie",
+                     "ethereal",
+                     "full-spectrum",
+                     "lush",
+                     "multi-pitched",
+                     "nostalgic",
+                     "sci-fi",
+                     "synthesized",
+                     "texture",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Noise - Rumble Hiss", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "airy"_s,
+                     "ambient",
+                     "noise",
+                     "non-pitched",
+                     "resonant",
+                     "rumbly",
+                     "synthesized",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Mid - Division", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "airy"_s,
+                     "ambient",
+                     "choir-like",
+                     "ethereal",
+                     "pad",
+                     "peaceful",
+                     "pure",
+                     "smooth",
+                     "synthesized",
+                     "warm",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Mid - Tickseed Ambience", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "airy"_s,
+                     "ambient",
+                     "dreamy",
+                     "eerie",
+                     "ethereal",
+                     "glassy",
+                     "pad",
+                     "resonant",
+                     "saturated",
+                     "strings-like",
+                     "synthesized",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Low - Drifter", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "ambient"_s,
+                     "cinematic",
+                     "dark",
+                     "disturbing",
+                     "dreamy",
+                     "eerie",
+                     "menacing",
+                     "muddy",
+                     "mysterious",
+                     "resonant",
+                     "rumbly",
+                     "synthesized",
+                     "texture",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Low - Alien Kerogen", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "ambient"_s,
+                     "bittersweet",
+                     "dreamy",
+                     "eerie",
+                     "ethereal",
+                     "hopeful",
+                     "nostalgic",
+                     "pad",
+                     "smooth",
+                     "synthesized",
+                     "warm",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Low - Bass Arena", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "ambient"_s,
+                     "cinematic",
+                     "cold",
+                     "eerie",
+                     "hypnotic",
+                     "muddy",
+                     "mysterious",
+                     "rumbly",
+                     "synthesized",
+                     "texture",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Mid - Boreal", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "ambient"_s,
+                     "bright",
+                     "glassy",
+                     "hopeful",
+                     "pad",
+                     "sci-fi",
+                     "strings-like",
+                     "synthesized",
+                     "thin",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Low - Heavenly Rumble", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "ambient"_s,
+                     "bittersweet",
+                     "cinematic",
+                     "dark",
+                     "dystopian",
+                     "eerie",
+                     "ethereal",
+                     "muddy",
+                     "mysterious",
+                     "nostalgic",
+                     "rumbly",
+                     "smooth",
+                     "synthesized",
+                     "texture",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Noise - Static", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "airy"_s,
+                     "ambient"_s,
+                     "cold",
+                     "noise",
+                     "non-pitched",
+                     "reedy",
+                     "resonant",
+                     "synthesized",
+                     "thin",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Low - Warmth Cycles", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "ambient"_s,
+                     "bittersweet",
+                     "cinematic",
+                     "dreamy",
+                     "dystopian",
+                     "eerie",
+                     "metallic",
+                     "muffled",
+                     "nostalgic",
+                     "pulsing",
+                     "pure",
+                     "sci-fi",
+                     "smooth",
+                     "synthesized",
+                     "texture",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Noise - Electric Hiss", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "airy"_s,
+                     "ambient"_s,
+                     "hissing",
+                     "noise",
+                     "synthesized",
+                     "thin",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Noise - Hollow Noise", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "ambient"_s,
+                     "dreamy",
+                     "eerie",
+                     "mysterious",
+                     "noise",
+                     "non-pitched",
+                     "resonant",
+                     "synthesized",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Air - Restless Canopy", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "ambient"_s,
+                     "bittersweet",
+                     "breathy",
+                     "dreamy",
+                     "ethereal",
+                     "nostalgic",
+                     "resonant",
+                     "smooth",
+                     "synthesized",
+                     "texture",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Mid - Misty Nightfall", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "ambient"_s,
+                     "dreamy",
+                     "ethereal",
+                     "full-spectrum",
+                     "glassy",
+                     "lush",
+                     "metallic",
+                     "multi-pitched",
+                     "mysterious",
+                     "organ-like",
+                     "synthesized",
+                     "texture",
+                     "warm",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Vocal Ahh", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "pad"_s,
+                     "synthesized",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Low - Dark Aurora", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "breathy"_s,
+                     "cinematic",
+                     "dark",
+                     "disturbing",
+                     "ethereal",
+                     "muddy",
+                     "resonant",
+                     "rumbly",
+                     "synthesized",
+                     "tense",
+                     "texture",
+                     "thin",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Noise - Atonal Void", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "airy"_s,
+                     "ambient"_s,
+                     "breathy",
+                     "eerie",
+                     "ethereal",
+                     "mysterious",
+                     "noise",
+                     "synthesized",
+                     "thin",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Mid - Nectareous", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "ambient"_s,
+                     "choir-like",
+                     "ethereal",
+                     "muffled",
+                     "pad",
+                     "resonant",
+                     "smooth",
+                     "synthesized",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Mid - Goldenrods", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "ambient"_s,
+                     "dreamy",
+                     "muddy",
+                     "multi-pitched",
+                     "mysterious",
+                     "resonant",
+                     "synthesized",
+                     "texture",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Mid - First Twilight", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "ambient"_s,
+                     "bittersweet",
+                     "dreamy",
+                     "ethereal",
+                     "hopeful",
+                     "organ-like",
+                     "pad",
+                     "pure",
+                     "resonant",
+                     "smooth",
+                     "synthesized",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Mid - Greek Moon", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "airy"_s,
+                     "ambient",
+                     "choir-like",
+                     "dreamy",
+                     "ethereal",
+                     "hopeful",
+                     "pad",
+                     "peaceful",
+                     "pure",
+                     "smooth",
+                     "strings-like",
+                     "synthesized",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Mid - Earthly Effigies", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "airy"_s,
+                     "ambient"_s,
+                     "choir-like",
+                     "cinematic",
+                     "dystopian",
+                     "eerie",
+                     "ethereal",
+                     "hypnotic",
+                     "muddy",
+                     "muffled",
+                     "resonant",
+                     "sci-fi",
+                     "smooth",
+                     "synthesized",
+                     "tense",
+                     "texture",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Low - The Actuator", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "ambient"_s,
+                     "bittersweet",
+                     "cinematic",
+                     "dark",
+                     "dreamy",
+                     "nostalgic",
+                     "rumbly",
+                     "smooth",
+                     "synthesized",
+                     "texture",
+                     "warm",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+        {
+            auto& set = tags.FindOrInsertGrowIfNeeded(a, "Low - Ether Wraith", {}).element.data;
+            CHECK(set.size == 0);
+            for (auto const str : Array {
+                     "airy"_s,
+                     "ambient"_s,
+                     "cinematic",
+                     "cold",
+                     "dark",
+                     "disturbing",
+                     "dystopian",
+                     "eerie",
+                     "melancholic",
+                     "menacing",
+                     "muddy",
+                     "noisy",
+                     "rumbly",
+                     "synthesized",
+                     "tense",
+                     "texture",
+                 }) {
+                set.InsertGrowIfNeeded(a, str);
+                check();
+            }
+        }
+
+        if (auto i = tags.Find("Vocal Ahh"))
+            for (auto const [tag, _] : *i)
+                CHECK(tag == "pad"_s || tag == "synthesized"_s);
+    }
+
     return k_success;
 }
 
