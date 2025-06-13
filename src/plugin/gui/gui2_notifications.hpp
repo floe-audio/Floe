@@ -31,6 +31,11 @@ struct Notifications : BoundedList<Notification, 10> {
             if (n.id == id) return &n;
         return nullptr;
     }
+    Notification* FindOrAppendUninitalisedOverwrite(u64 id) {
+        auto* n = Find(id);
+        if (n) return n;
+        return AppendUninitalisedOverwrite();
+    }
     TimePoint dismiss_check_counter {};
 };
 

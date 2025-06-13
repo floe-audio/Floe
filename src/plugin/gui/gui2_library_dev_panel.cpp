@@ -42,8 +42,9 @@ DoUtilitiesPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Libr
         };
 
         auto const outcome = try_install();
+        auto const notification_id = SourceLocationHash();
         if (outcome.Succeeded()) {
-            *context.notifications.AppendUninitalisedOverwrite() = {
+            *context.notifications.FindOrAppendUninitalisedOverwrite(notification_id) = {
                 .get_diplay_info =
                     [p = DynamicArrayBounded<char, 200>(path)](ArenaAllocator&) {
                         return NotificationDisplayInfo {
@@ -53,10 +54,10 @@ DoUtilitiesPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Libr
                             .icon = NotificationDisplayInfo::IconType::Success,
                         };
                     },
-                .id = SourceLocationHash(),
+                .id = notification_id,
             };
         } else {
-            *context.notifications.AppendUninitalisedOverwrite() = {
+            *context.notifications.FindOrAppendUninitalisedOverwrite(notification_id) = {
                 .get_diplay_info =
                     [error = outcome.Error()](ArenaAllocator& arena) {
                         return NotificationDisplayInfo {
@@ -66,7 +67,7 @@ DoUtilitiesPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Libr
                             .icon = NotificationDisplayInfo::IconType::Error,
                         };
                     },
-                .id = SourceLocationHash(),
+                .id = notification_id,
             };
         }
     }
@@ -77,7 +78,8 @@ DoUtilitiesPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Libr
                    "Copy the path to the Lua definitions file to the clipboard")) {
         auto const path = sample_lib::LuaDefinitionsFilepath(box_system.arena);
         dyn::Assign(box_system.imgui.clipboard_for_os, path);
-        *context.notifications.AppendUninitalisedOverwrite() = {
+        auto const notification_id = SourceLocationHash();
+        *context.notifications.FindOrAppendUninitalisedOverwrite(notification_id) = {
             .get_diplay_info =
                 [p = DynamicArrayBounded<char, 200>(path)](ArenaAllocator&) {
                     return NotificationDisplayInfo {
@@ -87,7 +89,7 @@ DoUtilitiesPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Libr
                         .icon = NotificationDisplayInfo::IconType::Success,
                     };
                 },
-            .id = SourceLocationHash(),
+            .id = notification_id,
         };
     }
 }
@@ -163,7 +165,11 @@ LoadExistingTagsFile(sample_lib::Instrument const& inst, ArenaAllocator& arena, 
     // }
     auto tags = TagsByInstrument::Create(arena, 16);
 
+    ErrorCodeOr<void> error_code = k_success;
+
     IterateTableAtTop(lua, [&]() {
+        if (error_code.HasError()) return;
+
         // key is at -2 and vlaue is at -1
 
         // We expect the key to be a string (the instrument name).
@@ -171,56 +177,88 @@ LoadExistingTagsFile(sample_lib::Instrument const& inst, ArenaAllocator& arena, 
 
         if (!lua_isstring(lua, -2) || !lua_istable(lua, -1)) {
             error_message = "Expected a string key and a table value"_s;
+            error_code = ErrorCode {CommonError::InvalidFileFormat};
             return;
         }
 
-        auto const instrument_name = arena.Clone(LuaString(lua, -2));
+        auto const instrument_name = LuaString(lua, -2);
+        if (!IsValidUtf8(instrument_name) || instrument_name.size > k_max_instrument_name_size) {
+            error_message = "invalid instrument name"_s;
+            error_code = ErrorCode {CommonError::InvalidFileFormat};
+            return;
+        }
 
-        auto& inst_tags = tags.FindOrInsertGrowIfNeeded(arena, instrument_name, {}).element.data;
+        auto& inst_tags = tags.FindOrInsertGrowIfNeeded(arena, arena.Clone(instrument_name), {}).element.data;
 
         // Now we need to iterate over the tags in the value table.
         IterateTableAtTop(lua, [&]() {
+            if (error_code.HasError()) return;
+
             // We expect the value to be a string (the tag).
             if (!lua_isstring(lua, -1)) {
                 error_message = "Expected a string tag"_s;
+                error_code = ErrorCode {CommonError::InvalidFileFormat};
                 return;
             }
 
-            auto const tag = arena.Clone(LuaString(lua, -1));
-            inst_tags.InsertGrowIfNeeded(arena, tag);
+            auto const tag = LuaString(lua, -1);
+            if (!IsValidUtf8(tag) || tag.size > k_max_tag_size) {
+                error_message = "invalid tag"_s;
+                error_code = ErrorCode {CommonError::InvalidFileFormat};
+                return;
+            }
+
+            inst_tags.InsertGrowIfNeeded(arena, arena.Clone(tag));
         });
     });
 
     lua_pop(lua, 1); // Pop the table
+
+    if (error_code.HasError()) return error_code.Error();
+
     return tags;
 }
 
 static ErrorCodeOr<void>
 WriteTagsFile(TagsByInstrument const& tags, sample_lib::Library const& library, ArenaAllocator& arena) {
-    auto const path = path::Join(arena, Array {*path::Directory(library.path), GENERATED_TAGS_FILENAME});
+    auto const temp_suffix = ".tmp"_ca;
+    auto const temp_path = path::Join(
+        arena,
+        Array {*path::Directory(library.path), ConcatArrays(GENERATED_TAGS_FILENAME ""_ca, temp_suffix)});
+    auto const path = temp_path.SubSpan(0, temp_path.size - temp_suffix.size);
+
     TRY(CreateDirectory(*path::Directory(path), {.fail_if_exists = false}));
 
-    auto file = TRY(OpenFile(path, FileMode::Write()));
+    // Write to a temp file then move it to the final path to avoid issues with incomplete writes.
 
-    BufferedWriter<Kb(4)> buffered_writer {
-        .unbuffered_writer = file.Writer(),
-    };
-    auto writer = buffered_writer.Writer();
+    {
+        auto file = TRY(OpenFile(temp_path, FileMode::Write()));
 
-    TRY(fmt::FormatToWriter(writer, "-- This file is generated by Floe's tag builder.\nreturn {{\n"));
+        BufferedWriter<Kb(4)> buffered_writer {
+            .unbuffered_writer = file.Writer(),
+        };
+        auto writer = buffered_writer.Writer();
 
-    for (auto const& [instrument_name, tags_set, _] : tags) {
-        if (tags_set.size == 0) continue;
-        TRY(fmt::FormatToWriter(writer, "  [\"{}\"] = {{ ", instrument_name));
-        for (auto const& [tag, _] : tags_set)
-            TRY(fmt::FormatToWriter(writer, "\"{}\", ", tag));
-        TRY(fmt::FormatToWriter(writer, "}},\n"));
+        TRY(fmt::FormatToWriter(writer, "-- This file is generated by Floe's tag builder.\nreturn {{\n"));
+
+        for (auto const& [instrument_name, tags_set, _] : tags) {
+            if (tags_set.size == 0) continue;
+            ASSERT(IsValidUtf8(instrument_name));
+            TRY(fmt::FormatToWriter(writer, "  [\"{}\"] = {{ ", instrument_name));
+            for (auto const& [tag, _] : tags_set) {
+                ASSERT(IsValidUtf8(tag));
+                TRY(fmt::FormatToWriter(writer, "\"{}\", ", tag));
+            }
+            TRY(fmt::FormatToWriter(writer, "}},\n"));
+        }
+
+        TRY(fmt::FormatToWriter(writer, "}}\n"));
+
+        TRY(buffered_writer.Flush());
+        TRY(file.Flush());
     }
 
-    TRY(fmt::FormatToWriter(writer, "}}\n"));
-
-    TRY(buffered_writer.Flush());
-    TRY(file.Flush());
+    TRY(Rename(temp_path, path));
 
     return k_success;
 }
@@ -278,11 +316,13 @@ DoTagBuilderPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Lib
     auto& tags = tags_result.Value();
 
     TagsArray this_inst_tags {};
-    if (auto i = tags.Find(inst.instrument.name))
-        for (auto const [tag, _] : *i)
+    // Fill with tags from the existing tags file.
+    if (auto i = tags.Find(inst.instrument.name)) {
+        for (auto const [tag, _] : *i) {
+            ASSERT(IsValidUtf8(tag));
             dyn::AppendIfNotAlreadyThere(this_inst_tags, tag);
-    for (auto const [tag, _] : inst.instrument.tags)
-        dyn::AppendIfNotAlreadyThere(this_inst_tags, tag);
+        }
+    }
 
     if (DoTagsGui(box_system, this_inst_tags, root)) {
         // Update the tags for the changed instrument.
