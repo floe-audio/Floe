@@ -93,7 +93,7 @@ Floe doesn't have the concept of 'groups' like other formats like SFZ or Kontakt
 If you are using the [Lua Language Server](https://luals.github.io/), you can get autocompletion and diagnostics for Floe's Lua API by using the following configuration. 
 
 1. Open Floe, and click on the 3-dot menu at the top of the window. Click "Library Developer Panel" and open the "Utilities" tab.
-2. Click on the "Install Lua definitions" button. This will generate the neccessay file on your system.
+2. Click on the "Install Lua definitions" button. This will generate the necessary file on your system.
 3. For the Lua LSP to find the definitions, you need to create a `.luarc.json` file in the same folder as your `floe.lua` file.
 4. Paste the following code into the `.luarc.json` file:
 
