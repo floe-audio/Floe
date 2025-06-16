@@ -39,9 +39,6 @@ void FreeFolderNode(FolderNode const* folder, FolderNodeAllocators const& alloca
 void SetParent(FolderNode* folder, FolderNode* parent);
 void SortFolderTree(FolderNode* root);
 
-// Doesn't clone the names.
-FolderNode* CloneFolderTree(FolderNode const* root, ArenaAllocator& arena);
-
 PUBLIC bool IsInsideFolder(FolderNode const* node, usize folder_hash) {
     for (auto f = node; f; f = f->parent)
         if (f->Hash() == folder_hash) return true;

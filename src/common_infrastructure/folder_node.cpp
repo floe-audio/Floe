@@ -170,22 +170,6 @@ void SortFolderTree(FolderNode* root) {
         SortFolderTree(child);
 }
 
-// Doesn't clone the names.
-FolderNode* CloneFolderTree(FolderNode const* root, ArenaAllocator& arena) {
-    if (!root) return nullptr;
-
-    auto* new_root = arena.New<FolderNode>(FolderNode {
-        .name = root->name,
-    });
-
-    for (auto* child = root->first_child; child; child = child->next) {
-        auto* new_child = CloneFolderTree(child, arena);
-        SetParent(new_child, new_root);
-    }
-
-    return new_root;
-}
-
 TEST_CASE(TestFolderFromString) {
     struct FolderNodeAllocator : Allocator {
         FolderNodeAllocator(ArenaAllocator& arena) : arena(arena) {}
