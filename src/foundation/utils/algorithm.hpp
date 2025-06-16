@@ -100,7 +100,8 @@ PUBLIC constexpr u32 HashMultipleDbj(ContiguousContainerOfContiguousContainers a
 }
 
 PUBLIC constexpr u64 Hash(auto data) {
-    if constexpr (Fundamental<RemoveReference<decltype(data)>> || Enum<RemoveReference<decltype(data)>>)
+    if constexpr (Fundamental<RemoveReference<decltype(data)>> || Enum<RemoveReference<decltype(data)>> ||
+                  Pointer<RemoveReference<decltype(data)>>)
         return HashFnv1a(Span {(u8 const*)&data, sizeof(data)});
     else
         return HashFnv1a(data);

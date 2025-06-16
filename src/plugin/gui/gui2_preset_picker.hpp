@@ -46,6 +46,8 @@ struct PresetPickerState {
     // the other types of selected_* filters.
     DynamicArray<u64> selected_preset_types {Malloc::Instance()};
 
+    DynamicArray<u64> selected_folder_hashes {Malloc::Instance()};
+
     CommonPickerState common_state {
         .other_selected_hashes = Array {&selected_author_hashes, &selected_preset_types},
     };

@@ -522,6 +522,14 @@ constexpr void Swap(T& a, U& b) {
     b = Move(temp);
 }
 
+template <Pointer T>
+constexpr RemovePointer<T> DerefOr(T ptr, RemovePointer<T> const& default_value) {
+    if (ptr)
+        return *ptr;
+    else
+        return default_value;
+}
+
 // Helpers for looping over things:
 // ==========================================================================================================
 // Range:             for (auto index : Range(10)) { ... }

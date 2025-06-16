@@ -355,7 +355,7 @@ Type& CreateOrFetchFixtureObject(Tester& tester) {
 #if !PRODUCTION_BUILD
 
 #define REGISTER_TEST(func)     tests::RegisterTest(tester, func, #func)
-#define TEST_REGISTRATION(name) void name(tests::Tester& tester)
+#define TEST_REGISTRATION(name) void name([[maybe_unused]] tests::Tester& tester)
 
 // clang-format off
 #define TEST_CASE(func) \

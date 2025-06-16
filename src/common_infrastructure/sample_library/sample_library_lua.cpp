@@ -160,6 +160,8 @@ struct LuaState {
     TimePoint const start_time;
     String filepath;
     DynamicHashTable<LibraryPath, FileAttribution, Hash> files_requiring_attribution {result_arena};
+    Library* library; // null before new_library is called.
+    PathPool folders_path_pool;
 };
 
 #define SET_FIELD_VALUE_ARGS                                                                                 \
@@ -320,9 +322,8 @@ static void IterateTableAtTop(LuaState& ctx, auto&& table_pair_callback) {
     }
 }
 
-static MutableString StringFromTop(LuaState& ctx) {
-    return ctx.result_arena.Clone(FromNullTerminated(luaL_checkstring(ctx.lua, -1)));
-}
+static String StringRefFromTop(LuaState& ctx) { return FromNullTerminated(luaL_checkstring(ctx.lua, -1)); }
+static MutableString StringFromTop(LuaState& ctx) { return ctx.result_arena.Clone(StringRefFromTop(ctx)); }
 
 static LibraryPath PathFromTop(LuaState& ctx) {
     auto const path_c_str = luaL_checkstring(ctx.lua, -1);
@@ -1018,6 +1019,29 @@ struct TableFields<FileAttribution> {
     }
 };
 
+static FolderNode* SetFolderNode(lua_State* lua,
+                                 String folder_str,
+                                 Library& library,
+                                 FolderNodeAllocators const& allocators,
+                                 ResourceType resource_type) {
+    constexpr usize k_max_folder_length = 200;
+
+    auto const given_str = folder_str;
+    if (given_str.size > k_max_folder_length)
+        luaL_error(lua, "Folder name must be less than %d characters long.", (int)k_max_folder_length);
+
+    auto& root = library.root_folders[ToInt(resource_type)];
+
+    auto folder = FindOrInsertFolderNode(&root, folder_str, k_max_folders, allocators);
+    if (!folder)
+        luaL_error(lua,
+                   "%s: folders must not be more than %d folders deep.",
+                   folder_str.data,
+                   (int)k_max_folders);
+
+    return folder;
+}
+
 template <>
 struct TableFields<ImpulseResponse> {
     using Type = ImpulseResponse;
@@ -1068,7 +1092,21 @@ struct TableFields<ImpulseResponse> {
                     .default_value = "no folders",
                     .lua_type = LUA_TSTRING,
                     .required = false,
-                    .set = [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.folder = StringFromTop(ctx); },
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            FIELD_OBJ.folder = SetFolderNode(ctx.lua,
+                                                             StringRefFromTop(ctx),
+                                                             *ctx.library,
+                                                             {
+                                                                 .node_allocator = ctx.result_arena,
+                                                                 .name_allocator =
+                                                                     FolderNodeAllocators::NameAllocator {
+                                                                         .path_pool = ctx.folders_path_pool,
+                                                                         .path_pool_arena = ctx.result_arena,
+                                                                     },
+                                                             },
+                                                             ResourceType::Ir);
+                        },
                 };
             case Field::Tags:
                 return {
@@ -1145,7 +1183,21 @@ struct TableFields<Instrument> {
                     .default_value = "no folders",
                     .lua_type = LUA_TSTRING,
                     .required = false,
-                    .set = [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.folder = StringFromTop(ctx); },
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            FIELD_OBJ.folder = SetFolderNode(ctx.lua,
+                                                             StringRefFromTop(ctx),
+                                                             *ctx.library,
+                                                             {
+                                                                 .node_allocator = ctx.result_arena,
+                                                                 .name_allocator =
+                                                                     FolderNodeAllocators::NameAllocator {
+                                                                         .path_pool = ctx.folders_path_pool,
+                                                                         .path_pool_arena = ctx.result_arena,
+                                                                     },
+                                                             },
+                                                             ResourceType::Instrument);
+                        },
                 };
             case Field::Description:
                 return {
@@ -1407,6 +1459,10 @@ static int NewLibrary(lua_State* lua) {
     };
     lua_pushlightuserdata(ctx.lua, ptr);
     InterpretTable<Library>(ctx, 1, ptr->obj);
+
+    ctx.library = &ptr->obj;
+
+    detail::InitialiseRootFolders(ptr->obj, ctx.result_arena);
 
     return 1;
 }
@@ -2762,7 +2818,10 @@ TEST_CASE(TestBasicFile) {
         REQUIRE(inst1_ptr);
         auto inst1 = *inst1_ptr;
         CHECK_EQ(inst1->name, "Inst1"_s);
-        CHECK_EQ(inst1->folder, "Folders/Sub"_s);
+        REQUIRE(inst1->folder);
+        CHECK_EQ(inst1->folder->name, "Sub"_s);
+        REQUIRE(inst1->folder->parent);
+        CHECK_EQ(inst1->folder->parent->name, "Folders"_s);
         REQUIRE(inst1->tags.size == 1);
         CHECK(inst1->tags.Contains("tag1"_s));
 

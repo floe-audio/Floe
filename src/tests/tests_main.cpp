@@ -18,6 +18,7 @@
     X(RegisterAudioUtilsTests)                                                                               \
     X(RegisterAutosaveTests)                                                                                 \
     X(RegisterChecksumFileTests)                                                                             \
+    X(RegisterFolderNodeTests)                                                                               \
     X(RegisterFoundationTests)                                                                               \
     X(RegisterHostingTests)                                                                                  \
     X(RegisterLayoutTests)                                                                                   \

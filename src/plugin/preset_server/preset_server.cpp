@@ -5,6 +5,8 @@
 
 #include <xxhash.h>
 
+#include "utils/logger/logger.hpp"
+
 #include "state/state_coding.hpp"
 
 static String ExtensionForPreset(PresetFolder::Preset const& preset) {
@@ -42,6 +44,36 @@ String PresetFolder::FullPathForPreset(PresetFolder::Preset const& preset, Alloc
     return path;
 }
 
+static Span<FolderNode> CloneFolderNodes(Span<FolderNode> folders, ArenaAllocator& arena) {
+    auto result = arena.AllocateExactSizeUninitialised<FolderNode>(folders.size);
+    auto const old_pointer_to_new_pointer = [&](FolderNode const* old_node) -> FolderNode* {
+        if (!old_node) return nullptr;
+        return result.data + (old_node - folders.data);
+    };
+
+    for (usize i = 0; i < folders.size; ++i) {
+        result[i] = FolderNode {
+            .name = folders[i].name,
+            .parent = old_pointer_to_new_pointer(folders[i].parent),
+            .first_child = old_pointer_to_new_pointer(folders[i].first_child),
+            .next = old_pointer_to_new_pointer(folders[i].next),
+        };
+    }
+
+    return result;
+}
+
+static Span<FolderNode const*> CloneFolderNodesIntoPointerSpan(PresetServer const& server,
+                                                               ArenaAllocator& arena) {
+    auto const folders = CloneFolderNodes(server.folder_nodes, arena);
+    ASSERT_EQ(server.folder_node_order_indices.size, server.folders.size);
+    auto result =
+        arena.AllocateExactSizeUninitialised<FolderNode const*>(server.folder_node_order_indices.size);
+    for (usize i = 0; i < server.folder_node_order_indices.size; ++i)
+        result[i] = &folders[server.folder_node_order_indices[i]];
+    return result;
+}
+
 // Reader thread
 PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
     // Trigger the server to start the scanning process if its not already doing so.
@@ -71,6 +103,7 @@ PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
 
     return {
         .folders = {(PresetFolder const**)folders.data, folders.size},
+        .folder_nodes = CloneFolderNodesIntoPointerSpan(server, arena),
         .used_tags = {server.used_tags.table.Clone(arena, CloneType::Deep)},
         .used_libraries = {server.used_libraries.table.Clone(arena, CloneType::Deep)},
         .authors = {server.authors.table.Clone(arena, CloneType::Deep)},
@@ -194,13 +227,84 @@ static void AddPresetToFolder(PresetFolder& folder,
     folder.preset_array_capacity = cap;
 }
 
+constexpr usize k_max_nested_folders = 10;
+
+// There's a reasonable amount of aggregating work that needs to be done. We do this separately so that under
+// the mutex all we need is to copy some contiguous data.
 struct FoldersAggregateInfo {
-    FoldersAggregateInfo(ArenaAllocator& arena)
+    struct FolderNodeAllocator : Allocator {
+        Span<u8> DoCommand(AllocatorCommandUnion const& command) override {
+            CheckAllocatorCommandIsValid(command);
+
+            switch (command.tag) {
+                case AllocatorCommand::Allocate: {
+                    auto const& cmd = command.Get<AllocateCommand>();
+                    ASSERT(cmd.size == sizeof(FolderNode));
+                    if (used == folders.size) return {};
+                    return Span<u8> {(u8*)&folders[used++], sizeof(FolderNode)};
+                }
+
+                case AllocatorCommand::Free: {
+                    PanicIfReached();
+                    break;
+                }
+
+                case AllocatorCommand::Resize: {
+                    PanicIfReached();
+                    break;
+                }
+            }
+            return {};
+        }
+        Span<FolderNode> folders;
+        usize used = 0;
+    };
+
+    FoldersAggregateInfo(ArenaAllocator& arena, usize folders_used)
         : used_tags {arena}
         , used_libraries {arena}
-        , authors {arena} {}
+        , authors {arena}
+        , scan_folder_nodes {arena}
+        , folder_node_indices {arena} {
+        // We must know the full size up front so no reallocation happens.
+        folder_node_allocator.folders = arena.AllocateExactSizeUninitialised<FolderNode>(folders_used);
+    }
+
+    // IMPORTANT: you must call this in sorted folder order so that the nodes are created in the same order as
+    // the folders.
+    void AddFolder(PresetFolder const& folder) {
+        {
+            auto found = scan_folder_nodes.FindOrInsert(folder.scan_folder, nullptr);
+            if (found.inserted) {
+                found.element.data = folder_node_allocator.New<FolderNode>(FolderNode {
+                    .name = folder.scan_folder,
+                });
+            }
+            auto& root = found.element.data;
+
+            auto node = FindOrInsertFolderNode(root,
+                                               folder.folder,
+                                               k_max_nested_folders,
+                                               {
+                                                   .node_allocator = folder_node_allocator,
+                                               });
+            // It's possible that the folder is too nested, in which case we fallback to putting it inside the
+            // root.
+            if (!node) node = root;
+
+            auto const index = CheckedCast<usize>(node - folder_node_allocator.folders.data);
+            ASSERT(index < folder_node_allocator.used);
+            dyn::Append(folder_node_indices, index);
+        }
+
+        for (auto const& preset : folder.presets)
+            AddPreset(preset);
+    }
 
     void AddPreset(PresetFolder::Preset const& preset) {
+        // Tags and libraries point to memory within each folder, so they share the same versioning as the
+        // folders.
+
         for (auto const [tag, tag_hash] : preset.metadata.tags)
             used_tags.Insert(tag, tag_hash);
 
@@ -212,58 +316,78 @@ struct FoldersAggregateInfo {
         has_preset_type.Set(ToInt(preset.file_format));
     }
 
+    // Call under the mutex.
     void CopyToServer(PresetServer& server) const {
         server.used_tags.Assign(used_tags);
         server.used_libraries.Assign(used_libraries);
         server.authors.Assign(authors);
 
-        server.used_tags_arena.ResetCursorAndConsolidateRegions();
-
         server.has_preset_type = has_preset_type;
+
+        server.folder_node_arena.ResetCursorAndConsolidateRegions();
+        server.folder_nodes =
+            CloneFolderNodes(Span {folder_node_allocator.folders.data, folder_node_allocator.used},
+                             server.folder_node_arena);
+        server.folder_node_order_indices = server.folder_node_arena.Clone(folder_node_indices);
     }
 
     DynamicSet<String> used_tags;
     DynamicSet<sample_lib::LibraryIdRef> used_libraries;
     DynamicSet<String> authors;
+    FolderNodeAllocator folder_node_allocator;
+    DynamicOrderedHashTable<String, FolderNode*> scan_folder_nodes;
+    DynamicArray<usize> folder_node_indices;
     Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
 };
 
 static void
 AppendFolderAndPublish(PresetServer& server, PresetFolder* new_preset_folder, ArenaAllocator& scratch_arena) {
-    // Tags and libraries point to memory within each folder, so they share the same versioning as the
-    // folders.
+    ASSERT(CurrentThreadId() == server.server_thread_id);
 
-    FoldersAggregateInfo info {scratch_arena};
-    for (auto const& folder_set :
-         Array {server.folders.Items(), Span<PresetFolder*> {&new_preset_folder, 1}}) {
-        for (auto const folder : folder_set)
-            for (auto const& preset : folder->presets)
-                info.AddPreset(preset);
+    auto const insert_point = BinarySearchForSlotToInsert(server.folders, [&](PresetFolder const* folder) {
+        if (folder->scan_folder == new_preset_folder->scan_folder) {
+            if (folder->folder < new_preset_folder->folder) return -1;
+            return 1;
+        } else {
+            if (folder->scan_folder < new_preset_folder->scan_folder) return -1;
+            return 1;
+        }
+    });
+
+    FoldersAggregateInfo info {scratch_arena,
+                               ((server.folders.size + 1) * k_max_nested_folders) + server.scan_folders.size};
+    for (auto const folder_index : Range(server.folders.size)) {
+        // We call AddFolder at the correct ordered index.
+        if (folder_index == insert_point) info.AddFolder(*new_preset_folder);
+        info.AddFolder(*server.folders[folder_index]);
     }
+    if (insert_point == server.folders.size) info.AddFolder(*new_preset_folder);
 
     server.mutex.Lock();
     DEFER { server.mutex.Unlock(); };
 
-    dyn::Append(server.folders, new_preset_folder);
-    Sort(server.folders, [](PresetFolder const* a, PresetFolder const* b) { return a->folder < b->folder; });
+    dyn::MakeUninitialisedGap(server.folders, insert_point, 1);
+    server.folders[insert_point] = new_preset_folder;
 
     info.CopyToServer(server);
+    ASSERT_EQ(server.folders.size, server.folder_node_order_indices.size);
 
     server.published_version.FetchAdd(1, RmwMemoryOrder::AcquireRelease);
 }
 
 static void RemoveFolderAndPublish(PresetServer& server, usize index, ArenaAllocator& scratch_arena) {
+    ASSERT(CurrentThreadId() == server.server_thread_id);
+
     auto& folder = *server.folders[index];
     folder.delete_after_version = server.published_version.Load(LoadMemoryOrder::Relaxed);
     for (auto const& preset : folder.presets)
         server.preset_file_hashes.Delete(preset.file_hash);
 
-    FoldersAggregateInfo info {scratch_arena};
+    FoldersAggregateInfo info {scratch_arena,
+                               ((server.folders.size + 1) * k_max_nested_folders) + server.scan_folders.size};
     for (auto const& existing_folder : server.folders) {
         if (existing_folder == &folder) continue;
-
-        for (auto const& preset : existing_folder->presets)
-            info.AddPreset(preset);
+        info.AddFolder(*existing_folder);
     }
 
     server.mutex.Lock();
@@ -277,6 +401,7 @@ static void RemoveFolderAndPublish(PresetServer& server, usize index, ArenaAlloc
 }
 
 static bool EntryIsPreset(dir_iterator::Entry const& entry) {
+    if (entry.type != FileType::File) return false;
     auto const ext = path::Extension(entry.subpath);
     return ext == FLOE_PRESET_FILE_EXTENSION || StartsWithSpan(ext, ".mirage"_s);
 }
@@ -284,9 +409,15 @@ static bool EntryIsPreset(dir_iterator::Entry const& entry) {
 ErrorCodeOr<void> ScanFolder(PresetServer& server,
                              String subfolder_of_scan_folder,
                              ArenaAllocator& scratch_arena,
-                             PresetServer::ScanFolder const& scan_folder,
-                             bool recursive) {
+                             PresetServer::ScanFolder& scan_folder,
+                             u32 depth = 0) {
     ASSERT(CurrentThreadId() == server.server_thread_id);
+
+    if (depth > k_max_nested_folders) {
+        LogError(ModuleName::PresetServer, "Too many nested folders in scan folder");
+        return ErrorCode {FilesystemError::FolderContainsTooManyFiles};
+    }
+
     auto const absolute_folder =
         (String)path::Join(scratch_arena, Array {(String)scan_folder.path, subfolder_of_scan_folder});
 
@@ -326,7 +457,7 @@ ErrorCodeOr<void> ScanFolder(PresetServer& server,
         auto const snapshot = TRY_OR(LoadPresetFile(preset_format, reader, scratch_arena, true), continue);
 
         if (!preset_folder) {
-            preset_folder = server.folder_pool.PrependUninitialised();
+            preset_folder = server.folder_pool.PrependUninitialised(server.arena);
             PLACEMENT_NEW(preset_folder) PresetFolder();
             preset_folder->scan_folder = preset_folder->arena.Clone(scan_folder.path);
             preset_folder->folder = preset_folder->arena.Clone(subfolder_of_scan_folder);
@@ -342,15 +473,13 @@ ErrorCodeOr<void> ScanFolder(PresetServer& server,
         AppendFolderAndPublish(server, preset_folder, scratch_arena);
     }
 
-    if (recursive) {
-        for (auto const& entry : entries) {
-            if (entry.type == FileType::Directory) {
-                TRY(ScanFolder(server,
-                               path::Join(scratch_arena, Array {subfolder_of_scan_folder, entry.subpath}),
-                               scratch_arena,
-                               scan_folder,
-                               recursive));
-            }
+    for (auto const& entry : entries) {
+        if (entry.type == FileType::Directory) {
+            TRY(ScanFolder(server,
+                           path::Join(scratch_arena, Array {subfolder_of_scan_folder, entry.subpath}),
+                           scratch_arena,
+                           scan_folder,
+                           depth + 1));
         }
     }
 
@@ -359,9 +488,10 @@ ErrorCodeOr<void> ScanFolder(PresetServer& server,
 
 static ErrorCodeOr<void>
 ScanFolder(PresetServer& server, ArenaAllocator& scratch_arena, PresetServer::ScanFolder& scan_folder) {
+    ASSERT(CurrentThreadId() == server.server_thread_id);
     if (scan_folder.scanned) return k_success;
     scan_folder.scanned = true;
-    TRY(ScanFolder(server, "", scratch_arena, scan_folder, true));
+    TRY(ScanFolder(server, "", scratch_arena, scan_folder));
     return k_success;
 }
 
@@ -403,8 +533,8 @@ static void ServerThread(PresetServer& server) {
                         // We don't remove the folder if it's in the new set of folders.
                         if (path::Contains(*server.scan_folders_request, scan_folder.path)) return false;
 
-                        // The folder is not in the new set of folders. We should remove the preset folders
-                        // that relate to it so they disappear from the listing.
+                        // The folder is not in the new set of folders. We should remove the preset
+                        // folders that relate to it so they disappear from the listing.
                         for (usize i = 0; i < server.folders.size;) {
                             auto& preset_folder = *server.folders[i];
                             if (preset_folder.scan_folder == scan_folder.path)
@@ -427,10 +557,11 @@ static void ServerThread(PresetServer& server) {
 
                     if (already_exists) continue;
 
+                    auto cloned_path = server.arena.Clone(path);
                     dyn::Append(server.scan_folders,
                                 PresetServer::ScanFolder {
                                     .always_scanned_folder = false,
-                                    .path = {server.arena.Clone(path)},
+                                    .path = {cloned_path},
                                     .scanned = false,
                                 });
                 }
@@ -498,8 +629,8 @@ static void ServerThread(PresetServer& server) {
                         // Changes to the watched directory itself.
                         if (subpath_changeset.subpath.size == 0) continue;
 
-                        // For now, we ignore the granularity of the changes and just rescan the whole folder.
-                        // IMPROVE: handle changes more granularly
+                        // For now, we ignore the granularity of the changes and just rescan the whole
+                        // folder. IMPROVE: handle changes more granularly
                         dyn::AppendIfNotAlreadyThere(rescan_folders, &scan_folder);
                     }
                 }

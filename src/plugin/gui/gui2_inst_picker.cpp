@@ -22,6 +22,11 @@ static Optional<InstrumentCursor> CurrentCursor(InstPickerContext const& context
     return k_nullopt;
 }
 
+static bool InstMatchesSearch(sample_lib::Instrument const& inst, String search) {
+    if (ContainsCaseInsensitiveAscii(inst.name, search)) return true;
+    return false;
+}
+
 static bool ShouldSkipInstrument(InstPickerState const& state,
                                  sample_lib::Instrument const& inst,
                                  bool picker_gui_is_open) {
@@ -29,12 +34,20 @@ static bool ShouldSkipInstrument(InstPickerState const& state,
                              ? state.common_state_floe_libraries
                              : state.common_state_mirage_libraries;
 
-    if (common_state.search.size &&
-        (!ContainsCaseInsensitiveAscii(inst.name, common_state.search) &&
-         !ContainsCaseInsensitiveAscii(inst.folder.ValueOr({}), common_state.search)))
-        return true;
+    if (common_state.search.size && !InstMatchesSearch(inst, common_state.search)) return true;
 
     bool filtering_on = false;
+
+    if (common_state.selected_folder_hashes.size) {
+        filtering_on = true;
+        for (auto const folder_hash : common_state.selected_folder_hashes) {
+            if (!IsInsideFolder(inst.folder, folder_hash)) {
+                if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            } else {
+                if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+            }
+        }
+    }
 
     if (common_state.selected_library_hashes.size) {
         filtering_on = true;
@@ -292,7 +305,7 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
         return;
     }
 
-    Optional<Optional<String>> previous_folder {};
+    Optional<FolderNode*> previous_folder {};
     Box folder_box {};
 
     auto const first = IterateInstrument(context,
@@ -313,11 +326,11 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
 
         if (folder != previous_folder) {
             previous_folder = folder;
+
             folder_box = DoPickerItemsSectionContainer(box_system,
                                                        {
                                                            .parent = root,
-                                                           .heading = folder,
-                                                           .heading_is_folder = true,
+                                                           .folder = folder,
                                                        });
         }
 
@@ -390,6 +403,10 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                                                                            context.libraries.size);
     auto library_authors =
         OrderedHashTable<String, FilterItemInfo>::Create(box_system.arena, context.libraries.size);
+
+    auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(box_system.arena, 16);
+    auto root_folder = FolderRootSet::Create(box_system.arena, 8);
+
     if (state.tab != InstPickerState::Tab::Waveforms) {
         for (auto const l : context.libraries) {
             if (l->sorted_instruments.size == 0) continue;
@@ -397,6 +414,9 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
 
             auto& lib = libraries.FindOrInsertWithoutGrowing(l->Id(), {}).element.data;
             auto& author = library_authors.FindOrInsertWithoutGrowing(l->author, {}).element.data;
+
+            if (auto& f = l->root_folders[ToInt(sample_lib::ResourceType::Instrument)]; f.first_child)
+                root_folder.InsertGrowIfNeeded(box_system.arena, &f);
 
             for (auto const& inst : l->sorted_instruments) {
                 auto const skip = ShouldSkipInstrument(state, *inst, true);
@@ -409,6 +429,12 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                 {
                     if (!skip) ++author.num_used_in_items_lists;
                     ++author.total_available;
+                }
+
+                for (auto f = inst->folder; f; f = f->parent) {
+                    auto& i = folders.FindOrInsertGrowIfNeeded(box_system.arena, f, {}).element.data;
+                    if (!skip) ++i.num_used_in_items_lists;
+                    ++i.total_available;
                 }
 
                 for (auto const& [tag, tag_hash] : inst->tags) {
@@ -499,6 +525,16 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                 if (state.tab == InstPickerState::Tab::FloeLibaries) {
                     f = TagsFilters {
                         .tags = tags,
+                    };
+                }
+                f;
+            }),
+            .folder_filters = ({
+                Optional<FolderFilters> f {};
+                if (state.tab != InstPickerState::Tab::Waveforms) {
+                    f = FolderFilters {
+                        .folders = folders,
+                        .root_folders = root_folder,
                     };
                 }
                 f;

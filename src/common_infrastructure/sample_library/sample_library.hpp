@@ -3,10 +3,10 @@
 
 #pragma once
 #include "foundation/foundation.hpp"
-#include "utils/logger/logger.hpp"
 #include "utils/reader.hpp"
 
 #include "common_infrastructure/audio_data.hpp"
+#include "common_infrastructure/folder_node.hpp"
 
 #include "mdata.hpp"
 
@@ -16,6 +16,9 @@ constexpr usize k_max_instrument_name_size = 64;
 constexpr usize k_max_ir_name_size = 64;
 
 namespace sample_lib {
+
+constexpr usize k_max_folders = 4;
+constexpr usize k_max_folder_string_length = 200;
 
 // A type-safe wrapper to hold a relative path inside a library. This is used to refer to audio files, images,
 // etc. It might not represent an actual file on disk. Give these to the library to get Reader.
@@ -134,7 +137,7 @@ struct Instrument {
     Library const& library;
 
     String name {};
-    Optional<String> folder {}; // may contain '/'
+    FolderNode* folder {};
     Optional<String> description {};
     Set<String> tags {};
     LibraryPath audio_file_path_for_waveform {};
@@ -160,7 +163,7 @@ struct ImpulseResponse {
 
     String name {};
     LibraryPath path {};
-    Optional<String> folder {}; // may contain '/'
+    FolderNode* folder {};
     Set<String> tags {};
     Optional<String> description {};
 };
@@ -210,6 +213,8 @@ struct FileAttribution {
     Optional<String> attribution_url {};
 };
 
+enum class ResourceType : u8 { Instrument, Ir, Count };
+
 struct Library {
     LibraryIdRef Id() const { return {.author = author, .name = name}; }
     String name {};
@@ -223,6 +228,7 @@ struct Library {
     Optional<LibraryPath> icon_image_path {};
     HashTable<String, Instrument*> insts_by_name {};
     Span<Instrument*> sorted_instruments {};
+    Array<FolderNode, ToInt(ResourceType::Count)> root_folders {};
     HashTable<String, ImpulseResponse*> irs_by_name {};
     Span<ImpulseResponse*> sorted_irs {};
     HashTable<LibraryPath, FileAttribution, sample_lib::Hash> files_requiring_attribution {};
@@ -316,7 +322,9 @@ struct Options {
 
 namespace detail {
 VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAllocator& scratch_arena);
-}
+MutableString LibraryNodePath(Library const& lib, Allocator& arena);
+void InitialiseRootFolders(Library& lib, Allocator& arena);
+} // namespace detail
 
 LibraryPtrOrError ReadLua(Reader& reader,
                           String lua_filepath,

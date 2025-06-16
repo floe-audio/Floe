@@ -10,6 +10,7 @@ For instance: 0.0.1. Don't change the headings.
 # Changelog
 ## 0.9.10-beta
 - Picker panels:
+    - Add filters for folders
     - Put tags into categories and add icons
     - Add 2 filter modes: match-all and match-any, allowing for more powerful filtering. A label showing the number of matching items dynamically updates as you change the filters.
     - Fix instrument picker not showing waveform instruments when no Mirage libraries installed

@@ -281,6 +281,10 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
     }
 
     library.insts_by_name = decltype(library.insts_by_name)::Create(arena, inst_infos.size);
+
+    PathPool folders_path_pool;
+    detail::InitialiseRootFolders(library, arena);
+
     for (auto& i : inst_infos) {
         auto const path = GetString(library, i.virtual_filepath);
 
@@ -308,14 +312,24 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
             folders.RemoveSuffix(1);
         while (StartsWith(folders, '/'))
             folders.RemovePrefix(1);
-        folders = arena.Clone(folders);
 
         auto inst = arena.NewUninitialised<Instrument>();
         PLACEMENT_NEW(inst)
         Instrument {
             .library = library,
             .name = name,
-            .folder = folders.size ? Optional<String>(folders) : k_nullopt,
+            .folder =
+                FindOrInsertFolderNode(&library.root_folders[ToInt(sample_lib::ResourceType::Instrument)],
+                                       folders,
+                                       6,
+                                       {
+                                           .node_allocator = arena,
+                                           .name_allocator =
+                                               FolderNodeAllocators::NameAllocator {
+                                                   .path_pool = folders_path_pool,
+                                                   .path_pool_arena = arena,
+                                               },
+                                       }),
         };
 
         bool velocity_layers_are_feathered =

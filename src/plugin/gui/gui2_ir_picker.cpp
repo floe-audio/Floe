@@ -15,13 +15,26 @@ static Optional<IrCursor> CurrentCursor(IrPickerContext const& context, sample_l
     return k_nullopt;
 }
 
+static bool IrMatchesSearch(sample_lib::ImpulseResponse const& ir, String search) {
+    if (ContainsCaseInsensitiveAscii(ir.name, search)) return true;
+    return false;
+}
+
 static bool ShouldSkipIr(IrPickerState const& state, sample_lib::ImpulseResponse const& ir) {
-    if (state.common_state.search.size &&
-        (!ContainsCaseInsensitiveAscii(ir.name, state.common_state.search) &&
-         !ContainsCaseInsensitiveAscii(ir.folder.ValueOr({}), state.common_state.search)))
-        return true;
+    if (state.common_state.search.size && !IrMatchesSearch(ir, state.common_state.search)) return true;
 
     bool filtering_on = false;
+
+    if (state.common_state.selected_folder_hashes.size) {
+        filtering_on = true;
+        for (auto const folder_hash : state.common_state.selected_folder_hashes) {
+            if (!IsInsideFolder(ir.folder, folder_hash)) {
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            } else {
+                if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+            }
+        }
+    }
 
     if (state.common_state.selected_library_hashes.size) {
         filtering_on = true;
@@ -171,7 +184,7 @@ void LoadRandomIr(IrPickerContext const& context, IrPickerState& state) {
 void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerState& state) {
     auto const root = DoPickerItemsRoot(box_system);
 
-    Optional<Optional<String>> previous_folder {};
+    Optional<FolderNode*> previous_folder {};
     Box folder_box {};
 
     auto const first =
@@ -191,8 +204,7 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
             folder_box = DoPickerItemsSectionContainer(box_system,
                                                        {
                                                            .parent = root,
-                                                           .heading = folder,
-                                                           .heading_is_folder = true,
+                                                           .folder = folder,
                                                        });
         }
 
@@ -272,10 +284,18 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
                                                                            context.libraries.size);
     auto library_authors =
         OrderedHashTable<String, FilterItemInfo>::Create(box_system.arena, context.libraries.size);
+
+    auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(box_system.arena, 16);
+    auto root_folder = FolderRootSet::Create(box_system.arena, 8);
+
     for (auto const l : context.libraries) {
         if (l->irs_by_name.size == 0) continue;
         auto& lib_found = libraries.FindOrInsertWithoutGrowing(l->Id(), {}).element.data;
         auto& author_found = library_authors.FindOrInsertWithoutGrowing(l->author, {}).element.data;
+
+        if (auto& f = l->root_folders[ToInt(sample_lib::ResourceType::Ir)]; f.first_child)
+            root_folder.InsertGrowIfNeeded(box_system.arena, &f);
+
         for (auto const& ir : l->sorted_irs) {
             auto const skip = ShouldSkipIr(state, *ir);
 
@@ -284,6 +304,12 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
 
             ++author_found.total_available;
             if (!skip) ++author_found.num_used_in_items_lists;
+
+            for (auto f = ir->folder; f; f = f->parent) {
+                auto& i = folders.FindOrInsertGrowIfNeeded(box_system.arena, f, {}).element.data;
+                if (!skip) ++i.num_used_in_items_lists;
+                ++i.total_available;
+            }
 
             for (auto const& [tag, tag_hash] : ir->tags) {
                 auto& tag_found =
@@ -344,6 +370,11 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
             .tags_filters =
                 TagsFilters {
                     .tags = tags,
+                },
+            .folder_filters =
+                FolderFilters {
+                    .folders = folders,
+                    .root_folders = root_folder,
                 },
             .status_bar_height = 58,
             .status = [&]() -> Optional<String> {

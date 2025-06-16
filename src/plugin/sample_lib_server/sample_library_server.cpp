@@ -1583,6 +1583,9 @@ static sample_lib::Library* BuiltinLibrary() {
         builtin_library.irs_by_name =
             decltype(builtin_library.irs_by_name)::Create(alloc, embedded_irs.count);
 
+        PathPool folders_path_pool;
+        sample_lib::detail::InitialiseRootFolders(builtin_library, alloc);
+
         for (auto const& embedded_ir : Span<EmbeddedIr const> {embedded_irs.irs, embedded_irs.count}) {
             usize num_tags = 0;
             if (embedded_ir.tag1.size) ++num_tags;
@@ -1594,13 +1597,26 @@ static sample_lib::Library* BuiltinLibrary() {
 
             auto const name = ToString(embedded_ir.name);
 
+            ArenaAllocatorWithInlineStorage<200> scratch_arena {PageAllocator::Instance()};
+
             auto ir = alloc.NewUninitialised<sample_lib::ImpulseResponse>();
             PLACEMENT_NEW(ir)
             sample_lib::ImpulseResponse {
                 .library = builtin_library,
                 .name = name,
                 .path = {ToString(embedded_ir.data.filename)},
-                .folder = ToString(embedded_ir.folder),
+                .folder =
+                    FindOrInsertFolderNode(&builtin_library.root_folders[ToInt(sample_lib::ResourceType::Ir)],
+                                           ToString(embedded_ir.folder),
+                                           sample_lib::k_max_folders,
+                                           {
+                                               .node_allocator = alloc,
+                                               .name_allocator =
+                                                   FolderNodeAllocators::NameAllocator {
+                                                       .path_pool = folders_path_pool,
+                                                       .path_pool_arena = alloc,
+                                                   },
+                                           }),
                 .tags = tags,
                 .description = ToString(embedded_ir.description),
             };

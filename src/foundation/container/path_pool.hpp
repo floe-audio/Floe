@@ -17,7 +17,7 @@ struct PathPool {
         Path* next {};
     };
 
-    String Clone(String p, ArenaAllocator& arena, usize min_size = 64) {
+    String Clone(String p, Allocator& arena, usize min_size = 64) {
         for (auto i = used_list; i != nullptr; i = i->next) {
             if (StartsWithSpan(i->buffer, p)) {
                 ++i->buffer_refs;

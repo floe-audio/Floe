@@ -66,7 +66,9 @@ struct PresetServer {
     DynamicSet<String> used_tags {arena};
     DynamicSet<sample_lib::LibraryIdRef> used_libraries {arena};
     DynamicSet<String> authors {arena};
-    ArenaAllocator used_tags_arena {(Allocator&)arena};
+    ArenaAllocator folder_node_arena {(Allocator&)arena};
+    Span<FolderNode> folder_nodes {};
+    Span<usize> folder_node_order_indices {};
 
     DynamicSet<u64, NoHash> preset_file_hashes {arena};
     Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
@@ -88,6 +90,7 @@ void SetExtraScanFolders(PresetServer& server, Span<String const> folders);
 
 struct PresetsSnapshot {
     Span<PresetFolder const*> folders; // Sorted
+    Span<FolderNode const*> folder_nodes; // Parallel to folders field.
 
     // Additional convenience data
     Set<String> used_tags;

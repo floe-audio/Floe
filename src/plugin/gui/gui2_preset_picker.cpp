@@ -29,6 +29,7 @@ static Optional<PresetCursor> CurrentCursor(PresetPickerContext const& context, 
 
 static bool ShouldSkipPreset(PresetPickerContext const& context,
                              PresetPickerState const& state,
+                             usize folder_index,
                              PresetFolder const& folder,
                              PresetFolder::Preset const& preset) {
     if (state.common_state.search.size &&
@@ -37,6 +38,17 @@ static bool ShouldSkipPreset(PresetPickerContext const& context,
         return true;
 
     bool filtering_on = false;
+
+    if (state.common_state.selected_folder_hashes.size) {
+        filtering_on = true;
+        for (auto const folder_hash : state.common_state.selected_folder_hashes) {
+            if (!IsInsideFolder(context.presets_snapshot.folder_nodes[folder_index], folder_hash)) {
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            } else {
+                if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+            }
+        }
+    }
 
     // If multiple preset types exist, we offer a way to filter by them.
     if (context.presets_snapshot.has_preset_type.NumSet() > 1) {
@@ -153,7 +165,7 @@ static Optional<PresetCursor> IteratePreset(PresetPickerContext const& context,
                  })) {
             auto const& preset = folder.presets[cursor.preset_index];
 
-            if (ShouldSkipPreset(context, state, folder, preset)) continue;
+            if (ShouldSkipPreset(context, state, cursor.folder_index, folder, preset)) continue;
 
             return cursor;
         }
@@ -241,12 +253,12 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
 
         if (&preset_folder != previous_folder) {
             previous_folder = &preset_folder;
-            folder_box = DoPickerItemsSectionContainer(box_system,
-                                                       {
-                                                           .parent = root,
-                                                           .heading = preset_folder.folder,
-                                                           .heading_is_folder = true,
-                                                       });
+            folder_box = DoPickerItemsSectionContainer(
+                box_system,
+                {
+                    .parent = root,
+                    .folder = context.presets_snapshot.folder_nodes[cursor.folder_index],
+                });
         }
 
         auto const is_current = ({
@@ -305,7 +317,7 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
 
 void PresetPickerExtraFilters(GuiBoxSystem& box_system,
                               PresetPickerContext& context,
-                              OrderedHashTable<String, FilterItemInfo>& preset_authors,
+                              OrderedHashTable<String, FilterItemInfo> const& preset_authors,
                               Array<FilterItemInfo, ToInt(PresetFormat::Count)>& preset_type_filter_info,
                               PresetPickerState& state,
                               Box const& parent,
@@ -410,14 +422,19 @@ void DoPresetPicker(GuiBoxSystem& box_system,
 
     Array<FilterItemInfo, ToInt(PresetFormat::Count)> preset_type_filter_info;
 
-    for (auto const& folder : context.presets_snapshot.folders) {
+    auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(box_system.arena, 64);
+    auto root_folder = FolderRootSet::Create(box_system.arena, 8);
+
+    for (auto const& [folder_index, folder] : Enumerate(context.presets_snapshot.folders)) {
         for (auto const& preset : folder->presets) {
-            bool const skip = ShouldSkipPreset(context, state, *folder, preset);
+            bool const skip = ShouldSkipPreset(context, state, folder_index, *folder, preset);
+
             for (auto const [tag, tag_hash] : preset.metadata.tags) {
                 auto i = tags.Find(tag, tag_hash);
                 if (!skip) ++i->num_used_in_items_lists;
                 ++i->total_available;
             }
+
             if (!preset.metadata.tags.size) {
                 auto& i =
                     tags.FindOrInsertGrowIfNeeded(box_system.arena, k_untagged_tag_name, {}).element.data;
@@ -452,6 +469,13 @@ void DoPresetPicker(GuiBoxSystem& box_system,
                 auto& i = preset_type_filter_info[ToInt(preset.file_format)];
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
+            }
+
+            for (auto f = context.presets_snapshot.folder_nodes[folder_index]; f; f = f->parent) {
+                auto& i = folders.FindOrInsertGrowIfNeeded(box_system.arena, f, {}).element.data;
+                if (!skip) ++i.num_used_in_items_lists;
+                ++i.total_available;
+                if (!f->parent) root_folder.InsertGrowIfNeeded(box_system.arena, f);
             }
         }
     }
@@ -488,6 +512,11 @@ void DoPresetPicker(GuiBoxSystem& box_system,
             .tags_filters =
                 TagsFilters {
                     .tags = tags,
+                },
+            .folder_filters =
+                FolderFilters {
+                    .folders = folders,
+                    .root_folders = root_folder,
                 },
             .do_extra_filters =
                 [&](GuiBoxSystem& box_system, Box const& parent, u8& num_sections) {

@@ -27,7 +27,7 @@ struct InstPickerState {
     }
 
     Tab tab {Tab::FloeLibaries};
-    CommonPickerState common_state_floe_libraries;
-    CommonPickerState common_state_mirage_libraries;
+    CommonPickerState common_state_floe_libraries {};
+    CommonPickerState common_state_mirage_libraries {};
     bool scroll_to_show_selected = false;
 };

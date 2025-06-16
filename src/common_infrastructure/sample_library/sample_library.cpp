@@ -3,6 +3,8 @@
 
 #include "sample_library.hpp"
 
+#include "tests/framework.hpp"
+
 ErrorCodeOr<void>
 CustomValueToString(Writer writer, sample_lib::LibraryIdRef id, fmt::FormatOptions options) {
     auto const sep = " - "_s;
@@ -52,8 +54,27 @@ LibraryPtrOrError Read(Reader& reader,
 
 namespace detail {
 
-VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAllocator& scratch_arena) {
+void InitialiseRootFolders(Library& lib, Allocator& arena) {
+    auto root_name = fmt::Format(arena, "{} - {}", lib.name, lib.author);
+    for (auto& folder : lib.root_folders)
+        folder.name = root_name;
+}
 
+static void FinaliseFolderTree(FolderNode* root, auto const& items) {
+    for (auto& item : items)
+        if (!item->folder)
+            item->folder = root;
+        else {
+            auto top_folder = item->folder;
+            while (top_folder->parent)
+                top_folder = top_folder->parent;
+            ASSERT(top_folder == root);
+        }
+
+    SortFolderTree(root);
+}
+
+VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAllocator& scratch_arena) {
     // Sort items into their folders, and by name within each folder.
     auto const sort_function = [](auto* a, auto* b) {
         auto const& a_folder = a->folder;
@@ -306,9 +327,15 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
         }
     }
 
+    if (lib.sorted_instruments.size)
+        FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Instrument)], lib.sorted_instruments);
+    if (lib.sorted_irs.size) FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Ir)], lib.sorted_irs);
+
     return k_success;
 }
 
 } // namespace detail
 
 } // namespace sample_lib
+
+TEST_REGISTRATION(RegisterLibraryTests) {}
