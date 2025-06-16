@@ -52,7 +52,7 @@ struct PresetServer {
 
     ArenaAllocator arena {PageAllocator::Instance()}; // Preset thread
 
-    ArenaList<PresetFolder, false> folder_pool {arena}; // Allocation for folders
+    ArenaList<PresetFolder> folder_pool {}; // Allocation for folders
 
     Mutex mutex;
 
