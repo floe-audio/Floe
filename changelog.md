@@ -23,6 +23,8 @@ For instance: 0.0.1. Don't change the headings.
 - Sample library creation: add support for multiple Lua files by using `dofile()`
 - Sample library creation: add set_required_floe_version function
 - Sample library creation: add generated Floe API definition file for Lua Language Server allowing for code completion and documentation as you type - available on the Library Developer Panel
+- GUI: slightly improved icons
+- GUI: use same toggle icon for all toggle buttons
 
 ## 0.9.9-beta
 - Sample library creation: add start_offset_frames to add_region

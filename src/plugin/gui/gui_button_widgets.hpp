@@ -180,8 +180,8 @@ PUBLIC Style LayerHeadingButton(imgui::Context const& imgui, u32 highlight_col =
     s.text_cols.hot_off = s.text_cols.hot_on;
     s.text_cols.active_on = s.text_cols.hot_on;
     s.text_cols.active_off = s.text_cols.active_on;
-    s.icon_and_text.on_icon = ICON_FA_SQUARE_CHECK;
-    s.icon_and_text.off_icon = ICON_FA_SQUARE;
+    s.icon_and_text.on_icon = ICON_FA_TOGGLE_ON;
+    s.icon_and_text.off_icon = ICON_FA_TOGGLE_OFF;
     s.icon_and_text.capitalise = false;
     s.icon_scaling = 0.75f;
     return s;
