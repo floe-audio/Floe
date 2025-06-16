@@ -292,7 +292,7 @@ struct LinuxWatchedDirectory {
     };
 
     int root_watch_id;
-    ArenaList<SubDir, false> subdirs;
+    ArenaList<SubDir> subdirs;
     PathPool path_pool;
 };
 
@@ -320,7 +320,7 @@ ErrorCodeOr<DirectoryWatcher> CreateDirectoryWatcher(Allocator& a) {
     ZoneScoped;
     DirectoryWatcher result {
         .allocator = a,
-        .watched_dirs = {a},
+        .watched_dirs = {},
     };
     auto h = inotify_init1(IN_NONBLOCK);
     if (h == -1) return FilesystemErrnoErrorCode(errno);
@@ -354,7 +354,7 @@ static ErrorCodeOr<LinuxWatchedDirectory*> WatchDirectory(DirectoryWatcher::Watc
         if (!success) InotifyUnwatch(inotify_id, watch_id);
     };
 
-    ArenaList<LinuxWatchedDirectory::SubDir, false> subdirs {dir.arena};
+    ArenaList<LinuxWatchedDirectory::SubDir> subdirs {};
     PathPool path_pool {};
     if (recursive) {
         auto const try_watch_subdirs = [&]() -> ErrorCodeOr<void> {
@@ -373,7 +373,7 @@ static ErrorCodeOr<LinuxWatchedDirectory*> WatchDirectory(DirectoryWatcher::Watc
                     dyn::Resize(full_subpath, dir.path.size);
                     path::JoinAppend(full_subpath, subpath);
 
-                    auto subdir = subdirs.PrependUninitialised();
+                    auto subdir = subdirs.PrependUninitialised(dir.arena);
                     PLACEMENT_NEW(subdir)
                     LinuxWatchedDirectory::SubDir {
                         .watch_id = TRY(InotifyWatch(inotify_id, dyn::NullTerminated(full_subpath))),
@@ -645,7 +645,7 @@ PollDirectoryChanges(DirectoryWatcher& watcher, PollDirectoryChangesArgs args) {
                             }
                         }
 
-                        auto subdir = this_dir.Native().subdirs.PrependUninitialised();
+                        auto subdir = this_dir.Native().subdirs.PrependUninitialised(this_dir.dir.arena);
                         PLACEMENT_NEW(subdir)
                         LinuxWatchedDirectory::SubDir {
                             .watch_id = watch_id_outcome.Value(),
@@ -693,7 +693,8 @@ PollDirectoryChanges(DirectoryWatcher& watcher, PollDirectoryChangesArgs args) {
                                 }
 
                                 if (!skip) {
-                                    auto subsubdir = this_dir.Native().subdirs.PrependUninitialised();
+                                    auto subsubdir =
+                                        this_dir.Native().subdirs.PrependUninitialised(this_dir.dir.arena);
                                     PLACEMENT_NEW(subsubdir)
                                     LinuxWatchedDirectory::SubDir {
                                         .watch_id = sub_watch_id_outcome.Value(),

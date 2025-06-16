@@ -9,6 +9,7 @@
 #include "utils/cli_arg_parse.hpp"
 #include "utils/json/json_reader.hpp"
 #include "utils/json/json_writer.hpp"
+#include "utils/logger/logger.hpp"
 
 #include "common_infrastructure/common_errors.hpp"
 #include "common_infrastructure/descriptors/effect_descriptors.hpp"
@@ -186,11 +187,11 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
             usize size;
             String url;
         };
-        ArenaList<Asset, false> assets {scratch};
+        ArenaList<Asset> assets {};
 
         auto const handle_asset_object = [&](json::EventHandlerStack&, json::Event const& event) {
             if (event.type == json::EventType::HandlingStarted) {
-                *assets.PrependUninitialised() = {};
+                *assets.PrependUninitialised(scratch) = {};
                 return true;
             }
 

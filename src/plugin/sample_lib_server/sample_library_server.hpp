@@ -197,9 +197,9 @@ struct ListedLibrary {
     sample_lib::Library* lib {};
     TimePoint scan_timepoint {};
 
-    ArenaList<ListedAudioData, false> audio_datas {arena};
-    ArenaList<ListedInstrument, false> instruments {arena};
-    ArenaList<ListedImpulseResponse, false> irs {arena};
+    ArenaList<ListedAudioData> audio_datas {};
+    ArenaList<ListedInstrument> instruments {};
+    ArenaList<ListedImpulseResponse> irs {};
 };
 
 using LibrariesList = AtomicRefList<ListedLibrary>;
@@ -215,7 +215,8 @@ struct ScanFolder {
 struct ScanFolders {
     using Folders = DynamicArrayBounded<ScanFolder*, k_max_extra_scan_folders + 1>;
     Mutex mutex;
-    ArenaList<ScanFolder, true> folder_allocator {PageAllocator::Instance()};
+    ArenaAllocator folder_arena {PageAllocator::Instance()};
+    ArenaList<ScanFolder> folder_allocator {};
     Folders folders; // active folders
 };
 
@@ -255,7 +256,8 @@ struct Server {
     Atomic<u32> num_uncompleted_library_jobs {0};
     ThreadPool& thread_pool;
     Atomic<RequestId> request_id_counter {};
-    MutexProtected<ArenaList<AsyncCommsChannel, true>> channels {Malloc::Instance()};
+    ArenaAllocator channels_arena {Malloc::Instance()};
+    MutexProtected<ArenaList<AsyncCommsChannel>> channels {};
     Thread thread {};
     u64 server_thread_id {};
     Atomic<bool> end_thread {false};

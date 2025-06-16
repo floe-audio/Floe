@@ -262,7 +262,7 @@ static bool MarkNotScannedFoldersRescanRequested(Span<ScanFolder*> scan_folders)
 
 // server-thread
 static void NotifyAllChannelsOfLibraryChange(Server& server, sample_lib::LibraryIdRef library_id) {
-    server.channels.Use([&](ArenaList<AsyncCommsChannel, true>& channels) {
+    server.channels.Use([&](ArenaList<AsyncCommsChannel>& channels) {
         for (auto& c : channels)
             if (c.used.Load(LoadMemoryOrder::Relaxed)) c.library_changed_callback(library_id);
     });
@@ -811,7 +811,7 @@ static ListedAudioData* FetchOrCreateAudioData(LibrariesList::Node& lib_node,
         }
     }
 
-    auto audio_data = lib_node.value.audio_datas.PrependUninitialised();
+    auto audio_data = lib_node.value.audio_datas.PrependUninitialised(lib_node.value.arena);
     PLACEMENT_NEW(audio_data)
     ListedAudioData {
         .path = path,
@@ -852,7 +852,7 @@ static ListedInstrument* FetchOrCreateInstrument(LibrariesList::Node& lib_node,
 
     static u32 g_inst_debug_id {};
 
-    auto new_inst = lib.instruments.PrependUninitialised();
+    auto new_inst = lib.instruments.PrependUninitialised(lib_node.value.arena);
     PLACEMENT_NEW(new_inst)
     ListedInstrument {
         .debug_id = g_inst_debug_id++,
@@ -893,7 +893,7 @@ static ListedImpulseResponse* FetchOrCreateImpulseResponse(LibrariesList::Node& 
     auto audio_data = FetchOrCreateAudioData(lib_node, ir.path, thread_pool_args, 999999);
     audio_data->ref_count.FetchAdd(1, RmwMemoryOrder::Relaxed);
 
-    auto new_ir = lib_node.value.irs.PrependUninitialised();
+    auto new_ir = lib_node.value.irs.PrependUninitialised(lib_node.value.arena);
     PLACEMENT_NEW(new_ir)
     ListedImpulseResponse {
         .ir = {ir, &audio_data->audio_data},
@@ -1625,7 +1625,7 @@ Server::Server(ThreadPool& pool,
     : error_notifications(error_notifications)
     , thread_pool(pool) {
     if (always_scanned_folder.size) {
-        auto folder = scan_folders.folder_allocator.PrependUninitialised();
+        auto folder = scan_folders.folder_allocator.PrependUninitialised(scan_folders.folder_arena);
         PLACEMENT_NEW(folder) ScanFolder();
         dyn::Assign(folder->path, always_scanned_folder);
         folder->source = ScanFolder::Source::AlwaysScannedFolder;
@@ -1664,7 +1664,7 @@ Server::~Server() {
 
 AsyncCommsChannel& OpenAsyncCommsChannel(Server& server, OpenAsyncCommsChannelArgs const& args) {
     return server.channels.Use([&](auto& channels) -> AsyncCommsChannel& {
-        auto channel = channels.PrependUninitialised();
+        auto channel = channels.PrependUninitialised(server.channels_arena);
         PLACEMENT_NEW(channel)
         AsyncCommsChannel {
             .error_notifications = args.error_notifications,
@@ -1752,7 +1752,8 @@ void SetExtraScanFolders(Server& server, Span<String const> extra_folders) {
 
             ASSERT(server.scan_folders.folders.size != ScanFolders::Folders::Capacity());
 
-            auto folder = server.scan_folders.folder_allocator.PrependUninitialised();
+            auto folder =
+                server.scan_folders.folder_allocator.PrependUninitialised(server.scan_folders.folder_arena);
             PLACEMENT_NEW(folder) ScanFolder();
             dyn::Assign(folder->path, path);
             folder->source = ScanFolder::Source::ExtraFolder;

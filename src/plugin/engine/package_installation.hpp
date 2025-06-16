@@ -79,7 +79,7 @@ struct InstallJob {
         String destination_path;
         DestinationWriteMode destination_write_mode;
     };
-    ArenaList<Component, false> components;
+    ArenaList<Component> components;
 };
 
 // ==========================================================================================================
@@ -533,7 +533,7 @@ static InstallJob::State DoJobPhase1(InstallJob& job) {
 
         if (UserInputIsRequired(existing_check)) user_input_needed = true;
 
-        PLACEMENT_NEW(job.components.PrependUninitialised())
+        PLACEMENT_NEW(job.components.PrependUninitialised(job.arena))
         InstallJob::Component {
             .component = *component,
             .existing_installation_status = existing_check,
@@ -624,7 +624,7 @@ PUBLIC InstallJob* CreateInstallJob(ArenaAllocator& arena, CreateJobOptions opts
         .sample_lib_server = opts.server,
         .preset_folders = arena.Clone(opts.preset_folders, CloneType::Deep),
         .error_buffer = {arena},
-        .components = {arena},
+        .components = {},
     };
     return j;
 }
