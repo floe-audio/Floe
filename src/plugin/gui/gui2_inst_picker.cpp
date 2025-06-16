@@ -415,8 +415,8 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
             auto& lib = libraries.FindOrInsertWithoutGrowing(l->Id(), {}).element.data;
             auto& author = library_authors.FindOrInsertWithoutGrowing(l->author, {}).element.data;
 
-            if (auto& f = l->root_folders[ToInt(sample_lib::ResourceType::Instrument)]; f.first_child)
-                root_folder.InsertGrowIfNeeded(box_system.arena, &f);
+            root_folder.InsertGrowIfNeeded(box_system.arena,
+                                           &l->root_folders[ToInt(sample_lib::ResourceType::Instrument)]);
 
             for (auto const& inst : l->sorted_instruments) {
                 auto const skip = ShouldSkipInstrument(state, *inst, true);

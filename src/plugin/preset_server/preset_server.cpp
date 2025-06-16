@@ -52,12 +52,10 @@ static Span<FolderNode> CloneFolderNodes(Span<FolderNode> folders, ArenaAllocato
     };
 
     for (usize i = 0; i < folders.size; ++i) {
-        result[i] = FolderNode {
-            .name = folders[i].name,
-            .parent = old_pointer_to_new_pointer(folders[i].parent),
-            .first_child = old_pointer_to_new_pointer(folders[i].first_child),
-            .next = old_pointer_to_new_pointer(folders[i].next),
-        };
+        result[i] = folders[i];
+        result[i].parent = old_pointer_to_new_pointer(folders[i].parent);
+        result[i].first_child = old_pointer_to_new_pointer(folders[i].first_child);
+        result[i].next = old_pointer_to_new_pointer(folders[i].next);
     }
 
     return result;
@@ -227,6 +225,40 @@ static void AddPresetToFolder(PresetFolder& folder,
     folder.preset_array_capacity = cap;
 }
 
+static MutableString AbbreviatedPath(String path, ArenaAllocator& arena) {
+    ASSERT(path::IsAbsolute(path));
+
+    String drive {};
+    if constexpr (IS_WINDOWS) drive = path::ParseWindowsPath(path).drive;
+
+    usize slashes = 0;
+    for (auto const c : path)
+        if (path::IsDirectorySeparator(c)) ++slashes;
+
+    if (slashes >= 5) {
+        DynamicArray<char> result {arena};
+        dyn::AppendSpan(result, drive);
+
+        // Only include the first 2 and last 2 folders, the middle are replaced with ...
+        usize slashes_seen = 0;
+        for (auto const c : path) {
+            if (path::IsDirectorySeparator(c)) {
+                ++slashes_seen;
+                if (slashes_seen == 3) {
+                    dyn::AppendSpan(result, IS_WINDOWS ? "\\…\\" : "/…/"_s);
+                    continue;
+                } else if (slashes_seen == slashes - 1)
+                    continue;
+            }
+            if (slashes_seen < 3 || slashes_seen >= slashes - 1) dyn::Append(result, c);
+        }
+
+        return result.ToOwnedSpan();
+    } else {
+        return {};
+    }
+}
+
 constexpr usize k_max_nested_folders = 10;
 
 // There's a reasonable amount of aggregating work that needs to be done. We do this separately so that under
@@ -278,6 +310,7 @@ struct FoldersAggregateInfo {
             if (found.inserted) {
                 found.element.data = folder_node_allocator.New<FolderNode>(FolderNode {
                     .name = folder.scan_folder,
+                    .abbreviated_name = folder.abbreviated_scan_folder,
                 });
             }
             auto& root = found.element.data;
@@ -460,6 +493,8 @@ ErrorCodeOr<void> ScanFolder(PresetServer& server,
             preset_folder = server.folder_pool.PrependUninitialised(server.arena);
             PLACEMENT_NEW(preset_folder) PresetFolder();
             preset_folder->scan_folder = preset_folder->arena.Clone(scan_folder.path);
+            preset_folder->abbreviated_scan_folder =
+                AbbreviatedPath(preset_folder->scan_folder, preset_folder->arena);
             preset_folder->folder = preset_folder->arena.Clone(subfolder_of_scan_folder);
         }
 

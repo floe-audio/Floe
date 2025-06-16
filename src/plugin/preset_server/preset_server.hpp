@@ -23,6 +23,7 @@ struct PresetFolder {
     ArenaAllocator arena {Malloc::Instance(), 0, 512};
 
     String scan_folder {};
+    String abbreviated_scan_folder {}; // For display purposes
     String folder {}; // subpath of scan_folder, if any
     Span<Preset> presets {};
     Set<sample_lib::LibraryIdRef> used_libraries {};

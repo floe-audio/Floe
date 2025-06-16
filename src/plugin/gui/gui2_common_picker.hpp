@@ -138,7 +138,7 @@ struct PickerItemsSectionOptions {
     Optional<String> heading;
     Optional<String> icon;
     FolderNode const* folder;
-    bool heading_is_folder;
+    bool capitalise;
     bool multiline_contents;
     bool subsection;
 };

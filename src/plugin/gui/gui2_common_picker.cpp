@@ -269,17 +269,15 @@ Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSectionOp
 
         String text = options.heading.ValueOr({});
 
-        if (options.heading_is_folder) {
-            dyn::Assign(buf, text);
-            for (auto& c : buf)
-                c = ToUppercaseAscii(c);
-            dyn::Replace(buf, "/"_s, ": "_s);
-
+        if (options.capitalise) {
+            dyn::Resize(buf, text.size);
+            for (auto i : Range(text.size))
+                buf[i] = ToUppercaseAscii(text[i]);
             text = buf;
         } else if (options.folder) {
             DynamicArrayBounded<String, sample_lib::k_max_folders + 1> parts;
             for (auto f = options.folder; f; f = f->parent)
-                dyn::Append(parts, f->name);
+                dyn::Append(parts, f->abbreviated_name.size ? f->abbreviated_name : f->name);
 
             // We want to display the last part in a less prominent way.
             Optional<String> top_folder_name {};
@@ -360,7 +358,7 @@ static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
                    {
                        .parent = parent,
                        .is_selected = is_selected,
-                       .text = folder->name,
+                       .text = folder->abbreviated_name.size ? folder->abbreviated_name : folder->name,
                        .hashes = state.selected_folder_hashes,
                        .clicked_hash = folder->Hash(),
                        .filter_mode = state.filter_mode,
@@ -397,11 +395,11 @@ static void DoPickerFolderFilters(GuiBoxSystem& box_system,
     }
 }
 
-void DoPickerLibraryFilters(GuiBoxSystem& box_system,
-                            PickerPopupContext& context,
-                            Box const& parent,
-                            LibraryFilters const& library_filters,
-                            u8& sections) {
+static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
+                                   PickerPopupContext& context,
+                                   Box const& parent,
+                                   LibraryFilters const& library_filters,
+                                   u8& sections) {
     if (library_filters.libraries.size) {
         if (sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
         ++sections;
@@ -446,6 +444,13 @@ void DoPickerLibraryFilters(GuiBoxSystem& box_system,
             if (button.is_hot) context.hovering_lib = &lib_id;
         }
     }
+}
+
+static void DoPickerLibraryAuthorFilters(GuiBoxSystem& box_system,
+                                         PickerPopupContext& context,
+                                         Box const& parent,
+                                         LibraryFilters const& library_filters,
+                                         u8& sections) {
 
     if (library_filters.library_authors.size) {
         if (sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
@@ -501,7 +506,6 @@ void DoPickerTagsFilters(GuiBoxSystem& box_system,
                                                               {
                                                                   .parent = parent,
                                                                   .heading = "TAGS",
-                                                                  .heading_is_folder = true,
                                                                   .multiline_contents = false,
                                                               });
 
@@ -512,7 +516,7 @@ void DoPickerTagsFilters(GuiBoxSystem& box_system,
                                                                .parent = tags_container,
                                                                .heading = category_info.name,
                                                                .icon = category_info.font_awesome_icon,
-                                                               .heading_is_folder = true,
+                                                               .capitalise = true,
                                                                .multiline_contents = true,
                                                                .subsection = true,
                                                            });
@@ -539,8 +543,7 @@ void DoPickerTagsFilters(GuiBoxSystem& box_system,
         auto const section = DoPickerItemsSectionContainer(box_system,
                                                            {
                                                                .parent = tags_container,
-                                                               .heading = "Uncategorised",
-                                                               .heading_is_folder = true,
+                                                               .heading = "UNCATEGORISED",
                                                                .multiline_contents = true,
                                                                .subsection = true,
                                                            });
@@ -851,13 +854,6 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
 
                              u8 num_lhs_sections = 0;
 
-                             if (options.library_filters)
-                                 DoPickerLibraryFilters(box_system,
-                                                        context,
-                                                        root,
-                                                        *options.library_filters,
-                                                        num_lhs_sections);
-
                              if (options.folder_filters)
                                  DoPickerFolderFilters(box_system,
                                                        context,
@@ -865,8 +861,12 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                                                        *options.folder_filters,
                                                        num_lhs_sections);
 
-                             if (options.do_extra_filters)
-                                 options.do_extra_filters(box_system, root, num_lhs_sections);
+                             if (options.library_filters)
+                                 DoPickerLibraryFilters(box_system,
+                                                        context,
+                                                        root,
+                                                        *options.library_filters,
+                                                        num_lhs_sections);
 
                              if (options.tags_filters)
                                  DoPickerTagsFilters(box_system,
@@ -874,6 +874,16 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                                                      root,
                                                      *options.tags_filters,
                                                      num_lhs_sections);
+
+                             if (options.folder_filters)
+                                 DoPickerLibraryAuthorFilters(box_system,
+                                                              context,
+                                                              root,
+                                                              *options.library_filters,
+                                                              num_lhs_sections);
+
+                             if (options.do_extra_filters)
+                                 options.do_extra_filters(box_system, root, num_lhs_sections);
                          },
                      .data =
                          Subpanel {
