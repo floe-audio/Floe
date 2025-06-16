@@ -629,7 +629,7 @@ template <TriviallyCopyable KeyType_,
           HashFunction<KeyType_> k_hash_function_ = nullptr,
           HashTableOrdering k_ordering_ = HashTableOrdering::Unordered,
           LessThanFunction<KeyType_, DummyValueType> k_less_than_function = nullptr>
-struct Set : HashTable<KeyType_, DummyValueType, k_hash_function_, k_ordering_> {
+struct Set : HashTable<KeyType_, DummyValueType, k_hash_function_, k_ordering_, k_less_than_function> {
     using KeyType = KeyType_;
     static constexpr HashFunction<KeyType> k_hash_function = k_hash_function_;
     static constexpr HashTableOrdering k_ordering = k_ordering_;
@@ -663,7 +663,8 @@ template <TriviallyCopyable KeyType_,
           HashFunction<KeyType_> k_hash_function_ = nullptr,
           HashTableOrdering k_ordering_ = HashTableOrdering::Unordered,
           LessThanFunction<KeyType_, DummyValueType> k_less_than_function = nullptr>
-struct DynamicSet : DynamicHashTable<KeyType_, DummyValueType, k_hash_function_, k_ordering_> {
+struct DynamicSet
+    : DynamicHashTable<KeyType_, DummyValueType, k_hash_function_, k_ordering_, k_less_than_function> {
     using KeyType = KeyType_;
     static constexpr HashFunction<KeyType> k_hash_function = k_hash_function_;
     static constexpr HashTableOrdering k_ordering = k_ordering_;
