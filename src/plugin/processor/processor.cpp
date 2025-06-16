@@ -478,17 +478,15 @@ static void ProcessorOnParamChange(AudioProcessor& processor, ChangedParams chan
     {
         bool mute_or_solo_changed = false;
         for (auto const layer_index : Range(k_num_layers)) {
-            if (auto param = changed_params.Param(
-                    ParamIndexFromLayerParamIndex((u32)layer_index, LayerParamIndex::Mute))) {
+            if (auto param =
+                    changed_params.Param(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::Mute))) {
                 processor.mute.SetToValue(layer_index, param->ValueAsBool());
                 mute_or_solo_changed = true;
-                break;
             }
-            if (auto param = changed_params.Param(
-                    ParamIndexFromLayerParamIndex((u32)layer_index, LayerParamIndex::Solo))) {
+            if (auto param =
+                    changed_params.Param(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::Solo))) {
                 processor.solo.SetToValue(layer_index, param->ValueAsBool());
                 mute_or_solo_changed = true;
-                break;
             }
         }
         if (mute_or_solo_changed) HandleMuteSolo(processor);
