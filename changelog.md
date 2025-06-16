@@ -25,6 +25,7 @@ For instance: 0.0.1. Don't change the headings.
 - Sample library creation: add generated Floe API definition file for Lua Language Server allowing for code completion and documentation as you type - available on the Library Developer Panel
 - GUI: slightly improved icons
 - GUI: use same toggle icon for all toggle buttons
+- GUI: make mute/solo buttons more obvious when they're on
 - Fix cases where mute/solo button would get stuck on
 
 ## 0.9.9-beta

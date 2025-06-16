@@ -932,8 +932,8 @@ void Draw(Gui* g,
         Rect const solo_r = {
             .xywh {mute_solo_r.x + (mute_solo_r.w / 2), mute_solo_r.y, mute_solo_r.w / 2, mute_solo_r.h}};
 
-        auto const col_border = LiveCol(g->imgui, UiColMap::LayerMuteSoloBorder);
-        auto const col_background = LiveCol(g->imgui, UiColMap::LayerMuteSoloBackground);
+        auto const col_border = LiveCol(g->imgui, UiColMap::MuteSoloButtonBorder);
+        auto const col_background = LiveCol(g->imgui, UiColMap::MuteSoloButtonBackground);
         auto const rounding = LiveSize(g->imgui, UiSizeId::CornerRounding);
         auto reg_mute_solo_r = g->imgui.GetRegisteredAndConvertedRect(mute_solo_r);
         auto reg_mute_r = g->imgui.GetRegisteredAndConvertedRect(mute_r);
@@ -949,12 +949,12 @@ void Draw(Gui* g,
                         layer->params[ToInt(LayerParamIndex::Mute)],
                         mute_r,
                         "M",
-                        buttons::IconButton(g->imgui));
+                        buttons::MuteButton(g->imgui));
         buttons::Toggle(g,
                         layer->params[ToInt(LayerParamIndex::Solo)],
                         solo_r,
                         "S",
-                        buttons::IconButton(g->imgui));
+                        buttons::SoloButton(g->imgui));
     }
 
     // knobs
