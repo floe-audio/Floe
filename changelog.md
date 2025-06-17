@@ -28,6 +28,7 @@ For instance: 0.0.1. Don't change the headings.
 - GUI: make mute/solo buttons more obvious when they're on
 - Fix mute/solo buttons not greying out layers
 - Fix cases where mute/solo button would get stuck on
+- Fix preset selection buttons not working on the first click due to the scanning not having started. Now, scanning begins when the cursor is hovering over the button.
 
 ## 0.9.9-beta
 - Sample library creation: add start_offset_frames to add_region

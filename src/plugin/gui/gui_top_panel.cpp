@@ -27,6 +27,8 @@ static void PresetsWindowButton(Gui* g, Engine* a, Rect r) {
     if (buttons::Button(g, button_id, r, preset_text, buttons::PresetsPopupButton(g->imgui)))
         g->imgui.OpenPopup(popup_id, button_id);
 
+    if (g->imgui.IsHot(button_id)) StartScanningIfNeeded(g->shared_engine_systems.preset_server);
+
     PresetPickerContext context {
         .sample_library_server = g->shared_engine_systems.sample_library_server,
         .preset_server = g->shared_engine_systems.preset_server,
@@ -295,7 +297,7 @@ void TopPanel(Gui* g) {
     //
     auto large_icon_button_style = buttons::TopPanelIconButton(g->imgui).WithLargeIcon();
     {
-        auto btn_id = g->imgui.GetID("L");
+        auto const btn_id = g->imgui.GetID("L");
         if (buttons::Button(g, btn_id, preset_left_r, ICON_FA_CARET_LEFT, large_icon_button_style)) {
             PresetPickerContext context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
@@ -309,10 +311,11 @@ void TopPanel(Gui* g) {
 
             LoadAdjacentPreset(context, g->preset_picker_state, SearchDirection::Backward);
         }
+        if (g->imgui.IsHot(btn_id)) StartScanningIfNeeded(g->shared_engine_systems.preset_server);
         Tooltip(g, btn_id, preset_left_r, "Load previous preset"_s);
     }
     {
-        auto btn_id = g->imgui.GetID("R");
+        auto const btn_id = g->imgui.GetID("R");
         if (buttons::Button(g, btn_id, preset_right_r, ICON_FA_CARET_RIGHT, large_icon_button_style)) {
             PresetPickerContext context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
@@ -326,6 +329,7 @@ void TopPanel(Gui* g) {
 
             LoadAdjacentPreset(context, g->preset_picker_state, SearchDirection::Forward);
         }
+        if (g->imgui.IsHot(btn_id)) StartScanningIfNeeded(g->shared_engine_systems.preset_server);
         Tooltip(g, btn_id, preset_left_r, "Load next preset"_s);
     }
 
@@ -334,7 +338,7 @@ void TopPanel(Gui* g) {
         DEFER { g->frame_input.graphics_ctx->PopFont(); };
 
         {
-            auto btn_id = g->imgui.GetID("rand_pre");
+            auto const btn_id = g->imgui.GetID("rand_pre");
             if (buttons::Button(g,
                                 btn_id,
                                 preset_rand_r,
@@ -351,6 +355,7 @@ void TopPanel(Gui* g) {
                 DEFER { context.Deinit(); };
                 LoadRandomPreset(context, g->preset_picker_state);
             }
+            if (g->imgui.IsHot(btn_id)) StartScanningIfNeeded(g->shared_engine_systems.preset_server);
 
             Tooltip(g, btn_id, preset_rand_r, "Load a random preset"_s);
         }

@@ -100,5 +100,8 @@ struct PresetsSnapshot {
     Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
 };
 
+// Trigger the server to start the scanning process if its not already doing so.
+void StartScanningIfNeeded(PresetServer& server);
+
 PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena);
 void EndReadFolders(PresetServer& server);

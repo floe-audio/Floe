@@ -73,9 +73,14 @@ static Span<FolderNode const*> CloneFolderNodesIntoPointerSpan(PresetServer cons
 }
 
 // Reader thread
+void StartScanningIfNeeded(PresetServer& server) {
+    server.enable_scanning.Store(true, StoreMemoryOrder::Relaxed);
+}
+
+// Reader thread
 PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
     // Trigger the server to start the scanning process if its not already doing so.
-    server.enable_scanning.Store(true, StoreMemoryOrder::Relaxed);
+    StartScanningIfNeeded(server);
 
     // We tell the server that we're reading the current version so that it knows not to delete any folders
     // that we might be using.
