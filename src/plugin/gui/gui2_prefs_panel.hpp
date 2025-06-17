@@ -167,22 +167,31 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
 }
 
 struct PreferencesPanelContext {
+    void Init(PresetServer& preset_server, ArenaAllocator& arena) {
+        presets_snapshot = BeginReadFolders(preset_server, arena);
+    }
+    static void Deinit(PresetServer& preset_server) { EndReadFolders(preset_server); }
+
     prefs::Preferences& prefs;
     FloePaths const& paths;
     sample_lib_server::Server& sample_lib_server;
     package::InstallJobs& package_install_jobs;
     ThreadPool& thread_pool;
     FilePickerState& file_picker_state;
+    PresetsSnapshot presets_snapshot {};
 };
 
 static void SetFolderSubtext(DynamicArrayBounded<char, 200>& out,
                              String dir,
                              bool is_default,
                              ScanFolderType type,
-                             sample_lib_server::Server& server) {
+                             sample_lib_server::Server& server,
+                             PresetsSnapshot const& snapshot) {
     dyn::Clear(out);
     switch (type) {
         case ScanFolderType::Libraries: {
+            if (is_default) dyn::AppendSpan(out, "Default. ");
+
             u32 num_libs = 0;
             for (auto& l_node : server.libraries) {
                 if (auto l = l_node.TryScoped()) {
@@ -190,7 +199,6 @@ static void SetFolderSubtext(DynamicArrayBounded<char, 200>& out,
                 }
             }
 
-            if (is_default) dyn::AppendSpan(out, "Default. ");
             dyn::AppendSpan(out, "Contains ");
             if (num_libs < 1000 && out.size + 4 < out.Capacity())
                 out.size += fmt::IntToString(num_libs, out.data + out.size);
@@ -199,11 +207,24 @@ static void SetFolderSubtext(DynamicArrayBounded<char, 200>& out,
             else
                 dyn::AppendSpan(out, "no"_s);
             fmt::Append(out, " sample librar{}", num_libs == 1 ? "y" : "ies");
+
             break;
         }
         case ScanFolderType::Presets: {
             if (is_default) dyn::AppendSpan(out, "Default.");
-            // IMPROVE: show number of presets in folder
+
+            usize num_presets = 0;
+            for (auto const folder : snapshot.folders)
+                if (path::Equal(folder->scan_folder, dir)) num_presets += folder->presets.size;
+
+            dyn::AppendSpan(out, "Contains ");
+            if (num_presets < 10000 && out.size + 5 < out.Capacity())
+                out.size += fmt::IntToString(num_presets, out.data + out.size);
+            else if (num_presets)
+                dyn::AppendSpan(out, "many");
+            else
+                dyn::AppendSpan(out, "no"_s);
+            fmt::Append(out, " preset{}", num_presets == 1 ? "" : "s");
             break;
         }
         case ScanFolderType::Count: break;
@@ -246,7 +267,8 @@ static void FolderPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCon
                              dir,
                              true,
                              (ScanFolderType)scan_folder_type,
-                             context.sample_lib_server);
+                             context.sample_lib_server,
+                             context.presets_snapshot);
             if (auto const o = PreferencesFolderSelector(box_system, rhs_column, dir, subtext_buffer, false);
                 o.open_pressed)
                 OpenFolderInFileBrowser(dir);
@@ -258,7 +280,8 @@ static void FolderPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCon
                              dir,
                              false,
                              (ScanFolderType)scan_folder_type,
-                             context.sample_lib_server);
+                             context.sample_lib_server,
+                             context.presets_snapshot);
             if (auto const o = PreferencesFolderSelector(box_system, rhs_column, dir, subtext_buffer, true);
                 o.open_pressed || o.delete_pressed) {
                 if (o.open_pressed) OpenFolderInFileBrowser(dir);
@@ -317,7 +340,12 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
 
     {
         auto const dir = context.paths.always_scanned_folder[ToInt(scan_folder_type)];
-        SetFolderSubtext(subtext_buffer, dir, true, scan_folder_type, context.sample_lib_server);
+        SetFolderSubtext(subtext_buffer,
+                         dir,
+                         true,
+                         scan_folder_type,
+                         context.sample_lib_server,
+                         context.presets_snapshot);
         if (MenuItem(box_system,
                      root,
                      {
@@ -332,7 +360,12 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
     }
 
     for (auto const dir : ExtraScanFolders(context.paths, context.prefs, scan_folder_type)) {
-        SetFolderSubtext(subtext_buffer, dir, false, scan_folder_type, context.sample_lib_server);
+        SetFolderSubtext(subtext_buffer,
+                         dir,
+                         false,
+                         scan_folder_type,
+                         context.sample_lib_server,
+                         context.presets_snapshot);
         if (MenuItem(box_system,
                      root,
                      {
