@@ -465,7 +465,6 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
         TagCategory::SoundTypeLong,
         TagCategory::SoundTypeShort,
         TagCategory::SoundTypeSequence,
-        TagCategory::SoundTypeRole,
     };
     switch (category) {
         case TagCategory::SoundSource: {
@@ -477,9 +476,6 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 Synthesized,
                 Vocal,
             };
-            static constexpr auto k_exclude_categories = Array {
-                TagCategory::SoundSource,
-            };
             return {
                 .name = "Sound source",
                 .question = "Where did the sound come from?",
@@ -488,7 +484,6 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "🔊",
                 .font_awesome_icon = ICON_FA_VOLUME_HIGH,
-                .exclude_categories = k_exclude_categories,
             };
         }
         case TagCategory::RealInstrument: {
