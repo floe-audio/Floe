@@ -225,40 +225,6 @@ static void AddPresetToFolder(PresetFolder& folder,
     folder.preset_array_capacity = cap;
 }
 
-static MutableString AbbreviatedPath(String path, ArenaAllocator& arena) {
-    ASSERT(path::IsAbsolute(path));
-
-    String drive {};
-    if constexpr (IS_WINDOWS) drive = path::ParseWindowsPath(path).drive;
-
-    usize slashes = 0;
-    for (auto const c : path)
-        if (path::IsDirectorySeparator(c)) ++slashes;
-
-    if (slashes >= 5) {
-        DynamicArray<char> result {arena};
-        dyn::AppendSpan(result, drive);
-
-        // Only include the first 2 and last 2 folders, the middle are replaced with ...
-        usize slashes_seen = 0;
-        for (auto const c : path) {
-            if (path::IsDirectorySeparator(c)) {
-                ++slashes_seen;
-                if (slashes_seen == 3) {
-                    dyn::AppendSpan(result, IS_WINDOWS ? "\\…\\" : "/…/"_s);
-                    continue;
-                } else if (slashes_seen == slashes - 1)
-                    continue;
-            }
-            if (slashes_seen < 3 || slashes_seen >= slashes - 1) dyn::Append(result, c);
-        }
-
-        return result.ToOwnedSpan();
-    } else {
-        return {};
-    }
-}
-
 constexpr usize k_max_nested_folders = 10;
 
 // There's a reasonable amount of aggregating work that needs to be done. We do this separately so that under
@@ -310,7 +276,7 @@ struct FoldersAggregateInfo {
             if (found.inserted) {
                 found.element.data = folder_node_allocator.New<FolderNode>(FolderNode {
                     .name = folder.scan_folder,
-                    .abbreviated_name = folder.abbreviated_scan_folder,
+                    .display_name = folder.abbreviated_scan_folder,
                 });
             }
             auto& root = found.element.data;
@@ -494,7 +460,12 @@ ErrorCodeOr<void> ScanFolder(PresetServer& server,
             PLACEMENT_NEW(preset_folder) PresetFolder();
             preset_folder->scan_folder = preset_folder->arena.Clone(scan_folder.path);
             preset_folder->abbreviated_scan_folder =
-                AbbreviatedPath(preset_folder->scan_folder, preset_folder->arena);
+                path::MakeDisplayPath(preset_folder->scan_folder,
+                                      {
+                                          .stylize_dir_separators = true,
+                                          .compact_middle_sections = true,
+                                      },
+                                      preset_folder->arena);
             preset_folder->folder = preset_folder->arena.Clone(subfolder_of_scan_folder);
         }
 

@@ -167,6 +167,7 @@ struct FilterButtonOptions {
     bool is_selected;
     Optional<graphics::TextureHandle> icon;
     String text;
+    String tooltip;
     DynamicArray<u64>& hashes;
     u64 clicked_hash;
     FilterMode filter_mode;

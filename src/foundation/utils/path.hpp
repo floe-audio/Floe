@@ -449,4 +449,84 @@ PUBLIC String MakeSafeForFilename(String name, Allocator& allocator) {
     return allocator.ResizeType(new_name, pos, pos);
 }
 
+struct DisplayPathOptions {
+    bool stylize_dir_separators {};
+    bool compact_middle_sections {};
+};
+
+PUBLIC String MakeDisplayPath(String path,
+                              DisplayPathOptions options,
+                              ArenaAllocator& arena,
+                              Format format = Format::Native) {
+    constexpr String k_stylized_dir_separator = " › "_s;
+    constexpr String k_compact_symbol = "…"_s;
+    constexpr s32 k_compact_slash_threshold = 5;
+    constexpr s32 k_compact_num_start_sections = 2;
+    constexpr s32 k_compact_num_end_sections = 2;
+
+    ASSERT(IsAbsolute(path, format));
+    auto const original_path = path;
+
+    if (!options.stylize_dir_separators && !options.compact_middle_sections) return path;
+
+    String drive {};
+    if (format == Format::Windows) {
+        drive = ParseWindowsPath(path).drive;
+        path = path.SubSpan(drive.size);
+    }
+
+    s32 slashes = 0;
+    for (auto const c : path)
+        if (IsDirectorySeparator(c, format)) ++slashes;
+
+    if ((options.compact_middle_sections && slashes >= k_compact_slash_threshold) ||
+        options.stylize_dir_separators) {
+        DynamicArray<char> result {arena};
+        result.Reserve(path.size);
+
+        dyn::AppendSpan(result, drive);
+        if (options.stylize_dir_separators && drive.size) dyn::AppendSpan(result, k_stylized_dir_separator);
+
+        s32 slashes_seen = 0;
+        for (auto const [char_index, c] : Enumerate(path)) {
+            auto const is_dir_sep = IsDirectorySeparator(c, format);
+            if (is_dir_sep) {
+                ++slashes_seen;
+                if (options.compact_middle_sections && slashes >= k_compact_slash_threshold) {
+                    if (slashes_seen == (k_compact_num_start_sections + 1)) {
+                        if (options.stylize_dir_separators)
+                            dyn::AppendSpan(result, k_stylized_dir_separator);
+                        else
+                            dyn::Append(result, c);
+                        dyn::AppendSpan(result, k_compact_symbol);
+                        if (options.stylize_dir_separators)
+                            dyn::AppendSpan(result, k_stylized_dir_separator);
+                        else
+                            dyn::Append(result, c);
+                        continue;
+                    } else if (slashes_seen == slashes - (k_compact_num_end_sections - 1))
+                        continue;
+                }
+            }
+            if (slashes_seen < (k_compact_num_start_sections + 1) ||
+                slashes_seen >= slashes - (k_compact_num_end_sections - 1) ||
+                !options.compact_middle_sections) {
+                if (options.stylize_dir_separators) {
+                    if (is_dir_sep) {
+                        if (char_index != 0) dyn::AppendSpan(result, k_stylized_dir_separator);
+                    } else {
+                        dyn::Append(result, c);
+                    }
+                } else {
+                    dyn::Append(result, c);
+                }
+            }
+        }
+
+        return result.ToOwnedSpan();
+    }
+
+    return original_path;
+}
+
 } // namespace path

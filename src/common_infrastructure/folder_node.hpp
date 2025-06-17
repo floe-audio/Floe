@@ -9,7 +9,7 @@ struct FolderNode {
     u64 Hash() const;
 
     String name {};
-    String abbreviated_name {};
+    String display_name {}; // Optional name for display purposes.
     FolderNode* parent {};
     FolderNode* first_child {};
     FolderNode* next {};

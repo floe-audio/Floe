@@ -562,7 +562,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
             auto const mouse_rect =
                 rect.Expanded(builder.imgui.VwToPixels(config.extra_margin_for_mouse_events));
 
-            if (config.activation_click_event != ActivationClickEvent::None) {
+            if (config.activation_click_event != ActivationClickEvent::None || config.tooltip.size) {
                 imgui::ButtonFlags button_flags {
                     .left_mouse = config.activate_on_click_button == MouseButton::Left,
                     .right_mouse = config.activate_on_click_button == MouseButton::Right,

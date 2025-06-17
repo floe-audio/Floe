@@ -122,6 +122,7 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                       .contents_align = layout::Alignment::Start,
                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                   },
+                  .tooltip = options.tooltip,
               });
 
     if (auto const icon = options.font_icon.TryGet<String>()) {
@@ -277,7 +278,7 @@ Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSectionOp
         } else if (options.folder) {
             DynamicArrayBounded<String, sample_lib::k_max_folders + 1> parts;
             for (auto f = options.folder; f; f = f->parent)
-                dyn::Append(parts, f->abbreviated_name.size ? f->abbreviated_name : f->name);
+                dyn::Append(parts, f->display_name.size ? f->display_name : f->name);
 
             // We want to display the last part in a less prominent way.
             Optional<String> top_folder_name {};
@@ -313,6 +314,7 @@ Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSectionOp
                       .layout {
                           .margins = {.b = k_picker_spacing / 2},
                       },
+                      .tooltip = options.folder ? "Folder"_s : ""_s,
                   });
         }
     }
@@ -358,7 +360,8 @@ static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
                    {
                        .parent = parent,
                        .is_selected = is_selected,
-                       .text = folder->abbreviated_name.size ? folder->abbreviated_name : folder->name,
+                       .text = folder->display_name.size ? folder->display_name : folder->name,
+                       .tooltip = folder->display_name.size ? folder->name : ""_s,
                        .hashes = state.selected_folder_hashes,
                        .clicked_hash = folder->Hash(),
                        .filter_mode = state.filter_mode,

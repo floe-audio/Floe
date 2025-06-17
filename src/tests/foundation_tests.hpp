@@ -2774,6 +2774,106 @@ TEST_CASE(TestPath) {
         CHECK_EQ(MakeSafeForFilename("foo: <bar>|<baz>", scratch_arena), "foo bar baz"_s);
     }
 
+    SUBCASE("CompactPath") {
+        SUBCASE("compact only") {
+            auto const options = DisplayPathOptions {
+                .stylize_dir_separators = false,
+                .compact_middle_sections = true,
+            };
+            SUBCASE("Linux style") {
+                CHECK_EQ(MakeDisplayPath("/a/b/c", options, scratch_arena, Format::Posix), "/a/b/c"_s);
+                CHECK_EQ(MakeDisplayPath("/a/b/c/d", options, scratch_arena, Format::Posix), "/a/b/c/d"_s);
+                CHECK_EQ(MakeDisplayPath("/a/b/c/d/e", options, scratch_arena, Format::Posix),
+                         "/a/b/…/d/e"_s);
+                CHECK_EQ(MakeDisplayPath("/a/b/c/d/e/f", options, scratch_arena, Format::Posix),
+                         "/a/b/…/e/f"_s);
+                CHECK_EQ(MakeDisplayPath("/home/user/docs/projects/app/src/main.cpp",
+                                         options,
+                                         scratch_arena,
+                                         Format::Posix),
+                         "/home/user/…/src/main.cpp"_s);
+                CHECK_EQ(MakeDisplayPath("/a/b/c/d/e/f/g/h/i", options, scratch_arena, Format::Posix),
+                         "/a/b/…/h/i"_s);
+                CHECK_EQ(MakeDisplayPath("/Volumes/My Drive", options, scratch_arena, Format::Posix),
+                         "/Volumes/My Drive"_s);
+                CHECK_EQ(MakeDisplayPath("/Volumes/My Drive/Folder/Subfolder/Final",
+                                         options,
+                                         scratch_arena,
+                                         Format::Posix),
+                         "/Volumes/My Drive/…/Subfolder/Final"_s);
+            }
+            SUBCASE("Windows style") {
+                CHECK_EQ(MakeDisplayPath("C:/a/b/c", options, scratch_arena, Format::Windows), "C:/a/b/c"_s);
+                CHECK_EQ(MakeDisplayPath("C:/a/b/c/d", options, scratch_arena, Format::Windows),
+                         "C:/a/b/c/d"_s);
+                CHECK_EQ(MakeDisplayPath("C:/a/b/c/d/e", options, scratch_arena, Format::Windows),
+                         "C:/a/b/…/d/e"_s);
+                CHECK_EQ(MakeDisplayPath("C:/a/b/c/d/e/f", options, scratch_arena, Format::Windows),
+                         "C:/a/b/…/e/f"_s);
+                CHECK_EQ(MakeDisplayPath("C:/home/user/docs/projects/app/src/main.cpp",
+                                         options,
+                                         scratch_arena,
+                                         Format::Windows),
+                         "C:/home/user/…/src/main.cpp"_s);
+                CHECK_EQ(MakeDisplayPath("C:/a/b/c/d/e/f/g/h/i", options, scratch_arena, Format::Windows),
+                         "C:/a/b/…/h/i"_s);
+                CHECK_EQ(MakeDisplayPath("D:\\My Documents\\Projects\\App\\src\\main.cpp",
+                                         options,
+                                         scratch_arena,
+                                         Format::Windows),
+                         "D:\\My Documents\\Projects\\…\\src\\main.cpp"_s);
+                CHECK_EQ(MakeDisplayPath("\\\\unc\\share\\foo\\bar\\baz\\blah\\foo",
+                                         options,
+                                         scratch_arena,
+                                         Format::Windows),
+                         "\\\\unc\\share\\foo\\bar\\…\\blah\\foo"_s);
+            }
+        }
+        SUBCASE("compact and stylize") {
+            auto const options = DisplayPathOptions {
+                .stylize_dir_separators = true,
+                .compact_middle_sections = true,
+            };
+            CHECK_EQ(MakeDisplayPath("/a/b/c/d/e", options, scratch_arena, Format::Posix),
+                     "a › b › … › d › e"_s);
+            CHECK_EQ(MakeDisplayPath("/a/b/c/d/e/f", options, scratch_arena, Format::Posix),
+                     "a › b › … › e › f"_s);
+            CHECK_EQ(MakeDisplayPath("C:/a/b/c/d/e", options, scratch_arena, Format::Windows),
+                     "C: › a › b › … › d › e"_s);
+            CHECK_EQ(MakeDisplayPath("\\\\unc\\share\\foo\\bar\\baz\\blah\\foo",
+                                     options,
+                                     scratch_arena,
+                                     Format::Windows),
+                     "\\\\unc\\share › foo › bar › … › blah › foo"_s);
+        }
+        SUBCASE("stylize only") {
+            auto const options = DisplayPathOptions {
+                .stylize_dir_separators = true,
+                .compact_middle_sections = false,
+            };
+            SUBCASE("Linux style") {
+                CHECK_EQ(MakeDisplayPath("/a/b/c", options, scratch_arena, Format::Posix), "a › b › c"_s);
+                CHECK_EQ(MakeDisplayPath("/a/b/c/d", options, scratch_arena, Format::Posix),
+                         "a › b › c › d"_s);
+                CHECK_EQ(MakeDisplayPath("/a/b/c/d/e", options, scratch_arena, Format::Posix),
+                         "a › b › c › d › e"_s);
+                CHECK_EQ(MakeDisplayPath("/home/user/docs/projects/app/src/main.cpp",
+                                         options,
+                                         scratch_arena,
+                                         Format::Posix),
+                         "home › user › docs › projects › app › src › main.cpp"_s);
+            }
+            SUBCASE("Windows style") {
+                CHECK_EQ(MakeDisplayPath("C:/a/b/c", options, scratch_arena, Format::Windows),
+                         "C: › a › b › c"_s);
+                CHECK_EQ(MakeDisplayPath("C:/a/b/c/d", options, scratch_arena, Format::Windows),
+                         "C: › a › b › c › d"_s);
+                CHECK_EQ(MakeDisplayPath("C:/a/b/c/d/e", options, scratch_arena, Format::Windows),
+                         "C: › a › b › c › d › e"_s);
+            }
+        }
+    }
+
     return k_success;
 }
 

@@ -58,7 +58,7 @@ void InitialiseRootFolders(Library& lib, Allocator& arena) {
     auto root_name = fmt::Format(arena, "{} - {}", lib.name, lib.author);
     for (auto& folder : lib.root_folders) {
         folder.name = root_name;
-        folder.abbreviated_name = lib.name;
+        folder.display_name = lib.name;
     }
 }
 
