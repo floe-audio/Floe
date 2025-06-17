@@ -211,7 +211,7 @@ static void SetFolderSubtext(DynamicArrayBounded<char, 200>& out,
             break;
         }
         case ScanFolderType::Presets: {
-            if (is_default) dyn::AppendSpan(out, "Default.");
+            if (is_default) dyn::AppendSpan(out, "Default. ");
 
             usize num_presets = 0;
             for (auto const folder : snapshot.folders)
