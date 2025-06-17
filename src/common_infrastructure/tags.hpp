@@ -109,6 +109,8 @@ enum class TagType : u16 {
     Heroic,
     Noir,
     Romantic,
+    Thriller,
+    Horror,
     SciFi,
     Western,
 
@@ -327,6 +329,8 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         case TagType::Heroic: return {"heroic"_s, ""_s};
         case TagType::Noir: return {"noir"_s, ""_s};
         case TagType::Romantic: return {"romantic"_s, ""_s};
+        case TagType::Thriller: return {"thriller"_s, ""_s};
+        case TagType::Horror: return {"horror"_s, ""_s};
         case TagType::SciFi: return {"sci-fi"_s, ""_s};
         case TagType::Western: return {"western"_s, ""_s};
 
@@ -675,6 +679,8 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 Heroic,
                 Noir,
                 Romantic,
+                Thriller,
+                Horror,
                 SciFi,
                 Western,
             };
