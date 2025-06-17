@@ -26,6 +26,7 @@ For instance: 0.0.1. Don't change the headings.
 - GUI: slightly improved icons
 - GUI: use same toggle icon for all toggle buttons
 - GUI: make mute/solo buttons more obvious when they're on
+- Fix mute/solo buttons not greying out layers
 - Fix cases where mute/solo button would get stuck on
 
 ## 0.9.9-beta

@@ -132,7 +132,6 @@ static f32 GetVelocityRegionLevel(LayerProcessor& layer, f32 velocity, f32 veloc
 
 void SetSilent(LayerProcessor& layer, bool state) {
     layer.smoothed_value_system.Set(layer.mute_solo_mix_smoother_id, state ? 0.0f : 1.0f, 10);
-    layer.is_silent.Store(state, StoreMemoryOrder::Relaxed);
 }
 
 static void

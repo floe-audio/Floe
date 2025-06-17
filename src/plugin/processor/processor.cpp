@@ -159,28 +159,55 @@ Bitset<128> PersistentCcsForParam(prefs::PreferencesTable const& prefs, u32 para
     return result;
 }
 
-static void HandleMuteSolo(AudioProcessor& processor) {
-    bool const any_solo = processor.solo.AnyValuesSet();
+static Bitset<k_num_layers> LayerSilentState(Bitset<k_num_layers> solo, Bitset<k_num_layers> mute) {
+    bool const any_solo = solo.AnyValuesSet();
+    Bitset<k_num_layers> result {};
 
     for (auto const layer_index : Range(k_num_layers)) {
         bool state = any_solo;
 
-        auto solo = processor.solo.Get(layer_index);
-        if (solo) {
-            state = false;
-            SetSilent(processor.layer_processors[layer_index], state);
+        auto is_solo = solo.Get(layer_index);
+        if (is_solo) {
+            result.SetToValue(layer_index, false);
             continue;
         }
 
-        auto mute = processor.mute.Get(layer_index);
-        if (mute) {
-            state = true;
-            SetSilent(processor.layer_processors[layer_index], state);
+        auto is_mute = mute.Get(layer_index);
+        if (is_mute) {
+            result.SetToValue(layer_index, true);
             continue;
         }
 
-        SetSilent(processor.layer_processors[layer_index], state);
+        result.SetToValue(layer_index, state);
     }
+
+    return result;
+}
+
+static void HandleMuteSolo(AudioProcessor& processor) {
+    auto layer_silent_state = LayerSilentState(processor.solo, processor.mute);
+
+    for (auto const layer_index : Range(k_num_layers)) {
+        bool const is_silent = layer_silent_state.Get(layer_index);
+        SetSilent(processor.layer_processors[layer_index], is_silent);
+    }
+}
+
+bool LayerIsSilent(AudioProcessor const& processor, u32 layer_index) {
+    ASSERT(g_is_logical_main_thread);
+
+    Bitset<k_num_layers> solo;
+    Bitset<k_num_layers> mute;
+    for (auto const i : Range(k_num_layers)) {
+        solo.SetToValue(
+            i,
+            processor.params[ToInt(ParamIndexFromLayerParamIndex(i, LayerParamIndex::Solo))].ValueAsBool());
+        mute.SetToValue(
+            i,
+            processor.params[ToInt(ParamIndexFromLayerParamIndex(i, LayerParamIndex::Mute))].ValueAsBool());
+    }
+
+    return LayerSilentState(solo, mute).Get(layer_index);
 }
 
 void SetAllParametersToDefaultValues(AudioProcessor& processor) {

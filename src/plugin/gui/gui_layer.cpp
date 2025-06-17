@@ -1294,7 +1294,7 @@ void Draw(Gui* g,
     }
 
     // overlay
-    if (engine->processor.layer_processors[layer->index].is_silent.Load(LoadMemoryOrder::Relaxed)) {
+    if (LayerIsSilent(engine->processor, layer->index)) {
         auto const pos = g->imgui.curr_window->unpadded_bounds.pos;
         g->imgui.graphics->AddRectFilled(pos,
                                          pos + g->imgui.Size(),
