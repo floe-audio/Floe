@@ -8,11 +8,11 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
-## 0.9.10-beta
+## 0.10.0-beta
 - Picker panels:
-    - Add filters for folders
+    - Add filters for folders (tree view)
     - Put tags into categories and add icons
-    - Add 2 filter modes: match-all and match-any, allowing for more powerful filtering. A label showing the number of matching items dynamically updates as you change the filters.
+    - Add 2 filter modes: match-all and match-any, allowing for more powerful filtering. Every filter button has a label showing the number of matching items that dynamically updates as you change the filters.
     - Fix instrument picker not showing waveform instruments when no Mirage libraries installed
     - Show library icons for each library used by a preset
     - Show (?) icon for missing libraries
