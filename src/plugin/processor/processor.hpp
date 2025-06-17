@@ -291,6 +291,8 @@ struct ParamChangeFlags {
 
 bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, ParamChangeFlags flags);
 
+bool LayerIsSilent(AudioProcessor const& processor, u32 layer_index);
+
 void SetAllParametersToDefaultValues(AudioProcessor&);
 void RandomiseAllParameterValues(AudioProcessor&);
 void RandomiseAllEffectParameterValues(AudioProcessor&);

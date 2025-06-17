@@ -5,23 +5,8 @@
 #include "foundation/memory/allocators.hpp"
 #include "foundation/utils/linked_list.hpp"
 
-template <typename Type, bool k_owns_arena>
+template <typename Type>
 struct ArenaList {
-    template <typename U = Type>
-    requires(!k_owns_arena)
-    ArenaList(ArenaAllocator& a) : arena(a) {}
-
-    template <typename U = Type>
-    requires(k_owns_arena)
-    ArenaList(Allocator& a) : arena(a) {}
-
-    template <typename U = Type>
-    requires(k_owns_arena)
-    ArenaList(ArenaList&& other)
-        : arena(Move(other.arena))
-        , first(Exchange(other.first, nullptr))
-        , free_list(Exchange(other.free_list, nullptr)) {}
-
     ~ArenaList() requires(TriviallyDestructible<Type>)
     = default;
 
@@ -36,7 +21,7 @@ struct ArenaList {
 
     using Iterator = SinglyLinkedListIterator<Node, Type>;
 
-    Node* AllocateNodeUninitialised() {
+    Node* AllocateNodeUninitialised(Allocator& arena) {
         if (free_list) {
             auto result = free_list;
             free_list = free_list->next;
@@ -52,9 +37,10 @@ struct ArenaList {
     }
 
     template <typename... Args>
-    void Prepend(Args&&... args) {
-        auto ptr = PrependUninitialised();
+    Type* Prepend(Allocator& arena, Args&&... args) {
+        auto ptr = PrependUninitialised(arena);
         PLACEMENT_NEW(ptr) Type {Forward<Args>(args)...};
+        return ptr;
     }
 
     void Delete(Node* node) {
@@ -64,7 +50,7 @@ struct ArenaList {
     }
 
     // call placement-new on the result
-    Type* PrependUninitialised() {
+    Type* PrependUninitialised(Allocator& arena) {
         if (free_list) {
             auto result = free_list;
             free_list = free_list->next;
@@ -112,9 +98,6 @@ struct ArenaList {
     Iterator begin() const { return Iterator {first}; }
     Iterator end() const { return Iterator {nullptr}; }
 
-    using Arena = Conditional<k_owns_arena, ArenaAllocator, ArenaAllocator&>;
-
-    Arena arena;
     Node* first {};
     Node* free_list {};
 };

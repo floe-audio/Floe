@@ -478,7 +478,8 @@ struct Iterator {
 };
 
 struct RecursiveIterator {
-    ArenaList<Iterator, false> stack;
+    ArenaAllocator& arena;
+    ArenaList<Iterator> stack;
     DynamicArray<char> dir_path_to_iterate;
     String base_path;
     Options options;
@@ -636,7 +637,7 @@ struct DirectoryWatcher {
         };
 
         // private
-        void Add(Change change, ArenaAllocator& arena) {
+        void Add(Change change, ArenaAllocator& a) {
             ASSERT(IsValidUtf8(change.subpath));
             // try finding the subpath+file_type and add the change to it
             for (auto& subpath_changeset : subpath_changesets)
@@ -655,7 +656,7 @@ struct DirectoryWatcher {
                     .subpath = change.subpath,
                     .file_type = change.file_type,
                 },
-                arena);
+                a);
         }
 
         // A pointer to the directory that you requested watching for. Allows you to more easily associate the
@@ -699,8 +700,8 @@ struct DirectoryWatcher {
     }
 
     // private
-    Span<DirectoryChanges const> AllDirectoryChanges(ArenaAllocator& arena) const {
-        DynamicArray<DirectoryChanges> result(arena);
+    Span<DirectoryChanges const> AllDirectoryChanges(ArenaAllocator& result_arena) const {
+        DynamicArray<DirectoryChanges> result(result_arena);
         for (auto const& dir : watched_dirs)
             if (dir.directory_changes.HasContent()) dyn::Append(result, dir.directory_changes);
         return result.ToOwnedSpan();
@@ -736,7 +737,7 @@ struct DirectoryWatcher {
 
             any_states_changed = true;
 
-            auto new_dir = watched_dirs.PrependUninitialised();
+            auto new_dir = watched_dirs.PrependUninitialised(arena);
             PLACEMENT_NEW(new_dir)
             DirectoryWatcher::WatchedDirectory {
                 .arena = {Malloc::Instance(), 0, 256},
@@ -762,7 +763,8 @@ struct DirectoryWatcher {
     }
 
     Allocator& allocator;
-    ArenaList<WatchedDirectory, true> watched_dirs;
+    ArenaAllocator arena {allocator};
+    ArenaList<WatchedDirectory> watched_dirs;
     NativeData native_data;
 };
 

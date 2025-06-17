@@ -24,6 +24,8 @@ Additional information:
 
 [^pre-releases]: Main releases are backwards compatible, but alpha and beta versions do not have this guarantee.
 
+To [update Floe](./updating.md), just download and run the latest installer again.
+
 ## Installer (recommended)
 
 <img src="../images/installer-macos-gui.png" width="49%" style="display: inline;">

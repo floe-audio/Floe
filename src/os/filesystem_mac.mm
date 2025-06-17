@@ -425,7 +425,7 @@ ErrorCodeOr<DirectoryWatcher> CreateDirectoryWatcher(Allocator& a) {
     ZoneScoped;
     DirectoryWatcher result {
         .allocator = a,
-        .watched_dirs = {a},
+        .watched_dirs = {},
         .native_data = {.pointer = a.New<MacWatcher>()},
     };
     return result;

@@ -17,8 +17,8 @@
             .hash = "N-V-__8AAExyUgDx-txe2Gg6EHaVFT1HUCXO-WGf0FBABDq-",
         },
         .embedded_files_workaround = .{
-            .url = "git+https://github.com/floe-audio/floe-embedded-files-workaround#d3b73b5bb68ff08e6b6e0a12855a50eef0bae5b0",
-            .hash = "N-V-__8AABH8sAJj8dOv9vL32v4HTxQ3uIgyLF_PbtDgoYcL",
+            .url = "git+https://github.com/floe-audio/floe-embedded-files-workaround#14696ec00cc75d07e51911dbcca615f2b59f0588",
+            .hash = "N-V-__8AAEnwxgL0gpl7r8GqwL1CBTCO_JgQ-GKK04ucjWUM",
         },
         .stb = .{
             .url = "git+https://github.com/nothings/stb#64e783d73879abe2e7589bc634bf6cb6f5e2baae",
@@ -37,8 +37,8 @@
             .hash = "N-V-__8AAJ0IOwDGU09eyNgdU99_TixuQnS6E7dLq1bSlvNA",
         },
         .clap_wrapper = .{
-            .url = "git+https://github.com/SamWindell/clap-wrapper#dc4cc390ca534a1c96d9d79f26fe4e9825e84be8",
-            .hash = "N-V-__8AAPoXEACSdsb8Qb7UqXwNvOiYngfpRX2yrD1d1cJ8",
+            .url = "git+https://github.com/SamWindell/clap-wrapper#4b2ab31c0c717abef6fdc6ccbe65741c13adab33",
+            .hash = "N-V-__8AAHwzEACM8t_EWG2ePgPESyylXFOiZqgAyJuoOc0g",
         },
         .dr_libs = .{
             .url = "git+https://github.com/mackron/dr_libs#da35f9d6c7374a95353fd1df1d394d44ab66cf01",

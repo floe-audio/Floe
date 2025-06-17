@@ -389,7 +389,7 @@ static void InfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoP
                     tabs[index] = {.icon = ICON_FA_BOOK_OPEN, .text = "Libraries"};
                     break;
                 case InfoPanelState::Tab::About:
-                    tabs[index] = {.icon = ICON_FA_INFO_CIRCLE, .text = "About"};
+                    tabs[index] = {.icon = ICON_FA_CIRCLE_INFO, .text = "About"};
                     break;
                 case InfoPanelState::Tab::Legal:
                     tabs[index] = {.icon = ICON_FA_GAVEL, .text = "Legal"};
@@ -399,6 +399,7 @@ static void InfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoP
                     break;
                 case InfoPanelState::Tab::Count: PanicIfReached();
             }
+            tabs[index].index = index;
         }
         return tabs;
     }();

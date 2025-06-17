@@ -25,12 +25,22 @@ PUBLIC constexpr auto SpanFromContainerOfContainers(auto const& c_of_c) {
     return t2;
 }
 
+// This function allows for consteval usage if the data is already a single byte, otherwise, it has to do a
+// reinterpret_cast.
+template <Fundamental T>
+constexpr auto ToBytes(Span<T const> data) {
+    if constexpr (sizeof(T) == 1)
+        return data;
+    else
+        return data.ToByteSpan();
+}
+
 template <Fundamental T>
 PUBLIC constexpr u64 HashFnv1a(Span<T const> data) {
     // FNV-1a https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function#FNV-1a_hash
     u64 hash = 0xcbf29ce484222325;
-    for (auto& byte : data.ToByteSpan()) {
-        hash ^= byte;
+    for (auto& byte : ToBytes(data)) {
+        hash ^= (u8)byte;
         hash *= 0x100000001b3;
     }
     return hash;
@@ -89,7 +99,13 @@ PUBLIC constexpr u32 HashMultipleDbj(ContiguousContainerOfContiguousContainers a
     return hash;
 }
 
-PUBLIC constexpr u64 Hash(auto data) { return HashFnv1a(data); }
+PUBLIC constexpr u64 Hash(auto data) {
+    if constexpr (Fundamental<RemoveReference<decltype(data)>> || Enum<RemoveReference<decltype(data)>> ||
+                  Pointer<RemoveReference<decltype(data)>>)
+        return HashFnv1a(Span {(u8 const*)&data, sizeof(data)});
+    else
+        return HashFnv1a(data);
+}
 PUBLIC constexpr u32 Hash32(auto data) { return HashDbj(data); }
 
 PUBLIC constexpr u64 HashMultiple(auto const& data) { return HashMultipleFnv1a(data); }
@@ -275,6 +291,21 @@ PUBLIC constexpr usize BinarySearchForSlotToInsert(ContiguousContainer auto cons
     }
 
     return (usize)left;
+}
+
+// You must ensure the data is in a region that can grow by at least num_to_insert elements.
+PUBLIC constexpr void MakeRoomForInsertion(auto& data, usize pos, usize num_to_insert) {
+    using ValueType = typename RemoveReference<decltype(data)>::ValueType;
+    ASSERT(pos <= data.size);
+
+    // Move elements from back to front to avoid overwrites
+    for (usize i = data.size; i > pos; --i) {
+        usize old_idx = i - 1;
+        usize new_idx = old_idx + num_to_insert;
+        PLACEMENT_NEW(data.data + new_idx) ValueType(Move(data.data[old_idx]));
+        data.data[old_idx].~ValueType(); // Destroy moved-from object
+    }
+    data.size += num_to_insert;
 }
 
 PUBLIC constexpr usize CountIf(auto& data, auto&& predicate) {

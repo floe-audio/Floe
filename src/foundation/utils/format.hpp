@@ -558,7 +558,7 @@ template <dyn::DynArray DynCharArray, typename... Args>
 PUBLIC inline void Append(DynCharArray& output, String format, Args const&... args) {
     output.Reserve(output.size + (format.size * 2));
     auto result = FormatToWriter(dyn::WriterFor(output), format, args...);
-    if (result.HasError()) __builtin_debugtrap();
+    ASSERT_HOT(!result.HasError());
 }
 
 template <dyn::DynArray DynCharArray, typename... Args>
@@ -566,7 +566,7 @@ PUBLIC inline auto& Assign(DynCharArray& output, String format, Args const&... a
     dyn::Clear(output);
     output.Reserve(format.size * 2);
     auto const outcome = FormatToWriter(dyn::WriterFor(output), format, args...);
-    if (outcome.HasError()) __builtin_debugtrap();
+    ASSERT_HOT(!outcome.HasError());
     return output;
 }
 
@@ -574,7 +574,7 @@ template <usize k_size, typename... Args>
 PUBLIC_INLINE DynamicArrayBounded<char, k_size> FormatInline(String format, Args const&... args) {
     DynamicArrayBounded<char, k_size> result;
     auto const outcome = FormatToWriter(dyn::WriterFor(result), format, args...);
-    if (outcome.HasError()) __builtin_debugtrap();
+    ASSERT_HOT(!outcome.HasError());
     return result;
 }
 
@@ -583,7 +583,7 @@ PUBLIC inline MutableString Format(Allocator& a, String format, Args const&... a
     DynamicArray<char> result {a};
     result.Reserve(format.size * 2);
     auto const outcome = FormatToWriter(dyn::WriterFor(result), format, args...);
-    if (outcome.HasError()) __builtin_debugtrap();
+    ASSERT_HOT(!outcome.HasError());
     return result.ToOwnedSpan();
 }
 

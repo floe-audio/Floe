@@ -1,7 +1,7 @@
 // Copyright 2018-2024 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 
 #include "common_infrastructure/paths.hpp"
 
@@ -27,11 +27,14 @@ static void PresetsWindowButton(Gui* g, Engine* a, Rect r) {
     if (buttons::Button(g, button_id, r, preset_text, buttons::PresetsPopupButton(g->imgui)))
         g->imgui.OpenPopup(popup_id, button_id);
 
+    if (g->imgui.IsHot(button_id)) StartScanningIfNeeded(g->shared_engine_systems.preset_server);
+
     PresetPickerContext context {
         .sample_library_server = g->shared_engine_systems.sample_library_server,
         .preset_server = g->shared_engine_systems.preset_server,
         .library_images = g->library_images,
         .engine = g->engine,
+        .unknown_library_icon = UnknownLibraryIcon(g),
     };
     DoPresetPicker(g->box_system,
                    popup_id,
@@ -55,6 +58,7 @@ static void DoDotsMenu(Gui* g) {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .unknown_library_icon = UnknownLibraryIcon(g),
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
@@ -65,6 +69,7 @@ static void DoDotsMenu(Gui* g) {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .unknown_library_icon = UnknownLibraryIcon(g),
             };
             ir_context.Init(g->scratch_arena);
             DEFER { ir_context.Deinit(); };
@@ -72,6 +77,7 @@ static void DoDotsMenu(Gui* g) {
         }
     }
     if (top_menu.DoButton("Share Feedback")) g->feedback_panel_state.open = true;
+    if (top_menu.DoButton("Library Developer Panel")) g->library_dev_panel_state.open = true;
 }
 
 void TopPanel(Gui* g) {
@@ -291,35 +297,39 @@ void TopPanel(Gui* g) {
     //
     auto large_icon_button_style = buttons::TopPanelIconButton(g->imgui).WithLargeIcon();
     {
-        auto btn_id = g->imgui.GetID("L");
+        auto const btn_id = g->imgui.GetID("L");
         if (buttons::Button(g, btn_id, preset_left_r, ICON_FA_CARET_LEFT, large_icon_button_style)) {
             PresetPickerContext context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .unknown_library_icon = UnknownLibraryIcon(g),
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
 
             LoadAdjacentPreset(context, g->preset_picker_state, SearchDirection::Backward);
         }
+        if (g->imgui.IsHot(btn_id)) StartScanningIfNeeded(g->shared_engine_systems.preset_server);
         Tooltip(g, btn_id, preset_left_r, "Load previous preset"_s);
     }
     {
-        auto btn_id = g->imgui.GetID("R");
+        auto const btn_id = g->imgui.GetID("R");
         if (buttons::Button(g, btn_id, preset_right_r, ICON_FA_CARET_RIGHT, large_icon_button_style)) {
             PresetPickerContext context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .unknown_library_icon = UnknownLibraryIcon(g),
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
 
             LoadAdjacentPreset(context, g->preset_picker_state, SearchDirection::Forward);
         }
+        if (g->imgui.IsHot(btn_id)) StartScanningIfNeeded(g->shared_engine_systems.preset_server);
         Tooltip(g, btn_id, preset_left_r, "Load next preset"_s);
     }
 
@@ -328,29 +338,31 @@ void TopPanel(Gui* g) {
         DEFER { g->frame_input.graphics_ctx->PopFont(); };
 
         {
-            auto btn_id = g->imgui.GetID("rand_pre");
+            auto const btn_id = g->imgui.GetID("rand_pre");
             if (buttons::Button(g,
                                 btn_id,
                                 preset_rand_r,
-                                ICON_FA_RANDOM,
+                                ICON_FA_SHUFFLE,
                                 large_icon_button_style.WithIconScaling(0.8f))) {
                 PresetPickerContext context {
                     .sample_library_server = g->shared_engine_systems.sample_library_server,
                     .preset_server = g->shared_engine_systems.preset_server,
                     .library_images = g->library_images,
                     .engine = g->engine,
+                    .unknown_library_icon = UnknownLibraryIcon(g),
                 };
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };
                 LoadRandomPreset(context, g->preset_picker_state);
             }
+            if (g->imgui.IsHot(btn_id)) StartScanningIfNeeded(g->shared_engine_systems.preset_server);
 
             Tooltip(g, btn_id, preset_rand_r, "Load a random preset"_s);
         }
 
         {
             auto const btn_id = g->imgui.GetID("save");
-            if (buttons::Button(g, btn_id, preset_save_r, ICON_FA_SAVE, large_icon_button_style))
+            if (buttons::Button(g, btn_id, preset_save_r, ICON_FA_FLOPPY_DISK, large_icon_button_style))
                 g->save_preset_panel_state.open = true;
             Tooltip(g, btn_id, preset_save_r, "Save the current state as a preset"_s);
         }
@@ -369,7 +381,7 @@ void TopPanel(Gui* g) {
     {
         auto btn_id = g->imgui.GetID("sets");
         auto btn_r = layout::GetRect(g->layout, cog);
-        if (buttons::Button(g, btn_id, btn_r, ICON_FA_COG, large_icon_button_style))
+        if (buttons::Button(g, btn_id, btn_r, ICON_FA_GEAR, large_icon_button_style))
             g->preferences_panel_state.open = true;
         Tooltip(g, btn_id, btn_r, "Open preferences window"_s);
     }
@@ -377,7 +389,7 @@ void TopPanel(Gui* g) {
     {
         auto btn_id = g->imgui.GetID("info");
         auto btn_r = layout::GetRect(g->layout, info);
-        if (buttons::Button(g, btn_id, btn_r, ICON_FA_INFO_CIRCLE, large_icon_button_style))
+        if (buttons::Button(g, btn_id, btn_r, ICON_FA_CIRCLE_INFO, large_icon_button_style))
             g->info_panel_state.open = true;
         if (check_for_update::ShowNewVersionIndicator(g->shared_engine_systems.check_for_update_state,
                                                       g->prefs)) {
@@ -411,7 +423,7 @@ void TopPanel(Gui* g) {
                            additional_menu_id,
                            popup_id,
                            additonal_menu_r,
-                           ICON_FA_ELLIPSIS_V,
+                           ICON_FA_ELLIPSIS_VERTICAL,
                            large_icon_button_style)) {
             DoDotsMenu(g);
             g->imgui.EndWindow();

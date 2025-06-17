@@ -108,6 +108,11 @@ SharedEngineSystems::SharedEngineSystems(Span<sentry::Tag const> tags)
         prefs.write_to_file_needed = true;
     }
 
+    if constexpr (!PRODUCTION_BUILD) {
+        ArenaAllocatorWithInlineStorage<1000> scratch {PageAllocator::Instance()};
+        auto _ = sample_lib::WriteLuaLspDefintionsFile(scratch);
+    }
+
     sample_lib_server::SetExtraScanFolders(sample_library_server,
                                            ExtraScanFolders(paths, prefs, ScanFolderType::Libraries));
 

@@ -280,7 +280,11 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
         }
     }
 
-    library.insts_by_name = HashTable<String, Instrument*>::Create(arena, inst_infos.size);
+    library.insts_by_name = decltype(library.insts_by_name)::Create(arena, inst_infos.size);
+
+    PathPool folders_path_pool;
+    detail::InitialiseRootFolders(library, arena);
+
     for (auto& i : inst_infos) {
         auto const path = GetString(library, i.virtual_filepath);
 
@@ -308,14 +312,24 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
             folders.RemoveSuffix(1);
         while (StartsWith(folders, '/'))
             folders.RemovePrefix(1);
-        folders = arena.Clone(folders);
 
         auto inst = arena.NewUninitialised<Instrument>();
         PLACEMENT_NEW(inst)
         Instrument {
             .library = library,
             .name = name,
-            .folder = folders.size ? Optional<String>(folders) : k_nullopt,
+            .folder =
+                FindOrInsertFolderNode(&library.root_folders[ToInt(sample_lib::ResourceType::Instrument)],
+                                       folders,
+                                       6,
+                                       {
+                                           .node_allocator = arena,
+                                           .name_allocator =
+                                               FolderNodeAllocators::NameAllocator {
+                                                   .path_pool = folders_path_pool,
+                                                   .path_pool_arena = arena,
+                                               },
+                                       }),
         };
 
         bool velocity_layers_are_feathered =
@@ -473,7 +487,7 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
     return library_ptr;
 }
 
-ErrorCodeOr<u64> MdataHash(Reader& reader) {
+ErrorCodeOr<u64> MdataHash(String, Reader& reader) {
     reader.pos = 0;
     mdata::MasterHeader header;
     TRY(reader.Read(&header, sizeof(mdata::MasterHeader)));
@@ -502,22 +516,22 @@ ReadMdata(Reader& reader, String filepath, ArenaAllocator& result_arena, ArenaAl
     // In the MDATA format when velocity-feathering was enabled for an instrument, adjacent velocity layers
     // were automatically made to overlap. We recreate that old behaviour here, taking into account that now
     // velocity feathering is a per-region setting.
-    for (auto [key, inst_ptr_ptr] : library->insts_by_name) {
-        auto inst = *inst_ptr_ptr;
+    for (auto [key, inst_ptr, _] : library->insts_by_name) {
+        auto inst = *inst_ptr;
 
         // With MDATA, the velocity feathering feature was instrument-wide rather then per-region so we can
         // just check that first.
-        if (!inst->regions.size || !inst->regions[0].trigger.feather_overlapping_velocity_layers) continue;
+        if (!inst.regions.size || !inst.regions[0].trigger.feather_overlapping_velocity_layers) continue;
 
-        Sort(inst->regions, [](Region const& a, Region const& b) {
+        Sort(inst.regions, [](Region const& a, Region const& b) {
             return a.trigger.velocity_range.start < b.trigger.velocity_range.start;
         });
 
         for (auto const trigger_event_index : ::Range(ToInt(TriggerEvent::Count))) {
-            for (auto const rr_group : inst->round_robin_sequence_groups[trigger_event_index]) {
+            for (auto const rr_group : inst.round_robin_sequence_groups[trigger_event_index]) {
                 for (auto const rr_index : ::Range(rr_group.max_rr_pos + 1)) {
                     DynamicArray<Region*> group {scratch_arena};
-                    for (auto& region : inst->regions)
+                    for (auto& region : inst.regions)
                         if (!region.trigger.round_robin_index ||
                             region.trigger.round_robin_index.Value() == rr_index)
                             dyn::Append(group, &region);

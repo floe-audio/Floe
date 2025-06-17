@@ -3,6 +3,8 @@
 
 #include "sample_library.hpp"
 
+#include "tests/framework.hpp"
+
 ErrorCodeOr<void>
 CustomValueToString(Writer writer, sample_lib::LibraryIdRef id, fmt::FormatOptions options) {
     auto const sep = " - "_s;
@@ -14,12 +16,10 @@ CustomValueToString(Writer writer, sample_lib::LibraryIdRef id, fmt::FormatOptio
 
 namespace sample_lib {
 
-u64 Hash(LibraryIdRef const& id) { return id.Hash(); }
-
-ErrorCodeOr<u64> Hash(Reader& reader, FileFormat format) {
+ErrorCodeOr<u64> Hash(String path, Reader& reader, FileFormat format) {
     switch (format) {
-        case FileFormat::Mdata: return MdataHash(reader);
-        case FileFormat::Lua: return LuaHash(reader);
+        case FileFormat::Mdata: return MdataHash(path, reader);
+        case FileFormat::Lua: return LuaHash(path, reader);
     }
     PanicIfReached();
     return {};
@@ -54,8 +54,29 @@ LibraryPtrOrError Read(Reader& reader,
 
 namespace detail {
 
-VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAllocator& scratch_arena) {
+void InitialiseRootFolders(Library& lib, Allocator& arena) {
+    auto root_name = fmt::Format(arena, "{} - {}", lib.name, lib.author);
+    for (auto& folder : lib.root_folders) {
+        folder.name = root_name;
+        folder.display_name = lib.name;
+    }
+}
 
+static void FinaliseFolderTree(FolderNode* root, auto const& items) {
+    for (auto& item : items)
+        if (!item->folder)
+            item->folder = root;
+        else {
+            auto top_folder = item->folder;
+            while (top_folder->parent)
+                top_folder = top_folder->parent;
+            ASSERT(top_folder == root);
+        }
+
+    SortFolderTree(root);
+}
+
+VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAllocator& scratch_arena) {
     // Sort items into their folders, and by name within each folder.
     auto const sort_function = [](auto* a, auto* b) {
         auto const& a_folder = a->folder;
@@ -71,8 +92,8 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
     {
         lib.sorted_instruments = arena.AllocateExactSizeUninitialised<Instrument*>(lib.insts_by_name.size);
         usize index = 0;
-        for (auto [key, value] : lib.insts_by_name) {
-            auto& inst = **value;
+        for (auto [key, value, _] : lib.insts_by_name) {
+            auto& inst = *value;
             lib.sorted_instruments[index++] = &inst;
         }
 
@@ -82,16 +103,16 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
     {
         lib.sorted_irs = arena.AllocateExactSizeUninitialised<ImpulseResponse*>(lib.irs_by_name.size);
         usize index = 0;
-        for (auto [key, value] : lib.irs_by_name) {
-            auto& ir = **value;
+        for (auto [key, value, _] : lib.irs_by_name) {
+            auto& ir = *value;
             lib.sorted_irs[index++] = &ir;
         }
 
         Sort(lib.sorted_irs, sort_function);
     }
 
-    for (auto [key, value] : lib.insts_by_name) {
-        auto& inst = **value;
+    for (auto [key, value, _] : lib.insts_by_name) {
+        auto& inst = *value;
 
         inst.loop_overview.all_regions_require_looping = true;
 
@@ -150,7 +171,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
         }
     }
 
-    for (auto [key, inst_ptr] : lib.insts_by_name) {
+    for (auto [key, inst_ptr, _] : lib.insts_by_name) {
         auto& inst = *inst_ptr;
         struct RoundRobinGroupInfo {
             u8 max_rr_pos;
@@ -160,7 +181,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
 
         Array<u8, ToInt(TriggerEvent::Count)> sequencing_group_counters {};
 
-        for (auto& region : inst->regions) {
+        for (auto& region : inst.regions) {
             if (!region.trigger.round_robin_index) continue;
 
             if (auto const e =
@@ -171,7 +192,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
                 !e.inserted) {
                 // This group already exists, so we need to update the max_rr_pos.
 
-                auto& existing = e.element->data;
+                auto& existing = e.element.data;
                 existing.max_rr_pos = Max(existing.max_rr_pos, *region.trigger.round_robin_index);
 
                 region.trigger.round_robin_sequencing_group = existing.sequencing_group;
@@ -183,10 +204,10 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
                     return (String)fmt::Format(arena,
                                                "More than {} round robin groups in instrument {}",
                                                k_max_round_robin_sequence_groups,
-                                               inst->name);
+                                               inst.name);
                 }
 
-                auto& new_group = e.element->data;
+                auto& new_group = e.element.data;
                 new_group = {
                     .max_rr_pos = *region.trigger.round_robin_index,
                     .sequencing_group = counter++,
@@ -197,25 +218,25 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
         }
 
         for (auto const i : ::Range(ToInt(TriggerEvent::Count))) {
-            inst->round_robin_sequence_groups[i] =
+            inst.round_robin_sequence_groups[i] =
                 arena.NewMultiple<RoundRobinGroup>(sequencing_group_counters[i]);
-            for (auto const& [group_key, group_info] : round_robin_group_infos[i]) {
-                auto& group = inst->round_robin_sequence_groups[i][group_info->sequencing_group];
+            for (auto const& [group_key, group_info, _] : round_robin_group_infos[i]) {
+                auto& group = inst.round_robin_sequence_groups[i][group_info.sequencing_group];
                 group = {
-                    .max_rr_pos = group_info->max_rr_pos,
+                    .max_rr_pos = group_info.max_rr_pos,
                 };
             }
         }
     }
 
-    for (auto [key, inst_ptr] : lib.insts_by_name) {
+    for (auto [key, inst_ptr, _] : lib.insts_by_name) {
         auto const& inst = *inst_ptr;
-        for (auto const& region : inst->regions) {
+        for (auto const& region : inst.regions) {
             if (!region.trigger.feather_overlapping_velocity_layers) continue;
             usize num_overlaps = 0;
             Region const* first_overlap {};
             Region const* second_overlap {};
-            for (auto const& other_region : inst->regions) {
+            for (auto const& other_region : inst.regions) {
                 if (&region == &other_region) continue;
                 if (!other_region.trigger.feather_overlapping_velocity_layers) continue;
                 if (region.trigger.trigger_event == other_region.trigger.trigger_event &&
@@ -257,14 +278,14 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
             }
         }
     }
-    for (auto [key, inst_ptr] : lib.insts_by_name) {
+    for (auto [key, inst_ptr, _] : lib.insts_by_name) {
         auto const& inst = *inst_ptr;
-        for (auto const& region : inst->regions) {
+        for (auto const& region : inst.regions) {
             if (!region.timbre_layering.layer_range) continue;
             usize num_overlaps = 0;
             Region const* first_overlap {};
             Region const* second_overlap {};
-            for (auto const& other_region : inst->regions) {
+            for (auto const& other_region : inst.regions) {
                 if (&region == &other_region) continue;
                 if (!other_region.timbre_layering.layer_range) continue;
                 if (region.trigger.trigger_event == other_region.trigger.trigger_event &&
@@ -308,9 +329,15 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
         }
     }
 
+    if (lib.sorted_instruments.size)
+        FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Instrument)], lib.sorted_instruments);
+    if (lib.sorted_irs.size) FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Ir)], lib.sorted_irs);
+
     return k_success;
 }
 
 } // namespace detail
 
 } // namespace sample_lib
+
+TEST_REGISTRATION(RegisterLibraryTests) {}

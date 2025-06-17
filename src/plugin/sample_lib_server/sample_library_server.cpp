@@ -20,10 +20,6 @@
 
 namespace sample_lib_server {
 
-namespace detail {
-u64 HashLibraryRef(sample_lib::LibraryIdRef const& id) { return id.Hash(); }
-} // namespace detail
-
 using namespace detail;
 constexpr String k_trace_category = "SLS";
 constexpr u32 k_trace_colour = 0xfcba03;
@@ -127,7 +123,7 @@ static void DoReadLibraryJob(PendingLibraryJobs::Job::ReadLibrary& job, ArenaAll
         }
 
         auto reader = TRY_H(Reader::FromPathOrMemory(path_or_memory));
-        auto const file_hash = TRY_H(sample_lib::Hash(reader, args.format));
+        auto const file_hash = TRY_H(sample_lib::Hash(path, reader, args.format));
 
         for (auto& node : args.libraries) {
             if (auto l = node.TryScoped()) {
@@ -266,7 +262,7 @@ static bool MarkNotScannedFoldersRescanRequested(Span<ScanFolder*> scan_folders)
 
 // server-thread
 static void NotifyAllChannelsOfLibraryChange(Server& server, sample_lib::LibraryIdRef library_id) {
-    server.channels.Use([&](ArenaList<AsyncCommsChannel, true>& channels) {
+    server.channels.Use([&](ArenaList<AsyncCommsChannel>& channels) {
         for (auto& c : channels)
             if (c.used.Load(LoadMemoryOrder::Relaxed)) c.library_changed_callback(library_id);
     });
@@ -505,7 +501,7 @@ static bool UpdateLibraryJobs(Server& server,
             LogDebug(ModuleName::SampleLibraryServer,
                      "Reading directory changes failed: {}",
                      outcome.Error());
-        } else {
+        } else if (!server.disable_file_watching.Load(LoadMemoryOrder::Relaxed)) {
             auto const dir_changes_span = outcome.Value();
             for (auto const& dir_changes : dir_changes_span) {
                 ASSERT(FindIf(pending_library_jobs.folders, [&](ScanFolder* f) {
@@ -577,13 +573,22 @@ static bool UpdateLibraryJobs(Server& server,
                                                  lib.path,
                                                  lib.file_format_specifics.tag);
                             } else if (path::IsWithinDirectory(full_path, lib_dir)) {
-                                // Something within the library folder has changed
-                                dyn::AppendIfNotAlreadyThere(libraries_that_changed, &node);
+                                if (path::Equal(path::Extension(full_path), ".lua")) {
+                                    // If the file is a Lua file, it's probably a file used by the main lua
+                                    // file. We need to rescan the library.
+                                    ReadLibraryAsync(pending_library_jobs,
+                                                     server.libraries,
+                                                     lib.path,
+                                                     lib.file_format_specifics.tag);
+                                } else {
+                                    // Something within the library folder has changed
+                                    dyn::AppendIfNotAlreadyThere(libraries_that_changed, &node);
 
-                                for (auto& d : node.value.audio_datas) {
-                                    auto const full_audio_path =
-                                        path::Join(scratch_arena, Array {lib_dir, d.path.str});
-                                    if (path::Equal(full_audio_path, full_path)) d.file_modified = true;
+                                    for (auto& d : node.value.audio_datas) {
+                                        auto const full_audio_path =
+                                            path::Join(scratch_arena, Array {lib_dir, d.path.str});
+                                        if (path::Equal(full_audio_path, full_path)) d.file_modified = true;
+                                    }
                                 }
                             }
                         }
@@ -632,16 +637,15 @@ static bool UpdateLibraryJobs(Server& server,
         ZoneNamedN(rebuild_htab, "rehash", true);
         server.libraries_by_id_mutex.Lock();
         DEFER { server.libraries_by_id_mutex.Unlock(); };
-        auto& libs_by_name = server.libraries_by_id;
-        libs_by_name.DeleteAll();
+        server.libraries_by_id.DeleteAll();
         for (auto& n : server.libraries) {
             auto const& lib = *n.value.lib;
 
-            if (auto element = libs_by_name.FindElement(lib.Id())) {
+            auto found = server.libraries_by_id.FindOrInsert(lib.Id(), &n);
+            if (!found.inserted) {
                 // If it's already there, we replace it with the one that's more recent
-                if (n.value.scan_timepoint > element->data->value.scan_timepoint) element->data = &n;
-            } else {
-                libs_by_name.Insert(lib.Id(), &n);
+                if (n.value.scan_timepoint > found.element.data->value.scan_timepoint)
+                    found.element.data = &n;
             }
         }
     }
@@ -807,7 +811,7 @@ static ListedAudioData* FetchOrCreateAudioData(LibrariesList::Node& lib_node,
         }
     }
 
-    auto audio_data = lib_node.value.audio_datas.PrependUninitialised();
+    auto audio_data = lib_node.value.audio_datas.PrependUninitialised(lib_node.value.arena);
     PLACEMENT_NEW(audio_data)
     ListedAudioData {
         .path = path,
@@ -848,7 +852,7 @@ static ListedInstrument* FetchOrCreateInstrument(LibrariesList::Node& lib_node,
 
     static u32 g_inst_debug_id {};
 
-    auto new_inst = lib.instruments.PrependUninitialised();
+    auto new_inst = lib.instruments.PrependUninitialised(lib_node.value.arena);
     PLACEMENT_NEW(new_inst)
     ListedInstrument {
         .debug_id = g_inst_debug_id++,
@@ -889,7 +893,7 @@ static ListedImpulseResponse* FetchOrCreateImpulseResponse(LibrariesList::Node& 
     auto audio_data = FetchOrCreateAudioData(lib_node, ir.path, thread_pool_args, 999999);
     audio_data->ref_count.FetchAdd(1, RmwMemoryOrder::Relaxed);
 
-    auto new_ir = lib_node.value.irs.PrependUninitialised();
+    auto new_ir = lib_node.value.irs.PrependUninitialised(lib_node.value.arena);
     PLACEMENT_NEW(new_ir)
     ListedImpulseResponse {
         .ir = {ir, &audio_data->audio_data},
@@ -1572,24 +1576,28 @@ static sample_lib::Library* BuiltinLibrary() {
 
     static bool init = false;
     if (!Exchange(init, true)) {
-        static FixedSizeAllocator<Kb(10)> alloc {nullptr};
+        static FixedSizeAllocator<Kb(15)> alloc {nullptr};
 
         auto const embedded_irs = GetEmbeddedIrs();
 
         builtin_library.irs_by_name =
             decltype(builtin_library.irs_by_name)::Create(alloc, embedded_irs.count);
 
+        PathPool folders_path_pool;
+        sample_lib::detail::InitialiseRootFolders(builtin_library, alloc);
+
         for (auto const& embedded_ir : Span<EmbeddedIr const> {embedded_irs.irs, embedded_irs.count}) {
             usize num_tags = 0;
             if (embedded_ir.tag1.size) ++num_tags;
             if (embedded_ir.tag2.size) ++num_tags;
 
-            auto tags = alloc.AllocateExactSizeUninitialised<String>(num_tags);
-            usize tag_index = 0;
-            if (embedded_ir.tag1.size) tags[tag_index++] = ToString(embedded_ir.tag1);
-            if (embedded_ir.tag2.size) tags[tag_index++] = ToString(embedded_ir.tag2);
+            auto tags = Set<String>::Create(alloc, num_tags);
+            if (embedded_ir.tag1.size) tags.InsertWithoutGrowing(ToString(embedded_ir.tag1));
+            if (embedded_ir.tag2.size) tags.InsertWithoutGrowing(ToString(embedded_ir.tag2));
 
             auto const name = ToString(embedded_ir.name);
+
+            ArenaAllocatorWithInlineStorage<200> scratch_arena {PageAllocator::Instance()};
 
             auto ir = alloc.NewUninitialised<sample_lib::ImpulseResponse>();
             PLACEMENT_NEW(ir)
@@ -1597,7 +1605,18 @@ static sample_lib::Library* BuiltinLibrary() {
                 .library = builtin_library,
                 .name = name,
                 .path = {ToString(embedded_ir.data.filename)},
-                .folder = ToString(embedded_ir.folder),
+                .folder =
+                    FindOrInsertFolderNode(&builtin_library.root_folders[ToInt(sample_lib::ResourceType::Ir)],
+                                           ToString(embedded_ir.folder),
+                                           sample_lib::k_max_folders,
+                                           {
+                                               .node_allocator = alloc,
+                                               .name_allocator =
+                                                   FolderNodeAllocators::NameAllocator {
+                                                       .path_pool = folders_path_pool,
+                                                       .path_pool_arena = alloc,
+                                                   },
+                                           }),
                 .tags = tags,
                 .description = ToString(embedded_ir.description),
             };
@@ -1622,7 +1641,7 @@ Server::Server(ThreadPool& pool,
     : error_notifications(error_notifications)
     , thread_pool(pool) {
     if (always_scanned_folder.size) {
-        auto folder = scan_folders.folder_allocator.PrependUninitialised();
+        auto folder = scan_folders.folder_allocator.PrependUninitialised(scan_folders.folder_arena);
         PLACEMENT_NEW(folder) ScanFolder();
         dyn::Assign(folder->path, always_scanned_folder);
         folder->source = ScanFolder::Source::AlwaysScannedFolder;
@@ -1661,7 +1680,7 @@ Server::~Server() {
 
 AsyncCommsChannel& OpenAsyncCommsChannel(Server& server, OpenAsyncCommsChannelArgs const& args) {
     return server.channels.Use([&](auto& channels) -> AsyncCommsChannel& {
-        auto channel = channels.PrependUninitialised();
+        auto channel = channels.PrependUninitialised(server.channels_arena);
         PLACEMENT_NEW(channel)
         AsyncCommsChannel {
             .error_notifications = args.error_notifications,
@@ -1749,7 +1768,8 @@ void SetExtraScanFolders(Server& server, Span<String const> extra_folders) {
 
             ASSERT(server.scan_folders.folders.size != ScanFolders::Folders::Capacity());
 
-            auto folder = server.scan_folders.folder_allocator.PrependUninitialised();
+            auto folder =
+                server.scan_folders.folder_allocator.PrependUninitialised(server.scan_folders.folder_arena);
             PLACEMENT_NEW(folder) ScanFolder();
             dyn::Assign(folder->path, path);
             folder->source = ScanFolder::Source::ExtraFolder;
@@ -1838,7 +1858,7 @@ static Type& ExtractSuccess(tests::Tester& tester, LoadResult const& result, Loa
     return *opt_r;
 }
 
-TEST_CASE(TestSampleLibraryLoader) {
+TEST_CASE(TestSampleLibraryServer) {
     struct Fixture {
         [[maybe_unused]] Fixture(tests::Tester&) { thread_pool.Init("pool", 8u); }
         bool initialised = false;
@@ -2297,6 +2317,6 @@ TEST_CASE(TestSampleLibraryLoader) {
 
 } // namespace sample_lib_server
 
-TEST_REGISTRATION(RegisterSampleLibraryLoaderTests) {
-    REGISTER_TEST(sample_lib_server::TestSampleLibraryLoader);
+TEST_REGISTRATION(RegisterSampleLibraryServerTests) {
+    REGISTER_TEST(sample_lib_server::TestSampleLibraryServer);
 }

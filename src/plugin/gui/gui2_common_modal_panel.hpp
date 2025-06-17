@@ -21,6 +21,7 @@ struct ModalHeaderConfig {
     Box parent;
     String title;
     TrivialFunctionRef<void()> on_close;
+    bool* modeless {};
 };
 
 // Creates a standard panel header with title and close button
@@ -32,23 +33,42 @@ PUBLIC Box DoModalHeader(GuiBoxSystem& box_system, ModalHeaderConfig const& conf
                                            .layout {
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
                                                .contents_padding = {.lrtb = style::k_spacing},
+                                               .contents_gap = style::k_spacing * 1.2f,
                                                .contents_direction = layout::Direction::Row,
                                                .contents_align = layout::Alignment::Justify,
                                            },
                                        });
 
     DoBox(box_system,
-          {
-              .parent = title_container,
-              .text = config.title,
-              .font = FontType::Heading1,
-              .size_from_text = true,
-          });
+          {.parent = title_container,
+           .text = config.title,
+           .font = FontType::Heading1,
+           .layout {
+               .size = {layout::k_fill_parent, style::k_font_heading1_size},
+           }});
+
+    if (config.modeless) {
+        if (DoBox(box_system,
+                  {
+                      .parent = title_container,
+                      .text = *config.modeless ? ICON_FA_UNLOCK : ICON_FA_LOCK,
+                      .font = FontType::Icons,
+                      .size_from_text = true,
+                      .background_fill_auto_hot_active_overlay = true,
+                      .round_background_corners = 0b1111,
+                      .activate_on_click_button = MouseButton::Left,
+                      .activation_click_event = ActivationClickEvent::Up,
+                      .extra_margin_for_mouse_events = 8,
+                  })
+                .button_fired) {
+            *config.modeless = !*config.modeless;
+        }
+    }
 
     if (auto const close = DoBox(box_system,
                                  {
                                      .parent = title_container,
-                                     .text = ICON_FA_TIMES,
+                                     .text = ICON_FA_XMARK,
                                      .font = FontType::Icons,
                                      .size_from_text = true,
                                      .background_fill_auto_hot_active_overlay = true,
@@ -81,6 +101,7 @@ PUBLIC Box DoModalDivider(GuiBoxSystem& box_system, Box parent, DividerType type
 struct ModalTabConfig {
     Optional<String> icon;
     String text;
+    u32 index;
 };
 
 struct ModalTabBarConfig {
@@ -105,8 +126,8 @@ PUBLIC Box DoModalTabBar(GuiBoxSystem& box_system, ModalTabBarConfig const& conf
                                          },
                                      });
 
-    for (auto const [i, tab] : Enumerate<u32>(config.tabs)) {
-        bool const is_current = i == config.current_tab_index;
+    for (auto const tab : config.tabs) {
+        bool const is_current = tab.index == config.current_tab_index;
 
         auto const tab_box = DoBox(
             box_system,
@@ -126,8 +147,9 @@ PUBLIC Box DoModalTabBar(GuiBoxSystem& box_system, ModalTabBarConfig const& conf
             });
 
         if (tab_box.button_fired)
-            dyn::Append(box_system.state->deferred_actions,
-                        [&current_tab = config.current_tab_index, i]() { current_tab = i; });
+            dyn::Append(
+                box_system.state->deferred_actions,
+                [&current_tab = config.current_tab_index, index = tab.index]() { current_tab = index; });
 
         if (tab.icon) {
             DoBox(box_system,
@@ -155,11 +177,12 @@ PUBLIC Box DoModalTabBar(GuiBoxSystem& box_system, ModalTabBarConfig const& conf
 struct ModalConfig {
     String title;
     TrivialFunctionRef<void()> on_close;
+    bool* modeless {};
     Span<ModalTabConfig const> tabs;
     u32& current_tab_index;
 };
 
-// High-level function that creates a complete modal layout
+// High-level function that creates a complete modal layout within an already open modal window.
 PUBLIC Box DoModal(GuiBoxSystem& box_system, ModalConfig const& config) {
     auto const root = DoModalRootBox(box_system);
 
@@ -168,6 +191,7 @@ PUBLIC Box DoModal(GuiBoxSystem& box_system, ModalConfig const& config) {
                       .parent = root,
                       .title = config.title,
                       .on_close = config.on_close,
+                      .modeless = config.modeless,
                   });
 
     DoModalTabBar(box_system,
@@ -396,4 +420,115 @@ PUBLIC Optional<s64> IntField(GuiBoxSystem& builder,
 
     if (value != initial_value) return value;
     return k_nullopt;
+}
+
+struct MenuButtonOptions {
+    String text;
+    String tooltip;
+    f32 width = layout::k_hug_contents;
+};
+
+PUBLIC Box MenuButton(GuiBoxSystem& box_system, Box parent, MenuButtonOptions const& options) {
+    auto const button =
+        DoBox(box_system,
+              {
+                  .parent = parent,
+                  .background_fill = style::Colour::Background2,
+                  .background_fill_auto_hot_active_overlay = true,
+                  .round_background_corners = 0b1111,
+                  .activate_on_click_button = MouseButton::Left,
+                  .activation_click_event = ActivationClickEvent::Up,
+                  .layout {
+                      .size = {options.width, layout::k_hug_contents},
+                      .contents_padding = {.lr = style::k_button_padding_x, .tb = style::k_button_padding_y},
+                      .contents_gap = style::k_menu_item_padding_x,
+                      .contents_align = layout::Alignment::Justify,
+                  },
+                  .tooltip = options.tooltip,
+              });
+
+    DoBox(box_system,
+          {
+              .parent = button,
+              .text = options.text,
+              .font = FontType::Body,
+              .size_from_text = true,
+          });
+
+    DoBox(box_system,
+          {
+              .parent = button,
+              .text = ICON_FA_CARET_DOWN,
+              .font = FontType::Icons,
+              .size_from_text = true,
+          });
+
+    return button;
+}
+
+struct MenuItemOptions {
+    String text;
+    String tooltip;
+    Optional<String> subtext;
+    bool is_selected;
+};
+
+PUBLIC bool MenuItem(GuiBoxSystem& box_system, Box parent, MenuItemOptions const& options) {
+    auto const item = DoBox(box_system,
+                            {
+                                .parent = parent,
+                                .background_fill_auto_hot_active_overlay = true,
+                                .activate_on_click_button = MouseButton::Left,
+                                .activation_click_event = ActivationClickEvent::Up,
+                                .layout {
+                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                    .contents_direction = layout::Direction::Row,
+                                },
+                            });
+
+    if (item.button_fired) box_system.imgui.CloseTopPopupOnly();
+
+    DoBox(box_system,
+          {
+              .parent = item,
+              .text = options.is_selected ? String(ICON_FA_CHECK) : "",
+              .font = FontType::Icons,
+              .text_fill = style::Colour::Subtext0,
+              .layout {
+                  .size = style::k_prefs_icon_button_size,
+                  .margins {.l = style::k_menu_item_padding_x},
+              },
+              .tooltip = options.tooltip,
+          });
+
+    auto const text_container = DoBox(
+        box_system,
+        {
+            .parent = item,
+            .layout {
+                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                .contents_padding = {.lr = style::k_menu_item_padding_x, .tb = style::k_menu_item_padding_y},
+                .contents_direction = layout::Direction::Column,
+                .contents_align = layout::Alignment::Start,
+                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+            },
+        });
+    DoBox(box_system,
+          {
+              .parent = text_container,
+              .text = options.text,
+              .font = FontType::Body,
+              .size_from_text = true,
+          });
+    if (options.subtext && options.subtext->size) {
+        DoBox(box_system,
+              {
+                  .parent = text_container,
+                  .text = *options.subtext,
+                  .text_fill = style::Colour::Subtext0,
+                  .size_from_text = true,
+              });
+    }
+
+    return item.button_fired;
 }

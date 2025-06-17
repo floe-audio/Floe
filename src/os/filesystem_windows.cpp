@@ -1088,7 +1088,7 @@ ErrorCodeOr<DirectoryWatcher> CreateDirectoryWatcher(Allocator& a) {
     ZoneScoped;
     DirectoryWatcher result {
         .allocator = a,
-        .watched_dirs = {a},
+        .watched_dirs = {},
     };
     return result;
 }

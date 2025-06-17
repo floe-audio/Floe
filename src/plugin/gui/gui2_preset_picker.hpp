@@ -29,6 +29,7 @@ struct PresetPickerContext {
     PresetServer& preset_server;
     LibraryImagesArray& library_images;
     Engine& engine;
+    Optional<graphics::ImageID>& unknown_library_icon;
 
     u32 init = 0;
     Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;
@@ -38,21 +39,18 @@ struct PresetPickerContext {
 
 // Persistent
 struct PresetPickerState {
-    void ClearAllFilters() {
-        dyn::Clear(selected_library_hashes);
-        dyn::Clear(selected_tags_hashes);
-        dyn::Clear(search);
-    }
-
-    DynamicArray<u64> selected_library_hashes {Malloc::Instance()};
-    DynamicArray<u64> selected_library_author_hashes {Malloc::Instance()};
-    DynamicArray<u64> selected_tags_hashes {Malloc::Instance()};
     DynamicArray<u64> selected_author_hashes {Malloc::Instance()};
-    DynamicArrayBounded<char, 100> search;
     bool scroll_to_show_selected = false;
 
-    // Only valid if we have both types of presets
-    Array<bool, ToInt(PresetFormat::Count)> selected_preset_types {};
+    // This is contains PresetFormat as u64. We use a dynamic array of u64 so we can share the same code as
+    // the other types of selected_* filters.
+    DynamicArray<u64> selected_preset_types {Malloc::Instance()};
+
+    DynamicArray<u64> selected_folder_hashes {Malloc::Instance()};
+
+    CommonPickerState common_state {
+        .other_selected_hashes = Array {&selected_author_hashes, &selected_preset_types},
+    };
 };
 
 void LoadAdjacentPreset(PresetPickerContext const& context,

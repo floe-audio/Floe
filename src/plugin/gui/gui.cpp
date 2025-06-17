@@ -3,7 +3,7 @@
 
 #include "gui.hpp"
 
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 #include <stb_image.h>
 #include <stb_image_resize2.h>
 
@@ -59,6 +59,19 @@ Optional<graphics::ImageID> LogoImage(Gui* g) {
         }
     }
     return g->floe_logo_image;
+}
+
+Optional<graphics::ImageID>& UnknownLibraryIcon(Gui* g) {
+    if (!g->imgui.graphics->context->ImageIdIsValid(g->unknown_library_icon)) {
+        auto const data = EmbeddedUnknownLibraryIcon();
+        if (data.size) {
+            auto outcome = DecodeImage({data.data, data.size});
+            ASSERT(!outcome.HasError());
+            auto const pixels = outcome.ReleaseValue();
+            g->unknown_library_icon = CreateImageIdChecked(*g->imgui.graphics->context, pixels);
+        }
+    }
+    return g->unknown_library_icon;
 }
 
 static void SampleLibraryChanged(Gui* g, sample_lib::LibraryIdRef library_id) {
@@ -346,6 +359,13 @@ GuiFrameResult GuiUpdate(Gui* g) {
 
     // GUI2 panels. This is the future.
     {
+        {
+            LibraryDevPanelContext context {
+                .engine = g->engine,
+                .notifications = g->notifications,
+            };
+            DoLibraryDevPanel(g->box_system, context, g->library_dev_panel_state);
+        }
 
         {
             PreferencesPanelContext context {
@@ -356,6 +376,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .thread_pool = g->shared_engine_systems.thread_pool,
                 .file_picker_state = g->file_picker_state,
             };
+            context.Init(g->shared_engine_systems.preset_server, g->scratch_arena);
+            DEFER { context.Deinit(g->shared_engine_systems.preset_server); };
 
             DoPreferencesPanel(g->box_system, context, g->preferences_panel_state);
         }

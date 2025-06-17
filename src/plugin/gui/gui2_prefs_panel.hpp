@@ -43,43 +43,6 @@ static void PreferencesRhsText(GuiBoxSystem& box_system, Box parent, String text
           });
 }
 
-static Box PreferencesMenuButton(GuiBoxSystem& box_system, Box parent, String text, String tooltip) {
-    auto const button =
-        DoBox(box_system,
-              {
-                  .parent = parent,
-                  .background_fill = style::Colour::Background2,
-                  .background_fill_auto_hot_active_overlay = true,
-                  .round_background_corners = 0b1111,
-                  .activate_on_click_button = MouseButton::Left,
-                  .activation_click_event = ActivationClickEvent::Up,
-                  .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
-                      .contents_padding = {.lr = style::k_button_padding_x, .tb = style::k_button_padding_y},
-                      .contents_align = layout::Alignment::Justify,
-                  },
-                  .tooltip = tooltip,
-              });
-
-    DoBox(box_system,
-          {
-              .parent = button,
-              .text = text,
-              .font = FontType::Body,
-              .size_from_text = true,
-          });
-
-    DoBox(box_system,
-          {
-              .parent = button,
-              .text = ICON_FA_CARET_DOWN,
-              .font = FontType::Icons,
-              .size_from_text = true,
-          });
-
-    return button;
-}
-
 static Box PreferencesRow(GuiBoxSystem& box_system, Box parent) {
     return DoBox(box_system,
                  {
@@ -138,12 +101,16 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
                       .contents_align = layout::Alignment::Justify,
                   },
               });
+
+    auto const display_path =
+        path::MakeDisplayPath(path, {.compact_middle_sections = true}, box_system.arena);
     DoBox(box_system,
           {
               .parent = path_container,
-              .text = path,
+              .text = display_path,
               .font = FontType::Body,
               .size_from_text = true,
+              .tooltip = display_path.data == path.data ? "" : path,
           });
     auto const icon_button_container = DoBox(box_system,
                                              {
@@ -160,7 +127,7 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
         result.delete_pressed = DoBox(box_system,
                                       {
                                           .parent = icon_button_container,
-                                          .text = ICON_FA_TRASH_ALT,
+                                          .text = ICON_FA_TRASH,
                                           .font = FontType::Icons,
                                           .text_fill = style::Colour::Subtext0,
                                           .text_fill_hot = style::Colour::Subtext0,
@@ -179,7 +146,7 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
         DoBox(box_system,
               {
                   .parent = icon_button_container,
-                  .text = ICON_FA_EXTERNAL_LINK_ALT,
+                  .text = ICON_FA_UP_RIGHT_FROM_SQUARE,
                   .font = FontType::Icons,
                   .text_fill = style::Colour::Subtext0,
                   .text_fill_hot = style::Colour::Subtext0,
@@ -200,22 +167,31 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
 }
 
 struct PreferencesPanelContext {
+    void Init(PresetServer& preset_server, ArenaAllocator& arena) {
+        presets_snapshot = BeginReadFolders(preset_server, arena);
+    }
+    static void Deinit(PresetServer& preset_server) { EndReadFolders(preset_server); }
+
     prefs::Preferences& prefs;
     FloePaths const& paths;
     sample_lib_server::Server& sample_lib_server;
     package::InstallJobs& package_install_jobs;
     ThreadPool& thread_pool;
     FilePickerState& file_picker_state;
+    PresetsSnapshot presets_snapshot {};
 };
 
 static void SetFolderSubtext(DynamicArrayBounded<char, 200>& out,
                              String dir,
                              bool is_default,
                              ScanFolderType type,
-                             sample_lib_server::Server& server) {
+                             sample_lib_server::Server& server,
+                             PresetsSnapshot const& snapshot) {
     dyn::Clear(out);
     switch (type) {
         case ScanFolderType::Libraries: {
+            if (is_default) dyn::AppendSpan(out, "Default. ");
+
             u32 num_libs = 0;
             for (auto& l_node : server.libraries) {
                 if (auto l = l_node.TryScoped()) {
@@ -223,7 +199,6 @@ static void SetFolderSubtext(DynamicArrayBounded<char, 200>& out,
                 }
             }
 
-            if (is_default) dyn::AppendSpan(out, "Default. ");
             dyn::AppendSpan(out, "Contains ");
             if (num_libs < 1000 && out.size + 4 < out.Capacity())
                 out.size += fmt::IntToString(num_libs, out.data + out.size);
@@ -232,11 +207,24 @@ static void SetFolderSubtext(DynamicArrayBounded<char, 200>& out,
             else
                 dyn::AppendSpan(out, "no"_s);
             fmt::Append(out, " sample librar{}", num_libs == 1 ? "y" : "ies");
+
             break;
         }
         case ScanFolderType::Presets: {
             if (is_default) dyn::AppendSpan(out, "Default.");
-            // IMPROVE: show number of presets in folder
+
+            usize num_presets = 0;
+            for (auto const folder : snapshot.folders)
+                if (path::Equal(folder->scan_folder, dir)) num_presets += folder->presets.size;
+
+            dyn::AppendSpan(out, "Contains ");
+            if (num_presets < 10000 && out.size + 5 < out.Capacity())
+                out.size += fmt::IntToString(num_presets, out.data + out.size);
+            else if (num_presets)
+                dyn::AppendSpan(out, "many");
+            else
+                dyn::AppendSpan(out, "no"_s);
+            fmt::Append(out, " preset{}", num_presets == 1 ? "" : "s");
             break;
         }
         case ScanFolderType::Count: break;
@@ -279,7 +267,8 @@ static void FolderPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCon
                              dir,
                              true,
                              (ScanFolderType)scan_folder_type,
-                             context.sample_lib_server);
+                             context.sample_lib_server,
+                             context.presets_snapshot);
             if (auto const o = PreferencesFolderSelector(box_system, rhs_column, dir, subtext_buffer, false);
                 o.open_pressed)
                 OpenFolderInFileBrowser(dir);
@@ -291,7 +280,8 @@ static void FolderPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCon
                              dir,
                              false,
                              (ScanFolderType)scan_folder_type,
-                             context.sample_lib_server);
+                             context.sample_lib_server,
+                             context.presets_snapshot);
             if (auto const o = PreferencesFolderSelector(box_system, rhs_column, dir, subtext_buffer, true);
                 o.open_pressed || o.delete_pressed) {
                 if (o.open_pressed) OpenFolderInFileBrowser(dir);
@@ -344,80 +334,49 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
 
     DynamicArrayBounded<char, 200> subtext_buffer {};
 
-    auto const menu_item = [&](String path, String subtext) {
-        auto const item = DoBox(box_system,
-                                {
-                                    .parent = root,
-                                    .background_fill_auto_hot_active_overlay = true,
-                                    .activate_on_click_button = MouseButton::Left,
-                                    .activation_click_event = ActivationClickEvent::Up,
-                                    .layout {
-                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                        .contents_direction = layout::Direction::Row,
-                                    },
-                                });
-
-        if (item.button_fired) {
-            prefs::SetValue(context.prefs,
-                            InstallLocationDescriptor(context.paths, context.prefs, scan_folder_type),
-                            path);
-            box_system.imgui.CloseTopPopupOnly();
-        }
-
-        auto const current_install_location =
-            prefs::GetString(context.prefs,
-                             InstallLocationDescriptor(context.paths, context.prefs, scan_folder_type));
-
-        DoBox(box_system,
-              {
-                  .parent = item,
-                  .text = path::Equal(path, current_install_location) ? String(ICON_FA_CHECK) : "",
-                  .font = FontType::Icons,
-                  .text_fill = style::Colour::Subtext0,
-                  .layout {
-                      .size = style::k_prefs_icon_button_size,
-                      .margins {.l = style::k_menu_item_padding_x},
-                  },
-
-              });
-
-        auto const text_container = DoBox(box_system,
-                                          {
-                                              .parent = item,
-                                              .layout {
-                                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                  .contents_padding = {.lr = style::k_menu_item_padding_x,
-                                                                       .tb = style::k_menu_item_padding_y},
-                                                  .contents_direction = layout::Direction::Column,
-                                                  .contents_align = layout::Alignment::Start,
-                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                              },
-                                          });
-        DoBox(box_system,
-              {
-                  .parent = text_container,
-                  .text = path,
-                  .font = FontType::Body,
-                  .size_from_text = true,
-              });
-        DoBox(box_system,
-              {
-                  .parent = text_container,
-                  .text = subtext,
-                  .text_fill = style::Colour::Subtext0,
-                  .size_from_text = true,
-              });
-    };
+    auto const current_install_location =
+        prefs::GetString(context.prefs,
+                         InstallLocationDescriptor(context.paths, context.prefs, scan_folder_type));
 
     {
         auto const dir = context.paths.always_scanned_folder[ToInt(scan_folder_type)];
-        SetFolderSubtext(subtext_buffer, dir, true, scan_folder_type, context.sample_lib_server);
-        menu_item(dir, subtext_buffer);
+        SetFolderSubtext(subtext_buffer,
+                         dir,
+                         true,
+                         scan_folder_type,
+                         context.sample_lib_server,
+                         context.presets_snapshot);
+        if (MenuItem(box_system,
+                     root,
+                     {
+                         .text = dir,
+                         .subtext = subtext_buffer,
+                         .is_selected = path::Equal(dir, current_install_location),
+                     })) {
+            prefs::SetValue(context.prefs,
+                            InstallLocationDescriptor(context.paths, context.prefs, scan_folder_type),
+                            dir);
+        }
     }
 
     for (auto const dir : ExtraScanFolders(context.paths, context.prefs, scan_folder_type)) {
-        SetFolderSubtext(subtext_buffer, dir, false, scan_folder_type, context.sample_lib_server);
-        menu_item(dir, subtext_buffer);
+        SetFolderSubtext(subtext_buffer,
+                         dir,
+                         false,
+                         scan_folder_type,
+                         context.sample_lib_server,
+                         context.presets_snapshot);
+        if (MenuItem(box_system,
+                     root,
+                     {
+                         .text = dir,
+                         .subtext = subtext_buffer,
+                         .is_selected = path::Equal(dir, current_install_location),
+                     })) {
+            prefs::SetValue(context.prefs,
+                            InstallLocationDescriptor(context.paths, context.prefs, scan_folder_type),
+                            dir);
+        }
     }
 
     DoBox(box_system,
@@ -498,9 +457,17 @@ static void PackagesPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelC
         if (auto const default_dir = context.paths.always_scanned_folder[ToInt(scan_folder_type)];
             menu_text == default_dir) {
             menu_text = "Default";
+        } else {
+            menu_text = path::MakeDisplayPath(menu_text, {.compact_middle_sections = true}, box_system.arena);
         }
 
-        auto const btn = PreferencesMenuButton(box_system, row, menu_text, "Select install location");
+        auto const btn = MenuButton(box_system,
+                                    row,
+                                    {
+                                        .text = menu_text,
+                                        .tooltip = "Select install location",
+                                        .width = layout::k_fill_parent,
+                                    });
         if (btn.button_fired) box_system.imgui.OpenPopup(popup_id, btn.imgui_id);
 
         AddPanel(box_system,
@@ -693,7 +660,7 @@ PreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context, Pre
             auto const index = ToInt(tab);
             switch (tab) {
                 case PreferencesPanelState::Tab::General:
-                    tabs[index] = {.icon = ICON_FA_SLIDERS_H, .text = "General"};
+                    tabs[index] = {.icon = ICON_FA_SLIDERS, .text = "General"};
                     break;
                 case PreferencesPanelState::Tab::Folders:
                     tabs[index] = {.icon = ICON_FA_FOLDER_OPEN, .text = "Folders"};
@@ -703,6 +670,7 @@ PreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context, Pre
                     break;
                 case PreferencesPanelState::Tab::Count: PanicIfReached();
             }
+            tabs[index].index = index;
         }
         return tabs;
     }();

@@ -3,7 +3,7 @@
 
 #include "gui_widget_helpers.hpp"
 
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
@@ -415,7 +415,7 @@ bool DoCloseButtonForCurrentWindow(Gui* g, String tooltip_text, buttons::Style c
     Rect const btn_r = {.xywh {x, pad, size, size}};
 
     auto const btn_id = imgui.GetID("close");
-    bool const button_clicked = buttons::Button(g, btn_id, btn_r, ICON_FA_TIMES, style);
+    bool const button_clicked = buttons::Button(g, btn_id, btn_r, ICON_FA_XMARK, style);
 
     Tooltip(g, btn_id, btn_r, tooltip_text);
     return button_clicked;

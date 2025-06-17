@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
@@ -110,6 +110,32 @@ PUBLIC Style IconButton(imgui::Context const& imgui) {
     return s;
 }
 
+static Style MuteSoloButton(imgui::Context const& imgui, bool is_solo) {
+    Style s {};
+    s.type = LayoutAndSizeType::IconOrText;
+    s.main_cols.reg = LiveCol(imgui, UiColMap::MuteSoloButtonTextRegular);
+    s.main_cols.on = LiveCol(imgui, UiColMap::MuteSoloButtonTextOn);
+    s.main_cols.hot_on = LiveCol(imgui, UiColMap::MuteSoloButtonTextOnHover);
+    s.main_cols.hot_off = LiveCol(imgui, UiColMap::MuteSoloButtonTextHover);
+    s.main_cols.active_on = s.main_cols.hot_on;
+    s.main_cols.active_off = s.main_cols.hot_off;
+    s.back_cols.reg = {};
+    s.back_cols.on = LiveCol(imgui, is_solo ? UiColMap::SoloButtonBackOn : UiColMap::MuteButtonBackOn);
+    s.back_cols.hot_on = s.back_cols.on;
+    s.back_cols.hot_off = s.back_cols.reg;
+    s.back_cols.active_on = s.back_cols.on;
+    s.back_cols.active_off = s.back_cols.reg;
+    s.icon_or_text.add_margin_x = false;
+    s.icon_or_text.justification = TextJustification::Centred;
+    s.icon_scaling = Style::k_regular_icon_scaling;
+    s.corner_rounding_flags = is_solo ? 0b0110 : 0b1001;
+    return s;
+}
+
+PUBLIC Style MuteButton(imgui::Context const& imgui) { return MuteSoloButton(imgui, false); }
+
+PUBLIC Style SoloButton(imgui::Context const& imgui) { return MuteSoloButton(imgui, true); }
+
 PUBLIC Style SettingsWindowButton(imgui::Context const& imgui) {
     auto s = IconButton(imgui);
     s.type = LayoutAndSizeType::IconAndText;
@@ -125,7 +151,7 @@ PUBLIC Style SettingsWindowButton(imgui::Context const& imgui) {
     s.main_cols.active_on = s.main_cols.reg;
     s.main_cols.active_off = s.main_cols.active_on;
     s.main_cols.on = s.main_cols.reg;
-    s.icon_and_text.on_icon = ICON_FA_CHECK_SQUARE;
+    s.icon_and_text.on_icon = ICON_FA_SQUARE_CHECK;
     s.icon_and_text.off_icon = ICON_FA_SQUARE;
     s.icon_and_text.capitalise = false;
     return s;
@@ -180,8 +206,8 @@ PUBLIC Style LayerHeadingButton(imgui::Context const& imgui, u32 highlight_col =
     s.text_cols.hot_off = s.text_cols.hot_on;
     s.text_cols.active_on = s.text_cols.hot_on;
     s.text_cols.active_off = s.text_cols.active_on;
-    s.icon_and_text.on_icon = ICON_FA_CHECK_SQUARE;
-    s.icon_and_text.off_icon = ICON_FA_SQUARE;
+    s.icon_and_text.on_icon = ICON_FA_TOGGLE_ON;
+    s.icon_and_text.off_icon = ICON_FA_TOGGLE_OFF;
     s.icon_and_text.capitalise = false;
     s.icon_scaling = 0.75f;
     return s;
@@ -379,7 +405,7 @@ PUBLIC Style EffectButtonGrabber(imgui::Context const& imgui) {
     s.type = buttons::LayoutAndSizeType::IconOrText;
     s.icon_or_text.justification = TextJustification::CentredRight;
     s.icon_or_text.add_margin_x = false;
-    s.icon_or_text.default_icon = ICON_FA_ARROWS_ALT_V;
+    s.icon_or_text.default_icon = ICON_FA_ARROWS_UP_DOWN;
     s.icon_scaling = 0.7f;
     s.main_cols = {};
     s.main_cols.hot_on = LiveCol(imgui, UiColMap::FXButtonGripIcon);

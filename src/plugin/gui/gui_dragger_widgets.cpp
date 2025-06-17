@@ -3,7 +3,7 @@
 
 #include "gui_dragger_widgets.hpp"
 
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 
 #include "gui.hpp"
 #include "gui_framework/gui_live_edit.hpp"

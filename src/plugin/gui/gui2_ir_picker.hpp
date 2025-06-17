@@ -18,6 +18,7 @@ struct IrPickerContext {
     sample_lib_server::Server& sample_library_server;
     LibraryImagesArray& library_images;
     Engine& engine;
+    Optional<graphics::ImageID>& unknown_library_icon;
     Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;
     sample_lib::ImpulseResponse const* hovering_ir {};
 };

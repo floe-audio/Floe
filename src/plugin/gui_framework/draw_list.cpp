@@ -1899,6 +1899,8 @@ GlyphRanges FontAtlas::GetGlyphRangesDefaultAudioPlugin() {
                     GlyphRange {0x0020, 0x00FF}, // Basic Latin + Latin Supplement
                     GlyphRange {0x221E, 0x221E}, // Infinity
                     GlyphRange {0x2019, 0x2019}, // Apostrophe
+                    GlyphRange {0x2026, 0x2026}, // Ellipsis
+                    GlyphRange {0x203A, 0x203A}, // Single Right-Pointing Angle Quotation Mark
                 });
     return ranges;
 }

@@ -15,6 +15,65 @@ static Optional<IrCursor> CurrentCursor(IrPickerContext const& context, sample_l
     return k_nullopt;
 }
 
+static bool IrMatchesSearch(sample_lib::ImpulseResponse const& ir, String search) {
+    if (ContainsCaseInsensitiveAscii(ir.name, search)) return true;
+    return false;
+}
+
+static bool ShouldSkipIr(IrPickerState const& state, sample_lib::ImpulseResponse const& ir) {
+    if (state.common_state.search.size && !IrMatchesSearch(ir, state.common_state.search)) return true;
+
+    bool filtering_on = false;
+
+    if (state.common_state.selected_folder_hashes.size) {
+        filtering_on = true;
+        for (auto const folder_hash : state.common_state.selected_folder_hashes) {
+            if (!IsInsideFolder(ir.folder, folder_hash)) {
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            } else {
+                if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+            }
+        }
+    }
+
+    if (state.common_state.selected_library_hashes.size) {
+        filtering_on = true;
+        if (!Contains(state.common_state.selected_library_hashes, ir.library.Id().Hash())) {
+            if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+        } else {
+            if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+        }
+    }
+
+    if (state.common_state.selected_library_author_hashes.size) {
+        filtering_on = true;
+        if (!Contains(state.common_state.selected_library_author_hashes, Hash(ir.library.author))) {
+            if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+        } else {
+            if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+        }
+    }
+
+    if (state.common_state.selected_tags_hashes.size) {
+        filtering_on = true;
+        for (auto const selected_hash : state.common_state.selected_tags_hashes) {
+            if (!(ir.tags.ContainsSkipKeyCheck(selected_hash) ||
+                  (selected_hash == Hash(k_untagged_tag_name) && ir.tags.size == 0))) {
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            } else {
+                if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+            }
+        }
+    }
+
+    if (filtering_on && state.common_state.filter_mode == FilterMode::AdditiveSelection) {
+        // Filtering is applied, but the item does not match any of the selected filters.
+        return true;
+    }
+
+    return false;
+}
+
 static Optional<IrCursor> IterateIr(IrPickerContext const& context,
                                     IrPickerState const& state,
                                     IrCursor cursor,
@@ -47,20 +106,15 @@ static Optional<IrCursor> IterateIr(IrPickerContext const& context,
                          --cursor.lib_index;
                          if (cursor.lib_index >= context.libraries.size) // check wraparound
                              cursor.lib_index = context.libraries.size - 1;
-                         cursor.ir_index = context.libraries[cursor.lib_index]->sorted_irs.size - 1;
+                         cursor.ir_index = context.libraries[cursor.lib_index]->irs_by_name.size - 1;
                          break;
                  }
              })) {
         auto const& lib = *context.libraries[cursor.lib_index];
 
-        if (lib.sorted_irs.size == 0) continue;
+        if (lib.irs_by_name.size == 0) continue;
 
-        if (state.selected_library_hashes.size && !Contains(state.selected_library_hashes, lib.Id().Hash()))
-            continue;
-
-        if (state.selected_library_author_hashes.size &&
-            !Contains(state.selected_library_author_hashes, Hash(lib.author)))
-            continue;
+        // PERF: we could skip early here based on the library and filters, but only for some filter modes.
 
         for (; cursor.ir_index < lib.sorted_irs.size; (
                  {
@@ -71,21 +125,7 @@ static Optional<IrCursor> IterateIr(IrPickerContext const& context,
                  })) {
             auto const& ir = *lib.sorted_irs[cursor.ir_index];
 
-            if (state.search.size && (!ContainsCaseInsensitiveAscii(ir.name, state.search) &&
-                                      !ContainsCaseInsensitiveAscii(ir.folder.ValueOr({}), state.search)))
-                continue;
-
-            if (state.selected_tags_hashes.size) {
-                bool found = false;
-                for (auto const tag : ir.tags) {
-                    auto const tag_hash = Hash(tag);
-                    if (Contains(state.selected_tags_hashes, tag_hash)) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) continue;
-            }
+            if (ShouldSkipIr(state, ir)) continue;
 
             return cursor;
         }
@@ -144,7 +184,7 @@ void LoadRandomIr(IrPickerContext const& context, IrPickerState& state) {
 void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerState& state) {
     auto const root = DoPickerItemsRoot(box_system);
 
-    Optional<Optional<String>> previous_folder {};
+    Optional<FolderNode*> previous_folder {};
     Box folder_box {};
 
     auto const first =
@@ -152,7 +192,7 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
     if (!first) return;
 
     sample_lib::Library const* previous_library {};
-    Optional<graphics::TextureHandle> lib_icon_tex {};
+    graphics::TextureHandle lib_icon_tex {};
     auto cursor = *first;
     while (true) {
         auto const& lib = *context.libraries[cursor.lib_index];
@@ -164,8 +204,7 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
             folder_box = DoPickerItemsSectionContainer(box_system,
                                                        {
                                                            .parent = root,
-                                                           .heading = folder,
-                                                           .heading_is_folder = true,
+                                                           .folder = folder,
                                                        });
         }
 
@@ -178,22 +217,22 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
                 .parent = folder_box,
                 .text = ir.name,
                 .is_current = is_current,
-                .icon = ({
+                .icons = ({
                     if (&lib != previous_library) {
-                        lib_icon_tex = k_nullopt;
+                        lib_icon_tex = nullptr;
                         previous_library = &lib;
                         if (auto const imgs = LibraryImagesFromLibraryId(context.library_images,
                                                                          box_system.imgui,
                                                                          lib.Id(),
                                                                          context.sample_library_server,
                                                                          box_system.arena,
-                                                                         true);
-                            imgs && imgs->icon) {
-                            lib_icon_tex =
-                                box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(imgs->icon);
+                                                                         true)) {
+                            auto opt = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
+                                (imgs && !imgs->icon_missing) ? imgs->icon : context.unknown_library_icon);
+                            lib_icon_tex = opt ? *opt : nullptr;
                         }
                     }
-                    lib_icon_tex;
+                    decltype(PickerItemOptions::icons) {lib_icon_tex};
                 }),
             });
 
@@ -232,24 +271,74 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
                      IrPickerState& state) {
     auto& ir_id = context.engine.processor.convo.ir_id;
 
-    DynamicSet<String> all_tags {box_system.arena};
+    HashTable<String, FilterItemInfo> tags {};
     for (auto const& l_ptr : context.libraries) {
         auto const& lib = *l_ptr;
         for (auto const& ir : lib.sorted_irs)
-            for (auto const& tag : ir->tags)
-                all_tags.Insert(tag);
+            for (auto const& [tag, tag_hash] : ir->tags)
+                tags.InsertGrowIfNeeded(box_system.arena, tag, {.num_used_in_items_lists = 0}, tag_hash);
+    }
+
+    auto libraries =
+        OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(box_system.arena,
+                                                                           context.libraries.size);
+    auto library_authors =
+        OrderedHashTable<String, FilterItemInfo>::Create(box_system.arena, context.libraries.size);
+
+    auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(box_system.arena, 16);
+    auto root_folder = FolderRootSet::Create(box_system.arena, 8);
+
+    for (auto const l : context.libraries) {
+        if (l->irs_by_name.size == 0) continue;
+        auto& lib_found = libraries.FindOrInsertWithoutGrowing(l->Id(), {}).element.data;
+        auto& author_found = library_authors.FindOrInsertWithoutGrowing(l->author, {}).element.data;
+
+        if (auto& f = l->root_folders[ToInt(sample_lib::ResourceType::Ir)]; f.first_child)
+            root_folder.InsertGrowIfNeeded(box_system.arena, &f);
+
+        for (auto const& ir : l->sorted_irs) {
+            auto const skip = ShouldSkipIr(state, *ir);
+
+            ++lib_found.total_available;
+            if (!skip) ++lib_found.num_used_in_items_lists;
+
+            ++author_found.total_available;
+            if (!skip) ++author_found.num_used_in_items_lists;
+
+            for (auto f = ir->folder; f; f = f->parent) {
+                auto& i = folders.FindOrInsertGrowIfNeeded(box_system.arena, f, {}).element.data;
+                if (!skip) ++i.num_used_in_items_lists;
+                ++i.total_available;
+            }
+
+            for (auto const& [tag, tag_hash] : ir->tags) {
+                auto& tag_found =
+                    tags.FindOrInsertGrowIfNeeded(box_system.arena, tag, {}, tag_hash).element.data;
+                ++tag_found.total_available;
+                if (!skip) ++tag_found.num_used_in_items_lists;
+            }
+            if (!ir->tags.size) {
+                auto& tag_found =
+                    tags.FindOrInsertGrowIfNeeded(box_system.arena, k_untagged_tag_name, {}).element.data;
+                ++tag_found.total_available;
+                if (!skip) ++tag_found.num_used_in_items_lists;
+            }
+        }
     }
 
     DoPickerPopup(
         box_system,
+        {
+            .sample_library_server = context.sample_library_server,
+            .state = state.common_state,
+        },
         popup_id,
         absolute_button_rect,
         PickerPopupOptions {
-            .sample_library_server = context.sample_library_server,
             .title = "Select Impulse Response",
             .height = box_system.imgui.PixelsToVw(box_system.imgui.frame_input.window_size.height * 0.5f),
-            .rhs_width = 200,
-            .filters_col_width = 200,
+            .rhs_width = 210,
+            .filters_col_width = 210,
             .item_type_name = "impulse response",
             .items_section_heading = "IRs",
             .rhs_top_button = ({
@@ -267,32 +356,26 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
                 unload_button;
             }),
             .rhs_do_items = [&](GuiBoxSystem& box_system) { IrPickerItems(box_system, context, state); },
-            .search = &state.search,
             .on_load_previous = [&]() { LoadAdjacentIr(context, state, SearchDirection::Backward); },
             .on_load_next = [&]() { LoadAdjacentIr(context, state, SearchDirection::Forward); },
             .on_load_random = [&]() { LoadRandomIr(context, state); },
             .on_scroll_to_show_selected = [&]() { state.scroll_to_show_selected = true; },
-            .libraries = ({
-                DynamicArray<sample_lib::LibraryIdRef> libraries {box_system.arena};
-                for (auto const l : context.libraries) {
-                    if (l->irs_by_name.size == 0) continue;
-                    dyn::Append(libraries, l->Id());
-                }
-                libraries.ToOwnedSpan();
-            }),
             .library_filters =
                 LibraryFilters {
-                    .selected_library_hashes = state.selected_library_hashes,
-                    .selected_library_author_hashes = state.selected_library_author_hashes,
                     .library_images = context.library_images,
-                    .sample_library_server = context.sample_library_server,
+                    .libraries = libraries,
+                    .library_authors = library_authors,
+                    .unknown_library_icon = context.unknown_library_icon,
                 },
             .tags_filters =
                 TagsFilters {
-                    .selected_tags_hashes = state.selected_tags_hashes,
-                    .tags = {all_tags.table},
+                    .tags = tags,
                 },
-            .on_clear_all_filters = [&]() { state.ClearAllFilters(); },
+            .folder_filters =
+                FolderFilters {
+                    .folders = folders,
+                    .root_folders = root_folder,
+                },
             .status_bar_height = 58,
             .status = [&]() -> Optional<String> {
                 Optional<String> status {};
@@ -302,7 +385,7 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
 
                     fmt::Append(buffer, "{}. Tags: ", context.hovering_ir->name);
                     if (context.hovering_ir->tags.size) {
-                        for (auto const& tag : context.hovering_ir->tags)
+                        for (auto const& [tag, _] : context.hovering_ir->tags)
                             fmt::Append(buffer, "{}, ", tag);
                         dyn::Pop(buffer, 2);
                     } else {

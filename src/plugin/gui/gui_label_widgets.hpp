@@ -11,7 +11,7 @@ namespace labels {
 
 using Style = buttons::Style;
 
-PUBLIC Style FakeMenuItem(imgui::Context const& imgui) { return buttons::MenuItem(imgui, false); }
+PUBLIC Style FakeMenuItem(imgui::Context const& imgui) { return buttons::MenuItem(imgui, false, true); }
 
 PUBLIC Style CentredLeft(imgui::Context const&, u32 col) {
     Style s {};

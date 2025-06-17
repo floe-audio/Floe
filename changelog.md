@@ -8,6 +8,28 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 0.10.0-beta
+- Picker panels:
+    - Add filters for folders (tree view)
+    - Put tags into categories and add icons
+    - Add 2 filter modes: match-all and match-any, allowing for more powerful filtering. Every filter button has a label showing the number of matching items that dynamically updates as you change the filters.
+    - Fix instrument picker not showing waveform instruments when no Mirage libraries installed
+    - Show library icons for each library used by a preset
+    - Show (?) icon for missing libraries
+    - Add `<untagged>` filter for items that don't have any tags
+- Add "Library Developer Panel" on the GUI with tag-builder tool for generating instrument tags in Lua. 
+- Add right-click menu to the instrument picker button with 'unload instrument' option.
+- Add lock/unlock mode for Save Preset panel for allowing changing presets with it still open
+- Sample library creation: add support for multiple Lua files by using `dofile()`
+- Sample library creation: add set_required_floe_version function
+- Sample library creation: add generated Floe API definition file for Lua Language Server allowing for code completion and documentation as you type - available on the Library Developer Panel
+- GUI: slightly improved icons
+- GUI: use same toggle icon for all toggle buttons
+- GUI: make mute/solo buttons more obvious when they're on
+- Fix mute/solo buttons not greying out layers
+- Fix cases where mute/solo button would get stuck on
+- Fix preset selection buttons not working on the first click due to the scanning not having started. Now, scanning begins when the cursor is hovering over the button.
+
 ## 0.9.9-beta
 - Sample library creation: add start_offset_frames to add_region
 - Sample library creation: add tune_cents to add_region

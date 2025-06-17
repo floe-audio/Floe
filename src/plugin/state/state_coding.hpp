@@ -20,7 +20,7 @@ struct CodeStateArguments {
 // "Code" as in decode/encode
 ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args);
 
-enum class PresetFormat : u8 { Mirage, Floe, Count };
+enum class PresetFormat : u8 { Floe, Mirage, Count };
 
 PresetFormat PresetFormatFromPath(String path);
 

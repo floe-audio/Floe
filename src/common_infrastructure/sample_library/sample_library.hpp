@@ -3,10 +3,10 @@
 
 #pragma once
 #include "foundation/foundation.hpp"
-#include "utils/logger/logger.hpp"
 #include "utils/reader.hpp"
 
 #include "common_infrastructure/audio_data.hpp"
+#include "common_infrastructure/folder_node.hpp"
 
 #include "mdata.hpp"
 
@@ -16,6 +16,9 @@ constexpr usize k_max_instrument_name_size = 64;
 constexpr usize k_max_ir_name_size = 64;
 
 namespace sample_lib {
+
+constexpr usize k_max_folders = 4;
+constexpr usize k_max_folder_string_length = 200;
 
 // A type-safe wrapper to hold a relative path inside a library. This is used to refer to audio files, images,
 // etc. It might not represent an actual file on disk. Give these to the library to get Reader.
@@ -134,9 +137,9 @@ struct Instrument {
     Library const& library;
 
     String name {};
-    Optional<String> folder {}; // may contain '/'
+    FolderNode* folder {};
     Optional<String> description {};
-    Span<String> tags {};
+    Set<String> tags {};
     LibraryPath audio_file_path_for_waveform {};
     Span<Region> regions {};
     usize regions_allocated_capacity {}; // private
@@ -160,8 +163,8 @@ struct ImpulseResponse {
 
     String name {};
     LibraryPath path {};
-    Optional<String> folder {}; // may contain '/'
-    Span<String> tags {};
+    FolderNode* folder {};
+    Set<String> tags {};
     Optional<String> description {};
 };
 
@@ -189,6 +192,7 @@ using FileFormatSpecifics = TaggedUnion<FileFormat,
 
 struct LibraryIdRef {
     bool operator==(LibraryIdRef const& other) const = default;
+    friend bool operator<(LibraryIdRef const& a, LibraryIdRef const& b) { return a.name < b.name; }
     LibraryIdRef Clone(Allocator& arena, CloneType _ = CloneType::Shallow) const {
         return {.author = arena.Clone(author), .name = arena.Clone(name)};
     }
@@ -201,8 +205,6 @@ struct LibraryIdRef {
     String name;
 };
 
-u64 Hash(LibraryIdRef const& id);
-
 struct FileAttribution {
     String title {}; // title of the work
     String license_name {};
@@ -210,6 +212,8 @@ struct FileAttribution {
     String attributed_to {};
     Optional<String> attribution_url {};
 };
+
+enum class ResourceType : u8 { Instrument, Ir, Count };
 
 struct Library {
     LibraryIdRef Id() const { return {.author = author, .name = name}; }
@@ -224,6 +228,7 @@ struct Library {
     Optional<LibraryPath> icon_image_path {};
     HashTable<String, Instrument*> insts_by_name {};
     Span<Instrument*> sorted_instruments {};
+    Array<FolderNode, ToInt(ResourceType::Count)> root_folders {};
     HashTable<String, ImpulseResponse*> irs_by_name {};
     Span<ImpulseResponse*> sorted_irs {};
     HashTable<LibraryPath, FileAttribution, sample_lib::Hash> files_requiring_attribution {};
@@ -285,9 +290,9 @@ enum class LuaErrorCode {
 extern ErrorCodeCategory const lua_error_category;
 inline ErrorCodeCategory const& ErrorCategoryForEnum(LuaErrorCode) { return lua_error_category; }
 
-ErrorCodeOr<u64> MdataHash(Reader& reader);
-ErrorCodeOr<u64> LuaHash(Reader& reader);
-ErrorCodeOr<u64> Hash(Reader& reader, FileFormat format);
+ErrorCodeOr<u64> MdataHash(String path, Reader& reader);
+ErrorCodeOr<u64> LuaHash(String path, Reader& reader);
+ErrorCodeOr<u64> Hash(String path, Reader& reader, FileFormat format);
 
 struct Error {
     ErrorCode code;
@@ -317,7 +322,9 @@ struct Options {
 
 namespace detail {
 VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAllocator& scratch_arena);
-}
+MutableString LibraryNodePath(Library const& lib, Allocator& arena);
+void InitialiseRootFolders(Library& lib, Allocator& arena);
+} // namespace detail
 
 LibraryPtrOrError ReadLua(Reader& reader,
                           String lua_filepath,
@@ -337,6 +344,9 @@ LibraryPtrOrError Read(Reader& reader,
 
 // Lua only
 ErrorCodeOr<void> WriteDocumentedLuaExample(Writer writer, bool include_comments = true);
+ErrorCodeOr<void> WriteLuaLspDefintionsFile(Writer writer);
+String LuaDefinitionsFilepath(ArenaAllocator& arena);
+ErrorCodeOr<void> WriteLuaLspDefintionsFile(ArenaAllocator& scratch); // writes to standard location
 bool CheckAllReferencedFilesExist(Library const& lib, Writer error_writer);
 
 } // namespace sample_lib

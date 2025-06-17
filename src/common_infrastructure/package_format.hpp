@@ -313,22 +313,6 @@ static String PathWithoutTrailingSlash(char const* path) {
     return TrimEndIfMatches(FromNullTerminated(path), '/');
 }
 
-static ErrorCodeOr<Optional<mz_zip_archive_file_stat>> FindFloeLuaInZipInLibrary(PackageReader& package,
-                                                                                 String library_dir_in_zip) {
-    for (auto const file_index : Range(mz_zip_reader_get_num_files(&package.zip))) {
-        auto const file_stat = TRY(FileStat(package, file_index));
-        if (file_stat.m_is_directory) continue;
-        auto const path = PathWithoutTrailingSlash(file_stat.m_filename);
-        if (!sample_lib::FilenameIsFloeLuaFile(path::Filename(path, path::Format::Posix))) continue;
-        auto const parent = path::Directory(path, path::Format::Posix);
-        if (!parent) continue;
-        if (*parent != library_dir_in_zip) continue;
-
-        return Optional<mz_zip_archive_file_stat>(file_stat);
-    }
-    return Optional<mz_zip_archive_file_stat>(k_nullopt);
-}
-
 static ErrorCodeOr<Span<u8 const>>
 ExtractFileToMem(PackageReader& package, mz_zip_archive_file_stat const& file_stat, ArenaAllocator& arena) {
     auto const data = arena.AllocateExactSizeUninitialised<u8>(file_stat.m_uncomp_size);
@@ -366,20 +350,51 @@ ExtractFileToFile(PackageReader& package, mz_zip_archive_file_stat const& file_s
 
 static ErrorCodeOr<sample_lib::Library*>
 ReaderReadLibraryLua(PackageReader& package, String library_dir_in_zip, ArenaAllocator& arena) {
-    auto const floe_lua_stat = TRY(detail::FindFloeLuaInZipInLibrary(package, library_dir_in_zip));
+    ArenaAllocatorWithInlineStorage<4000> scratch_arena {PageAllocator::Instance()};
+
+    // Floe libraries can have other Lua files besides the floe.lua file. When the script is run, it will load
+    // these other files from the filesystem via a relative path. We therefore need to extract all Lua files
+    // to a temporary directory else the script will fail to run.
+
+    auto const temp_root = KnownDirectory(scratch_arena, KnownDirectoryType::Temporary, {.create = true});
+    auto const temp = String(TRY(TemporaryDirectoryWithinFolder(temp_root, scratch_arena, package.seed)));
+    DEFER { auto _ = Delete(temp, {.type = DeleteOptions::Type::DirectoryRecursively}); };
+
+    Optional<mz_zip_archive_file_stat> floe_lua_stat;
+
+    for (auto const file_index : Range(mz_zip_reader_get_num_files(&package.zip))) {
+        auto const file_stat = TRY(FileStat(package, file_index));
+        if (file_stat.m_is_directory) continue;
+        auto const path = PathWithoutTrailingSlash(file_stat.m_filename);
+        if (!StartsWithSpan(path, library_dir_in_zip)) continue;
+
+        if (sample_lib::FilenameIsFloeLuaFile(path::Filename(path, path::Format::Posix))) {
+            floe_lua_stat = file_stat;
+        } else if (path::Equal(path::Extension(path), ".lua"_s)) {
+            auto const temp_path = path::Join(scratch_arena, Array {temp, path}, path::Format::Posix);
+            TRY(CreateDirectory(path::Directory(temp_path).Value(),
+                                {.create_intermediate_directories = true,
+                                 .fail_if_exists = false,
+                                 .win32_hide_dirs_starting_with_dot = false}));
+            auto file = TRY(OpenFile(temp_path, FileMode::Write()));
+            TRY(ExtractFileToFile(package, file_stat, file));
+        }
+    }
+
     if (!floe_lua_stat) return (sample_lib::Library*)nullptr;
     auto const floe_lua_data = TRY(detail::ExtractFileToMem(package, *floe_lua_stat, arena));
 
     auto lua_reader = ::Reader::FromMemory(floe_lua_data);
-    // We create a fake path that is easy to spot if it's mistakenly used. With a library, the path of the Lua
-    // file is used to determine relative paths of other files. We don't have access to other files since
-    // they're unextracted.
-    auto const full_lua_path = path::Join(arena,
-                                          Array {String(FAKE_ABSOLUTE_PATH_PREFIX),
-                                                 "UNEXTRACTED-ZIP",
-                                                 PathWithoutTrailingSlash(floe_lua_stat->m_filename)});
+    auto const full_lua_path =
+        path::Join(arena, Array {temp, PathWithoutTrailingSlash(floe_lua_stat->m_filename)});
     auto const lib_outcome = sample_lib::ReadLua(lua_reader, full_lua_path, arena, arena);
-    if (lib_outcome.HasError()) return ErrorCode {PackageError::InvalidLibrary};
+    if (lib_outcome.HasError()) {
+        LogDebug(ModuleName::Package,
+                 "Failed to read library Lua file: {}, error: {}",
+                 full_lua_path,
+                 lib_outcome.Error().message);
+        return ErrorCode {PackageError::InvalidLibrary};
+    }
     return lib_outcome.ReleaseValue();
 }
 

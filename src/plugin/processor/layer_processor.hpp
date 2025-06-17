@@ -292,7 +292,6 @@ struct LayerProcessor {
     bool lfo_is_synced {};
 
     FloeSmoothedValueSystem::FloatId const mute_solo_mix_smoother_id;
-    Atomic<bool> is_silent = false;
 
     EqBands eq_bands;
 

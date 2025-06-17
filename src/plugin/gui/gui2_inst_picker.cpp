@@ -22,6 +22,71 @@ static Optional<InstrumentCursor> CurrentCursor(InstPickerContext const& context
     return k_nullopt;
 }
 
+static bool InstMatchesSearch(sample_lib::Instrument const& inst, String search) {
+    if (ContainsCaseInsensitiveAscii(inst.name, search)) return true;
+    return false;
+}
+
+static bool ShouldSkipInstrument(InstPickerState const& state,
+                                 sample_lib::Instrument const& inst,
+                                 bool picker_gui_is_open) {
+    auto& common_state = (state.tab == InstPickerState::Tab::FloeLibaries)
+                             ? state.common_state_floe_libraries
+                             : state.common_state_mirage_libraries;
+
+    if (common_state.search.size && !InstMatchesSearch(inst, common_state.search)) return true;
+
+    bool filtering_on = false;
+
+    if (common_state.selected_folder_hashes.size) {
+        filtering_on = true;
+        for (auto const folder_hash : common_state.selected_folder_hashes) {
+            if (!IsInsideFolder(inst.folder, folder_hash)) {
+                if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            } else {
+                if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+            }
+        }
+    }
+
+    if (common_state.selected_library_hashes.size) {
+        filtering_on = true;
+        if (!Contains(common_state.selected_library_hashes, inst.library.Id().Hash())) {
+            if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+        } else {
+            if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+        }
+    }
+
+    if (common_state.selected_library_author_hashes.size) {
+        filtering_on = true;
+        if (!Contains(common_state.selected_library_author_hashes, Hash(inst.library.author))) {
+            if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+        } else {
+            if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+        }
+    }
+
+    if ((!picker_gui_is_open || state.tab == InstPickerState::Tab::FloeLibaries) &&
+        common_state.selected_tags_hashes.size) {
+        filtering_on = true;
+        for (auto const selected_hash : common_state.selected_tags_hashes)
+            if (!(inst.tags.ContainsSkipKeyCheck(selected_hash) ||
+                  (selected_hash == Hash(k_untagged_tag_name) && inst.tags.size == 0))) {
+                if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            } else {
+                if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+            }
+    }
+
+    if (filtering_on && common_state.filter_mode == FilterMode::AdditiveSelection) {
+        // Filtering is applied, but the item does not match any of the selected filters.
+        return true;
+    }
+
+    return false;
+}
+
 static Optional<InstrumentCursor> IterateInstrument(InstPickerContext const& context,
                                                     InstPickerState const& state,
                                                     InstrumentCursor cursor,
@@ -64,27 +129,8 @@ static Optional<InstrumentCursor> IterateInstrument(InstPickerContext const& con
         if (lib.sorted_instruments.size == 0) continue;
         if (picker_gui_is_open && lib.file_format_specifics.tag != state.FileFormatForCurrentTab()) continue;
 
-        if (state.tab == InstPickerState::Tab::FloeLibaries) {
-            if (state.selected_library_hashes.size &&
-                !Contains(state.selected_library_hashes, lib.Id().Hash())) {
-                continue;
-            }
-            if (state.selected_library_author_hashes.size &&
-                !Contains(state.selected_library_author_hashes, Hash(lib.author))) {
-                continue;
-            }
-        }
-
-        if (state.tab == InstPickerState::Tab::MirageLibraries) {
-            if (state.selected_mirage_library_hashes.size &&
-                !Contains(state.selected_mirage_library_hashes, lib.Id().Hash())) {
-                continue;
-            }
-            if (state.selected_mirage_library_author_hashes.size &&
-                !Contains(state.selected_mirage_library_author_hashes, Hash(lib.author))) {
-                continue;
-            }
-        }
+        // PERF: we could skip early here based on the library and filters, but only for some filter
+        // modes.
 
         for (; cursor.inst_index < lib.sorted_instruments.size; (
                  {
@@ -95,22 +141,7 @@ static Optional<InstrumentCursor> IterateInstrument(InstPickerContext const& con
                  })) {
             auto const& inst = *lib.sorted_instruments[cursor.inst_index];
 
-            if (state.search.size && (!ContainsCaseInsensitiveAscii(inst.name, state.search) &&
-                                      !ContainsCaseInsensitiveAscii(inst.folder.ValueOr({}), state.search)))
-                continue;
-
-            if ((!picker_gui_is_open || state.tab == InstPickerState::Tab::FloeLibaries) &&
-                state.selected_tags_hashes.size) {
-                bool found = false;
-                for (auto const tag : inst.tags) {
-                    auto const tag_hash = Hash(tag);
-                    if (Contains(state.selected_tags_hashes, tag_hash)) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) continue;
-            }
+            if (ShouldSkipInstrument(state, inst, picker_gui_is_open)) continue;
 
             return cursor;
         }
@@ -252,7 +283,6 @@ static void InstPickerWaveformItems(GuiBoxSystem& box_system,
                                            .parent = container,
                                            .text = k_waveform_type_names[ToInt(waveform_type)],
                                            .is_current = is_current,
-                                           .icon = k_nullopt,
                                        });
 
         if (item.is_hot) context.waveform_type_hovering = waveform_type;
@@ -275,7 +305,7 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
         return;
     }
 
-    Optional<Optional<String>> previous_folder {};
+    Optional<FolderNode*> previous_folder {};
     Box folder_box {};
 
     auto const first = IterateInstrument(context,
@@ -287,7 +317,7 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
     if (!first) return;
 
     sample_lib::Library const* previous_library {};
-    Optional<graphics::TextureHandle> lib_icon_tex {};
+    graphics::TextureHandle lib_icon_tex {};
     auto cursor = *first;
     while (true) {
         auto const& lib = *context.libraries[cursor.lib_index];
@@ -296,11 +326,11 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
 
         if (folder != previous_folder) {
             previous_folder = folder;
+
             folder_box = DoPickerItemsSectionContainer(box_system,
                                                        {
                                                            .parent = root,
-                                                           .heading = folder,
-                                                           .heading_is_folder = true,
+                                                           .folder = folder,
                                                        });
         }
 
@@ -313,22 +343,22 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
                 .parent = folder_box,
                 .text = inst.name,
                 .is_current = is_current,
-                .icon = ({
+                .icons = ({
                     if (&lib != previous_library) {
-                        lib_icon_tex = k_nullopt;
+                        lib_icon_tex = nullptr;
                         previous_library = &lib;
                         if (auto const imgs = LibraryImagesFromLibraryId(context.library_images,
                                                                          box_system.imgui,
                                                                          lib.Id(),
                                                                          context.sample_library_server,
                                                                          box_system.arena,
-                                                                         true);
-                            imgs && imgs->icon) {
-                            lib_icon_tex =
-                                box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(imgs->icon);
+                                                                         true)) {
+                            auto opt = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
+                                (imgs && !imgs->icon_missing) ? imgs->icon : context.unknown_library_icon);
+                            lib_icon_tex = opt ? *opt : nullptr;
                         }
                     }
-                    lib_icon_tex;
+                    decltype(PickerItemOptions::icons) {lib_icon_tex};
                 }),
             });
 
@@ -366,22 +396,74 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                        Rect absolute_button_rect,
                        InstPickerContext& context,
                        InstPickerState& state) {
-    DynamicSet<String> all_tags {box_system.arena};
-    for (auto const& l_ptr : context.libraries) {
-        auto const& lib = *l_ptr;
-        for (auto const& inst : lib.sorted_instruments)
-            for (auto const& tag : inst->tags)
-                all_tags.Insert(tag);
+
+    HashTable<String, FilterItemInfo> tags {};
+    auto libraries =
+        OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(box_system.arena,
+                                                                           context.libraries.size);
+    auto library_authors =
+        OrderedHashTable<String, FilterItemInfo>::Create(box_system.arena, context.libraries.size);
+
+    auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(box_system.arena, 16);
+    auto root_folder = FolderRootSet::Create(box_system.arena, 8);
+
+    if (state.tab != InstPickerState::Tab::Waveforms) {
+        for (auto const l : context.libraries) {
+            if (l->sorted_instruments.size == 0) continue;
+            if (l->file_format_specifics.tag != state.FileFormatForCurrentTab()) continue;
+
+            auto& lib = libraries.FindOrInsertWithoutGrowing(l->Id(), {}).element.data;
+            auto& author = library_authors.FindOrInsertWithoutGrowing(l->author, {}).element.data;
+
+            root_folder.InsertGrowIfNeeded(box_system.arena,
+                                           &l->root_folders[ToInt(sample_lib::ResourceType::Instrument)]);
+
+            for (auto const& inst : l->sorted_instruments) {
+                auto const skip = ShouldSkipInstrument(state, *inst, true);
+
+                {
+                    if (!skip) ++lib.num_used_in_items_lists;
+                    ++lib.total_available;
+                }
+
+                {
+                    if (!skip) ++author.num_used_in_items_lists;
+                    ++author.total_available;
+                }
+
+                for (auto f = inst->folder; f; f = f->parent) {
+                    auto& i = folders.FindOrInsertGrowIfNeeded(box_system.arena, f, {}).element.data;
+                    if (!skip) ++i.num_used_in_items_lists;
+                    ++i.total_available;
+                }
+
+                for (auto const& [tag, tag_hash] : inst->tags) {
+                    auto& i = tags.FindOrInsertGrowIfNeeded(box_system.arena, tag, {}, tag_hash).element.data;
+                    if (!skip) ++i.num_used_in_items_lists;
+                    ++i.total_available;
+                }
+                if (!inst->tags.size) {
+                    auto& i =
+                        tags.FindOrInsertGrowIfNeeded(box_system.arena, k_untagged_tag_name, {}).element.data;
+                    if (!skip) ++i.num_used_in_items_lists;
+                    ++i.total_available;
+                }
+            }
+        }
     }
 
     // IMPORTANT: we create the options struct inside the call so that lambdas and values from
     // statement-expressions live long enough.
     DoPickerPopup(
         box_system,
+        {
+            .sample_library_server = context.sample_library_server,
+            .state = state.tab == InstPickerState::Tab::FloeLibaries ? state.common_state_floe_libraries
+                                                                     : state.common_state_mirage_libraries,
+        },
         popup_id,
         absolute_button_rect,
         PickerPopupOptions {
-            .sample_library_server = context.sample_library_server,
             .title = fmt::Format(box_system.arena, "Layer {} Instrument", context.layer.index + 1),
             .height = box_system.imgui.PixelsToVw(box_system.imgui.frame_input.window_size.height * 0.9f),
             .rhs_width = 200,
@@ -393,9 +475,14 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                 dyn::Append(tab_config,
                             {
                                 .text = context.has_mirage_libraries ? "Floe Instruments"_s : "Instruments",
+                                .index = ToInt(InstPickerState::Tab::FloeLibaries),
                             });
-                if (context.has_mirage_libraries) dyn::Append(tab_config, {.text = "Mirage Instruments"});
-                dyn::Append(tab_config, {.text = "Waveforms"});
+                if (context.has_mirage_libraries)
+                    dyn::Append(tab_config,
+                                {.text = "Mirage Instruments",
+                                 .index = ToInt(InstPickerState::Tab::MirageLibraries)});
+                dyn::Append(tab_config,
+                            {.text = "Waveforms", .index = ToInt(InstPickerState::Tab::Waveforms)});
                 tab_config.ToOwnedSpan();
             }),
             .current_tab_index = &ToIntRef(state.tab),
@@ -415,35 +502,20 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                 unload_button;
             }),
             .rhs_do_items = [&](GuiBoxSystem& box_system) { InstPickerItems(box_system, context, state); },
-            .search = state.tab != InstPickerState::Tab::Waveforms ? &state.search : nullptr,
+            .show_search = state.tab != InstPickerState::Tab::Waveforms,
             .on_load_previous =
                 [&]() { LoadAdjacentInstrument(context, state, SearchDirection::Backward, true); },
             .on_load_next = [&]() { LoadAdjacentInstrument(context, state, SearchDirection::Forward, true); },
             .on_load_random = [&]() { LoadRandomInstrument(context, state, true); },
             .on_scroll_to_show_selected = [&]() { state.scroll_to_show_selected = true; },
-            .libraries = ({
-                DynamicArray<sample_lib::LibraryIdRef> libraries {box_system.arena};
-                if (state.tab != InstPickerState::Tab::Waveforms) {
-                    for (auto const l : context.libraries) {
-                        if (l->sorted_instruments.size == 0) continue;
-                        if (l->file_format_specifics.tag != state.FileFormatForCurrentTab()) continue;
-                        dyn::Append(libraries, l->Id());
-                    }
-                }
-                libraries.ToOwnedSpan();
-            }),
             .library_filters = ({
                 Optional<LibraryFilters> f {};
                 if (state.tab != InstPickerState::Tab::Waveforms) {
                     f = LibraryFilters {
-                        .selected_library_hashes = state.tab == InstPickerState::Tab::FloeLibaries
-                                                       ? state.selected_library_hashes
-                                                       : state.selected_mirage_library_hashes,
-                        .selected_library_author_hashes = state.tab == InstPickerState::Tab::FloeLibaries
-                                                              ? state.selected_library_author_hashes
-                                                              : state.selected_mirage_library_author_hashes,
                         .library_images = context.library_images,
-                        .sample_library_server = context.sample_library_server,
+                        .libraries = libraries,
+                        .library_authors = library_authors,
+                        .unknown_library_icon = context.unknown_library_icon,
                     };
                 }
                 f;
@@ -452,13 +524,21 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                 Optional<TagsFilters> f {};
                 if (state.tab == InstPickerState::Tab::FloeLibaries) {
                     f = TagsFilters {
-                        .selected_tags_hashes = state.selected_tags_hashes,
-                        .tags = {all_tags.table},
+                        .tags = tags,
                     };
                 }
                 f;
             }),
-            .on_clear_all_filters = [&]() { state.ClearAllFilters(); },
+            .folder_filters = ({
+                Optional<FolderFilters> f {};
+                if (state.tab != InstPickerState::Tab::Waveforms) {
+                    f = FolderFilters {
+                        .folders = folders,
+                        .root_folders = root_folder,
+                    };
+                }
+                f;
+            }),
             .status_bar_height = 58,
             .status = [&]() -> Optional<String> {
                 Optional<String> status {};
@@ -473,7 +553,7 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                     if (i->tags.size == 0)
                         fmt::Append(buf, "None");
                     else {
-                        for (auto const t : i->tags)
+                        for (auto const [t, _] : i->tags)
                             fmt::Append(buf, "{}, ", t);
                         dyn::Pop(buf, 2);
                     }

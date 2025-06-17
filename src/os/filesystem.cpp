@@ -262,12 +262,13 @@ static ErrorCodeOr<Iterator> CreateSubIterator(ArenaAllocator& a, String path, O
 ErrorCodeOr<RecursiveIterator> RecursiveCreate(ArenaAllocator& a, String path, Options options) {
     auto it = TRY(CreateSubIterator(a, path, options));
     RecursiveIterator result {
-        .stack = {a},
+        .arena = a,
+        .stack = {},
         .dir_path_to_iterate = {a},
         .base_path = a.Clone(it.base_path),
         .options = options,
     };
-    result.stack.Prepend(it);
+    result.stack.Prepend(result.arena, it);
     result.options.wildcard = a.Clone(options.wildcard);
     result.dir_path_to_iterate.Reserve(240);
     return result;
@@ -281,7 +282,8 @@ void Destroy(RecursiveIterator& it) {
 ErrorCodeOr<Optional<Entry>> Next(RecursiveIterator& it, ArenaAllocator& result_arena) {
     do {
         if (it.dir_path_to_iterate.size) {
-            it.stack.Prepend(TRY(CreateSubIterator(result_arena, it.dir_path_to_iterate, it.options)));
+            it.stack.Prepend(it.arena,
+                             TRY(CreateSubIterator(result_arena, it.dir_path_to_iterate, it.options)));
             dyn::Clear(it.dir_path_to_iterate);
         }
 

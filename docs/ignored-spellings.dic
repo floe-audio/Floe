@@ -116,6 +116,7 @@ arp
 arpeggiated
 asc
 async
+autocompletion
 automatable
 autosave
 autosaves
@@ -123,6 +124,7 @@ br
 c1
 c4
 center
+changelog
 chillout
 chiptune
 clangd
@@ -137,10 +139,12 @@ cppcheck
 crossfade
 d1
 d4
+defs
 dev
 didn
 dll
 doesn
+dofile
 dubstep
 enum
 expandability
@@ -154,6 +158,7 @@ floelua
 fm
 fx
 github
+globals
 gui
 h1
 href
@@ -169,7 +174,9 @@ json
 justfile
 keypress
 linux
+lsp
 lua
+luarc
 macOS
 macos
 malloc
@@ -220,6 +227,8 @@ synthwave
 timbral
 tooltips
 ub
+unchecking
+untagged
 utf8
 utils
 v0

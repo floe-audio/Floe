@@ -152,17 +152,17 @@ constexpr u32 k_invalid_unicode_codepoint = 0xFFFD;
 // Convert UTF-8 to 32-bit character, process single character input.
 // A nearly-branchless UTF-8 decoder, based on work of Christopher Wellons
 // (https://github.com/skeeto/branchless-utf8). We handle UTF-8 decoding error by skipping forward.
-PUBLIC usize Utf8CharacterToUtf32(u32* out_char,
-                                  char const* in_text,
-                                  char const* in_text_end,
-                                  u32 max_codepoint = 0x10FFFF) {
+PUBLIC constexpr usize Utf8CharacterToUtf32(u32* out_char,
+                                            char const* in_text,
+                                            char const* in_text_end,
+                                            u32 max_codepoint = 0x10FFFF) {
     constexpr u8 const k_lengths[32] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
                                         0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 3, 3, 4, 0};
     constexpr u32 const k_masks[] = {0x00, 0x7f, 0x1f, 0x0f, 0x07};
     constexpr u32 const k_mins[] = {0x400000, 0, 0x80, 0x800, 0x10000};
     constexpr u32 const k_shiftc[] = {0, 18, 12, 6, 0};
     constexpr u32 const k_shifte[] = {0, 6, 4, 2, 0};
-    auto const len = k_lengths[*(unsigned char const*)in_text >> 3];
+    auto const len = k_lengths[(u8)*in_text >> 3];
     usize wanted = len + !len;
 
     if (in_text_end == nullptr)
@@ -170,11 +170,11 @@ PUBLIC usize Utf8CharacterToUtf32(u32* out_char,
 
     // Copy at most 'len' bytes, stop copying at 0 or past in_text_end. Branch predictor does a good job here,
     // so it is fast even with excessive branching.
-    unsigned char s[4];
-    s[0] = in_text + 0 < in_text_end ? (unsigned char)in_text[0] : 0;
-    s[1] = in_text + 1 < in_text_end ? (unsigned char)in_text[1] : 0;
-    s[2] = in_text + 2 < in_text_end ? (unsigned char)in_text[2] : 0;
-    s[3] = in_text + 3 < in_text_end ? (unsigned char)in_text[3] : 0;
+    u8 s[4];
+    s[0] = in_text + 0 < in_text_end ? (u8)in_text[0] : 0;
+    s[1] = in_text + 1 < in_text_end ? (u8)in_text[1] : 0;
+    s[2] = in_text + 2 < in_text_end ? (u8)in_text[2] : 0;
+    s[3] = in_text + 3 < in_text_end ? (u8)in_text[3] : 0;
 
     // Assume a four-byte character and load four bytes. Unused bits are shifted out.
     *out_char = (u32)(s[0] & k_masks[len]) << 18;
@@ -205,6 +205,13 @@ PUBLIC usize Utf8CharacterToUtf32(u32* out_char,
     }
 
     return wanted;
+}
+
+PUBLIC constexpr u32 Utf8CharacterToUtf32(String utf8, u32 max_codepoint = 0x10FFFF) {
+    u32 out_char = 0;
+    auto const consumed = Utf8CharacterToUtf32(&out_char, utf8.data, utf8.data + utf8.size, max_codepoint);
+    if (consumed == 0) return k_invalid_unicode_codepoint; // Invalid UTF-8.
+    return out_char;
 }
 
 // From public domain https://github.com/sheredom/utf8.h/tree/master
@@ -396,11 +403,22 @@ struct SplitIterator {
     Iterator end() { return {this, k_nullopt}; }
 };
 
-PUBLIC DynamicArray<String> Split(String str, char token, Allocator& allocator) {
+PUBLIC constexpr DynamicArray<String> Split(String str, char token, Allocator& allocator) {
     DynamicArray<String> result {allocator};
     usize cursor {};
     while (auto part = SplitWithIterator(str, cursor, token))
         dyn::Append(result, *part);
+    return result;
+}
+
+template <usize k_size>
+PUBLIC constexpr DynamicArrayBounded<String, k_size> SplitBounded(String str, char token) {
+    DynamicArrayBounded<String, k_size> result {};
+    usize cursor {};
+    while (auto part = SplitWithIterator(str, cursor, token)) {
+        if (result.size == k_size) break;
+        dyn::Append(result, *part);
+    }
     return result;
 }
 

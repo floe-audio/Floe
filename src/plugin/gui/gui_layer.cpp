@@ -3,11 +3,12 @@
 
 #include "gui_layer.hpp"
 
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 
 #include "engine/engine.hpp"
 #include "engine/loop_modes.hpp"
 #include "gui.hpp"
+#include "gui/gui_menu.hpp"
 #include "gui2_inst_picker.hpp"
 #include "gui_button_widgets.hpp"
 #include "gui_dragger_widgets.hpp"
@@ -24,6 +25,37 @@
 #include "processor/layer_processor.hpp"
 
 namespace layer_gui {
+
+static void DoInstSelectorRightClickMenu(Gui* g, Rect r, u32 layer) {
+    auto& imgui = g->imgui;
+    auto layer_obj = &g->engine.Layer(layer);
+    auto const popup_id = imgui.GetID("inst selector popup");
+    auto const right_clicker_id = imgui.GetID("inst selector right clicker");
+
+    imgui.RegisterAndConvertRect(&r);
+    imgui.PopupButtonBehavior(r,
+                              right_clicker_id,
+                              popup_id,
+                              {.right_mouse = true, .triggers_on_mouse_up = true});
+
+    if (imgui.IsPopupOpen(popup_id)) {
+        auto const items = Array {"Unload instrument"_s};
+
+        PopupMenuItems menu(g, items);
+
+        auto settings = PopupWindowSettings(imgui);
+        settings.flags =
+            imgui::WindowFlags_AutoWidth | imgui::WindowFlags_AutoHeight | imgui::WindowFlags_AutoPosition;
+        if (imgui.BeginWindowPopup(settings, popup_id, r)) {
+            DEFER { imgui.EndWindow(); };
+
+            if (layer_obj->instrument_id.tag == InstrumentType::None)
+                menu.DoFakeButton(items[0]);
+            else if (menu.DoButton(items[0]))
+                LoadInstrument(g->engine, layer, InstrumentType::None);
+        }
+    }
+}
 
 static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
     g->imgui.PushID("inst selector");
@@ -43,6 +75,8 @@ static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
 
     auto const popup_imgui_id = imgui_id + 1;
 
+    DoInstSelectorRightClickMenu(g, r, layer);
+
     if (buttons::Button(g, imgui_id, r, inst_name, buttons::InstSelectorPopupButton(g->imgui, icon_tex)))
         g->imgui.OpenPopup(popup_imgui_id, imgui_id);
 
@@ -51,6 +85,7 @@ static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
         .sample_library_server = g->shared_engine_systems.sample_library_server,
         .library_images = g->library_images,
         .engine = g->engine,
+        .unknown_library_icon = UnknownLibraryIcon(g),
     };
     context.Init(g->scratch_arena);
     DEFER { context.Deinit(); };
@@ -805,6 +840,7 @@ void Draw(Gui* g,
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .unknown_library_icon = UnknownLibraryIcon(g),
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
@@ -820,6 +856,7 @@ void Draw(Gui* g,
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .unknown_library_icon = UnknownLibraryIcon(g),
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
@@ -831,13 +868,14 @@ void Draw(Gui* g,
             if (buttons::Button(g,
                                 rand_id,
                                 rand_r,
-                                ICON_FA_RANDOM,
+                                ICON_FA_SHUFFLE,
                                 buttons::IconButton(g->imgui).WithRandomiseIconScaling())) {
                 InstPickerContext context {
                     .layer = *layer,
                     .sample_library_server = g->shared_engine_systems.sample_library_server,
                     .library_images = g->library_images,
                     .engine = g->engine,
+                    .unknown_library_icon = UnknownLibraryIcon(g),
                 };
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };
@@ -894,8 +932,8 @@ void Draw(Gui* g,
         Rect const solo_r = {
             .xywh {mute_solo_r.x + (mute_solo_r.w / 2), mute_solo_r.y, mute_solo_r.w / 2, mute_solo_r.h}};
 
-        auto const col_border = LiveCol(g->imgui, UiColMap::LayerMuteSoloBorder);
-        auto const col_background = LiveCol(g->imgui, UiColMap::LayerMuteSoloBackground);
+        auto const col_border = LiveCol(g->imgui, UiColMap::MuteSoloButtonBorder);
+        auto const col_background = LiveCol(g->imgui, UiColMap::MuteSoloButtonBackground);
         auto const rounding = LiveSize(g->imgui, UiSizeId::CornerRounding);
         auto reg_mute_solo_r = g->imgui.GetRegisteredAndConvertedRect(mute_solo_r);
         auto reg_mute_r = g->imgui.GetRegisteredAndConvertedRect(mute_r);
@@ -911,12 +949,12 @@ void Draw(Gui* g,
                         layer->params[ToInt(LayerParamIndex::Mute)],
                         mute_r,
                         "M",
-                        buttons::IconButton(g->imgui));
+                        buttons::MuteButton(g->imgui));
         buttons::Toggle(g,
                         layer->params[ToInt(LayerParamIndex::Solo)],
                         solo_r,
                         "S",
-                        buttons::IconButton(g->imgui));
+                        buttons::SoloButton(g->imgui));
     }
 
     // knobs
@@ -1256,7 +1294,7 @@ void Draw(Gui* g,
     }
 
     // overlay
-    if (engine->processor.layer_processors[layer->index].is_silent.Load(LoadMemoryOrder::Relaxed)) {
+    if (LayerIsSilent(engine->processor, layer->index)) {
         auto const pos = g->imgui.curr_window->unpadded_bounds.pos;
         g->imgui.graphics->AddRectFilled(pos,
                                          pos + g->imgui.Size(),

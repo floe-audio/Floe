@@ -908,6 +908,7 @@ fn applyUniversalSettings(context: *BuildContext, step: *std.Build.Step.Compile)
     step.addIncludePath(context.dep_xxhash.path(""));
     step.addIncludePath(context.dep_stb.path(""));
     step.addIncludePath(context.dep_clap.path("include"));
+    step.addIncludePath(context.dep_icon_font_cpp_headers.path(""));
     step.addIncludePath(context.dep_dr_libs.path(""));
     step.addIncludePath(context.dep_flac.path("include"));
     step.addIncludePath(context.dep_libbacktrace.path(""));
@@ -1218,6 +1219,7 @@ pub fn build(b: *std.Build) void {
             .pic = true,
             .link_libc = true,
             .omit_frame_pointer = false,
+            .unwind_tables = .sync,
         };
 
         var stb_sprintf = b.addObject(.{
@@ -1545,6 +1547,7 @@ pub fn build(b: *std.Build) void {
                 library_path ++ "/utils/debug/debug.cpp",
                 library_path ++ "/utils/cli_arg_parse.cpp",
                 library_path ++ "/utils/leak_detecting_allocator.cpp",
+                library_path ++ "/utils/no_hash.cpp",
                 library_path ++ "/tests/framework.cpp",
                 library_path ++ "/utils/logger/logger.cpp",
                 library_path ++ "/foundation/utils/string.cpp",
@@ -1844,6 +1847,7 @@ pub fn build(b: *std.Build) void {
                     path ++ "/common_errors.cpp",
                     path ++ "/descriptors/param_descriptors.cpp",
                     path ++ "/error_reporting.cpp",
+                    path ++ "/folder_node.cpp",
                     path ++ "/global.cpp",
                     path ++ "/package_format.cpp",
                     path ++ "/paths.cpp",
@@ -1920,10 +1924,12 @@ pub fn build(b: *std.Build) void {
                     plugin_path ++ "/engine/package_installation.cpp",
                     plugin_path ++ "/engine/shared_engine_systems.cpp",
                     plugin_path ++ "/gui/gui.cpp",
+                    plugin_path ++ "/gui/gui2_common_picker.cpp",
                     plugin_path ++ "/gui/gui2_inst_picker.cpp",
                     plugin_path ++ "/gui/gui2_ir_picker.cpp",
                     plugin_path ++ "/gui/gui2_preset_picker.cpp",
                     plugin_path ++ "/gui/gui2_save_preset_panel.cpp",
+                    plugin_path ++ "/gui/gui2_library_dev_panel.cpp",
                     plugin_path ++ "/gui/gui_bot_panel.cpp",
                     plugin_path ++ "/gui/gui_button_widgets.cpp",
                     plugin_path ++ "/gui/gui_dragger_widgets.cpp",
@@ -2016,7 +2022,6 @@ pub fn build(b: *std.Build) void {
 
             plugin.addIncludePath(b.path("src/plugin"));
             plugin.addIncludePath(b.path("src"));
-            plugin.addIncludePath(build_context.dep_icon_font_cpp_headers.path(""));
             plugin.addConfigHeader(build_config_step);
             plugin.linkLibrary(library);
             plugin.linkLibrary(common_infrastructure);
@@ -2626,6 +2631,7 @@ pub fn build(b: *std.Build) void {
 
             vst3.addIncludePath(build_context.dep_clap_wrapper.path("include"));
             vst3.addIncludePath(build_context.dep_clap_wrapper.path("libs/fmt"));
+            vst3.addIncludePath(build_context.dep_clap_wrapper.path("libs/psl"));
             vst3.addIncludePath(build_context.dep_clap_wrapper.path("src"));
             vst3.addIncludePath(build_context.dep_vst3_sdk.path(""));
             vst3.linkLibCpp();
@@ -2807,11 +2813,13 @@ pub fn build(b: *std.Build) void {
                         \\ #define CLAP_WRAPPER_COCOA_CLASS {[name]s}
                         \\ #define CLAP_WRAPPER_TIMER_CALLBACK timerCallback_{[name]s}
                         \\ #define CLAP_WRAPPER_FILL_AUCV fillAUCV_{[name]s}
+                        \\ #define CLAP_WRAPPER_EDITOR_NAME "Floe"
                         \\ #include "detail/auv2/wrappedview.asinclude.mm"
                         \\ #undef CLAP_WRAPPER_COCOA_CLASS_NSVIEW
                         \\ #undef CLAP_WRAPPER_COCOA_CLASS
                         \\ #undef CLAP_WRAPPER_TIMER_CALLBACK
                         \\ #undef CLAP_WRAPPER_FILL_AUCV
+                        \\ #undef CLAP_WRAPPER_EDITOR_NAME
                         \\
                         \\ bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo, std::shared_ptr<Clap::Plugin> _plugin) {{
                         \\     if (strcmp(_plugin->_plugin->desc->id, "{[clap_id]s}") == 0) {{

@@ -4,16 +4,9 @@
 #include "foundation/foundation.hpp"
 #include "os/misc.hpp"
 
-struct IrPickerState {
-    void ClearAllFilters() {
-        dyn::Clear(selected_library_hashes);
-        dyn::Clear(selected_tags_hashes);
-        dyn::Clear(search);
-    }
+#include "gui2_common_picker.hpp"
 
-    DynamicArray<u64> selected_library_hashes {Malloc::Instance()};
-    DynamicArray<u64> selected_library_author_hashes {Malloc::Instance()};
-    DynamicArray<u64> selected_tags_hashes {Malloc::Instance()};
-    DynamicArrayBounded<char, 100> search;
+struct IrPickerState {
+    CommonPickerState common_state;
     bool scroll_to_show_selected = false;
 };

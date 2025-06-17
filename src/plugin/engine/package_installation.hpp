@@ -79,7 +79,7 @@ struct InstallJob {
         String destination_path;
         DestinationWriteMode destination_write_mode;
     };
-    ArenaList<Component, false> components;
+    ArenaList<Component> components;
 };
 
 // ==========================================================================================================
@@ -173,7 +173,7 @@ PresetsCheckExistingInstallation(Component const& component,
             if (dir_entry.type != FileType::Directory) continue;
 
             bool dir_contains_all_expected_files = true;
-            for (auto const [expected_path, checksum] : component.checksum_values) {
+            for (auto const [expected_path, checksum, _] : component.checksum_values) {
                 bool found_expected = false;
                 for (auto const file_entry : entries) {
                     if (file_entry.type != FileType::File) continue;
@@ -195,7 +195,7 @@ PresetsCheckExistingInstallation(Component const& component,
                 bool matches_exactly = true;
 
                 // check the checksums of all files
-                for (auto const [expected_path, checksum] : component.checksum_values) {
+                for (auto const [expected_path, checksum, _] : component.checksum_values) {
                     auto const cursor = scratch_arena.TotalUsed();
                     DEFER {
                         auto const new_used = scratch_arena.TryShrinkTotalUsed(cursor);
@@ -205,7 +205,7 @@ PresetsCheckExistingInstallation(Component const& component,
                     auto const full_path =
                         path::Join(scratch_arena, Array {folder, dir_entry.subpath, expected_path});
 
-                    auto const matches_file = TRY(FileMatchesChecksum(full_path, *checksum, scratch_arena));
+                    auto const matches_file = TRY(FileMatchesChecksum(full_path, checksum, scratch_arena));
 
                     if (!matches_file) {
                         matches_exactly = false;
@@ -533,7 +533,7 @@ static InstallJob::State DoJobPhase1(InstallJob& job) {
 
         if (UserInputIsRequired(existing_check)) user_input_needed = true;
 
-        PLACEMENT_NEW(job.components.PrependUninitialised())
+        PLACEMENT_NEW(job.components.PrependUninitialised(job.arena))
         InstallJob::Component {
             .component = *component,
             .existing_installation_status = existing_check,
@@ -624,7 +624,7 @@ PUBLIC InstallJob* CreateInstallJob(ArenaAllocator& arena, CreateJobOptions opts
         .sample_lib_server = opts.server,
         .preset_folders = arena.Clone(opts.preset_folders, CloneType::Deep),
         .error_buffer = {arena},
-        .components = {arena},
+        .components = {},
     };
     return j;
 }

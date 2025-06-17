@@ -42,7 +42,7 @@
 
 struct GuiBoxSystem;
 
-using PanelFunction = TrivialFixedSizeFunction<16, void(GuiBoxSystem&)>;
+using PanelFunction = TrivialFixedSizeFunction<24, void(GuiBoxSystem&)>;
 
 enum class PanelType {
     Subpanel,
@@ -69,9 +69,11 @@ struct ModalPanel {
 };
 
 struct PopupPanel {
+    String debug_name;
     layout::Id creator_layout_id;
     Optional<Rect> creator_absolute_rect; // instead of creator_layout_id
     imgui::Id popup_imgui_id;
+    u32 additional_imgui_window_flags {};
 };
 
 using PanelUnion = TaggedUnion<PanelType,
@@ -128,7 +130,7 @@ struct BoxSystemCurrentPanelState {
     // prevent that. We should fix this by perhaps turning the boxes field into a hashmap and requiring each
     // box to have a unique ID. This way, we lookup the box by ID and can know when something is missing and
     // skip it.
-    DynamicArray<TrivialFixedSizeFunction<32, void()>> deferred_actions;
+    DynamicArray<TrivialFixedSizeFunction<40, void()>> deferred_actions;
 };
 
 struct GuiBoxSystem {
@@ -187,8 +189,13 @@ PUBLIC void Run(GuiBoxSystem& builder, Panel* panel) {
     };
 
     imgui::WindowSettings const popup_settings {
-        .flags =
-            imgui::WindowFlags_AutoWidth | imgui::WindowFlags_AutoHeight | imgui::WindowFlags_AutoPosition,
+        .flags = imgui::WindowFlags_AutoWidth | imgui::WindowFlags_AutoHeight |
+                 imgui::WindowFlags_AutoPosition | ({
+                     u32 additional_flags = 0;
+                     if (auto const popup_data = panel->data.TryGet<PopupPanel>())
+                         additional_flags |= popup_data->additional_imgui_window_flags;
+                     additional_flags;
+                 }),
         .pad_top_left = {1, builder.imgui.VwToPixels(style::k_panel_rounding)},
         .pad_bottom_right = {1, builder.imgui.VwToPixels(style::k_panel_rounding)},
         .scrollbar_padding = scrollbar_padding,
@@ -251,11 +258,11 @@ PUBLIC void Run(GuiBoxSystem& builder, Panel* panel) {
         }
         case PanelType::Popup: {
             auto const popup_data = panel->data.Get<PopupPanel>();
-            if (!builder.imgui.BeginWindowPopup(popup_settings,
-                                                popup_data.popup_imgui_id,
-                                                panel->rect ? *panel->rect
-                                                            : *popup_data.creator_absolute_rect,
-                                                "popup")) {
+            if (!builder.imgui.BeginWindowPopup(
+                    popup_settings,
+                    popup_data.popup_imgui_id,
+                    panel->rect ? *panel->rect : *popup_data.creator_absolute_rect,
+                    popup_data.debug_name.size ? popup_data.debug_name : "popup"_s)) {
                 return;
             }
             break;
@@ -555,7 +562,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
             auto const mouse_rect =
                 rect.Expanded(builder.imgui.VwToPixels(config.extra_margin_for_mouse_events));
 
-            if (config.activation_click_event != ActivationClickEvent::None) {
+            if (config.activation_click_event != ActivationClickEvent::None || config.tooltip.size) {
                 imgui::ButtonFlags button_flags {
                     .left_mouse = config.activate_on_click_button == MouseButton::Left,
                     .right_mouse = config.activate_on_click_button == MouseButton::Right,

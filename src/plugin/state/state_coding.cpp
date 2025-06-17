@@ -1494,7 +1494,7 @@ TEST_CASE(TestNewSerialisation) {
         CAPTURE(source);
 
         StateSnapshot state {};
-        auto random_seed = (u64)NanosecondsSinceEpoch();
+        auto random_seed = RandomSeed();
         for (auto [index, param] : Enumerate(state.param_values)) {
             auto const& info = k_param_descriptors[index];
             param = RandomFloatInRange(random_seed, info.linear_range.min, info.linear_range.max);
@@ -1516,6 +1516,27 @@ TEST_CASE(TestNewSerialisation) {
                 }},
                 .inst_name = String(fmt::Format(scratch_arena, "Test/Path{}", index)),
             };
+        }
+
+        for (auto const _ : Range(RandomIntInRange<usize>(random_seed, 0, k_max_num_tags - 1))) {
+            DynamicArrayBounded<char, k_max_tag_size> tag;
+            dyn::Resize(tag, RandomIntInRange<usize>(random_seed, 1, k_max_tag_size));
+            FillRandomAsciiChars(random_seed, tag);
+            dyn::Append(state.metadata.tags, tag);
+        }
+
+        {
+            DynamicArrayBounded<char, k_max_preset_description_size> description;
+            dyn::Resize(description, RandomIntInRange<usize>(random_seed, 1, k_max_preset_description_size));
+            FillRandomAsciiChars(random_seed, description);
+            state.metadata.description = description;
+        }
+
+        {
+            DynamicArrayBounded<char, k_max_preset_author_size> author;
+            dyn::Resize(author, RandomIntInRange<usize>(random_seed, 1, k_max_preset_author_size));
+            FillRandomAsciiChars(random_seed, author);
+            state.metadata.author = author;
         }
 
         if (source == StateSource::Daw) {

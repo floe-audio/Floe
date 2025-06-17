@@ -3,7 +3,7 @@
 
 #include "gui_modal_windows.hpp"
 
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 
 #include "foundation/foundation.hpp"
 

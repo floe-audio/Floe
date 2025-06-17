@@ -626,9 +626,11 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
     if (!options.signal_safe && options.diagnostics) {
         TRY(json::WriteKeyArrayBegin(json_writer, "breadcrumbs"));
 
-        DynamicArrayBounded<char, LogRingBuffer::k_buffer_size> buffer;
-        GetLatestLogMessages(buffer);
-        for (auto const message : SplitIterator {.whole = buffer, .token = '\0', .skip_consecutive = true}) {
+        auto const log_messages = GetLatestLogMessages();
+        usize pos = 0;
+        while (true) {
+            auto const message = log_messages.Next(pos);
+            if (!message) break;
             // We are not expecting any log messages to contain paths because they could contain usernames. We
             // have a policy of only ever logging non-personal information. However, let's have a safety net
             // just in case.
@@ -640,14 +642,15 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
                     path_start = "/Users/";
                 else if constexpr (IS_LINUX)
                     path_start = "/home/";
-                if (ContainsSpan(message, path_start)) {
+                if (ContainsSpan(message->message, path_start)) {
                     if constexpr (!PRODUCTION_BUILD) Panic("log message contains a path");
                     continue;
                 }
             }
 
             TRY(json::WriteObjectBegin(json_writer));
-            TRY(json::WriteKeyValue(json_writer, "message", message));
+            TRY(json::WriteKeyValue(json_writer, "message", message->message));
+            TRY(json::WriteKeyValue(json_writer, "timestamp", message->seconds_since_epoch));
             TRY(json::WriteObjectEnd(json_writer));
         }
 

@@ -11,6 +11,7 @@
 #include "gui/gui2_info_panel_state.hpp"
 #include "gui/gui2_inst_picker_state.hpp"
 #include "gui/gui2_ir_picker_state.hpp"
+#include "gui/gui2_library_dev_panel.hpp"
 #include "gui/gui2_notifications.hpp"
 #include "gui/gui2_prefs_panel_state.hpp"
 #include "gui/gui2_preset_picker.hpp"
@@ -131,6 +132,7 @@ struct Gui {
     IrPickerState ir_picker_state {};
     SavePresetPanelState save_preset_panel_state {};
     PresetPickerState preset_picker_state {};
+    LibraryDevPanelState library_dev_panel_state {};
 
     GuiFrameInput& frame_input;
     GuiFrameResult frame_output;
@@ -155,6 +157,7 @@ struct Gui {
     Optional<graphics::ImageID> floe_logo_image {};
 
     LibraryImagesArray library_images {Malloc::Instance()};
+    Optional<graphics::ImageID> unknown_library_icon {};
 
     Optional<DraggingFX> dragging_fx_unit {};
     Optional<DraggingFX> dragging_fx_switch {};
@@ -181,6 +184,7 @@ Optional<LibraryImages>
 LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, bool only_icon_needed);
 
 Optional<graphics::ImageID> LogoImage(Gui* g);
+Optional<graphics::ImageID>& UnknownLibraryIcon(Gui* g);
 
 void GUIPresetLoaded(Gui* g, Engine* a, bool is_first_preset);
 GuiFrameResult GuiUpdate(Gui* g);

@@ -3,7 +3,7 @@
 
 #include "gui_waveform.hpp"
 
-#include <IconsFontAwesome5.h>
+#include <IconsFontAwesome6.h>
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
@@ -76,11 +76,11 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
         switch (type) {
             case HandleType::LoopEnd: {
                 handle_direction = reverse ? HandleDirection::Left : HandleDirection::Right;
-                text = reverse ? ICON_FA_REDO_ALT : ICON_FA_UNDO_ALT;
+                text = reverse ? ICON_FA_ROTATE_RIGHT : ICON_FA_ROTATE_LEFT;
                 break;
             }
             case HandleType::LoopStart: {
-                text = reverse ? ICON_FA_UNDO_ALT : ICON_FA_REDO_ALT;
+                text = reverse ? ICON_FA_ROTATE_LEFT : ICON_FA_ROTATE_RIGHT;
                 handle_direction = reverse ? HandleDirection::Right : HandleDirection::Left;
                 break;
             }
@@ -93,7 +93,7 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
                 break;
             }
             case HandleType::Xfade: {
-                text = ICON_FA_BURN;
+                text = ICON_FA_FIRE;
                 handle_direction = mode.value.mode == sample_lib::LoopMode::Standard
                                        ? (reverse ? HandleDirection::Left : HandleDirection::Right)
                                        : HandleDirection::Right;
