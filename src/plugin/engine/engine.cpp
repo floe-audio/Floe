@@ -534,6 +534,20 @@ usize MegabytesUsedBySamples(Engine const& engine) {
     return (result) / (1024 * 1024);
 }
 
+void SetToDefaultState(Engine& engine) {
+    for (auto layer_index : Range(k_num_layers))
+        LoadInstrument(engine, layer_index, InstrumentType::None);
+    LoadConvolutionIr(engine, k_nullopt);
+    engine.state_metadata = {};
+    SetAllParametersToDefaultValues(engine.processor);
+    SetLastSnapshot(engine,
+                    {
+                        .state = MakeStateSnapshot(engine.processor),
+                        .name = {.name_or_path = "Default"},
+                    });
+    if (engine.stated_changed_callback) engine.stated_changed_callback();
+}
+
 static bool PluginSaveState(Engine& engine, clap_ostream const& stream) {
     auto state = CurrentStateSnapshot(engine);
     ASSERT(state.instance_id.size);
