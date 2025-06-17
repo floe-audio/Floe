@@ -101,12 +101,16 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
                       .contents_align = layout::Alignment::Justify,
                   },
               });
+
+    auto const display_path =
+        path::MakeDisplayPath(path, {.compact_middle_sections = true}, box_system.arena);
     DoBox(box_system,
           {
               .parent = path_container,
-              .text = path,
+              .text = display_path,
               .font = FontType::Body,
               .size_from_text = true,
+              .tooltip = display_path.data == path.data ? "" : path,
           });
     auto const icon_button_container = DoBox(box_system,
                                              {
@@ -420,6 +424,8 @@ static void PackagesPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelC
         if (auto const default_dir = context.paths.always_scanned_folder[ToInt(scan_folder_type)];
             menu_text == default_dir) {
             menu_text = "Default";
+        } else {
+            menu_text = path::MakeDisplayPath(menu_text, {.compact_middle_sections = true}, box_system.arena);
         }
 
         auto const btn = MenuButton(box_system,
