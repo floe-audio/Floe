@@ -1405,7 +1405,7 @@ static void ServerThreadUpdateMetrics(Server& server) {
             ++num_insts_loaded;
         for (auto const& audio : i.value.audio_datas) {
             ++num_samples_loaded;
-            if (audio.state.Load(LoadMemoryOrder::Relaxed) == FileLoadingState::CompletedSucessfully)
+            if (audio.state.Load(LoadMemoryOrder::Acquire) == FileLoadingState::CompletedSucessfully)
                 total_bytes_used += audio.audio_data.RamUsageBytes();
         }
     }
