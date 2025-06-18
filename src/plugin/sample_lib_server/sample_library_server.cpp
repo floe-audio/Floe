@@ -685,7 +685,7 @@ using AudioDataAllocator = PageAllocator;
 
 ListedAudioData::~ListedAudioData() {
     ZoneScoped;
-    auto const s = state.Load(LoadMemoryOrder::Relaxed);
+    auto const s = state.Load(LoadMemoryOrder::Acquire);
     ASSERT(s == FileLoadingState::CompletedCancelled || s == FileLoadingState::CompletedWithError ||
            s == FileLoadingState::CompletedSucessfully);
     if (audio_data.interleaved_samples.size)
@@ -736,8 +736,8 @@ LoadAudioAsync(ListedAudioData& audio_data, sample_lib::Library const& lib, Thre
                         PanicIfReached();
                 } while (!audio_data.state.CompareExchangeWeak(state,
                                                                new_state,
-                                                               RmwMemoryOrder::Acquire,
-                                                               LoadMemoryOrder::Relaxed));
+                                                               RmwMemoryOrder::AcquireRelease,
+                                                               LoadMemoryOrder::Acquire));
 
                 if (new_state == FileLoadingState::CompletedCancelled) return;
             }
@@ -745,7 +745,7 @@ LoadAudioAsync(ListedAudioData& audio_data, sample_lib::Library const& lib, Thre
             // At this point we must be in the Loading state so other threads know not to interfere. The
             // memory ordering used with the atomic 'state' variable reflects this: the Acquire memory order
             // above, and the Release memory order at the end.
-            ASSERT_EQ(audio_data.state.Load(LoadMemoryOrder::Relaxed), FileLoadingState::Loading);
+            ASSERT_EQ(audio_data.state.Load(LoadMemoryOrder::Acquire), FileLoadingState::Loading);
 
             auto const outcome = [&audio_data, &lib]() -> ErrorCodeOr<AudioData> {
                 auto reader = TRY(lib.create_file_reader(lib, audio_data.path));
@@ -775,8 +775,8 @@ static void TriggerReloadIfAudioIsCancelled(ListedAudioData& audio_data,
     auto expected = FileLoadingState::PendingCancel;
     if (!audio_data.state.CompareExchangeStrong(expected,
                                                 FileLoadingState::PendingLoad,
-                                                RmwMemoryOrder::Acquire,
-                                                LoadMemoryOrder::Relaxed)) {
+                                                RmwMemoryOrder::AcquireRelease,
+                                                LoadMemoryOrder::Acquire)) {
         if (expected == FileLoadingState::CompletedCancelled) {
             audio_data.state.Store(FileLoadingState::PendingLoad, StoreMemoryOrder::Release);
             TracyMessageEx({k_trace_category, k_trace_colour, -1u},
@@ -795,8 +795,10 @@ static void TriggerReloadIfAudioIsCancelled(ListedAudioData& audio_data,
                        debug_inst_id);
     }
 
-    ASSERT(audio_data.state.Load(LoadMemoryOrder::Relaxed) != FileLoadingState::CompletedCancelled &&
-           audio_data.state.Load(LoadMemoryOrder::Relaxed) != FileLoadingState::PendingCancel);
+    {
+        auto const state = audio_data.state.Load(LoadMemoryOrder::Acquire);
+        ASSERT(state != FileLoadingState::CompletedCancelled && state != FileLoadingState::PendingCancel);
+    }
 }
 
 static ListedAudioData* FetchOrCreateAudioData(LibrariesList::Node& lib_node,
@@ -919,8 +921,8 @@ static void CancelLoadingAudioForInstrumentIfPossible(ListedInstrument const* i,
             auto expected = FileLoadingState::PendingLoad;
             audio_data->state.CompareExchangeStrong(expected,
                                                     FileLoadingState::PendingCancel,
-                                                    RmwMemoryOrder::Relaxed,
-                                                    LoadMemoryOrder::Relaxed);
+                                                    RmwMemoryOrder::AcquireRelease,
+                                                    LoadMemoryOrder::Acquire);
 
             TracyMessageEx({k_trace_category, k_trace_colour, trace_id},
                            "instID:{} cancel attempt audio from state: {}",
@@ -1003,7 +1005,7 @@ static void DumpPendingResourcesDebugInfo(PendingResources& pending_resources) {
                             LogDebug(ModuleName::SampleLibraryServer,
                                      "      Audio data: {}, {}",
                                      audio_data->audio_data.hash,
-                                     EnumToString(audio_data->state.Load(LoadMemoryOrder::Relaxed)));
+                                     EnumToString(audio_data->state.Load(LoadMemoryOrder::Acquire)));
                         }
                         break;
                     }
@@ -1015,7 +1017,7 @@ static void DumpPendingResourcesDebugInfo(PendingResources& pending_resources) {
                         LogDebug(ModuleName::SampleLibraryServer,
                                  "      Audio data: {}, {}",
                                  ir->audio_data->audio_data.hash,
-                                 EnumToString(ir->audio_data->state.Load(LoadMemoryOrder::Relaxed)));
+                                 EnumToString(ir->audio_data->state.Load(LoadMemoryOrder::Acquire)));
                         break;
                     }
                 }
@@ -1216,7 +1218,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
         Optional<ErrorCode> error {};
         Optional<String> audio_path {};
         for (auto a : listed_inst.audio_data_set) {
-            if (a->state.Load(LoadMemoryOrder::Relaxed) == FileLoadingState::CompletedWithError) {
+            if (a->state.Load(LoadMemoryOrder::Acquire) == FileLoadingState::CompletedWithError) {
                 error = a->error;
                 audio_path = a->path;
                 break;
@@ -1258,7 +1260,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
             auto const num_completed = ({
                 u32 n = 0;
                 for (auto& a : i->audio_data_set)
-                    if (a->state.Load(LoadMemoryOrder::Relaxed) == FileLoadingState::CompletedSucessfully)
+                    if (a->state.Load(LoadMemoryOrder::Acquire) == FileLoadingState::CompletedSucessfully)
                         ++n;
                 n;
             });
@@ -1304,7 +1306,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
         auto ir_ptr = *ir_ptr_ptr;
 
         auto const& ir = *ir_ptr;
-        switch (ir.audio_data->state.Load(LoadMemoryOrder::Relaxed)) {
+        switch (ir.audio_data->state.Load(LoadMemoryOrder::Acquire)) {
             case FileLoadingState::CompletedSucessfully: {
                 pending_resource.state = Resource {
                     RefCounted<sample_lib::LoadedIr> {
@@ -1505,7 +1507,7 @@ static void ServerThreadProc(Server& server) {
             auto const libraries_are_still_loading =
                 UpdateLibraryJobs(server, pending_library_jobs, scratch_arena, watcher);
             if (!libraries_are_still_loading) {
-                server.is_scanning_libraries.Store(false, StoreMemoryOrder::Relaxed);
+                server.is_scanning_libraries.Store(false, StoreMemoryOrder::SequentiallyConsistent);
                 WakeWaitingThreads(server.is_scanning_libraries, NumWaitingThreads::All);
             }
 
@@ -1985,6 +1987,7 @@ TEST_CASE(TestSampleLibraryServer) {
                     .check_result =
                         [&](LoadResult const& r, LoadRequest const& request) {
                             auto ir = ExtractSuccess<RefCounted<sample_lib::LoadedIr>>(tester, r, request);
+                            REQUIRE(ir->audio_data);
                             CHECK(ir->audio_data->interleaved_samples.size);
                         },
                 });
@@ -2196,8 +2199,8 @@ TEST_CASE(TestSampleLibraryServer) {
             for (auto& j : requests)
                 j.request_id = SendAsyncLoadRequest(server, channel, j.request);
 
-            u32 const timeout_secs = 15;
-            auto const countdown_result = countdown.WaitUntilZero(timeout_secs * 1000);
+            constexpr u32 k_timeout_secs = 15;
+            auto const countdown_result = countdown.WaitUntilZero(k_timeout_secs * 1000);
 
             if (countdown_result == WaitResult::TimedOut) {
                 tester.log.Error("Timed out waiting for library resource loading to complete");
