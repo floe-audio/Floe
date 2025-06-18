@@ -169,12 +169,17 @@ struct Atomic {
 
     NON_COPYABLE_AND_MOVEABLE(Atomic);
 
-    ALWAYS_INLINE void Store(Type v, StoreMemoryOrder memory_order) { AtomicStore(this, v, memory_order); }
-    ALWAYS_INLINE Type Load(LoadMemoryOrder memory_order) const { return AtomicLoad(this, memory_order); }
+    ALWAYS_INLINE void Store(Type v, StoreMemoryOrder memory_order) {
+        __c11_atomic_store(&raw, v, (int)memory_order);
+    }
+
+    ALWAYS_INLINE Type Load(LoadMemoryOrder memory_order) const {
+        return __c11_atomic_load(&raw, (int)memory_order);
+    }
 
     // Returns the previous value.
     ALWAYS_INLINE Type Exchange(Type desired, RmwMemoryOrder memory_order) {
-        return AtomicExchange(this, desired, memory_order);
+        return __c11_atomic_exchange(&raw, desired, (int)memory_order);
     }
 
     // CompareExchange:
@@ -187,91 +192,45 @@ struct Atomic {
                                            Type desired,
                                            RmwMemoryOrder success_rmw_memory_order,
                                            LoadMemoryOrder failure_load_memory_order) {
-        return AtomicCompareExchange(this,
-                                     &expected,
-                                     desired,
-                                     true,
-                                     success_rmw_memory_order,
-                                     failure_load_memory_order);
+        return __c11_atomic_compare_exchange_weak(&raw,
+                                                  &expected,
+                                                  desired,
+                                                  (int)success_rmw_memory_order,
+                                                  (int)failure_load_memory_order);
     }
+
     ALWAYS_INLINE bool CompareExchangeStrong(Type& expected,
                                              Type desired,
                                              RmwMemoryOrder success_rmw_memory_order,
                                              LoadMemoryOrder failure_load_memory_order) {
-        return AtomicCompareExchange(this,
-                                     &expected,
-                                     desired,
-                                     false,
-                                     success_rmw_memory_order,
-                                     failure_load_memory_order);
+        return __c11_atomic_compare_exchange_strong(&raw,
+                                                    &expected,
+                                                    desired,
+                                                    (int)success_rmw_memory_order,
+                                                    (int)failure_load_memory_order);
     }
 
-#define ATOMIC_INTEGER_METHOD(name, builtin)                                                                 \
+#define ATOMIC_INTEGER_METHOD(name, builtin, op)                                                             \
     template <Integral U = Type>                                                                             \
-    ALWAYS_INLINE Type Atomic##name(Atomic<Type> volatile* atomic, Type v, RmwMemoryOrder memory_order) {    \
-        return builtin(&atomic->raw, v, (int)memory_order);                                                  \
+    ALWAYS_INLINE Type Fetch##name(Type v, RmwMemoryOrder memory_order) {                                    \
+        return builtin(&raw, v, (int)memory_order);                                                          \
     }                                                                                                        \
     template <Integral U = Type>                                                                             \
-    ALWAYS_INLINE Type name(Type v, RmwMemoryOrder memory_order) {                                           \
-        return Atomic##name(this, v, memory_order);                                                          \
+    ALWAYS_INLINE Type name##Fetch(Type v, RmwMemoryOrder memory_order) {                                    \
+        return builtin(&raw, v, (int)memory_order) op v;                                                     \
     }
 
-    ATOMIC_INTEGER_METHOD(FetchAdd, __atomic_fetch_add)
-    ATOMIC_INTEGER_METHOD(FetchSub, __atomic_fetch_sub)
-    ATOMIC_INTEGER_METHOD(FetchAnd, __atomic_fetch_and)
-    ATOMIC_INTEGER_METHOD(FetchOr, __atomic_fetch_or)
-    ATOMIC_INTEGER_METHOD(FetchXor, __atomic_fetch_xor)
-    ATOMIC_INTEGER_METHOD(FetchNand, __atomic_fetch_nand)
-    ATOMIC_INTEGER_METHOD(AddFetch, __atomic_add_fetch)
-    ATOMIC_INTEGER_METHOD(SubFetch, __atomic_sub_fetch)
-    ATOMIC_INTEGER_METHOD(AndFetch, __atomic_and_fetch)
-    ATOMIC_INTEGER_METHOD(OrFetch, __atomic_or_fetch)
-    ATOMIC_INTEGER_METHOD(XorFetch, __atomic_xor_fetch)
-    ATOMIC_INTEGER_METHOD(NandFetch, __atomic_nand_fetch)
-
-    // These additonal functions ensure that the atomic operations are handled using volatile pointers -
-    // important for correct code generation. This is the way libc++ does it.
-    ALWAYS_INLINE static void
-    AtomicStore(Atomic<Type> volatile* atomic, Type v, StoreMemoryOrder memory_order) {
-        __atomic_store(&atomic->raw, &v, (int)memory_order);
-    }
-    ALWAYS_INLINE static Type AtomicLoad(Atomic<Type> const volatile* atomic, LoadMemoryOrder memory_order) {
-        Type result;
-        __atomic_load(&atomic->raw, &result, (int)memory_order);
-        return result;
-    }
-    ALWAYS_INLINE static Type
-    AtomicExchange(Atomic<Type> volatile* atomic, Type desired, RmwMemoryOrder memory_order) {
-        alignas(Type) unsigned char buf[sizeof(Type)];
-        auto* ptr = reinterpret_cast<Type*>(buf);
-        __atomic_exchange(&atomic->raw, &desired, ptr, (int)memory_order);
-        return *ptr;
-    }
-    ALWAYS_INLINE static bool AtomicCompareExchange(Atomic<Type> volatile* atomic,
-                                                    Type* expected,
-                                                    Type desired,
-                                                    bool weak,
-                                                    RmwMemoryOrder success_memory_order,
-                                                    LoadMemoryOrder failure_memory_order) {
-        return __atomic_compare_exchange(&atomic->raw,
-                                         expected,
-                                         &desired,
-                                         weak,
-                                         (int)success_memory_order,
-                                         (int)failure_memory_order);
-    }
-
-    // Align 1/2/4/8/16-byte types to at least their size.
-    static constexpr int k_min_alignment = (sizeof(Type) & (sizeof(Type) - 1)) || sizeof(Type) > 16
-                                               ? 0
-                                               : sizeof(Type);
-
-    static constexpr int k_alignment = k_min_alignment > alignof(Type) ? k_min_alignment : alignof(Type);
+    ATOMIC_INTEGER_METHOD(Add, __c11_atomic_fetch_add, +)
+    ATOMIC_INTEGER_METHOD(Sub, __c11_atomic_fetch_sub, -)
+    ATOMIC_INTEGER_METHOD(And, __c11_atomic_fetch_and, &)
+    ATOMIC_INTEGER_METHOD(Or, __c11_atomic_fetch_or, |)
+    ATOMIC_INTEGER_METHOD(Xor, __c11_atomic_fetch_xor, ^)
+    ATOMIC_INTEGER_METHOD(Nand, __c11_atomic_fetch_nand, &~)
 
     static_assert(sizeof(Type) != 0);
-    static_assert(__atomic_always_lock_free(sizeof(Type), nullptr));
+    static_assert(__c11_atomic_is_lock_free(sizeof(Type)));
 
-    alignas(k_alignment) Type raw {};
+    _Atomic(Type) raw = Type {};
 };
 
 // futex

@@ -79,7 +79,7 @@ WaitResult WaitIfValueIsExpected(Atomic<u32>& v, u32 expected, Optional<u32> tim
         };
     }
 
-    auto const return_code = Futex(&v.raw,
+    auto const return_code = Futex((u32*)__builtin_addressof(v.raw),
                                    FUTEX_WAIT | FUTEX_PRIVATE_FLAG,
                                    expected,
                                    timeout_milliseconds ? &tm : nullptr,
@@ -102,7 +102,7 @@ WaitResult WaitIfValueIsExpected(Atomic<u32>& v, u32 expected, Optional<u32> tim
 }
 
 void WakeWaitingThreads(Atomic<u32>& v, NumWaitingThreads waiters) {
-    auto const return_code = Futex(&v.raw,
+    auto const return_code = Futex((u32*)__builtin_addressof(v.raw),
                                    FUTEX_WAKE | FUTEX_PRIVATE_FLAG,
                                    waiters == NumWaitingThreads::One ? 1 : LargestRepresentableValue<s32>(),
                                    nullptr,
