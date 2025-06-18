@@ -377,6 +377,7 @@ void LoadPresetFromFile(Engine& engine, String path) {
     PageAllocator page_allocator;
     ArenaAllocator scratch_arena {page_allocator, Kb(16)};
     auto state_outcome = LoadPresetFile(path, scratch_arena, false);
+    auto const error_id = HashMultiple(Array {"preset-load"_s, path});
 
     if (state_outcome.HasValue()) {
         LoadNewState(engine,
@@ -385,32 +386,27 @@ void LoadPresetFromFile(Engine& engine, String path) {
                          .name = {.name_or_path = path},
                      },
                      StateSource::PresetFile);
-    } else {
-        auto item = engine.error_notifications.NewError();
-        item->value = {
-            .title = "Failed to load preset"_s,
-            .message = path,
-            .error_code = state_outcome.Error(),
-            .id = U64FromChars("statload"),
-        };
-        engine.error_notifications.AddOrUpdateError(item);
+        engine.error_notifications.RemoveError(error_id);
+    } else if (auto err = engine.error_notifications.BeginWriteError(error_id)) {
+        DEFER { engine.error_notifications.EndWriteError(*err); };
+        dyn::AssignFitInCapacity(err->title, "Failed to load preset"_s);
+        dyn::AssignFitInCapacity(err->message, path);
+        err->error_code = state_outcome.Error();
     }
 }
 
 void SaveCurrentStateToFile(Engine& engine, String path) {
     auto const current_state = CurrentStateSnapshot(engine);
-    if (auto outcome = SavePresetFile(path, current_state); outcome.Succeeded()) {
+    auto const error_id = HashMultiple(Array {"preset-save"_s, path});
+    if (auto const outcome = SavePresetFile(path, current_state); outcome.Succeeded()) {
         SetLastSnapshot(engine, {.state = current_state, .name = {.name_or_path = path}});
-    } else {
-        auto item = engine.error_notifications.NewError();
-        item->value = {
-            .title = "Failed to save preset"_s,
-            .message = path,
-            .error_code = outcome.Error(),
-            .id = U64FromChars("statsave"),
-        };
-        engine.error_notifications.AddOrUpdateError(item);
-    }
+        engine.error_notifications.RemoveError(error_id);
+    } else if (auto err = engine.error_notifications.BeginWriteError(error_id)) {
+        DEFER { engine.error_notifications.EndWriteError(*err); };
+        dyn::AssignFitInCapacity(err->title, "Failed to save preset"_s);
+        dyn::AssignFitInCapacity(err->message, path);
+        err->error_code = outcome.Error();
+    };
 }
 
 void RunFunctionOnMainThread(Engine& engine, ThreadsafeFunctionQueue::Function function) {
@@ -570,17 +566,18 @@ static bool PluginSaveState(Engine& engine, clap_ostream const& stream) {
                                  .abbreviated_read = false,
                              });
 
+    auto const error_id = SourceLocationHash();
+
     if (outcome.HasError()) {
-        auto item = engine.error_notifications.NewError();
-        item->value = {
-            .title = "Failed to save state for DAW"_s,
-            .message = {},
-            .error_code = outcome.Error(),
-            .id = U64FromChars("daw save"),
-        };
-        engine.error_notifications.AddOrUpdateError(item);
+        if (auto err = engine.error_notifications.BeginWriteError(error_id)) {
+            DEFER { engine.error_notifications.EndWriteError(*err); };
+            dyn::AssignFitInCapacity(err->title, "Failed to save state for DAW"_s);
+            err->error_code = outcome.Error();
+        }
         return false;
     }
+
+    engine.error_notifications.RemoveError(error_id);
     return true;
 }
 
@@ -605,18 +602,18 @@ static bool PluginLoadState(Engine& engine, clap_istream const& stream) {
                       .abbreviated_read = false,
                   });
 
+    auto const error_id = SourceLocationHash();
+
     if (outcome.HasError()) {
-        auto const item = engine.error_notifications.NewError();
-        item->value = {
-            .title = "Failed to load DAW state"_s,
-            .message = {},
-            .error_code = outcome.Error(),
-            .id = U64FromChars("daw load"),
-        };
-        engine.error_notifications.AddOrUpdateError(item);
+        if (auto err = engine.error_notifications.BeginWriteError(error_id)) {
+            DEFER { engine.error_notifications.EndWriteError(*err); };
+            dyn::AssignFitInCapacity(err->title, "Failed to load state for DAW"_s);
+            err->error_code = outcome.Error();
+        }
         return false;
     }
 
+    engine.error_notifications.RemoveError(error_id);
     LoadNewState(engine, {.state = state, .name = {.name_or_path = "DAW State"}}, StateSource::Daw);
     return true;
 }

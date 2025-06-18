@@ -154,24 +154,27 @@ PUBLIC void DoPackageInstallNotifications(GuiBoxSystem& box_system,
             ++next;
             DEFER { it = next; };
 
+            auto const package_install_error_id = HashMultiple(Array {"package-install"_s, job.job->path});
+
             auto const state = job.job->state.Load(LoadMemoryOrder::Acquire);
             switch (state) {
                 case package::InstallJob::State::Installing: break;
 
                 case package::InstallJob::State::DoneError: {
-                    auto err = error_notifs.NewError();
-                    err->value = {
-                        .message = String(job.job->error_buffer),
-                        .id = HashComptime("package install error"),
-                    };
-                    fmt::Assign(err->value.title,
-                                "Failed to install {}",
-                                path::FilenameWithoutExtension(job.job->path));
-                    error_notifs.AddOrUpdateError(err);
+                    if (auto err = error_notifs.BeginWriteError(package_install_error_id)) {
+                        DEFER { error_notifs.EndWriteError(*err); };
+                        fmt::Assign(err->title,
+                                    "Failed to install {}",
+                                    path::FilenameWithoutExtension(job.job->path));
+                        dyn::AssignFitInCapacity(err->message, job.job->error_buffer);
+                    }
+
                     next = package::RemoveJob(package_install_jobs, it);
                     break;
                 }
                 case package::InstallJob::State::DoneSuccess: {
+                    error_notifs.RemoveError(package_install_error_id);
+
                     DynamicArrayBounded<char, k_notification_buffer_size - 24> buffer {};
                     u8 num_truncated = 0;
                     for (auto [index, component] : Enumerate(job.job->components)) {

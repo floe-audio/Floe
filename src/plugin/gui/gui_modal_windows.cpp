@@ -183,16 +183,21 @@ static void DoErrorsModal(Gui* g) {
         int num_errors = 0;
         {
 
-            for (auto errors :
+            for (auto& errors :
                  Array {&g->engine.error_notifications, &g->shared_engine_systems.error_notifications}) {
-                for (auto it = errors->items.begin(); it != errors->items.end(); ++it) {
-                    auto e_ptr = it->TryRetain();
-                    if (!e_ptr) continue;
-                    DEFER { it->Release(); };
-                    auto& e = *e_ptr;
-
-                    imgui.PushID((uintptr)e.id);
+                errors->ForEach([&](ThreadsafeErrorNotifications::Item const& e)
+                                    -> ThreadsafeErrorNotifications::ItemIterationResult {
+                    imgui.PushID((uintptr)e.id.Load(LoadMemoryOrder::Acquire));
                     DEFER { imgui.PopID(); };
+
+                    // divider line
+                    if (num_errors > 0) {
+                        y_pos += (f32)error_window_gap_after_desc;
+                        auto line_r = Rect {.x = 0, .y = y_pos, .w = imgui.Width(), .h = 1};
+                        imgui.RegisterAndConvertRect(&line_r);
+                        imgui.graphics->AddLine(line_r.Min(), line_r.Max(), text_style.main_cols.reg);
+                        y_pos += (f32)error_window_divider_spacing_y;
+                    }
 
                     // title
                     {
@@ -230,22 +235,12 @@ static void DoErrorsModal(Gui* g) {
                     }
 
                     // buttons
-                    if (DoButton(g, "Dismiss", y_pos, 0)) {
-                        errors->RemoveError(e.id);
-                        continue;
-                    }
-
-                    // divider line
-                    if (it->next.Load(LoadMemoryOrder::Relaxed) != nullptr) {
-                        y_pos += (f32)error_window_gap_after_desc;
-                        auto line_r = Rect {.x = 0, .y = y_pos, .w = imgui.Width(), .h = 1};
-                        imgui.RegisterAndConvertRect(&line_r);
-                        imgui.graphics->AddLine(line_r.Min(), line_r.Max(), text_style.main_cols.reg);
-                        y_pos += (f32)error_window_divider_spacing_y;
-                    }
+                    if (DoButton(g, "Dismiss", y_pos, 0))
+                        return ThreadsafeErrorNotifications::ItemIterationResult::Remove;
 
                     ++num_errors;
-                }
+                    return ThreadsafeErrorNotifications::ItemIterationResult::Continue;
+                });
             }
         }
 

@@ -333,7 +333,8 @@ static bool UpdateLibraryJobs(Server& server,
                 }
                 auto const& outcome = *j.result.result;
 
-                auto const error_id = ThreadsafeErrorNotifications::Id("libs", path);
+                auto const error_id = HashMultiple(Array {"sls-read-lib"_s, path});
+
                 switch (outcome.tag) {
                     case ResultType::Value: {
                         auto lib = outcome.GetFromTag<ResultType::Value>();
@@ -386,17 +387,13 @@ static bool UpdateLibraryJobs(Server& server,
                             continue;
                         }
 
-                        auto const err = server.error_notifications.NewError();
-                        err->value = {
-                            .title = "Failed to read library"_s,
-                            .message = {},
-                            .error_code = error.code,
-                            .id = error_id,
-                        };
-                        if (j.args.path_or_memory.Is<String>())
-                            fmt::Append(err->value.message, "{}\n", j.args.path_or_memory.Get<String>());
-                        if (error.message.size) fmt::Append(err->value.message, "{}\n", error.message);
-                        server.error_notifications.AddOrUpdateError(err);
+                        if (auto err = server.error_notifications.BeginWriteError(error_id)) {
+                            DEFER { server.error_notifications.EndWriteError(*err); };
+                            dyn::AssignFitInCapacity(err->title, "Failed to read library"_s);
+                            dyn::AssignFitInCapacity(err->message, path);
+                            if (error.message.size) fmt::Append(err->message, "\n{}\n", error.message);
+                            err->error_code = error.code;
+                        }
                         break;
                     }
                 }
@@ -412,26 +409,25 @@ static bool UpdateLibraryJobs(Server& server,
                 ZoneScopedN("job completed: folder scanned");
                 ZoneText(path.data, path.size);
 
-                auto const folder_error_id = ThreadsafeErrorNotifications::Id("libs", path);
+                auto const error_id = HashMultiple(Array {"sls-scan-folder"_s, path});
 
                 ScanFolder::State new_state {};
 
                 if (!j.result.outcome.HasError()) {
-                    server.error_notifications.RemoveError(folder_error_id);
+                    server.error_notifications.RemoveError(error_id);
                     new_state = ScanFolder::State::ScannedSuccessfully;
                 } else {
                     auto const is_always_scanned_folder =
                         folder->source == ScanFolder::Source::AlwaysScannedFolder;
                     if (!(is_always_scanned_folder &&
                           j.result.outcome.Error() == FilesystemError::PathDoesNotExist)) {
-                        auto const err = server.error_notifications.NewError();
-                        err->value = {
-                            .title = "Failed to scan library folder"_s,
-                            .message = String(path),
-                            .error_code = j.result.outcome.Error(),
-                            .id = folder_error_id,
-                        };
-                        server.error_notifications.AddOrUpdateError(err);
+
+                        if (auto err = server.error_notifications.BeginWriteError(error_id)) {
+                            DEFER { server.error_notifications.EndWriteError(*err); };
+                            dyn::AssignFitInCapacity(err->title, "Failed to scan library folder"_s);
+                            dyn::AssignFitInCapacity(err->message, path);
+                            err->error_code = j.result.outcome.Error();
+                        }
                     }
                     new_state = ScanFolder::State::ScanFailed;
                 }
@@ -658,7 +654,7 @@ static bool UpdateLibraryJobs(Server& server,
 static Optional<DirectoryWatcher> CreateDirectoryWatcher(ThreadsafeErrorNotifications& error_notifications) {
     Optional<DirectoryWatcher> watcher;
     auto watcher_outcome = CreateDirectoryWatcher(PageAllocator::Instance());
-    auto const error_id = U64FromChars("libwatch");
+    auto const error_id = SourceLocationHash();
     if (!watcher_outcome.HasError()) {
         error_notifications.RemoveError(error_id);
         watcher.Emplace(watcher_outcome.ReleaseValue());
@@ -666,14 +662,11 @@ static Optional<DirectoryWatcher> CreateDirectoryWatcher(ThreadsafeErrorNotifica
         LogDebug(ModuleName::SampleLibraryServer,
                  "Failed to create directory watcher: {}",
                  watcher_outcome.Error());
-        auto const err = error_notifications.NewError();
-        err->value = {
-            .title = "Warning: unable to monitor library folders"_s,
-            .message = {},
-            .error_code = watcher_outcome.Error(),
-            .id = error_id,
-        };
-        error_notifications.AddOrUpdateError(err);
+        if (auto err = error_notifications.BeginWriteError(error_id)) {
+            DEFER { error_notifications.EndWriteError(*err); };
+            dyn::AssignFitInCapacity(err->title, "Warning: unable to monitor library folders"_s);
+            err->error_code = watcher_outcome.Error();
+        }
     }
     return watcher;
 }
@@ -1098,31 +1091,34 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
         LibrariesList::Node* lib {};
         if (auto l_ptr = server.libraries_by_id.Find(library_id)) lib = *l_ptr;
 
+        auto const find_lib_error_id =
+            HashMultiple(Array {"sls-find-lib"_s, library_id.name, library_id.author});
+        auto& error_notifications = pending_resource.request.async_comms_channel.error_notifications;
+
         if (!lib) {
             // If libraries are still loading, then we just wait to see if the library we're missing is
             // about to be loaded. If not, then it's an error.
             if (!libraries_are_still_loading) {
-                auto const err = pending_resource.request.async_comms_channel.error_notifications.NewError();
-                err->value = {
-                    .title = {},
-                    .message = {},
-                    .error_code = CommonError::NotFound,
-                    .id = library_id.Hash(),
-                };
-                fmt::Append(err->value.title, "{} library not found", library_id);
-                fmt::Append(
-                    err->value.message,
-                    "\"{}\" is not installed or is otherwise unavailable. Check your preferences or consult the library installation instructions.",
-                    library_id);
-                if (library_id == sample_lib::k_mirage_compat_library_id) {
+                if (auto err = error_notifications.BeginWriteError(find_lib_error_id)) {
+                    DEFER { error_notifications.EndWriteError(*err); };
+                    err->error_code = CommonError::NotFound;
+                    fmt::Assign(err->title, "{} library not found"_s, library_id);
                     fmt::Append(
-                        err->value.message,
-                        " For compatibility with Mirage please install the Mirage Compatibility library (freely available from FrozenPlain).");
+                        err->message,
+                        "\"{}\" is not installed or is otherwise unavailable. Check your preferences or consult the library installation instructions.",
+                        library_id);
+                    if (library_id == sample_lib::k_mirage_compat_library_id) {
+                        fmt::Append(
+                            err->message,
+                            " For compatibility with Mirage please install the Mirage Compatibility library (freely available from FrozenPlain).");
+                    }
                 }
-                pending_resource.request.async_comms_channel.error_notifications.AddOrUpdateError(err);
+
                 pending_resource.state = ErrorCode {CommonError::NotFound};
             }
         } else {
+            error_notifications.RemoveError(find_lib_error_id);
+
             switch (pending_resource.request.request.tag) {
                 case LoadRequestType::Instrument: {
                     auto const& load_inst =
@@ -1131,7 +1127,12 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
 
                     ASSERT(inst_name.size != 0);
 
+                    auto const find_inst_error_id = HashMultiple(
+                        Array {"sls-find-inst"_s, library_id.name, library_id.author, inst_name});
+
                     if (auto const i = lib->value.lib->insts_by_name.Find(inst_name)) {
+                        error_notifications.RemoveError(find_inst_error_id);
+
                         pending_resource.request.async_comms_channel
                             .instrument_loading_percents[load_inst.layer_index]
                             .Store(0, StoreMemoryOrder::Relaxed);
@@ -1151,18 +1152,13 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                                        lib->value.lib->name,
                                        inst_name);
                     } else {
-                        auto const err =
-                            pending_resource.request.async_comms_channel.error_notifications.NewError();
-                        err->value = {
-                            .title = {},
-                            .message = {},
-                            .error_code = CommonError::NotFound,
-                            .id = load_inst.id.Hash(),
-                        };
-                        fmt::Append(err->value.title, "Cannot find instrument \"{}\"", inst_name);
-                        pending_resource.request.async_comms_channel.error_notifications.AddOrUpdateError(
-                            err);
-                        pending_resource.state = *err->value.error_code;
+                        if (auto err = error_notifications.BeginWriteError(find_inst_error_id)) {
+                            DEFER { error_notifications.EndWriteError(*err); };
+                            fmt::Assign(err->title, "Cannot find instrument \"{}\""_s, inst_name);
+                            err->error_code = CommonError::NotFound;
+                        }
+
+                        pending_resource.state = ErrorCode {CommonError::NotFound};
                     }
                     break;
                 }
@@ -1170,7 +1166,12 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                     auto const ir_id = pending_resource.request.request.Get<sample_lib::IrId>();
                     auto const ir = lib->value.lib->irs_by_name.Find(ir_id.ir_name);
 
+                    auto const find_ir_error_id = HashMultiple(
+                        Array {"sls-find-ir"_s, library_id.name, library_id.author, ir_id.ir_name});
+
                     if (ir) {
+                        error_notifications.RemoveError(find_ir_error_id);
+
                         auto listed_ir = FetchOrCreateImpulseResponse(*lib, **ir, thread_pool_args);
 
                         pending_resource.state = PendingResource::ListedPointer {listed_ir};
@@ -1180,22 +1181,17 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                                        ir_id.library,
                                        ir_id.ir_name);
                     } else {
-                        auto const err =
-                            pending_resource.request.async_comms_channel.error_notifications.NewError();
-                        err->value = {
-                            .title = "Failed to find IR"_s,
-                            .message = {},
-                            .error_code = CommonError::NotFound,
-                            .id = ir_id.Hash(),
-                        };
-                        fmt::Assign(err->value.message,
-                                    "Could not find reverb impulse response: {}, in library: {}",
-                                    ir_id.ir_name,
-                                    library_id);
-                        err->value.id = ThreadsafeErrorNotifications::Id("ir  ", err->value.message),
-                        pending_resource.request.async_comms_channel.error_notifications.AddOrUpdateError(
-                            err);
-                        pending_resource.state = *err->value.error_code;
+                        if (auto err = error_notifications.BeginWriteError(find_ir_error_id)) {
+                            DEFER { error_notifications.EndWriteError(*err); };
+                            fmt::Assign(err->title, "Cannot find IR \"{}\""_s, ir_id.ir_name);
+                            fmt::Assign(err->message,
+                                        "Could not find reverb impulse response: {}, in library: {}",
+                                        ir_id.ir_name,
+                                        library_id);
+                            err->error_code = CommonError::NotFound;
+                        }
+
+                        pending_resource.state = ErrorCode {CommonError::NotFound};
                     }
                     break;
                 }
@@ -1225,21 +1221,27 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
             }
         }
 
-        if (error) {
-            auto const err = pending_resource.request.async_comms_channel.error_notifications.NewError();
-            err->value = {
-                .title = "Failed to load audio"_s,
-                .message = {},
-                .error_code = *error,
-                .id = ThreadsafeErrorNotifications::Id("audi", listed_inst.inst.instrument.name),
-            };
-            fmt::Assign(err->value.message,
-                        "Failed to load audio file '{}', part of instrument '{}', in library '{}'",
-                        *audio_path,
-                        listed_inst.inst.instrument.name,
-                        listed_inst.inst.instrument.library.Id());
+        auto const audio_load_error_id = HashMultiple(Array {
+            "sls-audio-load"_s,
+            audio_path.ValueOr(""),
+            listed_inst.inst.instrument.library.name,
+            listed_inst.inst.instrument.library.author,
+        });
 
-            pending_resource.request.async_comms_channel.error_notifications.AddOrUpdateError(err);
+        auto& error_notifications = pending_resource.request.async_comms_channel.error_notifications;
+        if (!error) {
+            error_notifications.RemoveError(audio_load_error_id);
+        } else {
+            if (auto err = error_notifications.BeginWriteError(audio_load_error_id)) {
+                DEFER { error_notifications.EndWriteError(*err); };
+                dyn::AssignFitInCapacity(err->title, "Failed to load audio");
+                err->error_code = *error;
+                fmt::Assign(err->message,
+                            "Failed to load audio file '{}', part of instrument '{}', in library '{}'",
+                            *audio_path,
+                            listed_inst.inst.instrument.name,
+                            listed_inst.inst.instrument.library.Id());
+            }
 
             CancelLoadingAudioForInstrumentIfPossible(&listed_inst, pending_resource.debug_id);
             if (pending_resource.IsDesired())
@@ -1304,10 +1306,20 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
             pending_resource.state.Get<PendingResource::ListedPointer>().TryGet<ListedImpulseResponse*>();
         if (!ir_ptr_ptr) continue;
         auto ir_ptr = *ir_ptr_ptr;
-
         auto const& ir = *ir_ptr;
+
+        auto const audio_load_error_id = HashMultiple(Array {
+            "sls-audio-load"_s,
+            ir.audio_data->path.str,
+            ir.ir.ir.library.name,
+            ir.ir.ir.library.author,
+        });
+
+        auto& error_notifications = pending_resource.request.async_comms_channel.error_notifications;
+
         switch (ir.audio_data->state.Load(LoadMemoryOrder::Acquire)) {
             case FileLoadingState::CompletedSucessfully: {
+                error_notifications.RemoveError(audio_load_error_id);
                 pending_resource.state = Resource {
                     RefCounted<sample_lib::LoadedIr> {
                         ir_ptr->ir,
@@ -1319,22 +1331,17 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
             }
             case FileLoadingState::CompletedWithError: {
                 auto const ir_id = pending_resource.request.request.Get<sample_lib::IrId>();
-                {
-                    auto const err =
-                        pending_resource.request.async_comms_channel.error_notifications.NewError();
-                    err->value = {
-                        .title = "Failed to load IR"_s,
-                        .message = {},
-                        .error_code = *ir.audio_data->error,
-                        .id = ir_id.Hash(),
-                    };
-                    fmt::Assign(err->value.message,
+                if (auto err = error_notifications.BeginWriteError(audio_load_error_id)) {
+                    DEFER { error_notifications.EndWriteError(*err); };
+                    dyn::AssignFitInCapacity(err->title, "Failed to load IR");
+                    err->error_code = *ir.audio_data->error;
+                    fmt::Assign(err->message,
                                 "File '{}', in library {} failed to load. Check your Lua file: {}",
-                                ir_ptr->ir.ir.path,
+                                ir.audio_data->path.str,
                                 ir_id.library,
-                                ir_ptr->ir.ir.library.path);
-                    pending_resource.request.async_comms_channel.error_notifications.AddOrUpdateError(err);
+                                ir.ir.ir.library.path);
                 }
+
                 pending_resource.state = *ir.audio_data->error;
                 break;
             }
@@ -2216,14 +2223,13 @@ TEST_CASE(TestSampleLibraryServer) {
                 DEFER { r->Release(); };
                 for (auto const& request : requests) {
                     if (r->id == request.request_id) {
-                        for (auto& n : fixture.error_notif.items) {
-                            if (auto e = n.TryScoped()) {
-                                tester.log.Debug("Error Notification  {}: {}: {}",
-                                                 e->title,
-                                                 e->message,
-                                                 e->error_code);
-                            }
-                        }
+                        fixture.error_notif.ForEach([&](ThreadsafeErrorNotifications::Item const& n) {
+                            tester.log.Debug("Error Notification  {}: {}: {}",
+                                             n.title,
+                                             n.message,
+                                             n.error_code);
+                            return ThreadsafeErrorNotifications::ItemIterationResult::Continue;
+                        });
                         request.check_result(*r, request.request);
                     }
                 }

@@ -12,6 +12,7 @@
 #include "utils/json/json_writer.hpp"
 #include "utils/leak_detecting_allocator.hpp"
 #include "utils/thread_extra/atomic_queue.hpp"
+#include "utils/thread_extra/atomic_ref_list.hpp"
 #include "utils/thread_extra/atomic_swap_buffer.hpp"
 
 TEST_CASE(TestParseCommandLineArgs) {
@@ -247,76 +248,211 @@ struct StartingGun {
     void WaitUntilFired() {
         while (true) {
             WaitIfValueIsExpected(value, 0);
-            if (value.Load(LoadMemoryOrder::Relaxed) == 1) return;
+            if (value.Load(LoadMemoryOrder::Acquire) == 1) return;
         }
     }
     void Fire() {
-        value.Store(1, StoreMemoryOrder::Relaxed);
+        value.Store(1, StoreMemoryOrder::Release);
         WakeWaitingThreads(value, NumWaitingThreads::All);
     }
     Atomic<u32> value {0};
 };
 
 TEST_CASE(TestErrorNotifications) {
-    ThreadsafeErrorNotifications no;
+    ThreadsafeErrorNotifications n;
+    u64 const id1 = 54301239845687;
+    u64 const id2 = 61398210056122;
 
-    Atomic<u32> iterations {0};
-    constexpr u32 k_num_iterations = 10000;
-    Array<Thread, 4> producers;
-    Atomic<bool> thread_ready {false};
-    StartingGun starting_gun;
-    for (auto& p : producers) {
-        p.Start(
-            [&]() {
-                thread_ready.Store(true, StoreMemoryOrder::Relaxed);
-                starting_gun.WaitUntilFired();
-
-                auto seed = (u64)NanosecondsSinceEpoch();
-                while (iterations.Load(LoadMemoryOrder::Relaxed) < k_num_iterations) {
-                    auto const id = RandomIntInRange<u64>(seed, 0, 20);
-                    if (RandomIntInRange<u32>(seed, 0, 5) == 0) {
-                        no.RemoveError(id);
-                    } else {
-                        auto item = no.NewError();
-                        item->value = {
-                            .title = "title"_s,
-                            .message = "message"_s,
-                            .error_code = {},
-                            .id = id,
-                        };
-                        no.AddOrUpdateError(item);
-                    }
-
-                    iterations.FetchAdd(1, RmwMemoryOrder::Release);
-                    YieldThisThread();
-                }
-            },
-            "producer");
-    }
-
-    while (!thread_ready.Load(LoadMemoryOrder::Relaxed))
-        YieldThisThread();
-
-    starting_gun.Fire();
-    auto seed = (u64)NanosecondsSinceEpoch();
-    while (iterations.Load(LoadMemoryOrder::Relaxed) < k_num_iterations) {
-        for (auto& n : no.items) {
-            if (auto error = n.TryRetain()) {
-                DEFER { n.Release(); };
-
-                if (RandomIntInRange<u32>(seed, 0, 20)) {
-                    no.RemoveError(error->id);
-                } else {
-                    CHECK_EQ(error->title, "title"_s);
-                    CHECK_EQ(error->message, "message"_s);
-                }
-            }
+    SUBCASE("basic operations") {
+        // Add an item.
+        {
+            auto item = n.BeginWriteError(id1);
+            REQUIRE(item);
+            DEFER { n.EndWriteError(*item); };
+            item->title = "Error"_s;
         }
-        YieldThisThread();
+
+        // Check we can read it.
+        {
+            usize count = 0;
+            n.ForEach([&](ThreadsafeErrorNotifications::Item const& item) {
+                CHECK_EQ(item.title, "Error"_s);
+                ++count;
+                return ThreadsafeErrorNotifications::ItemIterationResult::Continue;
+            });
+            CHECK_EQ(count, 1uz);
+        }
+
+        // Remove it.
+        CHECK(n.RemoveError(id1));
+
+        // Removing a non-existing item does't work.
+        CHECK(!n.RemoveError(100));
+
+        // Check it is gone.
+        {
+            usize count = 0;
+            n.ForEach([&](ThreadsafeErrorNotifications::Item const&) {
+                ++count;
+                return ThreadsafeErrorNotifications::ItemIterationResult::Continue;
+            });
+            CHECK_EQ(count, 0uz);
+        }
     }
 
-    for (auto& p : producers)
-        p.Join();
+    SUBCASE("update error") {
+        // Add an item.
+        {
+            auto item = n.BeginWriteError(id1);
+            REQUIRE(item);
+            DEFER { n.EndWriteError(*item); };
+            item->title = "Error"_s;
+        }
+
+        // Update it.
+        {
+            auto item = n.BeginWriteError(id1);
+            REQUIRE(item);
+            DEFER { n.EndWriteError(*item); };
+            item->title = "Updated Error"_s;
+        }
+
+        // Check we can read it.
+        {
+            usize count = 0;
+            n.ForEach([&](ThreadsafeErrorNotifications::Item const& item) {
+                CHECK_EQ(item.title, "Updated Error"_s);
+                ++count;
+                return ThreadsafeErrorNotifications::ItemIterationResult::Continue;
+            });
+            CHECK_EQ(count, 1uz);
+        }
+    }
+
+    SUBCASE("remove an error while it's in begin/end section") {
+        // Begin.
+        auto item = n.BeginWriteError(id1);
+        REQUIRE(item);
+        item->title = "Error"_s;
+
+        // Remove it.
+        CHECK(n.RemoveError(id1));
+
+        // End.
+        n.EndWriteError(*item);
+
+        // This is allowed behaviour. It should be empty now.
+        {
+            usize count = 0;
+            n.ForEach([&](ThreadsafeErrorNotifications::Item const&) {
+                ++count;
+                return ThreadsafeErrorNotifications::ItemIterationResult::Continue;
+            });
+            CHECK_EQ(count, 0uz);
+        }
+    }
+
+    SUBCASE("multiple begin/end sections simultaneously") {
+        auto item1 = n.BeginWriteError(id1);
+        REQUIRE(item1);
+        item1->title = "Error 1"_s;
+
+        auto item2 = n.BeginWriteError(id2);
+        REQUIRE(item2);
+        item2->title = "Error 2"_s;
+
+        n.EndWriteError(*item1);
+        n.EndWriteError(*item2);
+
+        // Check both are present
+        {
+            usize count = 0;
+            n.ForEach([&](ThreadsafeErrorNotifications::Item const& item) {
+                auto const id = item.id.Load(LoadMemoryOrder::Acquire);
+                if (id == id1)
+                    CHECK_EQ(item.title, "Error 1"_s);
+                else if (id == id2)
+                    CHECK_EQ(item.title, "Error 2"_s);
+                else
+                    TEST_FAILED("Unexpected item ID: {}", id);
+                ++count;
+                return ThreadsafeErrorNotifications::ItemIterationResult::Continue;
+            });
+            CHECK_EQ(count, 2uz);
+        }
+    }
+
+    SUBCASE("multiple threads") {
+        Atomic<u32> iterations {0};
+        constexpr u32 k_num_iterations = 10000;
+        Array<Thread, 4> producers;
+        Atomic<bool> thread_ready {false};
+        StartingGun starting_gun;
+        Atomic<u64> next_id {1};
+
+        for (auto& p : producers) {
+            p.Start(
+                [&]() {
+                    auto seed = RandomSeed();
+
+                    thread_ready.Store(true, StoreMemoryOrder::Release);
+                    starting_gun.WaitUntilFired();
+
+                    while (iterations.Load(LoadMemoryOrder::Acquire) < k_num_iterations) {
+                        auto const id = next_id.FetchAdd(1, RmwMemoryOrder::AcquireRelease);
+                        if (RandomIntInRange<u32>(seed, 0, 5) == 0) {
+                            n.RemoveError(Max(id - 2, (u64)1));
+                        } else if (auto item = n.BeginWriteError(id)) {
+                            DEFER { n.EndWriteError(*item); };
+                            item->title = "title"_s;
+
+                            // Simulate an amount of work
+                            auto const volatile work_size = RandomIntInRange<usize>(seed, 0, 500);
+                            u32 volatile work = 0;
+                            for (; work < work_size; work += 1)
+                                (void)work;
+
+                            item->message = "message"_s;
+                            item->error_code = {};
+                        }
+
+                        iterations.FetchAdd(1, RmwMemoryOrder::AcquireRelease);
+                        YieldThisThread();
+                    }
+                },
+                "producer");
+        }
+
+        auto seed = RandomSeed();
+
+        while (!thread_ready.Load(LoadMemoryOrder::Acquire))
+            YieldThisThread();
+
+        starting_gun.Fire();
+        while (iterations.Load(LoadMemoryOrder::Acquire) < k_num_iterations) {
+            n.ForEach([&](ThreadsafeErrorNotifications::Item const& item) {
+                // Let's occasionally remove an item.
+                if (RandomIntInRange<u32>(seed, 0, 3) == 0)
+                    return ThreadsafeErrorNotifications::ItemIterationResult::Remove;
+
+                CHECK_EQ(item.title, "title"_s);
+
+                // Simulate an amount of work
+                auto const volatile work_size = RandomIntInRange<usize>(seed, 0, 500);
+                u32 volatile work = 0;
+                for (; work < work_size; work += 1)
+                    (void)work;
+
+                CHECK_EQ(item.message, "message"_s);
+
+                return ThreadsafeErrorNotifications::ItemIterationResult::Continue;
+            });
+            YieldThisThread();
+        }
+
+        for (auto& p : producers)
+            p.Join();
+    }
 
     return k_success;
 }

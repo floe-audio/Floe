@@ -662,17 +662,18 @@ static void ServerThread(PresetServer& server) {
 
         for (auto& scan_folder : server.scan_folders) {
             auto const o = ScanFolder(server, scratch_arena, scan_folder);
+            auto const error_id = HashMultiple(Array {"preset-server"_s, scan_folder.path});
             if (o.HasError()) {
                 if (!scan_folder.always_scanned_folder) {
-                    auto const err = server.error_notifications.NewError();
-                    err->value = {
-                        .title = "Failed to scan presets folder"_s,
-                        .message = scan_folder.path,
-                        .error_code = o.Error(),
-                        .id = ThreadsafeErrorNotifications::Id("prss", scan_folder.path),
-                    };
-                    server.error_notifications.AddOrUpdateError(err);
+                    if (auto err = server.error_notifications.BeginWriteError(error_id)) {
+                        DEFER { server.error_notifications.EndWriteError(*err); };
+                        dyn::AssignFitInCapacity(err->title, "Failed to scan presets folder"_s);
+                        dyn::AssignFitInCapacity(err->message, scan_folder.path);
+                        err->error_code = o.Error();
+                    }
                 }
+            } else {
+                server.error_notifications.RemoveError(error_id);
             }
         }
 

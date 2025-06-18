@@ -226,8 +226,7 @@ static void DoStandaloneErrorGUI(Gui* g) {
 static bool HasAnyErrorNotifications(Gui* g) {
     for (auto& err_notifications :
          Array {&g->engine.error_notifications, &g->shared_engine_systems.error_notifications}) {
-        for (auto& error : err_notifications->items)
-            if (error.TryScoped()) return true;
+        if (err_notifications->HasErrors()) return true;
     }
     return false;
 }
