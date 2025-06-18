@@ -397,13 +397,16 @@ struct BacktraceState {
 alignas(BacktraceState) static u8 g_backtrace_state_storage[sizeof(BacktraceState)] {};
 static Atomic<BacktraceState*> g_backtrace_state {};
 static CountedInitFlag g_init {};
-static MutableString g_current_binary_path {}; // includes null terminator
 
+#if !ZIG_BACKTRACE
+static MutableString g_current_binary_path {}; // includes null terminator
 static Allocator& StateAllocator() { return PageAllocator::Instance(); }
+#endif
 
 Optional<String> InitStacktraceState(Optional<String> current_binary_path) {
     ZoneScoped;
     CountedInit(g_init, [current_binary_path] {
+#if !ZIG_BACKTRACE
         if (current_binary_path) {
             ASSERT(current_binary_path->size);
             ASSERT(path::IsAbsolute(*current_binary_path));
@@ -429,6 +432,9 @@ Optional<String> InitStacktraceState(Optional<String> current_binary_path) {
             dyn::Append(p, '\0');
             g_current_binary_path = p.ToOwnedSpan();
         }
+#else
+        (void)current_binary_path;
+#endif
 
         auto state = PLACEMENT_NEW(g_backtrace_state_storage) BacktraceState;
 #if ZIG_BACKTRACE
@@ -486,9 +492,10 @@ void ShutdownStacktraceState() {
     ZoneScoped;
     CountedDeinit(g_init, [] {
         if (auto state = g_backtrace_state.Exchange(nullptr, RmwMemoryOrder::AcquireRelease)) {
-            if (g_current_binary_path.size) StateAllocator().Free(g_current_binary_path.ToByteSpan());
 #if ZIG_BACKTRACE
             DestroySelfModuleInfo(state->state);
+#else
+            if (g_current_binary_path.size) StateAllocator().Free(g_current_binary_path.ToByteSpan());
 #endif
             state->~BacktraceState();
         }
