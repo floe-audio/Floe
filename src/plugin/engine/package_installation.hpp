@@ -451,13 +451,9 @@ struct TryHelpersToState {
 static InstallJob::State DoJobPhase1(InstallJob& job) {
     using H = package::detail::TryHelpersToState;
 
-    job.file_reader = ({
-        auto o = Reader::FromFile(job.path);
-        if (o.HasError()) {
-            fmt::Append(job.error_buffer, "Couldn't read file {}: {}\n", path::Filename(job.path), o.Error());
-            return InstallJob::State::DoneError;
-        }
-        o.ReleaseValue();
+    job.file_reader = TRY_OR(Reader::FromFile(job.path), {
+        fmt::Append(job.error_buffer, "Couldn't read file {}: {}\n", path::Filename(job.path), error);
+        return InstallJob::State::DoneError;
     });
 
     job.reader = PackageReader {.zip_file_reader = *job.file_reader};
