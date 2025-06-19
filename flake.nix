@@ -3,7 +3,7 @@
 
 {
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
     nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils = {
       url = "github:numtide/flake-utils";
@@ -49,13 +49,13 @@
 
         clang-build-analyzer = pkgs.stdenv.mkDerivation rec {
           pname = "clang-build-analyzer";
-          version = "1.5.0";
+          version = "1.6.0";
 
           src = pkgs.fetchFromGitHub {
             owner = "aras-p";
             repo = "ClangBuildAnalyzer";
             rev = "v${version}";
-            hash = "sha256-kmgdk634zM0W0OoRoP/RzepArSipa5bNqdVgdZO9gxo=";
+            hash = "sha256-GIMQZGPFKDrfMqCsA8nR3O8Hzp2jcaZ+yDrPeCxTsIg=";
           };
 
           nativeBuildInputs = [
