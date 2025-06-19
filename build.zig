@@ -1093,6 +1093,12 @@ pub fn build(b: *std.Build) void {
 
     const enable_tracy = b.option(bool, "tracy", "Enable Tracy profiler") orelse false;
 
+    const sanitize_thread = b.option(
+        bool,
+        "sanitize-thread",
+        "Enable thread sanitiser",
+    ) orelse false;
+
     var build_context: BuildContext = .{
         .b = b,
         .enable_tracy = enable_tracy,
@@ -1212,6 +1218,11 @@ pub fn build(b: *std.Build) void {
             .SENTRY_DSN = b.graph.env_map.get("SENTRY_DSN"),
         });
 
+        if (target.result.os.tag == .windows and sanitize_thread) {
+            std.log.err("ERROR: thread sanitiser is not supported on Windows targets", .{});
+            @panic("thread sanitiser is not supported on Windows targets");
+        }
+
         const module_options: std.Build.Module.CreateOptions = .{
             .target = target,
             .optimize = build_context.optimise,
@@ -1220,6 +1231,7 @@ pub fn build(b: *std.Build) void {
             .link_libc = true,
             .omit_frame_pointer = false,
             .unwind_tables = .sync,
+            .sanitize_thread = sanitize_thread,
         };
 
         var stb_sprintf = b.addObject(.{
@@ -2119,7 +2131,7 @@ pub fn build(b: *std.Build) void {
         }
 
         var clap_final_step: ?*std.Build.Step = null;
-        {
+        if (!sanitize_thread) {
             const clap = b.addSharedLibrary(.{
                 .name = "Floe.clap",
                 .root_module = b.createModule(module_options),
@@ -2525,7 +2537,7 @@ pub fn build(b: *std.Build) void {
         }
 
         var vst3_final_step: ?*std.Build.Step = null;
-        if (!clap_only) {
+        if (!clap_only and !sanitize_thread) {
             const vst3 = b.addSharedLibrary(.{
                 .name = "Floe.vst3",
                 .version = floe_version,
@@ -2681,7 +2693,7 @@ pub fn build(b: *std.Build) void {
             }
         }
 
-        if (!clap_only and target.result.os.tag == .macos) {
+        if (!clap_only and target.result.os.tag == .macos and !sanitize_thread) {
             const au_sdk = b.addStaticLibrary(.{
                 .name = "AU",
                 .root_module = b.createModule(module_options),
