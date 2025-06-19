@@ -190,7 +190,7 @@ static void AddAsyncJob(PendingLibraryJobs& pending_library_jobs,
         pending_library_jobs.jobs.Store(job, StoreMemoryOrder::Release);
     }
 
-    pending_library_jobs.num_uncompleted_jobs.FetchAdd(1, RmwMemoryOrder::Relaxed);
+    pending_library_jobs.num_uncompleted_jobs.FetchAdd(1, RmwMemoryOrder::AcquireRelease);
 
     pending_library_jobs.thread_pool.AddJob([&pending_library_jobs, &job = *job, &lib_list]() {
         try {
@@ -313,7 +313,7 @@ static bool UpdateLibraryJobs(Server& server,
 
         DEFER {
             node->result_handled = true;
-            pending_library_jobs.num_uncompleted_jobs.FetchSub(1, RmwMemoryOrder::Relaxed);
+            pending_library_jobs.num_uncompleted_jobs.FetchSub(1, RmwMemoryOrder::AcquireRelease);
         };
         auto const& job = *node;
         switch (job.data.tag) {
@@ -442,10 +442,11 @@ static bool UpdateLibraryJobs(Server& server,
                 // RescanRequested because the server thread needs to see RescanRequested in order to trigger
                 // a new scanning job.
                 {
+                    usize deadlock_count = 0;
                     auto state = folder->state.Load(LoadMemoryOrder::Acquire);
                     while (true) {
                         if (state == ScanFolder::State::RescanRequested) {
-                            // Don't overwrite RescanRequested - let server thread handle it
+                            // Don't overwrite RescanRequested - let server thread handle it.
                             break;
                         }
 
@@ -453,10 +454,12 @@ static bool UpdateLibraryJobs(Server& server,
                                                               new_state,
                                                               RmwMemoryOrder::AcquireRelease,
                                                               LoadMemoryOrder::Acquire)) {
-                            // Successfully updated to new_state
+                            // Successfully updated to new_state.
                             break;
                         }
-                        // state was automatically updated by CompareExchangeWeak, try again
+                        // State was automatically updated by CompareExchangeWeak, try again.
+                        ++deadlock_count;
+                        ASSERT(deadlock_count < 10000);
                     }
                 }
 
@@ -647,7 +650,7 @@ static bool UpdateLibraryJobs(Server& server,
     }
 
     auto const library_work_still_pending =
-        pending_library_jobs.num_uncompleted_jobs.Load(LoadMemoryOrder::Relaxed) != 0;
+        pending_library_jobs.num_uncompleted_jobs.Load(LoadMemoryOrder::Acquire) != 0;
     return library_work_still_pending;
 }
 
@@ -1037,7 +1040,7 @@ static bool ConsumeResourceRequests(PendingResources& pending_resources,
     while (auto queued_request = request_queue.TryPop()) {
         ZoneNamedN(req, "request", true);
 
-        if (!queued_request->async_comms_channel.used.Load(LoadMemoryOrder::Relaxed)) continue;
+        if (!queued_request->async_comms_channel.used.Load(LoadMemoryOrder::Acquire)) continue;
 
         static uintptr debug_result_id = 0;
         auto pending_resource = arena.NewUninitialised<PendingResource>();
@@ -1386,7 +1389,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
             };
 
             server.channels.Use([&](auto&) {
-                if (pending_resource.request.async_comms_channel.used.Load(LoadMemoryOrder::Relaxed)) {
+                if (pending_resource.request.async_comms_channel.used.Load(LoadMemoryOrder::Acquire)) {
                     result.Retain();
                     pending_resource.request.async_comms_channel.results.Push(result);
                     pending_resource.request.async_comms_channel.result_added_callback();
@@ -1429,7 +1432,7 @@ static void RemoveUnreferencedObjects(Server& server) {
     ASSERT_EQ(CurrentThreadId(), server.server_thread_id);
 
     server.channels.Use([](auto& channels) {
-        channels.RemoveIf([](AsyncCommsChannel const& h) { return !h.used.Load(LoadMemoryOrder::Relaxed); });
+        channels.RemoveIf([](AsyncCommsChannel const& h) { return !h.used.Load(LoadMemoryOrder::Acquire); });
     });
 
     auto remove_unreferenced_in_lib = [](auto& lib) {
@@ -1484,7 +1487,7 @@ static void ServerThreadProc(Server& server) {
                 LogDebug(ModuleName::SampleLibraryServer, "Dumping current state of loading thread");
                 LogDebug(ModuleName::SampleLibraryServer,
                          "Libraries currently loading: {}",
-                         pending_library_jobs.num_uncompleted_jobs.Load(LoadMemoryOrder::Relaxed));
+                         pending_library_jobs.num_uncompleted_jobs.Load(LoadMemoryOrder::Acquire));
                 DumpPendingResourcesDebugInfo(pending_resources);
                 LogDebug(ModuleName::SampleLibraryServer, "\nAvailable Libraries:");
                 for (auto& lib : server.libraries) {
@@ -1667,15 +1670,7 @@ Server::Server(ThreadPool& pool,
         libraries_by_id.Insert(BuiltinLibrary()->Id(), node);
     }
 
-    thread.Start(
-        [this]() {
-            try {
-                ServerThreadProc(*this);
-            } catch (PanicException) {
-                // pass
-            }
-        },
-        "samp-lib-server");
+    thread.Start([this]() { ServerThreadProc(*this); }, "samp-lib-server");
 }
 
 Server::~Server() {
@@ -1706,7 +1701,7 @@ AsyncCommsChannel& OpenAsyncCommsChannel(Server& server, OpenAsyncCommsChannelAr
 void CloseAsyncCommsChannel(Server& server, AsyncCommsChannel& channel) {
     server.channels.Use([&channel](auto& channels) {
         (void)channels;
-        channel.used.Store(false, StoreMemoryOrder::Relaxed);
+        channel.used.Store(false, StoreMemoryOrder::Release);
         while (auto r = channel.results.TryPop())
             r->Release();
     });
@@ -1782,7 +1777,7 @@ void SetExtraScanFolders(Server& server, Span<String const> extra_folders) {
             PLACEMENT_NEW(folder) ScanFolder();
             dyn::Assign(folder->path, path);
             folder->source = ScanFolder::Source::ExtraFolder;
-            folder->state.raw = ScanFolder::State::NotScanned;
+            folder->state.Store(ScanFolder::State::NotScanned, StoreMemoryOrder::Release);
             dyn::Append(server.scan_folders.folders, folder);
             edited = true;
         }
