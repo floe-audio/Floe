@@ -164,8 +164,9 @@ enum class RmwMemoryOrder {
 
 template <TriviallyCopyable Type>
 struct Atomic {
-    constexpr Atomic() = default;
+    constexpr Atomic() : raw() {}
     constexpr Atomic(Type v) : raw(v) {}
+    constexpr Atomic(Type v, StoreMemoryOrder memory_order) { Store(v, memory_order); }
 
     NON_COPYABLE_AND_MOVEABLE(Atomic);
 
@@ -230,7 +231,7 @@ struct Atomic {
     static_assert(sizeof(Type) != 0);
     static_assert(__c11_atomic_is_lock_free(sizeof(Type)));
 
-    _Atomic(Type) raw = Type {};
+    _Atomic(Type) raw;
 };
 
 // futex
@@ -459,12 +460,16 @@ struct WorkSignaller {
     void WaitUntilSignalled(Optional<u32> timeout_milliseconds = {}) {
         if (flag.Exchange(k_not_signalled, RmwMemoryOrder::AcquireRelease) == k_not_signalled) do {
                 WaitIfValueIsExpected(flag, k_not_signalled, timeout_milliseconds);
-            } while (flag.Load(LoadMemoryOrder::Relaxed) == k_not_signalled);
+            } while (flag.Load(LoadMemoryOrder::Acquire) == k_not_signalled);
     }
 
     static constexpr u32 k_signalled = 1;
     static constexpr u32 k_not_signalled = 0;
-    Atomic<u32> flag {0};
+
+    // We initialise using a release store because other threads need to see the not-signalled state. That
+    // isn't guaranteed if we use Atomic<>'s default constructor which is non-atomic. Thread sanitizer picked
+    // this up.
+    Atomic<u32> flag {k_not_signalled, StoreMemoryOrder::Release};
 };
 
 struct Mutex {
