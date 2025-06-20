@@ -6,6 +6,7 @@
 #include "foundation/container/span.hpp"
 #include "foundation/utils/maths.hpp"
 #include "foundation/utils/string.hpp"
+#include "os/filesystem.hpp"
 #include "os/misc.hpp"
 #include "utils/debug/debug.hpp"
 #include "utils/logger/logger.hpp"
