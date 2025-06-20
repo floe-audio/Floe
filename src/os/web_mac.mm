@@ -8,11 +8,33 @@
 #include <Foundation/Foundation.h>
 #pragma clang diagnostic pop
 #undef Rect
+#include <pthread.h>
 
 #include "utils/logger/logger.hpp"
 
 #include "misc_mac.hpp"
 #include "web.hpp"
+
+// We could use dispatch_semaphore_t instead, but thread sanitizer doesn't detect it properly leading to false
+// positives. However, it does support pthread very well.
+struct CompletionSync {
+    void Complete() {
+        pthread_mutex_lock(&cond_var_lock);
+        completed = true;
+        pthread_cond_signal(&cond_var);
+        pthread_mutex_unlock(&cond_var_lock);
+    }
+    void WaitForCompletion() {
+        pthread_mutex_lock(&cond_var_lock);
+        while (!completed)
+            pthread_cond_wait(&cond_var, &cond_var_lock);
+        pthread_mutex_unlock(&cond_var_lock);
+    }
+
+    pthread_mutex_t cond_var_lock = PTHREAD_MUTEX_INITIALIZER;
+    pthread_cond_t cond_var = PTHREAD_COND_INITIALIZER;
+    bool completed = false;
+};
 
 ErrorCodeOr<void> HttpsGet(String url, Writer writer, RequestOptions options) {
     NSURL* nsurl = [NSURL URLWithString:StringToNSString(url)];
@@ -32,24 +54,23 @@ ErrorCodeOr<void> HttpsGet(String url, Writer writer, RequestOptions options) {
     NSURLSession* session = [NSURLSession sessionWithConfiguration:session_config];
 
     __block ErrorCodeOr<void> result {};
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-    if (semaphore == nullptr) Panic("Failed to create semaphore");
+    __block CompletionSync completion_sync;
 
     @try {
         NSURLSessionDataTask* task =
             [session dataTaskWithRequest:request
                        completionHandler:^(NSData* data, NSURLResponse*, NSError* error) {
-                         if (error) {
-                             LogDebug({}, "Error: {}", error.localizedDescription.UTF8String);
-                             result = ErrorCode {WebError::NetworkError};
-                         } else {
+                         if (!error) {
                              auto const o = writer.WriteBytes({(u8 const*)data.bytes, data.length});
                              if (o.HasError()) result = o.Error();
+                         } else {
+                             LogDebug({}, "Error: {}", error.localizedDescription.UTF8String);
+                             result = ErrorCode {WebError::NetworkError};
                          }
-                         dispatch_semaphore_signal(semaphore);
+                         completion_sync.Complete();
                        }];
         [task resume];
-        dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+        completion_sync.WaitForCompletion();
     } @catch (NSException* e) {
         return ErrorCode {WebError::NetworkError};
     }
@@ -80,8 +101,7 @@ HttpsPost(String url, String body, Optional<Writer> response_writer, RequestOpti
     NSURLSession* session = [NSURLSession sessionWithConfiguration:session_config];
 
     __block ErrorCodeOr<void> result {};
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-    if (semaphore == nullptr) Panic("Failed to create semaphore");
+    __block CompletionSync completion_sync;
 
     @try {
         NSURLSessionDataTask* task =
@@ -96,10 +116,10 @@ HttpsPost(String url, String body, Optional<Writer> response_writer, RequestOpti
                          } else {
                              result = k_success;
                          }
-                         dispatch_semaphore_signal(semaphore);
+                         completion_sync.Complete();
                        }];
         [task resume];
-        dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+        completion_sync.WaitForCompletion();
     } @catch (NSException* e) {
         return ErrorCode {WebError::NetworkError};
     }
