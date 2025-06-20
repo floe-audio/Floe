@@ -408,9 +408,26 @@ Optional<Version> MacosBundleVersion(String path) {
 
 constexpr bool k_debug_fsevents = false && !PRODUCTION_BUILD;
 
+// Thread Sanitizer does not understand about the synchronisation that happens in FSEvents callbacks and
+// dispatch_sync. As a result, it thinks there's still possible race conditions with regard to the event
+// callback being called while creating/destroying the watcher objects. We use this call to inform TSAN of
+// this behaviour and therefore not get false positives.
+struct TsanSyncBarrier {
+#if __has_feature(thread_sanitizer)
+    void StoreCallbackSynced(bool value) { callbacks_synced.Store(value, StoreMemoryOrder::Release); }
+    void AcquireCallbackSynced() { callbacks_synced.Load(LoadMemoryOrder::Acquire); }
+    Atomic<bool> callbacks_synced {true, StoreMemoryOrder::Release}; // For TSAN
+#else
+    void Store(bool) {}
+    void Load() {}
+#endif
+};
+
 struct MacWatcher {
     FSEventStreamRef stream {};
     dispatch_queue_t queue {};
+
+    [[no_unique_address]] TsanSyncBarrier tsan_sync_barrier;
 
     struct Event {
         String path;
@@ -440,6 +457,8 @@ static void StopStream(MacWatcher& watcher) {
       FSEventStreamRelease(watcher.stream);
       watcher.stream = nullptr;
     });
+
+    watcher.tsan_sync_barrier.AcquireCallbackSynced();
 }
 
 void DestoryDirectoryWatcher(DirectoryWatcher& watcher) {
@@ -460,6 +479,10 @@ void EventCallback([[maybe_unused]] ConstFSEventStreamRef stream_ref,
                    [[maybe_unused]] FSEventStreamEventId const event_ids[]) {
     auto& watcher = *(MacWatcher*)user_data;
     auto** paths = (char**)event_paths;
+
+    // TSAN
+    watcher.tsan_sync_barrier.StoreCallbackSynced(false);
+    DEFER { watcher.tsan_sync_barrier.StoreCallbackSynced(true); };
 
     if constexpr (k_debug_fsevents) {
         DynamicArrayBounded<char, 4000> info;
@@ -624,6 +647,8 @@ PollDirectoryChanges(DirectoryWatcher& watcher, PollDirectoryChangesArgs args) {
                 mac_watcher.stream = {};
                 return ErrorCode {FilesystemError::FileWatcherCreationFailed};
             }
+
+            mac_watcher.tsan_sync_barrier.StoreCallbackSynced(false);
 
             succeeded = true;
         }
