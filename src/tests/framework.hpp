@@ -133,7 +133,16 @@ class PassedSubcaseStacks {
 
 struct Tester {
     struct TestLogger {
-        TestLogger(Tester& tester) : tester(tester) {}
+        TestLogger(Tester& tester) : tester(tester) {
+            InitLogFolderIfNeeded();
+            if (auto f = LogFolder()) {
+                PathArena path_arena {Malloc::Instance()};
+                auto seed = RandomSeed();
+                auto const path = path::Join(path_arena, Array {*f, UniqueFilename("test-", "", seed)});
+                auto o = OpenFile(path, FileMode::Write());
+                if (o.HasValue()) file.Emplace(o.ReleaseValue());
+            }
+        }
 
         template <typename... Args>
         void Debug(String format, Args const&... args) {
@@ -156,26 +165,40 @@ struct Tester {
         void Log(LogLevel level, String format, Args const&... args) {
             if (level < max_level_allowed) return;
 
-            constexpr auto k_stream = StdStream::Err;
+            auto write = [&](Writer& writer, bool ansi_colours) {
+                if (tester.current_test_case)
+                    auto _ = fmt::FormatToWriter(writer, "[ {} ] ", tester.current_test_case->title);
+                if (ansi_colours && level == LogLevel::Error)
+                    auto _ = writer.WriteChars(ANSI_COLOUR_SET_FOREGROUND_RED);
+                if constexpr (sizeof...(args) == 0)
+                    auto _ = writer.WriteChars(format);
+                else
+                    auto _ = fmt::FormatToWriter(writer, format, args...);
+                if (ansi_colours && level == LogLevel::Error) auto _ = writer.WriteChars(ANSI_COLOUR_RESET);
+                auto _ = writer.WriteChar('\n');
+            };
 
-            BufferedWriter<Kb(4)> buffered_writer {StdWriter(k_stream)};
-            auto writer = buffered_writer.Writer();
-            DEFER { auto _ = buffered_writer.Flush(); };
+            {
+                constexpr auto k_stream = StdStream::Err;
 
-            StdStreamMutex(k_stream).Lock();
-            DEFER { StdStreamMutex(k_stream).Unlock(); };
+                BufferedWriter<Kb(4)> buffered_writer {StdWriter(k_stream)};
+                auto writer = buffered_writer.Writer();
+                DEFER { auto _ = buffered_writer.Flush(); };
 
-            if (tester.current_test_case)
-                auto _ = fmt::FormatToWriter(writer, "[ {} ] ", tester.current_test_case->title);
-            if (level == LogLevel::Error) auto _ = writer.WriteChars(ANSI_COLOUR_SET_FOREGROUND_RED);
-            if constexpr (sizeof...(args) == 0)
-                auto _ = writer.WriteChars(format);
-            else
-                auto _ = fmt::FormatToWriter(writer, format, args...);
-            if (level == LogLevel::Error) auto _ = writer.WriteChars(ANSI_COLOUR_RESET);
-            auto _ = writer.WriteChar('\n');
+                StdStreamMutex(k_stream).Lock();
+                DEFER { StdStreamMutex(k_stream).Unlock(); };
+                write(writer, true);
+            }
+
+            if (file) {
+                BufferedWriter<Kb(4)> buffered_writer {file->Writer()};
+                auto writer = buffered_writer.Writer();
+                DEFER { auto _ = buffered_writer.Flush(); };
+                write(writer, false);
+            }
         }
 
+        Optional<File> file;
         Tester& tester;
         LogLevel max_level_allowed = LogLevel::Info;
     };
