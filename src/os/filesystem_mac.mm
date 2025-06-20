@@ -418,8 +418,8 @@ struct TsanSyncBarrier {
     void AcquireCallbackSynced() { callbacks_synced.Load(LoadMemoryOrder::Acquire); }
     Atomic<bool> callbacks_synced {true, StoreMemoryOrder::Release}; // For TSAN
 #else
-    void Store(bool) {}
-    void Load() {}
+    void StoreCallbackSynced(bool) {}
+    void AcquireCallbackSynced() {}
 #endif
 };
 
