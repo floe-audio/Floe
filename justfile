@@ -18,22 +18,6 @@ run_windows_program := if os() == 'windows' {
   'wine'
 }
 
-# Info about External Resources
-#
-# There are a few things that we want to keep external to this repo but still have easy access to when developing and
-# preparing final deployments. To achieve this, we have a designated sub-folder that is not checked into git (it's a 
-# sub-folder because it's convenient and quite often zig needs things relative to the build directory). We pass this
-# path into our zig build script for it to lookup filenames within it. These resources are not requirements: if 
-# anything is missing you will get a warning, not an error, and some aspect of the build might be missing.
-#
-# Logos: the logos represent Floe's quality-assurance and recognition and so we don't use a GPL licence for them. 
-# Therefore they're kept separate and they're optional.
-
-external_resources := join("build_resources", "external")
-
-# IMPORTANT: these must be kept in sync with the build.zig file
-logos_abs_dir := join(justfile_directory(), external_resources, "Logos")
-
 default: 
   #!/usr/bin/env bash
   if [[ -z "${DEFAULT_CMD:-}" ]]; then
@@ -48,7 +32,7 @@ build target_os='native' mode='development':
   zig build compile \
       -Dtargets={{target_os}} \
       -Dbuild-mode={{mode}} \
-      -Dexternal-resources="{{external_resources}}" \
+      -Dsanitize-thread=false \
       --global-cache-dir {{zig_global_cache_dir}}
   just patch-rpath
 
@@ -78,10 +62,11 @@ patch-rpath:
 build-tracy:
   zig build compile -Dtargets=native -Dbuild-mode=development -Dtracy --global-cache-dir {{zig_global_cache_dir}}
 
+# fetches logos which may be licensed differently to the rest of the codebase
 build-release target_os='native':
   zig build compile -Dtargets={{target_os}} \
       -Dbuild-mode=production \
-      -Dexternal-resources="{{external_resources}}" \
+      -Dfetch-floe-logos=true \
       --global-cache-dir {{zig_global_cache_dir}}
 
 # build and report compile-time statistics
@@ -105,7 +90,7 @@ check-format:
 
 # hunspell doesn't do anything fancy at all, it just checks each word for spelling. It means we get lots of
 # false positives, but I think it's still worth it. We can just add words to ignored-spellings.dic.
-# In vim, use :sort u to remove duplicates>
+# In vim, use :sort u to remove duplicates.
 [unix]
 check-spelling:
   #!/usr/bin/env bash
@@ -538,22 +523,6 @@ echo-latest-changes:
   version=$(cat version.txt)
   changes=$(sed -n "/^## $version/,/^## [^#]/ { /^## [^#]/!p }" changelog.md)
   printf "%s" "$changes" # trim trailing newline
-
-[unix]
-_fetch-external-github-repo owner repo destination:
-  #!/usr/bin/env bash
-  dirname=$(dirname "{{destination}}")
-  mkdir -p "$dirname"
-  cd "$dirname"
-  wget "https://github.com/{{owner}}/{{repo}}/archive/refs/heads/main.zip"
-  unzip main.zip
-  rm main.zip
-  rm -rf "{{destination}}"
-  mv "{{repo}}-main" "{{destination}}"
-
-# NOTE: the logos probably have reserved copyright
-[unix]
-fetch-logos: (_fetch-external-github-repo "floe-audio" "Floe-Logos" logos_abs_dir)
 
 [unix, no-cd]
 _create-manual-install-readme os_name:
