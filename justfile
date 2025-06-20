@@ -10,7 +10,6 @@ native_binary_dir := join("zig-out", native_arch_os_pair)
 native_binary_dir_abs := join(justfile_directory(), native_binary_dir)
 all_src_files := 'fd . -e .mm -e .cpp -e .hpp -e .h src' 
 cache_dir := ".floe-cache"
-zig_global_cache_dir := ".zig-cache-global"
 release_files_dir := join(justfile_directory(), "zig-out", "release") # for final release files
 run_windows_program := if os() == 'windows' {
   ''
@@ -18,25 +17,17 @@ run_windows_program := if os() == 'windows' {
   'wine'
 }
 
-default: 
-  #!/usr/bin/env bash
-  if [[ -z "${DEFAULT_CMD:-}" ]]; then
-    just build native
-  else
-    $DEFAULT_CMD
-  fi
+# See the comment in .env.common.
+# IMPROVE: we want to somehow get this value from .env.common to avoid duplication.
+export ZIG_GLOBAL_CACHE_DIR := ".zig-cache-global"
 
-alias pre-debug := default
-
-build target_os='native' mode='development':
-  zig build compile \
-      -Dtargets={{target_os}} \
-      -Dbuild-mode={{mode}} \
-      -Dsanitize-thread=false \
-      --global-cache-dir {{zig_global_cache_dir}}
+build *ARGS:
+  zig build {{ARGS}}
   just patch-rpath
 
 
+# On Linux, if we have built our files using a Nix environment, the binaries will have references to Nix store paths.
+# They won't work if the host system is not NixOS, so we need to run some commands to patch them.
 patch-rpath:
   #!/usr/bin/env bash
   if [[ "{{os()}}" == "linux" && ! -f "/etc/NIXOS" ]]; then
@@ -59,24 +50,20 @@ patch-rpath:
     patch_file patchinterpreter "{{native_binary_dir}}/VST3-Validator"
   fi
 
-build-tracy:
-  zig build compile -Dtargets=native -Dbuild-mode=development -Dtracy --global-cache-dir {{zig_global_cache_dir}}
-
-# fetches logos which may be licensed differently to the rest of the codebase
+# This fetches logos too which may be not be GPL licenced.
 build-release target_os='native':
   zig build compile -Dtargets={{target_os}} \
       -Dbuild-mode=production \
-      -Dfetch-floe-logos=true \
-      --global-cache-dir {{zig_global_cache_dir}}
+      -Dfetch-floe-logos=true 
 
 # build and report compile-time statistics
-build-timed target_os='native':
+build-timed *ARGS:
   #!/usr/bin/env bash
   artifactDir={{cache_dir}}/clang-build-analyzer-artifacts
   reportFile={{cache_dir}}/clang-build-analyzer-report
   mkdir -p ''${artifactDir}
   ClangBuildAnalyzer --start ${artifactDir}
-  time just build {{target_os}}
+  zig build {{ARGS}}
   returnCode=$?
   ClangBuildAnalyzer --stop ${artifactDir} ${reportFile}
   ClangBuildAnalyzer --analyze ${reportFile}
@@ -182,9 +169,6 @@ install-docs-preprocessor:
 #   # IMPROVE: investigate other flags such as --enable=constVariable
 #   cppcheck --project={{justfile_directory()}}/{{cache_dir}}/compile_commands_{{arch_os_pair}}.json --cppcheck-build-dir={{justfile_directory()}}/.zig-cache --enable=unusedFunction --error-exitcode=2
 
-_build_if_requested condition build-type:
-  if [[ -n "{{condition}}" ]]; then just build {{build-type}}; fi
-
 format:
   {{all_src_files}} | xargs clang-format -i
 
@@ -195,13 +179,13 @@ format:
 # state-reproducibility-flush: Randomizes a plugin's parameters, saves its state, recreates the plugin instance, sets the same parameters as before, saves the state again, and then asserts that the two states are identical. The parameter values are set updated using the process function to create the first state, and using the flush function to create the second state.
 clap_val_args := "--test-filter '.*(process|param|state-reproducibility-flush).*' --invert-filter"
 
-test-clap-val build="": (_build_if_requested build "native")
+test-clap-val:
   clap-validator validate {{clap_val_args}} {{native_binary_dir}}/Floe.clap
 
-test-units build="" +args="": (_build_if_requested build "native")
-  {{native_binary_dir}}/tests {{args}} --log-level=debug
+test-units: 
+  {{native_binary_dir}}/tests --log-level=debug
 
-test-pluginval build="": (_build_if_requested build "native")
+test-pluginval: 
   pluginval {{native_binary_dir}}/Floe.vst3
 
 [macos]
@@ -226,7 +210,7 @@ install-au global='0':
   fi
 
 [macos]
-test-pluginval-au build="": (_build_if_requested build "native")
+test-pluginval-au:
   #!/usr/bin/env bash
   set -euxo pipefail
   just check-au-installed
@@ -239,7 +223,7 @@ test-auval:
   just check-au-installed
   auval -v aumu FLOE floA
 
-test-vst3-val build="": (_build_if_requested build "native")
+test-vst3-val:
   timeout 20 {{native_binary_dir}}/VST3-Validator {{native_binary_dir}}/Floe.vst3
 
 _download-and-unzip-to-cache-dir url:
@@ -313,7 +297,7 @@ test-windows-clap-val:
   timeout 5 {{run_windows_program}} "$exe" validate {{clap_val_args}} zig-out/x86_64-windows/Floe.clap
 
 [linux]
-coverage build="": (_build_if_requested build "native")
+coverage:
   set -x
   mkdir -p {{cache_dir}}
   # IMPROVE: run other tests with coverage and --merge the results
@@ -321,7 +305,7 @@ coverage build="": (_build_if_requested build "native")
 
 # IMPROVE: also run validators through valgrind
 [linux]
-valgrind build="": (_build_if_requested build "native")
+valgrind:
   valgrind \
     --leak-check=full \
     --fair-sched=yes \
@@ -387,7 +371,7 @@ checks_ci := replace(
   }, "\n", " ")
 
 [unix]
-test level="0" build="": (_build_if_requested build "dev") (parallel if level == "0" { checks_level_0 } else { checks_level_1 })
+test level="0": (parallel if level == "0" { checks_level_0 } else { checks_level_1 })
 
 [unix]
 test-ci: 

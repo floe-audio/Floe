@@ -1185,7 +1185,6 @@ pub fn build(b: *std.Build) void {
             .FLOE_SOURCE_CODE_URL = floe_source_code_url,
             .FLOE_PROJECT_ROOT_PATH = b.build_root.path.?,
             .FLOE_PROJECT_CACHE_PATH = b.pathJoin(&.{ b.build_root.path.?, floe_cache_relative }),
-            .FLOE_GLOBAL_ZIG_CACHE_PATH = b.graph.global_cache_root.path,
             .FLOE_VENDOR = floe_vendor,
             .FLOE_CLAP_ID = floe_clap_id,
             .ZIG_BACKTRACE = true,
