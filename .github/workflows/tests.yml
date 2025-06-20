@@ -16,6 +16,7 @@ on:
 
 env:
   SENTRY_DSN: ${{ secrets.SENTRY_DSN_DEVELOPMENT }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   mac-compile-and-test:
@@ -37,14 +38,15 @@ jobs:
           cache-directories: |
             .floe-cache
 
-      - run: just build native
+      - run: just build -Dtargets=native
       - run: just install-docs-preprocessor
       - run: |
           just install-au 0
           killall -9 AudioComponentRegistrar || true
-      - env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: just test-ci
+      - run: just test-ci
+      - run: |
+          just build -Dsanitize-thread
+          just test-units
 
       - name: Upload errors
         if: '!cancelled()'
@@ -79,11 +81,9 @@ jobs:
             .floe-cache
 
       - if: '!cancelled()'
-        run: just build native performance_profiling
+        run: just build -Dbuild-mode=performance_profiling
 
       - if: '!cancelled()'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: just test-ci
 
       - name: Upload errors
@@ -118,24 +118,27 @@ jobs:
             .floe-cache
 
       - if: '!cancelled()'
-        run: just build native
+        run: just build -Dtargets=native
 
       - if: '!cancelled()'
-        run: just build windows
+        run: just build -Dtargets=windows
 
       - if: '!cancelled()'
-        run: just build mac_arm
+        run: just build -Dtargets=mac_arm
 
       - if: '!cancelled()'
-        run: just build mac_x86
+        run: just build -Dtargets=mac_x86
 
       - if: '!cancelled()'
         run: just install-docs-preprocessor
 
       - if: '!cancelled()'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: just test-ci
+
+      - if: '!cancelled()'
+        run: |
+          just build -Dsanitize-thread
+          just test-units
 
       - if: '!cancelled()'
         name: Upload coverage reports
