@@ -160,7 +160,7 @@ struct LuaState {
     TimePoint const start_time;
     String filepath;
     DynamicHashTable<LibraryPath, FileAttribution, Hash> files_requiring_attribution {result_arena};
-    Library* library; // null before new_library is called.
+    Library* library; // Null before new_library is called.
     PathPool folders_path_pool;
 };
 
@@ -253,7 +253,7 @@ struct TableFields;
 template <typename Type>
 concept InterpretableType = requires {
     Enum<typename TableFields<Type>::Field>;
-    // there's other requirements too but this will do for now
+    // There's other requirements too but this will do for now.
 };
 
 enum class UserdataTypes : u32 { Library, Instrument, SoundSource, Ir, Count };
@@ -313,11 +313,11 @@ static void IterateTableAtTop(LuaState& ctx, auto&& table_pair_callback) {
     lua_pushnil(ctx.lua); // first key
     while (lua_next(ctx.lua, table_index) != 0) {
         DEFER {
-            // removes 'value'; keeps 'key' for next iteration
+            // Removes 'value'; keeps 'key' for next iteration.
             lua_pop(ctx.lua, 1);
         };
 
-        // 'key' (at index -2) and 'value' (at index -1)
+        // 'key' (at index -2) and 'value' (at index -1).
         table_pair_callback();
     }
 }
@@ -328,7 +328,7 @@ static MutableString StringFromTop(LuaState& ctx) { return ctx.result_arena.Clon
 static LibraryPath PathFromTop(LuaState& ctx) {
     auto const path_c_str = luaL_checkstring(ctx.lua, -1);
     auto const path = FromNullTerminated(path_c_str);
-    // we wan't Floe libraries to be portable and therefore they shouldn't reference files outside the library
+    // We want Floe libraries to be portable and therefore they shouldn't reference files outside the library.
     if (path::IsAbsolute(path) || StartsWithSpan(path, ".."_s))
         luaL_error(ctx.lua, "Path '%s' must be a relative path to within the folder of floe.lua", path_c_str);
     return {ctx.result_arena.Clone(path)};
