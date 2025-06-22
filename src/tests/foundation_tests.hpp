@@ -3826,6 +3826,20 @@ TEST_CASE(TestErrorCode) {
     return k_success;
 }
 
+static_assert(NextPowerOf2(0u) == 1u);
+static_assert(NextPowerOf2(1u) == 1u);
+static_assert(NextPowerOf2(2u) == 2u);
+static_assert(NextPowerOf2(3u) == 4u);
+static_assert(NextPowerOf2(4u) == 4u);
+static_assert(NextPowerOf2(5u) == 8u);
+static_assert(NextPowerOf2(6u) == 8u);
+static_assert(NextPowerOf2(7u) == 8u);
+static_assert(NextPowerOf2(8u) == 8u);
+static_assert(NextPowerOf2(9u) == 16u);
+static_assert(NextPowerOf2(15u) == 16u);
+static_assert(NextPowerOf2(16u) == 16u);
+static_assert(NextPowerOf2(17u) == 32u);
+
 TEST_REGISTRATION(RegisterFoundationTests) {
     REGISTER_TEST(TestAllocatorTypes<ArenaAllocatorBigBuf>);
     REGISTER_TEST(TestAllocatorTypes<ArenaAllocatorMalloc>);
