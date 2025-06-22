@@ -1245,11 +1245,8 @@ TEST_CASE(TestHashTable) {
             CHECK(v && *v == 113);
         }
 
-        for (auto const i : Range(10000uz)) {
-            char buffer[32];
-            int const count = stbsp_snprintf(buffer, 32, "key%zu", i);
-            CHECK(tab.Insert({buffer, (usize)count}, i));
-        }
+        for (auto const i : Range(10000uz))
+            CHECK(tab.Insert(fmt::Format(a, "key{}", i), i));
 
         // test Assign()
         DynamicHashTable<String, usize, nullptr, k_ordering> other {a, 16u};
@@ -1258,6 +1255,39 @@ TEST_CASE(TestHashTable) {
 
         tab.Assign(other);
         CHECK(tab.table.size == 1);
+    }
+
+    SUBCASE("grow and delete") {
+        for (auto insertions : Range(4uz, 32uz)) {
+            HashTable<usize, usize, nullptr, k_ordering> tab {};
+            for (auto i : Range(insertions)) {
+                auto const result = tab.FindOrInsertGrowIfNeeded(a, i, i * 2);
+                CHECK(result.inserted);
+                tester.log.Debug("Inserted '{}', capacity: {}", i, tab.Capacity());
+            }
+            CHECK_EQ(tab.size, insertions);
+            for (auto i : Range(insertions))
+                tab.Delete(i);
+            CHECK_EQ(tab.size, 0uz);
+            for (auto i : Range(insertions * 4)) {
+                auto const result = tab.FindOrInsertGrowIfNeeded(a, i, i * 2);
+                CHECK(result.inserted);
+            }
+            CHECK_EQ(tab.size, insertions * 4);
+        }
+    }
+
+    SUBCASE("reserve") {
+        for (auto count : Range(4uz, 32uz)) {
+            HashTable<usize, usize, nullptr, k_ordering> tab {};
+            tab.Reserve(a, count);
+            CHECK_EQ(tab.size, 0uz);
+            for (auto i : Range(count)) {
+                auto const result = tab.FindOrInsertWithoutGrowing(i, i * 2);
+                CHECK(result.inserted);
+            }
+            CHECK_EQ(tab.size, count);
+        }
     }
 
     SUBCASE("no initial size") {
