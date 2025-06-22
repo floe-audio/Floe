@@ -185,7 +185,6 @@ struct HashTable {
             auto element = elems + (index & mask);
 
             if (element->hash == 0) return false; // empty slot
-            if (element->hash == k_tombstone) return false; // deleted slot
             if (element->hash == hash) return true; // match
 
             index += step;
