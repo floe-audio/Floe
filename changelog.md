@@ -10,6 +10,9 @@ For instance: 0.0.1. Don't change the headings.
 # Changelog
 ## 0.10.1-beta
 - Replace 'Reset all parameters' option with 'Reset State' which also clears things such as instruments.
+- Fix crash with floe-package when using relative paths
+- Fix possible error with installing/opening preset-picker
+- Fix a set of possible rare errors
 
 ## 0.10.0-beta
 - Picker panels:
