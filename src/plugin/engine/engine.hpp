@@ -34,7 +34,7 @@ struct Engine : ProcessorListener {
 
         void Set(StateSnapshotWithName const& snapshot) {
             state = snapshot.state;
-            name_or_path = snapshot.name.Clone(name_arena);
+            SetName(snapshot.name);
         }
 
         void SetName(StateSnapshotName const& m) {
@@ -114,3 +114,5 @@ bool StateChangedSinceLastSnapshot(Engine& engine);
 void LoadPresetFromFile(Engine& engine, String path);
 
 void SaveCurrentStateToFile(Engine& engine, String path);
+
+void SetToDefaultState(Engine& engine);

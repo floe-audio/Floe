@@ -220,10 +220,8 @@ struct AudioProcessor {
     Bitset<k_num_layers> mute {};
 
     static constexpr usize k_max_num_events = 128;
-    AtomicQueue<EventForAudioThread, k_max_num_events, NumProducers::Many, NumConsumers::One>
-        events_for_audio_thread;
-    AtomicQueue<EventForAudioThread, k_max_num_events, NumProducers::One, NumConsumers::One>
-        param_events_for_audio_thread;
+    AtomicQueue<EventForAudioThread, k_max_num_events> events_for_audio_thread;
+    AtomicQueue<EventForAudioThread, k_max_num_events> param_events_for_audio_thread;
 
     Bitset<k_num_parameters> pending_param_changes;
 

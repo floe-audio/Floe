@@ -190,7 +190,7 @@ static void AddAsyncJob(PendingLibraryJobs& pending_library_jobs,
         pending_library_jobs.jobs.Store(job, StoreMemoryOrder::Release);
     }
 
-    pending_library_jobs.num_uncompleted_jobs.FetchAdd(1, RmwMemoryOrder::Relaxed);
+    pending_library_jobs.num_uncompleted_jobs.FetchAdd(1, RmwMemoryOrder::AcquireRelease);
 
     pending_library_jobs.thread_pool.AddJob([&pending_library_jobs, &job = *job, &lib_list]() {
         try {
@@ -313,7 +313,7 @@ static bool UpdateLibraryJobs(Server& server,
 
         DEFER {
             node->result_handled = true;
-            pending_library_jobs.num_uncompleted_jobs.FetchSub(1, RmwMemoryOrder::Relaxed);
+            pending_library_jobs.num_uncompleted_jobs.FetchSub(1, RmwMemoryOrder::AcquireRelease);
         };
         auto const& job = *node;
         switch (job.data.tag) {
@@ -333,7 +333,8 @@ static bool UpdateLibraryJobs(Server& server,
                 }
                 auto const& outcome = *j.result.result;
 
-                auto const error_id = ThreadsafeErrorNotifications::Id("libs", path);
+                auto const error_id = HashMultiple(Array {"sls-read-lib"_s, path});
+
                 switch (outcome.tag) {
                     case ResultType::Value: {
                         auto lib = outcome.GetFromTag<ResultType::Value>();
@@ -386,17 +387,13 @@ static bool UpdateLibraryJobs(Server& server,
                             continue;
                         }
 
-                        auto const err = server.error_notifications.NewError();
-                        err->value = {
-                            .title = "Failed to read library"_s,
-                            .message = {},
-                            .error_code = error.code,
-                            .id = error_id,
-                        };
-                        if (j.args.path_or_memory.Is<String>())
-                            fmt::Append(err->value.message, "{}\n", j.args.path_or_memory.Get<String>());
-                        if (error.message.size) fmt::Append(err->value.message, "{}\n", error.message);
-                        server.error_notifications.AddOrUpdateError(err);
+                        if (auto err = server.error_notifications.BeginWriteError(error_id)) {
+                            DEFER { server.error_notifications.EndWriteError(*err); };
+                            dyn::AssignFitInCapacity(err->title, "Failed to read library"_s);
+                            dyn::AssignFitInCapacity(err->message, path);
+                            if (error.message.size) fmt::Append(err->message, "\n{}\n", error.message);
+                            err->error_code = error.code;
+                        }
                         break;
                     }
                 }
@@ -412,26 +409,25 @@ static bool UpdateLibraryJobs(Server& server,
                 ZoneScopedN("job completed: folder scanned");
                 ZoneText(path.data, path.size);
 
-                auto const folder_error_id = ThreadsafeErrorNotifications::Id("libs", path);
+                auto const error_id = HashMultiple(Array {"sls-scan-folder"_s, path});
 
                 ScanFolder::State new_state {};
 
                 if (!j.result.outcome.HasError()) {
-                    server.error_notifications.RemoveError(folder_error_id);
+                    server.error_notifications.RemoveError(error_id);
                     new_state = ScanFolder::State::ScannedSuccessfully;
                 } else {
                     auto const is_always_scanned_folder =
                         folder->source == ScanFolder::Source::AlwaysScannedFolder;
                     if (!(is_always_scanned_folder &&
                           j.result.outcome.Error() == FilesystemError::PathDoesNotExist)) {
-                        auto const err = server.error_notifications.NewError();
-                        err->value = {
-                            .title = "Failed to scan library folder"_s,
-                            .message = String(path),
-                            .error_code = j.result.outcome.Error(),
-                            .id = folder_error_id,
-                        };
-                        server.error_notifications.AddOrUpdateError(err);
+
+                        if (auto err = server.error_notifications.BeginWriteError(error_id)) {
+                            DEFER { server.error_notifications.EndWriteError(*err); };
+                            dyn::AssignFitInCapacity(err->title, "Failed to scan library folder"_s);
+                            dyn::AssignFitInCapacity(err->message, path);
+                            err->error_code = j.result.outcome.Error();
+                        }
                     }
                     new_state = ScanFolder::State::ScanFailed;
                 }
@@ -446,10 +442,11 @@ static bool UpdateLibraryJobs(Server& server,
                 // RescanRequested because the server thread needs to see RescanRequested in order to trigger
                 // a new scanning job.
                 {
+                    usize deadlock_count = 0;
                     auto state = folder->state.Load(LoadMemoryOrder::Acquire);
                     while (true) {
                         if (state == ScanFolder::State::RescanRequested) {
-                            // Don't overwrite RescanRequested - let server thread handle it
+                            // Don't overwrite RescanRequested - let server thread handle it.
                             break;
                         }
 
@@ -457,10 +454,12 @@ static bool UpdateLibraryJobs(Server& server,
                                                               new_state,
                                                               RmwMemoryOrder::AcquireRelease,
                                                               LoadMemoryOrder::Acquire)) {
-                            // Successfully updated to new_state
+                            // Successfully updated to new_state.
                             break;
                         }
-                        // state was automatically updated by CompareExchangeWeak, try again
+                        // State was automatically updated by CompareExchangeWeak, try again.
+                        ++deadlock_count;
+                        ASSERT(deadlock_count < 10000);
                     }
                 }
 
@@ -651,14 +650,14 @@ static bool UpdateLibraryJobs(Server& server,
     }
 
     auto const library_work_still_pending =
-        pending_library_jobs.num_uncompleted_jobs.Load(LoadMemoryOrder::Relaxed) != 0;
+        pending_library_jobs.num_uncompleted_jobs.Load(LoadMemoryOrder::Acquire) != 0;
     return library_work_still_pending;
 }
 
 static Optional<DirectoryWatcher> CreateDirectoryWatcher(ThreadsafeErrorNotifications& error_notifications) {
     Optional<DirectoryWatcher> watcher;
     auto watcher_outcome = CreateDirectoryWatcher(PageAllocator::Instance());
-    auto const error_id = U64FromChars("libwatch");
+    auto const error_id = SourceLocationHash();
     if (!watcher_outcome.HasError()) {
         error_notifications.RemoveError(error_id);
         watcher.Emplace(watcher_outcome.ReleaseValue());
@@ -666,14 +665,11 @@ static Optional<DirectoryWatcher> CreateDirectoryWatcher(ThreadsafeErrorNotifica
         LogDebug(ModuleName::SampleLibraryServer,
                  "Failed to create directory watcher: {}",
                  watcher_outcome.Error());
-        auto const err = error_notifications.NewError();
-        err->value = {
-            .title = "Warning: unable to monitor library folders"_s,
-            .message = {},
-            .error_code = watcher_outcome.Error(),
-            .id = error_id,
-        };
-        error_notifications.AddOrUpdateError(err);
+        if (auto err = error_notifications.BeginWriteError(error_id)) {
+            DEFER { error_notifications.EndWriteError(*err); };
+            dyn::AssignFitInCapacity(err->title, "Warning: unable to monitor library folders"_s);
+            err->error_code = watcher_outcome.Error();
+        }
     }
     return watcher;
 }
@@ -685,7 +681,7 @@ using AudioDataAllocator = PageAllocator;
 
 ListedAudioData::~ListedAudioData() {
     ZoneScoped;
-    auto const s = state.Load(LoadMemoryOrder::Relaxed);
+    auto const s = state.Load(LoadMemoryOrder::Acquire);
     ASSERT(s == FileLoadingState::CompletedCancelled || s == FileLoadingState::CompletedWithError ||
            s == FileLoadingState::CompletedSucessfully);
     if (audio_data.interleaved_samples.size)
@@ -736,8 +732,8 @@ LoadAudioAsync(ListedAudioData& audio_data, sample_lib::Library const& lib, Thre
                         PanicIfReached();
                 } while (!audio_data.state.CompareExchangeWeak(state,
                                                                new_state,
-                                                               RmwMemoryOrder::Acquire,
-                                                               LoadMemoryOrder::Relaxed));
+                                                               RmwMemoryOrder::AcquireRelease,
+                                                               LoadMemoryOrder::Acquire));
 
                 if (new_state == FileLoadingState::CompletedCancelled) return;
             }
@@ -745,7 +741,7 @@ LoadAudioAsync(ListedAudioData& audio_data, sample_lib::Library const& lib, Thre
             // At this point we must be in the Loading state so other threads know not to interfere. The
             // memory ordering used with the atomic 'state' variable reflects this: the Acquire memory order
             // above, and the Release memory order at the end.
-            ASSERT_EQ(audio_data.state.Load(LoadMemoryOrder::Relaxed), FileLoadingState::Loading);
+            ASSERT_EQ(audio_data.state.Load(LoadMemoryOrder::Acquire), FileLoadingState::Loading);
 
             auto const outcome = [&audio_data, &lib]() -> ErrorCodeOr<AudioData> {
                 auto reader = TRY(lib.create_file_reader(lib, audio_data.path));
@@ -775,8 +771,8 @@ static void TriggerReloadIfAudioIsCancelled(ListedAudioData& audio_data,
     auto expected = FileLoadingState::PendingCancel;
     if (!audio_data.state.CompareExchangeStrong(expected,
                                                 FileLoadingState::PendingLoad,
-                                                RmwMemoryOrder::Acquire,
-                                                LoadMemoryOrder::Relaxed)) {
+                                                RmwMemoryOrder::AcquireRelease,
+                                                LoadMemoryOrder::Acquire)) {
         if (expected == FileLoadingState::CompletedCancelled) {
             audio_data.state.Store(FileLoadingState::PendingLoad, StoreMemoryOrder::Release);
             TracyMessageEx({k_trace_category, k_trace_colour, -1u},
@@ -795,8 +791,10 @@ static void TriggerReloadIfAudioIsCancelled(ListedAudioData& audio_data,
                        debug_inst_id);
     }
 
-    ASSERT(audio_data.state.Load(LoadMemoryOrder::Relaxed) != FileLoadingState::CompletedCancelled &&
-           audio_data.state.Load(LoadMemoryOrder::Relaxed) != FileLoadingState::PendingCancel);
+    {
+        auto const state = audio_data.state.Load(LoadMemoryOrder::Acquire);
+        ASSERT(state != FileLoadingState::CompletedCancelled && state != FileLoadingState::PendingCancel);
+    }
 }
 
 static ListedAudioData* FetchOrCreateAudioData(LibrariesList::Node& lib_node,
@@ -919,8 +917,8 @@ static void CancelLoadingAudioForInstrumentIfPossible(ListedInstrument const* i,
             auto expected = FileLoadingState::PendingLoad;
             audio_data->state.CompareExchangeStrong(expected,
                                                     FileLoadingState::PendingCancel,
-                                                    RmwMemoryOrder::Relaxed,
-                                                    LoadMemoryOrder::Relaxed);
+                                                    RmwMemoryOrder::AcquireRelease,
+                                                    LoadMemoryOrder::Acquire);
 
             TracyMessageEx({k_trace_category, k_trace_colour, trace_id},
                            "instID:{} cancel attempt audio from state: {}",
@@ -1003,7 +1001,7 @@ static void DumpPendingResourcesDebugInfo(PendingResources& pending_resources) {
                             LogDebug(ModuleName::SampleLibraryServer,
                                      "      Audio data: {}, {}",
                                      audio_data->audio_data.hash,
-                                     EnumToString(audio_data->state.Load(LoadMemoryOrder::Relaxed)));
+                                     EnumToString(audio_data->state.Load(LoadMemoryOrder::Acquire)));
                         }
                         break;
                     }
@@ -1015,7 +1013,7 @@ static void DumpPendingResourcesDebugInfo(PendingResources& pending_resources) {
                         LogDebug(ModuleName::SampleLibraryServer,
                                  "      Audio data: {}, {}",
                                  ir->audio_data->audio_data.hash,
-                                 EnumToString(ir->audio_data->state.Load(LoadMemoryOrder::Relaxed)));
+                                 EnumToString(ir->audio_data->state.Load(LoadMemoryOrder::Acquire)));
                         break;
                     }
                 }
@@ -1042,7 +1040,7 @@ static bool ConsumeResourceRequests(PendingResources& pending_resources,
     while (auto queued_request = request_queue.TryPop()) {
         ZoneNamedN(req, "request", true);
 
-        if (!queued_request->async_comms_channel.used.Load(LoadMemoryOrder::Relaxed)) continue;
+        if (!queued_request->async_comms_channel.used.Load(LoadMemoryOrder::Acquire)) continue;
 
         static uintptr debug_result_id = 0;
         auto pending_resource = arena.NewUninitialised<PendingResource>();
@@ -1096,31 +1094,34 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
         LibrariesList::Node* lib {};
         if (auto l_ptr = server.libraries_by_id.Find(library_id)) lib = *l_ptr;
 
+        auto const find_lib_error_id =
+            HashMultiple(Array {"sls-find-lib"_s, library_id.name, library_id.author});
+        auto& error_notifications = pending_resource.request.async_comms_channel.error_notifications;
+
         if (!lib) {
             // If libraries are still loading, then we just wait to see if the library we're missing is
             // about to be loaded. If not, then it's an error.
             if (!libraries_are_still_loading) {
-                auto const err = pending_resource.request.async_comms_channel.error_notifications.NewError();
-                err->value = {
-                    .title = {},
-                    .message = {},
-                    .error_code = CommonError::NotFound,
-                    .id = library_id.Hash(),
-                };
-                fmt::Append(err->value.title, "{} library not found", library_id);
-                fmt::Append(
-                    err->value.message,
-                    "\"{}\" is not installed or is otherwise unavailable. Check your preferences or consult the library installation instructions.",
-                    library_id);
-                if (library_id == sample_lib::k_mirage_compat_library_id) {
+                if (auto err = error_notifications.BeginWriteError(find_lib_error_id)) {
+                    DEFER { error_notifications.EndWriteError(*err); };
+                    err->error_code = CommonError::NotFound;
+                    fmt::Assign(err->title, "{} library not found"_s, library_id);
                     fmt::Append(
-                        err->value.message,
-                        " For compatibility with Mirage please install the Mirage Compatibility library (freely available from FrozenPlain).");
+                        err->message,
+                        "\"{}\" is not installed or is otherwise unavailable. Check your preferences or consult the library installation instructions.",
+                        library_id);
+                    if (library_id == sample_lib::k_mirage_compat_library_id) {
+                        fmt::Append(
+                            err->message,
+                            " For compatibility with Mirage please install the Mirage Compatibility library (freely available from FrozenPlain).");
+                    }
                 }
-                pending_resource.request.async_comms_channel.error_notifications.AddOrUpdateError(err);
+
                 pending_resource.state = ErrorCode {CommonError::NotFound};
             }
         } else {
+            error_notifications.RemoveError(find_lib_error_id);
+
             switch (pending_resource.request.request.tag) {
                 case LoadRequestType::Instrument: {
                     auto const& load_inst =
@@ -1129,7 +1130,12 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
 
                     ASSERT(inst_name.size != 0);
 
+                    auto const find_inst_error_id = HashMultiple(
+                        Array {"sls-find-inst"_s, library_id.name, library_id.author, inst_name});
+
                     if (auto const i = lib->value.lib->insts_by_name.Find(inst_name)) {
+                        error_notifications.RemoveError(find_inst_error_id);
+
                         pending_resource.request.async_comms_channel
                             .instrument_loading_percents[load_inst.layer_index]
                             .Store(0, StoreMemoryOrder::Relaxed);
@@ -1149,18 +1155,13 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                                        lib->value.lib->name,
                                        inst_name);
                     } else {
-                        auto const err =
-                            pending_resource.request.async_comms_channel.error_notifications.NewError();
-                        err->value = {
-                            .title = {},
-                            .message = {},
-                            .error_code = CommonError::NotFound,
-                            .id = load_inst.id.Hash(),
-                        };
-                        fmt::Append(err->value.title, "Cannot find instrument \"{}\"", inst_name);
-                        pending_resource.request.async_comms_channel.error_notifications.AddOrUpdateError(
-                            err);
-                        pending_resource.state = *err->value.error_code;
+                        if (auto err = error_notifications.BeginWriteError(find_inst_error_id)) {
+                            DEFER { error_notifications.EndWriteError(*err); };
+                            fmt::Assign(err->title, "Cannot find instrument \"{}\""_s, inst_name);
+                            err->error_code = CommonError::NotFound;
+                        }
+
+                        pending_resource.state = ErrorCode {CommonError::NotFound};
                     }
                     break;
                 }
@@ -1168,7 +1169,12 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                     auto const ir_id = pending_resource.request.request.Get<sample_lib::IrId>();
                     auto const ir = lib->value.lib->irs_by_name.Find(ir_id.ir_name);
 
+                    auto const find_ir_error_id = HashMultiple(
+                        Array {"sls-find-ir"_s, library_id.name, library_id.author, ir_id.ir_name});
+
                     if (ir) {
+                        error_notifications.RemoveError(find_ir_error_id);
+
                         auto listed_ir = FetchOrCreateImpulseResponse(*lib, **ir, thread_pool_args);
 
                         pending_resource.state = PendingResource::ListedPointer {listed_ir};
@@ -1178,22 +1184,17 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                                        ir_id.library,
                                        ir_id.ir_name);
                     } else {
-                        auto const err =
-                            pending_resource.request.async_comms_channel.error_notifications.NewError();
-                        err->value = {
-                            .title = "Failed to find IR"_s,
-                            .message = {},
-                            .error_code = CommonError::NotFound,
-                            .id = ir_id.Hash(),
-                        };
-                        fmt::Assign(err->value.message,
-                                    "Could not find reverb impulse response: {}, in library: {}",
-                                    ir_id.ir_name,
-                                    library_id);
-                        err->value.id = ThreadsafeErrorNotifications::Id("ir  ", err->value.message),
-                        pending_resource.request.async_comms_channel.error_notifications.AddOrUpdateError(
-                            err);
-                        pending_resource.state = *err->value.error_code;
+                        if (auto err = error_notifications.BeginWriteError(find_ir_error_id)) {
+                            DEFER { error_notifications.EndWriteError(*err); };
+                            fmt::Assign(err->title, "Cannot find IR \"{}\""_s, ir_id.ir_name);
+                            fmt::Assign(err->message,
+                                        "Could not find reverb impulse response: {}, in library: {}",
+                                        ir_id.ir_name,
+                                        library_id);
+                            err->error_code = CommonError::NotFound;
+                        }
+
+                        pending_resource.state = ErrorCode {CommonError::NotFound};
                     }
                     break;
                 }
@@ -1216,28 +1217,34 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
         Optional<ErrorCode> error {};
         Optional<String> audio_path {};
         for (auto a : listed_inst.audio_data_set) {
-            if (a->state.Load(LoadMemoryOrder::Relaxed) == FileLoadingState::CompletedWithError) {
+            if (a->state.Load(LoadMemoryOrder::Acquire) == FileLoadingState::CompletedWithError) {
                 error = a->error;
                 audio_path = a->path;
                 break;
             }
         }
 
-        if (error) {
-            auto const err = pending_resource.request.async_comms_channel.error_notifications.NewError();
-            err->value = {
-                .title = "Failed to load audio"_s,
-                .message = {},
-                .error_code = *error,
-                .id = ThreadsafeErrorNotifications::Id("audi", listed_inst.inst.instrument.name),
-            };
-            fmt::Assign(err->value.message,
-                        "Failed to load audio file '{}', part of instrument '{}', in library '{}'",
-                        *audio_path,
-                        listed_inst.inst.instrument.name,
-                        listed_inst.inst.instrument.library.Id());
+        auto const audio_load_error_id = HashMultiple(Array {
+            "sls-audio-load"_s,
+            audio_path.ValueOr(""),
+            listed_inst.inst.instrument.library.name,
+            listed_inst.inst.instrument.library.author,
+        });
 
-            pending_resource.request.async_comms_channel.error_notifications.AddOrUpdateError(err);
+        auto& error_notifications = pending_resource.request.async_comms_channel.error_notifications;
+        if (!error) {
+            error_notifications.RemoveError(audio_load_error_id);
+        } else {
+            if (auto err = error_notifications.BeginWriteError(audio_load_error_id)) {
+                DEFER { error_notifications.EndWriteError(*err); };
+                dyn::AssignFitInCapacity(err->title, "Failed to load audio");
+                err->error_code = *error;
+                fmt::Assign(err->message,
+                            "Failed to load audio file '{}', part of instrument '{}', in library '{}'",
+                            *audio_path,
+                            listed_inst.inst.instrument.name,
+                            listed_inst.inst.instrument.library.Id());
+            }
 
             CancelLoadingAudioForInstrumentIfPossible(&listed_inst, pending_resource.debug_id);
             if (pending_resource.IsDesired())
@@ -1258,7 +1265,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
             auto const num_completed = ({
                 u32 n = 0;
                 for (auto& a : i->audio_data_set)
-                    if (a->state.Load(LoadMemoryOrder::Relaxed) == FileLoadingState::CompletedSucessfully)
+                    if (a->state.Load(LoadMemoryOrder::Acquire) == FileLoadingState::CompletedSucessfully)
                         ++n;
                 n;
             });
@@ -1302,10 +1309,20 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
             pending_resource.state.Get<PendingResource::ListedPointer>().TryGet<ListedImpulseResponse*>();
         if (!ir_ptr_ptr) continue;
         auto ir_ptr = *ir_ptr_ptr;
-
         auto const& ir = *ir_ptr;
-        switch (ir.audio_data->state.Load(LoadMemoryOrder::Relaxed)) {
+
+        auto const audio_load_error_id = HashMultiple(Array {
+            "sls-audio-load"_s,
+            ir.audio_data->path.str,
+            ir.ir.ir.library.name,
+            ir.ir.ir.library.author,
+        });
+
+        auto& error_notifications = pending_resource.request.async_comms_channel.error_notifications;
+
+        switch (ir.audio_data->state.Load(LoadMemoryOrder::Acquire)) {
             case FileLoadingState::CompletedSucessfully: {
+                error_notifications.RemoveError(audio_load_error_id);
                 pending_resource.state = Resource {
                     RefCounted<sample_lib::LoadedIr> {
                         ir_ptr->ir,
@@ -1317,22 +1334,17 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
             }
             case FileLoadingState::CompletedWithError: {
                 auto const ir_id = pending_resource.request.request.Get<sample_lib::IrId>();
-                {
-                    auto const err =
-                        pending_resource.request.async_comms_channel.error_notifications.NewError();
-                    err->value = {
-                        .title = "Failed to load IR"_s,
-                        .message = {},
-                        .error_code = *ir.audio_data->error,
-                        .id = ir_id.Hash(),
-                    };
-                    fmt::Assign(err->value.message,
+                if (auto err = error_notifications.BeginWriteError(audio_load_error_id)) {
+                    DEFER { error_notifications.EndWriteError(*err); };
+                    dyn::AssignFitInCapacity(err->title, "Failed to load IR");
+                    err->error_code = *ir.audio_data->error;
+                    fmt::Assign(err->message,
                                 "File '{}', in library {} failed to load. Check your Lua file: {}",
-                                ir_ptr->ir.ir.path,
+                                ir.audio_data->path.str,
                                 ir_id.library,
-                                ir_ptr->ir.ir.library.path);
-                    pending_resource.request.async_comms_channel.error_notifications.AddOrUpdateError(err);
+                                ir.ir.ir.library.path);
                 }
+
                 pending_resource.state = *ir.audio_data->error;
                 break;
             }
@@ -1377,7 +1389,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
             };
 
             server.channels.Use([&](auto&) {
-                if (pending_resource.request.async_comms_channel.used.Load(LoadMemoryOrder::Relaxed)) {
+                if (pending_resource.request.async_comms_channel.used.Load(LoadMemoryOrder::Acquire)) {
                     result.Retain();
                     pending_resource.request.async_comms_channel.results.Push(result);
                     pending_resource.request.async_comms_channel.result_added_callback();
@@ -1405,7 +1417,7 @@ static void ServerThreadUpdateMetrics(Server& server) {
             ++num_insts_loaded;
         for (auto const& audio : i.value.audio_datas) {
             ++num_samples_loaded;
-            if (audio.state.Load(LoadMemoryOrder::Relaxed) == FileLoadingState::CompletedSucessfully)
+            if (audio.state.Load(LoadMemoryOrder::Acquire) == FileLoadingState::CompletedSucessfully)
                 total_bytes_used += audio.audio_data.RamUsageBytes();
         }
     }
@@ -1420,7 +1432,7 @@ static void RemoveUnreferencedObjects(Server& server) {
     ASSERT_EQ(CurrentThreadId(), server.server_thread_id);
 
     server.channels.Use([](auto& channels) {
-        channels.RemoveIf([](AsyncCommsChannel const& h) { return !h.used.Load(LoadMemoryOrder::Relaxed); });
+        channels.RemoveIf([](AsyncCommsChannel const& h) { return !h.used.Load(LoadMemoryOrder::Acquire); });
     });
 
     auto remove_unreferenced_in_lib = [](auto& lib) {
@@ -1475,7 +1487,7 @@ static void ServerThreadProc(Server& server) {
                 LogDebug(ModuleName::SampleLibraryServer, "Dumping current state of loading thread");
                 LogDebug(ModuleName::SampleLibraryServer,
                          "Libraries currently loading: {}",
-                         pending_library_jobs.num_uncompleted_jobs.Load(LoadMemoryOrder::Relaxed));
+                         pending_library_jobs.num_uncompleted_jobs.Load(LoadMemoryOrder::Acquire));
                 DumpPendingResourcesDebugInfo(pending_resources);
                 LogDebug(ModuleName::SampleLibraryServer, "\nAvailable Libraries:");
                 for (auto& lib : server.libraries) {
@@ -1505,7 +1517,7 @@ static void ServerThreadProc(Server& server) {
             auto const libraries_are_still_loading =
                 UpdateLibraryJobs(server, pending_library_jobs, scratch_arena, watcher);
             if (!libraries_are_still_loading) {
-                server.is_scanning_libraries.Store(false, StoreMemoryOrder::Relaxed);
+                server.is_scanning_libraries.Store(false, StoreMemoryOrder::SequentiallyConsistent);
                 WakeWaitingThreads(server.is_scanning_libraries, NumWaitingThreads::All);
             }
 
@@ -1658,15 +1670,7 @@ Server::Server(ThreadPool& pool,
         libraries_by_id.Insert(BuiltinLibrary()->Id(), node);
     }
 
-    thread.Start(
-        [this]() {
-            try {
-                ServerThreadProc(*this);
-            } catch (PanicException) {
-                // pass
-            }
-        },
-        "samp-lib-server");
+    thread.Start([this]() { ServerThreadProc(*this); }, "samp-lib-server");
 }
 
 Server::~Server() {
@@ -1697,7 +1701,7 @@ AsyncCommsChannel& OpenAsyncCommsChannel(Server& server, OpenAsyncCommsChannelAr
 void CloseAsyncCommsChannel(Server& server, AsyncCommsChannel& channel) {
     server.channels.Use([&channel](auto& channels) {
         (void)channels;
-        channel.used.Store(false, StoreMemoryOrder::Relaxed);
+        channel.used.Store(false, StoreMemoryOrder::Release);
         while (auto r = channel.results.TryPop())
             r->Release();
     });
@@ -1773,7 +1777,7 @@ void SetExtraScanFolders(Server& server, Span<String const> extra_folders) {
             PLACEMENT_NEW(folder) ScanFolder();
             dyn::Assign(folder->path, path);
             folder->source = ScanFolder::Source::ExtraFolder;
-            folder->state.raw = ScanFolder::State::NotScanned;
+            folder->state.Store(ScanFolder::State::NotScanned, StoreMemoryOrder::Release);
             dyn::Append(server.scan_folders.folders, folder);
             edited = true;
         }
@@ -1985,6 +1989,7 @@ TEST_CASE(TestSampleLibraryServer) {
                     .check_result =
                         [&](LoadResult const& r, LoadRequest const& request) {
                             auto ir = ExtractSuccess<RefCounted<sample_lib::LoadedIr>>(tester, r, request);
+                            REQUIRE(ir->audio_data);
                             CHECK(ir->audio_data->interleaved_samples.size);
                         },
                 });
@@ -2196,8 +2201,8 @@ TEST_CASE(TestSampleLibraryServer) {
             for (auto& j : requests)
                 j.request_id = SendAsyncLoadRequest(server, channel, j.request);
 
-            u32 const timeout_secs = 15;
-            auto const countdown_result = countdown.WaitUntilZero(timeout_secs * 1000);
+            constexpr u32 k_timeout_secs = 15;
+            auto const countdown_result = countdown.WaitUntilZero(k_timeout_secs * 1000);
 
             if (countdown_result == WaitResult::TimedOut) {
                 tester.log.Error("Timed out waiting for library resource loading to complete");
@@ -2213,14 +2218,13 @@ TEST_CASE(TestSampleLibraryServer) {
                 DEFER { r->Release(); };
                 for (auto const& request : requests) {
                     if (r->id == request.request_id) {
-                        for (auto& n : fixture.error_notif.items) {
-                            if (auto e = n.TryScoped()) {
-                                tester.log.Debug("Error Notification  {}: {}: {}",
-                                                 e->title,
-                                                 e->message,
-                                                 e->error_code);
-                            }
-                        }
+                        fixture.error_notif.ForEach([&](ThreadsafeErrorNotifications::Item const& n) {
+                            tester.log.Debug("Error Notification  {}: {}: {}",
+                                             n.title,
+                                             n.message,
+                                             n.error_code);
+                            return ThreadsafeErrorNotifications::ItemIterationResult::Continue;
+                        });
                         request.check_result(*r, request.request);
                     }
                 }

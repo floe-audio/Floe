@@ -187,8 +187,7 @@ class ConvolutionReverb final : public Effect {
     Atomic<StereoConvolver*> m_desired_convolver {};
 
     static constexpr usize k_max_num_convolvers = 8;
-    AtomicQueue<StereoConvolver*, k_max_num_convolvers, NumProducers::One, NumConsumers::One>
-        m_convolvers_to_delete;
+    AtomicQueue<StereoConvolver*, k_max_num_convolvers> m_convolvers_to_delete;
 
     FloeSmoothedValueSystem::FilterId const m_filter_coeffs_smoother_id;
     rbj_filter::StereoData m_filter {};

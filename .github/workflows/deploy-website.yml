@@ -28,7 +28,7 @@ jobs:
       - uses: nicknovitski/nix-develop@v1.2.1
       - uses: Hanaasagi/zig-action-cache@master
 
-      - run: just build native
+      - run: just build
 
       - run: just install-docs-preprocessor
 

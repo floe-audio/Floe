@@ -229,7 +229,7 @@ struct AtomicRefList {
             // they do not use it, so it's safe to delete the object. However, there is a very small window
             // where a reader has incremented the value but not yet checked the dead bit. It's fine though
             // because this function is called regularly and clean-up will happen eventually.
-            if (i->reader_uses.Load(LoadMemoryOrder::Relaxed) == Node::k_dead_bit) {
+            if (i->reader_uses.Load(LoadMemoryOrder::Acquire) == Node::k_dead_bit) {
                 if (!previous)
                     dead_list = i->writer_next;
                 else

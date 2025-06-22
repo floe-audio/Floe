@@ -49,7 +49,7 @@ static void DoDotsMenu(Gui* g) {
     String const longest_string_in_menu = "Randomise All Parameters";
     PopupMenuItems top_menu(g, {&longest_string_in_menu, 1});
 
-    if (top_menu.DoButton("Reset All Parameters")) SetAllParametersToDefaultValues(g->engine.processor);
+    if (top_menu.DoButton("Reset State")) SetToDefaultState(g->engine);
     if (top_menu.DoButton("Randomise All Parameters")) {
         RandomiseAllParameterValues(g->engine.processor);
         for (auto& layer : g->engine.processor.layer_processors) {

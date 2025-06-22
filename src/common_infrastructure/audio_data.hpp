@@ -5,7 +5,7 @@
 #include "foundation/foundation.hpp"
 
 struct AudioData {
-    usize RamUsageBytes() const { return interleaved_samples.ToByteSpan().size; }
+    usize RamUsageBytes() const { return interleaved_samples.size * sizeof(interleaved_samples[0]); }
 
     u64 hash {};
     u8 channels {};

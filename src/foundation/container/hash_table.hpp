@@ -107,7 +107,6 @@ struct HashTable {
         usize index {};
     };
 
-    static constexpr usize k_min_size = 8;
     static constexpr usize k_max_size = (((usize)-1 / 2) + 1);
     static constexpr u64 k_tombstone = 0xdeadc0de;
 
@@ -115,16 +114,15 @@ struct HashTable {
         u64 result;
 
         // IMPORTANT: we don't set Hash as the k_hash_function in the template arguments because we don't know
-        // if Hash is consistent accross different compilation units. It might be a header-only function in
+        // if Hash is consistent across different compilation units. It might be a header-only function in
         // which case the _type_ of the HashTable will vary depending on the compilation unit leading to
         // cryptic linker errors.
-        if constexpr (k_hash_function == nullptr) {
-            // if the KeyType has a Hash() method, use it
+        if constexpr (k_hash_function == nullptr)
             if constexpr (requires { k.Hash(); })
                 result = k.Hash();
             else
                 result = ::Hash(k);
-        } else
+        else
             result = k_hash_function(k);
 
         // Reserved hash values.
@@ -187,7 +185,6 @@ struct HashTable {
             auto element = elems + (index & mask);
 
             if (element->hash == 0) return false; // empty slot
-            if (element->hash == k_tombstone) return false; // deleted slot
             if (element->hash == hash) return true; // match
 
             index += step;
@@ -199,23 +196,9 @@ struct HashTable {
         return false;
     }
 
-    static usize PowerOf2Capacity(usize capacity) {
-        if (capacity > k_max_size) capacity = k_max_size;
-        return NextPowerOf2(capacity);
-    }
-
-    static usize RecommendedCapacity(usize num_items) { return PowerOf2Capacity(num_items * 2); }
-
     [[nodiscard]] static HashTable Create(Allocator& a, usize size) {
         HashTable table {};
-        if (!size) return table;
-        auto const cap = RecommendedCapacity(size);
-        table.elems = a.NewMultiple<Element>(cap).data;
-        table.mask = cap - 1;
-
-        if constexpr (k_ordering == HashTableOrdering::Ordered)
-            table.order_indices = a.AllocateExactSizeUninitialised<usize>(cap).data;
-
+        table.Reserve(a, size);
         return table;
     }
 
@@ -276,18 +259,18 @@ struct HashTable {
         num_dead = 0;
     }
 
-    // allocator must be the same as created this table
-    void IncreaseCapacity(Allocator& allocator, usize capacity) {
+    // Reserves space for at least 'count' elements. Rehashes the container.
+    // Allocator must be the same as previously used on this table.
+    void Reserve(Allocator& allocator, usize count) {
         auto const old_elements = Elements();
         auto const current_capacity = old_elements.size;
 
-        ASSERT(capacity > current_capacity);
         if (current_capacity == 0) {
             ASSERT(elems == nullptr);
             if constexpr (k_ordering == HashTableOrdering::Ordered) ASSERT(order_indices == nullptr);
         }
 
-        capacity = PowerOf2Capacity(capacity);
+        auto const capacity = NextPowerOf2(Max(4uz, count, size) * 2);
 
         if constexpr (k_ordering == HashTableOrdering::Ordered) {
             auto mem = allocator.Reallocate<usize>(capacity,
@@ -323,11 +306,11 @@ struct HashTable {
         }
         if (!hash) hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
+        if (element->Active()) return false; // Already exists.
 
-        if (element->Active()) return false; // already exists
         if (LoadFactorTooHigh()) {
             PanicIfReached();
-            return false; // too full
+            return false; // Too full.
         }
 
         if (element->hash == k_tombstone) --num_dead;
@@ -340,26 +323,24 @@ struct HashTable {
         return true;
     }
 
-    // allocator must be the same as created this table
+    // The allocator must be the same as used before on with this table.
     bool InsertGrowIfNeeded(Allocator& allocator, KeyType key, ValueType value, u64 hash = 0) {
-        if (!elems) IncreaseCapacity(allocator, k_min_size);
+        if (!elems) Reserve(allocator, 0);
         if (!hash) hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
-        if (element->Active()) return false; // already exists
+        if (element->Active()) return false; // Already exists.
 
-        auto const old_hash = element->hash; // save old hash in case it's tombstone marker
+        auto const old_hash = element->hash;
         element->key = key;
         element->data = value;
         element->hash = hash;
         AddToOrderedIndicesIfNeeded((usize)(element - elems));
         ++size;
 
-        if (LoadFactorTooHigh()) {
-            IncreaseCapacity(allocator, 2 * size);
-        } else if (old_hash == k_tombstone) {
-            // re-used tomb
-            --num_dead;
-        }
+        if (LoadFactorTooHigh())
+            Reserve(allocator, size);
+        else if (old_hash == k_tombstone)
+            --num_dead; // Re-used tomb.
 
         if constexpr (k_ordering == HashTableOrdering::Ordered) {
             for (auto i : Span {order_indices, size}) {
@@ -377,7 +358,7 @@ struct HashTable {
     };
 
     FindOrInsertResult FindOrInsertWithoutGrowing(KeyType key, ValueType value, u64 hash = 0) {
-        if (!elems) PanicIfReached(); // not initialized
+        if (!elems) PanicIfReached(); // Not initialized.
         if (!hash) hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
         if (element->Active()) return {.element = *element, .inserted = false};
@@ -396,12 +377,12 @@ struct HashTable {
 
     FindOrInsertResult
     FindOrInsertGrowIfNeeded(Allocator& allocator, KeyType key, ValueType value, u64 hash = 0) {
-        if (!elems) IncreaseCapacity(allocator, k_min_size);
+        if (!elems) Reserve(allocator, 0);
         if (!hash) hash = Hash(key);
         Element* element = Lookup(key, hash, k_tombstone);
         if (element->Active()) return {.element = *element, .inserted = false};
 
-        auto const old_hash = element->hash; // save old hash in case it's tombstone marker
+        auto const old_hash = element->hash;
         element->key = key;
         element->data = value;
         element->hash = hash;
@@ -409,13 +390,12 @@ struct HashTable {
         ++size;
 
         if (LoadFactorTooHigh()) {
-            IncreaseCapacity(allocator, 2 * size);
+            Reserve(allocator, size);
             element = Lookup(key, hash, 0); // Re-lookup after resizing.
             ASSERT_HOT(element->Active());
             ASSERT_HOT(element->hash == hash);
         } else if (old_hash == k_tombstone) {
-            // re-used tomb
-            --num_dead;
+            --num_dead; // Re-used tomb.
         }
 
         return {.element = *element, .inserted = true};
@@ -486,10 +466,10 @@ struct HashTable {
     void RemoveFromOrderedIndicesIfNeeded(usize elem_index) {
         if constexpr (k_ordering == HashTableOrdering::Ordered) {
             bool found = false;
-            // Find the element in the ordering array
+            // Find the element in the ordering array.
             for (usize i = 0; i < size; ++i) {
                 if (order_indices[i] == elem_index) {
-                    // Shift remaining elements left
+                    // Shift remaining elements left.
                     for (usize j = i; j < size - 1; ++j)
                         order_indices[j] = order_indices[j + 1];
                     found = true;
@@ -514,11 +494,11 @@ struct HashTable {
                     if (k_less_than_function(elem.key, elem.data, new_elem.key, new_elem.data)) return -1;
                 } else if (elem.key < new_elem.key)
                     return -1;
-                // keys are unique in a hash table, so we don't need to check for equality
+                // Keys are unique in a hash table, so we don't need to check for equality.
                 return 1;
             });
 
-            MakeRoomForInsertion(items, insert_index, 1); // size is increased by 1
+            MakeRoomForInsertion(items, insert_index, 1); // This increases the size by 1.
             items[insert_index] = elem_index;
         }
     }
@@ -545,8 +525,8 @@ struct DynamicHashTable {
     static constexpr HashTableOrdering k_ordering = k_ordering_;
     using Table = HashTable<KeyType, ValueType, k_hash_function, k_ordering, k_less_than_function>;
 
-    DynamicHashTable(Allocator& alloc, usize initial_capacity = 0) : allocator(alloc) {
-        if (initial_capacity) IncreaseCapacity(initial_capacity);
+    DynamicHashTable(Allocator& alloc, usize reserve_count = 0) : allocator(alloc) {
+        if (reserve_count) Reserve(reserve_count);
     }
 
     ~DynamicHashTable() { Free(); }
@@ -587,7 +567,7 @@ struct DynamicHashTable {
 
     void Free() { table.Free(allocator); }
 
-    void IncreaseCapacity(usize capacity) { table.IncreaseCapacity(allocator, capacity); }
+    void Reserve(usize count) { table.Reserve(allocator, count); }
 
     template <typename T = KeyType>
     requires(!Same<T, DummyValueType>)
@@ -670,8 +650,8 @@ struct DynamicSet
     static constexpr HashTableOrdering k_ordering = k_ordering_;
     using Set = Set<KeyType, k_hash_function, k_ordering, k_less_than_function>;
 
-    DynamicSet(Allocator& alloc, usize initial_capacity = 0)
-        : DynamicHashTable<KeyType, DummyValueType, k_hash_function>(alloc, initial_capacity) {}
+    DynamicSet(Allocator& alloc, usize reserve_count = 0)
+        : DynamicHashTable<KeyType, DummyValueType, k_hash_function>(alloc, reserve_count) {}
 
     auto Insert(KeyType key, u64 hash = 0) {
         return DynamicHashTable<KeyType, DummyValueType, k_hash_function>::Insert(key, {}, hash);

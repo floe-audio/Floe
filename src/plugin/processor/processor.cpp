@@ -662,6 +662,8 @@ static void FlushEventsForAudioThread(AudioProcessor& processor) {
 }
 
 static void Deactivate(AudioProcessor& processor) {
+    ASSERT(g_is_logical_main_thread);
+
     if (processor.activated) {
         FlushEventsForAudioThread(processor);
         processor.voice_pool.EndAllVoicesInstantly();
@@ -1458,6 +1460,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     return result;
 }
 
+// Audio-thread
 static void Reset(AudioProcessor& processor) {
     FlushEventsForAudioThread(processor);
     processor.voice_pool.EndAllVoicesInstantly();

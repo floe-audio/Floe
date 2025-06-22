@@ -451,13 +451,9 @@ struct TryHelpersToState {
 static InstallJob::State DoJobPhase1(InstallJob& job) {
     using H = package::detail::TryHelpersToState;
 
-    job.file_reader = ({
-        auto o = Reader::FromFile(job.path);
-        if (o.HasError()) {
-            fmt::Append(job.error_buffer, "Couldn't read file {}: {}\n", path::Filename(job.path), o.Error());
-            return InstallJob::State::DoneError;
-        }
-        o.ReleaseValue();
+    job.file_reader = TRY_OR(Reader::FromFile(job.path), {
+        fmt::Append(job.error_buffer, "Couldn't read file {}: {}\n", path::Filename(job.path), error);
+        return InstallJob::State::DoneError;
     });
 
     job.reader = PackageReader {.zip_file_reader = *job.file_reader};
@@ -504,11 +500,21 @@ static InstallJob::State DoJobPhase1(InstallJob& job) {
                     auto existing_lib = sample_lib_server::FindLibraryRetained(job.sample_lib_server,
                                                                                component->library->Id());
                     DEFER { existing_lib.Release(); };
+                    LogDebug(ModuleName::Package,
+                             "Checking existing installation of library {}, server returned {}",
+                             component->library->Id(),
+                             existing_lib ? "true" : "false");
 
                     r = TRY_H(
                         detail::LibraryCheckExistingInstallation(*component,
                                                                  existing_lib ? &*existing_lib : nullptr,
                                                                  job.arena));
+                    LogDebug(ModuleName::Package,
+                             "Existing installation status: installed={}, version_difference={}, "
+                             "modified_since_installed={}",
+                             r.installed,
+                             r.version_difference,
+                             r.modified_since_installed);
                     if (existing_lib) {
                         destination_path = job.arena.Clone(*path::Directory(existing_lib->path));
                         write_mode = InstallJob::DestinationWriteMode::OverwriteDirectly;
@@ -645,6 +651,7 @@ PUBLIC void DoJobPhase2(InstallJob& job);
 PUBLIC void DoJobPhase1(InstallJob& job) {
     ASSERT_EQ(job.state.Load(LoadMemoryOrder::Acquire), InstallJob::State::Installing);
     auto const result = detail::DoJobPhase1(job);
+    LogDebug(ModuleName::Package, "DoJobPhase1 finished with state: {}", result);
     if (result != InstallJob::State::Installing) {
         job.state.Store(result, StoreMemoryOrder::Release);
         return;
@@ -781,8 +788,8 @@ PUBLIC void AddJob(InstallJobs& jobs,
 // [main thread]
 PUBLIC InstallJobs::Iterator RemoveJob(InstallJobs& jobs, InstallJobs::Iterator it) {
     ASSERT(g_is_logical_main_thread);
-    ASSERT(it->job->state.Load(LoadMemoryOrder::Acquire) == InstallJob::State::DoneError ||
-           it->job->state.Load(LoadMemoryOrder::Acquire) == InstallJob::State::DoneSuccess);
+    auto const state = it->job->state.Load(LoadMemoryOrder::Acquire);
+    ASSERT(state == InstallJob::State::DoneError || state == InstallJob::State::DoneSuccess);
 
     return jobs.Remove(it);
 }

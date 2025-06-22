@@ -71,10 +71,10 @@ PUBLIC constexpr bool IsPowerOfTwo(usize v) { return !(v & (v - 1)); }
 PUBLIC constexpr usize Power2Modulo(usize x, usize y) { return x & (y - 1); }
 
 // https://jameshfisher.com/2018/03/30/round-up-power-2/
-template <Integral T>
+template <UnsignedInt T>
 PUBLIC constexpr T NextPowerOf2(T x) {
-    if (x == 1) return 1;
-    return 1 << ((sizeof(T) * 8) - (usize)__builtin_clzg(x - 1));
+    if (x <= 1) return 1;
+    return 1 << ((u8)(sizeof(T) * 8) - (u8)__builtin_clzg(x - 1));
 }
 
 // Finds the next value that is aligned to 'alignment'

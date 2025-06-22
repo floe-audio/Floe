@@ -410,7 +410,7 @@ fn postInstallMacosBinary(
 const Win32EmbedInfo = struct {
     name: []const u8,
     description: []const u8,
-    icon_path: ?[]const u8,
+    icon_path: ?std.Build.LazyPath,
 };
 
 fn addWin32EmbedInfo(step: *std.Build.Step.Compile, info: Win32EmbedInfo) !void {
@@ -419,13 +419,11 @@ fn addWin32EmbedInfo(step: *std.Build.Step.Compile, info: Win32EmbedInfo) !void 
     const b = step.step.owner;
     const arena = b.allocator;
 
-    const path = try std.fmt.allocPrint(arena, "{s}/{s}.rc", .{ floe_cache_relative, step.name });
-    const file = try b.build_root.handle.createFile(path, .{});
-    defer file.close();
+    var wf = b.addWriteFiles();
 
-    const this_year = 1970 + @divTrunc(std.time.timestamp(), 60 * 60 * 24 * 365);
+    var data = std.ArrayList(u8).init(arena);
 
-    try std.fmt.format(file.writer(),
+    try std.fmt.format(data.writer(),
         \\ #include <windows.h>
         \\ 
         \\ VS_VERSION_INFO VERSIONINFO
@@ -455,15 +453,25 @@ fn addWin32EmbedInfo(step: *std.Build.Step.Compile, info: Win32EmbedInfo) !void 
         .patch = if (step.version != null) step.version.?.patch else 0,
         .description = info.description,
         .name = info.name,
-        .this_year = this_year,
+        .this_year = 1970 + @divTrunc(std.time.timestamp(), 60 * 60 * 24 * 365),
         .copyright = floe_copyright,
         .vendor = floe_vendor,
     });
 
-    if (info.icon_path) |p|
-        try std.fmt.format(file.writer(), "icon_id ICON \"{s}\"\n", .{p});
+    var rc_include_paths: std.BoundedArray(std.Build.LazyPath, 1) = .{};
 
-    step.addWin32ResourceFile(.{ .file = b.path(path) });
+    if (info.icon_path) |p| {
+        try std.fmt.format(data.writer(), "\nicon_id ICON \"icon.ico\"\n", .{});
+        _ = wf.addCopyFile(p, "icon.ico");
+        try rc_include_paths.append(p);
+    }
+
+    const rc_path = wf.add(b.fmt("{s}.rc", .{step.name}), data.items);
+
+    step.addWin32ResourceFile(.{
+        .file = rc_path,
+        .include_paths = rc_include_paths.slice(),
+    });
 }
 
 fn performPostInstallConfig(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
@@ -673,7 +681,7 @@ const BuildContext = struct {
     master_step: *std.Build.Step,
     test_step: *std.Build.Step,
     optimise: std.builtin.OptimizeMode,
-    external_resources_subdir: ?[]const u8,
+    dep_floe_logos: ?*std.Build.Dependency,
     dep_xxhash: *std.Build.Dependency,
     dep_stb: *std.Build.Dependency,
     dep_au_sdk: *std.Build.Dependency,
@@ -772,7 +780,7 @@ const FlagsBuilder = struct {
         try self.flags.append("-D_USE_MATH_DEFINES");
         try self.flags.append("-D__USE_FILE_OFFSET64");
         try self.flags.append("-D_FILE_OFFSET_BITS=64");
-        try self.flags.append("-ftime-trace");
+        try self.flags.append("-ftime-trace"); // ClangBuildAnalyzer
 
         try self.flags.append("-DMINIZ_USE_UNALIGNED_LOADS_AND_STORES=0");
         try self.flags.append("-DMINIZ_NO_STDIO");
@@ -1041,38 +1049,6 @@ fn getLicenceText(b: *std.Build, filename: []const u8) ![]const u8 {
     return try file.readToEndAlloc(b.allocator, 1024 * 1024 * 1024);
 }
 
-const ExternalResource = struct {
-    relative_path: []const u8,
-    absolute_path: []const u8,
-};
-
-fn getExternalResource(context: *BuildContext, name: []const u8) ?ExternalResource {
-    if (context.external_resources_subdir == null) {
-        std.debug.print(
-            "WARNING: external resource folder is not set. Some aspects of the final build might be empty\n",
-            .{},
-        );
-        return null;
-    }
-
-    const relative_path = context.b.pathJoin(&.{ context.external_resources_subdir.?, name });
-    const absolute_path = context.b.pathJoin(&.{ context.b.build_root.path.?, relative_path });
-
-    var found = true;
-    std.fs.accessAbsolute(absolute_path, .{}) catch {
-        found = false;
-    };
-    if (found) {
-        return .{ .relative_path = relative_path, .absolute_path = absolute_path };
-    } else {
-        std.debug.print(
-            "WARNING: external resource \"{s}\" not found in {s}. Some aspects of the final build might be empty\n",
-            .{ name, context.external_resources_subdir.? },
-        );
-        return null;
-    }
-}
-
 pub fn build(b: *std.Build) void {
     const build_mode = b.option(
         BuildMode,
@@ -1093,6 +1069,18 @@ pub fn build(b: *std.Build) void {
 
     const enable_tracy = b.option(bool, "tracy", "Enable Tracy profiler") orelse false;
 
+    const sanitize_thread = b.option(
+        bool,
+        "sanitize-thread",
+        "Enable thread sanitiser",
+    ) orelse false;
+
+    const fetch_floe_logos = b.option(
+        bool,
+        "fetch-floe-logos",
+        "Fetch Floe logos from online - these may have a different licence to the rest of Floe",
+    ) orelse false;
+
     var build_context: BuildContext = .{
         .b = b,
         .enable_tracy = enable_tracy,
@@ -1103,11 +1091,10 @@ pub fn build(b: *std.Build) void {
             .development => std.builtin.OptimizeMode.Debug,
             .performance_profiling, .production => std.builtin.OptimizeMode.ReleaseSafe,
         },
-        .external_resources_subdir = b.option(
-            []const u8,
-            "external-resources",
-            "Path relative to build.zig that contains external build resources",
-        ),
+        .dep_floe_logos = if (fetch_floe_logos)
+            b.dependency("floe_logos", .{})
+        else
+            null,
         .dep_xxhash = b.dependency("xxhash", .{}),
         .dep_stb = b.dependency("stb", .{}),
         .dep_au_sdk = b.dependency("audio_unit_sdk", .{}),
@@ -1198,7 +1185,6 @@ pub fn build(b: *std.Build) void {
             .FLOE_SOURCE_CODE_URL = floe_source_code_url,
             .FLOE_PROJECT_ROOT_PATH = b.build_root.path.?,
             .FLOE_PROJECT_CACHE_PATH = b.pathJoin(&.{ b.build_root.path.?, floe_cache_relative }),
-            .FLOE_GLOBAL_ZIG_CACHE_PATH = b.graph.global_cache_root.path,
             .FLOE_VENDOR = floe_vendor,
             .FLOE_CLAP_ID = floe_clap_id,
             .ZIG_BACKTRACE = true,
@@ -1212,6 +1198,11 @@ pub fn build(b: *std.Build) void {
             .SENTRY_DSN = b.graph.env_map.get("SENTRY_DSN"),
         });
 
+        if (target.result.os.tag == .windows and sanitize_thread) {
+            std.log.err("thread sanitiser is not supported on Windows targets", .{});
+            @panic("thread sanitiser is not supported on Windows targets");
+        }
+
         const module_options: std.Build.Module.CreateOptions = .{
             .target = target,
             .optimize = build_context.optimise,
@@ -1220,6 +1211,7 @@ pub fn build(b: *std.Build) void {
             .link_libc = true,
             .omit_frame_pointer = false,
             .unwind_tables = .sync,
+            .sanitize_thread = sanitize_thread,
         };
 
         var stb_sprintf = b.addObject(.{
@@ -1887,15 +1879,12 @@ pub fn build(b: *std.Build) void {
             });
             {
                 var embedded_files_options = b.addOptions();
-                {
-                    const logo_resource = getExternalResource(&build_context, "Logos/rasterized/plugin-gui-logo.png");
-                    const logo_path = if (logo_resource) |r| r.absolute_path else null;
-                    embedded_files_options.addOption(?[]const u8, "logo_file", logo_path);
-                }
-                {
-                    const icon_resource = getExternalResource(&build_context, "Logos/rasterized/icon-background-256px.png");
-                    const icon_path = if (icon_resource) |r| r.absolute_path else null;
-                    embedded_files_options.addOption(?[]const u8, "icon_file", icon_path);
+                if (build_context.dep_floe_logos) |logos| {
+                    embedded_files_options.addOptionPath("logo_file", logos.path("rasterized/plugin-gui-logo.png"));
+                    embedded_files_options.addOptionPath("icon_file", logos.path("rasterized/icon-background-256px.png"));
+                } else {
+                    embedded_files_options.addOption(?[]const u8, "logo_file", null);
+                    embedded_files_options.addOption(?[]const u8, "icon_file", null);
                 }
                 embedded_files.?.root_module.addOptions("build_options", embedded_files_options);
             }
@@ -2119,7 +2108,7 @@ pub fn build(b: *std.Build) void {
         }
 
         var clap_final_step: ?*std.Build.Step = null;
-        {
+        if (!sanitize_thread) {
             const clap = b.addSharedLibrary(.{
                 .name = "Floe.clap",
                 .root_module = b.createModule(module_options),
@@ -2525,7 +2514,7 @@ pub fn build(b: *std.Build) void {
         }
 
         var vst3_final_step: ?*std.Build.Step = null;
-        if (!clap_only) {
+        if (!clap_only and !sanitize_thread) {
             const vst3 = b.addSharedLibrary(.{
                 .name = "Floe.vst3",
                 .version = floe_version,
@@ -2681,7 +2670,7 @@ pub fn build(b: *std.Build) void {
             }
         }
 
-        if (!clap_only and target.result.os.tag == .macos) {
+        if (!clap_only and target.result.os.tag == .macos and !sanitize_thread) {
             const au_sdk = b.addStaticLibrary(.{
                 .name = "AU",
                 .root_module = b.createModule(module_options),
@@ -2873,10 +2862,6 @@ pub fn build(b: *std.Build) void {
         if (!clap_only and target.result.os.tag == .windows) {
             const installer_path = "src/windows_installer";
 
-            // the logos probably have a different license to the rest of the codebase, so we keep them separate and optional
-            const logo_image = getExternalResource(&build_context, "Logos/rasterized/icon.ico");
-            const sidebar_image = getExternalResource(&build_context, "Logos/rasterized/win-installer-sidebar.png");
-
             {
                 const writeManifest = (struct {
                     fn writeManifest(
@@ -3032,26 +3017,33 @@ pub fn build(b: *std.Build) void {
                 });
                 win_installer.subsystem = .Windows;
 
-                if (sidebar_image != null) {
+                var rc_include_path: std.BoundedArray(std.Build.LazyPath, 2) = .{};
+                rc_include_path.append(b.path("zig-out/x86_64-windows")) catch @panic("OOM");
+
+                if (build_context.dep_floe_logos) |logos| {
+                    const sidebar_img = "rasterized/win-installer-sidebar.png";
+                    const sidebar_img_lazy_path = logos.path(sidebar_img);
+                    rc_include_path.append(sidebar_img_lazy_path.dirname()) catch @panic("OOM");
                     win_installer.root_module.addCMacro(
                         "SIDEBAR_IMAGE_PATH",
-                        b.fmt("\"{s}\"", .{sidebar_image.?.relative_path}),
+                        b.fmt("\"{s}\"", .{std.fs.path.basename(sidebar_img)}),
                     );
                 }
                 win_installer.root_module.addCMacro(
                     "VST3_PLUGIN_PATH_RELATIVE_BUILD_ROOT",
-                    "\"zig-out/x86_64-windows/Floe.vst3\"",
+                    "\"Floe.vst3\"",
                 );
                 win_installer.root_module.addCMacro(
                     "CLAP_PLUGIN_PATH_RELATIVE_BUILD_ROOT",
-                    "\"zig-out/x86_64-windows/Floe.clap\"",
+                    "\"Floe.clap\"",
                 );
                 win_installer.root_module.addCMacro(
                     "UNINSTALLER_PATH_RELATIVE_BUILD_ROOT",
-                    b.fmt("\"zig-out/x86_64-windows/{s}\"", .{win_uninstaller.out_filename}),
+                    b.fmt("\"{s}\"", .{win_uninstaller.out_filename}),
                 );
                 win_installer.addWin32ResourceFile(.{
                     .file = b.path(installer_path ++ "/resources.rc"),
+                    .include_paths = rc_include_path.slice(),
                     .flags = win_installer.root_module.c_macros.items,
                 });
 
@@ -3072,7 +3064,7 @@ pub fn build(b: *std.Build) void {
                 addWin32EmbedInfo(win_installer, .{
                     .name = "Floe Installer",
                     .description = win_installer_description,
-                    .icon_path = if (logo_image != null) logo_image.?.relative_path else null,
+                    .icon_path = if (build_context.dep_floe_logos) |logos| logos.path("rasterized/icon.ico") else null,
                 }) catch @panic("OOM");
                 win_installer.addConfigHeader(build_config_step);
                 win_installer.addIncludePath(b.path("src"));

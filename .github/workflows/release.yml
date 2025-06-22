@@ -32,7 +32,6 @@ jobs:
       - uses: Hanaasagi/zig-action-cache@master
 
       - run: |
-          just fetch-logos 
           just build-release windows
 
       - run: just windows-prepare-release
@@ -64,7 +63,6 @@ jobs:
       - uses: Hanaasagi/zig-action-cache@master
 
       - run: |
-          just fetch-logos
           just build-release mac_arm
           just build-release mac_x86
 

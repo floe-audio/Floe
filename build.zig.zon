@@ -88,6 +88,10 @@
             .url = "https://github.com/floe-audio/vst3sdk/archive/refs/tags/v3.7.9.tar.gz",
             .hash = "N-V-__8AAO0bUAGCcGr95wyEMO9MxddzMb9rGpxf6yLBEiIE",
         },
+        .floe_logos = .{
+            .url = "git+https://github.com/floe-audio/Floe-Logos#8dcbe7fdfab93a7958947ad6d0ff9427565c65ab",
+            .hash = "N-V-__8AAHEKFgBFuPa2_DBoERCMfyw108H3h7ubU7jLpXtj",
+        },
     },
     .paths = .{"src"},
 }

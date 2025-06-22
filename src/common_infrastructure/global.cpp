@@ -3,6 +3,8 @@
 
 #include "global.hpp"
 
+#include <valgrind/valgrind.h>
+
 #include "utils/debug_info/debug_info.h"
 
 #include "error_reporting.hpp"
@@ -22,6 +24,11 @@ static void ShutdownTracy() {
 static u32 g_tracy_init = 0;
 
 void GlobalInit(GlobalInitOptions options) {
+#if __has_feature(thread_sanitizer)
+    // Very unstable to run Valgrind with ThreadSanitizer.
+    if (RUNNING_ON_VALGRIND) __builtin_abort();
+#endif
+
     if (g_tracy_init++ == 0) StartupTracy();
 
     if (options.set_main_thread) SetThreadName("main", FinalBinaryIsPlugin());

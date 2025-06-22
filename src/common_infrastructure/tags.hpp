@@ -109,6 +109,8 @@ enum class TagType : u16 {
     Heroic,
     Noir,
     Romantic,
+    Thriller,
+    Horror,
     SciFi,
     Western,
 
@@ -327,6 +329,8 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         case TagType::Heroic: return {"heroic"_s, ""_s};
         case TagType::Noir: return {"noir"_s, ""_s};
         case TagType::Romantic: return {"romantic"_s, ""_s};
+        case TagType::Thriller: return {"thriller"_s, ""_s};
+        case TagType::Horror: return {"horror"_s, ""_s};
         case TagType::SciFi: return {"sci-fi"_s, ""_s};
         case TagType::Western: return {"western"_s, ""_s};
 
@@ -461,7 +465,6 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
         TagCategory::SoundTypeLong,
         TagCategory::SoundTypeShort,
         TagCategory::SoundTypeSequence,
-        TagCategory::SoundTypeRole,
     };
     switch (category) {
         case TagCategory::SoundSource: {
@@ -473,9 +476,6 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 Synthesized,
                 Vocal,
             };
-            static constexpr auto k_exclude_categories = Array {
-                TagCategory::SoundSource,
-            };
             return {
                 .name = "Sound source",
                 .question = "Where did the sound come from?",
@@ -484,7 +484,6 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "🔊",
                 .font_awesome_icon = ICON_FA_VOLUME_HIGH,
-                .exclude_categories = k_exclude_categories,
             };
         }
         case TagCategory::RealInstrument: {
@@ -675,6 +674,8 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 Heroic,
                 Noir,
                 Romantic,
+                Thriller,
+                Horror,
                 SciFi,
                 Western,
             };

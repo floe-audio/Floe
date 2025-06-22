@@ -189,11 +189,17 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     sample_lib::Library* lib_for_package_name = nullptr;
 
     for (auto const path : cli_args[ToInt(PackagerCliArgId::LibraryFolder)].values) {
-        auto const library_path = TRY(AbsolutePath(arena, path));
+        auto const library_path = TRY_OR(AbsolutePath(arena, path), {
+            StdPrintF(StdStream::Err, "Error: failed to resolve library path '{}'\n", path);
+            return error;
+        });
         // library_folder can actually be a MDATA file but this is an uncommon legacy case so we don't
         // document it.
         if (path::Extension(library_path) == ".mdata") {
-            auto reader = TRY(Reader::FromFile(library_path));
+            auto reader = TRY_OR(Reader::FromFile(library_path), {
+                StdPrintF(StdStream::Err, "Error: failed to open library file '{}'\n", library_path);
+                return error;
+            });
             ArenaAllocator scratch_arena {PageAllocator::Instance()};
             auto outcome = sample_lib::ReadMdata(reader, library_path, arena, scratch_arena);
             if (outcome.HasError()) {
@@ -206,22 +212,52 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
             }
             auto lib = outcome.Get<sample_lib::Library*>();
             lib_for_package_name = lib;
-            if (create_package) TRY(package::WriterAddLibrary(package, *lib, arena, program_name));
+            if (create_package)
+                TRY_OR(package::WriterAddLibrary(package, *lib, arena, program_name), {
+                    StdPrintF(StdStream::Err,
+                              "Error: failed to add library {} to package: {}\n",
+                              library_path,
+                              error);
+                    return error;
+                });
 
             continue;
         }
 
-        auto const paths = TRY(ScanLibraryFolder(arena, library_path));
+        auto const paths = TRY_OR(ScanLibraryFolder(arena, library_path), {
+            StdPrintF(StdStream::Err, "Error: failed to scan library folder '{}'\n", library_path);
+            return error;
+        });
 
-        auto lib = TRY(ReadLua(paths.lua, arena));
+        auto lib = TRY_OR(ReadLua(paths.lua, arena), {
+            StdPrintF(StdStream::Err, "Error: failed to read Lua file '{}'\n", paths.lua);
+            return error;
+        });
         lib_for_package_name = lib;
-        if (!sample_lib::CheckAllReferencedFilesExist(*lib, StdWriter(StdStream::Err)))
+        if (!sample_lib::CheckAllReferencedFilesExist(*lib, StdWriter(StdStream::Err))) {
+            StdPrintF(StdStream::Err,
+                      "Error: library {} has missing files, cannot create package\n",
+                      lib->name);
             return ErrorCode {CommonError::NotFound};
+        }
 
         if (create_package) {
             auto const library_folder_in_zip =
-                TRY(package::WriterAddLibrary(package, *lib, arena, program_name));
-            auto const about_doc = TRY(WriteAboutLibraryDocument(*lib, arena, paths, *library_folder_in_zip));
+                TRY_OR(package::WriterAddLibrary(package, *lib, arena, program_name), {
+                    StdPrintF(StdStream::Err,
+                              "Error: failed to add library {} to package: {}\n",
+                              library_path,
+                              error);
+                    return error;
+                });
+            auto const about_doc =
+                TRY_OR(WriteAboutLibraryDocument(*lib, arena, paths, *library_folder_in_zip), {
+                    StdPrintF(StdStream::Err,
+                              "Error: failed to write about document for library {}: {}\n",
+                              lib->name,
+                              error);
+                    return error;
+                });
             if (!package::WriterAddFile(package,
                                         about_doc.filename_in_zip,
                                         about_doc.file_data.ToByteSpan())) {
@@ -235,8 +271,18 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     }
 
     if (create_package)
-        for (auto const preset_folder : cli_args[ToInt(PackagerCliArgId::PresetFolder)].values)
-            TRY(package::WriterAddPresetsFolder(package, preset_folder, arena, program_name));
+        for (auto const p : cli_args[ToInt(PackagerCliArgId::PresetFolder)].values) {
+            auto const preset_folder = TRY_OR(AbsolutePath(arena, p), {
+                StdPrintF(StdStream::Err, "Error: failed to resolve preset folder '{}'\n", p);
+                return error;
+            });
+            TRY_OR(package::WriterAddPresetsFolder(package, preset_folder, arena, program_name), {
+                StdPrintF(StdStream::Err,
+                          "Error: failed to add presets folder {} to package: {}\n",
+                          preset_folder,
+                          error);
+            });
+        }
 
     if (create_package) {
         auto const how_to_install_doc = ({
@@ -252,12 +298,32 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         }
         StdPrintF(StdStream::Out, "Added installation document: {}\n", k_installation_doc_name);
 
+        String const folder =
+            TRY_OR(AbsolutePath(arena, cli_args[ToInt(PackagerCliArgId::OutputPackageFolder)].values[0]), {
+                StdPrintF(StdStream::Err, "Error: failed to resolve output package folder: {}\n", error);
+                return error;
+            });
+        TRY_OR(CreateDirectory(folder, {.create_intermediate_directories = true, .fail_if_exists = false}), {
+            StdPrintF(StdStream::Err,
+                      "Error: failed to create output package folder '{}': {}\n",
+                      folder,
+                      error);
+            return error;
+        });
+
         auto const package_path = path::Join(
             arena,
-            Array {cli_args[ToInt(PackagerCliArgId::OutputPackageFolder)].values[0],
+            Array {folder,
                    PackageName(arena, lib_for_package_name, cli_args[ToInt(PackagerCliArgId::PackageName)])});
+
         package::WriterFinalise(package);
-        TRY(WriteFile(package_path, zip_data));
+        TRY_OR(WriteFile(package_path, zip_data), {
+            StdPrintF(StdStream::Err,
+                      "Error: failed to write package file to '{}': {}\n",
+                      package_path,
+                      error);
+            return error;
+        });
         StdPrintF(StdStream::Out, "Successfully created package: {}\n", package_path);
     } else {
         StdPrintF(
@@ -271,9 +337,6 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
 int main(int argc, char** argv) {
     auto _ = EnterLogicalMainThread();
     auto const result = Main({argc, argv});
-    if (result.HasError()) {
-        StdPrintF(StdStream::Err, "Error: {}\n", result.Error());
-        return 1;
-    }
+    if (result.HasError()) return 1;
     return result.Value();
 }

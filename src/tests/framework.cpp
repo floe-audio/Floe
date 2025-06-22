@@ -3,6 +3,8 @@
 
 #include "framework.hpp"
 
+#include <valgrind/valgrind.h>
+
 #include "foundation/memory/allocators.hpp"
 #include "foundation/utils/format.hpp"
 #include "os/filesystem.hpp"
@@ -114,6 +116,9 @@ int RunAllTests(Tester& tester, Span<String> filter_patterns) {
     };
 
     tester.log.Info("Running tests ...");
+    tester.log.Info("Valgrind: {}", RUNNING_ON_VALGRIND);
+    tester.log.Info("Repeat tests: {}", tester.repeat_tests);
+
     Stopwatch const overall_stopwatch;
 
     for (auto _ : Range(tester.repeat_tests)) {

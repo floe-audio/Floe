@@ -30,7 +30,8 @@ const Segment = struct {
 };
 
 const ModuleInfo = struct {
-    arena: std.heap.ArenaAllocator,
+    non_threadsafe_arena: std.heap.ArenaAllocator,
+    arena: std.heap.ThreadSafeAllocator,
     self: SelfInfo = undefined,
     module: *SelfInfo.Module = undefined,
     dwarf: ?*std.debug.Dwarf = null,
@@ -61,10 +62,11 @@ fn Create() !*ModuleInfo {
     errdefer std.heap.c_allocator.destroy(self);
 
     self.* = ModuleInfo{
-        .arena = std.heap.ArenaAllocator.init(std.heap.page_allocator),
+        .non_threadsafe_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator),
+        .arena = .{ .child_allocator = self.non_threadsafe_arena.allocator() },
         .segments = .{},
     };
-    errdefer self.arena.deinit();
+    errdefer self.non_threadsafe_arena.deinit();
 
     self.self = try SelfInfo.open(self.arena.allocator());
     errdefer self.self.deinit();
@@ -165,7 +167,7 @@ export fn DestroySelfModuleInfo(module_info: c.SelfModuleHandle) callconv(.c) vo
     const self: *ModuleInfo = @alignCast(@ptrCast(module_info));
 
     self.self.deinit();
-    self.arena.deinit();
+    self.non_threadsafe_arena.deinit();
     std.heap.c_allocator.destroy(self);
 }
 
@@ -209,6 +211,8 @@ export fn SymbolInfo(
         var stack_allocator = std.heap.stackFallback(8000, temp_arena.allocator());
         var temp_allocator = stack_allocator.get();
 
+        // NOTE: this is actually not 100% signal-safe since we have to use an allocator with a mutex. I think the
+        // possiblity for serious problems is low though, and Zig's debug info code is not designed to be signal-safe.
         const symbol = self.module.getSymbolAtAddress(self.self.allocator, address) catch continue;
 
         const name_ptr = temp_allocator.dupeZ(u8, symbol.name) catch continue;

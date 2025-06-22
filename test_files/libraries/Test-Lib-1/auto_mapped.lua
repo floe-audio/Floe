@@ -1,7 +1,6 @@
 local M = {}
 
 function M.add_instrument(library)
-    print("Adding Auto Mapped Samples Instrument")
     local auto_mapped_samples = floe.new_instrument(library, {
         name = "Auto Mapped Samples",
         folders = "Folder",
