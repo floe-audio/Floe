@@ -77,16 +77,18 @@ bool ErrorSentBefore(u64 error_id) {
     return Contains(g_reported_error_ids, error_id);
 }
 
-void SetErrorSent(u64 error_id) {
+[[nodiscard]] static bool SetErrorSent(u64 error_id) {
     g_reported_error_ids_mutex.Lock();
     DEFER { g_reported_error_ids_mutex.Unlock(); };
-    if (g_reported_error_ids.size != g_reported_error_ids.Capacity())
-        dyn::Append(g_reported_error_ids, error_id);
+    if (g_reported_error_ids.size == g_reported_error_ids.Capacity()) return false;
+    dyn::Append(g_reported_error_ids, error_id);
+    return true;
 }
 
 void ReportError(sentry::Error&& error, Optional<u64> error_id) {
     ZoneScoped;
-    if (error_id) SetErrorSent(*error_id);
+    if (error_id)
+        if (!SetErrorSent(*error_id)) return;
 
     // For debug purposes, log the error.
     Log(ModuleName::ErrorReporting, LogLevel::Debug, [&error](Writer writer) -> ErrorCodeOr<void> {
