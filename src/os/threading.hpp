@@ -164,7 +164,7 @@ enum class RmwMemoryOrder {
 
 template <TriviallyCopyable Type>
 struct Atomic {
-    constexpr Atomic() : raw() {}
+    constexpr Atomic() : raw(Type {}) {}
     constexpr Atomic(Type v) : raw(v) {}
     constexpr Atomic(Type v, StoreMemoryOrder memory_order) { Store(v, memory_order); }
 
