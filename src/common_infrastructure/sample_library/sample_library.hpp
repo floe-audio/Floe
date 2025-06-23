@@ -57,7 +57,7 @@ struct BuiltinLoop {
     u32 crossfade_frames {};
     LoopMode mode {};
 
-    bool8 lock_loop_points : 1 {}; // Don't allow start, end or crossfade to be overriden.
+    bool8 lock_loop_points : 1 {}; // Don't allow start, end or crossfade to be overridden.
     bool8 lock_mode : 1 {}; // Don't allow mode to be changed.
 };
 
@@ -93,6 +93,7 @@ struct Region {
         f32 gain_db {0};
         f32 tune_cents {0};
         u32 start_offset_frames {};
+        u32 fade_in_frames {};
 
         // IMPROVE: add pan
         // IMPROVE: add tune

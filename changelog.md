@@ -8,6 +8,9 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 0.10.3-beta
+- Sample library creation: add 'fade_in_frames' to add_region
+
 ## 0.10.2-beta
 - Fix issue where layer volume would be automatically MIDI learned
 - Fix some persistent MIDI CCs not being applied

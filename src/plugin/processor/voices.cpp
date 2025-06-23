@@ -611,6 +611,17 @@ class ChunkwiseVoiceProcessor {
 
     bool SampleGetAndInc(VoiceSample& w, u32 frame, f32& out_l, f32& out_r) {
         SampleGetData(*w.sampler.data, w.sampler.loop, w.sampler.loop_and_reverse_flags, w.pos, out_l, out_r);
+        if (!(w.sampler.loop_and_reverse_flags &
+              (loop_and_reverse_flags::LoopedManyTimes | loop_and_reverse_flags::CurrentlyReversed))) {
+            auto const pos = w.pos - w.sampler.region->audio_props.start_offset_frames;
+            if (pos < w.sampler.region->audio_props.fade_in_frames) {
+                auto const percent = pos / (f64)w.sampler.region->audio_props.fade_in_frames;
+                // Quarter-sine fade in.
+                auto const amount = trig_table_lookup::SinTurnsPositive((f32)percent * 0.25f);
+                out_l *= amount;
+                out_r *= amount;
+            }
+        }
         auto const pitch_ratio = GetPitchRatio(w, frame);
         return IncrementSamplePlaybackPos(w.sampler.loop,
                                           w.sampler.loop_and_reverse_flags,
@@ -749,7 +760,7 @@ class ChunkwiseVoiceProcessor {
                                 if (s.pos > (1 << 24)) [[unlikely]]
                                     s.pos -= (1 << 24);
 
-                                // This is an arbitrary scale factor to make the sine more in line with other
+                                // This is an arbitrary scale factor to make the sine more in-line with other
                                 // waveform levels. It's important to keep this the same for backwards
                                 // compatibility.
                                 constexpr f32 k_sine_scale = 0.2f;
