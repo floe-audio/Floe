@@ -282,6 +282,7 @@ void UpdateLoopInfo(Voice& v) {
     for (auto& s : v.voice_samples) {
         if (!s.is_active) continue;
         if (s.generator != InstrumentType::Sampler) continue;
+        if (s.sampler.region->trigger.trigger_event == sample_lib::TriggerEvent::NoteOff) continue;
         auto& sampler = s.sampler;
 
         sampler.loop = v.controller->vol_env_on ? ConfigureLoop(v.controller->loop_mode,
