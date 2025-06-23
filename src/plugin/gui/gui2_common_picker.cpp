@@ -899,7 +899,7 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                                              },
                                          })
                                        .layout_id,
-                             .imgui_id = (imgui::Id)SourceLocationHash(),
+                             .imgui_id = box_system.imgui.GetID("filters"),
                              .flags = imgui::WindowFlags_NoScrollbarX,
                              .debug_name = "filters",
                          },
@@ -1007,7 +1007,7 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                                              },
                                          })
                                        .layout_id,
-                             .imgui_id = (imgui::Id)SourceLocationHash(),
+                             .imgui_id = box_system.imgui.GetID("rhs"),
                              .debug_name = "rhs",
                          },
                  });
@@ -1031,7 +1031,7 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                                     },
                                 })
                               .layout_id,
-                    .imgui_id = (imgui::Id)SourceLocationHash(),
+                    .imgui_id = box_system.imgui.GetID("status bar"),
                     .debug_name = "status bar",
                 },
         });
