@@ -722,7 +722,8 @@ class ChunkwiseVoiceProcessor {
                         s.is_active = false;
                         m_voice.num_active_voice_samples--;
                     }
-                    m_position_for_gui = (f32)s.pos / (f32)s.sampler.data->num_frames;
+                    if (s.sampler.region->trigger.trigger_event == sample_lib::TriggerEvent::NoteOn)
+                        m_position_for_gui = (f32)s.pos / (f32)s.sampler.data->num_frames;
                     break;
                 }
                 case InstrumentType::WaveformSynth: {
