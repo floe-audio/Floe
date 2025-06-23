@@ -10,6 +10,7 @@ For instance: 0.0.1. Don't change the headings.
 # Changelog
 ## 0.10.2-beta
 - Fix issue where layer volume would be automatically MIDI learned
+- Fix some persistent MIDI CCs not being applied
 
 ## 0.10.1-beta
 - Replace 'Reset all parameters' option with 'Reset State' which also clears things such as instruments.

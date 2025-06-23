@@ -1538,8 +1538,8 @@ AudioProcessor::AudioProcessor(clap_host const& host,
     if (prefs::GetBool(prefs, SettingDescriptor(ProcessorSetting::DefaultCcParamMappings)))
         for (auto const mapping : k_default_cc_to_param_mapping)
             param_learned_ccs[ToInt(mapping.param)].Set(mapping.cc);
-    for (auto const i : EnumIterator<ParamIndex>())
-        param_learned_ccs[ToInt(i)].AssignBlockwise(PersistentCcsForParam(prefs, ParamIndexToId(i)));
+    for (u32 i = 0; i < k_num_parameters; ++i)
+        param_learned_ccs[i].AssignBlockwise(PersistentCcsForParam(prefs, ParamIndexToId((ParamIndex)i)));
 }
 
 AudioProcessor::~AudioProcessor() {
