@@ -140,10 +140,11 @@ enum class ParamIndex : u16 {
     ReverbOn,
 
     CountHelper,
-    Count = CountHelper - FirstNonLayerParam,
+    NonLayerParamsCount = CountHelper - FirstNonLayerParam,
 };
 
-constexpr auto k_num_parameters = (ToInt(LayerParamIndex::Count) * k_num_layers) + ToInt(ParamIndex::Count);
+constexpr auto k_num_parameters =
+    (ToInt(LayerParamIndex::Count) * k_num_layers) + ToInt(ParamIndex::NonLayerParamsCount);
 
 enum class ParamDisplayFormat : u8 {
     None,
