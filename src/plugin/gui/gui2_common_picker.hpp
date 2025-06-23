@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include "common_infrastructure/tags.hpp"
-
 #include "gui/gui2_common_modal_panel.hpp"
 #include "gui/gui_library_images.hpp"
 #include "gui_framework/gui_box_system.hpp"
@@ -67,12 +65,12 @@ struct TagsFilters {
     HashTable<String, FilterItemInfo> tags;
 };
 
-bool FolderNodeLessThan(FolderNode const* const& a,
-                        DummyValueType const&,
-                        FolderNode const* const& b,
-                        DummyValueType const&);
+bool RootNodeLessThan(FolderNode const* const& a,
+                      DummyValueType const&,
+                      FolderNode const* const& b,
+                      DummyValueType const&);
 
-using FolderRootSet = OrderedSet<FolderNode const*, nullptr, FolderNodeLessThan>;
+using FolderRootSet = OrderedSet<FolderNode const*, nullptr, RootNodeLessThan>;
 
 struct FolderFilters {
     HashTable<FolderNode const*, FilterItemInfo> folders;
@@ -86,7 +84,7 @@ struct LibraryFilters {
     Optional<graphics::ImageID> unknown_library_icon;
 };
 
-// IMPORTANT: we use FunctionRefs here, you need to make sure the lifetime of the functions outlives the
+// IMPORTANT: we use FunctionRef here, you need to make sure the lifetime of the functions outlives the
 // options.
 struct PickerPopupOptions {
     struct Button {

@@ -3,11 +3,13 @@
 
 #include "gui2_common_picker.hpp"
 
-bool FolderNodeLessThan(FolderNode const* const& a,
-                        DummyValueType const&,
-                        FolderNode const* const& b,
-                        DummyValueType const&) {
-    return *a < *b;
+#include "common_infrastructure/tags.hpp"
+
+bool RootNodeLessThan(FolderNode const* const& a,
+                      DummyValueType const&,
+                      FolderNode const* const& b,
+                      DummyValueType const&) {
+    return a->name < b->name;
 }
 
 Box DoPickerItem(GuiBoxSystem& box_system, PickerItemOptions const& options) {
@@ -351,7 +353,6 @@ static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
     }
 
     auto this_info = info.Find(folder);
-    // if (!this_info) return; // TODO: this shouldn't be needed
     ASSERT(this_info);
 
     DoFilterButton(box_system,

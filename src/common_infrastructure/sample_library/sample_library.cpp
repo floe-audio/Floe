@@ -63,7 +63,7 @@ void InitialiseRootFolders(Library& lib, Allocator& arena) {
 }
 
 static void FinaliseFolderTree(FolderNode* root, auto const& items) {
-    for (auto& item : items)
+    for (auto const [_, item, _] : items)
         if (!item->folder)
             item->folder = root;
         else {
@@ -76,40 +76,39 @@ static void FinaliseFolderTree(FolderNode* root, auto const& items) {
     SortFolderTree(root);
 }
 
+static void AddItemFromFolder(FolderNode const* node, auto output_items, usize& index, auto hash_table) {
+    auto const start_index = index;
+
+    for (auto const& [key, item, _] : hash_table)
+        if (item->folder == node) output_items[index++] = item;
+
+    Sort(Span {output_items}.SubSpan(start_index, index - start_index),
+         [](auto const& a, auto const& b) { return a->name < b->name; });
+
+    for (auto child = node->first_child; child; child = child->next)
+        AddItemFromFolder(child, output_items, index, hash_table);
+}
+
+static auto BuildSorted(Allocator& arena, auto hash_table, FolderNode const* root_folder) {
+    using ValueType = typename decltype(hash_table)::ValueType;
+    auto result = arena.AllocateExactSizeUninitialised<ValueType>(hash_table.size);
+    usize index = 0;
+
+    AddItemFromFolder(root_folder, result, index, hash_table);
+
+    ASSERT(index == hash_table.size);
+
+    return result;
+}
+
 VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAllocator& scratch_arena) {
-    // Sort items into their folders, and by name within each folder.
-    auto const sort_function = [](auto* a, auto* b) {
-        auto const& a_folder = a->folder;
-        auto const& b_folder = b->folder;
-        if (!a_folder && b_folder) return true; // no-folder items first
-        if (a_folder && !b_folder) return false; // no-folder items first
-        if (!a_folder && !b_folder) return a->name < b->name; // no-folder items by name
-        // They both have folders
-        if (a_folder != b_folder) return *a_folder < *b_folder;
-        return a->name < b->name;
-    };
+    if (lib.insts_by_name.size)
+        FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Instrument)], lib.insts_by_name);
+    if (lib.irs_by_name.size) FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Ir)], lib.irs_by_name);
 
-    {
-        lib.sorted_instruments = arena.AllocateExactSizeUninitialised<Instrument*>(lib.insts_by_name.size);
-        usize index = 0;
-        for (auto [key, value, _] : lib.insts_by_name) {
-            auto& inst = *value;
-            lib.sorted_instruments[index++] = &inst;
-        }
-
-        Sort(lib.sorted_instruments, sort_function);
-    }
-
-    {
-        lib.sorted_irs = arena.AllocateExactSizeUninitialised<ImpulseResponse*>(lib.irs_by_name.size);
-        usize index = 0;
-        for (auto [key, value, _] : lib.irs_by_name) {
-            auto& ir = *value;
-            lib.sorted_irs[index++] = &ir;
-        }
-
-        Sort(lib.sorted_irs, sort_function);
-    }
+    lib.sorted_instruments =
+        BuildSorted(arena, lib.insts_by_name, &lib.root_folders[ToInt(ResourceType::Instrument)]);
+    lib.sorted_irs = BuildSorted(arena, lib.irs_by_name, &lib.root_folders[ToInt(ResourceType::Ir)]);
 
     for (auto [key, value, _] : lib.insts_by_name) {
         auto& inst = *value;
@@ -328,10 +327,6 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
             }
         }
     }
-
-    if (lib.sorted_instruments.size)
-        FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Instrument)], lib.sorted_instruments);
-    if (lib.sorted_irs.size) FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Ir)], lib.sorted_irs);
 
     return k_success;
 }

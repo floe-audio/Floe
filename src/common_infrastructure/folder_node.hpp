@@ -5,7 +5,6 @@
 #include "foundation/foundation.hpp"
 
 struct FolderNode {
-    friend bool operator<(FolderNode const& a, FolderNode const& b);
     u64 Hash() const;
 
     String name {};

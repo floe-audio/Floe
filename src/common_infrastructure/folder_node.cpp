@@ -5,15 +5,6 @@
 
 #include "tests/framework.hpp"
 
-bool operator<(FolderNode const& a, FolderNode const& b) {
-    if (a.parent == b.parent) return a.name < b.name;
-
-    if (a.parent == nullptr) return a < *b.parent;
-    if (b.parent == nullptr) return *a.parent < b;
-
-    return *a.parent < *b.parent;
-}
-
 u64 FolderNode::Hash() const {
     auto hash = HashInit();
     for (auto f = this; f; f = f->parent)
