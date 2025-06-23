@@ -8,12 +8,17 @@ on:
   push:
     branches:
       - main
-  release:
-    types: [released, created] # our website needs to update its download links
+  workflow_run:
+    workflows: ["Release"]
+    types:
+      - completed
+    branches:
+      - main
 
 jobs:
   generate-docs:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       id-token: write
       contents: write
