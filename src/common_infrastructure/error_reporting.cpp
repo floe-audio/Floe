@@ -46,7 +46,7 @@ bool IsOnlineReportingDisabled() {
     if (outcome.HasError()) {
         if (outcome.Error() == FilesystemError::PathDoesNotExist) return k_online_reporting_disabled_default;
 
-        // We couldn't read the file, so we can't know either way. It could just be an temporary filesystem
+        // We couldn't read the file, so we can't know either way. It could just be a temporary filesystem
         // error, so we can't assume the user's preference so we'll go for the less controversial option:
         // disable online reporting.
         return true;

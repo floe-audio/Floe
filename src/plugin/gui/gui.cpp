@@ -242,7 +242,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
 
     live_edit::g_high_contrast_gui =
         prefs::GetBool(g->prefs,
-                       SettingDescriptor(GuiSetting::HighContrastGui)); // IMRPOVE: hacky
+                       SettingDescriptor(GuiSetting::HighContrastGui)); // IMPROVE: hacky
     g->scratch_arena.ResetCursorAndConsolidateRegions();
 
     while (auto function = g->main_thread_callbacks.TryPop(g->scratch_arena))
