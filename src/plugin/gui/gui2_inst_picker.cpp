@@ -396,6 +396,7 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                        Rect absolute_button_rect,
                        InstPickerContext& context,
                        InstPickerState& state) {
+    if (!box_system.imgui.IsPopupOpen(popup_id)) return;
 
     HashTable<String, FilterItemInfo> tags {};
     auto libraries =

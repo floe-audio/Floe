@@ -269,6 +269,8 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
                      Rect absolute_button_rect,
                      IrPickerContext& context,
                      IrPickerState& state) {
+    if (!box_system.imgui.IsPopupOpen(popup_id)) return;
+
     auto& ir_id = context.engine.processor.convo.ir_id;
 
     HashTable<String, FilterItemInfo> tags {};
