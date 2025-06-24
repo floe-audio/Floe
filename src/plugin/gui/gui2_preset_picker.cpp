@@ -273,6 +273,25 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
             {
                 .parent = folder_box,
                 .text = preset.name,
+                .tooltip = FunctionRef<String()>([&]() -> String {
+                    DynamicArray<char> buffer {box_system.arena};
+
+                    fmt::Append(buffer, "{}", preset.name);
+                    if (preset.metadata.author.size) fmt::Append(buffer, " by {}.", preset.metadata.author);
+                    if (preset.metadata.description.size)
+                        fmt::Append(buffer, " {}", preset.metadata.description);
+
+                    dyn::AppendSpan(buffer, "\nTags: ");
+                    if (preset.metadata.tags.size) {
+                        for (auto const [tag, _] : preset.metadata.tags)
+                            fmt::Append(buffer, "{}, ", tag);
+                        dyn::Pop(buffer, 2);
+                    } else {
+                        dyn::AppendSpan(buffer, "none");
+                    }
+
+                    return buffer.ToOwnedSpan();
+                }),
                 .is_current = is_current,
                 .icons = ({
                     decltype(PickerItemOptions::icons) icons {};
@@ -303,7 +322,6 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
             box_system.imgui.ScrollWindowToShowRectangle(layout::GetRect(box_system.layout, item.layout_id));
         }
 
-        if (item.is_hot) context.hovering_preset = &preset;
         if (item.button_fired) LoadPreset(context, state, cursor, false);
 
         if (auto next = IteratePreset(context, state, cursor, SearchDirection::Forward, false)) {
@@ -492,7 +510,12 @@ void DoPresetPicker(GuiBoxSystem& box_system,
         absolute_button_rect,
         PickerPopupOptions {
             .title = "Presets",
-            .height = box_system.imgui.PixelsToVw(box_system.imgui.frame_input.window_size.height * 0.75f),
+            .height = ({
+                auto const window_height = box_system.imgui.frame_input.window_size.height;
+                auto const button_bottom = absolute_button_rect.Bottom();
+                auto const available_height = window_height - button_bottom - 20;
+                box_system.imgui.PixelsToVw(available_height);
+            }),
             .rhs_width = 320,
             .filters_col_width = 320,
             .item_type_name = "preset",
@@ -529,32 +552,5 @@ void DoPresetPicker(GuiBoxSystem& box_system,
                                              num_sections);
                 },
             .has_extra_filters = state.selected_author_hashes.size != 0,
-            .status_bar_height = 58,
-            .status = [&]() -> Optional<String> {
-                Optional<String> status {};
-
-                if (context.hovering_preset) {
-                    DynamicArray<char> buffer {box_system.arena};
-
-                    fmt::Append(buffer, "{}", context.hovering_preset->name);
-                    if (context.hovering_preset->metadata.author.size)
-                        fmt::Append(buffer, " by {}.", context.hovering_preset->metadata.author);
-                    if (context.hovering_preset->metadata.description.size)
-                        fmt::Append(buffer, " {}", context.hovering_preset->metadata.description);
-
-                    dyn::AppendSpan(buffer, "\nTags: ");
-                    if (context.hovering_preset->metadata.tags.size) {
-                        for (auto const [tag, _] : context.hovering_preset->metadata.tags)
-                            fmt::Append(buffer, "{}, ", tag);
-                        dyn::Pop(buffer, 2);
-                    } else {
-                        dyn::AppendSpan(buffer, "none");
-                    }
-
-                    status = buffer.ToOwnedSpan();
-                }
-
-                return status;
-            },
         });
 }

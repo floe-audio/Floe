@@ -27,6 +27,7 @@ Box DoPickerItem(GuiBoxSystem& box_system, PickerItemOptions const& options) {
                           .size = {layout::k_fill_parent, layout::k_hug_contents},
                           .contents_direction = layout::Direction::Row,
                       },
+                  .tooltip = options.tooltip,
               });
 
     for (auto tex : options.icons) {
@@ -231,6 +232,7 @@ Box DoFilterButton(GuiBoxSystem& box_system,
 }
 
 Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSectionOptions const& options) {
+
     auto const container =
         DoBox(box_system,
               {
@@ -316,7 +318,7 @@ Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSectionOp
                       .layout {
                           .margins = {.b = k_picker_spacing / 2},
                       },
-                      .tooltip = options.folder ? "Folder"_s : ""_s,
+                      .tooltip = options.folder ? TooltipString {"Folder"_s} : k_nullopt,
                   });
         }
     }
@@ -362,7 +364,7 @@ static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
                        .parent = parent,
                        .is_selected = is_selected,
                        .text = folder->display_name.size ? folder->display_name : folder->name,
-                       .tooltip = folder->display_name.size ? folder->name : ""_s,
+                       .tooltip = folder->display_name.size ? TooltipString {folder->name} : k_nullopt,
                        .hashes = state.selected_folder_hashes,
                        .clicked_hash = folder->Hash(),
                        .filter_mode = state.filter_mode,
@@ -420,32 +422,43 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
             ASSERT(lib_id.name.size);
             ASSERT(lib_id.author.size);
 
-            auto const button = DoFilterButton(
-                box_system,
-                context.state,
-                lib_info,
-                {
-                    .parent = section,
-                    .is_selected = is_selected,
-                    .icon = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(({
-                        Optional<graphics::ImageID> tex = library_filters.unknown_library_icon;
-                        if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
-                                                                   box_system.imgui,
-                                                                   lib_id,
-                                                                   context.sample_library_server,
-                                                                   box_system.arena,
-                                                                   true);
-                            imgs && !imgs->icon_missing) {
-                            tex = imgs->icon;
-                        }
-                        tex;
-                    })),
-                    .text = lib_id.name,
-                    .hashes = context.state.selected_library_hashes,
-                    .clicked_hash = lib_hash,
-                    .filter_mode = context.state.filter_mode,
-                });
-            if (button.is_hot) context.hovering_lib = &lib_id;
+            DoFilterButton(box_system,
+                           context.state,
+                           lib_info,
+                           FilterButtonOptions {
+                               .parent = section,
+                               .is_selected = is_selected,
+                               .icon = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(({
+                                   Optional<graphics::ImageID> tex = library_filters.unknown_library_icon;
+                                   if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
+                                                                              box_system.imgui,
+                                                                              lib_id,
+                                                                              context.sample_library_server,
+                                                                              box_system.arena,
+                                                                              true);
+                                       imgs && !imgs->icon_missing) {
+                                       tex = imgs->icon;
+                                   }
+                                   tex;
+                               })),
+                               .text = lib_id.name,
+                               .tooltip = FunctionRef<String()>([&]() -> String {
+                                   auto lib =
+                                       sample_lib_server::FindLibraryRetained(context.sample_library_server,
+                                                                              lib_id);
+                                   DEFER { lib.Release(); };
+
+                                   DynamicArray<char> buf {box_system.arena};
+                                   fmt::Append(buf, "{} by {}.", lib_id.name, lib_id.author);
+                                   if (lib) {
+                                       if (lib->description) fmt::Append(buf, " {}", lib->description);
+                                   }
+                                   return buf.ToOwnedSpan();
+                               }),
+                               .hashes = context.state.selected_library_hashes,
+                               .clicked_hash = lib_hash,
+                               .filter_mode = context.state.filter_mode,
+                           });
         }
     }
 }
@@ -566,48 +579,6 @@ void DoPickerTagsFilters(GuiBoxSystem& box_system,
                            });
         }
     }
-}
-
-void DoPickerStatusBar(GuiBoxSystem& box_system,
-                       PickerPopupContext& context,
-                       FunctionRef<Optional<String>()> custom_status) {
-    auto const root = DoBox(box_system,
-                            {
-                                .layout {
-                                    .size = box_system.imgui.PixelsToVw(box_system.imgui.Size()),
-                                    .contents_padding = {.lrtb = k_picker_spacing},
-                                    .contents_direction = layout::Direction::Column,
-                                    .contents_align = layout::Alignment::Start,
-                                },
-                            });
-
-    String text {};
-
-    if (custom_status) {
-        auto const status = custom_status();
-        if (status) text = *status;
-    }
-
-    if (auto const lib_id = context.hovering_lib) {
-        auto lib = sample_lib_server::FindLibraryRetained(context.sample_library_server, *lib_id);
-        DEFER { lib.Release(); };
-
-        DynamicArray<char> buf {box_system.arena};
-        fmt::Append(buf, "{} by {}.", lib_id->name, lib_id->author);
-        if (lib) {
-            if (lib->description) fmt::Append(buf, " {}", lib->description);
-        }
-        text = buf.ToOwnedSpan();
-    }
-
-    DoBox(box_system,
-          {
-              .parent = root,
-              .text = text,
-              .wrap_width = k_wrap_to_parent,
-              .font = FontType::Body,
-              .size_from_text = true,
-          });
 }
 
 static String FilterModeText(FilterMode mode) {
@@ -1012,29 +983,6 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                          },
                  });
     }
-
-    DoModalDivider(box_system, root, DividerType::Horizontal);
-
-    AddPanel(
-        box_system,
-        {
-            .run = [&](GuiBoxSystem& box_system) { DoPickerStatusBar(box_system, context, options.status); },
-            .data =
-                Subpanel {
-                    .id = DoBox(box_system,
-                                {
-                                    .parent = root,
-                                    .layout {
-                                        .size = {layout::k_fill_parent, options.status_bar_height},
-                                        .contents_direction = layout::Direction::Column,
-                                        .contents_align = layout::Alignment::Start,
-                                    },
-                                })
-                              .layout_id,
-                    .imgui_id = box_system.imgui.GetID("status bar"),
-                    .debug_name = "status bar",
-                },
-        });
 }
 
 void DoPickerPopup(GuiBoxSystem& box_system,

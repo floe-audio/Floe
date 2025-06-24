@@ -216,6 +216,20 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
             {
                 .parent = folder_box,
                 .text = ir.name,
+                .tooltip = FunctionRef<String()>([&]() -> String {
+                    DynamicArray<char> buffer {box_system.arena};
+
+                    fmt::Append(buffer, "{}. Tags: ", ir.name);
+                    if (ir.tags.size) {
+                        for (auto const& [tag, _] : ir.tags)
+                            fmt::Append(buffer, "{}, ", tag);
+                        dyn::Pop(buffer, 2);
+                    } else {
+                        dyn::AppendSpan(buffer, "none");
+                    }
+
+                    return buffer.ToOwnedSpan();
+                }),
                 .is_current = is_current,
                 .icons = ({
                     if (&lib != previous_library) {
@@ -241,7 +255,6 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
             box_system.imgui.ScrollWindowToShowRectangle(layout::GetRect(box_system.layout, item.layout_id));
         }
 
-        if (item.is_hot) context.hovering_ir = &ir;
         if (item.button_fired) {
             if (is_current) {
                 LoadConvolutionIr(context.engine, k_nullopt);
@@ -338,7 +351,7 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
         absolute_button_rect,
         PickerPopupOptions {
             .title = "Select Impulse Response",
-            .height = box_system.imgui.PixelsToVw(box_system.imgui.frame_input.window_size.height * 0.5f),
+            .height = 600,
             .rhs_width = 210,
             .filters_col_width = 210,
             .item_type_name = "impulse response",
@@ -378,26 +391,5 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
                     .folders = folders,
                     .root_folders = root_folder,
                 },
-            .status_bar_height = 58,
-            .status = [&]() -> Optional<String> {
-                Optional<String> status {};
-
-                if (context.hovering_ir) {
-                    DynamicArray<char> buffer {box_system.arena};
-
-                    fmt::Append(buffer, "{}. Tags: ", context.hovering_ir->name);
-                    if (context.hovering_ir->tags.size) {
-                        for (auto const& [tag, _] : context.hovering_ir->tags)
-                            fmt::Append(buffer, "{}, ", tag);
-                        dyn::Pop(buffer, 2);
-                    } else {
-                        dyn::AppendSpan(buffer, "none");
-                    }
-
-                    status = buffer.ToOwnedSpan();
-                }
-
-                return status;
-            },
         });
 }

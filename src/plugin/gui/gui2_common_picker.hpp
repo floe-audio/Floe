@@ -52,7 +52,6 @@ struct CommonPickerState {
 // Ephemeral
 struct PickerPopupContext {
     sample_lib_server::Server& sample_library_server;
-    sample_lib::LibraryIdRef const* hovering_lib {};
     CommonPickerState& state;
 };
 
@@ -124,9 +123,6 @@ struct PickerPopupOptions {
     Optional<FolderFilters> folder_filters {};
     TrivialFunctionRef<void(GuiBoxSystem&, Box const& parent, u8& num_sections)> do_extra_filters {};
     bool has_extra_filters {};
-
-    f32 status_bar_height {};
-    TrivialFunctionRef<Optional<String>()> status {}; // Set if something is hovering
 };
 
 Box DoPickerItemsRoot(GuiBoxSystem& box_system);
@@ -146,6 +142,7 @@ Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSectionOp
 struct PickerItemOptions {
     Box parent;
     String text;
+    TooltipString tooltip = k_nullopt;
     bool is_current;
     Array<graphics::TextureHandle, k_num_layers + 1> icons;
 };
@@ -165,7 +162,7 @@ struct FilterButtonOptions {
     bool is_selected;
     Optional<graphics::TextureHandle> icon;
     String text;
-    String tooltip;
+    TooltipString tooltip = k_nullopt;
     DynamicArray<u64>& hashes;
     u64 clicked_hash;
     FilterMode filter_mode;
@@ -178,10 +175,6 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                    CommonPickerState& state,
                    FilterItemInfo const& info,
                    FilterButtonOptions const& options);
-
-void DoPickerStatusBar(GuiBoxSystem& box_system,
-                       PickerPopupContext& context,
-                       FunctionRef<Optional<String>()> custom_status);
 
 void DoPickerPopup(GuiBoxSystem& box_system,
                    PickerPopupContext context,

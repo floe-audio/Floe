@@ -278,14 +278,20 @@ static void InstPickerWaveformItems(GuiBoxSystem& box_system,
     for (auto const waveform_type : EnumIterator<WaveformType>()) {
         auto const is_current = waveform_type == context.layer.instrument_id.TryGetOpt<WaveformType>();
 
-        auto const item = DoPickerItem(box_system,
-                                       {
-                                           .parent = container,
-                                           .text = k_waveform_type_names[ToInt(waveform_type)],
-                                           .is_current = is_current,
-                                       });
+        auto const item = DoPickerItem(
+            box_system,
+            {
+                .parent = container,
+                .text = k_waveform_type_names[ToInt(waveform_type)],
+                .tooltip = FunctionRef<String()>([&]() -> String {
+                    return fmt::Format(
+                        box_system.arena,
+                        "{} waveform. A simple waveform useful for layering with sample instruments.",
+                        k_waveform_type_names[ToInt(waveform_type)]);
+                }),
+                .is_current = is_current,
+            });
 
-        if (item.is_hot) context.waveform_type_hovering = waveform_type;
         if (item.button_fired) {
             if (is_current)
                 LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
@@ -342,6 +348,23 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
             {
                 .parent = folder_box,
                 .text = inst.name,
+                .tooltip = FunctionRef<String()>([&]() -> String {
+                    DynamicArray<char> buf {box_system.arena};
+                    fmt::Append(buf, "{} from {} by {}.", inst.name, inst.library.name, inst.library.author);
+
+                    if (inst.description) fmt::Append(buf, " {}", inst.description);
+
+                    fmt::Append(buf, "\nTags: ");
+                    if (inst.tags.size == 0)
+                        fmt::Append(buf, "None");
+                    else {
+                        for (auto const [t, _] : inst.tags)
+                            fmt::Append(buf, "{}, ", t);
+                        dyn::Pop(buf, 2);
+                    }
+
+                    return buf.ToOwnedSpan();
+                }),
                 .is_current = is_current,
                 .icons = ({
                     if (&lib != previous_library) {
@@ -367,7 +390,6 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
             box_system.imgui.ScrollWindowToShowRectangle(layout::GetRect(box_system.layout, item.layout_id));
         }
 
-        if (item.is_hot) context.hovering_inst = &inst;
         if (item.button_fired) {
             if (is_current) {
                 LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
@@ -466,9 +488,14 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
         absolute_button_rect,
         PickerPopupOptions {
             .title = fmt::Format(box_system.arena, "Layer {} Instrument", context.layer.index + 1),
-            .height = box_system.imgui.PixelsToVw(box_system.imgui.frame_input.window_size.height * 0.9f),
-            .rhs_width = 200,
-            .filters_col_width = 200,
+            .height = ({
+                auto const window_height = box_system.imgui.frame_input.window_size.height;
+                auto const button_bottom = absolute_button_rect.Bottom();
+                auto const available_height = window_height - button_bottom - 20;
+                box_system.imgui.PixelsToVw(available_height);
+            }),
+            .rhs_width = 300,
+            .filters_col_width = 250,
             .item_type_name = "instrument",
             .items_section_heading = "Instruments",
             .tab_config = ({
@@ -540,34 +567,5 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                 }
                 f;
             }),
-            .status_bar_height = 58,
-            .status = [&]() -> Optional<String> {
-                Optional<String> status {};
-
-                if (auto const i = context.hovering_inst) {
-                    DynamicArray<char> buf {box_system.arena};
-                    fmt::Append(buf, "{} from {} by {}.", i->name, i->library.name, i->library.author);
-
-                    if (i->description) fmt::Append(buf, " {}", i->description);
-
-                    fmt::Append(buf, "\nTags: ");
-                    if (i->tags.size == 0)
-                        fmt::Append(buf, "None");
-                    else {
-                        for (auto const [t, _] : i->tags)
-                            fmt::Append(buf, "{}, ", t);
-                        dyn::Pop(buf, 2);
-                    }
-
-                    status = buf.ToOwnedSpan();
-                } else if (auto const w = context.waveform_type_hovering) {
-                    status = fmt::Format(
-                        box_system.arena,
-                        "{} waveform. A simple waveform useful for layering with sample instruments.",
-                        k_waveform_type_names[ToInt(*w)]);
-                }
-
-                return status;
-            },
         });
 }

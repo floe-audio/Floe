@@ -16,7 +16,7 @@
 //
 // This is a new GUI system that we intend to use universally. For now only a couple of parts use it.
 //
-// This API is a mostly a wrapper on top of the existing Gui systems. When we do the GUI overhaul the
+// This API is a mostly a wrapper on top of the existing GUI systems. When we do the GUI overhaul the
 // underlying systems will improve makes some aspects of this API better.
 //
 // It's an IMGUI system. No state is shared across frames, but within each frame we create a tree of boxes and
@@ -25,7 +25,7 @@
 // place.
 //
 // An overview of the system:
-// - Panels corresspond to the Windows in our current imgui system, accessing some functionality from them:
+// - Panels correspond to the Windows in our current imgui system, accessing some functionality from them:
 //   auto-sizing, 'popup' functionality and scrollbars. In the future we might not need panels to be separate
 //   things but for now they are. They contain a set of boxes and optionally subpanels. Each panel has a
 //   'panel function'. This is where everything happens. In a panel function you can add other panels - these
@@ -125,7 +125,7 @@ struct BoxSystemCurrentPanelState {
     imgui::TextInputResult last_text_input_result {};
 
     // TODO: this is a hack. The issue is this: in our 2-pass system, if we change state partway through the
-    // second pass that causes a different GUI to be rendered - it crashses because it will be using
+    // second pass that causes a different GUI to be rendered, it crashses because it will be using
     // layout/box data from the first pass, but the GUI is different from the first pass. This is a hack to
     // prevent that. We should fix this by perhaps turning the boxes field into a hashmap and requiring each
     // box to have a unique ID. This way, we lookup the box by ID and can know when something is missing and
@@ -376,6 +376,12 @@ enum class TextInputBox : u32 { None, SingleLine, MultiLine, Count };
 
 enum class BackgroundShape : u32 { Rectangle, Circle, Count };
 
+enum class TooltipStringType { None, Function, String };
+using TooltipString = TaggedUnion<TooltipStringType,
+                                  TypeAndTag<NulloptType, TooltipStringType::None>,
+                                  TypeAndTag<FunctionRef<String()>, TooltipStringType::Function>,
+                                  TypeAndTag<String, TooltipStringType::String>>;
+
 struct BoxConfig {
     Optional<Box> parent {};
 
@@ -423,12 +429,13 @@ struct BoxConfig {
 
     layout::ItemOptions layout {};
 
-    String tooltip {};
+    TooltipString tooltip = k_nullopt;
 };
 
-static bool Tooltip(GuiBoxSystem& builder, imgui::Id id, Rect r, String str) {
+static bool Tooltip(GuiBoxSystem& builder, imgui::Id id, Rect r, TooltipString tooltip_str) {
     ZoneScoped;
     if (!builder.show_tooltips) return false;
+    if (tooltip_str.tag == TooltipStringType::None) return false;
 
     auto& imgui = builder.imgui;
     if (imgui.WasJustMadeHot(id))
@@ -442,6 +449,22 @@ static bool Tooltip(GuiBoxSystem& builder, imgui::Id id, Rect r, String str) {
         auto const font = imgui.overlay_graphics.context->CurrentFont();
         auto const pad_x = imgui.VwToPixels(style::k_tooltip_pad_x);
         auto const pad_y = imgui.VwToPixels(style::k_tooltip_pad_y);
+
+        auto const str = ({
+            String s;
+            switch (tooltip_str.tag) {
+                case TooltipStringType::None: PanicIfReached();
+                case TooltipStringType::Function: {
+                    s = tooltip_str.Get<FunctionRef<String()>>()();
+                    break;
+                }
+                case TooltipStringType::String: {
+                    s = tooltip_str.Get<String>();
+                    break;
+                }
+            }
+            s;
+        });
 
         auto text_size = draw::GetTextSize(font, str, imgui.VwToPixels(style::k_tooltip_max_width));
 
@@ -562,7 +585,8 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
             auto const mouse_rect =
                 rect.Expanded(builder.imgui.VwToPixels(config.extra_margin_for_mouse_events));
 
-            if (config.activation_click_event != ActivationClickEvent::None || config.tooltip.size) {
+            if (config.activation_click_event != ActivationClickEvent::None ||
+                config.tooltip.tag != TooltipStringType::None) {
                 imgui::ButtonFlags button_flags {
                     .left_mouse = config.activate_on_click_button == MouseButton::Left,
                     .right_mouse = config.activate_on_click_button == MouseButton::Right,
@@ -742,7 +766,8 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
                                                 input_result->text);
             }
 
-            if (config.tooltip.size) Tooltip(builder, box.imgui_id, rect, config.tooltip);
+            if (config.tooltip.tag != TooltipStringType::None)
+                Tooltip(builder, box.imgui_id, rect, config.tooltip);
 
             return box;
         }
