@@ -244,7 +244,7 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
 
     PresetFolder const* previous_folder = nullptr;
 
-    Box folder_box;
+    Optional<Box> folder_box;
 
     auto cursor = *first;
     while (true) {
@@ -253,76 +253,84 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
 
         if (&preset_folder != previous_folder) {
             previous_folder = &preset_folder;
-            folder_box = DoPickerItemsSectionContainer(
+            folder_box = DoPickerSectionContainer(
                 box_system,
+                context.presets_snapshot.folder_nodes[cursor.folder_index]->Hash(),
+                state.common_state,
                 {
                     .parent = root,
                     .folder = context.presets_snapshot.folder_nodes[cursor.folder_index],
                 });
         }
 
-        auto const is_current = ({
-            bool c {};
-            if (auto const current_path = CurrentPath(context.engine))
-                c = cursor.preset_index == preset_folder.MatchFullPresetPath(*current_path);
-            c;
-        });
-
-        auto const item = DoPickerItem(
-            box_system,
-            {
-                .parent = folder_box,
-                .text = preset.name,
-                .tooltip = FunctionRef<String()>([&]() -> String {
-                    DynamicArray<char> buffer {box_system.arena};
-
-                    fmt::Append(buffer, "{}", preset.name);
-                    if (preset.metadata.author.size) fmt::Append(buffer, " by {}.", preset.metadata.author);
-                    if (preset.metadata.description.size)
-                        fmt::Append(buffer, " {}", preset.metadata.description);
-
-                    dyn::AppendSpan(buffer, "\nTags: ");
-                    if (preset.metadata.tags.size) {
-                        for (auto const [tag, _] : preset.metadata.tags)
-                            fmt::Append(buffer, "{}, ", tag);
-                        dyn::Pop(buffer, 2);
-                    } else {
-                        dyn::AppendSpan(buffer, "none");
-                    }
-
-                    return buffer.ToOwnedSpan();
-                }),
-                .is_current = is_current,
-                .icons = ({
-                    decltype(PickerItemOptions::icons) icons {};
-                    usize icons_index = 0;
-                    for (auto const [lib_id, _] : preset.used_libraries) {
-                        if (auto const imgs = LibraryImagesFromLibraryId(context.library_images,
-                                                                         box_system.imgui,
-                                                                         lib_id,
-                                                                         context.sample_library_server,
-                                                                         box_system.arena,
-                                                                         true);
-                            imgs && imgs->icon) {
-                            auto tex =
-                                box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(imgs->icon);
-                            if (tex) icons[icons_index++] = *tex;
-                        } else if (context.unknown_library_icon) {
-                            auto const tex = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
-                                *context.unknown_library_icon);
-                            if (tex) icons[icons_index++] = *tex;
-                        }
-                    }
-                    icons;
-                }),
+        if (folder_box) {
+            auto const is_current = ({
+                bool c {};
+                if (auto const current_path = CurrentPath(context.engine))
+                    c = cursor.preset_index == preset_folder.MatchFullPresetPath(*current_path);
+                c;
             });
 
-        if (is_current && box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
-            Exchange(state.scroll_to_show_selected, false)) {
-            box_system.imgui.ScrollWindowToShowRectangle(layout::GetRect(box_system.layout, item.layout_id));
-        }
+            auto const item = DoPickerItem(
+                box_system,
+                {
+                    .parent = *folder_box,
+                    .text = preset.name,
+                    .tooltip = FunctionRef<String()>([&]() -> String {
+                        DynamicArray<char> buffer {box_system.arena};
 
-        if (item.button_fired) LoadPreset(context, state, cursor, false);
+                        fmt::Append(buffer, "{}", preset.name);
+                        if (preset.metadata.author.size)
+                            fmt::Append(buffer, " by {}.", preset.metadata.author);
+                        if (preset.metadata.description.size)
+                            fmt::Append(buffer, " {}", preset.metadata.description);
+
+                        dyn::AppendSpan(buffer, "\nTags: ");
+                        if (preset.metadata.tags.size) {
+                            for (auto const [tag, _] : preset.metadata.tags)
+                                fmt::Append(buffer, "{}, ", tag);
+                            dyn::Pop(buffer, 2);
+                        } else {
+                            dyn::AppendSpan(buffer, "none");
+                        }
+
+                        return buffer.ToOwnedSpan();
+                    }),
+                    .is_current = is_current,
+                    .icons = ({
+                        decltype(PickerItemOptions::icons) icons {};
+                        usize icons_index = 0;
+                        for (auto const [lib_id, _] : preset.used_libraries) {
+                            if (auto const imgs = LibraryImagesFromLibraryId(context.library_images,
+                                                                             box_system.imgui,
+                                                                             lib_id,
+                                                                             context.sample_library_server,
+                                                                             box_system.arena,
+                                                                             true);
+                                imgs && imgs->icon) {
+                                auto tex = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
+                                    imgs->icon);
+                                if (tex) icons[icons_index++] = *tex;
+                            } else if (context.unknown_library_icon) {
+                                auto const tex =
+                                    box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
+                                        *context.unknown_library_icon);
+                                if (tex) icons[icons_index++] = *tex;
+                            }
+                        }
+                        icons;
+                    }),
+                });
+
+            if (is_current &&
+                box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
+                Exchange(state.scroll_to_show_selected, false)) {
+                box_system.imgui.ScrollWindowToShowRectangle(
+                    layout::GetRect(box_system.layout, item.layout_id));
+            }
+
+            if (item.button_fired) LoadPreset(context, state, cursor, false);
+        }
 
         if (auto next = IteratePreset(context, state, cursor, SearchDirection::Forward, false)) {
             cursor = *next;
@@ -345,35 +353,39 @@ void PresetPickerExtraFilters(GuiBoxSystem& box_system,
         if (num_sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
         ++num_sections;
 
-        auto const section = DoPickerItemsSectionContainer(box_system,
-                                                           {
-                                                               .parent = parent,
-                                                               .heading = "PRESET TYPE",
-                                                               .multiline_contents = true,
-                                                           });
+        auto const section = DoPickerSectionContainer(box_system,
+                                                      53847912837, // never change
+                                                      state.common_state,
+                                                      {
+                                                          .parent = parent,
+                                                          .heading = "PRESET TYPE",
+                                                          .multiline_contents = true,
+                                                      });
 
-        for (auto const type_index : Range(ToInt(PresetFormat::Count))) {
-            auto const is_selected = Contains(state.selected_preset_types, type_index);
+        if (section) {
+            for (auto const type_index : Range(ToInt(PresetFormat::Count))) {
+                auto const is_selected = Contains(state.selected_preset_types, type_index);
 
-            DoFilterButton(box_system,
-                           state.common_state,
-                           preset_type_filter_info[type_index],
-                           {
-                               .parent = section,
-                               .is_selected = is_selected,
-                               .text = ({
-                                   String s {};
-                                   switch ((PresetFormat)type_index) {
-                                       case PresetFormat::Floe: s = "Floe"; break;
-                                       case PresetFormat::Mirage: s = "Mirage"; break;
-                                       default: PanicIfReached();
-                                   }
-                                   s;
-                               }),
-                               .hashes = state.selected_preset_types,
-                               .clicked_hash = type_index,
-                               .filter_mode = state.common_state.filter_mode,
-                           });
+                DoFilterButton(box_system,
+                               state.common_state,
+                               preset_type_filter_info[type_index],
+                               {
+                                   .parent = *section,
+                                   .is_selected = is_selected,
+                                   .text = ({
+                                       String s {};
+                                       switch ((PresetFormat)type_index) {
+                                           case PresetFormat::Floe: s = "Floe"; break;
+                                           case PresetFormat::Mirage: s = "Mirage"; break;
+                                           default: PanicIfReached();
+                                       }
+                                       s;
+                                   }),
+                                   .hashes = state.selected_preset_types,
+                                   .clicked_hash = type_index,
+                                   .filter_mode = state.common_state.filter_mode,
+                               });
+            }
         }
     }
 
@@ -381,27 +393,31 @@ void PresetPickerExtraFilters(GuiBoxSystem& box_system,
         if (num_sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
         ++num_sections;
 
-        auto const section = DoPickerItemsSectionContainer(box_system,
-                                                           {
-                                                               .parent = parent,
-                                                               .heading = "AUTHOR",
-                                                               .multiline_contents = true,
-                                                           });
+        auto const section = DoPickerSectionContainer(box_system,
+                                                      125342985712309, // never change
+                                                      state.common_state,
+                                                      {
+                                                          .parent = parent,
+                                                          .heading = "AUTHOR",
+                                                          .multiline_contents = true,
+                                                      });
 
-        for (auto const [author, author_info, author_hash] : preset_authors) {
-            auto const is_selected = Contains(state.selected_author_hashes, author_hash);
+        if (section) {
+            for (auto const [author, author_info, author_hash] : preset_authors) {
+                auto const is_selected = Contains(state.selected_author_hashes, author_hash);
 
-            DoFilterButton(box_system,
-                           state.common_state,
-                           author_info,
-                           {
-                               .parent = section,
-                               .is_selected = is_selected,
-                               .text = author,
-                               .hashes = state.selected_author_hashes,
-                               .clicked_hash = author_hash,
-                               .filter_mode = state.common_state.filter_mode,
-                           });
+                DoFilterButton(box_system,
+                               state.common_state,
+                               author_info,
+                               {
+                                   .parent = *section,
+                                   .is_selected = is_selected,
+                                   .text = author,
+                                   .hashes = state.selected_author_hashes,
+                                   .clicked_hash = author_hash,
+                                   .filter_mode = state.common_state.filter_mode,
+                               });
+            }
         }
     }
 }

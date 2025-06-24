@@ -504,6 +504,7 @@ static bool Tooltip(GuiBoxSystem& builder, imgui::Id id, Rect r, TooltipString t
 PUBLIC Box DoBox(GuiBoxSystem& builder,
                  BoxConfig const& config,
                  SourceLocation source_location = SourceLocation::Current()) {
+    ZoneScoped;
     auto const box_index = builder.state->box_counter++;
     auto const font = builder.fonts[ToInt(config.font)];
     auto const font_size =
@@ -519,6 +520,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
 
     switch (builder.state->pass) {
         case BoxSystemCurrentPanelState::Pass::LayoutBoxes: {
+            ZoneScopedN("Box system: layout boxes");
             auto const box = Box {
                 .layout_id =
                     layout::CreateItem(builder.layout, ({
@@ -574,6 +576,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
             return box;
         }
         case BoxSystemCurrentPanelState::Pass::HandleInputAndRender: {
+            ZoneScopedN("Box system: handle input and render");
             auto& box = builder.state->boxes[box_index];
             ASSERT(box.source_location == source_location,
                    "GUI has changed between layout and render, see deffered_actions");
@@ -586,7 +589,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
                 rect.Expanded(builder.imgui.VwToPixels(config.extra_margin_for_mouse_events));
 
             if (config.activation_click_event != ActivationClickEvent::None ||
-                config.tooltip.tag != TooltipStringType::None) {
+                (config.tooltip.tag != TooltipStringType::None && !config.parent_dictates_hot_and_active)) {
                 imgui::ButtonFlags button_flags {
                     .left_mouse = config.activate_on_click_button == MouseButton::Left,
                     .right_mouse = config.activate_on_click_button == MouseButton::Right,
@@ -767,7 +770,10 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
             }
 
             if (config.tooltip.tag != TooltipStringType::None)
-                Tooltip(builder, box.imgui_id, rect, config.tooltip);
+                Tooltip(builder,
+                        config.parent_dictates_hot_and_active ? config.parent->imgui_id : box.imgui_id,
+                        rect,
+                        config.tooltip);
 
             return box;
         }

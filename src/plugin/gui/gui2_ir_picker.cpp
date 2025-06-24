@@ -185,7 +185,7 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
     auto const root = DoPickerItemsRoot(box_system);
 
     Optional<FolderNode*> previous_folder {};
-    Box folder_box {};
+    Optional<Box> folder_box {};
 
     auto const first =
         IterateIr(context, state, {.lib_index = 0, .ir_index = 0}, SearchDirection::Forward, true);
@@ -201,70 +201,77 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
 
         if (folder != previous_folder) {
             previous_folder = folder;
-            folder_box = DoPickerItemsSectionContainer(box_system,
-                                                       {
-                                                           .parent = root,
-                                                           .folder = folder,
-                                                       });
+            folder_box = DoPickerSectionContainer(box_system,
+                                                  folder->Hash(),
+                                                  state.common_state,
+                                                  {
+                                                      .parent = root,
+                                                      .folder = folder,
+                                                  });
         }
 
         auto const ir_id = sample_lib::IrId {lib.Id(), ir.name};
         auto const is_current = context.engine.processor.convo.ir_id == ir_id;
 
-        auto const item = DoPickerItem(
-            box_system,
-            {
-                .parent = folder_box,
-                .text = ir.name,
-                .tooltip = FunctionRef<String()>([&]() -> String {
-                    DynamicArray<char> buffer {box_system.arena};
+        if (folder_box) {
+            auto const item = DoPickerItem(
+                box_system,
+                {
+                    .parent = *folder_box,
+                    .text = ir.name,
+                    .tooltip = FunctionRef<String()>([&]() -> String {
+                        DynamicArray<char> buffer {box_system.arena};
 
-                    fmt::Append(buffer, "{}. Tags: ", ir.name);
-                    if (ir.tags.size) {
-                        for (auto const& [tag, _] : ir.tags)
-                            fmt::Append(buffer, "{}, ", tag);
-                        dyn::Pop(buffer, 2);
-                    } else {
-                        dyn::AppendSpan(buffer, "none");
-                    }
-
-                    return buffer.ToOwnedSpan();
-                }),
-                .is_current = is_current,
-                .icons = ({
-                    if (&lib != previous_library) {
-                        lib_icon_tex = nullptr;
-                        previous_library = &lib;
-                        if (auto const imgs = LibraryImagesFromLibraryId(context.library_images,
-                                                                         box_system.imgui,
-                                                                         lib.Id(),
-                                                                         context.sample_library_server,
-                                                                         box_system.arena,
-                                                                         true)) {
-                            auto opt = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
-                                (imgs && !imgs->icon_missing) ? imgs->icon : context.unknown_library_icon);
-                            lib_icon_tex = opt ? *opt : nullptr;
+                        fmt::Append(buffer, "{}. Tags: ", ir.name);
+                        if (ir.tags.size) {
+                            for (auto const& [tag, _] : ir.tags)
+                                fmt::Append(buffer, "{}, ", tag);
+                            dyn::Pop(buffer, 2);
+                        } else {
+                            dyn::AppendSpan(buffer, "none");
                         }
-                    }
-                    decltype(PickerItemOptions::icons) {lib_icon_tex};
-                }),
-            });
 
-        if (is_current && box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
-            Exchange(state.scroll_to_show_selected, false)) {
-            box_system.imgui.ScrollWindowToShowRectangle(layout::GetRect(box_system.layout, item.layout_id));
-        }
+                        return buffer.ToOwnedSpan();
+                    }),
+                    .is_current = is_current,
+                    .icons = ({
+                        if (&lib != previous_library) {
+                            lib_icon_tex = nullptr;
+                            previous_library = &lib;
+                            if (auto const imgs = LibraryImagesFromLibraryId(context.library_images,
+                                                                             box_system.imgui,
+                                                                             lib.Id(),
+                                                                             context.sample_library_server,
+                                                                             box_system.arena,
+                                                                             true)) {
+                                auto opt = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
+                                    (imgs && !imgs->icon_missing) ? imgs->icon
+                                                                  : context.unknown_library_icon);
+                                lib_icon_tex = opt ? *opt : nullptr;
+                            }
+                        }
+                        decltype(PickerItemOptions::icons) {lib_icon_tex};
+                    }),
+                });
 
-        if (item.button_fired) {
-            if (is_current) {
-                LoadConvolutionIr(context.engine, k_nullopt);
-            } else {
-                LoadConvolutionIr(context.engine,
-                                  sample_lib::IrId {
-                                      .library = lib.Id(),
-                                      .ir_name = ir.name,
-                                  });
-                box_system.imgui.CloseCurrentPopup();
+            if (is_current &&
+                box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
+                Exchange(state.scroll_to_show_selected, false)) {
+                box_system.imgui.ScrollWindowToShowRectangle(
+                    layout::GetRect(box_system.layout, item.layout_id));
+            }
+
+            if (item.button_fired) {
+                if (is_current) {
+                    LoadConvolutionIr(context.engine, k_nullopt);
+                } else {
+                    LoadConvolutionIr(context.engine,
+                                      sample_lib::IrId {
+                                          .library = lib.Id(),
+                                          .ir_name = ir.name,
+                                      });
+                    box_system.imgui.CloseCurrentPopup();
+                }
             }
         }
 

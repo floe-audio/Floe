@@ -90,7 +90,7 @@ Box DoFilterButton(GuiBoxSystem& box_system,
          k_font_icon_scale) -
         4; // It seems the character advance isn't very accurate so we subtract a bit to make it fit better.
     constexpr f32 k_font_icons_font_size = style::k_font_icons_size * k_font_icon_scale;
-    constexpr f32 k_font_icon_gap = 4;
+    constexpr f32 k_font_icon_gap = 5;
 
     auto const button =
         DoBox(box_system,
@@ -128,6 +128,9 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                   .tooltip = options.tooltip,
               });
 
+    bool grey_out = false;
+    if (options.filter_mode == FilterMode::ProgressiveNarrowing) grey_out = num_used == 0;
+
     if (auto const icon = options.font_icon.TryGet<String>()) {
         DoBox(box_system,
               {
@@ -135,6 +138,7 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                   .text = *icon,
                   .font_size = k_font_icons_font_size,
                   .font = FontType::Icons,
+                  .text_fill = grey_out ? style::Colour::Overlay1 : style::Colour::Subtext0,
                   .layout {
                       .size = {font_icon_width, k_font_icons_font_size},
                       .margins = {.lr = k_font_icon_gap},
@@ -154,9 +158,6 @@ Box DoFilterButton(GuiBoxSystem& box_system,
               });
     }
 
-    bool grey_out = false;
-    if (options.filter_mode == FilterMode::ProgressiveNarrowing) grey_out = num_used == 0;
-
     DoBox(box_system,
           {
               .parent = button,
@@ -165,21 +166,25 @@ Box DoFilterButton(GuiBoxSystem& box_system,
               .text_fill = grey_out ? style::Colour::Surface1 : style::Colour::Text,
               .text_fill_hot = style::Colour::Text,
               .text_fill_active = style::Colour::Text,
-              .size_from_text = true,
+              .size_from_text = !options.full_width,
               .parent_dictates_hot_and_active = true,
               .layout =
                   {
+                      .size = options.full_width ? f32x2 {layout::k_fill_parent, style::k_font_body_size}
+                                                 : f32x2 {999},
                       .margins = {.l = options.icon ? 0 : k_picker_spacing / 2},
                   },
           });
 
     // We size to the largest possible number so that the layout doesn't jump around as the num_used changes.
     auto const total_text = fmt::FormatInline<32>("({})"_s, info.total_available);
-    auto const number_size = box_system.fonts[ToInt(FontType::Body)]->CalcTextSizeA(style::k_font_body_size,
-                                                                                    FLT_MAX,
-                                                                                    0.0f,
-                                                                                    total_text) -
-                             f32x2 {4, 0};
+    auto const number_size =
+        !options.full_width ? box_system.fonts[ToInt(FontType::Body)]->CalcTextSizeA(style::k_font_body_size,
+                                                                                     FLT_MAX,
+                                                                                     0.0f,
+                                                                                     total_text) -
+                                  f32x2 {4, 0}
+                            : f32x2 {};
     DoBox(
         box_system,
         {
@@ -189,12 +194,13 @@ Box DoFilterButton(GuiBoxSystem& box_system,
             .text_fill = grey_out ? style::Colour::Surface1 : style::Colour::Text,
             .text_fill_hot = style::Colour::Text,
             .text_fill_active = style::Colour::Text,
+            .size_from_text = options.full_width,
             .round_background_corners = 0b1111,
             .parent_dictates_hot_and_active = true,
             .layout =
                 {
                     .size = number_size,
-                    .margins = {.l = 3},
+                    .margins = {.l = options.full_width ? 0.0f : 3},
                 },
         });
 
@@ -231,25 +237,30 @@ Box DoFilterButton(GuiBoxSystem& box_system,
     return button;
 }
 
-Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSectionOptions const& options) {
-
-    auto const container =
-        DoBox(box_system,
-              {
-                  .parent = options.parent,
-                  .layout =
-                      {
-                          .size = {layout::k_fill_parent, layout::k_hug_contents},
-                          .margins = {.b = options.subsection ? k_picker_spacing / 2 : 0},
-                          .contents_padding = {.l = options.subsection ? k_picker_spacing / 2 : 0},
-                          .contents_direction = layout::Direction::Column,
-                          .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                      },
-              });
+Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
+                                       u64 id,
+                                       CommonPickerState& state,
+                                       PickerItemsSectionOptions const& options) {
+    auto const container = DoBox(
+        box_system,
+        {
+            .parent = options.parent,
+            .layout =
+                {
+                    .size = {layout::k_fill_parent, layout::k_hug_contents},
+                    .contents_padding = {.l = options.subsection ? k_picker_spacing / 2 : 0},
+                    .contents_gap = f32x2 {0, options.bigger_contents_gap ? k_picker_spacing * 1.5f : 0},
+                    .contents_direction = layout::Direction::Column,
+                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                },
+        });
 
     auto const heading_container = DoBox(box_system,
                                          {
                                              .parent = container,
+                                             .background_fill_auto_hot_active_overlay = true,
+                                             .activate_on_click_button = MouseButton::Left,
+                                             .activation_click_event = ActivationClickEvent::Up,
                                              .layout {
                                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
                                                  .contents_gap = k_picker_spacing / 2,
@@ -258,6 +269,31 @@ Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSectionOp
                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                              },
                                          });
+
+    if (heading_container.button_fired) {
+        dyn::Append(box_system.state->deferred_actions, [&state, id]() {
+            if (Contains(state.hidden_filter_headers, id))
+                dyn::RemoveValue(state.hidden_filter_headers, id);
+            else
+                dyn::Append(state.hidden_filter_headers, id);
+        });
+    }
+
+    bool const is_hidden = Contains(state.hidden_filter_headers, id);
+
+    DoBox(box_system,
+          {
+              .parent = heading_container,
+              .text = is_hidden ? ICON_FA_CARET_RIGHT : ICON_FA_CARET_DOWN,
+              .font_size = style::k_font_icons_size * 0.6f,
+              .font = FontType::Icons,
+              .text_fill = style::Colour::Subtext0,
+              .layout =
+                  {
+                      .size = style::k_font_icons_size * 0.4f,
+                  },
+          });
+
     if (options.icon) {
         DoBox(box_system,
               {
@@ -315,6 +351,7 @@ Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSectionOp
                       .wrap_width = k_wrap_to_parent,
                       .font = FontType::Heading3,
                       .size_from_text = true,
+                      .parent_dictates_hot_and_active = true,
                       .layout {
                           .margins = {.b = k_picker_spacing / 2},
                       },
@@ -322,6 +359,8 @@ Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSectionOp
                   });
         }
     }
+
+    if (is_hidden) return k_nullopt;
 
     if (!options.multiline_contents) return container;
 
@@ -368,8 +407,8 @@ static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
                        .hashes = state.selected_folder_hashes,
                        .clicked_hash = folder->Hash(),
                        .filter_mode = state.filter_mode,
-                       .font_icon = is_current ? FilterButtonOptions::FontIcon(String(ICON_FA_CHECK))
-                                               : FilterButtonOptions::FontIconMode::SometimesHasIcon,
+                       .font_icon = is_current ? FilterButtonOptions::FontIcon(String(ICON_FA_FOLDER_OPEN))
+                                               : FilterButtonOptions::FontIcon(String(ICON_FA_FOLDER_CLOSED)),
                        .indent = indent,
                        .full_width = true,
                    });
@@ -388,16 +427,25 @@ static void DoPickerFolderFilters(GuiBoxSystem& box_system,
     if (sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
     ++sections;
 
-    auto const section = DoPickerItemsSectionContainer(box_system,
-                                                       {
-                                                           .parent = parent,
-                                                           .heading = "FOLDER",
-                                                           .multiline_contents = false,
-                                                       });
+    auto const section = DoPickerSectionContainer(box_system,
+                                                  context.picker_id + SourceLocationHash(),
+                                                  context.state,
+                                                  {
+                                                      .parent = parent,
+                                                      .heading = "FOLDER",
+                                                      .multiline_contents = false,
+                                                  });
 
-    for (auto const [root, _] : folder_filters.root_folders) {
-        u8 indent = 0;
-        DoFolderFilterAndChildren(box_system, context.state, section, indent, root, folder_filters.folders);
+    if (section) {
+        for (auto const [root, _] : folder_filters.root_folders) {
+            u8 indent = 0;
+            DoFolderFilterAndChildren(box_system,
+                                      context.state,
+                                      *section,
+                                      indent,
+                                      root,
+                                      folder_filters.folders);
+        }
     }
 }
 
@@ -410,55 +458,60 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
         if (sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
         ++sections;
 
-        auto const section = DoPickerItemsSectionContainer(box_system,
-                                                           {
-                                                               .parent = parent,
-                                                               .heading = "LIBRARIES"_s,
-                                                               .multiline_contents = true,
-                                                           });
+        auto const section = DoPickerSectionContainer(box_system,
+                                                      context.picker_id + SourceLocationHash(),
+                                                      context.state,
+                                                      {
+                                                          .parent = parent,
+                                                          .heading = "LIBRARIES"_s,
+                                                          .multiline_contents = false,
+                                                      });
 
-        for (auto const& [lib_id, lib_info, lib_hash] : library_filters.libraries) {
-            auto const is_selected = Contains(context.state.selected_library_hashes, lib_hash);
-            ASSERT(lib_id.name.size);
-            ASSERT(lib_id.author.size);
+        if (section) {
+            for (auto const& [lib_id, lib_info, lib_hash] : library_filters.libraries) {
+                auto const is_selected = Contains(context.state.selected_library_hashes, lib_hash);
+                ASSERT(lib_id.name.size);
+                ASSERT(lib_id.author.size);
 
-            DoFilterButton(box_system,
-                           context.state,
-                           lib_info,
-                           FilterButtonOptions {
-                               .parent = section,
-                               .is_selected = is_selected,
-                               .icon = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(({
-                                   Optional<graphics::ImageID> tex = library_filters.unknown_library_icon;
-                                   if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
-                                                                              box_system.imgui,
-                                                                              lib_id,
-                                                                              context.sample_library_server,
-                                                                              box_system.arena,
-                                                                              true);
-                                       imgs && !imgs->icon_missing) {
-                                       tex = imgs->icon;
-                                   }
-                                   tex;
-                               })),
-                               .text = lib_id.name,
-                               .tooltip = FunctionRef<String()>([&]() -> String {
-                                   auto lib =
-                                       sample_lib_server::FindLibraryRetained(context.sample_library_server,
-                                                                              lib_id);
-                                   DEFER { lib.Release(); };
+                DoFilterButton(
+                    box_system,
+                    context.state,
+                    lib_info,
+                    FilterButtonOptions {
+                        .parent = *section,
+                        .is_selected = is_selected,
+                        .icon = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(({
+                            Optional<graphics::ImageID> tex = library_filters.unknown_library_icon;
+                            if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
+                                                                       box_system.imgui,
+                                                                       lib_id,
+                                                                       context.sample_library_server,
+                                                                       box_system.arena,
+                                                                       true);
+                                imgs && !imgs->icon_missing) {
+                                tex = imgs->icon;
+                            }
+                            tex;
+                        })),
+                        .text = lib_id.name,
+                        .tooltip = FunctionRef<String()>([&]() -> String {
+                            auto lib =
+                                sample_lib_server::FindLibraryRetained(context.sample_library_server, lib_id);
+                            DEFER { lib.Release(); };
 
-                                   DynamicArray<char> buf {box_system.arena};
-                                   fmt::Append(buf, "{} by {}.", lib_id.name, lib_id.author);
-                                   if (lib) {
-                                       if (lib->description) fmt::Append(buf, " {}", lib->description);
-                                   }
-                                   return buf.ToOwnedSpan();
-                               }),
-                               .hashes = context.state.selected_library_hashes,
-                               .clicked_hash = lib_hash,
-                               .filter_mode = context.state.filter_mode,
-                           });
+                            DynamicArray<char> buf {box_system.arena};
+                            fmt::Append(buf, "{} by {}.", lib_id.name, lib_id.author);
+                            if (lib) {
+                                if (lib->description) fmt::Append(buf, " {}", lib->description);
+                            }
+                            return buf.ToOwnedSpan();
+                        }),
+                        .hashes = context.state.selected_library_hashes,
+                        .clicked_hash = lib_hash,
+                        .filter_mode = context.state.filter_mode,
+                        .full_width = true,
+                    });
+            }
         }
     }
 }
@@ -468,30 +521,34 @@ static void DoPickerLibraryAuthorFilters(GuiBoxSystem& box_system,
                                          Box const& parent,
                                          LibraryFilters const& library_filters,
                                          u8& sections) {
-
     if (library_filters.library_authors.size) {
         if (sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
         ++sections;
 
-        auto const section = DoPickerItemsSectionContainer(box_system,
-                                                           {
-                                                               .parent = parent,
-                                                               .heading = "LIBRARY AUTHORS"_s,
-                                                               .multiline_contents = true,
-                                                           });
-        for (auto const [author, author_info, author_hash] : library_filters.library_authors) {
-            auto const is_selected = Contains(context.state.selected_library_author_hashes, author_hash);
-            DoFilterButton(box_system,
-                           context.state,
-                           author_info,
-                           {
-                               .parent = section,
-                               .is_selected = is_selected,
-                               .text = author,
-                               .hashes = context.state.selected_library_author_hashes,
-                               .clicked_hash = author_hash,
-                               .filter_mode = context.state.filter_mode,
-                           });
+        auto const section = DoPickerSectionContainer(box_system,
+                                                      context.picker_id + SourceLocationHash(),
+                                                      context.state,
+                                                      {
+                                                          .parent = parent,
+                                                          .heading = "LIBRARY AUTHORS"_s,
+                                                          .multiline_contents = true,
+                                                      });
+
+        if (section) {
+            for (auto const [author, author_info, author_hash] : library_filters.library_authors) {
+                auto const is_selected = Contains(context.state.selected_library_author_hashes, author_hash);
+                DoFilterButton(box_system,
+                               context.state,
+                               author_info,
+                               {
+                                   .parent = *section,
+                                   .is_selected = is_selected,
+                                   .text = author,
+                                   .hashes = context.state.selected_library_author_hashes,
+                                   .clicked_hash = author_hash,
+                                   .filter_mode = context.state.filter_mode,
+                               });
+            }
         }
     }
 }
@@ -519,64 +576,78 @@ void DoPickerTagsFilters(GuiBoxSystem& box_system,
         }
     }
 
-    auto const tags_container = DoPickerItemsSectionContainer(box_system,
-                                                              {
-                                                                  .parent = parent,
-                                                                  .heading = "TAGS",
-                                                                  .multiline_contents = false,
-                                                              });
+    auto const tags_container = DoPickerSectionContainer(box_system,
+                                                         context.picker_id + SourceLocationHash(),
+                                                         context.state,
+                                                         {
+                                                             .parent = parent,
+                                                             .heading = "TAGS",
+                                                             .multiline_contents = false,
+                                                             .bigger_contents_gap = true,
+                                                         });
 
-    for (auto [category, tags_for_category, _] : standard_tags) {
-        auto const category_info = Tags(category);
-        auto const section = DoPickerItemsSectionContainer(box_system,
-                                                           {
-                                                               .parent = tags_container,
-                                                               .heading = category_info.name,
-                                                               .icon = category_info.font_awesome_icon,
-                                                               .capitalise = true,
-                                                               .multiline_contents = true,
-                                                               .subsection = true,
-                                                           });
+    if (tags_container) {
+        for (auto [category, tags_for_category, category_hash] : standard_tags) {
+            auto const category_info = Tags(category);
+            auto const section = DoPickerSectionContainer(box_system,
+                                                          context.picker_id + category_hash,
+                                                          context.state,
+                                                          {
+                                                              .parent = *tags_container,
+                                                              .heading = category_info.name,
+                                                              .icon = category_info.font_awesome_icon,
+                                                              .capitalise = true,
+                                                              .multiline_contents = true,
+                                                              .subsection = true,
+                                                          });
 
-        for (auto const [tag, filter_item_info, _] : tags_for_category) {
-            auto const tag_info = GetTagInfo(tag);
-            auto const tag_hash = Hash(tag_info.name);
-            auto const is_selected = Contains(context.state.selected_tags_hashes, tag_hash);
-            DoFilterButton(box_system,
-                           context.state,
-                           filter_item_info,
-                           {
-                               .parent = section,
-                               .is_selected = is_selected,
-                               .text = tag_info.name,
-                               .hashes = context.state.selected_tags_hashes,
-                               .clicked_hash = tag_hash,
-                               .filter_mode = context.state.filter_mode,
-                           });
+            if (!section) continue;
+
+            for (auto const [tag, filter_item_info, _] : tags_for_category) {
+                auto const tag_info = GetTagInfo(tag);
+                auto const tag_hash = Hash(tag_info.name);
+                auto const is_selected = Contains(context.state.selected_tags_hashes, tag_hash);
+                DoFilterButton(box_system,
+                               context.state,
+                               filter_item_info,
+                               {
+                                   .parent = *section,
+                                   .is_selected = is_selected,
+                                   .text = tag_info.name,
+                                   .hashes = context.state.selected_tags_hashes,
+                                   .clicked_hash = tag_hash,
+                                   .filter_mode = context.state.filter_mode,
+                               });
+            }
         }
-    }
 
-    if (non_standard_tags.size) {
-        auto const section = DoPickerItemsSectionContainer(box_system,
-                                                           {
-                                                               .parent = tags_container,
-                                                               .heading = "UNCATEGORISED",
-                                                               .multiline_contents = true,
-                                                               .subsection = true,
-                                                           });
-        for (auto const [name, filter_item_info, _] : non_standard_tags) {
-            auto const is_selected = Contains(context.state.selected_tags_hashes, Hash(name));
-            DoFilterButton(box_system,
-                           context.state,
-                           filter_item_info,
-                           {
-                               .parent = section,
-                               .is_selected = is_selected,
-                               .text = name,
-                               .hashes = context.state.selected_tags_hashes,
-                               .clicked_hash = Hash(name),
-                               .filter_mode = context.state.filter_mode,
-                           });
+        if (non_standard_tags.size) {
+            auto const section = DoPickerSectionContainer(box_system,
+                                                          context.picker_id + SourceLocationHash(),
+                                                          context.state,
+                                                          {
+                                                              .parent = *tags_container,
+                                                              .heading = "UNCATEGORISED",
+                                                              .multiline_contents = true,
+                                                              .subsection = true,
+                                                          });
+
+            if (section) {
+                for (auto const [name, filter_item_info, _] : non_standard_tags) {
+                    auto const is_selected = Contains(context.state.selected_tags_hashes, Hash(name));
+                    DoFilterButton(box_system,
+                                   context.state,
+                                   filter_item_info,
+                                   {
+                                       .parent = *section,
+                                       .is_selected = is_selected,
+                                       .text = name,
+                                       .hashes = context.state.selected_tags_hashes,
+                                       .clicked_hash = Hash(name),
+                                       .filter_mode = context.state.filter_mode,
+                                   });
+                }
+            }
         }
     }
 }
@@ -990,6 +1061,7 @@ void DoPickerPopup(GuiBoxSystem& box_system,
                    imgui::Id popup_id,
                    Rect absolute_button_rect,
                    PickerPopupOptions const& options) {
+    context.picker_id = popup_id;
     RunPanel(box_system,
              Panel {
                  .run = [&](GuiBoxSystem& box_system) { DoPickerPopup(box_system, context, options); },

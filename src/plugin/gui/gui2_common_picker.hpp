@@ -44,6 +44,7 @@ struct CommonPickerState {
     DynamicArray<u64> selected_library_author_hashes {Malloc::Instance()};
     DynamicArray<u64> selected_tags_hashes {Malloc::Instance()};
     DynamicArray<u64> selected_folder_hashes {Malloc::Instance()};
+    DynamicArray<u64> hidden_filter_headers {Malloc::Instance()};
     DynamicArrayBounded<char, 100> search {};
     DynamicArrayBounded<DynamicArray<u64>*, 2> other_selected_hashes {};
     FilterMode filter_mode = FilterMode::ProgressiveNarrowing;
@@ -53,6 +54,7 @@ struct CommonPickerState {
 struct PickerPopupContext {
     sample_lib_server::Server& sample_library_server;
     CommonPickerState& state;
+    u64 picker_id;
 };
 
 struct FilterItemInfo {
@@ -135,9 +137,13 @@ struct PickerItemsSectionOptions {
     bool capitalise;
     bool multiline_contents;
     bool subsection;
+    bool bigger_contents_gap {false};
 };
 
-Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSectionOptions const& options);
+Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
+                                       u64 id,
+                                       CommonPickerState& state,
+                                       PickerItemsSectionOptions const& options);
 
 struct PickerItemOptions {
     Box parent;

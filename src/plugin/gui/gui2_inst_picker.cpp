@@ -312,7 +312,11 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
     }
 
     Optional<FolderNode*> previous_folder {};
-    Box folder_box {};
+    Optional<Box> folder_box {};
+
+    auto& common_state = (state.tab == InstPickerState::Tab::FloeLibaries)
+                             ? state.common_state_floe_libraries
+                             : state.common_state_mirage_libraries;
 
     auto const first = IterateInstrument(context,
                                          state,
@@ -333,74 +337,85 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
         if (folder != previous_folder) {
             previous_folder = folder;
 
-            folder_box = DoPickerItemsSectionContainer(box_system,
-                                                       {
-                                                           .parent = root,
-                                                           .folder = folder,
-                                                       });
+            folder_box = DoPickerSectionContainer(box_system,
+                                                  folder->Hash(),
+                                                  common_state,
+                                                  {
+                                                      .parent = root,
+                                                      .folder = folder,
+                                                  });
         }
 
-        auto const inst_id = sample_lib::InstrumentId {lib.Id(), inst.name};
-        auto const is_current = context.layer.instrument_id == inst_id;
+        if (folder_box) {
+            auto const inst_id = sample_lib::InstrumentId {lib.Id(), inst.name};
+            auto const is_current = context.layer.instrument_id == inst_id;
 
-        auto const item = DoPickerItem(
-            box_system,
-            {
-                .parent = folder_box,
-                .text = inst.name,
-                .tooltip = FunctionRef<String()>([&]() -> String {
-                    DynamicArray<char> buf {box_system.arena};
-                    fmt::Append(buf, "{} from {} by {}.", inst.name, inst.library.name, inst.library.author);
+            auto const item = DoPickerItem(
+                box_system,
+                {
+                    .parent = *folder_box,
+                    .text = inst.name,
+                    .tooltip = FunctionRef<String()>([&]() -> String {
+                        DynamicArray<char> buf {box_system.arena};
+                        fmt::Append(buf,
+                                    "{} from {} by {}.",
+                                    inst.name,
+                                    inst.library.name,
+                                    inst.library.author);
 
-                    if (inst.description) fmt::Append(buf, " {}", inst.description);
+                        if (inst.description) fmt::Append(buf, " {}", inst.description);
 
-                    fmt::Append(buf, "\nTags: ");
-                    if (inst.tags.size == 0)
-                        fmt::Append(buf, "None");
-                    else {
-                        for (auto const [t, _] : inst.tags)
-                            fmt::Append(buf, "{}, ", t);
-                        dyn::Pop(buf, 2);
-                    }
-
-                    return buf.ToOwnedSpan();
-                }),
-                .is_current = is_current,
-                .icons = ({
-                    if (&lib != previous_library) {
-                        lib_icon_tex = nullptr;
-                        previous_library = &lib;
-                        if (auto const imgs = LibraryImagesFromLibraryId(context.library_images,
-                                                                         box_system.imgui,
-                                                                         lib.Id(),
-                                                                         context.sample_library_server,
-                                                                         box_system.arena,
-                                                                         true)) {
-                            auto opt = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
-                                (imgs && !imgs->icon_missing) ? imgs->icon : context.unknown_library_icon);
-                            lib_icon_tex = opt ? *opt : nullptr;
+                        fmt::Append(buf, "\nTags: ");
+                        if (inst.tags.size == 0)
+                            fmt::Append(buf, "None");
+                        else {
+                            for (auto const [t, _] : inst.tags)
+                                fmt::Append(buf, "{}, ", t);
+                            dyn::Pop(buf, 2);
                         }
-                    }
-                    decltype(PickerItemOptions::icons) {lib_icon_tex};
-                }),
-            });
 
-        if (is_current && box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
-            Exchange(state.scroll_to_show_selected, false)) {
-            box_system.imgui.ScrollWindowToShowRectangle(layout::GetRect(box_system.layout, item.layout_id));
-        }
+                        return buf.ToOwnedSpan();
+                    }),
+                    .is_current = is_current,
+                    .icons = ({
+                        if (&lib != previous_library) {
+                            lib_icon_tex = nullptr;
+                            previous_library = &lib;
+                            if (auto const imgs = LibraryImagesFromLibraryId(context.library_images,
+                                                                             box_system.imgui,
+                                                                             lib.Id(),
+                                                                             context.sample_library_server,
+                                                                             box_system.arena,
+                                                                             true)) {
+                                auto opt = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
+                                    (imgs && !imgs->icon_missing) ? imgs->icon
+                                                                  : context.unknown_library_icon);
+                                lib_icon_tex = opt ? *opt : nullptr;
+                            }
+                        }
+                        decltype(PickerItemOptions::icons) {lib_icon_tex};
+                    }),
+                });
 
-        if (item.button_fired) {
-            if (is_current) {
-                LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
-            } else {
-                LoadInstrument(context.engine,
-                               context.layer.index,
-                               sample_lib::InstrumentId {
-                                   .library = lib.Id(),
-                                   .inst_name = inst.name,
-                               });
-                box_system.imgui.CloseCurrentPopup();
+            if (is_current &&
+                box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
+                Exchange(state.scroll_to_show_selected, false)) {
+                box_system.imgui.ScrollWindowToShowRectangle(
+                    layout::GetRect(box_system.layout, item.layout_id));
+            }
+
+            if (item.button_fired) {
+                if (is_current) {
+                    LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
+                } else {
+                    LoadInstrument(context.engine,
+                                   context.layer.index,
+                                   sample_lib::InstrumentId {
+                                       .library = lib.Id(),
+                                       .inst_name = inst.name,
+                                   });
+                    box_system.imgui.CloseCurrentPopup();
+                }
             }
         }
 
