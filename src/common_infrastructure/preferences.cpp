@@ -41,10 +41,7 @@ static bool IsKeyValid(Key const& key) {
 u64 HashKey(Key const& key) {
     switch (key.tag) {
         case KeyType::GlobalString: return Hash(key.Get<String>());
-        case KeyType::GlobalInt: {
-            auto const v = key.Get<s64>();
-            return Hash(Span {(u8 const*)&v, sizeof(v)});
-        }
+        case KeyType::GlobalInt: return Hash(key.Get<s64>());
         case KeyType::Sectioned: {
             auto const k = key.Get<SectionedKey>();
             auto hash = HashInit();
