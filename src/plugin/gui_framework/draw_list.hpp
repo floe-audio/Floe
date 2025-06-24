@@ -553,7 +553,7 @@ struct DrawList {
         PushClipRectFullScreen();
         auto const aa = context->fill_anti_alias;
         context->fill_anti_alias = blur_size;
-        f32x2 const offs {blur_size / 5.0f, blur_size / 5.0f};
+        auto const offs = f32x2 {blur_size} / f32x2 {7.0f, 5.0f};
         AddRectFilled(a + offs, b + offs, col, rounding, rounding_corners_flags);
         context->fill_anti_alias = aa;
         PopClipRect();
