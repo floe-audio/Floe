@@ -304,7 +304,7 @@ consteval Array<CommandLineArgDefinition, N> MakeCommandLineArgDefs(CommandLineA
         if (arg.id != (u32)arg_index) throw "MakeCommandLineArgDefs: id is out of order with enum value";
         if (!arg.key.size) throw "MakeCommandLineArgDefs: key is empty";
         if (!arg.description.size) throw "MakeCommandLineArgDefs: description is empty";
-        if (!arg.value_type.size) throw "MakeCommandLineArgDefs: value_type is empty";
+        if (arg.num_values != 0 && !arg.value_type.size) throw "MakeCommandLineArgDefs: value_type is empty";
 
         for (auto const& other_arg : args) {
             if (&arg == &other_arg) continue;

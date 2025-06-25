@@ -12,7 +12,7 @@
 //
 // Primarily, preferences are controlled by the user through the GUI. However, we also support users manually
 // editing the preferences file. We use a directory watcher and a diff algorithm to detect changes to the file
-// and update the preferences accordingly. This is also neccessary in the case that there are multiple
+// and update the preferences accordingly. This is also necessary in the case that there are multiple
 // processes running Floe at the same time (this can happen in some DAWs).
 //
 // In general, we take the approach that the preferences system doesn't know anything about the data that it
@@ -22,9 +22,9 @@
 //
 // We want preferences to be both forwards and backwards compatible because sometimes multiple versions of
 // Floe can be installed at the same type (for example, when using multiple plugin folders, DAWs can sometimes
-// load the plugin from either version). This isn't a common senario but it's one that can sometimes occur. We
-// want both old and new versions of Floe to be able to read and write the preferences file without losing any
-// data.
+// load the plugin from either version). This isn't a common scenario but it's one that can sometimes occur.
+// We want both old and new versions of Floe to be able to read and write the preferences file without losing
+// any data.
 //
 // INI is not a strict format. These are our specific rules:
 // - 'key = value\n' syntax. Spaces or tabs around the = are ignored.
@@ -78,7 +78,7 @@ struct SectionedKey {
 };
 
 // NOTE: GlobalString and GlobalInt could be combined and stored using KeyValueUnion, but it makes the API a
-// little less ergonomic because we'd then have to explictly specify the KeyValueUnion type when creating a
+// little less ergonomic because we'd then have to explicitly specify the KeyValueUnion type when creating a
 // key, rather than just String or s64.
 enum class KeyType : u32 { GlobalString, GlobalInt, Sectioned };
 
@@ -110,9 +110,9 @@ ErrorCodeOr<void> WritePreferencesFile(PreferencesTable const& table,
                                        String path,
                                        Optional<s128> set_last_modified = NanosecondsSinceEpoch());
 
-// NOTE: you shouldn't trust the values you get from any of the Lookup functions because they could be
-// manually modified in the file, or they could be from a different version of Floe that had different uses of
-// the same key. Therefore, you should always validate the values before using them.
+// NOTE: you shouldn't trust the values you get from any of the Lookup functions. They could be manually
+// modified in the file, or they could be from a different version of Floe that had different uses of the same
+// key. Therefore, you should always validate the values before using them.
 
 // These functions assume that the key has a single value (or no value). If you want to lookup multiple
 // values, then use LookupValues.
@@ -181,7 +181,7 @@ struct Descriptor {
 
 struct ValidateResult {
     ValueUnion value;
-    bool is_default; // saves you from having to do a comparison with the default value
+    bool is_default; // Saves you from having to do a comparison with the default value.
 };
 
 // Returns the valid, constrained value or the default value if not. In a multi-value setting the default
@@ -226,7 +226,7 @@ MatchValues(Key const& key, Value const* value_list, Descriptor const& descripto
 Optional<usize>
 MatchValues(Key const& key, Value const* value_list, Descriptor const& descriptor, Span<s64> out);
 
-// edited over time.
+// Edited over time.
 struct Preferences : PreferencesTable {
     ArenaAllocator arena {PageAllocator::Instance()};
     PathPool path_pool {};

@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include "common_infrastructure/tags.hpp"
-
 #include "gui/gui2_common_modal_panel.hpp"
 #include "gui/gui_library_images.hpp"
 #include "gui_framework/gui_box_system.hpp"
@@ -46,6 +44,7 @@ struct CommonPickerState {
     DynamicArray<u64> selected_library_author_hashes {Malloc::Instance()};
     DynamicArray<u64> selected_tags_hashes {Malloc::Instance()};
     DynamicArray<u64> selected_folder_hashes {Malloc::Instance()};
+    DynamicArray<u64> hidden_filter_headers {Malloc::Instance()};
     DynamicArrayBounded<char, 100> search {};
     DynamicArrayBounded<DynamicArray<u64>*, 2> other_selected_hashes {};
     FilterMode filter_mode = FilterMode::ProgressiveNarrowing;
@@ -54,8 +53,8 @@ struct CommonPickerState {
 // Ephemeral
 struct PickerPopupContext {
     sample_lib_server::Server& sample_library_server;
-    sample_lib::LibraryIdRef const* hovering_lib {};
     CommonPickerState& state;
+    u64 picker_id;
 };
 
 struct FilterItemInfo {
@@ -67,12 +66,12 @@ struct TagsFilters {
     HashTable<String, FilterItemInfo> tags;
 };
 
-bool FolderNodeLessThan(FolderNode const* const& a,
-                        DummyValueType const&,
-                        FolderNode const* const& b,
-                        DummyValueType const&);
+bool RootNodeLessThan(FolderNode const* const& a,
+                      DummyValueType const&,
+                      FolderNode const* const& b,
+                      DummyValueType const&);
 
-using FolderRootSet = OrderedSet<FolderNode const*, nullptr, FolderNodeLessThan>;
+using FolderRootSet = OrderedSet<FolderNode const*, nullptr, RootNodeLessThan>;
 
 struct FolderFilters {
     HashTable<FolderNode const*, FilterItemInfo> folders;
@@ -86,7 +85,7 @@ struct LibraryFilters {
     Optional<graphics::ImageID> unknown_library_icon;
 };
 
-// IMPORTANT: we use FunctionRefs here, you need to make sure the lifetime of the functions outlives the
+// IMPORTANT: we use FunctionRef here, you need to make sure the lifetime of the functions outlives the
 // options.
 struct PickerPopupOptions {
     struct Button {
@@ -126,9 +125,6 @@ struct PickerPopupOptions {
     Optional<FolderFilters> folder_filters {};
     TrivialFunctionRef<void(GuiBoxSystem&, Box const& parent, u8& num_sections)> do_extra_filters {};
     bool has_extra_filters {};
-
-    f32 status_bar_height {};
-    TrivialFunctionRef<Optional<String>()> status {}; // Set if something is hovering
 };
 
 Box DoPickerItemsRoot(GuiBoxSystem& box_system);
@@ -141,13 +137,18 @@ struct PickerItemsSectionOptions {
     bool capitalise;
     bool multiline_contents;
     bool subsection;
+    bool bigger_contents_gap {false};
 };
 
-Box DoPickerItemsSectionContainer(GuiBoxSystem& box_system, PickerItemsSectionOptions const& options);
+Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
+                                       u64 id,
+                                       CommonPickerState& state,
+                                       PickerItemsSectionOptions const& options);
 
 struct PickerItemOptions {
     Box parent;
     String text;
+    TooltipString tooltip = k_nullopt;
     bool is_current;
     Array<graphics::TextureHandle, k_num_layers + 1> icons;
 };
@@ -167,7 +168,7 @@ struct FilterButtonOptions {
     bool is_selected;
     Optional<graphics::TextureHandle> icon;
     String text;
-    String tooltip;
+    TooltipString tooltip = k_nullopt;
     DynamicArray<u64>& hashes;
     u64 clicked_hash;
     FilterMode filter_mode;
@@ -180,10 +181,6 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                    CommonPickerState& state,
                    FilterItemInfo const& info,
                    FilterButtonOptions const& options);
-
-void DoPickerStatusBar(GuiBoxSystem& box_system,
-                       PickerPopupContext& context,
-                       FunctionRef<Optional<String>()> custom_status);
 
 void DoPickerPopup(GuiBoxSystem& box_system,
                    PickerPopupContext context,

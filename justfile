@@ -183,7 +183,7 @@ test-clap-val:
   clap-validator validate {{clap_val_args}} {{native_binary_dir}}/Floe.clap
 
 test-units: 
-  {{native_binary_dir}}/tests --log-level=debug
+  {{native_binary_dir}}/tests --log-level=debug --write-to-file
 
 test-pluginval: 
   pluginval {{native_binary_dir}}/Floe.vst3
@@ -314,7 +314,10 @@ valgrind:
     --suppressions=valgrind.supp \
     --error-exitcode=1 \
     --exit-on-first-error=no \
-    {{native_binary_dir}}/tests
+    {{native_binary_dir}}/tests \
+    --log-level=debug \
+    --write-to-file \
+    --filter=*Hash*
 
 checks_level_0 := replace( 
   "

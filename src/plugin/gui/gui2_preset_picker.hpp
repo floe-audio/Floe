@@ -34,7 +34,6 @@ struct PresetPickerContext {
     u32 init = 0;
     Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;
     PresetsSnapshot presets_snapshot;
-    PresetFolder::Preset const* hovering_preset = nullptr;
 };
 
 // Persistent

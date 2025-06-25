@@ -9,10 +9,10 @@
 // Reporting an error means sending it the online service (if enabled), or writing it a file - ready to be
 // sent later (either automatically or when manually requested as part of a bug report).
 
-// not thread-safe, call once near the start of the program
+// Not thread-safe. Call once near the start of the program.
 void InitBackgroundErrorReporting(Span<sentry::Tag const> tags);
 
-// not thread-safe, call near the end of the program
+// Not thread-safe. Call near the end of the program.
 void ShutdownBackgroundErrorReporting();
 
 namespace detail {
@@ -22,7 +22,7 @@ bool ErrorSentBefore(u64 error_id);
 
 enum class ErrorLevel { Debug, Info, Warning, Error, Fatal };
 
-// thread-safe, not signal-safe, works even if InitErrorReporting() was not called
+// Thread-safe. Not signal-safe. Works even if InitBackgroundErrorReporting() was not called.
 template <typename... Args>
 __attribute__((noinline)) void
 ReportError(ErrorLevel level, Optional<u64> error_id, String format, Args const&... args) {
@@ -61,7 +61,7 @@ enum class ReportFeedbackReturnCode {
 
 ReportFeedbackReturnCode ReportFeedback(String description, Optional<String> email, bool include_diagnostics);
 
-// Use this with prefs::SetValue, prefs::GetValue
+// Use this with prefs::SetValue and prefs::GetValue.
 prefs::Descriptor const& IsOnlineReportingDisabledDescriptor();
 void ErrorReportingOnPreferenceChanged(prefs::Key const& key, prefs::Value const* value);
 

@@ -133,7 +133,9 @@ class PassedSubcaseStacks {
 
 struct Tester {
     struct TestLogger {
-        TestLogger(Tester& tester) : tester(tester) {
+        TestLogger(Tester& tester) : tester(tester) {}
+
+        void InitLogFile() {
             InitLogFolderIfNeeded();
             if (auto f = LogFolder()) {
                 PathArena path_arena {Malloc::Instance()};

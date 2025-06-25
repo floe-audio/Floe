@@ -403,7 +403,8 @@ void EndParameterGUI(Gui* g,
 
     if (!(flags & ParamDisplayFlagsNoTooltip) && !g->imgui.TextInputHasFocus(id))
         DoParameterTooltipIfNeeded(g, param, id, r);
-    if (!(flags & ParamDisplayFlagsNoValuePopup)) ParameterValuePopup(g, param, id, r);
+    if (!(flags & ParamDisplayFlagsNoValuePopup) && param.info.value_type != ParamValueType::Bool)
+        ParameterValuePopup(g, param, id, r);
 }
 
 bool DoCloseButtonForCurrentWindow(Gui* g, String tooltip_text, buttons::Style const& style) {

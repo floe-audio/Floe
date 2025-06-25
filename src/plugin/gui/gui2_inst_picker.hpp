@@ -31,8 +31,6 @@ struct InstPickerContext {
     Optional<graphics::ImageID>& unknown_library_icon;
 
     Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;
-    sample_lib::Instrument const* hovering_inst {};
-    Optional<WaveformType> waveform_type_hovering {};
     bool has_mirage_libraries {};
 };
 

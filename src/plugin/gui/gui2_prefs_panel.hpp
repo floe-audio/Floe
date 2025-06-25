@@ -157,7 +157,7 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
                   .activate_on_click_button = MouseButton::Left,
                   .activation_click_event = ActivationClickEvent::Up,
                   .extra_margin_for_mouse_events = 2,
-                  .tooltip = fmt::FormatInline<64>("Open folder in {}"_s, GetFileBrowserAppName()),
+                  .tooltip = (String)fmt::FormatInline<64>("Open folder in {}"_s, GetFileBrowserAppName()),
               })
             .button_fired;
 
