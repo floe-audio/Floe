@@ -412,6 +412,42 @@ TEST_CASE(TestPackageInstallation) {
     return k_success;
 }
 
+TEST_CASE(TestTypeOfActionTaken) {
+    for (auto const installed : Array {true, false}) {
+        for (auto const version_difference :
+             Array {ExistingInstalledComponent::VersionDifference::Equal,
+                    ExistingInstalledComponent::VersionDifference::InstalledIsOlder,
+                    ExistingInstalledComponent::VersionDifference::InstalledIsNewer}) {
+            for (auto const modified_since_installed :
+                 Array {ExistingInstalledComponent::ModifiedSinceInstalled::Modified,
+                        ExistingInstalledComponent::ModifiedSinceInstalled::MaybeModified,
+                        ExistingInstalledComponent::ModifiedSinceInstalled::Unmodified}) {
+                for (auto const user_decision :
+                     Array {InstallJob::UserDecision::Overwrite, InstallJob::UserDecision::Skip}) {
+                    auto const status = ExistingInstalledComponent {
+                        .installed = installed,
+                        .version_difference = version_difference,
+                        .modified_since_installed = modified_since_installed,
+                    };
+
+                    auto const action_taken = TypeOfActionTaken(status, user_decision);
+
+                    (void)action_taken;
+
+                    CAPTURE(status);
+                    CAPTURE(user_decision);
+                    CHECK(action_taken != "error"_s);
+                }
+            }
+        }
+    }
+
+    return k_success;
+}
+
 } // namespace package
 
-TEST_REGISTRATION(RegisterPackageInstallationTests) { REGISTER_TEST(package::TestPackageInstallation); }
+TEST_REGISTRATION(RegisterPackageInstallationTests) {
+    REGISTER_TEST(package::TestPackageInstallation);
+    REGISTER_TEST(package::TestTypeOfActionTaken);
+}

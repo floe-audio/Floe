@@ -16,8 +16,16 @@
 namespace package {
 
 struct ExistingInstalledComponent {
-    enum class VersionDifference : u8 { Equal, InstalledIsOlder, InstalledIsNewer };
-    enum class ModifiedSinceInstalled : u8 { Unmodified, MaybeModified, Modified };
+    enum class VersionDifference : u8 {
+        Equal, // Installed version is the same as the package version.
+        InstalledIsOlder, // Installed version is older than the package version.
+        InstalledIsNewer, // Installed version is newer than the package version.
+    };
+    enum class ModifiedSinceInstalled : u8 {
+        Unmodified, // Installed version is known to be unmodified since it was installed.
+        MaybeModified, // We don't know if the installed version has been modified since it was installed.
+        Modified, // Installed version has been modified since it was installed.
+    };
     using enum VersionDifference;
     using enum ModifiedSinceInstalled;
     bool operator==(ExistingInstalledComponent const& o) const = default;
@@ -712,6 +720,12 @@ PUBLIC String TypeOfActionTaken(ExistingInstalledComponent existing_installation
             ASSERT(existing_installation_status.installed);
             return "already installed";
         }
+    }
+
+    if (existing_installation_status.installed &&
+        existing_installation_status.version_difference == ExistingInstalledComponent::InstalledIsOlder &&
+        existing_installation_status.modified_since_installed == ExistingInstalledComponent::Unmodified) {
+        return "updated";
     }
 
     PanicIfReached();
