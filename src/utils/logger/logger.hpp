@@ -108,10 +108,9 @@ LogRingBuffer::Snapshot GetLatestLogMessages();
 void InitLogger(LogConfig);
 void ShutdownLogger();
 
-// TODO: remove Trace
 void Trace(ModuleName module_name, String message = {}, SourceLocation loc = SourceLocation::Current());
 
-// A macro unfortunatly seems the best way to avoid repeating the same code while keep template
+// A macro unfortunately seems the best way to avoid repeating the same code while keep template
 // instantiations low (needed for fast compile times)
 #define DECLARE_LOG_FUNCTION(level)                                                                          \
     template <typename... Args>                                                                              \

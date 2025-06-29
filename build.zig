@@ -1527,7 +1527,7 @@ pub fn build(b: *std.Build) void {
         debug_info_lib.linkLibC(); // Means better debug info on Linux
         debug_info_lib.addIncludePath(b.path("src/utils/debug_info"));
 
-        // TODO: does this need to be a library? is foundation/os/plugin all linked together?
+        // IMPROVE: does this need to be a library? is foundation/os/plugin all linked together?
         const library = b.addStaticLibrary(.{
             .name = "library",
             .root_module = b.createModule(module_options),
@@ -1631,7 +1631,6 @@ pub fn build(b: *std.Build) void {
             library.linkLibrary(tracy);
             library.addObject(debug_info_lib);
             library.addObject(stb_sprintf);
-            // library.linkLibCpp(); // needed for __cxa_demangle
             library.linkLibrary(libbacktrace);
             join_compile_commands.step.dependOn(&library.step);
             applyUniversalSettings(&build_context, library);

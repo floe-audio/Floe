@@ -610,7 +610,7 @@ static int HandleStacktraceLine(void* data,
         .filename = filename ? Filename(filename) : "unknown-file"_s,
         .line = lineno,
         .column = -1,
-        .in_self_module = true, // TODO: we don't actually know
+        .in_self_module = true, // IMPROVE: we don't actually know
     };
     ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
 
@@ -779,7 +779,7 @@ void StacktraceToCallback(Span<uintptr const> stack,
                     .filename = Filename(filename),
                     .line = lineno,
                     .column = -1,
-                    .in_self_module = true, // TODO: we don't actually know
+                    .in_self_module = true, // IMPROVE: we don't actually know
                 });
 
                 return 0;
@@ -810,7 +810,7 @@ bool HasAddressesInCurrentModule(Span<uintptr const> addresses) {
     return false;
 #else
     (void)addresses;
-    return true; // TODO: we don't have this information in libbacktrace so we say yes.
+    return true; // IMPROVE: we don't have this information in libbacktrace so we say yes.
 #endif
 }
 
@@ -821,6 +821,6 @@ bool IsAddressInCurrentModule(usize address) {
     return IsAddressInCurrentModule(state->state, address);
 #else
     (void)address;
-    return true; // TODO: we don't have this information in libbacktrace so we say yes.
+    return true; // IMPROVE: we don't have this information in libbacktrace so we say yes.
 #endif
 }

@@ -76,8 +76,7 @@ struct Engine : ProcessorListener {
     Optional<clap_id> timer_id {};
     TimePoint last_poll_thread_time {};
 
-    // TODO: debug-only, remove this
-    DynamicArrayBounded<char, 200> state_change_description {};
+    DynamicArrayBounded<char, PRODUCTION_BUILD ? 0 : 200> state_change_description {};
 
     ThreadsafeFunctionQueue main_thread_callbacks {.arena = {PageAllocator::Instance()}};
 

@@ -553,8 +553,7 @@ bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, P
     ASSERT(g_is_logical_main_thread);
     auto& param = processor.params[ToInt(index)];
 
-    bool const changed =
-        param.SetLinearValue(value); // TODO(1.0): remove this in favour of passing events around?
+    bool const changed = param.SetLinearValue(value);
 
     processor.param_events_for_audio_thread.Push(
         GuiChangedParam {.value = value,

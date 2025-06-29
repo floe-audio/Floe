@@ -7,8 +7,6 @@
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
-// TODO: This should be replaced by a new system. The atomic operations here are sketchy and we want a new
-// system that is far more robust and supports sample-accurate automation.
 struct Parameter {
     f32 LinearValue() const { return value.Load(LoadMemoryOrder::Relaxed); }
     f32 ProjectedValue() const { return info.ProjectValue(value.Load(LoadMemoryOrder::Relaxed)); }
