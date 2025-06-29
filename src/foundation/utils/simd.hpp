@@ -47,16 +47,6 @@ PUBLIC ALWAYS_INLINE void StoreToUnaligned(UnderlyingTypeOfVec<VecType>* dest, V
     __builtin_memcpy_inline(dest, &v, sizeof(VecType));
 }
 
-template <F32Vector T>
-PUBLIC constexpr T Sqrt(T a) {
-    // IMPROVE: when we have support for __builtin_elementwise_sqrt, use that instead
-#if defined(__x86_64__)
-    return _mm_sqrt_ps((f32x4)a);
-#elif defined(__aarch64__)
-    return vsqrtq_f32((f32x4)a);
-#endif
-}
-
 // fused multiply add, (x * y) + z.
 template <F32Vector T>
 PUBLIC constexpr T Fma(T x, T y, T z) {
@@ -114,6 +104,7 @@ DEFINE_BUILTIN_SIMD_MATHS_FUNC(Exp, exp)
 DEFINE_BUILTIN_SIMD_MATHS_FUNC(Exp2, exp2)
 DEFINE_BUILTIN_SIMD_MATHS_FUNC(Round, round)
 DEFINE_BUILTIN_SIMD_MATHS_FUNC(Trunc, trunc)
+DEFINE_BUILTIN_SIMD_MATHS_FUNC(Sqrt, sqrt)
 
 // IMPROVE: we could do wider SIMD with these. e.g. AVX2
 PUBLIC inline void SimdAddAlignedBuffer(f32* d, f32 const* s, usize num) {
