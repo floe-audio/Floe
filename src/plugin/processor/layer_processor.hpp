@@ -132,7 +132,7 @@ struct VoiceProcessingController {
     Loop loop {};
 
     f32 tune_semitones = 1;
-    FloeSmoothedValueSystem::FloatId const pan_pos_smoother_id; // -1 to 1
+    f32 pan_pos = 0;
 
     f32 sv_filter_cutoff_linear = 0;
     f32 sv_filter_resonance = 0;
@@ -162,9 +162,10 @@ struct LayerProcessor {
         , smoothed_value_system(system)
         , host(host)
         , index(index)
-        , voice_controller({.smoothing_system = system,
-                            .layer_index = index,
-                            .pan_pos_smoother_id = system.CreateSmoother()})
+        , voice_controller({
+              .smoothing_system = system,
+              .layer_index = index,
+          })
         , vol_smoother_id(smoothed_value_system.CreateSmoother())
         , mute_solo_mix_smoother_id(smoothed_value_system.CreateSmoother())
         , eq_bands(smoothed_value_system) {}

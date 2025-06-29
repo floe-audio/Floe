@@ -112,12 +112,12 @@ struct Voice {
     MidiChannelNote midi_key_trigger = {};
 
     LFO lfo = {};
-    OnePoleLowPassFilter lfo_smoother {}; // TODO(1.0): does the lfo need to be smoothed?
+
+    OnePoleLowPassFilter<f32x2> gain_smoother;
 
     VolumeFade volume_fade;
     adsr::Processor vol_env = {};
     adsr::Processor fil_env = {};
-    f32 amp_l = 1, amp_r = 1;
     f32 aftertouch_multiplier = 1;
     bool disable_vol_env = false;
 };
@@ -205,6 +205,8 @@ struct VoicePool {
     Atomic<u32> num_active_voices = 0;
     Array<Voice, k_num_voices> voices {MakeInitialisedArray<Voice, k_num_voices>(*this)};
     Array<Span<f32>, k_num_voices> buffer_pool {};
+
+    f32 smoothing_cutoff {};
 
     AtomicSwapBuffer<Array<VoiceWaveformMarkerForGui, k_num_voices>, true> voice_waveform_markers_for_gui {};
     AtomicSwapBuffer<Array<VoiceEnvelopeMarkerForGui, k_num_voices>, true> voice_vol_env_markers_for_gui {};

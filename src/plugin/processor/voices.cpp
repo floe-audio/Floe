@@ -302,7 +302,7 @@ void UpdateLoopInfo(Voice& v) {
     }
 }
 
-inline void SetEqualPan(Voice& voice, f32 pan_pos) {
+inline f32x2 EqualPanGains(f32 pan_pos) {
     auto const angle = pan_pos * 0.125f;
     f32 const sinx = trig_table_lookup::SinTurns(angle);
     f32 const cosx = trig_table_lookup::CosTurns(angle);
@@ -312,8 +312,7 @@ inline void SetEqualPan(Voice& voice, f32 pan_pos) {
     auto const right = k_root_2_over_2 * (cosx + sinx);
     ASSERT_HOT(left >= 0 && right >= 0);
 
-    voice.amp_l = left;
-    voice.amp_r = right;
+    return {left, right};
 }
 
 void StartVoice(VoicePool& pool,
@@ -332,9 +331,6 @@ void StartVoice(VoicePool& pool,
     UpdateLFOTime(voice, audio_processing_state.sample_rate);
 
     voice.volume_fade.ForceSetAsFadeIn(sample_rate);
-    SetEqualPan(voice,
-                voice.controller->smoothing_system.Value(voice.controller->pan_pos_smoother_id,
-                                                         params.num_frames_before_starting));
     voice.vol_env.Reset();
     voice.vol_env.Gate(true);
     voice.disable_vol_env = params.disable_vol_env;
@@ -442,6 +438,9 @@ void VoicePool::PrepareToPlay(ArenaAllocator& arena, AudioProcessingContext cons
         v.index = index++;
         v.smoothing_system.PrepareToPlay(k_num_frames_in_voice_processing_chunk, context.sample_rate, arena);
     }
+
+    constexpr f32 k_time_constant_ms = 1.0f;
+    smoothing_cutoff = 1.0f - Exp(-1.0f / (k_time_constant_ms * 0.001f * context.sample_rate));
 }
 
 void NoteOff(VoicePool& pool, VoiceProcessingController& controller, MidiChannelNote note) {
@@ -489,10 +488,7 @@ class ChunkwiseVoiceProcessor {
             FillLFOBuffer(chunk_size);
             FillBufferWithSampleData(chunk_size);
 
-            auto num_valid_frames = ApplyVolumeEnvelope(chunk_size);
-            num_valid_frames = ApplyGain(num_valid_frames);
-            ApplyVolumeLFO(num_valid_frames);
-            ApplyPan(num_valid_frames);
+            auto num_valid_frames = ApplyGain(chunk_size);
             ApplyFilter(num_valid_frames);
 
             auto const samples_to_write = num_valid_frames * 2;
@@ -789,103 +785,100 @@ class ChunkwiseVoiceProcessor {
         }
     }
 
-    void ApplyVolumeLFO(u32 num_frames) {
+    u32 ApplyGain(u32 num_frames) {
         ZoneScoped;
-        usize sample_pos = 0;
-        f32 v1 = 1;
-        if (HasVolumeLfo()) {
-            for (usize frame = 0; frame < num_frames; frame += 2) {
-                static constexpr f32 k_base = 1;
-                auto const lfo_amp = m_voice.controller->lfo.amount;
 
-                // - (lfo_amp/2) because that sounds better
-                auto const b = k_base - (Fabs(lfo_amp) / 2);
-                auto const half_amp = lfo_amp / 2;
-                v1 = b + m_lfo_amounts[frame] * half_amp;
-                auto const frame_p1 = frame + 1;
-                auto const v2 = (frame_p1 != num_frames) ? b + (m_lfo_amounts[frame_p1] * half_amp) : 0.0f;
-                f32x4 v {v1, v1, v2, v2};
-                v = Min<f32x4>(v, 1.0f);
-                v = Max<f32x4>(v, 0.0f);
-
-                MultiplyVectorToBufferAtPos(sample_pos, v);
-                sample_pos += 4;
-            }
-        }
-
-        m_voice.current_gain *= v1;
-    }
-
-    u32 ApplyVolumeEnvelope(u32 num_frames) {
-        ZoneScoped;
+        // Save envelope state for restoration
         auto vol_env = m_voice.vol_env;
         auto env_on = m_voice.controller->vol_env_on && !m_voice.disable_vol_env;
         auto vol_env_params = m_voice.controller->vol_env;
         DEFER { m_voice.vol_env = vol_env; };
 
+        // LFO parameters
+        auto const has_volume_lfo = HasVolumeLfo();
+        auto const has_pan_lfo = HasPanLfo();
+        auto const lfo_amp = (has_volume_lfo || has_pan_lfo) ? m_voice.controller->lfo.amount : 0.0f;
+        auto const lfo_base = has_volume_lfo ? (1.0f - (Fabs(lfo_amp) / 2.0f)) : 1.0f;
+        auto const lfo_half_amp = lfo_amp / 2.0f;
+
         usize sample_pos = 0;
-        f32 env1 = 0;
+        f32 final_gain1 = 1.0f;
+
         for (u32 frame = 0; frame < num_frames; frame += 2) {
-            env1 = vol_env.Process(vol_env_params);
-            f32 env2 = 1;
+            // Calculate envelope gain
+            f32 env1 = env_on ? vol_env.Process(vol_env_params) : 1.0f;
+            f32 env2 = 1.0f;
             auto const frame_p1 = frame + 1;
-            if (frame_p1 != num_frames) env2 = vol_env.Process(vol_env_params);
-            if (env_on) {
-                f32x4 const gain {env1, env1, env2, env2};
-                MultiplyVectorToBufferAtPos(sample_pos, gain);
+            if (frame_p1 != num_frames) env2 = env_on ? vol_env.Process(vol_env_params) : 1.0f;
+
+            // Calculate volume LFO gain
+            f32 vol_lfo1 = 1.0f;
+            f32 vol_lfo2 = 1.0f;
+            if (has_volume_lfo) {
+                vol_lfo1 = lfo_base + m_lfo_amounts[frame] * lfo_half_amp;
+                vol_lfo2 =
+                    (frame_p1 != num_frames) ? lfo_base + (m_lfo_amounts[frame_p1] * lfo_half_amp) : vol_lfo1;
             }
-            sample_pos += 4;
 
-            if (env_on && vol_env.IsIdle()) return frame;
-        }
+            // Calculate fade gain
+            f32 fade1 = m_voice.volume_fade.GetFade() * m_voice.aftertouch_multiplier;
+            f32 fade2 = 1.0f;
+            if (frame_p1 != num_frames) fade2 = m_voice.volume_fade.GetFade() * m_voice.aftertouch_multiplier;
 
-        m_voice.current_gain *= env_on ? env1 : 1;
+            // Calculate pan positions
+            auto pan_pos1 = m_voice.controller->pan_pos;
+            auto pan_pos2 = pan_pos1;
+            if (has_pan_lfo) {
+                pan_pos1 += (m_lfo_amounts[frame] * lfo_amp);
+                pan_pos1 = Clamp(pan_pos1, -1.0f, 1.0f);
+                if (frame_p1 != num_frames) {
+                    pan_pos2 += (m_lfo_amounts[frame_p1] * lfo_amp);
+                    pan_pos2 = Clamp(pan_pos2, -1.0f, 1.0f);
+                }
+            }
 
-        return num_frames;
-    }
+            // Get pan gains
+            auto const pan_gains1 = EqualPanGains(pan_pos1);
+            auto const pan_gains2 = EqualPanGains(pan_pos2);
 
-    u32 ApplyGain(u32 num_frames) {
-        ZoneScoped;
-        usize sample_pos = 0;
-        f32 fade1 {};
-        for (u32 frame = 0; frame < num_frames; frame += 2) {
-            fade1 = m_voice.volume_fade.GetFade() * m_voice.aftertouch_multiplier;
-            f32 fade2 = 1;
-            if (frame + 1 != num_frames)
-                fade2 = m_voice.volume_fade.GetFade() * m_voice.aftertouch_multiplier;
+            // Combine all gains
+            final_gain1 = env1 * vol_lfo1 * fade1;
+            f32 final_gain2 = env2 * vol_lfo2 * fade2;
 
-            f32x4 const gain {fade1, fade1, fade2, fade2};
+            // Clamp volume LFO contribution (preserving original behavior)
+            if (has_volume_lfo) {
+                final_gain1 = Clamp(final_gain1, 0.0f, 1.0f);
+                final_gain2 = Clamp(final_gain2, 0.0f, 1.0f);
+            }
+
+            // Calculate final L/R gains
+            auto const gain_1 = final_gain1 * pan_gains1;
+            auto const gain_2 = final_gain2 * pan_gains2;
+
+            // Apply smoothing to final gains
+            auto const smooth_gain_1 = m_voice.gain_smoother.LowPass(gain_1, m_voice.pool.smoothing_cutoff);
+            auto const smooth_gain_2 = m_voice.gain_smoother.LowPass(gain_2, m_voice.pool.smoothing_cutoff);
+
+            // Apply smoothed gains to stereo sample pairs
+            f32x4 const gain {smooth_gain_1.x, smooth_gain_1.y, smooth_gain_2.x, smooth_gain_2.y};
             MultiplyVectorToBufferAtPos(sample_pos, gain);
             sample_pos += 4;
 
-            if (m_voice.volume_fade.IsSilent()) return frame;
-        }
+            CheckSamplesAreValid(sample_pos - 4, 4);
 
-        m_voice.current_gain *= fade1;
-
-        return num_frames;
-    }
-
-    void ApplyPan(u32 num_frames) {
-        ZoneScoped;
-        usize sample_pos = 0;
-        for (auto const frame : Range(num_frames)) {
-            auto pan_pos = m_voice.controller->smoothing_system.Value(m_voice.controller->pan_pos_smoother_id,
-                                                                      m_frame_index + frame);
-
-            bool pan_changed = pan_pos != m_voice.controller->smoothing_system.TargetValue(
-                                              m_voice.controller->pan_pos_smoother_id);
-            if (HasPanLfo()) {
-                auto const& lfo_amp = m_voice.controller->lfo.amount;
-                pan_pos += (m_lfo_amounts[frame] * lfo_amp);
-                pan_pos = Clamp(pan_pos, -1.0f, 1.0f);
-                pan_changed = true;
+            // Check for early termination conditions
+            if (env_on && vol_env.IsIdle()) {
+                m_voice.current_gain *= final_gain1;
+                return frame;
             }
-            if (pan_changed) SetEqualPan(m_voice, pan_pos);
-            m_buffer[sample_pos++] *= m_voice.amp_l;
-            m_buffer[sample_pos++] *= m_voice.amp_r;
-            CheckSamplesAreValid(sample_pos - 2, 2);
+            if (m_voice.volume_fade.IsSilent()) {
+                m_voice.current_gain *= final_gain1;
+                return frame;
+            }
         }
+
+        m_voice.current_gain *= final_gain1;
+        return num_frames;
     }
 
     void ApplyFilter(u32 num_frames) {
@@ -955,8 +948,6 @@ class ChunkwiseVoiceProcessor {
         ZoneScoped;
         for (auto const i : Range(num_frames)) {
             auto v = m_voice.lfo.Tick();
-            constexpr f32 k_lfo_lowpass_smoothing = 0.9f;
-            v = m_voice.lfo_smoother.LowPass(v, k_lfo_lowpass_smoothing);
             m_lfo_amounts[i] = -v;
         }
     }

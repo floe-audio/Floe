@@ -164,12 +164,7 @@ void OnParamChange(LayerProcessor& layer,
     if (auto p = changed_params.Param(LayerParamIndex::Volume))
         layer.smoothed_value_system.SetVariableLength(layer.vol_smoother_id, p->ProjectedValue(), 3, 30, 1);
 
-    if (auto p = changed_params.Param(LayerParamIndex::Pan))
-        layer.smoothed_value_system.SetVariableLength(vmst.pan_pos_smoother_id,
-                                                      p->ProjectedValue(),
-                                                      3,
-                                                      30,
-                                                      2);
+    if (auto p = changed_params.Param(LayerParamIndex::Pan)) vmst.pan_pos = p->ProjectedValue();
 
     {
         bool set_tune = false;

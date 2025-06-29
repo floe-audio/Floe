@@ -7,15 +7,16 @@
 #include "stereo_audio_frame.hpp"
 #include "volume_fade.hpp"
 
+template <ScalarOrVector<f32> T>
 struct OnePoleLowPassFilter {
-    f32 LowPass(f32 const input, f32 const cutoff01) {
-        f32 const output = m_prev_output + (cutoff01 * (input - m_prev_output));
+    T LowPass(T const input, f32 const cutoff01) {
+        T const output = m_prev_output + (cutoff01 * (input - m_prev_output));
         m_prev_output = output;
         return output;
     }
 
   private:
-    f32 m_prev_output {};
+    T m_prev_output {};
 };
 
 // ===============================================================================
