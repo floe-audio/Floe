@@ -250,7 +250,7 @@ PUBLIC constexpr f32 Cos(f32 rad) { return Sin(rad + k_half_pi<>); }
 PUBLIC constexpr f32 Tan(f32 rad) { return Sin(rad) / Cos(rad); }
 
 // Turns API
-// In turns, 0 is 0°, 0.5 is 180°, 1 is 360°, 2 is 720°, etc
+// In turns, 0 is 0°, 0.5 is 180° (π), 1 is 360° (2π), 2 is 720°, etc
 PUBLIC constexpr f32 SinTurnsPositive(f32 turns) {
     ASSERT(turns >= 0);
     auto const x = turns * 4;
