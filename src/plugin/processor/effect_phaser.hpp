@@ -22,7 +22,7 @@ class Phaser final : public Effect {
 
     EffectProcessResult ProcessBlock(Span<StereoAudioFrame> io_frames,
                                      ScratchBuffers scratch_buffers,
-                                     AudioProcessingContext const&) override {
+                                     AudioProcessingContext const& context) override {
         ZoneNamedN(process_block, "Phaser ProcessBlock", true);
         if (!ShouldProcessBlock()) return EffectProcessResult::Done;
 
@@ -47,7 +47,7 @@ class Phaser final : public Effect {
         }
 
         for (auto const frame_index : Range((u32)io_frames.size))
-            io_frames[frame_index] = MixOnOffSmoothing(wet[frame_index], io_frames[frame_index], frame_index);
+            io_frames[frame_index] = MixOnOffSmoothing(context, wet[frame_index], io_frames[frame_index]);
 
         return EffectProcessResult::Done;
     }

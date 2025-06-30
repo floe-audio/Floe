@@ -80,7 +80,7 @@ class ConvolutionReverb final : public Effect {
                 UpdateRemainingTailLength(wet);
             }
 
-            wet = MixOnOffSmoothing(wet, frame, frame_index);
+            wet = MixOnOffSmoothing(context, wet, frame);
             frame = wet;
         }
 
@@ -101,7 +101,7 @@ class ConvolutionReverb final : public Effect {
 
         auto old_convolver = Exchange(m_convolver, new_convolver);
 
-        // Let another thread to the deleting. Adding nullptr is ok.
+        // Let another thread to the deleting. Adding null is OK.
         m_convolvers_to_delete.Push(old_convolver);
 
         m_remaining_tail_length = 0;

@@ -48,7 +48,7 @@ class Delay final : public Effect {
         }
 
         for (auto const frame_index : Range((u32)io_frames.size))
-            io_frames[frame_index] = MixOnOffSmoothing(wet[frame_index], io_frames[frame_index], frame_index);
+            io_frames[frame_index] = MixOnOffSmoothing(context, wet[frame_index], io_frames[frame_index]);
 
         // check for silence on the output
         UpdateSilentSeconds(silent_seconds, io_frames, context.sample_rate);

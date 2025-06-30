@@ -77,17 +77,14 @@ enum class EffectProcessResult {
 // The subclass can either override ProcessFrame or ProcessBlock
 class Effect {
   public:
-    Effect(FloeSmoothedValueSystem& s, EffectType type)
-        : smoothed_value_system(s)
-        , type(type)
-        , mix_smoother_id(smoothed_value_system.CreateSmoother()) {}
+    Effect(FloeSmoothedValueSystem& s, EffectType type) : smoothed_value_system(s), type(type) {}
 
     virtual ~Effect() {}
 
     // audio-thread
     void OnParamChange(ChangedParams changed_params, AudioProcessingContext const& context) {
         if (auto p = changed_params.Param(k_effect_info[(u32)type].on_param_index))
-            smoothed_value_system.Set(mix_smoother_id, p->ValueAsBool() ? 1.0f : 0.0f, 4);
+            mix = p->ValueAsBool() ? 1.0f : 0.0f;
         OnParamChangeInternal(changed_params, context);
     }
 
@@ -103,28 +100,29 @@ class Effect {
                                              AudioProcessingContext const& context) {
         if (!ShouldProcessBlock()) return EffectProcessResult::Done;
         for (auto [i, frame] : Enumerate<u32>(frames))
-            frame = MixOnOffSmoothing(ProcessFrame(context, frame, i), frame, i);
+            frame = MixOnOffSmoothing(context, ProcessFrame(context, frame, i), frame);
         return EffectProcessResult::Done;
     }
 
     // audio-thread
     void Reset() {
-        if (!is_reset) ResetInternal();
+        if (is_reset) return;
+        ResetInternal();
         is_reset = true;
+        mix_smoother.Reset();
     }
 
     // audio-thread
     bool ShouldProcessBlock() {
-        if (smoothed_value_system.Value(mix_smoother_id, 0) == 0 &&
-            smoothed_value_system.TargetValue(mix_smoother_id) == 0)
-            return false;
+        if (mix == 0 && mix_smoother.IsStable(mix, 0.001f)) return false;
         is_reset = false;
         return true;
     }
 
     // audio-thread
-    StereoAudioFrame MixOnOffSmoothing(StereoAudioFrame wet, StereoAudioFrame dry, u32 frame_index) {
-        return LinearInterpolate(smoothed_value_system.Value(mix_smoother_id, frame_index), dry, wet);
+    StereoAudioFrame
+    MixOnOffSmoothing(AudioProcessingContext const& context, StereoAudioFrame wet, StereoAudioFrame dry) {
+        return LinearInterpolate(mix_smoother.LowPass(mix, context.one_pole_smoothing_cutoff_1ms), dry, wet);
     }
 
     // Internals
@@ -142,6 +140,7 @@ class Effect {
 
     FloeSmoothedValueSystem& smoothed_value_system;
     EffectType const type;
-    FloeSmoothedValueSystem::FloatId const mix_smoother_id;
+    f32 mix = 0;
+    OnePoleLowPassFilter<f32> mix_smoother {};
     bool is_reset = true;
 };
