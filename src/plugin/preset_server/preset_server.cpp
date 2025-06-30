@@ -448,7 +448,9 @@ ErrorCodeOr<void> ScanFolder(PresetServer& server,
         auto const file_data = TRY_OR(
             ReadEntireFile(path::Join(scratch_arena, Array {absolute_folder, entry.subpath}), scratch_arena),
             continue);
-        DEFER { scratch_arena.Free(file_data.ToByteSpan()); };
+        DEFER {
+            if (file_data.size) scratch_arena.Free(file_data.ToByteSpan());
+        };
 
         auto const file_hash = XXH3_64bits(file_data.data, file_data.size) + Hash((String)entry.subpath);
 
