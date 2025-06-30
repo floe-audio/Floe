@@ -166,8 +166,6 @@ struct LayerProcessor {
               .smoothing_system = system,
               .layer_index = index,
           })
-        , vol_smoother_id(smoothed_value_system.CreateSmoother())
-        , mute_solo_mix_smoother_id(smoothed_value_system.CreateSmoother())
         , eq_bands(smoothed_value_system) {}
 
     ~LayerProcessor() {
@@ -268,7 +266,7 @@ struct LayerProcessor {
         }
         static constexpr u64 ValForWaveform(WaveformType w) {
             auto const v = 1 + (alignof(sample_lib::LoadedInstrument) * ((u64)w + 1));
-            ASSERT(v % alignof(sample_lib::LoadedInstrument) != 0, "needs to be an invalid ptr");
+            ASSERT_HOT(v % alignof(sample_lib::LoadedInstrument) != 0, "needs to be an invalid ptr");
             return v;
         }
         bool IsConsumed() const { return value.Load(LoadMemoryOrder::Acquire) == k_consumed; }
@@ -278,7 +276,9 @@ struct LayerProcessor {
 
     DesiredInst desired_inst {};
 
-    FloeSmoothedValueSystem::FloatId const vol_smoother_id;
+    f32 gain = 1;
+    OnePoleLowPassFilter<f32> gain_smoother = {};
+
     int midi_transpose = 0;
     int multisample_transpose = 0;
     f32 tune_semitone = 0;
@@ -291,8 +291,6 @@ struct LayerProcessor {
     param_values::LfoSyncedRate lfo_synced_time {};
     f32 lfo_unsynced_hz {};
     bool lfo_is_synced {};
-
-    FloeSmoothedValueSystem::FloatId const mute_solo_mix_smoother_id;
 
     EqBands eq_bands;
 

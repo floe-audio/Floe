@@ -130,9 +130,7 @@ static f32 GetVelocityRegionLevel(LayerProcessor& layer, f32 velocity, f32 veloc
     return mod;
 }
 
-void SetSilent(LayerProcessor& layer, bool state) {
-    layer.smoothed_value_system.Set(layer.mute_solo_mix_smoother_id, state ? 0.0f : 1.0f, 10);
-}
+void SetSilent(LayerProcessor& layer, bool state) { layer.gain = state ? 0.0f : 1.0f; }
 
 static void
 UpdateVoiceLfoTimes(LayerProcessor& layer, VoicePool& voice_pool, AudioProcessingContext const& context) {
@@ -161,8 +159,7 @@ void OnParamChange(LayerProcessor& layer,
     if (auto p = changed_params.Param(LayerParamIndex::VelocityMapping))
         SetVelocityMapping(layer, p->ValueAsInt<param_values::VelocityMappingMode>());
 
-    if (auto p = changed_params.Param(LayerParamIndex::Volume))
-        layer.smoothed_value_system.SetVariableLength(layer.vol_smoother_id, p->ProjectedValue(), 3, 30, 1);
+    if (auto p = changed_params.Param(LayerParamIndex::Volume)) layer.gain = p->ProjectedValue();
 
     if (auto p = changed_params.Param(LayerParamIndex::Pan)) vmst.pan_pos = p->ProjectedValue();
 
@@ -606,8 +603,7 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
         StereoAudioFrame frame(buffer.data, i);
         frame = layer.eq_bands.Process(layer.smoothed_value_system, frame, i);
 
-        frame *= layer.smoothed_value_system.Value(layer.vol_smoother_id, i) *
-                 layer.smoothed_value_system.Value(layer.mute_solo_mix_smoother_id, i);
+        frame *= layer.gain_smoother.LowPass(layer.gain, voice_pool.smoothing_cutoff);
 
         if (!result.instrument_swapped) {
             auto const fade = layer.inst_change_fade.GetFadeAndStateChange();
