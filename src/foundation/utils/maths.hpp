@@ -23,8 +23,15 @@ constexpr Type k_e32 = (Type)2.71828182845904523536;
 template <typename Type = f32>
 constexpr Type k_ln2 = (Type)0.69314718055994530942;
 
-constexpr f32 k_nan32 = __builtin_nanf("");
-constexpr f64 k_nan64 = __builtin_nan("");
+template <typename Type = f32>
+constexpr Type k_nan = []() {
+    if constexpr (Same<Type, f32>)
+        return __builtin_nanf("");
+    else if constexpr (Same<Type, f64>)
+        return __builtin_nan("");
+    else
+        static_assert(false, "Unsupported type for NaN constant");
+}();
 
 template <typename T>
 PUBLIC ALWAYS_INLINE constexpr T Min(T a, T b) {

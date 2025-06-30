@@ -11,10 +11,14 @@ template <ScalarOrVectorFloat T>
 struct OnePoleLowPassFilter {
     using ElementType = UnderlyingTypeOfVecOrScalar<T>;
 
+    static ElementType MsToCutoff(ElementType milliseconds, ElementType sample_rate) {
+        ASSERT_HOT(milliseconds > 0 && sample_rate > 0);
+        return 1 - Exp(ElementType(-1) / (milliseconds * sample_rate * ElementType(0.001)));
+    }
+
     T LowPass(T const input, ElementType const cutoff01) {
-        if (!prev_is_valid) [[unlikely]] {
+        if (PrevIsInvalid()) [[unlikely]] {
             prev_output = input;
-            prev_is_valid = true;
             return input;
         }
         T const output = prev_output + (cutoff01 * (input - prev_output));
@@ -23,9 +27,8 @@ struct OnePoleLowPassFilter {
     }
 
     T LowPass(T const input, ElementType const cutoff01, ElementType* change) {
-        if (!prev_is_valid) [[unlikely]] {
+        if (PrevIsInvalid()) [[unlikely]] {
             prev_output = input;
-            prev_is_valid = true;
             *change = __FLT_MAX__;
             return input;
         }
@@ -35,10 +38,23 @@ struct OnePoleLowPassFilter {
         return output;
     }
 
-    void Reset() { prev_is_valid = false; }
+    void Reset() { prev_output = k_nan<ElementType>; }
 
-    T prev_output {};
-    bool prev_is_valid {false};
+    bool PrevIsInvalid() const {
+        if constexpr (FloatingPoint<T>) return __builtin_isnan(prev_output);
+        if constexpr (Vector<T>) return __builtin_isnan(prev_output[0]);
+    }
+
+    bool IsStable(ElementType input, ElementType epsilon) {
+        if (PrevIsInvalid()) [[unlikely]] {
+            prev_output = input;
+            return true;
+        }
+        auto const change = Abs(input - prev_output);
+        return change < epsilon;
+    }
+
+    T prev_output {k_nan<ElementType>};
 };
 
 // ===============================================================================
