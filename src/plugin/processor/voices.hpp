@@ -112,7 +112,7 @@ struct Voice {
 struct VoiceEnvelopeMarkerForGui {
     u8 on : 1 {};
     u8 layer_index : 7 {};
-    u8 state {}; // ADSRState
+    adsr::State state {};
     u16 pos {};
     u16 sustain_level {};
     u16 id {};

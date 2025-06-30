@@ -50,7 +50,7 @@ struct Params {
     f32 sustain_amount {};
 };
 
-enum class State { Idle, Attack, Decay, Sustain, Release };
+enum class State : u8 { Idle, Attack, Decay, Sustain, Release };
 
 struct Processor {
     void Gate(bool set_to_active) {

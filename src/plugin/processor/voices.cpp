@@ -529,7 +529,7 @@ class ChunkwiseVoiceProcessor {
             m_voice.pool.voice_vol_env_markers_for_gui.Write()[m_voice.index] = {
                 .on = m_voice.controller->vol_env_on && !m_voice.disable_vol_env && !m_voice.vol_env.IsIdle(),
                 .layer_index = (u8)m_voice.controller->layer_index,
-                .state = (u8)m_voice.vol_env.state,
+                .state = m_voice.vol_env.state,
                 .pos = (u16)(Clamp01(m_voice.vol_env.output) * (f32)UINT16_MAX),
                 .sustain_level = (u16)(Clamp01(m_voice.controller->vol_env.sustain_amount) * (f32)UINT16_MAX),
                 .id = m_voice.id,
@@ -537,7 +537,7 @@ class ChunkwiseVoiceProcessor {
             m_voice.pool.voice_fil_env_markers_for_gui.Write()[m_voice.index] = {
                 .on = m_voice.controller->fil_env_amount != 0 && !m_voice.fil_env.IsIdle(),
                 .layer_index = (u8)m_voice.controller->layer_index,
-                .state = (u8)m_voice.fil_env.state,
+                .state = m_voice.fil_env.state,
                 .pos = (u16)(Clamp01(m_voice.fil_env.output) * (f32)UINT16_MAX),
                 .sustain_level = (u16)(Clamp01(m_voice.controller->fil_env.sustain_amount) * (f32)UINT16_MAX),
                 .id = m_voice.id,

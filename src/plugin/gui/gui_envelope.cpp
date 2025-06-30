@@ -310,7 +310,7 @@ void GUIDoEnvelope(Gui* g,
                 f32 target_pos = 0;
                 f32 const env_pos = envelope_marker.pos / (f32)(UINT16_MAX);
                 ASSERT(env_pos >= 0 && env_pos <= 1);
-                switch ((adsr::State)envelope_marker.state) {
+                switch (envelope_marker.state) {
                     case adsr::State::Attack: {
                         target_pos = bottom_left.x + env_pos * (attack_point_screen.x - bottom_left.x);
                         break;
