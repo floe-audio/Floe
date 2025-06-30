@@ -174,21 +174,35 @@ template <typename F> concept FunctionObject = (!FunctionPointer<F> && RvalueRef
 // clang-format on
 
 template <typename T>
-concept Vector = requires(T v) { __builtin_shufflevector(v, v, 0, 0); };
+concept Vector = !Scalar<T> && requires(T v) { __builtin_shufflevector(v, v, 0, 0); };
+
+template <typename T>
+struct UnderlyingTypeHelper {};
 
 template <Vector T>
-struct UnderlyingTypeOfVecHelper {
-    static constexpr T k_x; // For some reason we need to use an extra variable to get the type
-    using Type = RemoveCVReference<decltype(k_x[0])>;
+struct UnderlyingTypeHelper<T> {
+    using Type = RemoveCVReference<decltype((Declval<T>())[0])>;
 };
+
+template <Scalar T>
+struct UnderlyingTypeHelper<T> {
+    using Type = T;
+};
+
+template <typename T>
+using UnderlyingTypeOfVecOrScalar = typename UnderlyingTypeHelper<T>::Type;
+
 template <Vector T>
-using UnderlyingTypeOfVec = typename UnderlyingTypeOfVecHelper<T>::Type;
+using UnderlyingTypeOfVec = UnderlyingTypeOfVecOrScalar<T>;
 
 template <typename T>
 concept F32Vector = FloatingPoint<UnderlyingTypeOfVec<T>>;
 
 template <typename T, typename Underlying>
 concept ScalarOrVector = Same<T, Underlying> || Same<UnderlyingTypeOfVec<T>, Underlying>;
+
+template <typename T>
+concept ScalarOrVectorFloat = FloatingPoint<T> || FloatingPoint<UnderlyingTypeOfVec<T>>;
 
 template <typename Functor, typename ReturnType, typename... Args>
 concept FunctionWithSignature = requires(Functor f) {
