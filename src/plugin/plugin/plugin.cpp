@@ -1,7 +1,19 @@
 // Copyright 2018-2024 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "clap/plugin.h"
+#include "plugin.hpp"
+
+#include <clap/ext/audio-ports.h>
+#include <clap/ext/note-ports.h>
+#include <clap/ext/params.h>
+#include <clap/ext/posix-fd-support.h>
+#include <clap/ext/state.h>
+#include <clap/ext/thread-pool.h>
+#include <clap/ext/timer-support.h>
+#include <clap/host.h>
+#include <clap/id.h>
+#include <clap/plugin.h>
+#include <clap/process.h>
 
 #include "foundation/foundation.hpp"
 #include "utils/debug/debug.hpp"
@@ -11,20 +23,10 @@
 #include "common_infrastructure/error_reporting.hpp"
 #include "common_infrastructure/preferences.hpp"
 
-#include "clap/ext/audio-ports.h"
-#include "clap/ext/note-ports.h"
-#include "clap/ext/params.h"
-#include "clap/ext/posix-fd-support.h"
-#include "clap/ext/state.h"
-#include "clap/ext/timer-support.h"
-#include "clap/host.h"
-#include "clap/id.h"
-#include "clap/process.h"
 #include "engine/engine.hpp"
 #include "engine/shared_engine_systems.hpp"
 #include "gui/gui_prefs.hpp"
 #include "gui_framework/gui_platform.hpp"
-#include "plugin.hpp"
 #include "processing_utils/scoped_denormals.hpp"
 #include "processor/processor.hpp"
 
