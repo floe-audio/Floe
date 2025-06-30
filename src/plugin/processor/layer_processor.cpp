@@ -596,7 +596,7 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
         StereoAudioFrame frame(buffer.data, i);
         frame = layer.eq_bands.Process(layer.smoothed_value_system, frame, i);
 
-        frame *= layer.gain_smoother.LowPass(layer.gain, voice_pool.smoothing_cutoff);
+        frame *= layer.gain_smoother.LowPass(layer.gain, context.one_pole_smoothing_cutoff_1ms);
 
         if (!result.instrument_swapped) {
             auto const fade = layer.inst_change_fade.GetFadeAndStateChange();

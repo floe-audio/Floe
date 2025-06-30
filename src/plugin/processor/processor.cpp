@@ -796,6 +796,11 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
     processor.audio_processing_context.process_block_size_max = args.max_block_size;
     processor.audio_processing_context.sample_rate = (f32)args.sample_rate;
 
+    processor.audio_processing_context.one_pole_smoothing_cutoff_0_2ms =
+        OnePoleLowPassFilter<f32>::MsToCutoff(0.2f, (f32)args.sample_rate);
+    processor.audio_processing_context.one_pole_smoothing_cutoff_1ms =
+        OnePoleLowPassFilter<f32>::MsToCutoff(1, (f32)args.sample_rate);
+
     for (auto& fx : processor.effects_ordered_by_type)
         fx->PrepareToPlay(processor.audio_processing_context);
 

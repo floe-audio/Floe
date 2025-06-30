@@ -447,17 +447,6 @@ void VoicePool::PrepareToPlay(ArenaAllocator& arena, AudioProcessingContext cons
     decltype(Voice::index) index = 0;
     for (auto& v : voices)
         v.index = index++;
-
-    {
-        constexpr f32 k_time_constant_ms = 1.0f;
-        smoothing_cutoff = 1.0f - Exp(-1.0f / (k_time_constant_ms * 0.001f * context.sample_rate));
-    }
-
-    {
-        constexpr f32 k_time_constant_ms = 0.2f;
-        smoothing_cutoff_for_pitch_ratio =
-            1.0f - Exp(-1.0f / (k_time_constant_ms * 0.001f * context.sample_rate));
-    }
 }
 
 void NoteOff(VoicePool& pool, VoiceProcessingController& controller, MidiChannelNote note) {
@@ -617,7 +606,7 @@ class ChunkwiseVoiceProcessor {
             pitch_ratio *= Exp2(pitch_addition_in_semitones / 12.0);
         }
         return s.pitch_ratio_smoother.LowPass(pitch_ratio,
-                                              (f64)m_voice.pool.smoothing_cutoff_for_pitch_ratio);
+                                              (f64)m_audio_context.one_pole_smoothing_cutoff_0_2ms);
     }
 
     bool SampleGetAndInc(VoiceSoundSource& w, u32 frame, f32x2& out) {
@@ -645,8 +634,9 @@ class ChunkwiseVoiceProcessor {
         auto& sampler = w.source_data.Get<VoiceSoundSource::SampleSource>();
         bool sample_still_going = false;
         if (sampler.region->timbre_layering.layer_range) {
-            if (auto const v = sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol,
-                                                                  m_audio_context.one_pole_smoothing_cutoff);
+            if (auto const v =
+                    sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol,
+                                                       m_audio_context.one_pole_smoothing_cutoff_1ms);
                 v > 0.0001f) {
                 sample_still_going = SampleGetAndInc(w, frame, out);
                 out *= v;
@@ -870,8 +860,10 @@ class ChunkwiseVoiceProcessor {
             auto const gain_2 = final_gain2 * pan_gains.zw;
 
             // Apply smoothing to final gains
-            auto const smooth_gain_1 = m_voice.gain_smoother.LowPass(gain_1, m_voice.pool.smoothing_cutoff);
-            auto const smooth_gain_2 = m_voice.gain_smoother.LowPass(gain_2, m_voice.pool.smoothing_cutoff);
+            auto const smooth_gain_1 =
+                m_voice.gain_smoother.LowPass(gain_1, m_audio_context.one_pole_smoothing_cutoff_1ms);
+            auto const smooth_gain_2 =
+                m_voice.gain_smoother.LowPass(gain_2, m_audio_context.one_pole_smoothing_cutoff_1ms);
 
             // Apply smoothed gains to stereo sample pairs
             auto const gain = __builtin_shufflevector(smooth_gain_1, smooth_gain_2, 0, 1, 2, 3);
@@ -908,7 +900,7 @@ class ChunkwiseVoiceProcessor {
             auto env = fil_env.Process(fil_env_params);
             if (auto const filter_mix =
                     m_voice.filter_mix_smoother.LowPass((f32)m_voice.controller->filter_on,
-                                                        m_voice.pool.smoothing_cutoff);
+                                                        m_audio_context.one_pole_smoothing_cutoff_1ms);
                 filter_mix > 0.00001f) {
 
                 auto cut = m_voice.controller->sv_filter_cutoff_linear +
@@ -923,12 +915,13 @@ class ChunkwiseVoiceProcessor {
 
                 f32 res_change {};
                 res = m_voice.filter_resonance_smoother.LowPass(res,
-                                                                m_voice.pool.smoothing_cutoff,
+                                                                m_audio_context.one_pole_smoothing_cutoff_1ms,
                                                                 &res_change);
                 f32 cut_change {};
-                cut = m_voice.filter_linear_cutoff_smoother.LowPass(cut,
-                                                                    m_voice.pool.smoothing_cutoff,
-                                                                    &cut_change);
+                cut = m_voice.filter_linear_cutoff_smoother.LowPass(
+                    cut,
+                    m_audio_context.one_pole_smoothing_cutoff_1ms,
+                    &cut_change);
 
                 if (has_filter_lfo || cut_change > 0.00001f || res_change > 0.00001f) {
                     cut = sv_filter::LinearToHz(Clamp(cut, 0.0f, 1.0f));

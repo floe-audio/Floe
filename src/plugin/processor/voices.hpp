@@ -183,9 +183,6 @@ struct VoicePool {
     Array<Voice, k_num_voices> voices {MakeInitialisedArray<Voice, k_num_voices>(*this)};
     Array<Span<f32>, k_num_voices> buffer_pool {};
 
-    f32 smoothing_cutoff {};
-    f32 smoothing_cutoff_for_pitch_ratio {};
-
     AtomicSwapBuffer<Array<VoiceWaveformMarkerForGui, k_num_voices>, true> voice_waveform_markers_for_gui {};
     AtomicSwapBuffer<Array<VoiceEnvelopeMarkerForGui, k_num_voices>, true> voice_vol_env_markers_for_gui {};
     AtomicSwapBuffer<Array<VoiceEnvelopeMarkerForGui, k_num_voices>, true> voice_fil_env_markers_for_gui {};
