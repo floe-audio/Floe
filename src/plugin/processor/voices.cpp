@@ -3,6 +3,8 @@
 
 #include "voices.hpp"
 
+#include <clap/ext/thread-pool.h>
+
 #include "foundation/foundation.hpp"
 
 #include "common_infrastructure/constants.hpp"
@@ -90,14 +92,14 @@ void UpdateLFOTime(Voice& v, f32 sample_rate) { v.lfo.SetRate(sample_rate, v.con
 
 static f64 MidiNoteToFrequency(f64 note) { return 440.0 * Exp2((note - 69.0) / 12.0); }
 
-inline f64 CalculatePitchRatio(int note, VoiceSample const& s, f32 pitch_semitones, f32 sample_rate) {
-    switch (s.generator.tag) {
+inline f64 CalculatePitchRatio(int note, VoiceSoundSource const& s, f32 pitch_semitones, f32 sample_rate) {
+    switch (s.source_data.tag) {
         case InstrumentType::None: {
             PanicIfReached();
             break;
         }
         case InstrumentType::Sampler: {
-            auto const& sampler = s.generator.Get<VoiceSample::Sampler>();
+            auto const& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
             auto const source_root_note = sampler.region->root_key;
             auto const source_sample_rate = (f64)sampler.data->sample_rate;
             auto const pitch_delta =
@@ -118,10 +120,10 @@ inline f64 CalculatePitchRatio(int note, VoiceSample const& s, f32 pitch_semiton
     return 1;
 }
 
-static int RootKey(Voice const& v, VoiceSample const& s) {
+static int RootKey(Voice const& v, VoiceSoundSource const& s) {
     int k = v.note_num;
-    if (s.generator.tag == InstrumentType::Sampler) {
-        auto const& sampler = s.generator.Get<VoiceSample::Sampler>();
+    if (s.source_data.tag == InstrumentType::Sampler) {
+        auto const& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
         switch (sampler.region->playback.keytrack_requirement) {
             case sample_lib::KeytrackRequirement::Default:
                 if (v.controller->no_key_tracking) k = sampler.region->root_key;
@@ -135,7 +137,7 @@ static int RootKey(Voice const& v, VoiceSample const& s) {
 }
 
 void SetVoicePitch(Voice& v, f32 pitch_semitones, f32 sample_rate) {
-    for (auto& s : v.voice_samples) {
+    for (auto& s : v.sound_sources) {
         if (!s.is_active) continue;
 
         s.pitch_ratio = CalculatePitchRatio(RootKey(v, s), s, pitch_semitones, sample_rate);
@@ -143,21 +145,21 @@ void SetVoicePitch(Voice& v, f32 pitch_semitones, f32 sample_rate) {
 }
 
 void UpdateXfade(Voice& v, f32 knob_pos_01, bool hard_set) {
-    auto set_xfade_smoother = [&](VoiceSample::Sampler& s, f32 val) {
+    auto set_xfade_smoother = [&](VoiceSoundSource::SampleSource& s, f32 val) {
         ASSERT(val >= 0 && val <= 1);
         s.xfade_vol = val;
         if (hard_set) s.xfade_vol_smoother.Reset();
     };
 
-    VoiceSample::Sampler* voice_sample_1 = nullptr;
-    VoiceSample::Sampler* voice_sample_2 = nullptr;
+    VoiceSoundSource::SampleSource* voice_sample_1 = nullptr;
+    VoiceSoundSource::SampleSource* voice_sample_2 = nullptr;
 
     auto const knob_pos = knob_pos_01 * 99;
 
-    for (auto& s : v.voice_samples) {
+    for (auto& s : v.sound_sources) {
         if (!s.is_active) continue;
-        if (s.generator.tag != InstrumentType::Sampler) continue;
-        auto& sampler = s.generator.Get<VoiceSample::Sampler>();
+        if (s.source_data.tag != InstrumentType::Sampler) continue;
+        auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
 
         if (auto const r = sampler.region->timbre_layering.layer_range) {
             if (knob_pos >= r->start && knob_pos < r->end) {
@@ -262,10 +264,10 @@ static Optional<BoundsCheckedLoop> ConfigureLoop(param_values::LoopMode desired_
 }
 
 void UpdateLoopInfo(Voice& v) {
-    for (auto& s : v.voice_samples) {
+    for (auto& s : v.sound_sources) {
         if (!s.is_active) continue;
-        if (s.generator.tag != InstrumentType::Sampler) continue;
-        auto& sampler = s.generator.Get<VoiceSample::Sampler>();
+        if (s.source_data.tag != InstrumentType::Sampler) continue;
+        auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
         if (sampler.region->trigger.trigger_event == sample_lib::TriggerEvent::NoteOff) continue;
 
         sampler.loop = v.controller->vol_env_on ? ConfigureLoop(v.controller->loop_mode,
@@ -367,14 +369,14 @@ void StartVoice(VoicePool& pool,
             auto const& sampler = params.params.Get<VoiceStartParams::SamplerParams>();
             voice.num_active_voice_samples = (u8)sampler.voice_sample_params.size;
             for (auto const i : Range(sampler.voice_sample_params.size)) {
-                auto& s = voice.voice_samples[i];
+                auto& s = voice.sound_sources[i];
                 auto const& s_params = sampler.voice_sample_params[i];
 
                 s.is_active = true;
                 s.amp = s_params.amp * (f32)DbToAmpApprox((f64)s_params.region.audio_props.gain_db);
 
-                s.generator = VoiceSample::Sampler {};
-                auto& s_sampler = s.generator.Get<VoiceSample::Sampler>();
+                s.source_data = VoiceSoundSource::SampleSource {};
+                auto& s_sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
 
                 s_sampler.region = &s_params.region;
                 s_sampler.data = &s_params.audio_data;
@@ -390,8 +392,8 @@ void StartVoice(VoicePool& pool,
                 s.pos = offs;
                 if (voice.controller->reverse) s.pos = (f64)(s_sampler.data->num_frames - Max(offs, 1.0));
             }
-            for (u32 i = voice.num_active_voice_samples; i < k_max_num_voice_samples; ++i)
-                voice.voice_samples[i].is_active = false;
+            for (u32 i = voice.num_active_voice_samples; i < k_max_num_voice_sound_sources; ++i)
+                voice.sound_sources[i].is_active = false;
 
             UpdateLoopInfo(voice);
             UpdateXfade(voice, sampler.initial_timbre_param_value_01, true);
@@ -400,14 +402,14 @@ void StartVoice(VoicePool& pool,
         case InstrumentType::WaveformSynth: {
             auto const& waveform = params.params.Get<VoiceStartParams::WaveformParams>();
             voice.num_active_voice_samples = 1;
-            for (u32 i = voice.num_active_voice_samples; i < k_max_num_voice_samples; ++i)
-                voice.voice_samples[i].is_active = false;
+            for (u32 i = voice.num_active_voice_samples; i < k_max_num_voice_sound_sources; ++i)
+                voice.sound_sources[i].is_active = false;
 
-            auto& s = voice.voice_samples[0];
+            auto& s = voice.sound_sources[0];
             s.is_active = true;
             s.amp = waveform.amp;
             s.pos = 0;
-            s.generator = waveform.type;
+            s.source_data = waveform.type;
             s.pitch_ratio = CalculatePitchRatio(voice.note_num, s, params.initial_pitch, sample_rate);
             s.pitch_ratio_smoother.Reset();
 
@@ -605,8 +607,8 @@ class ChunkwiseVoiceProcessor {
         StoreToUnaligned(&m_buffer[pos], data);
     }
 
-    f64 GetPitchRatio(VoiceSample& w, u32 frame) {
-        auto pitch_ratio = w.pitch_ratio;
+    f64 GetPitchRatio(VoiceSoundSource& s, u32 frame) {
+        auto pitch_ratio = s.pitch_ratio;
         if (HasPitchLfo()) {
             static constexpr f64 k_max_semitones = 1;
             auto const lfo_amp = (f64)m_voice.controller->lfo.amount;
@@ -614,12 +616,12 @@ class ChunkwiseVoiceProcessor {
                 ((f64)m_lfo_amounts[(usize)frame] * lfo_amp * k_max_semitones);
             pitch_ratio *= Exp2(pitch_addition_in_semitones / 12.0);
         }
-        return w.pitch_ratio_smoother.LowPass(pitch_ratio,
+        return s.pitch_ratio_smoother.LowPass(pitch_ratio,
                                               (f64)m_voice.pool.smoothing_cutoff_for_pitch_ratio);
     }
 
-    bool SampleGetAndInc(VoiceSample& w, u32 frame, f32x2& out) {
-        auto& sampler = w.generator.Get<VoiceSample::Sampler>();
+    bool SampleGetAndInc(VoiceSoundSource& w, u32 frame, f32x2& out) {
+        auto& sampler = w.source_data.Get<VoiceSoundSource::SampleSource>();
         out = SampleGetData(*sampler.data, sampler.loop, sampler.loop_and_reverse_flags, w.pos);
         if (!(sampler.loop_and_reverse_flags &
               (loop_and_reverse_flags::LoopedManyTimes | loop_and_reverse_flags::CurrentlyReversed))) {
@@ -639,12 +641,12 @@ class ChunkwiseVoiceProcessor {
                                           (f64)sampler.data->num_frames);
     }
 
-    bool SampleGetAndIncWithXFade(VoiceSample& w, u32 frame, f32x2& out) {
-        auto& sampler = w.generator.Get<VoiceSample::Sampler>();
+    bool SampleGetAndIncWithXFade(VoiceSoundSource& w, u32 frame, f32x2& out) {
+        auto& sampler = w.source_data.Get<VoiceSoundSource::SampleSource>();
         bool sample_still_going = false;
         if (sampler.region->timbre_layering.layer_range) {
-            if (auto const v =
-                    sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol, m_voice.pool.smoothing_cutoff);
+            if (auto const v = sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol,
+                                                                  m_audio_context.one_pole_smoothing_cutoff);
                 v > 0.0001f) {
                 sample_still_going = SampleGetAndInc(w, frame, out);
                 out *= v;
@@ -662,7 +664,7 @@ class ChunkwiseVoiceProcessor {
         return sample_still_going;
     }
 
-    bool AddSampleDataOntoBuffer(VoiceSample& w, u32 num_frames) {
+    bool AddSampleDataOntoBuffer(VoiceSoundSource& w, u32 num_frames) {
         usize sample_pos = 0;
         for (u32 frame = 0; frame < num_frames; frame += 2) {
             f32x2 s1 {};
@@ -728,15 +730,15 @@ class ChunkwiseVoiceProcessor {
     void FillBufferWithSampleData(u32 num_frames) {
         ZoneScoped;
         ZeroChunkBuffer(num_frames);
-        for (auto& s : m_voice.voice_samples) {
+        for (auto& s : m_voice.sound_sources) {
             if (!s.is_active) continue;
-            switch (s.generator.tag) {
+            switch (s.source_data.tag) {
                 case InstrumentType::None: {
                     PanicIfReached();
                     break;
                 }
                 case InstrumentType::Sampler: {
-                    auto const& sampler = s.generator.Get<VoiceSample::Sampler>();
+                    auto const& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
                     if (!AddSampleDataOntoBuffer(s, num_frames)) {
                         s.is_active = false;
                         m_voice.num_active_voice_samples--;
@@ -746,7 +748,7 @@ class ChunkwiseVoiceProcessor {
                     break;
                 }
                 case InstrumentType::WaveformSynth: {
-                    switch (s.generator.Get<WaveformType>()) {
+                    switch (s.source_data.Get<WaveformType>()) {
                         case WaveformType::Sine: {
                             usize sample_pos = 0;
                             for (u32 frame = 0; frame < num_frames; frame += 2) {

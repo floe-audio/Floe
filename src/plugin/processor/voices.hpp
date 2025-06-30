@@ -8,35 +8,25 @@
 
 #include "common_infrastructure/constants.hpp"
 
-#include "clap/ext/thread-pool.h"
 #include "processing_utils/adsr.hpp"
 #include "processing_utils/audio_processing_context.hpp"
 #include "processing_utils/filters.hpp"
 #include "processing_utils/lfo.hpp"
 #include "processing_utils/midi.hpp"
-#include "processing_utils/smoothed_value_system.hpp"
 #include "processing_utils/volume_fade.hpp"
 #include "sample_processing.hpp"
 #include "state/instrument.hpp"
 
 constexpr u32 k_max_num_active_voices = 256;
 constexpr u32 k_num_voices = 280;
-constexpr u32 k_max_num_voice_samples = 4;
+constexpr u32 k_max_num_voice_sound_sources = 4;
 constexpr f32 k_erroneous_sample_value = 1000.0f;
 
 struct VoiceProcessingController;
 
-using VoiceSmoothedValueSystem = SmoothedValueSystem<7, 4, 0>;
-
-struct WaveformInfo {
-    u32 num_frames;
-    u8 root_note;
-    f32 sample_rate;
-};
-
-struct VoiceSample {
-    NON_COPYABLE(VoiceSample);
-    VoiceSample() = default;
+struct VoiceSoundSource {
+    NON_COPYABLE(VoiceSoundSource);
+    VoiceSoundSource() = default;
 
     bool is_active {false};
 
@@ -46,7 +36,7 @@ struct VoiceSample {
     f64 pos = 0;
     f32 amp = 1;
 
-    struct Sampler {
+    struct SampleSource {
         sample_lib::Region const* region = nullptr;
         AudioData const* data = nullptr;
         f32 xfade_vol = 1;
@@ -55,11 +45,11 @@ struct VoiceSample {
         Optional<BoundsCheckedLoop> loop {};
     };
 
-    using Generator = TaggedUnion<InstrumentType,
-                                  TypeAndTag<Sampler, InstrumentType::Sampler>,
-                                  TypeAndTag<WaveformType, InstrumentType::WaveformSynth>>;
+    using SourceData = TaggedUnion<InstrumentType,
+                                   TypeAndTag<SampleSource, InstrumentType::Sampler>,
+                                   TypeAndTag<WaveformType, InstrumentType::WaveformSynth>>;
 
-    Generator generator = InstrumentType::None;
+    SourceData source_data = InstrumentType::None;
 };
 
 struct VoicePool;
@@ -82,7 +72,7 @@ struct Voice {
     bool written_to_buffer_this_block = false;
 
     u8 num_active_voice_samples = 0;
-    Array<VoiceSample, k_max_num_voice_samples> voice_samples {};
+    Array<VoiceSoundSource, k_max_num_voice_sound_sources> sound_sources {};
 
     VoicePool& pool;
 
@@ -178,7 +168,7 @@ struct VoicePool {
     void ForActiveSamplesInActiveVoices(Function&& f) {
         for (auto& v : voices) {
             if (v.is_active) {
-                for (auto& s : v.voice_samples)
+                for (auto& s : v.sound_sources)
                     if (s.is_active) f(v, s);
             }
         }
@@ -235,7 +225,7 @@ struct VoiceStartParams {
 
         f32 initial_sample_offset_01 {};
         f32 initial_timbre_param_value_01 {};
-        DynamicArrayBounded<Region, k_max_num_voice_samples> voice_sample_params {};
+        DynamicArrayBounded<Region, k_max_num_voice_sound_sources> voice_sample_params {};
     };
 
     struct WaveformParams {
