@@ -1160,10 +1160,8 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         }
 
         if (tempo_changed) {
-            // IMPROVE: only recalculate changes if the effect is actually on and is currently using
-            // tempo-synced processing
             for (auto fx : processor.effects_ordered_by_type)
-                fx->SetTempo(processor.audio_processing_context.tempo);
+                fx->SetTempo(processor.audio_processing_context);
             for (auto& layer : processor.layer_processors)
                 SetTempo(layer, processor.voice_pool, processor.audio_processing_context);
         }

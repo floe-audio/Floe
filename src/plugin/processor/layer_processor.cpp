@@ -139,7 +139,10 @@ UpdateVoiceLfoTimes(LayerProcessor& layer, VoicePool& voice_pool, AudioProcessin
 }
 
 void SetTempo(LayerProcessor& layer, VoicePool& voice_pool, AudioProcessingContext const& context) {
-    UpdateVoiceLfoTimes(layer, voice_pool, context);
+    Bitset<k_num_layer_parameters> bitset {};
+    bitset.Set(ToInt(LayerParamIndex::LfoRateTempoSynced));
+    ChangedLayerParams changed_params(layer.params, bitset);
+    OnParamChange(layer, context, voice_pool, changed_params);
 }
 
 void PrepareToPlay(LayerProcessor& layer, ArenaAllocator& allocator, AudioProcessingContext const& context) {

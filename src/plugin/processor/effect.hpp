@@ -95,7 +95,7 @@ class Effect {
     virtual void PrepareToPlay(AudioProcessingContext const&) {}
 
     // audio-thread
-    virtual void SetTempo(f64) {}
+    virtual void SetTempo(AudioProcessingContext const&) {}
 
     // audio-thread
     virtual EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,

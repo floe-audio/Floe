@@ -141,6 +141,12 @@ class Delay final : public Effect {
         }
     }
 
+    void SetTempo(AudioProcessingContext const& context) override {
+        if (!is_synced) return;
+        args.params[ToInt(vitfx::delay::Params::TimeLeftHz)] = SyncedTimeToHz(context.tempo, synced_time_l);
+        args.params[ToInt(vitfx::delay::Params::TimeRightHz)] = SyncedTimeToHz(context.tempo, synced_time_r);
+    }
+
     bool IsSilent() const {
         constexpr f32 k_extra_seconds = 0.1f; // ensure that we detect echos in the buffer
         return silent_seconds > ((1.0f / Max(args.params[ToInt(vitfx::delay::Params::TimeLeftHz)],

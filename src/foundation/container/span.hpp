@@ -75,6 +75,7 @@ struct StaticSpan {
 
     constexpr Span<Type> Items() { return {data, k_size}; }
     constexpr operator Span<Type>() { return Items(); }
+    constexpr operator StaticSpan<Type const, k_size>() { return {data}; }
 
     static constexpr usize size = k_size; // NOLINT(readability-identifier-naming)
     Type* data;
