@@ -42,7 +42,7 @@ static void UpdateVolumeEnvelopeOn(LayerProcessor& layer, VoicePool& voice_pool)
 struct VelocityRegion {
     u7 const point_most_intense;
     u7 const point_least_intense;
-    int const no_fade_size; // always fades down from the bottom
+    int const no_fade_size; // Always fades down from the bottom.
 };
 
 constexpr Array<VelocityRegion, 2> k_velo_regions_half {{{127, 20, 20}, {0, 107, 20}}};
@@ -219,21 +219,11 @@ void OnParamChange(LayerProcessor& layer,
         layer.voice_controller.fil_env.SetReleaseSamples(Max(k_min_envelope_ms, p->ProjectedValue()) /
                                                              1000.0f * sample_rate,
                                                          0.1f);
-    if (auto p = changed_params.Param(LayerParamIndex::FilterCutoff)) {
+    if (auto p = changed_params.Param(LayerParamIndex::FilterCutoff))
         vmst.sv_filter_cutoff_linear = sv_filter::HzToLinear(p->ProjectedValue());
-        for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
-            SetFilterCutoff(v, vmst.sv_filter_cutoff_linear);
-    }
-    if (auto p = changed_params.Param(LayerParamIndex::FilterResonance)) {
+    if (auto p = changed_params.Param(LayerParamIndex::FilterResonance))
         vmst.sv_filter_resonance = sv_filter::SkewResonance(p->ProjectedValue());
-        for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
-            SetFilterRes(v, vmst.sv_filter_resonance);
-    }
-    if (auto p = changed_params.Param(LayerParamIndex::FilterOn)) {
-        vmst.filter_on = p->ValueAsBool();
-        for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
-            SetFilterOn(v, vmst.filter_on);
-    }
+    if (auto p = changed_params.Param(LayerParamIndex::FilterOn)) vmst.filter_on = p->ValueAsBool();
     if (auto p = changed_params.Param(LayerParamIndex::FilterType)) {
         sv_filter::Type sv_type {};
         // Remapping enum values like this allows us to separate values that cannot change (the parameter

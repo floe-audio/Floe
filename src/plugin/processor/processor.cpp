@@ -496,7 +496,7 @@ static void ProcessorOnParamChange(AudioProcessor& processor, ChangedParams chan
     if (auto param = changed_params.Param(ParamIndex::MasterTimbre)) {
         processor.timbre_value_01 = param->ProjectedValue();
         for (auto& voice : processor.voice_pool.EnumerateActiveVoices())
-            UpdateXfade(voice, processor.timbre_value_01, true);
+            UpdateXfade(voice, processor.timbre_value_01, false);
     }
 
     if (auto param = changed_params.Param(ParamIndex::MasterVelocity))

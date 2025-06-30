@@ -8,7 +8,6 @@
 
 #include "clap/host.h"
 #include "param.hpp"
-#include "plugin/plugin.hpp"
 #include "processing_utils/adsr.hpp"
 #include "processing_utils/audio_processing_context.hpp"
 #include "processing_utils/filters.hpp"
@@ -109,7 +108,7 @@ struct EqBands {
     FloeSmoothedValueSystem::FloatId const eq_mix_smoother_id;
 };
 
-// audio-thread data that voices use to control their sound
+// Audio-thread data that voices use to control their sound.
 struct VoiceProcessingController {
     FloeSmoothedValueSystem& smoothing_system;
 

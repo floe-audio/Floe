@@ -7,16 +7,38 @@
 #include "stereo_audio_frame.hpp"
 #include "volume_fade.hpp"
 
-template <ScalarOrVector<f32> T>
+template <ScalarOrVectorFloat T>
 struct OnePoleLowPassFilter {
-    T LowPass(T const input, f32 const cutoff01) {
-        T const output = m_prev_output + (cutoff01 * (input - m_prev_output));
-        m_prev_output = output;
+    using ElementType = UnderlyingTypeOfVecOrScalar<T>;
+
+    T LowPass(T const input, ElementType const cutoff01) {
+        if (!prev_is_valid) [[unlikely]] {
+            prev_output = input;
+            prev_is_valid = true;
+            return input;
+        }
+        T const output = prev_output + (cutoff01 * (input - prev_output));
+        prev_output = output;
         return output;
     }
 
-  private:
-    T m_prev_output {};
+    T LowPass(T const input, ElementType const cutoff01, ElementType* change) {
+        if (!prev_is_valid) [[unlikely]] {
+            prev_output = input;
+            prev_is_valid = true;
+            *change = __FLT_MAX__;
+            return input;
+        }
+        T const output = prev_output + (cutoff01 * (input - prev_output));
+        *change = Abs(output - prev_output);
+        prev_output = output;
+        return output;
+    }
+
+    void Reset() { prev_is_valid = false; }
+
+    T prev_output {};
+    bool prev_is_valid {false};
 };
 
 // ===============================================================================
@@ -98,7 +120,7 @@ static Coeffs Coefficients(Params const& p) {
     auto const db_gain = (f64)p.peak_gain;
     bool const q_is_bandwidth = p.q_is_bandwidth;
 
-    // temp coeff vars
+    // Temporary coefficient variables.
     f64 alpha {};
     f64 a0 {};
     f64 a1 {};
@@ -107,8 +129,7 @@ static Coeffs Coefficients(Params const& p) {
     f64 b1 {};
     f64 b2 {};
 
-    // peaking, lowshelf and hishelf
-    if (type >= Type::Peaking) {
+    if (type >= Type::Peaking) { // Peaking, Low-shelf and High-shelf.
         f64 const a = Pow(10.0, db_gain / 40.0);
         f64 const omega = 2.0 * k_pi<f64> * frequency / sample_rate;
         f64 const tsin = Sin(omega);
@@ -152,7 +173,6 @@ static Coeffs Coefficients(Params const& p) {
             default: PanicIfReached();
         }
     } else {
-        // other filters
         f64 const omega = 2.0 * k_pi<f64> * frequency / sample_rate;
         f64 const tsin = Sin(omega);
         f64 const tcos = Cos(omega);
@@ -162,7 +182,6 @@ static Coeffs Coefficients(Params const& p) {
         else
             alpha = tsin / (2.0 * q);
 
-        // lowpass
         switch (type) {
             case Type::LowPass: {
                 b0 = (1.0 - tcos) / 2.0;
@@ -224,7 +243,7 @@ static Coeffs Coefficients(Params const& p) {
 
     if (a0 == 0) a0 = 1;
 
-    // use a0 to normalise
+    // Use a0 to normalise.
     return {
         .b0 = f32(b0 / a0),
         .b1 = f32(b1 / a0),
@@ -250,7 +269,7 @@ class SmoothedCoefficients {
         m_pending_type = type;
 
         if (sample_rate != m_sample_rate) {
-            // Let's not try an do anything fancy if the sample rate changes, just do a hard reset.
+            // Let's not try and do anything fancy if the sample rate changes, just do a hard reset.
 
             m_fc.SetBoth(fc);
             m_gain.SetBoth(gain_db);
@@ -302,7 +321,7 @@ class SmoothedCoefficients {
         m_gain.target = gain_db;
 
         if (type != m_type) {
-            // We will actually set the filter when the fade out is completed
+            // We will actually set the filter when the fade out is completed.
             m_fade.SetAsFadeOut(sample_rate, 20);
         }
     }
@@ -420,7 +439,7 @@ enum class Type {
 
 template <ScalarOrVector<f32> FloatType>
 struct Data {
-    FloatType z1_a = {}, z2_a = {}; // state variables (z^-1)
+    FloatType z1_a = {}, z2_a = {}; // State variables (z^-1).
 };
 
 inline f32 ResonanceToQ(f32 resonance) {
@@ -429,7 +448,7 @@ inline f32 ResonanceToQ(f32 resonance) {
 }
 
 inline f32 SkewResonance(f32 percent) {
-    constexpr f32 k_multiplier = 0.95f; // just to make it sound better
+    constexpr f32 k_multiplier = 0.95f; // Just to make it sound better.
     return Pow(percent, 4.0f) * k_multiplier;
 }
 

@@ -35,38 +35,31 @@ struct WaveformInfo {
 };
 
 struct VoiceSample {
-    NON_COPYABLE_AND_MOVEABLE(VoiceSample);
-
-    VoiceSample(VoiceSmoothedValueSystem& s)
-        : pitch_ratio_smoother_id(s.CreateDoubleSmoother())
-        , sampler(s) {}
+    NON_COPYABLE(VoiceSample);
+    VoiceSample() = default;
 
     bool is_active {false};
 
-    VoiceSmoothedValueSystem::DoubleId const pitch_ratio_smoother_id;
+    f64 pitch_ratio = 1;
+    OnePoleLowPassFilter<f64> pitch_ratio_smoother = {};
     f64 pitch_ratio_mod = 0;
     f64 pos = 0;
     f32 amp = 1;
 
-    // IMPROVE: for now, we have to keep sampler always valid because it uses a constructor for
-    // xfade_vol_smoother_id. When we redo that system we should make this a TaggedUnion
-
-    // IMPROVE: rename these to Instrument?
-    // if generator == SoundGenerator::Sampler
     struct Sampler {
-        constexpr Sampler(Sampler const&) = default;
-        Sampler(VoiceSmoothedValueSystem& s) : xfade_vol_smoother_id(s.CreateSmoother()) {}
         sample_lib::Region const* region = nullptr;
         AudioData const* data = nullptr;
-        VoiceSmoothedValueSystem::FloatId const xfade_vol_smoother_id;
+        f32 xfade_vol = 1;
+        OnePoleLowPassFilter<f32> xfade_vol_smoother = {};
         u32 loop_and_reverse_flags {};
         Optional<BoundsCheckedLoop> loop {};
-    } sampler;
+    };
 
-    // if generator == SoundGenerator::WaveformSynth
-    WaveformType waveform {WaveformType::Sine};
+    using Generator = TaggedUnion<InstrumentType,
+                                  TypeAndTag<Sampler, InstrumentType::Sampler>,
+                                  TypeAndTag<WaveformType, InstrumentType::WaveformSynth>>;
 
-    InstrumentType generator {InstrumentType::WaveformSynth};
+    Generator generator = InstrumentType::None;
 };
 
 struct VoicePool;
@@ -79,8 +72,6 @@ struct Voice {
     static constexpr int k_fade_out_samples_max = 64;
     static constexpr int k_filter_fade_in_samples_max = 64;
 
-    VoiceSmoothedValueSystem smoothing_system;
-
     VoiceProcessingController* controller = {};
     u64 time_started = 0;
     u16 id {};
@@ -91,21 +82,17 @@ struct Voice {
     bool written_to_buffer_this_block = false;
 
     u8 num_active_voice_samples = 0;
-    Array<VoiceSample, k_max_num_voice_samples> voice_samples {
-        MakeInitialisedArray<VoiceSample, k_max_num_voice_samples>(smoothing_system)};
+    Array<VoiceSample, k_max_num_voice_samples> voice_samples {};
 
     VoicePool& pool;
 
     u16 index = 0;
 
-    bool filter_changed = false;
     sv_filter::CachedHelpers filter_coeffs = {};
     sv_filter::Data<f32x2> filters = {};
-    VoiceSmoothedValueSystem::FloatId const filter_mix_smoother_id = {smoothing_system.CreateSmoother()};
-    VoiceSmoothedValueSystem::FloatId const sv_filter_linear_cutoff_smoother_id = {
-        smoothing_system.CreateSmoother()};
-    VoiceSmoothedValueSystem::FloatId const sv_filter_resonance_smoother_id {
-        smoothing_system.CreateSmoother()};
+    OnePoleLowPassFilter<f32> filter_mix_smoother = {};
+    OnePoleLowPassFilter<f32> filter_linear_cutoff_smoother = {};
+    OnePoleLowPassFilter<f32> filter_resonance_smoother = {};
 
     //
     u7 note_num = 0;
@@ -207,6 +194,7 @@ struct VoicePool {
     Array<Span<f32>, k_num_voices> buffer_pool {};
 
     f32 smoothing_cutoff {};
+    f32 smoothing_cutoff_for_pitch_ratio {};
 
     AtomicSwapBuffer<Array<VoiceWaveformMarkerForGui, k_num_voices>, true> voice_waveform_markers_for_gui {};
     AtomicSwapBuffer<Array<VoiceEnvelopeMarkerForGui, k_num_voices>, true> voice_vol_env_markers_for_gui {};
@@ -233,9 +221,6 @@ void EndVoice(Voice& voice);
 void UpdateLFOWaveform(Voice& v);
 void SetVoicePitch(Voice& v, f32 pitch, f32 sample_rate);
 void UpdateLFOTime(Voice& v, f32 sample_rate);
-void SetFilterRes(Voice& v, f32 res);
-void SetFilterCutoff(Voice& v, f32 cutoff01);
-void SetFilterOn(Voice& v, bool on);
 void SetPan(Voice& v, f32 pan_pos);
 void UpdateLoopInfo(Voice& v);
 void UpdateXfade(Voice& v, f32 knob_pos_01, bool hard_set);

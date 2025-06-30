@@ -10,20 +10,14 @@
 
 #include "processing_utils/filters.hpp"
 
-inline void
-DoMonoCubicInterp(f32 const* f0, f32 const* f1, f32 const* f2, f32 const* fm1, f32 const x, f32& out) {
-    out = f0[0] + (((f2[0] - fm1[0] - 3 * f1[0] + 3 * f0[0]) * x + 3 * (f1[0] + fm1[0] - 2 * f0[0])) * x -
-                   (f2[0] + 2 * fm1[0] - 6 * f1[0] + 3 * f0[0])) *
-                      x / 6.0f;
+inline f32 DoMonoCubicInterp(f32 const* f0, f32 const* f1, f32 const* f2, f32 const* fm1, f32 const x) {
+    return f0[0] + ((((f2[0] - fm1[0] - 3 * f1[0] + 3 * f0[0]) * x + 3 * (f1[0] + fm1[0] - 2 * f0[0])) * x -
+                     (f2[0] + 2 * fm1[0] - 6 * f1[0] + 3 * f0[0])) *
+                    x / 6.0f);
 }
 
-inline void DoStereoLagrangeInterp(f32 const* f0,
-                                   f32 const* f1,
-                                   f32 const* f2,
-                                   f32 const* fm1,
-                                   f32 const x,
-                                   f32& l,
-                                   f32& r) {
+inline f32x2
+DoStereoLagrangeInterp(f32 const* f0, f32 const* f1, f32 const* f2, f32 const* fm1, f32 const x) {
     auto xf =
         x + 1; // x is given in the range 0 to 1 but we want the value between f0 and f1, therefore add 1
     auto xfm1 = x;
@@ -48,8 +42,10 @@ inline void DoStereoLagrangeInterp(f32 const* f0,
     alignas(16) f32 t[4];
     StoreToAligned(t, vt);
 
-    l = fm1[0] * t[0] + f0[0] * t[1] + f1[0] * t[2] + f2[0] * t[3];
-    r = fm1[1] * t[0] + f0[1] * t[1] + f1[1] * t[2] + f2[1] * t[3];
+    return {
+        (fm1[0] * t[0]) + (f0[0] * t[1]) + (f1[0] * t[2]) + (f2[0] * t[3]),
+        (fm1[1] * t[0]) + (f0[1] * t[1]) + (f1[1] * t[2]) + (f2[1] * t[3]),
+    };
 }
 
 struct BoundsCheckedLoop {
@@ -206,13 +202,11 @@ inline bool IncrementSamplePlaybackPos(Optional<BoundsCheckedLoop> const& loop,
     return true;
 }
 
-inline void SampleGetData(AudioData const& s,
-                          Optional<BoundsCheckedLoop> const opt_loop,
-                          u32 loop_and_reverse_flags,
-                          f64 frame_pos,
-                          f32& l,
-                          f32& r,
-                          bool recurse = false) {
+inline f32x2 SampleGetData(AudioData const& s,
+                           Optional<BoundsCheckedLoop> const opt_loop,
+                           u32 loop_and_reverse_flags,
+                           f64 frame_pos,
+                           bool recurse = false) {
     using namespace loop_and_reverse_flags;
     auto const loop = opt_loop.NullableValue();
 
@@ -294,38 +288,33 @@ inline void SampleGetData(AudioData const& s,
     auto* f1 = sample_data + (x1 * s.channels);
     auto* f2 = sample_data + (x2 * s.channels);
     auto* fm1 = sample_data + (xm1 * s.channels);
-    Array<f32, 2> outs = {};
-    if (s.channels == 1) {
-        DoMonoCubicInterp(f0, f1, f2, fm1, x, outs[0]);
-        outs[1] = outs[0];
-    } else if (s.channels == 2) {
-        DoStereoLagrangeInterp(f0, f1, f2, fm1, x, outs[0], outs[1]);
-    } else {
+    f32x2 result = 0;
+    if (s.channels == 1)
+        result = DoMonoCubicInterp(f0, f1, f2, fm1, x);
+    else if (s.channels == 2)
+        result = DoStereoLagrangeInterp(f0, f1, f2, fm1, x);
+    else
         PanicIfReached();
-    }
 
     if (loop && loop->crossfade) {
         f32 crossfade_pos = 0;
         bool is_crossfading = false;
-        f32 xfade_r = 0;
-        f32 xfade_l = 0;
+        f32x2 xfade_result = 0;
         if (loop->mode == sample_lib::LoopMode::Standard) {
             auto const xfade_fade_out_start =
-                loop->end - loop->crossfade; // the bit before the loop end point
+                loop->end - loop->crossfade; // The bit before the loop end point.
             auto const xfade_fade_in_start =
-                loop->start - loop->crossfade; // the bit before the loop start point
+                loop->start - loop->crossfade; // The bit before the loop start point.
 
             if (frame_pos >= xfade_fade_out_start && frame_pos < loop->end) {
                 if (forward || (!forward && (loop_and_reverse_flags & LoopedManyTimes))) {
                     auto frames_info_fade = frame_pos - xfade_fade_out_start;
 
-                    SampleGetData(s,
-                                  opt_loop,
-                                  loop_and_reverse_flags & CurrentlyReversed,
-                                  xfade_fade_in_start + frames_info_fade,
-                                  xfade_l,
-                                  xfade_r,
-                                  true);
+                    xfade_result = SampleGetData(s,
+                                                 opt_loop,
+                                                 loop_and_reverse_flags & CurrentlyReversed,
+                                                 xfade_fade_in_start + frames_info_fade,
+                                                 true);
                     crossfade_pos = (f32)frames_info_fade / (f32)loop->crossfade;
                     ASSERT(crossfade_pos >= 0 && crossfade_pos <= 1);
 
@@ -339,7 +328,7 @@ inline void SampleGetData(AudioData const& s,
             if (forward && (frame_pos <= (loop->start + loop->crossfade)) && frame_pos >= loop->start) {
                 auto frames_into_fade = frame_pos - loop->start;
                 auto fade_pos = (f64)loop->start - frames_into_fade;
-                SampleGetData(s, opt_loop, CurrentlyReversed, fade_pos, xfade_l, xfade_r, true);
+                xfade_result = SampleGetData(s, opt_loop, CurrentlyReversed, fade_pos, true);
                 crossfade_pos = 1.0f - ((f32)frames_into_fade / (f32)loop->crossfade);
                 ASSERT(crossfade_pos >= 0 && crossfade_pos <= 1);
 
@@ -347,7 +336,7 @@ inline void SampleGetData(AudioData const& s,
             } else if (!forward && frame_pos >= (loop->end - loop->crossfade) && frame_pos < loop->end) {
                 auto frames_into_fade = loop->end - frame_pos;
                 auto fade_pos = loop->end + frames_into_fade;
-                SampleGetData(s, opt_loop, 0, fade_pos, xfade_l, xfade_r, true);
+                xfade_result = SampleGetData(s, opt_loop, 0, fade_pos, true);
                 crossfade_pos = 1.0f - ((f32)frames_into_fade / (f32)loop->crossfade);
                 ASSERT(crossfade_pos >= 0 && crossfade_pos <= 1);
 
@@ -359,18 +348,14 @@ inline void SampleGetData(AudioData const& s,
             f32x4 t {1 - crossfade_pos, crossfade_pos, 1, 1};
             t = Sqrt(t);
 
-            outs[0] *= t[0];
-            outs[1] *= t[0];
-            xfade_l *= t[1];
-            xfade_r *= t[1];
+            result *= t[0];
+            xfade_result *= t[1];
 
-            outs[0] += xfade_l;
-            outs[1] += xfade_r;
+            result += xfade_result;
         }
     }
 
-    l = outs[0];
-    r = outs[1];
+    return result;
 }
 
 struct IntRange {
