@@ -63,15 +63,6 @@ struct Processor {
     void Reset() {
         state = State::Idle;
         output = 0.0f;
-        prev_output = 0;
-    }
-
-    // TODO(1.0): don't smooth here: it's not the right place
-    f32 SmoothOutput() {
-        static constexpr f32 k_smoothing_amount = 0.10f;
-        f32 const result = prev_output + (k_smoothing_amount * (output - prev_output));
-        prev_output = result;
-        return result;
     }
 
     f32 Process(Params const& params) {
@@ -81,7 +72,6 @@ struct Processor {
                 output = params.attack_base + output * params.attack_coef;
                 if (output >= 1.0f) {
                     output = 1.0f;
-                    prev_output = 1;
                     state = State::Decay;
                 }
                 break;
@@ -104,12 +94,11 @@ struct Processor {
                 break;
             }
         }
-        return Clamp(SmoothOutput(), 0.0f, 1.0f);
+        return Clamp(output, 0.0f, 1.0f);
     }
 
     bool IsIdle() { return state == State::Idle; }
 
-    f32 prev_output = 0;
     f32 output = 0;
     State state = State::Idle;
 };
