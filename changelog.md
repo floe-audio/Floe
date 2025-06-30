@@ -8,6 +8,10 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 0.10.4-beta
+- Fix LFO and delay time not updating with the tempo
+- Reduce pops and clicks with high-frequency LFOs
+
 ## 0.10.3-beta
 - Sample library creation: add 'fade_in_frames' to add_region
 - GUI: remove the status panel from the picker panels, instead, items show a tooltip when hovered for a moment. This make the picker panels less cluttered and fixes the issue where the text would be too long to fit in the status panel.
