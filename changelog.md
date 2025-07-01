@@ -11,6 +11,7 @@ For instance: 0.0.1. Don't change the headings.
 ## 0.10.4-beta
 - Fix LFO and delay time not updating with the tempo
 - Reduce pops and clicks with high-frequency LFOs
+- Add new algorithms to distortion: foldback, rectifier and ring-modulator
 
 ## 0.10.3-beta
 - Sample library creation: add 'fade_in_frames' to add_region

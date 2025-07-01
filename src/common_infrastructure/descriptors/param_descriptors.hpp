@@ -388,6 +388,9 @@ enum class DistortionType : u8 { // never reorder
     Decimate,
     Atan,
     Clip,
+    Foldback,
+    Rectifier,
+    RingMod,
     Count,
 };
 constexpr auto k_distortion_type_strings = ArrayT<String>({
@@ -398,6 +401,9 @@ constexpr auto k_distortion_type_strings = ArrayT<String>({
     "Decimate",
     "Atan",
     "Clip",
+    "Foldback",
+    "Rectifier",
+    "Ring Mod",
 });
 static_assert(k_distortion_type_strings.size == ToInt(DistortionType::Count));
 

@@ -16,11 +16,16 @@ enum DistFunction {
     DistFunctionDecimate,
     DistFunctionAtan,
     DistFunctionClip,
+    DistFunctionFoldback,
+    DistFunctionRectifier,
+    DistFunctionRingMod,
 
     DistFunctionCount
 };
 
 struct DistortionProcessor {
+    DistortionProcessor() { Reset(); }
+
     f32x2 Saturate(f32x2 input, DistFunction type, f32 amount_fraction) {
         f32x2 output = 0;
 
@@ -54,23 +59,51 @@ struct DistortionProcessor {
                 constexpr int k_decimate_bits = 16;
                 constexpr f32 k_m = 1 << (k_decimate_bits - 1);
 
-                auto const amount = (amount_fraction * 59) + 1;
-                m_decimate_cnt += amount + ((1.0f - amount) * 0.165f);
+                auto const amount = (amount_fraction * 199) + 1;
+                decimate_cnt += amount + ((1.0f - amount) * 0.165f);
 
-                if (m_decimate_cnt >= 1) {
-                    m_decimate_cnt -= 1;
-                    m_decimate_y = Trunc(input * k_m) / k_m;
+                if (decimate_cnt >= 1) {
+                    decimate_cnt -= 1;
+                    decimate_y = Trunc(input * k_m) / k_m;
                 }
-                output = Tanh(m_decimate_y);
+                output = Tanh(decimate_y);
                 break;
             }
             case DistFunctionAtan: {
-                auto const amount = (amount_fraction * 59 + 1) / 8;
+                auto const amount = (amount_fraction * 199 + 1) / 4;
                 output = (1.0f / Atan(amount)) * Atan(input * amount);
                 break;
             }
             case DistFunctionClip: {
                 output = input >= 0 ? Min(input, f32x2(1.0f)) : Max(input, f32x2(-1.0f));
+                break;
+            }
+            case DistFunctionFoldback: {
+                auto const threshold = 0.5f + (amount_fraction * 0.4f);
+                auto abs_input = Fabs(input);
+                auto sign = Copysign(f32x2(1), input);
+
+                output =
+                    abs_input > threshold ? sign * Max(threshold - (abs_input - threshold), f32x2(0)) : input;
+                output = Tanh(output * (1 + amount_fraction));
+                break;
+            }
+            case DistFunctionRectifier: {
+                auto const mix = amount_fraction;
+                auto const rectified = Fabs(input);
+                output = input * (1 - mix) + rectified * mix;
+                output = Tanh(output * (1 + amount_fraction * 2));
+                break;
+            }
+            case DistFunctionRingMod: {
+                auto const freq = 50 + (amount_fraction * 200);
+                ring_phase += freq * k_tau<> / 44100.0f;
+                if (ring_phase > k_tau<>) ring_phase -= k_tau<>;
+
+                auto const modulator = Sin(ring_phase);
+                auto const ring_amount = amount_fraction;
+                output = input * (1 - ring_amount + ring_amount * modulator);
+                output = Tanh(output * (1 + amount_fraction));
                 break;
             }
             case DistFunctionCount: PanicIfReached(); break;
@@ -92,22 +125,27 @@ struct DistortionProcessor {
         return initial_x == 0.0f ? f32x2(1) : Sin(x) / x;
     }
 
-  private:
-    f32x2 m_decimate_y = 0;
-    f32 m_decimate_cnt = 0;
+    void Reset() {
+        decimate_y = 0;
+        decimate_cnt = 0;
+        ring_phase = 0;
+        chaos_state = 0.5f;
+    }
+
+    f32x2 decimate_y;
+    f32 decimate_cnt;
+    f32 ring_phase;
+    f32 chaos_state;
 };
 
-class Distortion final : public Effect {
-  public:
-    Distortion(FloeSmoothedValueSystem& s)
-        : Effect(s, EffectType::Distortion)
-        , m_amount_smoother_id(s.CreateSmoother()) {}
+struct Distortion final : public Effect {
+    Distortion(FloeSmoothedValueSystem& s) : Effect(s, EffectType::Distortion) {}
 
-  private:
-    StereoAudioFrame
-    ProcessFrame(AudioProcessingContext const&, StereoAudioFrame in, u32 frame_index) override {
-        auto const amt = smoothed_value_system.Value(m_amount_smoother_id, frame_index);
-        return StereoAudioFrame::FromF32x2(m_processor.Saturate(in.ToF32x2(), m_type, amt));
+    StereoAudioFrame ProcessFrame(AudioProcessingContext const& context, StereoAudioFrame in, u32) override {
+        return StereoAudioFrame::FromF32x2(
+            processor.Saturate(in.ToF32x2(),
+                               type,
+                               amount_smoother.LowPass(amount, context.one_pole_smoothing_cutoff_1ms)));
     }
 
     void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const&) override {
@@ -115,24 +153,30 @@ class Distortion final : public Effect {
             // Remapping enum values like this allows us to separate values that cannot change (the
             // parameter value), with values that we have more control over (DSP code)
             switch (p->ValueAsInt<param_values::DistortionType>()) {
-                case param_values::DistortionType::TubeLog: m_type = DistFunctionTubeLog; break;
-                case param_values::DistortionType::TubeAsym3: m_type = DistFunctionTubeAsym3; break;
-                case param_values::DistortionType::Sine: m_type = DistFunctionSinFunc; break;
-                case param_values::DistortionType::Raph1: m_type = DistFunctionRaph1; break;
-                case param_values::DistortionType::Decimate: m_type = DistFunctionDecimate; break;
-                case param_values::DistortionType::Atan: m_type = DistFunctionAtan; break;
-                case param_values::DistortionType::Clip: m_type = DistFunctionClip; break;
+                case param_values::DistortionType::TubeLog: type = DistFunctionTubeLog; break;
+                case param_values::DistortionType::TubeAsym3: type = DistFunctionTubeAsym3; break;
+                case param_values::DistortionType::Sine: type = DistFunctionSinFunc; break;
+                case param_values::DistortionType::Raph1: type = DistFunctionRaph1; break;
+                case param_values::DistortionType::Decimate: type = DistFunctionDecimate; break;
+                case param_values::DistortionType::Atan: type = DistFunctionAtan; break;
+                case param_values::DistortionType::Clip: type = DistFunctionClip; break;
+                case param_values::DistortionType::Foldback: type = DistFunctionFoldback; break;
+                case param_values::DistortionType::Rectifier: type = DistFunctionRectifier; break;
+                case param_values::DistortionType::RingMod: type = DistFunctionRingMod; break;
                 case param_values::DistortionType::Count: PanicIfReached(); break;
             }
         }
 
-        if (auto p = changed_params.Param(ParamIndex::DistortionDrive)) {
-            constexpr f32 k_smoothing_ms = 10;
-            smoothed_value_system.Set(m_amount_smoother_id, p->ProjectedValue(), k_smoothing_ms);
-        }
+        if (auto p = changed_params.Param(ParamIndex::DistortionDrive)) amount = p->ProjectedValue();
     }
 
-    FloeSmoothedValueSystem::FloatId const m_amount_smoother_id;
-    DistFunction m_type;
-    DistortionProcessor m_processor {};
+    void ResetInternal() override {
+        processor.Reset();
+        amount_smoother.Reset();
+    }
+
+    f32 amount {};
+    OnePoleLowPassFilter<f32> amount_smoother {};
+    DistFunction type;
+    DistortionProcessor processor {};
 };
