@@ -21,8 +21,8 @@ enum DistFunction {
 };
 
 struct DistortionProcessor {
-    f32 Saturate(f32 input, DistFunction type, f32 amount_fraction) {
-        f32 output = 0;
+    f32x2 Saturate(f32x2 input, DistFunction type, f32 amount_fraction) {
+        f32x2 output = 0;
 
         auto const input_gain = (amount_fraction * 59) + 1;
         input *= input_gain;
@@ -46,10 +46,8 @@ struct DistortionProcessor {
                 break;
             }
             case DistFunctionRaph1: {
-                if (input < 0)
-                    output = Exp(input) - 1.0f - Sinc(3.0f + input);
-                else
-                    output = 1 - Exp(-input) + Sinc(input - 3);
+                output = (input < 0) ? (Exp(input) - 1.0f - Sinc(3.0f + input))
+                                     : (1.0f - Exp(-input) + Sinc(input - 3.0f));
                 break;
             }
             case DistFunctionDecimate: {
@@ -61,7 +59,7 @@ struct DistortionProcessor {
 
                 if (m_decimate_cnt >= 1) {
                     m_decimate_cnt -= 1;
-                    m_decimate_y = (f32)(s64)(input * k_m) / k_m;
+                    m_decimate_y = Trunc(input * k_m) / k_m;
                 }
                 output = Tanh(m_decimate_y);
                 break;
@@ -72,17 +70,14 @@ struct DistortionProcessor {
                 break;
             }
             case DistFunctionClip: {
-                if (input >= 0)
-                    output = Fmin(input, 1.0f);
-                else
-                    output = Fmax(input, -1.0f);
+                output = input >= 0 ? Min(input, f32x2(1.0f)) : Max(input, f32x2(-1.0f));
                 break;
             }
             case DistFunctionCount: PanicIfReached(); break;
         }
 
         auto const abs = Fabs(output);
-        if (abs > 20.0f) output /= abs;
+        output = abs > 20.0f ? (output / abs) : output;
 
         output /= input_gain;
         output *= MapFrom01(amount_fraction, 1, 2);
@@ -90,14 +85,16 @@ struct DistortionProcessor {
         return output;
     }
 
-    static f32 Sinc(f32 x) {
-        if (x == 0.0f) return 1.0f;
+    static f32x2 Sinc(f32x2 x) {
+        auto initial_x = x;
+        x = x == 0.0f ? 1.0f : x; // Avoid division by zero
         x *= k_pi<>;
-        return Sin(x) / x;
+        return initial_x == 0.0f ? f32x2(1) : Sin(x) / x;
     }
 
   private:
-    f32 m_decimate_y = 0, m_decimate_cnt = 0;
+    f32x2 m_decimate_y = 0;
+    f32 m_decimate_cnt = 0;
 };
 
 class Distortion final : public Effect {
@@ -110,9 +107,7 @@ class Distortion final : public Effect {
     StereoAudioFrame
     ProcessFrame(AudioProcessingContext const&, StereoAudioFrame in, u32 frame_index) override {
         auto const amt = smoothed_value_system.Value(m_amount_smoother_id, frame_index);
-        StereoAudioFrame out {m_processor_l.Saturate(in.l, m_type, amt),
-                              m_processor_r.Saturate(in.r, m_type, amt)};
-        return out;
+        return StereoAudioFrame::FromF32x2(m_processor.Saturate(in.ToF32x2(), m_type, amt));
     }
 
     void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const&) override {
@@ -139,5 +134,5 @@ class Distortion final : public Effect {
 
     FloeSmoothedValueSystem::FloatId const m_amount_smoother_id;
     DistFunction m_type;
-    DistortionProcessor m_processor_l = {}, m_processor_r = {};
+    DistortionProcessor m_processor {};
 };

@@ -59,6 +59,11 @@ PUBLIC constexpr T Pow(T x, T y) {
 }
 
 template <F32Vector T>
+PUBLIC constexpr T Copysign(T x, T y) {
+    return __builtin_elementwise_copysign(x, y);
+}
+
+template <F32Vector T>
 PUBLIC constexpr T Map(T value, T in_min, T in_max, T out_min, T out_max) {
     auto const denominator = in_max - in_min;
     auto const factor = (denominator != 0) ? (value - in_min) * (out_max - out_min) / denominator : 0;
@@ -96,6 +101,8 @@ DEFINE_BUILTIN_SIMD_MATHS_FUNC(Ceil, ceil)
 DEFINE_BUILTIN_SIMD_MATHS_FUNC(Sin, sin)
 DEFINE_BUILTIN_SIMD_MATHS_FUNC(Cos, cos)
 DEFINE_BUILTIN_SIMD_MATHS_FUNC(Tan, tan)
+DEFINE_BUILTIN_SIMD_MATHS_FUNC(Tanh, tanh)
+DEFINE_BUILTIN_SIMD_MATHS_FUNC(Atan, atan)
 DEFINE_BUILTIN_SIMD_MATHS_FUNC(Floor, floor)
 DEFINE_BUILTIN_SIMD_MATHS_FUNC(Log, log)
 DEFINE_BUILTIN_SIMD_MATHS_FUNC(Log2, log2)
@@ -105,6 +112,8 @@ DEFINE_BUILTIN_SIMD_MATHS_FUNC(Exp2, exp2)
 DEFINE_BUILTIN_SIMD_MATHS_FUNC(Round, round)
 DEFINE_BUILTIN_SIMD_MATHS_FUNC(Trunc, trunc)
 DEFINE_BUILTIN_SIMD_MATHS_FUNC(Sqrt, sqrt)
+DEFINE_BUILTIN_SIMD_MATHS_FUNC(Pow, pow)
+DEFINE_BUILTIN_SIMD_MATHS_FUNC(Fabs, abs)
 
 // IMPROVE: we could do wider SIMD with these. e.g. AVX2
 PUBLIC inline void SimdAddAlignedBuffer(f32* d, f32 const* s, usize num) {

@@ -42,6 +42,13 @@ struct StereoAudioFrame {
         return !HasValueAboveThreshold(silence_threshold);
     }
 
+    constexpr f32x2 ToF32x2() const { return LoadUnalignedToType<f32x2>(channel); }
+    static constexpr StereoAudioFrame FromF32x2(f32x2 v) {
+        StereoAudioFrame f;
+        StoreToUnaligned<f32x2>(f.channel, v);
+        return f;
+    }
+
     union {
         struct {
             f32 l, r;
