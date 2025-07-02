@@ -32,10 +32,12 @@ struct PluginCallbacks {
 
     // Call start processing before processing.
     // [audio-thread & active_state & !processing_state]
+    // NOTE: We also support this being called from the main thread - but that is not CLAP compliant.
     bool (*start_processing)(UserObject&) = [](UserObject&) { return true; };
 
     // Call stop processing before sending the plugin to sleep.
     // [audio-thread & active_state & processing_state]
+    // NOTE: We also support this being called from the main thread - but that is not CLAP compliant.
     void (*stop_processing)(UserObject&) = [](UserObject&) {};
 
     // - Clears all buffers, performs a full reset of the processing state (filters, oscillators,

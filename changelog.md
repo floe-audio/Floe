@@ -20,6 +20,7 @@ For instance: 0.0.1. Don't change the headings.
     - Move the left/right buttons to the right of the menu so it's consistent and easy to click forward and back without having to move the mouse long distances
     - Make the UI window size buttons consistent with the left/right buttons
 - Add missing tooltips for some preferences
+- Work-around Studio One not using the correct threads
 
 ## 0.10.3-beta
 - Sample library creation: add 'fade_in_frames' to add_region

@@ -1424,8 +1424,17 @@ static bool ClapStartProcessing(const struct clap_plugin* plugin) {
             f;
         });
 
-        if (!Check(floe, IsAudioThread(floe.host) != IsThreadResult::No, k_func, "not audio thread"))
-            return false;
+        // We support this call from the main thread too. Some hosts (July 2025) - Studio One and Reaper - may
+        // call this from the main thread. This is not strictly correct according to the CLAP spec. In the
+        // case of Studio One, we have confirmed with the developer: "start/stop-processing is called
+        // before the first process call and behind the last process call - both form the main thread", so we
+        // are safe to allow this.
+        auto const not_audio_thread = IsAudioThread(floe.host) == IsThreadResult::No;
+        if (not_audio_thread)
+            if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
+        DEFER {
+            if (not_audio_thread) LeaveLogicalMainThread();
+        };
 
         if (!floe.active) return false;
 
@@ -1452,7 +1461,14 @@ static void ClapStopProcessing(const struct clap_plugin* plugin) {
             f;
         });
 
-        if (!Check(floe, IsAudioThread(floe.host) != IsThreadResult::No, k_func, "not audio thread")) return;
+        // See the comment in ClapStartProcessing().
+        auto const not_audio_thread = IsAudioThread(floe.host) == IsThreadResult::No;
+        if (not_audio_thread)
+            if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return;
+        DEFER {
+            if (not_audio_thread) LeaveLogicalMainThread();
+        };
+
         if (!floe.active) return;
 
         if (!floe.processing) return;
