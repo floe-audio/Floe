@@ -128,7 +128,7 @@ struct Gui {
     FeedbackPanelState feedback_panel_state {};
     Notifications notifications {};
     FilePickerState file_picker_state {.data = FilePickerStateType::None};
-    InstPickerState inst_picker_state {};
+    Array<InstPickerState, k_num_layers> inst_picker_state {};
     IrPickerState ir_picker_state {};
     SavePresetPanelState save_preset_panel_state {};
     PresetPickerState preset_picker_state {};

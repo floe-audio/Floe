@@ -9,6 +9,7 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 0.10.4-beta
+- Instrument pickers for the 3 layers no longer share the same filter state. This allows you to have different filters on each layer.
 - Fix LFO and delay time not updating with the tempo
 - Reduce pops and clicks with high-frequency LFOs
 - Add new algorithms to distortion: foldback, rectifier and ring-modulator

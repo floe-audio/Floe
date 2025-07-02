@@ -94,7 +94,7 @@ static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
                       popup_imgui_id,
                       g->imgui.GetRegisteredAndConvertedRect(r),
                       context,
-                      g->inst_picker_state);
+                      g->inst_picker_state[layer]);
 
     if (layer_obj->instrument_id.tag == InstrumentType::None) {
         Tooltip(g, imgui_id, r, "Select the instrument for this layer"_s);
@@ -908,7 +908,10 @@ void Draw(Gui* g,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
-            LoadAdjacentInstrument(context, g->inst_picker_state, SearchDirection::Backward, false);
+            LoadAdjacentInstrument(context,
+                                   g->inst_picker_state[layer->index],
+                                   SearchDirection::Backward,
+                                   false);
         }
         if (buttons::Button(g,
                             selector_right_id,
@@ -924,7 +927,10 @@ void Draw(Gui* g,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
-            LoadAdjacentInstrument(context, g->inst_picker_state, SearchDirection::Forward, false);
+            LoadAdjacentInstrument(context,
+                                   g->inst_picker_state[layer->index],
+                                   SearchDirection::Forward,
+                                   false);
         }
         {
             auto rand_id = g->imgui.GetID("Rand");
@@ -943,7 +949,7 @@ void Draw(Gui* g,
                 };
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };
-                LoadRandomInstrument(context, g->inst_picker_state, false);
+                LoadRandomInstrument(context, g->inst_picker_state[layer->index], false);
             }
             Tooltip(g, rand_id, rand_r, "Load a random instrument"_s);
         }

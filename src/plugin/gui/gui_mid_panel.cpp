@@ -209,7 +209,7 @@ void MidPanel(Gui* g) {
                 };
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };
-                LoadRandomInstrument(context, g->inst_picker_state, false);
+                LoadRandomInstrument(context, g->inst_picker_state[layer.index], false);
             }
         }
 
