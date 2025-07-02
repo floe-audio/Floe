@@ -283,9 +283,9 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
                         if (preset.metadata.author.size)
                             fmt::Append(buffer, " by {}.", preset.metadata.author);
                         if (preset.metadata.description.size)
-                            fmt::Append(buffer, " {}", preset.metadata.description);
+                            fmt::Append(buffer, "\n\n{}", preset.metadata.description);
 
-                        dyn::AppendSpan(buffer, "\nTags: ");
+                        dyn::AppendSpan(buffer, "\n\nTags: ");
                         if (preset.metadata.tags.size) {
                             for (auto const [tag, _] : preset.metadata.tags)
                                 fmt::Append(buffer, "{}, ", tag);

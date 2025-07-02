@@ -358,14 +358,14 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
                     .tooltip = FunctionRef<String()>([&]() -> String {
                         DynamicArray<char> buf {box_system.arena};
                         fmt::Append(buf,
-                                    "{} from {} by {}.",
+                                    "{} from {} by {}.\n\n",
                                     inst.name,
                                     inst.library.name,
                                     inst.library.author);
 
-                        if (inst.description) fmt::Append(buf, " {}", inst.description);
+                        if (inst.description) fmt::Append(buf, "{}", inst.description);
 
-                        fmt::Append(buf, "\nTags: ");
+                        fmt::Append(buf, "\n\nTags: ");
                         if (inst.tags.size == 0)
                             fmt::Append(buf, "None");
                         else {
