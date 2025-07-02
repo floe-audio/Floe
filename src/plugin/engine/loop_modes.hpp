@@ -22,6 +22,7 @@ struct LoopBehaviour {
         LoopBehaviourId id;
         Optional<sample_lib::LoopMode> mode;
         String name;
+        String short_name;
         String description;
         bool editable;
     };
@@ -37,7 +38,8 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
             return {
                 .id = id,
                 .mode = k_nullopt,
-                .name = "No Loop",
+                .name = "Loop - Built-in Standard",
+                .short_name = "No Loop",
                 .description = "No looping will be applied to this instrument.",
                 .editable = false,
             };
@@ -45,7 +47,8 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
             return {
                 .id = id,
                 .mode = sample_lib::LoopMode::Standard,
-                .name = "Loop - Built-in Loop Standard",
+                .name = "Loop - Built-in Standard",
+                .short_name = "Loop b/standard",
                 .description =
                     "Every region in this instrument will use built-in loops in standard wrap-around mode.",
                 .editable = false,
@@ -54,7 +57,8 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
             return {
                 .id = id,
                 .mode = sample_lib::LoopMode::PingPong,
-                .name = "Loop - Built-in Ping-pong",
+                .name = "Loop - Built-in Ping-Pong",
+                .short_name = "Loop b/ping-pong",
                 .description = "Every region in this instrument will use built-in loops in ping-pong mode.",
                 .editable = false,
             };
@@ -62,7 +66,8 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
             return {
                 .id = id,
                 .mode = sample_lib::LoopMode::Standard,
-                .name = "Loop - Standard",
+                .name = "Loop - Custom Standard",
+                .short_name = "Loop standard",
                 .description =
                     "Custom loop points will be applied to this instrument and use standard wrap-around mode.",
                 .editable = true,
@@ -71,7 +76,8 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
             return {
                 .id = id,
                 .mode = sample_lib::LoopMode::PingPong,
-                .name = "Loop - Ping-pong",
+                .name = "Loop - Custom Ping-Pong",
+                .short_name = "Loop ping-pong",
                 .description =
                     "Custom loop points will be applied to this instrument and use ping-pong mode.",
                 .editable = true,
@@ -81,6 +87,7 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
                 .id = id,
                 .mode = k_nullopt,
                 .name = "Mixed Loops",
+                .short_name = "Mixed Loops",
                 .description =
                     "All regions use built-in loops, but some are standard and some are ping-pong.",
                 .editable = false,
@@ -90,6 +97,7 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
                 .id = id,
                 .mode = k_nullopt,
                 .name = "Mixed Loops and Non-Loops",
+                .short_name = "Mixed Loops and Non-Loops",
                 .description = "Some regions have built-in loops, some don't.",
                 .editable = false,
             };

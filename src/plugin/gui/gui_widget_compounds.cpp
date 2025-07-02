@@ -12,8 +12,7 @@
 
 layout::Id LayoutParameterComponent(Gui* g,
                                     layout::Id parent,
-                                    layout::Id& param_layid,
-                                    layout::Id& name,
+                                    LayIDPair& ids,
                                     LayoutType type,
                                     Optional<ParamIndex> index_for_menu_items,
                                     bool is_convo_ir,
@@ -31,6 +30,7 @@ layout::Id LayoutParameterComponent(Gui* g,
     auto const starting_height = height;
     auto gap_x = size_index_for_gapx ? LiveSize(imgui, *size_index_for_gapx)
                                      : LiveSize(imgui, UiSizeId::ParamComponentMarginLR);
+    ASSERT(gap_x >= 0.0f);
     auto gap_bottom = LiveSize(imgui, UiSizeId::ParamComponentMarginB);
     auto gap_top = LiveSize(imgui, UiSizeId::ParamComponentMarginT);
 
@@ -39,6 +39,9 @@ layout::Id LayoutParameterComponent(Gui* g,
         auto const menu_items = ParameterMenuItems(*index_for_menu_items);
         auto strings_width =
             MaxStringLength(g, menu_items) + (LiveSize(imgui, UiSizeId::MenuButtonTextMarginL) * 2);
+        auto const btn_w = LiveSize(g->imgui, UiSizeId::NextPrevButtonSize);
+        auto const margin_r = LiveSize(g->imgui, UiSizeId::ParamIntButtonMarginR);
+        strings_width += btn_w * 2 + margin_r;
         width = strings_width;
         height = param_popup_button_height;
     } else if (is_convo_ir) {
@@ -47,7 +50,7 @@ layout::Id LayoutParameterComponent(Gui* g,
     }
 
     if (set_gapx_independent_of_size && width != starting_width)
-        gap_x -= Max(0.0f, (width - starting_width) / 2);
+        gap_x = Max(0.0f, gap_x - ((width - starting_width) / 2));
 
     if (set_bottom_gap_independent_of_size && height != starting_height) {
         auto const delta = Max(0.0f, starting_height - height);
@@ -64,25 +67,24 @@ layout::Id LayoutParameterComponent(Gui* g,
                                             .contents_align = layout::Alignment::Start,
                                         });
 
-    param_layid = layout::CreateItem(g->layout,
+    ids.control = layout::CreateItem(g->layout,
                                      {
                                          .parent = container,
                                          .size = {width, height},
                                          .margins = {.b = LiveSize(imgui, UiSizeId::ParamComponentLabelGapY)},
                                      });
-    name = layout::CreateItem(g->layout,
-                              {
-                                  .parent = container,
-                                  .size = {width, (imgui.graphics->context->CurrentFontSize())},
-                              });
+    ids.label = layout::CreateItem(g->layout,
+                                   {
+                                       .parent = container,
+                                       .size = {width, (imgui.graphics->context->CurrentFontSize())},
+                                   });
 
     return container;
 }
 
 layout::Id LayoutParameterComponent(Gui* g,
                                     layout::Id parent,
-                                    layout::Id& param_layid,
-                                    layout::Id& name,
+                                    LayIDPair& ids,
                                     Parameter const& param,
                                     Optional<UiSizeId> size_index_for_gapx,
                                     bool set_gapx_independent_of_size,
@@ -90,8 +92,7 @@ layout::Id LayoutParameterComponent(Gui* g,
     auto result = LayoutParameterComponent(
         g,
         parent,
-        param_layid,
-        name,
+        ids,
         param.info.IsLayerParam() ? LayoutType::Layer
                                   : (param.info.IsEffectParam() ? LayoutType::Effect : LayoutType::Generic),
         param.info.value_type == ParamValueType::Menu ? Optional<ParamIndex> {param.info.index} : k_nullopt,
@@ -102,33 +103,16 @@ layout::Id LayoutParameterComponent(Gui* g,
 
     if (param.info.value_type == ParamValueType::Int) {
         layout::SetSize(g->layout,
-                        param_layid,
+                        ids.control,
                         f32x2 {LiveSize(g->imgui, UiSizeId::FXDraggerWidth),
                                LiveSize(g->imgui, UiSizeId::FXDraggerHeight)});
-        auto margins = layout::GetMargins(g->layout, param_layid);
+        auto margins = layout::GetMargins(g->layout, ids.control);
         margins.t = LiveSize(g->imgui, UiSizeId::FXDraggerMarginT);
         margins.b = LiveSize(g->imgui, UiSizeId::FXDraggerMarginB);
-        layout::SetMargins(g->layout, param_layid, margins);
+        layout::SetMargins(g->layout, ids.control, margins);
     }
 
     return result;
-}
-
-layout::Id LayoutParameterComponent(Gui* g,
-                                    layout::Id parent,
-                                    LayIDPair& ids,
-                                    Parameter const& param,
-                                    Optional<UiSizeId> size_index_for_gapx,
-                                    bool set_gapx_independent_of_size,
-                                    bool set_bottom_gap_independent_of_size) {
-    return LayoutParameterComponent(g,
-                                    parent,
-                                    ids.control,
-                                    ids.label,
-                                    param,
-                                    size_index_for_gapx,
-                                    set_gapx_independent_of_size,
-                                    set_bottom_gap_independent_of_size);
 }
 
 bool KnobAndLabel(Gui* g,

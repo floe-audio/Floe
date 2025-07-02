@@ -114,7 +114,7 @@ void MidPanel(Gui* g) {
 
     auto do_randomise_button = [&](String tooltip) {
         auto const margin = LiveSize(imgui, UiSizeId::MidPanelTitleMarginLeft);
-        auto const size = LiveSize(imgui, UiSizeId::LayerSelectorButtonW);
+        auto const size = LiveSize(imgui, UiSizeId::ResourceSelectorRandomButtonW);
         Rect const btn_r = {.xywh {imgui.Width() - (size + margin), 0, size, mid_panel_title_height}};
         auto const id = imgui.GetID("rand");
         if (buttons::Button(g,

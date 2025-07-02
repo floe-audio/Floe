@@ -104,6 +104,9 @@ PUBLIC Style IconButton(imgui::Context const& imgui) {
     s.main_cols.hot_off = s.main_cols.hot_on;
     s.main_cols.active_on = LiveCol(imgui, UiColMap::IconButton1Active);
     s.main_cols.active_off = s.main_cols.active_on;
+    s.main_cols.greyed_out = LiveCol(imgui, UiColMap::IconButton1GreyedOut);
+    s.main_cols.greyed_out_on = LiveCol(imgui, UiColMap::IconButton1GreyedOutOn);
+    s.main_cols.grey_out_aware = true;
     s.icon_or_text.add_margin_x = false;
     s.icon_or_text.justification = TextJustification::Centred;
     s.icon_scaling = Style::k_regular_icon_scaling;

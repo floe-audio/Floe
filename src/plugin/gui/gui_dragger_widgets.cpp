@@ -13,6 +13,7 @@ namespace draggers {
 
 Style DefaultStyle(imgui::Context const& imgui) {
     Style s {};
+    s.sensitivity = 500;
     s.background = LiveCol(imgui, UiColMap::Dragger1Back);
     s.text = LiveCol(imgui, UiColMap::TextInputText);
     s.selection_back = LiveCol(imgui, UiColMap::TextInputSelection);
@@ -24,7 +25,7 @@ Style DefaultStyle(imgui::Context const& imgui) {
 bool Dragger(Gui* g, imgui::Id id, Rect r, int min, int max, int& value, Style const& style) {
     auto settings = imgui::DefTextInputDraggerInt();
     settings.slider_settings.flags = {.slower_with_shift = true, .default_on_modifer = true};
-    settings.slider_settings.sensitivity = style.sensitivity;
+    settings.slider_settings.sensitivity = (style.sensitivity / 2) + (5000 * (1.0f / f32(max - min)));
     settings.format = style.always_show_plus ? "{+}"_s : "{}"_s;
     settings.slider_settings.draw = [](IMGUI_DRAW_SLIDER_ARGS) {};
     settings.text_input_settings.draw = [&style](IMGUI_DRAW_TEXT_INPUT_ARGS) {
@@ -51,18 +52,6 @@ bool Dragger(Gui* g, Parameter const& param, Rect r, Style const& style) {
     auto& imgui = g->imgui;
 
     auto result = param.ValueAsInt<int>();
-    auto const btn_w = LiveSize(imgui, UiSizeId::ParamIntButtonSize);
-
-    Rect left_r = r;
-    left_r.w = btn_w;
-
-    Rect right_r = r;
-    right_r.x = r.x + r.w - btn_w;
-    right_r.w = btn_w;
-
-    Rect dragger_r = r;
-    dragger_r.x += btn_w;
-    dragger_r.w -= btn_w * 2;
 
     // draw it around the whole thing, not just the dragger
     if (style.background) {
@@ -73,13 +62,15 @@ bool Dragger(Gui* g, Parameter const& param, Rect r, Style const& style) {
                                       LiveSize(imgui, UiSizeId::CornerRounding));
     }
 
-    bool changed = Dragger(g,
-                           id,
-                           dragger_r,
-                           (int)param.info.linear_range.min,
-                           (int)param.info.linear_range.max,
-                           result,
-                           style);
+    auto const btn_w = LiveSize(imgui, UiSizeId::NextPrevButtonSize);
+    auto const margin_r = LiveSize(g->imgui, UiSizeId::ParamIntButtonMarginR);
+
+    rect_cut::CutRight(r, margin_r);
+    auto right_r = rect_cut::CutRight(r, btn_w);
+    auto left_r = rect_cut::CutRight(r, btn_w);
+
+    bool changed =
+        Dragger(g, id, r, (int)param.info.linear_range.min, (int)param.info.linear_range.max, result, style);
 
     auto const left_id = id - 4;
     auto const right_id = id + 4;

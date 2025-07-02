@@ -59,10 +59,12 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
 
     auto const description_field = TextInput(box_system,
                                              panel,
-                                             state.description,
-                                             "",
-                                             f32x2 {layout::k_fill_parent, 90},
-                                             TextInputBox::MultiLine);
+                                             {
+                                                 .text = state.description,
+                                                 .tooltip = "",
+                                                 .size = f32x2 {layout::k_fill_parent, 90},
+                                                 .type = TextInputBox::MultiLine,
+                                             });
     if (description_field.text_input_result && description_field.text_input_result->buffer_changed)
         dyn::AssignFitInCapacity(state.description, description_field.text_input_result->text);
 
@@ -76,10 +78,11 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
 
     auto const email_field = TextInput(box_system,
                                        panel,
-                                       state.email,
-                                       "",
-                                       f32x2 {layout::k_fill_parent, 30},
-                                       TextInputBox::SingleLine);
+                                       {
+                                           .text = state.email,
+                                           .size = f32x2 {layout::k_fill_parent, 30},
+                                           .type = TextInputBox::SingleLine,
+                                       });
     if (email_field.text_input_result && email_field.text_input_result->buffer_changed)
         dyn::AssignFitInCapacity(state.email, email_field.text_input_result->text);
 

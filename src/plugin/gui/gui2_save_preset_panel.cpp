@@ -199,10 +199,12 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
 
         if (auto const input = TextInput(box_system,
                                          author_box,
-                                         state.metadata.author,
-                                         "Creator of this preset"_s,
-                                         f32x2 {200, style::k_font_body_size * 1.3f},
-                                         TextInputBox::SingleLine);
+                                         {
+                                             .text = state.metadata.author,
+                                             .tooltip = "Creator of this preset"_s,
+                                             .size = f32x2 {200, style::k_font_body_size * 1.3f},
+                                             .type = TextInputBox::SingleLine,
+                                         });
             input.text_input_result && input.text_input_result->buffer_changed) {
             ASSERT(input.text_input_result->text.size < 10000);
             dyn::AssignFitInCapacity(state.metadata.author, input.text_input_result->text);
@@ -258,10 +260,11 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
 
         if (auto const description_field = TextInput(box_system,
                                                      container,
-                                                     state.metadata.description,
-                                                     "",
-                                                     f32x2 {layout::k_fill_parent, 60},
-                                                     TextInputBox::MultiLine);
+                                                     {
+                                                         .text = state.metadata.description,
+                                                         .size = f32x2 {layout::k_fill_parent, 60},
+                                                         .type = TextInputBox::MultiLine,
+                                                     });
             description_field.text_input_result && description_field.text_input_result->buffer_changed)
             dyn::AssignFitInCapacity(state.metadata.description, description_field.text_input_result->text);
     }

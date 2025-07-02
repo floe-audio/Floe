@@ -217,6 +217,7 @@ prefs::Descriptor SettingDescriptor(AutosaveSetting setting) {
                     },
                 .default_value = (s64)10,
                 .gui_label = "Autosave interval (seconds)"_s,
+                .long_description = "The interval in seconds between autosaves.",
             };
         case AutosaveSetting::MaxAutosavesPerInstance:
             return {
@@ -231,6 +232,8 @@ prefs::Descriptor SettingDescriptor(AutosaveSetting setting) {
                     },
                 .default_value = (s64)16,
                 .gui_label = "Max autosaves per instance"_s,
+                .long_description = "The maximum number of autosaves to keep per instance. "
+                                    "Older autosaves will be deleted when this limit is reached.",
             };
         case AutosaveSetting::AutosaveDeleteAfterDays:
             return {
@@ -245,6 +248,7 @@ prefs::Descriptor SettingDescriptor(AutosaveSetting setting) {
                     },
                 .default_value = (s64)7,
                 .gui_label = "Autosave delete after days"_s,
+                .long_description = "The number of days after which autosaves will be deleted.",
             };
         case AutosaveSetting::Count: break;
     }

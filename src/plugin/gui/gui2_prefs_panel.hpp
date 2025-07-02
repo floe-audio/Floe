@@ -496,6 +496,8 @@ static void PackagesPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelC
     }
 }
 
+constexpr f32 k_settings_int_field_width = 30.0f;
+
 static void Setting(GuiBoxSystem& box_system,
                     PreferencesPanelContext& context,
                     Box parent,
@@ -505,12 +507,16 @@ static void Setting(GuiBoxSystem& box_system,
             auto const& int_info = info.value_requirements.Get<prefs::Descriptor::IntRequirements>();
             if (auto const v = IntField(box_system,
                                         parent,
-                                        info.gui_label,
-                                        30.0f,
-                                        prefs::GetValue(context.prefs, info).value.Get<s64>(),
-                                        [&int_info](s64 value) {
-                                            if (int_info.validator) int_info.validator(value);
-                                            return value;
+                                        {
+                                            .label = info.gui_label,
+                                            .tooltip = info.long_description,
+                                            .width = k_settings_int_field_width,
+                                            .value = prefs::GetValue(context.prefs, info).value.Get<s64>(),
+                                            .constrainer =
+                                                [&int_info](s64 value) {
+                                                    if (int_info.validator) int_info.validator(value);
+                                                    return value;
+                                                },
                                         })) {
                 prefs::SetValue(context.prefs, info, *v);
             }
@@ -548,88 +554,36 @@ static void GeneralPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCo
                             });
 
     {
-        auto const row = PreferencesRow(box_system, root);
-
-        PreferencesLhsTextWidget(box_system, row, "GUI size");
-
-        auto const button_container = DoBox(box_system,
-                                            {
-                                                .parent = row,
-                                                .background_fill = style::Colour::Background2,
-                                                .round_background_corners = 0b1111,
-                                                .layout {
-                                                    .size = {layout::k_hug_contents, layout::k_hug_contents},
-                                                    .contents_direction = layout::Direction::Row,
-                                                    .contents_align = layout::Alignment::Start,
-                                                },
-                                            });
-
-        Optional<int> width_change {};
-
-        if (DoBox(box_system,
-                  {
-                      .parent = button_container,
-                      .text = ICON_FA_CARET_DOWN,
-                      .font = FontType::Icons,
-                      .text_align_x = TextAlignX::Centre,
-                      .text_align_y = TextAlignY::Centre,
-                      .background_fill_auto_hot_active_overlay = true,
-                      .round_background_corners = 0b1001,
-                      .activate_on_click_button = MouseButton::Left,
-                      .activation_click_event = ActivationClickEvent::Up,
-                      .layout {
-                          .size = style::k_prefs_icon_button_size,
-                      },
-                      .tooltip = "Decrease GUI size"_s,
-                  })
-                .button_fired) {
-            width_change = -1;
-        }
-        DoBox(box_system,
-              {
-                  .parent = button_container,
-                  .background_fill = style::Colour::Surface2,
-                  .layout {
-                      .size = {box_system.imgui.PixelsToVw(1), layout::k_fill_parent},
-                  },
-              });
-        if (DoBox(box_system,
-                  {
-                      .parent = button_container,
-                      .text = ICON_FA_CARET_UP,
-                      .font = FontType::Icons,
-                      .text_align_x = TextAlignX::Centre,
-                      .text_align_y = TextAlignY::Centre,
-                      .background_fill_auto_hot_active_overlay = true,
-                      .round_background_corners = 0b0110,
-                      .activate_on_click_button = MouseButton::Left,
-                      .activation_click_event = ActivationClickEvent::Up,
-                      .layout {
-                          .size = style::k_prefs_icon_button_size,
-                      },
-                      .tooltip = "Increase GUI size"_s,
-                  })
-                .button_fired) {
-            width_change = 1;
-        }
-
-        if (width_change) {
-            auto const desc = SettingDescriptor(GuiSetting::WindowWidth);
-            auto const width = prefs::GetInt(context.prefs, desc);
-            auto const new_width = width + (*width_change * AlignTo(100, k_aspect_ratio_with_keyboard.width));
-            prefs::SetValue(context.prefs, desc, new_width);
-        }
-    }
-
-    {
         auto const style_row = PreferencesRow(box_system, root);
 
-        PreferencesLhsTextWidget(box_system, style_row, "Style");
+        PreferencesLhsTextWidget(box_system, style_row, "UI");
         auto const options_rhs_column = PreferencesRhsColumn(box_system, style_row, style::k_prefs_small_gap);
 
         for (auto const gui_setting : EnumIterator<GuiSetting>()) {
-            if (gui_setting == GuiSetting::WindowWidth) continue;
-            Setting(box_system, context, options_rhs_column, SettingDescriptor(gui_setting));
+            auto const desc = SettingDescriptor(gui_setting);
+            if (gui_setting == GuiSetting::WindowWidth) {
+                auto const& int_info = desc.value_requirements.Get<prefs::Descriptor::IntRequirements>();
+                if (auto const v =
+                        IntField(box_system,
+                                 options_rhs_column,
+                                 {
+                                     .label = "Window size",
+                                     .tooltip = desc.long_description,
+                                     .width = k_settings_int_field_width,
+                                     .value = prefs::GetValue(context.prefs, desc).value.Get<s64>() /
+                                              k_aspect_ratio_without_keyboard.width,
+                                     .constrainer =
+                                         [&int_info](s64 value) {
+                                             value *= k_aspect_ratio_without_keyboard.width;
+                                             if (int_info.validator) int_info.validator(value);
+                                             return value;
+                                         },
+                                 })) {
+                    prefs::SetValue(context.prefs, desc, *v);
+                }
+                continue;
+            }
+            Setting(box_system, context, options_rhs_column, desc);
         }
     }
 

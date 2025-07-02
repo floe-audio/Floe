@@ -6,11 +6,11 @@
 #include "common_infrastructure/preferences.hpp"
 
 enum class GuiSetting : u8 {
+    WindowWidth,
     ShowTooltips,
     ShowKeyboard,
     HighContrastGui,
     ShowInstanceName,
-    WindowWidth,
     Count,
 };
 

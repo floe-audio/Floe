@@ -93,6 +93,7 @@ void TopPanel(Gui* g) {
     });
 
     auto const preset_box_icon_width = LiveSize(g->imgui, UiSizeId::Top2PresetBoxIconWidth);
+    auto const preset_lr_button_width = LiveSize(g->imgui, UiSizeId::NextPrevButtonSize);
     auto const icon_width = LiveSize(g->imgui, UiSizeId::Top2IconWidth);
     auto const icon_height = LiveSize(g->imgui, UiSizeId::Top2IconHeight);
 
@@ -154,12 +155,12 @@ void TopPanel(Gui* g) {
     auto preset_left = layout::CreateItem(g->layout,
                                           {
                                               .parent = preset_box,
-                                              .size = {preset_box_icon_width, icon_height},
+                                              .size = {preset_lr_button_width, icon_height},
                                           });
     auto preset_right = layout::CreateItem(g->layout,
                                            {
                                                .parent = preset_box,
-                                               .size = {preset_box_icon_width, icon_height},
+                                               .size = {preset_lr_button_width, icon_height},
                                            });
     auto preset_random = layout::CreateItem(g->layout,
                                             {

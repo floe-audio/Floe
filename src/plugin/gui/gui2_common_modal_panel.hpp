@@ -315,50 +315,96 @@ IconButton(GuiBoxSystem& builder, Box parent, String icon, String tooltip, f32 f
     return button;
 }
 
-PUBLIC Box
-TextInput(GuiBoxSystem& builder, Box parent, String text, String tooltip, f32x2 size, TextInputBox type) {
-    return DoBox(builder,
-                 {
-                     .parent = parent,
-                     .text = text,
-                     .font = FontType::Body,
-                     .text_fill = style::Colour::Text,
-                     .text_fill_hot = style::Colour::Text,
-                     .text_fill_active = style::Colour::Text,
-                     .background_fill = style::Colour::Background2,
-                     .background_fill_hot = style::Colour::Background2,
-                     .background_fill_active = style::Colour::Background2,
-                     .border = style::Colour::Overlay0,
-                     .border_hot = style::Colour::Overlay1,
-                     .border_active = style::Colour::Blue,
-                     .round_background_corners = 0b1111,
-                     .text_input_box = type,
-                     .text_input_cursor = style::Colour::Text,
-                     .text_input_selection = style::Colour::Highlight,
-                     .layout {.size = size},
-                     .tooltip = tooltip,
-                 });
+struct TextInputOptions {
+    String text;
+    String tooltip;
+    f32x2 size;
+    bool border = true;
+    bool background = true;
+    TextInputBox type = TextInputBox::SingleLine;
+};
+
+PUBLIC Box TextInput(GuiBoxSystem& builder, Box parent, TextInputOptions const& options) {
+    return DoBox(
+        builder,
+        {
+            .parent = parent,
+            .text = options.text,
+            .font = FontType::Body,
+            .text_fill = style::Colour::Text,
+            .text_fill_hot = style::Colour::Text,
+            .text_fill_active = style::Colour::Text,
+            .background_fill = options.background ? style::Colour::Background2 : style::Colour::None,
+            .background_fill_hot = options.background ? style::Colour::Background2 : style::Colour::None,
+            .background_fill_active = options.background ? style::Colour::Background2 : style::Colour::None,
+            .border = options.border ? style::Colour::Overlay0 : style::Colour::None,
+            .border_hot = options.border ? style::Colour::Overlay1 : style::Colour::None,
+            .border_active = options.border ? style::Colour::Blue : style::Colour::None,
+            .round_background_corners = 0b1111,
+            .text_input_box = options.type,
+            .text_input_cursor = style::Colour::Text,
+            .text_input_selection = style::Colour::Highlight,
+            .layout {.size = options.size},
+            .tooltip = options.tooltip,
+        });
 }
 
-PUBLIC Optional<s64> IntField(GuiBoxSystem& builder,
-                              Box parent,
-                              String label,
-                              f32 width,
-                              s64 value,
-                              FunctionRef<s64(s64 value)> constrainer) {
+struct IntFieldOptions {
+    String label;
+    String tooltip;
+    f32 width;
+    s64 value;
+    FunctionRef<s64(s64 value)> constrainer;
+};
+
+PUBLIC Optional<s64> IntField(GuiBoxSystem& builder, Box parent, IntFieldOptions const& options) {
+    auto value = options.value;
     auto const initial_value = value;
     auto const container = DoBox(builder,
                                  {
                                      .parent = parent,
                                      .layout {
-                                         .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                         .size = layout::k_hug_contents,
+                                         .contents_gap = style::k_prefs_medium_gap,
                                          .contents_direction = layout::Direction::Row,
                                          .contents_align = layout::Alignment::Start,
                                      },
                                  });
+
+    auto const item_container = DoBox(builder,
+                                      {
+                                          .parent = container,
+                                          .background_fill = style::Colour::Background2,
+                                          .border = style::Colour::Overlay0,
+                                          .round_background_corners = 0b1111,
+                                          .layout {
+                                              .size = layout::k_hug_contents,
+                                          },
+                                      });
+
+    {
+        auto const text = fmt::IntToString(value);
+        auto const text_input = TextInput(builder,
+                                          item_container,
+                                          {
+                                              .text = text,
+                                              .tooltip = "Enter a new value"_s,
+                                              .size = f32x2 {options.width, 20},
+                                              .border = false,
+                                              .background = false,
+                                              .type = TextInputBox::SingleLine,
+                                          });
+        if (text_input.text_input_result && text_input.text_input_result->buffer_changed) {
+            auto const new_value = ParseInt(text_input.text_input_result->text, ParseIntBase::Decimal);
+            if (new_value.HasValue()) value = options.constrainer(new_value.Value());
+        }
+    }
+
+    auto const k_button_width = 13.0f;
+
     if (DoBox(builder,
               {
-                  .parent = container,
+                  .parent = item_container,
                   .text = ICON_FA_CARET_LEFT,
                   .font = FontType::Icons,
                   .text_align_x = TextAlignX::Centre,
@@ -368,31 +414,17 @@ PUBLIC Optional<s64> IntField(GuiBoxSystem& builder,
                   .activate_on_click_button = MouseButton::Left,
                   .activation_click_event = ActivationClickEvent::Up,
                   .layout {
-                      .size = style::k_prefs_icon_button_size,
+                      .size = {k_button_width, layout::k_fill_parent},
                   },
                   .tooltip = "Decrease value"_s,
               })
             .button_fired) {
-        value = constrainer(value - 1);
-    }
-
-    {
-        auto const text = fmt::IntToString(value);
-        auto const text_input = TextInput(builder,
-                                          container,
-                                          text,
-                                          "Enter a new value"_s,
-                                          f32x2 {width, 20},
-                                          TextInputBox::SingleLine);
-        if (text_input.text_input_result) {
-            auto const new_value = ParseInt(text_input.text_input_result->text, ParseIntBase::Decimal);
-            if (new_value.HasValue()) value = constrainer(new_value.Value());
-        }
+        value = options.constrainer(value - 1);
     }
 
     if (DoBox(builder,
               {
-                  .parent = container,
+                  .parent = item_container,
                   .text = ICON_FA_CARET_RIGHT,
                   .font = FontType::Icons,
                   .text_align_x = TextAlignX::Centre,
@@ -402,20 +434,21 @@ PUBLIC Optional<s64> IntField(GuiBoxSystem& builder,
                   .activate_on_click_button = MouseButton::Left,
                   .activation_click_event = ActivationClickEvent::Up,
                   .layout {
-                      .size = style::k_prefs_icon_button_size,
+                      .size = {k_button_width, layout::k_fill_parent},
                   },
                   .tooltip = "Increase value"_s,
               })
             .button_fired) {
-        value = constrainer(value + 1);
+        value = options.constrainer(value + 1);
     }
 
     // label
     DoBox(builder,
           {
               .parent = container,
-              .text = label,
+              .text = options.label,
               .size_from_text = true,
+              .tooltip = options.tooltip,
           });
 
     if (value != initial_value) return value;

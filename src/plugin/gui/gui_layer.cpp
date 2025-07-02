@@ -123,15 +123,28 @@ static void DoLoopModeSelectorGui(Gui* g, Rect r, LayerProcessor& layer) {
 
     auto const imgui_id = BeginParameterGUI(g, param, r);
 
-    bool greyed_out = false;
     Optional<f32> val {};
 
-    if (buttons::Popup(g,
-                       imgui_id,
-                       imgui_id + 1,
-                       r,
-                       actual_loop_behaviour.value.name,
-                       buttons::ParameterPopupButton(g->imgui, greyed_out))) {
+    auto const style = buttons::ParameterPopupButton(g->imgui);
+
+    // Draw around the whole thing, not just the menu.
+    if (style.back_cols.reg) {
+        auto const converted_r = g->imgui.GetRegisteredAndConvertedRect(r);
+        g->imgui.graphics->AddRectFilled(converted_r.Min(),
+                                         converted_r.Max(),
+                                         style.back_cols.reg,
+                                         LiveSize(g->imgui, UiSizeId::CornerRounding));
+    }
+
+    auto const btn_w = LiveSize(g->imgui, UiSizeId::NextPrevButtonSize);
+    auto const margin_r = LiveSize(g->imgui, UiSizeId::ParamIntButtonMarginR);
+    rect_cut::CutRight(r, margin_r);
+    auto rect_r = rect_cut::CutRight(r, btn_w);
+    auto rect_l = rect_cut::CutRight(r, btn_w);
+
+    auto popup_style = style;
+    popup_style.back_cols = {};
+    if (buttons::Popup(g, imgui_id, imgui_id + 1, r, actual_loop_behaviour.value.short_name, popup_style)) {
         StartFloeMenu(g);
         DEFER { EndFloeMenu(g); };
         DEFER { g->imgui.EndWindow(); };
@@ -163,7 +176,7 @@ static void DoLoopModeSelectorGui(Gui* g, Rect r, LayerProcessor& layer) {
             {
                 DynamicArray<char> tooltip {g->scratch_arena};
 
-                if (!valid) fmt::Append(tooltip, "Not available: {}\n\n", behaviour.reason);
+                if (!valid) fmt::Append(tooltip, ICON_FA_REPEAT "Not available: {}\n\n", behaviour.reason);
 
                 dyn::AppendSpan(tooltip, LoopModeDescription((param_values::LoopMode)i));
 
@@ -180,6 +193,54 @@ static void DoLoopModeSelectorGui(Gui* g, Rect r, LayerProcessor& layer) {
             }
         }
     }
+
+    {
+        auto current = param.LinearValue();
+        if (g->imgui.SliderRange(
+                {
+                    .flags = imgui::DefSlider().flags,
+                    .sensitivity = 100 + (5000 * 1.0f / param.info.linear_range.Delta()),
+                    .draw = [](IMGUI_DRAW_SLIDER_ARGS) {},
+                },
+                r,
+                imgui_id,
+                param.info.linear_range.min,
+                param.info.linear_range.max,
+                current,
+                param.info.default_linear_value)) {
+            val = current;
+        }
+    }
+
+    auto const button_style = buttons::IconButton(g->imgui);
+    auto const left_id = imgui_id - 4;
+    auto const right_id = imgui_id + 4;
+
+    auto increment_mode = [&](f32 step) {
+        auto new_val = (f32)param.ValueAsInt<int>() + step;
+        for (auto _ : Range(ToInt(param_values::LoopMode::Count))) {
+            if (step < 0 && new_val < param.info.linear_range.min) new_val = param.info.linear_range.max;
+            if (step > 0 && new_val > param.info.linear_range.max) new_val = param.info.linear_range.min;
+
+            auto const mode = (param_values::LoopMode)new_val;
+            if (mode != param_values::LoopMode::InstrumentDefault) {
+                // We only increment to a value is valid, and not the same as the current value. This feels
+                // the most intuitive otherwise it feels like the button doesn't do anything.
+                if (auto const other = ActualLoopBehaviour(layer.instrument, mode, vol_env_on);
+                    other.is_desired && other.value.id != actual_loop_behaviour.value.id) {
+                    val = new_val;
+                    break;
+                }
+            }
+
+            new_val += step;
+        }
+    };
+
+    if (buttons::Button(g, left_id, rect_l, ICON_FA_CARET_LEFT, button_style)) increment_mode(-1);
+    if (buttons::Button(g, right_id, rect_r, ICON_FA_CARET_RIGHT, button_style)) increment_mode(1);
+    Tooltip(g, left_id, rect_l, "Previous loop mode"_s);
+    Tooltip(g, right_id, rect_r, "Next loop mode"_s);
 
     EndParameterGUI(g,
                     imgui_id,
@@ -250,18 +311,19 @@ void Layout(Gui* g,
                                                  .size = layout::k_fill_parent,
                                              });
 
-        auto const layer_selector_button_w = LiveSize(g->imgui, LayerSelectorButtonW);
+        auto const layer_selector_button_w = LiveSize(g->imgui, ResourceSelectorRandomButtonW);
+        auto const layer_selector_lr_button_w = LiveSize(g->imgui, UiSizeId::NextPrevButtonSize);
         auto const layer_selector_box_buttons_margin_r = LiveSize(g->imgui, LayerSelectorBoxButtonsMarginR);
 
         c.selector_l = layout::CreateItem(g->layout,
                                           {
                                               .parent = c.selector_box,
-                                              .size = {layer_selector_button_w, layout::k_fill_parent},
+                                              .size = {layer_selector_lr_button_w, layout::k_fill_parent},
                                           });
         c.selector_r = layout::CreateItem(g->layout,
                                           {
                                               .parent = c.selector_box,
-                                              .size = {layer_selector_button_w, layout::k_fill_parent},
+                                              .size = {layer_selector_lr_button_w, layout::k_fill_parent},
                                           });
         c.selector_randomise =
             layout::CreateItem(g->layout,
@@ -441,7 +503,8 @@ void Layout(Gui* g,
                         .margins = {.lr = waveform_margins_lr},
                     });
 
-                auto const main_item_margin_lr = LiveSize(g->imgui, Main_ItemMarginLR);
+                auto const main_item_margin_l = LiveSize(g->imgui, Main_ItemMarginL);
+                auto const main_item_margin_r = LiveSize(g->imgui, Main_ItemMarginR);
                 auto const main_item_height = LiveSize(g->imgui, Main_ItemHeight);
                 auto const main_item_gap_y = LiveSize(g->imgui, Main_ItemGapY);
                 auto btn_container =
@@ -449,15 +512,16 @@ void Layout(Gui* g,
                                        {
                                            .parent = page_container,
                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                           .margins = {.lr = main_item_margin_lr},
+                                           .margins = {.l = main_item_margin_l, .r = main_item_margin_r},
                                            .contents_direction = layout::Direction::Row,
                                        });
-                c.main.reverse = layout::CreateItem(g->layout,
-                                                    {
-                                                        .parent = btn_container,
-                                                        .size = {layout::k_fill_parent, main_item_height},
-                                                        .margins = {.tb = main_item_gap_y},
-                                                    });
+                c.main.reverse = layout::CreateItem(
+                    g->layout,
+                    {
+                        .parent = btn_container,
+                        .size = {LiveSize(g->imgui, Main_ReverseButtonWidth), main_item_height},
+                        .margins = {.tb = main_item_gap_y},
+                    });
                 c.main.loop_mode =
                     layout::CreateItem(g->layout,
                                        {

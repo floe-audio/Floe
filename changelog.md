@@ -12,6 +12,14 @@ For instance: 0.0.1. Don't change the headings.
 - Fix LFO and delay time not updating with the tempo
 - Reduce pops and clicks with high-frequency LFOs
 - Add new algorithms to distortion: foldback, rectifier and ring-modulator
+- Improve menus:
+    - Add left/right buttons to all menus on the GUI
+    - Allow most menus to be dragged like a slider to change the value
+    - Add randomise button to convolution IR menu as well as left/right buttons
+    - Make all left/right buttons on the UI the same style
+    - Move the left/right buttons to the right of the menu so it's consistent and easy to click forward and back without having to move the mouse long distances
+    - Make the UI window size buttons consistent with the left/right buttons
+- Add missing tooltips for some preferences
 
 ## 0.10.3-beta
 - Sample library creation: add 'fade_in_frames' to add_region

@@ -20,20 +20,10 @@ enum class LayoutType { Generic, Layer, Effect };
 
 layout::Id LayoutParameterComponent(Gui* g,
                                     layout::Id parent,
-                                    layout::Id& param_layid,
-                                    layout::Id& name,
+                                    LayIDPair& ids,
                                     LayoutType type,
                                     Optional<ParamIndex> index_for_menu_items,
                                     bool is_convo_ir,
-                                    Optional<UiSizeId> size_index_for_gapx = {},
-                                    bool set_gapx_independent_of_size = false,
-                                    bool set_bottom_gap_independent_of_size = false);
-
-layout::Id LayoutParameterComponent(Gui* g,
-                                    layout::Id parent,
-                                    layout::Id& slider,
-                                    layout::Id& name,
-                                    Parameter const& param,
                                     Optional<UiSizeId> size_index_for_gapx = {},
                                     bool set_gapx_independent_of_size = false,
                                     bool set_bottom_gap_independent_of_size = false);

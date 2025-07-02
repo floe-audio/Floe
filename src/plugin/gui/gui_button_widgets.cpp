@@ -267,12 +267,66 @@ ButtonReturnObject Toggle(Gui* g, Parameter const& param, Rect r, Style const& s
 
 ButtonReturnObject PopupWithItems(Gui* g, Parameter const& param, Rect r, Style const& style) {
     auto const id = BeginParameterGUI(g, param, r);
+
+    // draw it around the whole thing, not just the menu
+    if (style.back_cols.reg) {
+        auto const converted_r = g->imgui.GetRegisteredAndConvertedRect(r);
+        g->imgui.graphics->AddRectFilled(converted_r.Min(),
+                                         converted_r.Max(),
+                                         style.back_cols.reg,
+                                         LiveSize(g->imgui, UiSizeId::CornerRounding));
+    }
+
+    auto const btn_w = LiveSize(g->imgui, UiSizeId::NextPrevButtonSize);
+    auto const margin_r = LiveSize(g->imgui, UiSizeId::ParamIntButtonMarginR);
+    rect_cut::CutRight(r, margin_r);
+    auto rect_r = rect_cut::CutRight(r, btn_w);
+    auto rect_l = rect_cut::CutRight(r, btn_w);
+
     Optional<f32> val {};
-    if (Popup(g, id, id + 1, r, ParamMenuText(param.info.index, param.LinearValue()), style)) {
+    auto popup_style = style;
+    popup_style.back_cols = {};
+    if (Popup(g, id, id + 1, r, ParamMenuText(param.info.index, param.LinearValue()), popup_style)) {
         auto current = param.ValueAsInt<int>();
         if (DoMultipleMenuItems(g, ParameterMenuItems(param.info.index), current)) val = (f32)current;
         g->imgui.EndWindow();
     }
+
+    {
+        auto current = param.LinearValue();
+        if (g->imgui.SliderRange(
+                {
+                    .flags = imgui::DefSlider().flags,
+                    .sensitivity = 100 + (5000 * 1.0f / param.info.linear_range.Delta()),
+                    .draw = [](IMGUI_DRAW_SLIDER_ARGS) {},
+                },
+                r,
+                id,
+                param.info.linear_range.min,
+                param.info.linear_range.max,
+                current,
+                param.info.default_linear_value)) {
+            val = current;
+        }
+    }
+
+    auto button_style = IconButton(g->imgui);
+    button_style.greyed_out = style.greyed_out;
+    auto const left_id = id - 4;
+    auto const right_id = id + 4;
+    if (buttons::Button(g, left_id, rect_l, ICON_FA_CARET_LEFT, button_style)) {
+        auto new_val = (f32)param.ValueAsInt<int>() - 1;
+        if (new_val < param.info.linear_range.min) new_val = param.info.linear_range.max;
+        val = new_val;
+    }
+    if (buttons::Button(g, right_id, rect_r, ICON_FA_CARET_RIGHT, button_style)) {
+        auto new_val = (f32)param.ValueAsInt<int>() + 1;
+        if (new_val > param.info.linear_range.max) new_val = param.info.linear_range.min;
+        val = new_val;
+    }
+    Tooltip(g, left_id, rect_l, "Previous"_s);
+    Tooltip(g, right_id, rect_r, "Next"_s);
+
     EndParameterGUI(g,
                     id,
                     param,

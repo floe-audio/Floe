@@ -110,7 +110,7 @@ struct EffectIDs {
 };
 
 static void DoImpulseResponseMenu(Gui* g, layout::Id lay_id) {
-    auto const r = layout::GetRect(g->layout, lay_id);
+    auto r = layout::GetRect(g->layout, lay_id);
 
     auto const ir_name =
         g->engine.processor.convo.ir_id ? String(g->engine.processor.convo.ir_id->ir_name) : "None"_s;
@@ -118,7 +118,26 @@ static void DoImpulseResponseMenu(Gui* g, layout::Id lay_id) {
     auto const id = g->imgui.GetID("Impulse");
     auto const popup_imgui_id = id + 1;
 
-    if (buttons::Button(g, id, r, ir_name, buttons::ParameterPopupButton(g->imgui)))
+    auto const style = buttons::ParameterPopupButton(g->imgui);
+
+    // Draw around the whole thing, not just the menu.
+    if (style.back_cols.reg) {
+        auto const converted_r = g->imgui.GetRegisteredAndConvertedRect(r);
+        g->imgui.graphics->AddRectFilled(converted_r.Min(),
+                                         converted_r.Max(),
+                                         style.back_cols.reg,
+                                         LiveSize(g->imgui, UiSizeId::CornerRounding));
+    }
+
+    auto const arrow_btn_w = LiveSize(g->imgui, UiSizeId::NextPrevButtonSize);
+    auto const rand_btn_w = LiveSize(g->imgui, UiSizeId::ResourceSelectorRandomButtonW);
+    auto const margin_r = LiveSize(g->imgui, UiSizeId::ParamIntButtonMarginR);
+    rect_cut::CutRight(r, margin_r);
+    auto rect_rand = rect_cut::CutRight(r, rand_btn_w);
+    auto rect_next = rect_cut::CutRight(r, arrow_btn_w);
+    auto rect_prev = rect_cut::CutRight(r, arrow_btn_w);
+
+    if (buttons::Button(g, id, r, ir_name, buttons::InstSelectorPopupButton(g->imgui, {})))
         g->imgui.OpenPopup(popup_imgui_id, id);
 
     IrPickerContext context {
@@ -129,6 +148,20 @@ static void DoImpulseResponseMenu(Gui* g, layout::Id lay_id) {
     };
     context.Init(g->scratch_arena);
     DEFER { context.Deinit(); };
+
+    auto const button_style = buttons::IconButton(g->imgui);
+    auto const left_id = id - 4;
+    auto const right_id = id + 4;
+    if (buttons::Button(g, left_id, rect_prev, ICON_FA_CARET_LEFT, button_style))
+        LoadAdjacentIr(context, g->ir_picker_state, SearchDirection::Backward);
+    if (buttons::Button(g, right_id, rect_next, ICON_FA_CARET_RIGHT, button_style))
+        LoadAdjacentIr(context, g->ir_picker_state, SearchDirection::Forward);
+    if (buttons::Button(g,
+                        id + 8,
+                        rect_rand,
+                        ICON_FA_SHUFFLE,
+                        buttons::IconButton(g->imgui).WithRandomiseIconScaling()))
+        LoadRandomIr(context, g->ir_picker_state);
 
     DoIrPickerPopup(g->box_system,
                     popup_imgui_id,
@@ -481,12 +514,11 @@ void DoEffectsWindow(Gui* g, Rect r) {
                                          engine.processor.params[ToInt(ParamIndex::FilterResonance)]);
                 ids.filter.using_gain =
                     engine.processor.filter_effect.IsUsingGainParam(engine.processor.params);
-                if (ids.filter.using_gain) {
-                    LayoutParameterComponent(g,
-                                             param_container,
-                                             ids.filter.gain,
-                                             engine.processor.params[ToInt(ParamIndex::FilterGain)]);
-                }
+                // Always lay it out so the GUI doesn't jump around.
+                LayoutParameterComponent(g,
+                                         param_container,
+                                         ids.filter.gain,
+                                         engine.processor.params[ToInt(ParamIndex::FilterGain)]);
 
                 ids.divider = layout::CreateItem(lay, divider_options);
                 dyn::Append(effects, ids);
@@ -618,8 +650,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
 
                 LayoutParameterComponent(g,
                                          param_container,
-                                         ids.convo.ir.control,
-                                         ids.convo.ir.label,
+                                         ids.convo.ir,
                                          LayoutType::Effect,
                                          k_nullopt,
                                          true);

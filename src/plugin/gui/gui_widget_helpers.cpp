@@ -403,7 +403,7 @@ void EndParameterGUI(Gui* g,
 
     if (!(flags & ParamDisplayFlagsNoTooltip) && !g->imgui.TextInputHasFocus(id))
         DoParameterTooltipIfNeeded(g, param, id, r);
-    if (!(flags & ParamDisplayFlagsNoValuePopup) && param.info.value_type != ParamValueType::Bool)
+    if (!(flags & ParamDisplayFlagsNoValuePopup) && param.info.value_type == ParamValueType::Float)
         ParameterValuePopup(g, param, id, r);
 }
 

@@ -19,6 +19,8 @@ void BotPanel(Gui* g) {
     auto const button_h = LiveSize(imgui, UiSizeId::MidiKeyboardButtonSize);
     auto const button_ygap = LiveSize(imgui, UiSizeId::MidiKeyboardButtonYGap);
 
+    if (imgui.Width() <= 0 || imgui.Height() <= 0) return;
+
     auto root = layout::CreateItem(lay,
                                    {
                                        .size = imgui.Size(),
