@@ -641,8 +641,8 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
                 background_fill != style::Colour::None || config.background_fill_auto_hot_active_overlay) {
 
                 auto r = rect;
-                // if we normally don't show a background, then we can assume that hot/active colours are
-                // exclusively for the mouse so we should use the mouse rect
+                // If we normally don't show a background, then we can assume that hot/active colours are
+                // exclusively for the mouse so we should use the mouse rectangle.
                 if (config.background_fill == style::Colour::None) r = mouse_rect;
 
                 auto const rounding =
