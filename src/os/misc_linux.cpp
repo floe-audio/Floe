@@ -142,12 +142,12 @@ u64 RandomSeed() {
 void OpenFolderInFileBrowser(String path) {
     PathArena path_allocator {Malloc::Instance()};
     // IMPROVE: system is not thread-safe?
-    auto _ =
-        ::system(fmt::Format(path_allocator, "xdg-open {}\0", path).data); // NOLINT(concurrency-mt-unsafe)
+    auto _ = ::system( // NOLINT(concurrency-mt-unsafe)
+        fmt::Format(path_allocator, "xdg-open \"{}\"\0", path).data);
 }
 
 void OpenUrlInBrowser(String url) {
     ArenaAllocatorWithInlineStorage<200> arena {Malloc::Instance()};
     // IMPROVE: system is not thread-safe?
-    auto _ = ::system(fmt::Format(arena, "xdg-open {}\0", url).data); // NOLINT(concurrency-mt-unsafe)
+    auto _ = ::system(fmt::Format(arena, "xdg-open \"{}\"\0", url).data); // NOLINT(concurrency-mt-unsafe)
 }
