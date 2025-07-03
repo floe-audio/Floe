@@ -5,11 +5,11 @@
 #include "foundation/foundation.hpp"
 
 #include "common_infrastructure/paths.hpp"
+#include "common_infrastructure/state/state_coding.hpp"
 
 #include "engine/engine.hpp"
 #include "engine/package_installation.hpp"
 #include "gui_framework/gui_frame.hpp"
-#include "state/state_coding.hpp"
 
 struct AddScanFolderFilePickerState {
     ScanFolderType type {};

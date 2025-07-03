@@ -6,8 +6,7 @@
 #include "tests/framework.hpp"
 
 #include "common_infrastructure/error_reporting.hpp"
-
-#include "state/state_coding.hpp"
+#include "common_infrastructure/state/state_coding.hpp"
 
 constexpr auto k_autosave_filename_prefix = "autosave"_ca;
 

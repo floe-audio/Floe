@@ -1848,6 +1848,7 @@ pub fn build(b: *std.Build) void {
                     path ++ "/sample_library/sample_library_lua.cpp",
                     path ++ "/sample_library/sample_library_mdata.cpp",
                     path ++ "/sentry/sentry.cpp",
+                    path ++ "/state/state_coding.cpp",
                 },
                 .flags = FlagsBuilder.init(&build_context, target, .{
                     .full_diagnostics = true,
@@ -1954,7 +1955,6 @@ pub fn build(b: *std.Build) void {
                     plugin_path ++ "/processor/processor.cpp",
                     plugin_path ++ "/processor/voices.cpp",
                     plugin_path ++ "/sample_lib_server/sample_library_server.cpp",
-                    plugin_path ++ "/state/state_coding.cpp",
                 }),
                 .flags = plugin_flags,
             });
@@ -2097,10 +2097,60 @@ pub fn build(b: *std.Build) void {
                 &build_context,
                 target,
                 b.getInstallPath(install_dir, packager.out_filename),
-                "Floe library packager",
+                "Floe packager",
             );
             if (sign_step) |s| {
                 s.dependOn(&packager.step);
+                s.dependOn(b.getInstallStep());
+                build_context.master_step.dependOn(s);
+            }
+        }
+
+        if (!clap_only) {
+            var preset_editor = b.addExecutable(.{
+                .name = "preset-editor",
+                .root_module = b.createModule(module_options),
+                .version = floe_version,
+            });
+            preset_editor.addCSourceFiles(.{
+                .files = &.{
+                    "src/preset_editor_tool/preset_editor.cpp",
+                    "src/common_infrastructure/final_binary_type.cpp",
+                },
+                .flags = FlagsBuilder.init(&build_context, target, .{
+                    .full_diagnostics = true,
+                    .ubsan = true,
+                    .cpp = true,
+                }).flags.items,
+            });
+            preset_editor.root_module.addCMacro("FINAL_BINARY_TYPE", "PresetEditor");
+            preset_editor.linkLibrary(common_infrastructure);
+            preset_editor.addIncludePath(b.path("src"));
+            preset_editor.addConfigHeader(build_config_step);
+            preset_editor.linkLibrary(miniz);
+            if (embed_files_workaround) {
+                preset_editor.addCSourceFile(.{
+                    .file = b.dependency("embedded_files_workaround", .{}).path("embedded_files.cpp"),
+                });
+            } else {
+                preset_editor.addObject(embedded_files.?);
+            }
+            join_compile_commands.step.dependOn(&preset_editor.step);
+            applyUniversalSettings(&build_context, preset_editor);
+            const preset_editor_install_artifact_step = b.addInstallArtifact(
+                preset_editor,
+                .{ .dest_dir = install_subfolder },
+            );
+            b.getInstallStep().dependOn(&preset_editor_install_artifact_step.step);
+
+            const sign_step = addWindowsCodeSignStep(
+                &build_context,
+                target,
+                b.getInstallPath(install_dir, preset_editor.out_filename),
+                "Floe CLI preset editor",
+            );
+            if (sign_step) |s| {
+                s.dependOn(&preset_editor.step);
                 s.dependOn(b.getInstallStep());
                 build_context.master_step.dependOn(s);
             }

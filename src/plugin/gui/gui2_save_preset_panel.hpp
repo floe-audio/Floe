@@ -3,9 +3,9 @@
 #pragma once
 
 #include "common_infrastructure/preferences.hpp"
+#include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "gui/gui_fwd.hpp"
-#include "state/state_snapshot.hpp"
 
 struct FilePickerState;
 struct Engine;

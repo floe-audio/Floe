@@ -115,6 +115,7 @@ void GlobalInit(GlobalInitOptions options) {
                         case FinalBinaryType::Vst3: d = LogConfig::Destination::File; break;
                         case FinalBinaryType::Standalone:
                         case FinalBinaryType::Packager:
+                        case FinalBinaryType::PresetEditor:
                         case FinalBinaryType::WindowsInstaller:
                         case FinalBinaryType::WindowsUninstaller:
                         case FinalBinaryType::DocsPreprocessor:

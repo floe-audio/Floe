@@ -11,6 +11,7 @@
 
 #include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
+#include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "effect_bitcrush.hpp"
 #include "effect_chorus.hpp"
@@ -28,7 +29,6 @@
 #include "processing_utils/audio_processing_context.hpp"
 #include "processing_utils/smoothed_value_system.hpp"
 #include "processing_utils/volume_fade.hpp"
-#include "state/state_snapshot.hpp"
 #include "voices.hpp"
 
 enum class EventForAudioThreadType : u8 {

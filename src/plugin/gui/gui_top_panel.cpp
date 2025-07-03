@@ -4,6 +4,7 @@
 #include <IconsFontAwesome6.h>
 
 #include "common_infrastructure/paths.hpp"
+#include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "engine/engine.hpp"
 #include "gui/gui2_inst_picker.hpp"
@@ -15,7 +16,6 @@
 #include "gui_prefs.hpp"
 #include "gui_widget_compounds.hpp"
 #include "gui_widget_helpers.hpp"
-#include "state/state_snapshot.hpp"
 
 static void PresetsWindowButton(Gui* g, Engine* a, Rect r) {
     auto button_id = g->imgui.GetID("PresetMenu");

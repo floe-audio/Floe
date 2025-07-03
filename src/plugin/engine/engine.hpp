@@ -6,14 +6,14 @@
 
 #include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/sample_library/attribution_requirements.hpp"
+#include "common_infrastructure/state/instrument.hpp"
+#include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "autosave.hpp"
 #include "engine/package_installation.hpp"
 #include "processor/processor.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 #include "shared_engine_systems.hpp"
-#include "state/instrument.hpp"
-#include "state/state_snapshot.hpp"
 
 struct Engine : ProcessorListener {
     struct PendingStateChange {

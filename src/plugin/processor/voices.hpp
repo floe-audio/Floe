@@ -7,6 +7,7 @@
 #include "utils/thread_extra/atomic_swap_buffer.hpp"
 
 #include "common_infrastructure/constants.hpp"
+#include "common_infrastructure/state/instrument.hpp"
 
 #include "processing_utils/adsr.hpp"
 #include "processing_utils/audio_processing_context.hpp"
@@ -15,7 +16,6 @@
 #include "processing_utils/midi.hpp"
 #include "processing_utils/volume_fade.hpp"
 #include "sample_processing.hpp"
-#include "state/instrument.hpp"
 
 constexpr u32 k_max_num_active_voices = 256;
 constexpr u32 k_num_voices = 280;

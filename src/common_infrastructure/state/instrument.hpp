@@ -6,8 +6,6 @@
 
 #include "common_infrastructure/sample_library/sample_library.hpp"
 
-#include "sample_lib_server/sample_library_server.hpp"
-
 // Waveform
 // ================================================================================================
 
@@ -39,13 +37,7 @@ using InstrumentId = TaggedUnion<InstrumentType,
                                  TypeAndTag<WaveformType, InstrumentType::WaveformSynth>,
                                  TypeAndTag<sample_lib::InstrumentId, InstrumentType::Sampler>>;
 
-// Loaded instrument
-using Instrument = TaggedUnion<
-    InstrumentType,
-    TypeAndTag<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>, InstrumentType::Sampler>,
-    TypeAndTag<WaveformType, InstrumentType::WaveformSynth>>;
-
-// For efficiency and simplcity, we sometimes want to just store a raw pointer for the instrument, not the
+// For efficiency and simplicity, we sometimes want to just store a raw pointer for the instrument, not the
 // RefCounted wrapper. Therefore we unwrap it and used this tagged union instead.
 using InstrumentUnwrapped =
     TaggedUnion<InstrumentType,

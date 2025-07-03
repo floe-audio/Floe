@@ -4,6 +4,9 @@
 #include "tests/framework.hpp"
 #include "utils/reader.hpp"
 
+#include "common_infrastructure/state/state_coding.hpp"
+#include "common_infrastructure/state/state_snapshot.hpp"
+
 #include "build_resources/embedded_files.h"
 #include "clap/entry.h"
 #include "clap/ext/gui.h"
@@ -13,8 +16,6 @@
 #include "clap/factory/plugin-factory.h"
 #include "plugin/plugin.hpp"
 #include "plugin/processing_utils/midi.hpp"
-#include "state/state_coding.hpp"
-#include "state/state_snapshot.hpp"
 
 struct TestHost {
     clap_host_params const host_params {

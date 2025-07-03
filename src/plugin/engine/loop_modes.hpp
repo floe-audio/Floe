@@ -4,8 +4,7 @@
 #pragma once
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/sample_library/sample_library.hpp"
-
-#include "state/instrument.hpp"
+#include "common_infrastructure/state/instrument.hpp"
 
 enum class LoopBehaviourId : u8 {
     NoLoop,

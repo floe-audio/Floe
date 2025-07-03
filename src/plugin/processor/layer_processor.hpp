@@ -5,6 +5,7 @@
 #include "foundation/foundation.hpp"
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
+#include "common_infrastructure/state/instrument.hpp"
 
 #include "clap/host.h"
 #include "param.hpp"
@@ -16,7 +17,6 @@
 #include "processing_utils/smoothed_value_system.hpp"
 #include "processing_utils/volume_fade.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
-#include "state/instrument.hpp"
 
 constexpr u32 k_num_layer_eq_bands = 2;
 

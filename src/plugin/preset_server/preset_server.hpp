@@ -3,8 +3,10 @@
 
 #pragma once
 
-#include "state/state_coding.hpp"
-#include "state/state_snapshot.hpp"
+#include "utils/error_notifications.hpp"
+
+#include "common_infrastructure/state/state_coding.hpp"
+#include "common_infrastructure/state/state_snapshot.hpp"
 
 struct PresetFolder {
     struct Preset {

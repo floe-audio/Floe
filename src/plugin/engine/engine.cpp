@@ -12,15 +12,15 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/preferences.hpp"
 #include "common_infrastructure/sample_library/attribution_requirements.hpp"
+#include "common_infrastructure/state/instrument.hpp"
+#include "common_infrastructure/state/state_coding.hpp"
+#include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "clap/ext/timer-support.h"
 #include "plugin/plugin.hpp"
 #include "processor/layer_processor.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 #include "shared_engine_systems.hpp"
-#include "state/instrument.hpp"
-#include "state/state_coding.hpp"
-#include "state/state_snapshot.hpp"
 
 Optional<sample_lib::LibraryIdRef> LibraryForOverallBackground(Engine const& engine) {
     ASSERT(g_is_logical_main_thread);

@@ -7,8 +7,7 @@
 
 #include "common_infrastructure/paths.hpp"
 #include "common_infrastructure/preferences.hpp"
-
-#include "state/state_snapshot.hpp"
+#include "common_infrastructure/state/state_snapshot.hpp"
 
 struct AutosaveState {
     enum class State { Idle, SaveRequested, Saved };

@@ -7,7 +7,7 @@
 
 #include "utils/logger/logger.hpp"
 
-#include "state/state_coding.hpp"
+#include "common_infrastructure/state/state_coding.hpp"
 
 static String ExtensionForPreset(PresetFolder::Preset const& preset) {
     switch (preset.file_format) {

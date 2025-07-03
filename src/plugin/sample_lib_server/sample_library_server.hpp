@@ -12,6 +12,7 @@
 #include "common_infrastructure/audio_data.hpp"
 #include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/sample_library/sample_library.hpp"
+#include "common_infrastructure/state/instrument.hpp"
 
 // Sample library server
 // A centralised manager for sample libraries that multiple plugins/systems can use at once.
@@ -316,3 +317,9 @@ inline void ReleaseAll(Span<RefCounted<sample_lib::Library>> libs) {
 }
 
 } // namespace sample_lib_server
+
+// Loaded instrument
+using Instrument = TaggedUnion<
+    InstrumentType,
+    TypeAndTag<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>, InstrumentType::Sampler>,
+    TypeAndTag<WaveformType, InstrumentType::WaveformSynth>>;
