@@ -9,20 +9,20 @@ The tags and folder features of Floe are under development. Some of the features
 
 # Tags and folders
 
-Floe has 2 complimentary features for browsing, searching and filtering: tags and folders. These apply to a few different features of Floe: presets, instruments and impulse responses.
+Floe has 2 complimentary features for browsing, searching and filtering: tags and folders. Presets, instruments, and impulse responses all use tags and folders.
 
 For developers, there are best practises for how to use tags and folders to offer the best experience for the user.
 
-On this page, we use the term 'item' to mean either preset, instrument or impulse response: these all use tags and folders in a similar way.
+On this page, we use the term 'item' to mean either preset, instrument, or impulse response: these all use tags and folders in a similar way.
 
 ## Folders
-Folders are used to group items under a common heading. Items are often displayed in folders, even when other filtering has been applied.
+Folders are used to group items under a common heading.
 
 Folders should be categories that relate to the theme or objective of the library. For example, for Lost Reveries, we wanted to explore the technique of using three complimentary timbres to layer into a full-spectrum sound, so we choose folders: "Low", "Mid" and "Air". Another example might be a library of field recordings, folders might be "Urban/London", "Urban/York" or "Nature/New Forest".
 
 Folders may contain slashes to represent a hierarchy, just like a filepath. For example: "Piano/1978 Steinway". Use this to specify broad categories that narrow down to specific categories. It's not usually best to have more than 2 levels of hierarchy.
 
-It's best to have 5 to 30 items per folder. Folders with not many items clutter the GUI and don't offer much value. Folders with too many items loose their focus.
+It's best to have 5 to 30 items per folder. Folders with only a couple of items clutter the GUI and don't offer much value. Folders with too many items loose their focus.
 
 Folders might overlap with tags but, in general, they are more abstract and can use phrases that only make sense in the context of the library as a whole. However, if it makes sense to group items under a common heading such as 'Percussion' (a common tag), then that's fine too — but you should also add this as a tag.  
 
