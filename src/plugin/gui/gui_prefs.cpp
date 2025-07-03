@@ -55,7 +55,7 @@ prefs::Descriptor SettingDescriptor(GuiSetting setting) {
                     },
                 .default_value = (s64)k_default_gui_width,
                 .gui_label = "Window width",
-                .long_description = "The width and scaling of Floe's window.",
+                .long_description = "The size and scaling of Floe's window.",
             };
         case GuiSetting::Count: PanicIfReached();
     }
