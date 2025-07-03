@@ -29,19 +29,13 @@ auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
     {
         .id = (u32)CliArgId::ScriptFile,
         .key = "script-file",
-        .description = "Path to the script file to edit",
+        .description =
+            "Path to the script file to edit. If not provided, the preset file will be printed to stdout.",
         .value_type = "path",
-        .required = true,
+        .required = false,
         .num_values = 1,
     },
 });
-
-// We want to make a Lua table available to the script under the name "preset". It will contain all the
-// preset's data. The preset table will mirror the structure of the StateSnapshot. Fields will be subtables
-// table or values as needed.
-//
-// It is a two-way operation, we want to convert the StateSnapshot into a Lua table, and then we want to
-// convert the Lua table back into a StateSnapshot after the script has run.
 
 static ErrorCodeOr<void>
 ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset_state) {
@@ -329,45 +323,105 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         return error;
     });
 
-    auto const script_path = TRY_OR(AbsolutePath(arena, cli_args[ToInt(CliArgId::ScriptFile)].values[0]), {
-        StdPrintF(StdStream::Err, "Error: failed to resolve script path\n");
-        return error;
-    });
-
     auto const preset_state = TRY_OR(LoadPresetFile(preset_path, arena, false), {
         StdPrintF(StdStream::Err, "Error: failed to open preset file: {}\n", error);
         return error;
     });
-
-    StdPrintF(StdStream::Err, "Initial param values:\n");
-    for (u16 i = 0; i < preset_state.param_values.size; ++i) {
-        auto const& param_descriptor = k_param_descriptors[i];
-        StdPrintF(StdStream::Err,
-                  "  {}: {}\n",
-                  param_descriptor.id,
-                  param_descriptor.ProjectValue(preset_state.param_values[i]));
-    }
 
     auto lua = luaL_newstate();
     DEFER { lua_close(lua); };
 
     BuildPresetLuaTable(lua, preset_state);
 
-    // Load the Lua libraries
     luaL_openlibs(lua);
 
-    auto const script_file_data = TRY_OR(ReadEntireFile(script_path, arena), {
-        StdPrintF(StdStream::Err, "Error: failed to read script file: {}\n", error);
-        return error;
-    });
+    if (cli_args[ToInt(CliArgId::ScriptFile)].was_provided) {
+        auto const script_path =
+            TRY_OR(AbsolutePath(arena, cli_args[ToInt(CliArgId::ScriptFile)].values[0]), {
+                StdPrintF(StdStream::Err, "Error: failed to resolve script path\n");
+                return error;
+            });
 
-    if (auto const r = luaL_loadbuffer(lua,
-                                       script_file_data.data,
-                                       script_file_data.size,
-                                       NullTerminated(script_path, arena));
-        r != LUA_OK) {
-        StdPrintF(StdStream::Err, "Error: failed to load script file: {}\n", lua_tostring(lua, -1));
-        return ErrorCode {CommonError::InvalidFileFormat};
+        auto const script_file_data = TRY_OR(ReadEntireFile(script_path, arena), {
+            StdPrintF(StdStream::Err, "Error: failed to read script file: {}\n", error);
+            return error;
+        });
+
+        if (auto const r = luaL_loadbuffer(lua,
+                                           script_file_data.data,
+                                           script_file_data.size,
+                                           NullTerminated(script_path, arena));
+            r != LUA_OK) {
+            StdPrintF(StdStream::Err, "Error: failed to load script file: {}\n", lua_tostring(lua, -1));
+            return ErrorCode {CommonError::InvalidFileFormat};
+        }
+    } else {
+        // Print-only mode.
+        // We use Lua to do this because we already have the preset data in Lua format.
+        constexpr auto k_lua_serializer = R"lua(
+local function serializeValue(value, indent)
+    indent = indent or 0
+    local indentStr = string.rep("  ", indent)
+    
+    if type(value) == "table" then
+        local result = "{\n"
+        local keys = {}
+        
+        -- Collect and sort keys for consistent output
+        for k in pairs(value) do
+            table.insert(keys, k)
+        end
+        table.sort(keys, function(a, b)
+            if type(a) == type(b) then
+                if type(a) == "number" then
+                    return a < b
+                else
+                    return tostring(a) < tostring(b)
+                end
+            else
+                return type(a) < type(b)
+            end
+        end)
+        
+        for _, k in ipairs(keys) do
+            local v = value[k]
+            result = result .. indentStr .. "  "
+            
+            -- Format key
+            if type(k) == "string" and string.match(k, "^[%a_][%w_]*$") then
+                result = result .. k
+            else
+                result = result .. "[" .. serializeValue(k, 0) .. "]"
+            end
+            
+            result = result .. " = " .. serializeValue(v, indent + 1) .. ",\n"
+        end
+        
+        result = result .. indentStr .. "}"
+        return result
+    elseif type(value) == "string" then
+        return string.format("%q", value)
+    elseif type(value) == "number" then
+        -- Format numbers nicely
+        if value == math.floor(value) then
+            return tostring(math.floor(value))
+        else
+            return string.format("%.10g", value)
+        end
+    else
+        return tostring(value)
+    end
+end
+
+-- Print the preset as Lua code
+print("local preset = " .. serializeValue(preset))
+print("return preset")
+)lua";
+
+        if (auto const r = luaL_loadstring(lua, k_lua_serializer); r != LUA_OK) {
+            StdPrintF(StdStream::Err, "Error: failed to load serializer script: {}\n", lua_tostring(lua, -1));
+            return ErrorCode {CommonError::InvalidFileFormat};
+        }
     }
 
     // Execute the script
@@ -376,44 +430,36 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         return ErrorCode {CommonError::InvalidFileFormat};
     }
 
-    // Extract the modified preset table back into a StateSnapshot
-    lua_getglobal(lua, "preset");
-    if (!lua_istable(lua, -1)) {
-        StdPrintF(StdStream::Err, "Error: preset global is not a table\n");
-        return ErrorCode {CommonError::InvalidFileFormat};
-    }
-
-    auto modified_state = preset_state;
-    TRY(ExtractPresetFromLuaTable(lua, -1, modified_state));
-
-    StdPrintF(StdStream::Err, "Modified param values:\n");
-    for (auto const i : Range(modified_state.param_values.size)) {
-        auto const& param_descriptor = k_param_descriptors[i];
-        StdPrintF(StdStream::Err,
-                  "  {}: {}\n",
-                  param_descriptor.id,
-                  param_descriptor.ProjectValue(modified_state.param_values[i]));
-    }
-
-    {
-        auto const temp_dir = TRY_OR(TemporaryDirectoryOnSameFilesystemAs(preset_path, arena), {
-            StdPrintF(StdStream::Err, "Error: failed to create temporary directory: {}\n", error);
-            return error;
-        });
-        DEFER { auto _ = Delete(temp_dir, {.type = DeleteOptions::Type::DirectoryRecursively}); };
-
-        auto seed = RandomSeed();
-        auto const out_path = path::Join(
-            arena,
-            Array {(String)temp_dir, UniqueFilename("preset- ", FLOE_PRESET_FILE_EXTENSION, seed)});
-        if (auto const r = SavePresetFile(out_path, modified_state); !r.Succeeded()) {
-            StdPrintF(StdStream::Err, "Error: failed to save modified preset file: {}\n", r.Error());
-            return r.Error();
+    if (cli_args[ToInt(CliArgId::ScriptFile)].was_provided) {
+        lua_getglobal(lua, "preset");
+        if (!lua_istable(lua, -1)) {
+            StdPrintF(StdStream::Err, "Error: preset global is not a table\n");
+            return ErrorCode {CommonError::InvalidFileFormat};
         }
 
-        if (auto const r = Rename(out_path, preset_path); !r.Succeeded()) {
-            StdPrintF(StdStream::Err, "Error: failed to rename modified preset file: {}\n", r.Error());
-            return r.Error();
+        auto modified_state = preset_state;
+        TRY(ExtractPresetFromLuaTable(lua, -1, modified_state));
+
+        {
+            auto const temp_dir = TRY_OR(TemporaryDirectoryOnSameFilesystemAs(preset_path, arena), {
+                StdPrintF(StdStream::Err, "Error: failed to create temporary directory: {}\n", error);
+                return error;
+            });
+            DEFER { auto _ = Delete(temp_dir, {.type = DeleteOptions::Type::DirectoryRecursively}); };
+
+            auto seed = RandomSeed();
+            auto const out_path = path::Join(
+                arena,
+                Array {(String)temp_dir, UniqueFilename("preset- ", FLOE_PRESET_FILE_EXTENSION, seed)});
+            if (auto const r = SavePresetFile(out_path, modified_state); !r.Succeeded()) {
+                StdPrintF(StdStream::Err, "Error: failed to save modified preset file: {}\n", r.Error());
+                return r.Error();
+            }
+
+            if (auto const r = Rename(out_path, preset_path); !r.Succeeded()) {
+                StdPrintF(StdStream::Err, "Error: failed to rename modified preset file: {}\n", r.Error());
+                return r.Error();
+            }
         }
     }
 

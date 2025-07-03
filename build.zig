@@ -2143,17 +2143,7 @@ pub fn build(b: *std.Build) void {
             );
             b.getInstallStep().dependOn(&preset_editor_install_artifact_step.step);
 
-            const sign_step = addWindowsCodeSignStep(
-                &build_context,
-                target,
-                b.getInstallPath(install_dir, preset_editor.out_filename),
-                "Floe CLI preset editor",
-            );
-            if (sign_step) |s| {
-                s.dependOn(&preset_editor.step);
-                s.dependOn(b.getInstallStep());
-                build_context.master_step.dependOn(s);
-            }
+            // IMPROVE: export preset-editor as a production artifact?
         }
 
         var clap_final_step: ?*std.Build.Step = null;
