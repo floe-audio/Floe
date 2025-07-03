@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Library Lua Scripts
 
-The `floe.lua` file is the most important part of a Floe sample library. This page serves as documentation for all of the functions that you can use in your script to create and configure the library and its instruments.
+The `floe.lua` file is the most important part of a Floe sample library. This page serves as documentation for all the functions that you can use in your script to create and configure the library and its instruments.
 
 Floe runs your script using Lua v==lua-version==, providing you with access to these [standard libraries](https://www.lua.org/manual/5.4/manual.html#6): `math`, `string`, `table` and `utf8`. The other standard libraries are not available - including the `require` function. This is to minimise security risks.
 
@@ -16,7 +16,7 @@ If there are any errors in your script, Floe will show them on the GUI along wit
 
 For example, you could have a folder next to `floe.lua` called `Lua` and put a file in there called `data.lua`. You could then load that file with `dofile("Lua/data.lua")`.
 
-To pass data between files, you would typically use the ["module" pattern](http://lua-users.org/wiki/ModuleDefinition) (except using dofile instead of require).
+To pass data between files, you would typically use the ["module" pattern](http://lua-users.org/wiki/ModuleDefinition) (except using `dofile` instead of `require`).
 
 ## Library Functions
 Use these functions to create your sample library. Take note of the `[required]` annotations - omitting fields marked with these will cause an error. 
@@ -55,7 +55,7 @@ A region is a part of an instrument. It defines an audio file and the conditions
 
 
 ### `floe.add_ir`
-Adds an reverb impulse response to the library. It takes 2 parameters: the library object and a table of configuration. Doesn't return anything. You can call this function multiple times to create multiple impulse responses. 
+Adds a reverb impulse response to the library. It takes 2 parameters: the library object and a table of configuration. Doesn't return anything. You can call this function multiple times to create multiple impulse responses. 
 ```lua
 ==sample-library-example-lua:add_ir==
 ```
