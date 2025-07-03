@@ -99,11 +99,14 @@ If you are using the [Lua Language Server](https://luals.github.io/), you can ge
 
 ```json
 {
+    "runtime": {
+        "version": "Lua ==lua-version=="
+    },
     "workspace": {
         "library": [
             "<< paste definitions file path >>"
         ]
-    },
+    }
 }
 ```
 5. Replace the string with the path that is copied to your clipboard when you click the "Copy Lua definitions path" button in the Library Developer Panel.
