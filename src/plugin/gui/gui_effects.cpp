@@ -14,6 +14,7 @@
 #include "gui.hpp"
 #include "gui/gui2_ir_picker.hpp"
 #include "gui/gui_dragger_widgets.hpp"
+#include "gui/gui_menu.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -109,6 +110,36 @@ struct EffectIDs {
     };
 };
 
+static void DoIrSelectorRightClickMenu(Gui* g, Rect r) {
+    auto& imgui = g->imgui;
+    auto const popup_id = imgui.GetID("ir selector popup");
+    auto const right_clicker_id = imgui.GetID("ir selector right clicker");
+
+    imgui.RegisterAndConvertRect(&r);
+    imgui.PopupButtonBehavior(r,
+                              right_clicker_id,
+                              popup_id,
+                              {.right_mouse = true, .triggers_on_mouse_up = true});
+
+    if (imgui.IsPopupOpen(popup_id)) {
+        auto const items = Array {"Unload IR"_s};
+
+        PopupMenuItems menu(g, items);
+
+        auto settings = PopupWindowSettings(imgui);
+        settings.flags =
+            imgui::WindowFlags_AutoWidth | imgui::WindowFlags_AutoHeight | imgui::WindowFlags_AutoPosition;
+        if (imgui.BeginWindowPopup(settings, popup_id, r)) {
+            DEFER { imgui.EndWindow(); };
+
+            if (!g->engine.processor.convo.ir_id)
+                menu.DoFakeButton(items[0]);
+            else if (menu.DoButton(items[0]))
+                LoadConvolutionIr(g->engine, k_nullopt);
+        }
+    }
+}
+
 static void DoImpulseResponseMenu(Gui* g, layout::Id lay_id) {
     auto r = layout::GetRect(g->layout, lay_id);
 
@@ -116,7 +147,6 @@ static void DoImpulseResponseMenu(Gui* g, layout::Id lay_id) {
         g->engine.processor.convo.ir_id ? String(g->engine.processor.convo.ir_id->ir_name) : "None"_s;
 
     auto const id = g->imgui.GetID("Impulse");
-    auto const popup_imgui_id = id + 1;
 
     auto const style = buttons::ParameterPopupButton(g->imgui);
 
@@ -137,8 +167,12 @@ static void DoImpulseResponseMenu(Gui* g, layout::Id lay_id) {
     auto rect_next = rect_cut::CutRight(r, arrow_btn_w);
     auto rect_prev = rect_cut::CutRight(r, arrow_btn_w);
 
-    if (buttons::Button(g, id, r, ir_name, buttons::InstSelectorPopupButton(g->imgui, {})))
-        g->imgui.OpenPopup(popup_imgui_id, id);
+    DoIrSelectorRightClickMenu(g, r);
+
+    if (buttons::Button(g, id, r, ir_name, buttons::InstSelectorPopupButton(g->imgui, {}))) {
+        g->ir_picker_state.common_state.open = true;
+        g->ir_picker_state.common_state.absolute_button_rect = g->imgui.WindowRectToScreenRect(r);
+    }
 
     IrPickerContext context {
         .sample_library_server = g->shared_engine_systems.sample_library_server,
@@ -162,12 +196,6 @@ static void DoImpulseResponseMenu(Gui* g, layout::Id lay_id) {
                         ICON_FA_SHUFFLE,
                         buttons::IconButton(g->imgui).WithRandomiseIconScaling()))
         LoadRandomIr(context, g->ir_picker_state);
-
-    DoIrPickerPopup(g->box_system,
-                    popup_imgui_id,
-                    g->imgui.GetRegisteredAndConvertedRect(r),
-                    context,
-                    g->ir_picker_state);
 
     Tooltip(g,
             id,

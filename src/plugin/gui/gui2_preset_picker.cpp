@@ -235,6 +235,103 @@ void LoadRandomPreset(PresetPickerContext const& context, PresetPickerState& sta
     LoadPreset(context, state, cursor, true);
 }
 
+void PresetRightClickMenu(GuiBoxSystem& box_system,
+                          PresetPickerContext& context,
+                          PresetPickerState&,
+                          RightClickMenuState const& menu_state) {
+    auto const root = DoBox(box_system,
+                            {
+                                .layout {
+                                    .size = layout::k_hug_contents,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    struct PresetAndFolder {
+        PresetFolder const& folder;
+        PresetFolder::Preset const& preset;
+    };
+
+    auto const find_preset = [&](u64 file_hash) -> Optional<PresetAndFolder> {
+        for (auto const& folder : context.presets_snapshot.folders) {
+            for (auto const& preset : folder->presets)
+                if (preset.file_hash == file_hash) return PresetAndFolder {*folder, preset};
+        }
+        return k_nullopt;
+    };
+
+    if (MenuItem(box_system,
+                 root,
+                 {
+                     .text = "Open Containing Folder",
+                     .is_selected = false,
+                 })) {
+        if (auto const preset = find_preset(menu_state.item_hash)) {
+            OpenFolderInFileBrowser(
+                path::Join(box_system.arena, Array {preset->folder.scan_folder, preset->folder.folder}));
+        }
+    }
+    if (MenuItem(box_system,
+                 root,
+                 {
+                     .text = "Send file to " TRASH_NAME,
+                     .is_selected = false,
+                 })) {
+        if (auto const preset = find_preset(menu_state.item_hash)) {
+            auto const outcome =
+                TrashFileOrDirectory(preset->folder.FullPathForPreset(preset->preset, box_system.arena),
+                                     box_system.arena);
+            auto const error_id = ({
+                auto id = HashInit();
+                HashUpdate(id, "preset-trash"_s);
+                HashUpdate(id, preset->preset.file_hash);
+                id;
+            });
+            if (outcome.HasValue()) {
+                context.engine.error_notifications.RemoveError(error_id);
+            } else if (auto item = context.engine.error_notifications.BeginWriteError(error_id)) {
+                item->title = "Failed to send preset to trash"_s;
+                item->error_code = outcome.Error();
+            }
+        }
+    }
+    // TODO: add rename option
+}
+
+void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
+                                PresetPickerContext& context,
+                                PresetPickerState&,
+                                RightClickMenuState const& menu_state) {
+    auto const root = DoBox(box_system,
+                            {
+                                .layout {
+                                    .size = layout::k_hug_contents,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    auto const find_folder = [&](u64 folder_hash) -> PresetFolder const* {
+        for (auto const folder_index : Range(context.presets_snapshot.folders.size))
+            if (context.presets_snapshot.folder_nodes[folder_index]->Hash() == folder_hash)
+                return context.presets_snapshot.folders[folder_index];
+        return nullptr;
+    };
+
+    if (MenuItem(box_system,
+                 root,
+                 {
+                     .text = fmt::Format(box_system.arena, "Open Folder in {}", GetFileBrowserAppName()),
+                     .is_selected = false,
+                 })) {
+        if (auto const folder = find_folder(menu_state.item_hash)) {
+            OpenFolderInFileBrowser(
+                path::Join(box_system.arena, Array {folder->scan_folder, folder->folder}));
+        }
+    }
+}
+
 void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, PresetPickerState& state) {
     auto const root = DoPickerItemsRoot(box_system);
 
@@ -260,6 +357,10 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
                 {
                     .parent = root,
                     .folder = context.presets_snapshot.folder_nodes[cursor.folder_index],
+                    .right_click_menu =
+                        [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
+                            PresetFolderRightClickMenu(box_system, context, state, menu_state);
+                        },
                 });
         }
 
@@ -273,6 +374,7 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
 
             auto const item = DoPickerItem(
                 box_system,
+                state.common_state,
                 {
                     .parent = *folder_box,
                     .text = preset.name,
@@ -321,6 +423,15 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
                         icons;
                     }),
                 });
+
+            // Right-click menu.
+            DoRightClickForBox(box_system,
+                               state.common_state,
+                               item,
+                               preset.file_hash,
+                               [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
+                                   PresetRightClickMenu(box_system, context, state, menu_state);
+                               });
 
             if (is_current &&
                 box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
@@ -422,12 +533,8 @@ void PresetPickerExtraFilters(GuiBoxSystem& box_system,
     }
 }
 
-void DoPresetPicker(GuiBoxSystem& box_system,
-                    imgui::Id popup_id,
-                    Rect absolute_button_rect,
-                    PresetPickerContext& context,
-                    PresetPickerState& state) {
-    if (!box_system.imgui.IsPopupOpen(popup_id)) return;
+void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, PresetPickerState& state) {
+    if (!state.common_state.open) return;
 
     context.Init(box_system.arena);
     DEFER { context.Deinit(); };
@@ -522,13 +629,11 @@ void DoPresetPicker(GuiBoxSystem& box_system,
             .sample_library_server = context.sample_library_server,
             .state = state.common_state,
         },
-        popup_id,
-        absolute_button_rect,
         PickerPopupOptions {
             .title = "Presets",
             .height = ({
                 auto const window_height = box_system.imgui.frame_input.window_size.height;
-                auto const button_bottom = absolute_button_rect.Bottom();
+                auto const button_bottom = state.common_state.absolute_button_rect.Bottom();
                 auto const available_height = window_height - button_bottom - 20;
                 box_system.imgui.PixelsToVw(available_height);
             }),
@@ -556,6 +661,10 @@ void DoPresetPicker(GuiBoxSystem& box_system,
                 FolderFilters {
                     .folders = folders,
                     .root_folders = root_folder,
+                    .do_right_click_menu =
+                        [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
+                            PresetFolderRightClickMenu(box_system, context, state, menu_state);
+                        },
                 },
             .do_extra_filters =
                 [&](GuiBoxSystem& box_system, Box const& parent, u8& num_sections) {

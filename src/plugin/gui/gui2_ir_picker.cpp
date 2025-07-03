@@ -216,6 +216,7 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
         if (folder_box) {
             auto const item = DoPickerItem(
                 box_system,
+                state.common_state,
                 {
                     .parent = *folder_box,
                     .text = ir.name,
@@ -270,7 +271,6 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
                                           .library = lib.Id(),
                                           .ir_name = ir.name,
                                       });
-                    box_system.imgui.CloseCurrentPopup();
                 }
             }
         }
@@ -284,12 +284,8 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
     }
 }
 
-void DoIrPickerPopup(GuiBoxSystem& box_system,
-                     imgui::Id popup_id,
-                     Rect absolute_button_rect,
-                     IrPickerContext& context,
-                     IrPickerState& state) {
-    if (!box_system.imgui.IsPopupOpen(popup_id)) return;
+void DoIrPickerPopup(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerState& state) {
+    if (!state.common_state.open) return;
 
     auto& ir_id = context.engine.processor.convo.ir_id;
 
@@ -354,8 +350,6 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
             .sample_library_server = context.sample_library_server,
             .state = state.common_state,
         },
-        popup_id,
-        absolute_button_rect,
         PickerPopupOptions {
             .title = "Select Impulse Response",
             .height = 600,
@@ -363,20 +357,17 @@ void DoIrPickerPopup(GuiBoxSystem& box_system,
             .filters_col_width = 210,
             .item_type_name = "impulse response",
             .items_section_heading = "IRs",
-            .rhs_top_button = ({
-                Optional<PickerPopupOptions::Button> unload_button {};
-                if (ir_id) {
-                    unload_button = PickerPopupOptions::Button {
-                        .text = fmt::Format(box_system.arena, "Unload {}", ir_id->ir_name),
-                        .tooltip = "Unload the current impulse response.",
-                        .on_fired = TrivialFunctionRef<void()>([&]() {
-                                        LoadConvolutionIr(context.engine, k_nullopt);
-                                        box_system.imgui.CloseCurrentPopup();
-                                    }).CloneObject(box_system.arena),
-                    };
-                }
-                unload_button;
-            }),
+            .rhs_top_button =
+                PickerPopupOptions::Button {
+                    .text =
+                        fmt::Format(box_system.arena, "Unload {}", ir_id ? (String)ir_id->ir_name : "IR"_s),
+                    .tooltip = "Unload the current impulse response.",
+                    .disabled = !ir_id,
+                    .on_fired = TrivialFunctionRef<void()>([&]() {
+                                    LoadConvolutionIr(context.engine, k_nullopt);
+                                    state.common_state.open = false;
+                                }).CloneObject(box_system.arena),
+                },
             .rhs_do_items = [&](GuiBoxSystem& box_system) { IrPickerItems(box_system, context, state); },
             .on_load_previous = [&]() { LoadAdjacentIr(context, state, SearchDirection::Backward); },
             .on_load_next = [&]() { LoadAdjacentIr(context, state, SearchDirection::Forward); },

@@ -21,7 +21,15 @@ For instance: 0.0.1. Don't change the headings.
     - Move the left/right buttons to the right of the menu so it's consistent and easy to click forward and back without having to move the mouse long distances
     - Make the UI window size buttons consistent with the left/right buttons
 - Add missing tooltips for some preferences
-- Work-around Studio One not using the correct threads
+- Work-around CLAP Studio One not using the correct threads
+- GUI: right-click menu for the IR picker with 'unload IR' option
+- GUI: improve picker panels behaviour:
+    - Background darkens when panel is open
+    - New close button on the top right
+    - Remove unnecessary padding around the picker content
+    - Single-click loads an item, double-click loads and closes the picker panel
+    - Add right-click menu on libraries with option to open the library folder
+    - Add right-click menu to presets and preset folders with option to open the folder, or delete the preset
 
 ## 0.10.3-beta
 - Sample library creation: add 'fade_in_frames' to add_region

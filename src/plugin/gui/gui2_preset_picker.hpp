@@ -58,8 +58,4 @@ void LoadAdjacentPreset(PresetPickerContext const& context,
 
 void LoadRandomPreset(PresetPickerContext const& context, PresetPickerState& state);
 
-void DoPresetPicker(GuiBoxSystem& box_system,
-                    imgui::Id popup_id,
-                    Rect absolute_button_rect,
-                    PresetPickerContext& context,
-                    PresetPickerState& state);
+void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, PresetPickerState& state);

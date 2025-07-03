@@ -31,8 +31,11 @@ DoUtilitiesPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Libr
     if (TextButton(
             box_system,
             root,
-            "Install Lua definitions",
-            "Generate Lua LSP definitions for Floe's API - used for autocompletion and diagnostics when editing floe.lua files")) {
+            {
+                .text = "Install Lua definitions",
+                .tooltip =
+                    "Generate Lua LSP definitions for Floe's API - used for autocompletion and diagnostics when editing floe.lua files"_s,
+            })) {
         auto const path = sample_lib::LuaDefinitionsFilepath(box_system.arena);
 
         auto const try_install = [&]() -> ErrorCodeOr<void> {
@@ -74,8 +77,8 @@ DoUtilitiesPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Libr
 
     if (TextButton(box_system,
                    root,
-                   "Copy Lua definitions path",
-                   "Copy the path to the Lua definitions file to the clipboard")) {
+                   {.text = "Copy Lua definitions path",
+                    .tooltip = "Copy the path to the Lua definitions file to the clipboard"_s})) {
         auto const path = sample_lib::LuaDefinitionsFilepath(box_system.arena);
         dyn::Assign(box_system.imgui.clipboard_for_os, path);
         auto const notification_id = SourceLocationHash();

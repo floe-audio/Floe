@@ -64,7 +64,9 @@ struct ModalPanel {
     bool close_on_click_outside;
     bool darken_background;
     bool disable_other_interaction;
+    bool auto_width;
     bool auto_height;
+    bool auto_position; // If true, r will be the rect to avoid.
     bool transparent_panel;
 };
 
@@ -251,6 +253,8 @@ PUBLIC void Run(GuiBoxSystem& builder, Panel* panel) {
 
             auto settings = modal_window_settings;
             if (modal.auto_height) settings.flags |= imgui::WindowFlags_AutoHeight;
+            if (modal.auto_width) settings.flags |= imgui::WindowFlags_AutoWidth;
+            if (modal.auto_position) settings.flags |= imgui::WindowFlags_AutoPosition;
             if (modal.transparent_panel) settings.draw_routine_window_background = {};
 
             builder.imgui.BeginWindow(settings, modal.imgui_id, modal.r);
@@ -422,6 +426,7 @@ struct BoxConfig {
 
     MouseButton activate_on_click_button
         : NumBitsNeededToStore(ToInt(MouseButton::Count)) = MouseButton::Left;
+    bool32 activate_on_click_use_double_click : 1 = false;
     ActivationClickEvent activation_click_event
         : NumBitsNeededToStore(ToInt(ActivationClickEvent::Count)) = ActivationClickEvent::None;
     bool32 parent_dictates_hot_and_active : 1 = false;
@@ -590,8 +595,15 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
 
             if (config.activation_click_event != ActivationClickEvent::None ||
                 (config.tooltip.tag != TooltipStringType::None && !config.parent_dictates_hot_and_active)) {
+                if (config.activate_on_click_use_double_click)
+                    ASSERT(config.activate_on_click_button == MouseButton::Left,
+                           "Double-click activation only supported for left mouse button at the moment");
+
                 imgui::ButtonFlags button_flags {
-                    .left_mouse = config.activate_on_click_button == MouseButton::Left,
+                    .left_mouse = !config.activate_on_click_use_double_click &&
+                                  config.activate_on_click_button == MouseButton::Left,
+                    .double_left_mouse = config.activate_on_click_use_double_click &&
+                                         config.activate_on_click_button == MouseButton::Left,
                     .right_mouse = config.activate_on_click_button == MouseButton::Right,
                     .middle_mouse = config.activate_on_click_button == MouseButton::Middle,
                     .triggers_on_mouse_down = config.activation_click_event == ActivationClickEvent::Down,
@@ -780,6 +792,52 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
     }
 
     return {};
+}
+
+struct AdditionalClickConfig {
+    MouseButton button = MouseButton::Right;
+    bool use_double_click = false;
+    ActivationClickEvent activation_click_event {ActivationClickEvent::Up};
+};
+
+PUBLIC bool AdditionalClickBehaviour(GuiBoxSystem& box_system,
+                                     Box const& box,
+                                     AdditionalClickConfig const& config,
+                                     Rect* out_item_rect = nullptr) {
+    if (box_system.state->pass == BoxSystemCurrentPanelState::Pass::LayoutBoxes) return false;
+
+    auto const item_r =
+        box_system.imgui.WindowRectToScreenRect(layout::GetRect(box_system.layout, box.layout_id));
+
+    auto const& mouse_button = box_system.imgui.frame_input.Mouse(config.button);
+
+    if (config.use_double_click)
+        return mouse_button.double_click && item_r.Contains(mouse_button.last_pressed_point);
+
+    switch (config.activation_click_event) {
+        case ActivationClickEvent::Down: {
+            for (auto const& press : mouse_button.presses) {
+                if (item_r.Contains(press.point)) {
+                    if (out_item_rect) *out_item_rect = item_r;
+                    return true;
+                }
+            }
+            break;
+        }
+        case ActivationClickEvent::Up:
+            for (auto const& release : mouse_button.releases) {
+                // If the right-click was released on the item rectangle _and_ the point of the
+                // right-click was in the item rectangle, we trigger the action.
+                if (item_r.Contains(release.point) && item_r.Contains(mouse_button.last_pressed_point)) {
+                    if (out_item_rect) *out_item_rect = item_r;
+                    return true;
+                }
+            }
+            break;
+        case ActivationClickEvent::None:
+        case ActivationClickEvent::Count: PanicIfReached();
+    }
+    return false;
 }
 
 // =================================================================================================================

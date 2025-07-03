@@ -32,8 +32,4 @@ void LoadAdjacentIr(IrPickerContext const& context, IrPickerState& state, Search
 
 void LoadRandomIr(IrPickerContext const& context, IrPickerState& state);
 
-void DoIrPickerPopup(GuiBoxSystem& box_system,
-                     imgui::Id popup_id,
-                     Rect absolute_button_rect,
-                     IrPickerContext& context,
-                     IrPickerState& state);
+void DoIrPickerPopup(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerState& state);

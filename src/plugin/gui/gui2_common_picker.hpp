@@ -21,6 +21,13 @@ enum class FilterMode : u8 {
     Count,
 };
 
+struct RightClickMenuState {
+    using Function = TrivialFixedSizeFunction<32, void(GuiBoxSystem&, RightClickMenuState const&)>;
+    Function do_menu {};
+    Rect absolute_creator_rect {}; // Absolute rectangle of the item that opened the menu.
+    u64 item_hash {}; // The hash of the item that opened the menu.
+};
+
 struct CommonPickerState {
     bool HasFilters() const {
         if (selected_library_hashes.size || selected_library_author_hashes.size ||
@@ -40,6 +47,8 @@ struct CommonPickerState {
             dyn::Clear(*other_hashes);
     }
 
+    bool open {};
+    Rect absolute_button_rect {}; // Absolute rectangle of the button that opened the picker.
     DynamicArray<u64> selected_library_hashes {Malloc::Instance()};
     DynamicArray<u64> selected_library_author_hashes {Malloc::Instance()};
     DynamicArray<u64> selected_tags_hashes {Malloc::Instance()};
@@ -48,13 +57,14 @@ struct CommonPickerState {
     DynamicArrayBounded<char, 100> search {};
     DynamicArrayBounded<DynamicArray<u64>*, 2> other_selected_hashes {};
     FilterMode filter_mode = FilterMode::ProgressiveNarrowing;
+    RightClickMenuState right_click_menu_state {};
 };
 
 // Ephemeral
 struct PickerPopupContext {
     sample_lib_server::Server& sample_library_server;
     CommonPickerState& state;
-    u64 picker_id;
+    imgui::Id picker_id;
 };
 
 struct FilterItemInfo {
@@ -76,6 +86,7 @@ using FolderRootSet = OrderedSet<FolderNode const*, nullptr, RootNodeLessThan>;
 struct FolderFilters {
     HashTable<FolderNode const*, FilterItemInfo> folders;
     FolderRootSet root_folders;
+    RightClickMenuState::Function do_right_click_menu = {};
 };
 
 struct LibraryFilters {
@@ -92,6 +103,7 @@ struct PickerPopupOptions {
         String text {};
         String tooltip {};
         f32 icon_scaling {};
+        bool disabled {};
         TrivialFunctionRef<void()> on_fired {};
     };
 
@@ -138,6 +150,7 @@ struct PickerItemsSectionOptions {
     bool multiline_contents;
     bool subsection;
     bool bigger_contents_gap {false};
+    RightClickMenuState::Function right_click_menu {};
 };
 
 Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
@@ -153,7 +166,7 @@ struct PickerItemOptions {
     Array<graphics::TextureHandle, k_num_layers + 1> icons;
 };
 
-Box DoPickerItem(GuiBoxSystem& box_system, PickerItemOptions const& options);
+Box DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptions const& options);
 
 struct FilterButtonOptions {
     enum class FontIconMode : u8 {
@@ -182,8 +195,10 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                    FilterItemInfo const& info,
                    FilterButtonOptions const& options);
 
-void DoPickerPopup(GuiBoxSystem& box_system,
-                   PickerPopupContext context,
-                   imgui::Id popup_id,
-                   Rect absolute_button_rect,
-                   PickerPopupOptions const& options);
+void DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext context, PickerPopupOptions const& options);
+
+void DoRightClickForBox(GuiBoxSystem& box_system,
+                        CommonPickerState& state,
+                        Box const& box,
+                        u64 item_hash,
+                        RightClickMenuState::Function const& do_menu);

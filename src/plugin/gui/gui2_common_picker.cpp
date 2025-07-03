@@ -12,8 +12,26 @@ bool RootNodeLessThan(FolderNode const* const& a,
     return a->name < b->name;
 }
 
-Box DoPickerItem(GuiBoxSystem& box_system, PickerItemOptions const& options) {
-    auto const item =
+constexpr auto k_right_click_menu_popup_id = (imgui::Id)SourceLocationHash();
+
+void DoRightClickForBox(GuiBoxSystem& box_system,
+                        CommonPickerState& state,
+                        Box const& box,
+                        u64 item_hash,
+                        RightClickMenuState::Function const& do_menu) {
+    if (AdditionalClickBehaviour(
+            box_system,
+            box,
+            {.button = MouseButton::Right, .activation_click_event = ActivationClickEvent::Up},
+            &state.right_click_menu_state.absolute_creator_rect)) {
+        state.right_click_menu_state.do_menu = do_menu;
+        state.right_click_menu_state.item_hash = item_hash;
+        box_system.imgui.OpenPopup(k_right_click_menu_popup_id, box.imgui_id);
+    }
+}
+
+Box DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptions const& options) {
+    auto item =
         DoBox(box_system,
               {
                   .parent = options.parent,
@@ -51,6 +69,17 @@ Box DoPickerItem(GuiBoxSystem& box_system, PickerItemOptions const& options) {
               .font = FontType::Body,
               .size_from_text = true,
           });
+
+    if (options.is_current &&
+        AdditionalClickBehaviour(box_system,
+                                 item,
+                                 {
+                                     .button = MouseButton::Left,
+                                     .use_double_click = true,
+                                     .activation_click_event = ActivationClickEvent::Down,
+                                 })) {
+        state.open = false;
+    }
 
     return item;
 }
@@ -279,6 +308,9 @@ Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
         });
     }
 
+    if (options.right_click_menu)
+        DoRightClickForBox(box_system, state, heading_container, id, options.right_click_menu);
+
     bool const is_hidden = Contains(state.hidden_filter_headers, id);
 
     DoBox(box_system,
@@ -381,7 +413,7 @@ static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
                                       Box const& parent,
                                       u8& indent,
                                       FolderNode const* folder,
-                                      HashTable<FolderNode const*, FilterItemInfo> const& info) {
+                                      FolderFilters const& folder_filters) {
 
     bool is_selected = false;
     bool is_current = false;
@@ -393,29 +425,40 @@ static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
         }
     }
 
-    auto this_info = info.Find(folder);
+    auto this_info = folder_filters.folders.Find(folder);
     ASSERT(this_info);
 
-    DoFilterButton(box_system,
-                   state,
-                   *this_info,
-                   {
-                       .parent = parent,
-                       .is_selected = is_selected,
-                       .text = folder->display_name.size ? folder->display_name : folder->name,
-                       .tooltip = folder->display_name.size ? TooltipString {folder->name} : k_nullopt,
-                       .hashes = state.selected_folder_hashes,
-                       .clicked_hash = folder->Hash(),
-                       .filter_mode = state.filter_mode,
-                       .font_icon = is_current ? FilterButtonOptions::FontIcon(String(ICON_FA_FOLDER_OPEN))
-                                               : FilterButtonOptions::FontIcon(String(ICON_FA_FOLDER_CLOSED)),
-                       .indent = indent,
-                       .full_width = true,
-                   });
+    auto const button = DoFilterButton(
+        box_system,
+        state,
+        *this_info,
+        {
+            .parent = parent,
+            .is_selected = is_selected,
+            .text = folder->display_name.size ? folder->display_name : folder->name,
+            .tooltip = folder->display_name.size ? TooltipString {folder->name} : k_nullopt,
+            .hashes = state.selected_folder_hashes,
+            .clicked_hash = folder->Hash(),
+            .filter_mode = state.filter_mode,
+            .font_icon = is_current ? FilterButtonOptions::FontIcon(String(ICON_FA_FOLDER_OPEN))
+                                    : FilterButtonOptions::FontIcon(String(ICON_FA_FOLDER_CLOSED)),
+            .indent = indent,
+            .full_width = true,
+        });
+
+    if (folder_filters.do_right_click_menu) {
+        DoRightClickForBox(box_system,
+                           state,
+                           button,
+                           folder->Hash(),
+                           [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
+                               folder_filters.do_right_click_menu(box_system, menu_state);
+                           });
+    }
 
     ++indent;
     for (auto* child = folder->first_child; child; child = child->next)
-        DoFolderFilterAndChildren(box_system, state, parent, indent, child, info);
+        DoFolderFilterAndChildren(box_system, state, parent, indent, child, folder_filters);
     --indent;
 }
 
@@ -434,17 +477,47 @@ static void DoPickerFolderFilters(GuiBoxSystem& box_system,
                                                       .parent = parent,
                                                       .heading = "FOLDER",
                                                       .multiline_contents = false,
+                                                      .right_click_menu = folder_filters.do_right_click_menu,
                                                   });
 
     if (section) {
         for (auto const [root, _] : folder_filters.root_folders) {
             u8 indent = 0;
-            DoFolderFilterAndChildren(box_system,
-                                      context.state,
-                                      *section,
-                                      indent,
-                                      root,
-                                      folder_filters.folders);
+            DoFolderFilterAndChildren(box_system, context.state, *section, indent, root, folder_filters);
+        }
+    }
+}
+
+static void DoLibraryRightClickMenu(GuiBoxSystem& box_system,
+                                    PickerPopupContext& context,
+                                    RightClickMenuState const& menu_state,
+                                    LibraryFilters const& library_filters) {
+    auto const root = DoBox(box_system,
+                            {
+                                .layout {
+                                    .size = layout::k_hug_contents,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    auto const find_library = [&](u64 library_hash) -> Optional<sample_lib::LibraryIdRef> {
+        for (auto const& [lib_id, lib_info, lib_hash] : library_filters.libraries)
+            if (lib_hash == library_hash) return lib_id;
+        return k_nullopt;
+    };
+
+    if (MenuItem(box_system,
+                 root,
+                 {
+                     .text = "Open Containing Folder",
+                     .is_selected = false,
+                 })) {
+        if (auto const lib_id = find_library(menu_state.item_hash)) {
+            auto lib = sample_lib_server::FindLibraryRetained(context.sample_library_server, *lib_id);
+            DEFER { lib.Release(); };
+
+            if (auto const dir = path::Directory(lib->path)) OpenFolderInFileBrowser(*dir);
         }
     }
 }
@@ -473,7 +546,7 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                 ASSERT(lib_id.name.size);
                 ASSERT(lib_id.author.size);
 
-                DoFilterButton(
+                auto const button = DoFilterButton(
                     box_system,
                     context.state,
                     lib_info,
@@ -502,7 +575,7 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                             DynamicArray<char> buf {box_system.arena};
                             fmt::Append(buf, "{} by {}.", lib_id.name, lib_id.author);
                             if (lib) {
-                                if (lib->description) fmt::Append(buf, " {}", lib->description);
+                                if (lib->description) fmt::Append(buf, "\n\n{}", lib->description);
                             }
                             return buf.ToOwnedSpan();
                         }),
@@ -510,6 +583,15 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                         .clicked_hash = lib_hash,
                         .filter_mode = context.state.filter_mode,
                         .full_width = true,
+                    });
+
+                DoRightClickForBox(
+                    box_system,
+                    context.state,
+                    button,
+                    lib_hash,
+                    [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
+                        DoLibraryRightClickMenu(box_system, context, menu_state, library_filters);
                     });
             }
         }
@@ -694,8 +776,9 @@ static void DoFilterModeMenu(GuiBoxSystem& box_system, PickerPopupContext& conte
     }
 }
 
-static void
-DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopupOptions const& options) {
+static void DoPickerPopupInternal(GuiBoxSystem& box_system,
+                                  PickerPopupContext& context,
+                                  PickerPopupOptions const& options) {
     auto const root = DoBox(box_system,
                             {
                                 .layout {
@@ -705,16 +788,44 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                                 },
                             });
 
-    DoBox(box_system,
-          {
-              .parent = root,
-              .text = options.title,
-              .font = FontType::Heading2,
-              .size_from_text = true,
-              .layout {
-                  .margins = {.lrtb = k_picker_spacing},
-              },
-          });
+    {
+        auto const title_container =
+            DoBox(box_system,
+                  {
+                      .parent = root,
+                      .layout {
+                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                          .contents_padding = {.lrtb = k_picker_spacing},
+                          .contents_direction = layout::Direction::Row,
+                          .contents_align = layout::Alignment::Start,
+                          .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                      },
+                  });
+        DoBox(box_system,
+              {
+                  .parent = title_container,
+                  .text = options.title,
+                  .font = FontType::Heading2,
+                  .layout {
+                      .size = {layout::k_fill_parent, style::k_font_heading2_size},
+                  },
+              });
+        if (auto const close = DoBox(box_system,
+                                     {
+                                         .parent = title_container,
+                                         .text = ICON_FA_XMARK,
+                                         .font = FontType::Icons,
+                                         .size_from_text = true,
+                                         .background_fill_auto_hot_active_overlay = true,
+                                         .round_background_corners = 0b1111,
+                                         .activate_on_click_button = MouseButton::Left,
+                                         .activation_click_event = ActivationClickEvent::Up,
+                                         .extra_margin_for_mouse_events = 8,
+                                     });
+            close.button_fired) {
+            context.state.open = false;
+        }
+    }
 
     if (options.current_tab_index) {
         ASSERT(options.tab_config.size > 0);
@@ -966,7 +1077,14 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
 
         {
             if (auto const& btn = options.rhs_top_button) {
-                if (TextButton(box_system, rhs, btn->text, btn->tooltip, true))
+                if (TextButton(box_system,
+                               rhs,
+                               {
+                                   .text = btn->text,
+                                   .tooltip = btn->tooltip,
+                                   .fill_x = true,
+                                   .disabled = options.rhs_top_button->disabled,
+                               }))
                     dyn::Append(box_system.state->deferred_actions, [&]() { btn->on_fired(); });
             }
 
@@ -1054,21 +1172,39 @@ DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext& context, PickerPopup
                          },
                  });
     }
-}
 
-void DoPickerPopup(GuiBoxSystem& box_system,
-                   PickerPopupContext context,
-                   imgui::Id popup_id,
-                   Rect absolute_button_rect,
-                   PickerPopupOptions const& options) {
-    context.picker_id = popup_id;
-    RunPanel(box_system,
+    AddPanel(box_system,
              Panel {
-                 .run = [&](GuiBoxSystem& box_system) { DoPickerPopup(box_system, context, options); },
+                 .run =
+                     [&](GuiBoxSystem& box_system) {
+                         context.state.right_click_menu_state.do_menu(box_system,
+                                                                      context.state.right_click_menu_state);
+                     },
                  .data =
                      PopupPanel {
-                         .creator_absolute_rect = absolute_button_rect,
-                         .popup_imgui_id = popup_id,
+                         .creator_absolute_rect = context.state.right_click_menu_state.absolute_creator_rect,
+                         .popup_imgui_id = k_right_click_menu_popup_id,
                      },
              });
+}
+
+void DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext context, PickerPopupOptions const& options) {
+    context.picker_id = (imgui::Id)Hash(options.title);
+    RunPanel(
+        box_system,
+        Panel {
+            .run = [&](GuiBoxSystem& box_system) { DoPickerPopupInternal(box_system, context, options); },
+            .data =
+                ModalPanel {
+                    .r = context.state.absolute_button_rect,
+                    .imgui_id = context.picker_id,
+                    .on_close = [&state = context.state.open]() { state = false; },
+                    .close_on_click_outside = true,
+                    .darken_background = true,
+                    .disable_other_interaction = true,
+                    .auto_width = true,
+                    .auto_height = true,
+                    .auto_position = true,
+                },
+        });
 }

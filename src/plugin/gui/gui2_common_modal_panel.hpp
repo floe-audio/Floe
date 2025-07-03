@@ -251,29 +251,44 @@ CheckboxButton(GuiBoxSystem& box_system, Box parent, String text, bool state, St
     return button.button_fired;
 }
 
-PUBLIC bool TextButton(GuiBoxSystem& builder, Box parent, String text, String tooltip, bool fill_x = false) {
-    auto const button = DoBox(
-        builder,
-        {
-            .parent = parent,
-            .background_fill = style::Colour::Background2,
-            .background_fill_auto_hot_active_overlay = true,
-            .round_background_corners = 0b1111,
-            .activate_on_click_button = MouseButton::Left,
-            .activation_click_event = ActivationClickEvent::Up,
-            .layout {
-                .size = {fill_x ? layout::k_fill_parent : layout::k_hug_contents, layout::k_hug_contents},
-                .contents_padding = {.lr = style::k_button_padding_x, .tb = style::k_button_padding_y},
-            },
-            .tooltip = tooltip,
-        });
+struct TextButtonOptions {
+    String text;
+    TooltipString tooltip = k_nullopt;
+    bool fill_x = false;
+    bool disabled = false;
+};
 
+PUBLIC bool TextButton(GuiBoxSystem& builder, Box parent, TextButtonOptions const& options) {
+    auto const button =
+        DoBox(builder,
+              {
+                  .parent = parent,
+                  .background_fill = style::Colour::Background2,
+                  .background_fill_hot = style::Colour::Background2,
+                  .background_fill_active = style::Colour::Background2,
+                  .background_fill_auto_hot_active_overlay = !options.disabled,
+                  .round_background_corners = 0b1111,
+                  .activate_on_click_button = MouseButton::Left,
+                  .activation_click_event =
+                      !options.disabled ? ActivationClickEvent::Up : ActivationClickEvent::None,
+                  .layout {
+                      .size = {options.fill_x ? layout::k_fill_parent : layout::k_hug_contents,
+                               layout::k_hug_contents},
+                      .contents_padding = {.lr = style::k_button_padding_x, .tb = style::k_button_padding_y},
+                  },
+                  .tooltip = options.disabled ? k_nullopt : options.tooltip,
+              });
+
+    auto const text_col = options.disabled ? style::Colour::Surface1 : style::Colour::Text;
     DoBox(builder,
           {
               .parent = button,
-              .text = text,
+              .text = options.text,
               .font = FontType::Body,
-              .size_from_text = !fill_x,
+              .text_fill = text_col,
+              .text_fill_hot = text_col,
+              .text_fill_active = text_col,
+              .size_from_text = !options.fill_x,
               .text_align_x = TextAlignX::Centre,
               .text_align_y = TextAlignY::Centre,
               .text_overflow = TextOverflowType::ShowDotsOnRight,

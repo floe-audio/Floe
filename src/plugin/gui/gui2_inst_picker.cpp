@@ -27,12 +27,18 @@ static bool InstMatchesSearch(sample_lib::Instrument const& inst, String search)
     return false;
 }
 
+static CommonPickerState& CommonState(InstPickerState& state) {
+    return (state.tab == InstPickerState::Tab::MirageLibraries) ? state.common_state_mirage_libraries
+                                                                : state.common_state_floe_libraries;
+}
+static CommonPickerState const& CommonState(InstPickerState const& state) {
+    return CommonState(const_cast<InstPickerState&>(state));
+}
+
 static bool ShouldSkipInstrument(InstPickerState const& state,
                                  sample_lib::Instrument const& inst,
                                  bool picker_gui_is_open) {
-    auto& common_state = (state.tab == InstPickerState::Tab::FloeLibaries)
-                             ? state.common_state_floe_libraries
-                             : state.common_state_mirage_libraries;
+    auto& common_state = CommonState(state);
 
     if (common_state.search.size && !InstMatchesSearch(inst, common_state.search)) return true;
 
@@ -263,7 +269,7 @@ void LoadRandomInstrument(InstPickerContext const& context, InstPickerState& sta
 
 static void InstPickerWaveformItems(GuiBoxSystem& box_system,
                                     InstPickerContext& context,
-                                    InstPickerState&,
+                                    InstPickerState& state,
                                     Box const root) {
     auto const container = DoBox(box_system,
                                  {
@@ -275,11 +281,14 @@ static void InstPickerWaveformItems(GuiBoxSystem& box_system,
                                          },
                                  });
 
+    auto& common_state = CommonState(state);
+
     for (auto const waveform_type : EnumIterator<WaveformType>()) {
         auto const is_current = waveform_type == context.layer.instrument_id.TryGetOpt<WaveformType>();
 
         auto const item = DoPickerItem(
             box_system,
+            common_state,
             {
                 .parent = container,
                 .text = k_waveform_type_names[ToInt(waveform_type)],
@@ -295,10 +304,8 @@ static void InstPickerWaveformItems(GuiBoxSystem& box_system,
         if (item.button_fired) {
             if (is_current)
                 LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
-            else {
+            else
                 LoadInstrument(context.engine, context.layer.index, waveform_type);
-                box_system.imgui.CloseCurrentPopup();
-            }
         }
     }
 }
@@ -314,9 +321,7 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
     Optional<FolderNode*> previous_folder {};
     Optional<Box> folder_box {};
 
-    auto& common_state = (state.tab == InstPickerState::Tab::FloeLibaries)
-                             ? state.common_state_floe_libraries
-                             : state.common_state_mirage_libraries;
+    auto& common_state = CommonState(state);
 
     auto const first = IterateInstrument(context,
                                          state,
@@ -352,6 +357,7 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
 
             auto const item = DoPickerItem(
                 box_system,
+                common_state,
                 {
                     .parent = *folder_box,
                     .text = inst.name,
@@ -414,7 +420,6 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
                                        .library = lib.Id(),
                                        .inst_name = inst.name,
                                    });
-                    box_system.imgui.CloseCurrentPopup();
                 }
             }
         }
@@ -428,12 +433,8 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
     }
 }
 
-void DoInstPickerPopup(GuiBoxSystem& box_system,
-                       imgui::Id popup_id,
-                       Rect absolute_button_rect,
-                       InstPickerContext& context,
-                       InstPickerState& state) {
-    if (!box_system.imgui.IsPopupOpen(popup_id)) return;
+void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, InstPickerState& state) {
+    if (!state.common_state_floe_libraries.open) return;
 
     HashTable<String, FilterItemInfo> tags {};
     auto libraries =
@@ -496,16 +497,13 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
         box_system,
         {
             .sample_library_server = context.sample_library_server,
-            .state = state.tab == InstPickerState::Tab::FloeLibaries ? state.common_state_floe_libraries
-                                                                     : state.common_state_mirage_libraries,
+            .state = CommonState(state),
         },
-        popup_id,
-        absolute_button_rect,
         PickerPopupOptions {
             .title = fmt::Format(box_system.arena, "Layer {} Instrument", context.layer.index + 1),
             .height = ({
                 auto const window_height = box_system.imgui.frame_input.window_size.height;
-                auto const button_bottom = absolute_button_rect.Bottom();
+                auto const button_bottom = state.common_state_floe_libraries.absolute_button_rect.Bottom();
                 auto const available_height = window_height - button_bottom - 20;
                 box_system.imgui.PixelsToVw(available_height);
             }),
@@ -529,21 +527,19 @@ void DoInstPickerPopup(GuiBoxSystem& box_system,
                 tab_config.ToOwnedSpan();
             }),
             .current_tab_index = &ToIntRef(state.tab),
-            .rhs_top_button = ({
-                Optional<PickerPopupOptions::Button> unload_button {};
-                if (context.layer.instrument_id.tag != InstrumentType::None) {
-                    unload_button = PickerPopupOptions::Button {
-                        .text = fmt::Format(box_system.arena, "Unload {}", context.layer.InstName()),
-                        .tooltip = "Unload the current instrument.",
-                        .on_fired =
-                            TrivialFunctionRef<void()>([&]() {
-                                LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
-                                box_system.imgui.CloseCurrentPopup();
-                            }).CloneObject(box_system.arena),
-                    };
-                }
-                unload_button;
-            }),
+            .rhs_top_button =
+                PickerPopupOptions::Button {
+                    .text = fmt::Format(box_system.arena,
+                                        "Unload {}",
+                                        context.layer.instrument_id.tag == InstrumentType::None
+                                            ? "Instrument"
+                                            : context.layer.InstName()),
+                    .tooltip = "Unload the current instrument.",
+                    .disabled = context.layer.instrument_id.tag == InstrumentType::None,
+                    .on_fired = TrivialFunctionRef<void()>([&]() {
+                                    LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
+                                }).CloneObject(box_system.arena),
+                },
             .rhs_do_items = [&](GuiBoxSystem& box_system) { InstPickerItems(box_system, context, state); },
             .show_search = state.tab != InstPickerState::Tab::Waveforms,
             .on_load_previous =

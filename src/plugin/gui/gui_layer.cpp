@@ -73,28 +73,13 @@ static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
             icon_tex = g->imgui.frame_input.graphics_ctx->GetTextureFromImage(*imgs->icon);
     }
 
-    auto const popup_imgui_id = imgui_id + 1;
-
     DoInstSelectorRightClickMenu(g, r, layer);
 
-    if (buttons::Button(g, imgui_id, r, inst_name, buttons::InstSelectorPopupButton(g->imgui, icon_tex)))
-        g->imgui.OpenPopup(popup_imgui_id, imgui_id);
-
-    InstPickerContext context {
-        .layer = *layer_obj,
-        .sample_library_server = g->shared_engine_systems.sample_library_server,
-        .library_images = g->library_images,
-        .engine = g->engine,
-        .unknown_library_icon = UnknownLibraryIcon(g),
-    };
-    context.Init(g->scratch_arena);
-    DEFER { context.Deinit(); };
-
-    DoInstPickerPopup(g->box_system,
-                      popup_imgui_id,
-                      g->imgui.GetRegisteredAndConvertedRect(r),
-                      context,
-                      g->inst_picker_state[layer]);
+    if (buttons::Button(g, imgui_id, r, inst_name, buttons::InstSelectorPopupButton(g->imgui, icon_tex))) {
+        g->inst_picker_state[layer].common_state_floe_libraries.open = true;
+        g->inst_picker_state[layer].common_state_floe_libraries.absolute_button_rect =
+            g->imgui.WindowRectToScreenRect(r);
+    }
 
     if (layer_obj->instrument_id.tag == InstrumentType::None) {
         Tooltip(g, imgui_id, r, "Select the instrument for this layer"_s);

@@ -88,7 +88,9 @@ struct ButtonFlags {
     bool32 is_non_window_content : 1; // is something that does not live inside a window (e.g. scrollbar)
     bool32 hold_to_repeat : 1;
     bool32 dont_check_for_release : 1;
+    bool32 padding : 18 = 0; // We want to cast this to bool32 so we need to ensure padding is 0.
 };
+static_assert(sizeof(ButtonFlags) == 4, "Adjust padding");
 
 struct SliderFlags {
     bool32 slower_with_shift : 1;
@@ -509,6 +511,9 @@ struct Context {
 
     f32x2 WindowPosToScreenPos(f32x2 rel_pos);
     f32x2 ScreenPosToWindowPos(f32x2 screen_pos);
+    Rect WindowRectToScreenRect(Rect rel_rect) {
+        return {.pos = WindowPosToScreenPos(rel_rect.pos), .size = rel_rect.size};
+    }
 
     void RegisterToWindow(Rect window_bounds);
 

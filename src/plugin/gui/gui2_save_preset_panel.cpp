@@ -288,104 +288,107 @@ void DoSavePresetPanel(GuiBoxSystem& box_system,
             box_system.imgui.SetYScroll(w, 0.0f);
     }
 
-    RunPanel(box_system,
-             Panel {
-                 .run =
-                     [&context, &state](GuiBoxSystem& box_system) {
-                         auto const root = DoModalRootBox(box_system);
+    RunPanel(
+        box_system,
+        Panel {
+            .run =
+                [&context, &state](GuiBoxSystem& box_system) {
+                    auto const root = DoModalRootBox(box_system);
 
-                         DoModalHeader(box_system,
-                                       {
-                                           .parent = root,
-                                           .title = "Save Preset",
-                                           .on_close = [&state]() { state.open = false; },
-                                           .modeless = &state.modeless,
-                                       });
-
-                         DoModalDivider(box_system, root, DividerType::Horizontal);
-
-                         AddPanel(box_system,
-                                  Panel {
-                                      .run =
-                                          [&](GuiBoxSystem& box_system) {
-                                              SavePresetPanel(box_system, context, state);
-                                          },
-                                      .data =
-                                          Subpanel {
-                                              .id = DoBox(box_system,
-                                                          {
-                                                              .parent = root,
-                                                              .layout {
-                                                                  .size = {layout::k_fill_parent,
-                                                                           layout::k_fill_parent},
-                                                              },
-                                                          })
-                                                        .layout_id,
-                                              .imgui_id = k_save_panel_contents_imgui_id,
-                                          },
-
+                    DoModalHeader(box_system,
+                                  {
+                                      .parent = root,
+                                      .title = "Save Preset",
+                                      .on_close = [&state]() { state.open = false; },
+                                      .modeless = &state.modeless,
                                   });
 
-                         DoModalDivider(box_system, root, DividerType::Horizontal);
+                    DoModalDivider(box_system, root, DividerType::Horizontal);
 
-                         // bottom buttons
-                         auto const button_container =
-                             DoBox(box_system,
-                                   {
-                                       .parent = root,
-                                       .layout {
-                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                           .contents_padding = {.lrtb = style::k_spacing},
-                                           .contents_gap = style::k_spacing,
-                                           .contents_direction = layout::Direction::Row,
-                                           .contents_align = layout::Alignment::End,
-                                       },
-                                   });
+                    AddPanel(
+                        box_system,
+                        Panel {
+                            .run =
+                                [&](GuiBoxSystem& box_system) {
+                                    SavePresetPanel(box_system, context, state);
+                                },
+                            .data =
+                                Subpanel {
+                                    .id =
+                                        DoBox(box_system,
+                                              {
+                                                  .parent = root,
+                                                  .layout {
+                                                      .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                                  },
+                                              })
+                                            .layout_id,
+                                    .imgui_id = k_save_panel_contents_imgui_id,
+                                },
 
-                         if (TextButton(box_system, button_container, "Cancel"_s, "Cancel and close"_s))
-                             state.open = false;
+                        });
 
-                         if (auto const existing_path = context.engine.last_snapshot.name_or_path.Path()) {
-                             if (TextButton(box_system,
-                                            button_container,
-                                            "Overwrite"_s,
-                                            "Overwrite the existing preset"_s)) {
-                                 CommitMetadataToEngine(context.engine, state);
-                                 SaveCurrentStateToFile(context.engine, *existing_path);
-                                 state.open = false;
-                             }
+                    DoModalDivider(box_system, root, DividerType::Horizontal);
 
-                             if (TextButton(box_system,
-                                            button_container,
-                                            "Save As New"_s,
-                                            "Save the preset as a new file"_s)) {
-                                 CommitMetadataToEngine(context.engine, state);
-                                 OpenFilePickerSavePreset(context.file_picker_state,
-                                                          box_system.imgui.frame_output,
-                                                          context.paths);
-                                 state.open = false;
-                             }
-                         } else if (TextButton(box_system,
-                                               button_container,
-                                               "Save"_s,
-                                               "Save the preset to a new file"_s)) {
-                             CommitMetadataToEngine(context.engine, state);
-                             OpenFilePickerSavePreset(context.file_picker_state,
-                                                      box_system.imgui.frame_output,
-                                                      context.paths);
-                             state.open = false;
-                         }
-                     },
-                 .data =
-                     ModalPanel {
-                         .r = CentredRect(
-                             {.pos = 0, .size = box_system.imgui.frame_input.window_size.ToFloat2()},
-                             f32x2 {box_system.imgui.VwToPixels(640), box_system.imgui.VwToPixels(600)}),
-                         .imgui_id = box_system.imgui.GetID("save-preset"),
-                         .on_close = [&state]() { state.open = false; },
-                         .close_on_click_outside = !state.modeless,
-                         .darken_background = !state.modeless,
-                         .disable_other_interaction = !state.modeless,
-                     },
-             });
+                    // bottom buttons
+                    auto const button_container =
+                        DoBox(box_system,
+                              {
+                                  .parent = root,
+                                  .layout {
+                                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                      .contents_padding = {.lrtb = style::k_spacing},
+                                      .contents_gap = style::k_spacing,
+                                      .contents_direction = layout::Direction::Row,
+                                      .contents_align = layout::Alignment::End,
+                                  },
+                              });
+
+                    if (TextButton(box_system,
+                                   button_container,
+                                   {.text = "Cancel"_s, .tooltip = "Cancel and close"_s}))
+                        state.open = false;
+
+                    if (auto const existing_path = context.engine.last_snapshot.name_or_path.Path()) {
+                        if (TextButton(
+                                box_system,
+                                button_container,
+                                {.text = "Overwrite"_s, .tooltip = "Overwrite the existing preset"_s})) {
+                            CommitMetadataToEngine(context.engine, state);
+                            SaveCurrentStateToFile(context.engine, *existing_path);
+                            state.open = false;
+                        }
+
+                        if (TextButton(
+                                box_system,
+                                button_container,
+                                {.text = "Save As New"_s, .tooltip = "Save the preset as a new file"_s})) {
+                            CommitMetadataToEngine(context.engine, state);
+                            OpenFilePickerSavePreset(context.file_picker_state,
+                                                     box_system.imgui.frame_output,
+                                                     context.paths);
+                            state.open = false;
+                        }
+                    } else if (TextButton(box_system,
+                                          button_container,
+                                          {.text = "Save"_s, .tooltip = "Save the preset to a new file"_s})) {
+                        CommitMetadataToEngine(context.engine, state);
+                        OpenFilePickerSavePreset(context.file_picker_state,
+                                                 box_system.imgui.frame_output,
+                                                 context.paths);
+                        state.open = false;
+                    }
+                },
+            .data =
+                ModalPanel {
+                    .r = CentredRect(
+                        {.pos = 0, .size = box_system.imgui.frame_input.window_size.ToFloat2()},
+                        f32x2 {box_system.imgui.VwToPixels(640), box_system.imgui.VwToPixels(600)}),
+                    .imgui_id = box_system.imgui.GetID("save-preset"),
+                    .on_close = [&state]() { state.open = false; },
+                    .close_on_click_outside = !state.modeless,
+                    .darken_background = !state.modeless,
+                    .disable_other_interaction = !state.modeless,
+                },
+        });
 }

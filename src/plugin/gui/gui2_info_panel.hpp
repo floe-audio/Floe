@@ -125,18 +125,22 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
                                           },
                                       });
         if (lib->library_url)
-            if (TextButton(box_system, button_row, "Library Website", *lib->library_url))
+            if (TextButton(box_system, button_row, {.text = "Library Website", .tooltip = *lib->library_url}))
                 OpenUrlInBrowser(*lib->library_url);
 
         if (lib->author_url)
-            if (TextButton(box_system, button_row, "Author Website", *lib->author_url))
+            if (TextButton(box_system, button_row, {.text = "Author Website", .tooltip = *lib->author_url}))
                 OpenUrlInBrowser(*lib->author_url);
 
         if (auto const dir = path::Directory(lib->path))
-            if (TextButton(box_system,
-                           button_row,
-                           "Open Folder",
-                           fmt::Assign(buffer, "Open {} in {}", *dir, GetFileBrowserAppName())))
+            if (TextButton(
+                    box_system,
+                    button_row,
+                    {
+                        .text = "Open Folder",
+                        .tooltip =
+                            (String)fmt::Assign(buffer, "Open {} in {}", *dir, GetFileBrowserAppName()),
+                    }))
                 OpenFolderInFileBrowser(*dir);
     }
 
@@ -185,10 +189,14 @@ static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context) 
                                           },
                                       });
 
-        if (TextButton(box_system, button_box, "Website & Manual", FLOE_HOMEPAGE_URL))
+        if (TextButton(box_system,
+                       button_box,
+                       {.text = "Website & Manual", .tooltip = (String)FLOE_HOMEPAGE_URL}))
             OpenUrlInBrowser(FLOE_HOMEPAGE_URL);
 
-        if (TextButton(box_system, button_box, "Source code", FLOE_SOURCE_CODE_URL))
+        if (TextButton(box_system,
+                       button_box,
+                       {.text = "Source code", .tooltip = (String)FLOE_SOURCE_CODE_URL}))
             OpenUrlInBrowser(FLOE_SOURCE_CODE_URL);
     }
 
@@ -237,17 +245,21 @@ static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context) 
                                           });
 
             if (!new_version->is_ignored) {
-                if (TextButton(box_system,
-                               button_box,
-                               "Ignore",
-                               "Hide the red indicator dots for this version"))
+                if (TextButton(
+                        box_system,
+                        button_box,
+                        {.text = "Ignore", .tooltip = "Hide the red indicator dots for this version"_s}))
                     check_for_update::IgnoreUpdatesUntilAfter(context.prefs, new_version->version);
             }
 
-            if (TextButton(box_system, button_box, "Download page", FLOE_DOWNLOAD_URL))
+            if (TextButton(box_system,
+                           button_box,
+                           {.text = "Download page", .tooltip = (String)FLOE_DOWNLOAD_URL}))
                 OpenUrlInBrowser(FLOE_DOWNLOAD_URL);
 
-            if (TextButton(box_system, button_box, "Changelog", FLOE_CHANGELOG_URL))
+            if (TextButton(box_system,
+                           button_box,
+                           {.text = "Changelog", .tooltip = (String)FLOE_CHANGELOG_URL}))
                 OpenUrlInBrowser(FLOE_CHANGELOG_URL);
         }
     }

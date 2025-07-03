@@ -23,24 +23,12 @@ static void PresetsWindowButton(Gui* g, Engine* a, Rect r) {
     DynamicArrayBounded<char, 100> preset_text {a->last_snapshot.name_or_path.Name()};
     if (StateChangedSinceLastSnapshot(*a)) dyn::AppendSpan(preset_text, " (modified)"_s);
 
-    auto const popup_id = button_id + 1;
-    if (buttons::Button(g, button_id, r, preset_text, buttons::PresetsPopupButton(g->imgui)))
-        g->imgui.OpenPopup(popup_id, button_id);
+    if (buttons::Button(g, button_id, r, preset_text, buttons::PresetsPopupButton(g->imgui))) {
+        g->preset_picker_state.common_state.open = true;
+        g->preset_picker_state.common_state.absolute_button_rect = g->imgui.GetRegisteredAndConvertedRect(r);
+    }
 
     if (g->imgui.IsHot(button_id)) StartScanningIfNeeded(g->shared_engine_systems.preset_server);
-
-    PresetPickerContext context {
-        .sample_library_server = g->shared_engine_systems.sample_library_server,
-        .preset_server = g->shared_engine_systems.preset_server,
-        .library_images = g->library_images,
-        .engine = g->engine,
-        .unknown_library_icon = UnknownLibraryIcon(g),
-    };
-    DoPresetPicker(g->box_system,
-                   popup_id,
-                   g->imgui.GetRegisteredAndConvertedRect(r),
-                   context,
-                   g->preset_picker_state);
 
     Tooltip(g, button_id, r, "Open presets window"_s);
 }

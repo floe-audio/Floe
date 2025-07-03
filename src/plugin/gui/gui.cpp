@@ -15,6 +15,8 @@
 #include "gui/gui2_attribution_panel.hpp"
 #include "gui/gui2_feedback_panel.hpp"
 #include "gui/gui2_info_panel.hpp"
+#include "gui/gui2_inst_picker.hpp"
+#include "gui/gui2_ir_picker.hpp"
 #include "gui/gui2_notifications.hpp"
 #include "gui/gui2_package_install.hpp"
 #include "gui/gui2_prefs_panel.hpp"
@@ -420,6 +422,58 @@ GuiFrameResult GuiUpdate(Gui* g) {
             };
 
             DoAttributionPanel(g->box_system, context, g->attribution_panel_open);
+        }
+
+        {
+            for (auto& layer_obj : g->engine.processor.layer_processors) {
+                imgui.PushID(layer_obj.index);
+                DEFER { imgui.PopID(); };
+                InstPickerContext context {
+                    .layer = layer_obj,
+                    .sample_library_server = g->shared_engine_systems.sample_library_server,
+                    .library_images = g->library_images,
+                    .engine = g->engine,
+                    .unknown_library_icon = UnknownLibraryIcon(g),
+                };
+                context.Init(g->scratch_arena);
+                DEFER { context.Deinit(); };
+
+                auto& state = g->inst_picker_state[layer_obj.index];
+
+                auto& floe_state = state.common_state_floe_libraries;
+                auto& mirage_state = g->inst_picker_state[layer_obj.index].common_state_mirage_libraries;
+
+                mirage_state.open = floe_state.open;
+                mirage_state.absolute_button_rect = floe_state.absolute_button_rect;
+
+                DoInstPickerPopup(g->box_system, context, state);
+
+                if (state.tab == InstPickerState::Tab::MirageLibraries) floe_state.open = mirage_state.open;
+            }
+        }
+
+        {
+            PresetPickerContext context {
+                .sample_library_server = g->shared_engine_systems.sample_library_server,
+                .preset_server = g->shared_engine_systems.preset_server,
+                .library_images = g->library_images,
+                .engine = g->engine,
+                .unknown_library_icon = UnknownLibraryIcon(g),
+            };
+            DoPresetPicker(g->box_system, context, g->preset_picker_state);
+        }
+
+        {
+            IrPickerContext context {
+                .sample_library_server = g->shared_engine_systems.sample_library_server,
+                .library_images = g->library_images,
+                .engine = g->engine,
+                .unknown_library_icon = UnknownLibraryIcon(g),
+            };
+            context.Init(g->scratch_arena);
+            DEFER { context.Deinit(); };
+
+            DoIrPickerPopup(g->box_system, context, g->ir_picker_state);
         }
 
         DoNotifications(g->box_system, g->notifications);

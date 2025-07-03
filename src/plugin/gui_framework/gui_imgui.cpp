@@ -253,7 +253,8 @@ static bool CheckModifierKeys(ButtonFlags flags, GuiFrameInput const& io) {
 
 // use the flags to check whether a click is allowed
 static bool CheckForValidMouseDown(ButtonFlags flags, GuiFrameInput const& io) {
-    if (io.Mouse(MouseButton::Left).is_down && flags.left_mouse) return CheckModifierKeys(flags, io);
+    if (io.Mouse(MouseButton::Left).is_down && flags.left_mouse && !io.Mouse(MouseButton::Left).double_click)
+        return CheckModifierKeys(flags, io);
     if (io.Mouse(MouseButton::Right).is_down && flags.right_mouse) return CheckModifierKeys(flags, io);
     if (io.Mouse(MouseButton::Middle).is_down && flags.middle_mouse) return CheckModifierKeys(flags, io);
     if (io.Mouse(MouseButton::Left).double_click && flags.double_left_mouse)
@@ -1233,7 +1234,7 @@ TextInputResult Context::TextInput(Rect r,
     };
 
     // Select word
-    if (frame_input.mouse_buttons[0].double_click) {
+    if (frame_input.Mouse(MouseButton::Left).double_click) {
         int start = stb_state.cursor;
         for (; start-- > 0;) {
             auto const c = textedit_text.data[start];

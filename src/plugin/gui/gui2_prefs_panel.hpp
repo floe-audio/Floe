@@ -110,7 +110,7 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
               .text = display_path,
               .font = FontType::Body,
               .size_from_text = true,
-              .tooltip = display_path.data == path.data ? "" : path,
+              .tooltip = display_path.data == path.data ? TooltipString(k_nullopt) : path,
           });
     auto const icon_button_container = DoBox(box_system,
                                              {
@@ -304,10 +304,13 @@ static void FolderPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCon
         });
         if (ExtraScanFolders(context.paths, context.prefs, scan_folder_type).size !=
                 k_max_extra_scan_folders &&
-            TextButton(box_system,
-                       rhs_column,
-                       "Add folder",
-                       fmt::FormatInline<100>("Add a folder to scan for {}", contents_name))) {
+            TextButton(
+                box_system,
+                rhs_column,
+                {
+                    .text = "Add folder",
+                    .tooltip = (String)fmt::FormatInline<100>("Add a folder to scan for {}", contents_name),
+                })) {
             OpenFilePickerAddExtraScanFolders(
                 context.file_picker_state,
                 box_system.imgui.frame_output,
@@ -470,18 +473,19 @@ static void PackagesPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelC
                                     });
         if (btn.button_fired) box_system.imgui.OpenPopup(popup_id, btn.imgui_id);
 
-        AddPanel(box_system,
-                 Panel {
-                     .run =
-                         [scan_folder_type, &context](GuiBoxSystem& box_system) {
-                             InstallLocationMenu(box_system, context, (ScanFolderType)scan_folder_type);
-                         },
-                     .data =
-                         PopupPanel {
-                             .creator_layout_id = btn.layout_id,
-                             .popup_imgui_id = popup_id,
-                         },
-                 });
+        if (box_system.imgui.IsPopupOpen(popup_id))
+            AddPanel(box_system,
+                     Panel {
+                         .run =
+                             [scan_folder_type, &context](GuiBoxSystem& box_system) {
+                                 InstallLocationMenu(box_system, context, (ScanFolderType)scan_folder_type);
+                             },
+                         .data =
+                             PopupPanel {
+                                 .creator_layout_id = btn.layout_id,
+                                 .popup_imgui_id = popup_id,
+                             },
+                     });
     }
 
     {
@@ -490,7 +494,10 @@ static void PackagesPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelC
         auto const rhs = PreferencesRhsColumn(box_system, row, style::k_prefs_small_gap);
         PreferencesRhsText(box_system, rhs, "Install libraries and presets from a ZIP file");
         if (!context.package_install_jobs.Full() &&
-            TextButton(box_system, rhs, "Install package", "Install libraries and presets from a ZIP file")) {
+            TextButton(
+                box_system,
+                rhs,
+                {.text = "Install package", .tooltip = "Install libraries and presets from a ZIP file"_s})) {
             OpenFilePickerInstallPackage(context.file_picker_state, box_system.imgui.frame_output);
         }
     }

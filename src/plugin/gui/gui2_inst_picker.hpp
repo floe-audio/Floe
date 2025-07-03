@@ -41,8 +41,4 @@ void LoadAdjacentInstrument(InstPickerContext const& context,
 
 void LoadRandomInstrument(InstPickerContext const& context, InstPickerState& state, bool picker_gui_is_open);
 
-void DoInstPickerPopup(GuiBoxSystem& box_system,
-                       imgui::Id popup_id,
-                       Rect absolute_button_rect,
-                       InstPickerContext& context,
-                       InstPickerState& state);
+void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, InstPickerState& state);

@@ -89,7 +89,7 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
     if (CheckboxButton(box_system, panel, "Include anonymous diagnostic data"_s, state.send_diagnostic_data))
         state.send_diagnostic_data = !state.send_diagnostic_data;
 
-    if (TextButton(box_system, panel, "Submit", {})) {
+    if (TextButton(box_system, panel, {.text = "Submit"})) {
         auto const return_code = ReportFeedback(state.description,
                                                 state.email.size ? Optional<String> {state.email} : k_nullopt,
                                                 state.send_diagnostic_data);
