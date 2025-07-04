@@ -1,3 +1,6 @@
+// Copyright 2025 Sam Windell
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include <lauxlib.h>
 #include <lobject.h>
 #include <lua.h>
