@@ -249,7 +249,7 @@ static String GetPageTitle(PageType type) {
     switch (type) {
         case PageType::Main: return "Main";
         case PageType::Eq: return "EQ";
-        case PageType::Midi: return "MIDI";
+        case PageType::Keyboard: return "Play";
         case PageType::Lfo: return "LFO";
         case PageType::Filter: return "Filter";
         case PageType::Count: PanicIfReached();
@@ -695,7 +695,7 @@ void Layout(Gui* g,
 
                 break;
             }
-            case PageType::Midi: {
+            case PageType::Keyboard: {
                 auto const midi_item_height = LiveSize(g->imgui, MIDI_ItemHeight);
                 auto const midi_item_width = LiveSize(g->imgui, MIDI_ItemWidth);
                 auto const midi_item_margin_lr = LiveSize(g->imgui, MIDI_ItemMarginLR);
@@ -726,7 +726,7 @@ void Layout(Gui* g,
                                               });
                 };
 
-                layout_item(c.midi.transpose, c.midi.transpose_name, midi_item_height);
+                layout_item(c.play.transpose, c.play.transpose_name, midi_item_height);
 
                 auto const button_options = layout::ItemOptions {
                     .parent = page_container,
@@ -736,12 +736,24 @@ void Layout(Gui* g,
                         .tb = midi_item_gap_y,
                     },
                 };
-                c.midi.keytrack = layout::CreateItem(g->layout, button_options);
-                c.midi.mono = layout::CreateItem(g->layout, button_options);
-                c.midi.retrig = layout::CreateItem(g->layout, button_options);
-                layout_item(c.midi.velo_buttons,
-                            c.midi.velo_name,
-                            LiveSize(g->imgui, MIDI_VeloButtonsHeight));
+                c.play.keytrack = layout::CreateItem(g->layout, button_options);
+                c.play.mono = layout::CreateItem(g->layout, button_options);
+                c.play.retrig = layout::CreateItem(g->layout, button_options);
+
+                c.play.velo_name =
+                    layout::CreateItem(g->layout,
+                                       {
+                                           .parent = page_container,
+                                           .size = {layout::k_fill_parent, midi_item_height},
+                                           .margins = {.lr = midi_item_margin_lr, .b = midi_item_gap_y},
+                                       });
+                c.play.velo_graph = layout::CreateItem(
+                    g->layout,
+                    {
+                        .parent = page_container,
+                        .size = {layout::k_fill_parent, LiveSize(g->imgui, MIDI_VeloGraphHeight)},
+                        .margins = {.lr = midi_item_margin_lr},
+                    });
                 break;
             }
             case PageType::Lfo: {
@@ -819,6 +831,246 @@ static void DrawSelectorProgressBar(imgui::Context const& imgui, Rect r, f32 loa
     auto col = LiveCol(imgui, UiColMap::LayerSelectorMenuLoading);
     auto const rounding = LiveSize(imgui, UiSizeId::CornerRounding);
     imgui.graphics->AddRectFilled(min, max, col, rounding);
+}
+
+static void DrawCurvedSegment(graphics::DrawList& graphics,
+                              f32x2 screen_p0,
+                              f32x2 screen_p1,
+                              float curve_value,
+                              int num_samples = 10) {
+    if (Abs(curve_value) < 0.01f) {
+        // Linear segment
+        graphics.PathLineTo(screen_p1);
+        return;
+    }
+
+    for (int i = 1; i <= num_samples; ++i) {
+        float x_t = (float)i / (f32)num_samples; // Linear progression in X
+        float y_t = x_t; // Start with linear, then apply curve
+
+        // Apply the same curve math as your lookup table
+        if (curve_value > 0.0f)
+            y_t = Pow(y_t, 1.0f + (curve_value * CurveMap::k_curve_exponent_multiplier)); // Exponential
+        else if (curve_value < 0.0f)
+            y_t = 1.0f - Pow(1.0f - y_t,
+                             1.0f - (curve_value * CurveMap::k_curve_exponent_multiplier)); // Logarithmic
+
+        f32x2 curved_point = {screen_p0.x + ((screen_p1.x - screen_p0.x) * x_t),
+                              screen_p0.y + ((screen_p1.y - screen_p0.y) * y_t)};
+        graphics.PathLineTo(curved_point);
+    }
+}
+
+static bool DoCurveMap(imgui::Context& imgui, CurveMap& curve_map, f32x2 rect_min, f32x2 rect_max) {
+    float width = rect_max.x - rect_min.x;
+    float height = rect_max.y - rect_min.y;
+    auto const rect = Rect::FromMinMax(rect_min, rect_max);
+    auto const point_radius = (rect_max.x - rect_min.x) * 0.02f;
+    constexpr f32 k_extra_grabber_scale = 3.0f;
+
+    {
+        auto const rounding = LiveSize(imgui, UiSizeId::CornerRounding);
+        imgui.graphics->AddRectFilled(rect, LiveCol(imgui, UiColMap::Envelope_Back), rounding);
+    }
+
+    auto& graphics = *imgui.graphics;
+    auto& points = curve_map.points;
+
+    bool changed = false;
+
+    graphics.PathClear();
+
+    Optional<usize> remove_index {};
+
+    if (points.size == 0) {
+        // Draw default linear curve
+        graphics.PathLineTo({rect_min.x, rect_max.y});
+        graphics.PathLineTo({rect_max.x, rect_min.y});
+    } else if (points.size == 1) {
+        auto const& p = points[0];
+        f32x2 screen_p = {rect_min.x + (p.x * width), rect_max.y - (p.y * height)};
+
+        if (p.x == 0.0f) {
+            // Point at start - horizontal line then to (1,1)
+            graphics.PathLineTo(screen_p); // Start at point
+            graphics.PathLineTo({rect_max.x, rect_min.y}); // to (1,1)
+        } else if (p.x == 1.0f) {
+            // Point at end - line from (0,0) to point
+            graphics.PathLineTo({rect_min.x, rect_max.y}); // (0,0)
+            graphics.PathLineTo(screen_p); // to point
+        } else {
+            // Point in middle - lines from (0,0) through point to (1,1)
+            graphics.PathLineTo({rect_min.x, rect_max.y}); // (0,0)
+            graphics.PathLineTo(screen_p); // to point
+            graphics.PathLineTo({rect_max.x, rect_min.y}); // to (1,1)
+        }
+    } else {
+        // Draw line from (0,0) to first point if needed
+        if (points[0].x > 0.0f) {
+            graphics.PathLineTo({rect_min.x, rect_max.y}); // (0,0)
+            f32x2 first_screen = {rect_min.x + (points[0].x * width), rect_max.y - (points[0].y * height)};
+            graphics.PathLineTo(first_screen);
+        }
+
+        // Draw curves between points
+        for (usize i = 0; i < points.size - 1; ++i) {
+            auto const& p0 = points[i];
+            auto const& p1 = points[i + 1];
+            f32x2 screen_p0 = {rect_min.x + (p0.x * width), rect_max.y - (p0.y * height)};
+            f32x2 screen_p1 = {rect_min.x + (p1.x * width), rect_max.y - (p1.y * height)};
+
+            if (i == 0 && points[0].x == 0.0f) graphics.PathLineTo(screen_p0);
+
+            DrawCurvedSegment(graphics, screen_p0, screen_p1, p0.curve);
+        }
+
+        // Draw line from last point to (1,1) if needed
+        if (points[points.size - 1].x < 1.0f) graphics.PathLineTo({rect_max.x, rect_min.y}); // (1,1)
+    }
+
+    constexpr f32 k_curve_thickness = 1.0f;
+    auto const curve_color = LiveCol(imgui, UiColMap::CurveMapLine);
+    auto const point_color = LiveCol(imgui, UiColMap::CurveMapPoint);
+    auto const point_hover_color = LiveCol(imgui, UiColMap::CurveMapPointHover);
+
+    graphics.PathStroke(curve_color, false, k_curve_thickness);
+
+    // Draw control points
+
+    imgui.PushID("CurveMapPoints");
+    DEFER { imgui.PopID(); };
+
+    for (auto const point_index : Range(points.size)) {
+        auto& point = points[point_index];
+        auto const next_index = point_index + 1;
+
+        auto const imgui_id = imgui.GetID((uintptr)&point);
+
+        f32x2 const screen_pos = {rect_min.x + (point.x * width), rect_max.y - (point.y * height)};
+
+        // Grabber is 2x bigger than the circle
+        Rect grabber_rect = {
+            .pos = screen_pos - (point_radius * k_extra_grabber_scale),
+            .size = point_radius * k_extra_grabber_scale * 2.0f,
+        };
+
+        // Point curve grabber (the whole region after the point until the next point)
+        if (next_index < points.size) {
+            auto const& next_point = points[next_index];
+
+            auto const curve_handle_imgui_id = imgui_id + 1;
+
+            // We the whole rectangle from the grabber to the next grabber to be clicked and dragged. We use
+            // imgui.SliderBehavior for this.
+
+            auto const this_point_right_edge = grabber_rect.Right();
+            auto const next_point_left_edge =
+                rect_min.x + (next_point.x * width) - (point_radius * k_extra_grabber_scale);
+
+            if (this_point_right_edge < next_point_left_edge) {
+                Rect curve_handle_rect = {
+                    .x = grabber_rect.Right(),
+                    .y = rect_min.y,
+                    .w = next_point_left_edge - this_point_right_edge,
+                    .h = height,
+                };
+
+                f32 percent = MapTo01(-point.curve, -1.0f, 1.0f);
+
+                if (imgui.SliderBehavior(curve_handle_rect,
+                                         curve_handle_imgui_id,
+                                         percent,
+                                         0.5f,
+                                         500,
+                                         {
+                                             .slower_with_shift = true,
+                                             .default_on_modifer = true,
+                                         })) {
+                    point.curve = -MapFrom01(percent, -1.0f, 1.0f);
+                    changed = true;
+                }
+
+                if (imgui.IsHotOrActive(curve_handle_imgui_id)) {
+                    graphics.AddRectFilled(curve_handle_rect.Min(),
+                                           curve_handle_rect.Max(),
+                                           LiveCol(imgui, UiColMap::CurveMapLineHover));
+                    imgui.frame_output.cursor_type = CursorType::VerticalArrows;
+                }
+            }
+        }
+
+        // Point handle
+        {
+            imgui.ButtonBehavior(grabber_rect,
+                                 imgui_id,
+                                 {
+                                     .left_mouse = true,
+                                     .triggers_on_mouse_down = true,
+                                 });
+            if (imgui.IsActive(imgui_id)) {
+                // Dragging point
+                f32x2 mouse_pos = imgui.frame_input.cursor_pos;
+                f32x2 new_pos = {
+                    (mouse_pos.x - rect_min.x) / width,
+                    1.0f - ((mouse_pos.y - rect_min.y) / height),
+                };
+
+                // Don't allow going past the next point.
+                if (next_index < points.size) {
+                    auto const& next_point = points[next_index];
+                    if (new_pos.x > next_point.x) new_pos.x = next_point.x;
+                }
+
+                // Don't allow going past the previous point.
+                if (point_index > 0) {
+                    auto const& prev_point = points[point_index - 1];
+                    if (new_pos.x < prev_point.x) new_pos.x = prev_point.x;
+                }
+
+                new_pos = Clamp(new_pos, f32x2(0.0f), f32x2(1.0f));
+
+                point.x = new_pos.x;
+                point.y = new_pos.y;
+                changed = true;
+            }
+
+            if (imgui.IsHotOrActive(imgui_id)) {
+                imgui.frame_output.cursor_type = CursorType::AllArrows;
+                if (imgui.frame_input.Mouse(MouseButton::Left).double_click) {
+                    remove_index = point_index;
+                    imgui.SetActiveIDZero();
+                }
+            }
+
+            graphics.AddCircleFilled(screen_pos,
+                                     point_radius,
+                                     imgui.IsHotOrActive(imgui_id) ? point_hover_color : point_color,
+                                     12);
+        }
+    }
+
+    if (remove_index) {
+        dyn::Remove(curve_map.points, *remove_index);
+        changed = true;
+    } else {
+        imgui.RegisterRegionForMouseTracking(rect, imgui.GetID("CurveMapMouseTracking"));
+        auto& mouse_button = imgui.frame_input.Mouse(MouseButton::Left);
+        if (mouse_button.double_click && rect.Contains(mouse_button.last_pressed_point)) {
+            // Add a new point at the clicked position then sort the points
+            f32x2 click_pos = mouse_button.last_pressed_point;
+            f32x2 new_point = {
+                (click_pos.x - rect_min.x) / width,
+                1.0f - ((click_pos.y - rect_min.y) / height),
+            };
+            new_point = Clamp(new_point, f32x2(0.0f), f32x2(1.0f));
+
+            dyn::Append(curve_map.points, {new_point.x, new_point.y, 0.0f});
+            Sort(curve_map.points, [](auto const& a, auto const& b) { return a.x < b.x; });
+            changed = true;
+        }
+    }
+
+    return changed;
 }
 
 void Draw(Gui* g,
@@ -1060,7 +1312,7 @@ void Draw(Gui* g,
 
             draw_divider(c.main.divider);
 
-            // env
+            // Envelope
             {
                 buttons::Toggle(g,
                                 layer->params[ToInt(LayerParamIndex::VolEnvOn)],
@@ -1173,18 +1425,18 @@ void Draw(Gui* g,
 
             break;
         }
-        case PageType::Midi: {
+        case PageType::Keyboard: {
             draggers::Dragger(g,
                               layer->params[ToInt(LayerParamIndex::MidiTranspose)],
-                              c.midi.transpose,
+                              c.play.transpose,
                               draggers::DefaultStyle(g->imgui));
             labels::Label(g,
                           layer->params[ToInt(LayerParamIndex::MidiTranspose)],
-                          c.midi.transpose_name,
+                          c.play.transpose_name,
                           labels::Parameter(g->imgui));
             {
                 auto const label_id = g->imgui.GetID("transp");
-                auto const label_r = layout::GetRect(g->layout, c.midi.transpose_name);
+                auto const label_r = layout::GetRect(g->layout, c.play.transpose_name);
                 g->imgui.ButtonBehavior(g->imgui.GetRegisteredAndConvertedRect(label_r), label_id, {});
                 Tooltip(g,
                         label_id,
@@ -1195,63 +1447,24 @@ void Draw(Gui* g,
 
             buttons::Toggle(g,
                             layer->params[ToInt(LayerParamIndex::Keytrack)],
-                            c.midi.keytrack,
+                            c.play.keytrack,
                             buttons::MidiButton(g->imgui));
             buttons::Toggle(g,
                             layer->params[ToInt(LayerParamIndex::Monophonic)],
-                            c.midi.mono,
+                            c.play.mono,
                             buttons::MidiButton(g->imgui));
 
             {
-                static constexpr auto k_num_btns = ToInt(param_values::VelocityMappingMode::Count);
-                static_assert(k_num_btns == 6, "");
-                auto const btn_gap = LiveSize(g->imgui, MIDI_VeloButtonsSpacing);
-                auto const whole_velo_r =
-                    layout::GetRect(g->layout, c.midi.velo_buttons).CutRight(btn_gap * 2).CutBottom(btn_gap);
-
-                for (auto const btn_ind : Range(k_num_btns)) {
-                    bool state = ToInt(layer->GetVelocityMode()) == btn_ind;
-                    auto imgui_id = g->imgui.GetID(layer_gui::k_velo_btn_tooltips[(usize)btn_ind]);
-
-                    Rect btn_r {.xywh {whole_velo_r.x + ((whole_velo_r.w / 3) * (btn_ind % 3)),
-                                       whole_velo_r.y + ((whole_velo_r.h / 2) * (f32)(int)(btn_ind / 3)),
-                                       whole_velo_r.w / 3,
-                                       whole_velo_r.h / 2}};
-
-                    btn_r.x += btn_gap * (btn_ind % 3);
-                    btn_r.y += btn_gap * (f32)(int)(btn_ind / 3);
-
-                    if (buttons::Toggle(
-                            g,
-                            imgui_id,
-                            btn_r,
-                            state,
-                            "",
-                            buttons::VelocityButton(g->imgui, (param_values::VelocityMappingMode)btn_ind))) {
-                        auto velo_param_id =
-                            ParamIndexFromLayerParamIndex(layer->index, LayerParamIndex::VelocityMapping);
-                        SetParameterValue(g->engine.processor, velo_param_id, (f32)btn_ind, {});
-                    }
-
-                    Tooltip(g, imgui_id, btn_r, layer_gui::k_velo_btn_tooltips[(usize)btn_ind]);
-                }
-
                 labels::Label(g,
-                              layer->params[ToInt(LayerParamIndex::VelocityMapping)],
-                              c.midi.velo_name,
+                              layout::GetRect(g->layout, c.play.velo_name),
+                              "Velocity to volume curve",
                               labels::Parameter(g->imgui));
 
-                auto const label_id = g->imgui.GetID("velobtn");
-                auto const label_r = layout::GetRect(g->layout, c.midi.velo_name);
-                g->imgui.ButtonBehavior(g->imgui.GetRegisteredAndConvertedRect(label_r), label_id, {});
-                Tooltip(g,
-                        label_id,
-                        label_r,
-                        "The velocity mapping switches allow you to create presets that change timbre from "
-                        "low velocity to high velocity. To do this, 2 or more layers should be used, and "
-                        "each layer should be given a different velocity mapping option so that the loudness "
-                        "of each layer is controlled by the MIDI velocity."_s);
-                if (g->imgui.IsHot(label_id)) g->imgui.frame_output.cursor_type = CursorType::Default;
+                auto const velograph_r =
+                    g->imgui.GetRegisteredAndConvertedRect(layout::GetRect(g->layout, c.play.velo_graph));
+
+                if (DoCurveMap(g->imgui, layer->velocity_curve_map, velograph_r.Min(), velograph_r.Max()))
+                    layer->velocity_curve_map.RenderCurveToLookupTable();
             }
 
             break;

@@ -143,8 +143,11 @@ static bool DoButton(Gui* g, String button_text, f32& y_pos, f32 x_offset) {
                     });
 }
 
-static void
-DoHeading(Gui* g, f32& y_pos, String str, TextJustification justification = TextJustification::CentredLeft) {
+static void DoHeading(Gui* g,
+                      f32& y_pos,
+                      String str,
+                      TextJustification justification = TextJustification::CentredLeft,
+                      UiColMap col = UiColMap::PopupItemText) {
     auto& imgui = g->imgui;
     auto const window_title_h = LiveSize(imgui, UiSizeId::ModalWindowTitleH);
     auto const window_title_gap_y = LiveSize(imgui, UiSizeId::ModalWindowTitleGapY);
@@ -152,9 +155,132 @@ DoHeading(Gui* g, f32& y_pos, String str, TextJustification justification = Text
     imgui.graphics->context->PushFont(g->fonts[ToInt(FontType::Heading1)]);
     DEFER { imgui.graphics->context->PopFont(); };
     auto const r = imgui.GetRegisteredAndConvertedRect({.xywh {0, y_pos, imgui.Width(), window_title_h}});
-    g->imgui.graphics->AddTextJustified(r, str, LiveCol(imgui, UiColMap::PopupItemText), justification);
+    g->imgui.graphics->AddTextJustified(r, str, LiveCol(imgui, col), justification);
 
     y_pos += window_title_h + window_title_gap_y;
+}
+
+bool DoCloseButtonForCurrentWindow(Gui* g, String tooltip_text, buttons::Style const& style) {
+    auto& imgui = g->imgui;
+    f32 const pad = LiveSize(imgui, UiSizeId::SidePanelCloseButtonPad);
+    f32 const size = LiveSize(imgui, UiSizeId::SidePanelCloseButtonSize);
+
+    auto const x = imgui.Width() - (pad + size);
+    Rect const btn_r = {.xywh {x, pad, size, size}};
+
+    auto const btn_id = imgui.GetID("close");
+    bool const button_clicked = buttons::Button(g, btn_id, btn_r, ICON_FA_XMARK, style);
+
+    Tooltip(g, btn_id, btn_r, tooltip_text);
+    return button_clicked;
+}
+
+static void DoLegacyParamsModal(Gui* g) {
+    if (!g->legacy_params_window_open) return;
+
+    auto body_font = g->fonts[ToInt(FontType::Body)];
+    g->frame_input.graphics_ctx->PushFont(body_font);
+    DEFER { g->frame_input.graphics_ctx->PopFont(); };
+    auto& imgui = g->imgui;
+
+    auto const r = ModalRect(imgui, UiSizeId::LegacyParamsWindowWidth, UiSizeId::LegacyParamsWindowHeight);
+    auto settings = FloeWindowSettings(g->imgui, [](IMGUI_DRAW_WINDOW_BG_ARGS) {
+        auto r = window->unpadded_bounds;
+        auto const rounding = LiveSize(imgui, UiSizeId::CornerRounding);
+        imgui.graphics->AddRectFilled(r, LiveCol(imgui, UiColMap::TopPanelBackTop), rounding);
+    });
+    settings.pad_top_left = {LiveSize(imgui, UiSizeId::ModalWindowPadL),
+                             LiveSize(imgui, UiSizeId::ModalWindowPadT)};
+    settings.pad_bottom_right = {LiveSize(imgui, UiSizeId::ModalWindowPadR),
+                                 LiveSize(imgui, UiSizeId::ModalWindowPadB)};
+
+    imgui.BeginWindow(settings, r, "LegacyParamsWindow");
+    DEFER { imgui.EndWindow(); };
+
+    f32 y_pos = 0;
+    DoHeading(g, y_pos, "Legacy Parameters", TextJustification::CentredLeft, UiColMap::TopPanelTitleText);
+    if (DoCloseButtonForCurrentWindow(g,
+                                      "Close this window",
+                                      buttons::BrowserIconButton(g->imgui).WithLargeIcon())) {
+        g->legacy_params_window_open = false;
+    }
+
+    // Sub-window
+    auto const sub_rect = Rect {
+        .x = 0,
+        .y = y_pos,
+        .w = imgui.Width(),
+        .h = imgui.Height() - y_pos,
+    };
+    auto sub_settings = FloeWindowSettings(g->imgui, [&](IMGUI_DRAW_WINDOW_BG_ARGS) {});
+    imgui.BeginWindow(sub_settings, imgui.GetID("LegacyParamsSubWindow"), sub_rect);
+    DEFER { imgui.EndWindow(); };
+
+    auto root = layout::CreateItem(g->layout,
+                                   {
+                                       .size = g->imgui.Size(),
+                                       .contents_gap = {0, 10},
+                                       .contents_direction = layout::Direction::Row,
+                                       .contents_multiline = true,
+                                       .contents_align = layout::Alignment::Start,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                   });
+
+    struct ParamData {
+        ParamIndex index;
+        LayIDPair pair;
+        layout::Id extra_label;
+    };
+
+    DynamicArray<ParamData> hidden_params {g->scratch_arena};
+    for (auto const& desc : k_param_descriptors)
+        if (desc.flags.hidden) dyn::Append(hidden_params, {.index = desc.index});
+
+    for (auto& p : hidden_params) {
+        auto const container = layout::CreateItem(g->layout,
+                                                  {
+                                                      .parent = root,
+                                                      .size = layout::k_hug_contents,
+                                                      .contents_direction = layout::Direction::Column,
+                                                      .contents_align = layout::Alignment::Start,
+                                                  });
+        LayoutParameterComponent(g,
+                                 container,
+                                 p.pair,
+                                 g->engine.processor.params[ToInt(p.index)],
+                                 UiSizeId::Top2KnobsGapX);
+        p.extra_label = layout::CreateItem(g->layout,
+                                           {
+                                               .parent = container,
+                                               .size = {layout::k_fill_parent, body_font->font_size},
+                                           });
+    }
+
+    layout::RunContext(g->layout);
+    DEFER { layout::ResetContext(g->layout); };
+
+    for (auto& p : hidden_params) {
+        auto const& desc = k_param_descriptors[ToInt(p.index)];
+        auto const& param = g->engine.processor.params[ToInt(p.index)];
+        switch (desc.value_type) {
+            case ParamValueType::Float: KnobAndLabel(g, param, p.pair, knobs::DefaultKnob(g->imgui)); break;
+            case ParamValueType::Menu:
+                buttons::PopupWithItems(g,
+                                        param,
+                                        p.pair.control,
+                                        buttons::ParameterPopupButton(g->imgui, false));
+                labels::Label(g, param, p.pair.label, labels::ParameterCentred(g->imgui, false));
+                break;
+            case ParamValueType::Bool:
+            case ParamValueType::Int: PanicIfReached(); break;
+        }
+
+        auto const label_r = imgui.GetRegisteredAndConvertedRect(layout::GetRect(g->layout, p.extra_label));
+        imgui.graphics->AddTextJustified(label_r,
+                                         desc.ModuleString(),
+                                         LiveCol(g->imgui, UiColMap::TopPanelTitleText),
+                                         TextJustification::Centred);
+    }
 }
 
 static void DoErrorsModal(Gui* g) {
@@ -290,4 +416,5 @@ void DoModalWindows(Gui* g) {
     if (AnyModalOpen(g->imgui)) DoOverlayClickableBackground(g);
     DoErrorsModal(g);
     DoLoadingOverlay(g);
+    DoLegacyParamsModal(g);
 }

@@ -24,7 +24,8 @@ enum class PresetFormat : u8 { Floe, Mirage, Count };
 
 PresetFormat PresetFormatFromPath(String path);
 
-ErrorCodeOr<void> DecodeJsonState(StateSnapshot& state, ArenaAllocator& scratch_arena, String json_data);
+ErrorCodeOr<void>
+DecodeMirageJsonState(StateSnapshot& state, ArenaAllocator& scratch_arena, String json_data);
 
 ErrorCodeOr<StateSnapshot>
 LoadPresetFile(String filepath, ArenaAllocator& scratch_arena, bool abbreviated_read);

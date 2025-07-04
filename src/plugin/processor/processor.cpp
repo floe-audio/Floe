@@ -214,6 +214,8 @@ void SetAllParametersToDefaultValues(AudioProcessor& processor) {
     ASSERT(g_is_logical_main_thread);
     for (auto& param : processor.params)
         param.SetLinearValue(param.DefaultLinearValue());
+    for (auto& layer : processor.layer_processors)
+        layer.velocity_curve_map.SetNewPoints(k_default_velocity_curve_points);
 
     processor.events_for_audio_thread.Push(EventForAudioThreadType::ReloadAllAudioState);
     auto const host = &processor.host;
@@ -724,6 +726,11 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
 
     processor.desired_effects_order.Store(EncodeEffectsArray(state.fx_order), StoreMemoryOrder::Relaxed);
 
+    for (auto const layer_index : Range(k_num_layers)) {
+        processor.layer_processors[layer_index].velocity_curve_map.SetNewPoints(
+            state.velocity_curve_points[layer_index]);
+    }
+
     // reload everything
     {
         if (auto const host_params =
@@ -742,8 +749,10 @@ StateSnapshot MakeStateSnapshot(AudioProcessor const& processor) {
     for (auto [i, fx_pointer] : Enumerate(ordered_fx_pointers))
         result.fx_order[i] = fx_pointer->type;
 
-    for (auto const i : Range(k_num_layers))
+    for (auto const i : Range(k_num_layers)) {
         result.inst_ids[i] = processor.layer_processors[i].instrument_id;
+        result.velocity_curve_points[i] = processor.layer_processors[i].velocity_curve_map.points;
+    }
 
     result.ir_id = processor.convo.ir_id;
 

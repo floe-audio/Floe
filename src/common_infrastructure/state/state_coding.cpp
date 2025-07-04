@@ -479,7 +479,120 @@ class JsonStateParser {
     usize m_inst_index = 0;
 };
 
-ErrorCodeOr<void> DecodeJsonState(StateSnapshot& state, ArenaAllocator& scratch_arena, String data) {
+enum class StateVersion : u16 {
+    Initial = 1,
+
+    // Each layer now has velocity curve points. The old velocity-mapping menu is deprecated, as is the master
+    // velocity-to-volume control.
+    AddedLayerVelocityCurves,
+
+    LatestPlusOne,
+    Latest = LatestPlusOne - 1,
+};
+
+static void
+AdaptPreAddedLayerVelocityCurvesParams(StateSnapshot& state, StateVersion version, StateSource source) {
+    // We don't need to adapt parameters if the state is already aware of the new change.
+    if (version >= StateVersion::AddedLayerVelocityCurves) return;
+
+    // We don't want to adapt parameters from the DAW because there might be automation on them.
+    if (source == StateSource::Daw) {
+        for (auto const layer_index : Range(k_num_layers)) {
+            dyn::AssignAssumingAlreadyEmpty(state.velocity_curve_points[layer_index],
+                                            Array {
+                                                CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                                CurveMap::Point {1.0f, 1.0f, 0.0f},
+                                            });
+        }
+        return;
+    }
+
+    // Adapt LayerParamIndex::VelocityMapping.
+    for (auto const layer_index : Range(k_num_layers)) {
+        auto& val =
+            state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::VelocityMapping));
+        auto const velocity_mapping_mode = (param_values::VelocityMappingMode)Round(val);
+
+        // We don't use this param anymore.
+        val = (f32)param_values::VelocityMappingMode::None;
+
+        auto& points = state.velocity_curve_points[layer_index];
+        switch (velocity_mapping_mode) {
+            case param_values::VelocityMappingMode::None:
+                // Flat at max volume.
+                dyn::AssignAssumingAlreadyEmpty(points,
+                                                Array {
+                                                    CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                                    CurveMap::Point {1.0f, 1.0f, 0.0f},
+                                                });
+                break;
+            case param_values::VelocityMappingMode::TopToBottom:
+                // Linear
+                dyn::AssignAssumingAlreadyEmpty(points,
+                                                Array {
+                                                    CurveMap::Point {0.0f, 0.0f, 0.0f},
+                                                    CurveMap::Point {1.0f, 1.0f, 0.0f},
+                                                });
+                break;
+            case param_values::VelocityMappingMode::BottomToTop:
+                // Inverse linear
+                dyn::AssignAssumingAlreadyEmpty(points,
+                                                Array {
+                                                    CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                                    CurveMap::Point {1.0f, 0.0f, 0.0f},
+                                                });
+                break;
+            case param_values::VelocityMappingMode::TopToMiddle:
+                // Flat until middle, then linear ramp-up to end
+                dyn::AssignAssumingAlreadyEmpty(points,
+                                                Array {
+                                                    CurveMap::Point {0.0f, 0.0f, 0.0f},
+                                                    CurveMap::Point {0.5f, 0.0f, 0.0f},
+                                                    CurveMap::Point {1.0f, 1.0f, 0.0f},
+                                                });
+                break;
+            case param_values::VelocityMappingMode::MiddleOutwards:
+                // Linear ramp-up to middle, then linear ramp-down to end
+                dyn::AssignAssumingAlreadyEmpty(points,
+                                                Array {
+                                                    CurveMap::Point {0.0f, 0.0f, 0.0f},
+                                                    CurveMap::Point {0.5f, 1.0f, 0.0f},
+                                                    CurveMap::Point {1.0f, 0.0f, 0.0f},
+                                                });
+                break;
+            case param_values::VelocityMappingMode::MiddleToBottom:
+                // Linear ramp-down to middle, then flat to end
+                dyn::AssignAssumingAlreadyEmpty(points,
+                                                Array {
+                                                    CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                                    CurveMap::Point {0.5f, 0.0f, 0.0f},
+                                                    CurveMap::Point {1.0f, 0.0f, 0.0f},
+                                                });
+                break;
+            case param_values::VelocityMappingMode::Count: break;
+        }
+    }
+
+    // Adapt MasterVelocity.
+    {
+        auto& val = state.LinearParam(ParamIndex::MasterVelocity);
+        ASSERT(val >= 0.0f && val <= 1.0f);
+        auto const velocity_volume_strength = val;
+        val = 0.0f; // We don't use this param anymore, so set it to 0.
+
+        for (auto& points : state.velocity_curve_points) {
+            // Now, we must scale y values in a linear fashion. The stronger the velocity-volume value, the
+            // more we should bring down the y values of the points nearer to x=0.
+            for (auto& point : points)
+                point.y = Max(point.y - (point.y * (1.0f - point.x) * velocity_volume_strength), 0.0f);
+        }
+    }
+}
+
+static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
+                                               ArenaAllocator& scratch_arena,
+                                               String data,
+                                               bool adapt_for_latest_version) {
     if constexpr (RUNTIME_SAFETY_CHECKS_ON) {
         for (auto& f : state.param_values)
             f = 999999999.f;
@@ -897,8 +1010,14 @@ ErrorCodeOr<void> DecodeJsonState(StateSnapshot& state, ArenaAllocator& scratch_
             }
         }
     }
+    if (adapt_for_latest_version)
+        AdaptPreAddedLayerVelocityCurvesParams(state, StateVersion::Initial, StateSource::PresetFile);
 
     return k_success;
+}
+
+ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state, ArenaAllocator& scratch_arena, String data) {
+    return DecodeMirageJsonState(state, scratch_arena, data, true);
 }
 
 // ==========================================================================================================
@@ -923,13 +1042,6 @@ ErrorCodeOr<void> DecodeJsonState(StateSnapshot& state, ArenaAllocator& scratch_
 //
 // https://handmade.network/p/29/swedish-cubes-for-unity/blog/p/2723-how_media_molecule_does_serialization
 //
-
-enum class StateVersion : u16 {
-    Initial = 1,
-
-    LatestPlusOne,
-    Latest = LatestPlusOne - 1,
-};
 
 struct StateCoder {
     template <typename Type>
@@ -1050,6 +1162,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
                       "number and change the code below");
 
         for (auto const i : Range(k_num_layers)) {
+            // Instrument IDs.
             enum class Type : u8 {
                 None = 0,
                 Sampler = 1,
@@ -1103,6 +1216,23 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
                         break;
                 }
             }
+
+            // Velocity curves.
+            CurveMap::Points points = state.velocity_curve_points[i];
+            auto num_points = CheckedCast<u8>(points.size);
+
+            TRY(coder.CodeNumber(num_points, StateVersion::AddedLayerVelocityCurves));
+            if (coder.IsReading()) {
+                if (!dyn::Resize(points, num_points)) return ErrorCode(CommonError::InvalidFileFormat);
+            }
+
+            for (auto& point : points) {
+                TRY(coder.CodeNumber(point.x, StateVersion::AddedLayerVelocityCurves));
+                TRY(coder.CodeNumber(point.y, StateVersion::AddedLayerVelocityCurves));
+                TRY(coder.CodeNumber(point.curve, StateVersion::AddedLayerVelocityCurves));
+            }
+
+            if (coder.IsReading()) state.velocity_curve_points[i] = points;
         }
     }
 
@@ -1181,6 +1311,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
             if (coder.IsReading()) {
                 auto const param_index = ParamIdToIndex(id);
                 if (!param_index) return ErrorCode(CommonError::InvalidFileFormat);
+
                 state.param_values[(usize)*param_index] = linear_value;
             }
         }
@@ -1288,6 +1419,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     }
 
     // =======================================================================================================
+    AdaptPreAddedLayerVelocityCurvesParams(state, coder.version, args.source);
 
     return k_success;
 }
@@ -1316,7 +1448,7 @@ LoadPresetFile(PresetFormat format, Reader& reader, ArenaAllocator& scratch_aren
         }
         case PresetFormat::Mirage: {
             auto const file_data = TRY(reader.ReadOrFetchAll(scratch_arena));
-            TRY(DecodeJsonState(state, scratch_arena, {(char const*)file_data.data, file_data.size}));
+            TRY(DecodeMirageJsonState(state, scratch_arena, {(char const*)file_data.data, file_data.size}));
             break;
         }
         case PresetFormat::Count: PanicIfReached(); break;
@@ -1361,6 +1493,53 @@ ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state) {
 //    |_|\___||___/\__|___/
 //
 //=================================================
+
+TEST_CASE(TestAdaptPreAddedLayerVelocityCurvesParams) {
+    StateSnapshot state {};
+
+    state.LinearParam(ParamIndexFromLayerParamIndex(0, LayerParamIndex::VelocityMapping)) =
+        (f32)param_values::VelocityMappingMode::TopToMiddle;
+    state.LinearParam(ParamIndexFromLayerParamIndex(1, LayerParamIndex::VelocityMapping)) =
+        (f32)param_values::VelocityMappingMode::MiddleOutwards;
+    state.LinearParam(ParamIndexFromLayerParamIndex(2, LayerParamIndex::VelocityMapping)) =
+        (f32)param_values::VelocityMappingMode::MiddleToBottom;
+
+    SUBCASE("when master velocity is set to 0") {
+        // No additional mapping should occur.
+        state.LinearParam(ParamIndex::MasterVelocity) = 0;
+
+        AdaptPreAddedLayerVelocityCurvesParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+        // Master velocity should be set to 0.
+        CHECK_APPROX_EQ(state.LinearParam(ParamIndex::MasterVelocity), 0.0f, 0.01f);
+    }
+
+    SUBCASE("when master velocity is set to 1") {
+        // No additional mapping should occur.
+        state.LinearParam(ParamIndex::MasterVelocity) = 1;
+
+        AdaptPreAddedLayerVelocityCurvesParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+        // Master velocity should be set to 1.
+        CHECK_APPROX_EQ(state.LinearParam(ParamIndex::MasterVelocity), 0.0f, 0.01f);
+    }
+
+    // All velocity mapping modes should be set to the none.
+    for (auto const layer_index : Range(k_num_layers)) {
+        CHECK_APPROX_EQ(
+            state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::VelocityMapping)),
+            (f32)param_values::VelocityMappingMode::None,
+            0.01f);
+    }
+
+    // There should be 3 points for each velocity curve.
+    for (auto const layer_index : Range(k_num_layers)) {
+        auto const& points = state.velocity_curve_points[layer_index];
+        CHECK_EQ(points.size, 3uz);
+    }
+
+    return k_success;
+}
 
 template <typename Type>
 struct JsonPresetParam {
@@ -1458,7 +1637,7 @@ TEST_CASE(TestParsersHandleInvalidData) {
 
     SUBCASE("json") {
         for ([[maybe_unused]] auto i : Range(0, 20)) {
-            auto const result = DecodeJsonState(state, scratch_arena, make_random_data());
+            auto const result = DecodeMirageJsonState(state, scratch_arena, make_random_data());
             CHECK(result.HasError());
         }
     }
@@ -1539,6 +1718,21 @@ TEST_CASE(TestNewSerialisation) {
             state.metadata.author = author;
         }
 
+        {
+            dyn::Assign(state.velocity_curve_points[0],
+                        Array {
+                            CurveMap::Point {0.0f, 0.0f, 0.0f},
+                            CurveMap::Point {0.5f, 0.5f, 0.0f},
+                            CurveMap::Point {1.0f, 1.0f, 0.0f},
+                        });
+            dyn::Assign(state.velocity_curve_points[1],
+                        Array {
+                            CurveMap::Point {0.0f, 1.0f, 0.0f},
+                            CurveMap::Point {0.5f, 0.5f, 0.0f},
+                            CurveMap::Point {1.0f, 1.0f, 0.0f},
+                        });
+        }
+
         if (source == StateSource::Daw) {
             for (auto const param : Range(k_num_parameters)) {
                 if (param % 4 == 0) {
@@ -1596,16 +1790,16 @@ TEST_CASE(TestBackwardCompat) {
     StateSnapshot state {};
 
     SUBCASE("old versions always turn set ping pong crossfade to 0") {
-        auto const outcome =
-            DecodeJsonState(state,
-                            scratch_arena,
-                            TRY(MakeJsonPresetFromParams(scratch_arena,
-                                                         {1, 0, 0},
-                                                         ArrayT<JsonPresetParam<f32>>({
-                                                                                          {"L0LpOn", 1.0f},
-                                                                                          {"L0LpPP", 1.0f},
-                                                                                      })
-                                                             .Items())));
+        auto const outcome = DecodeMirageJsonState(
+            state,
+            scratch_arena,
+            TRY(MakeJsonPresetFromParams(scratch_arena,
+                                         {1, 0, 0},
+                                         ArrayT<JsonPresetParam<f32>>({
+                                                                          {"L0LpOn", 1.0f},
+                                                                          {"L0LpPP", 1.0f},
+                                                                      })
+                                             .Items())));
         REQUIRE(outcome.Succeeded());
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::LoopCrossfade), 0.0f, 0.01f);
     }
@@ -1613,9 +1807,9 @@ TEST_CASE(TestBackwardCompat) {
     SUBCASE("recreate bug behaviour in old versions") {
         SUBCASE("no tuning if keytracking off") {
             auto const outcome =
-                DecodeJsonState(state,
-                                scratch_arena,
-                                TRY(MakeJsonPreset(scratch_arena, {1, 0, 0}, "L0KTr", 0.0f)));
+                DecodeMirageJsonState(state,
+                                      scratch_arena,
+                                      TRY(MakeJsonPreset(scratch_arena, {1, 0, 0}, "L0KTr", 0.0f)));
             REQUIRE(outcome.Succeeded());
             for (auto const layer_index : Range(3u)) {
                 CHECK_APPROX_EQ(ProjectedLayerValue(state, layer_index, LayerParamIndex::TuneCents),
@@ -1627,7 +1821,7 @@ TEST_CASE(TestBackwardCompat) {
             }
         }
         SUBCASE("muted layer if sample offset twice loop end") {
-            auto const outcome = DecodeJsonState(
+            auto const outcome = DecodeMirageJsonState(
                 state,
                 scratch_arena,
                 TRY(MakeJsonPresetFromParams(scratch_arena,
@@ -1666,9 +1860,10 @@ TEST_CASE(TestFuzzingJsonState) {
                 for (auto const name : mapping.names) {
                     if (!name.size) continue;
                     auto const outcome =
-                        DecodeJsonState(state,
-                                        scratch_arena,
-                                        TRY(MakeJsonPreset(scratch_arena, {2, 0, 0}, *legacy_id, name)));
+                        DecodeMirageJsonState(state,
+                                              scratch_arena,
+                                              TRY(MakeJsonPreset(scratch_arena, {2, 0, 0}, *legacy_id, name)),
+                                              false);
                     CHECK(outcome.Succeeded());
                     if (outcome.Succeeded()) {
                         CheckStateIsValid(tester, state);
@@ -1696,9 +1891,10 @@ TEST_CASE(TestFuzzingJsonState) {
                 }
 
                 auto const outcome =
-                    DecodeJsonState(state,
-                                    scratch_arena,
-                                    TRY(MakeJsonPreset(scratch_arena, {2, 0, 0}, *legacy_id, v)));
+                    DecodeMirageJsonState(state,
+                                          scratch_arena,
+                                          TRY(MakeJsonPreset(scratch_arena, {2, 0, 0}, *legacy_id, v)),
+                                          false);
                 CHECK(outcome.Succeeded());
                 if (outcome.Succeeded()) {
                     CheckStateIsValid(tester, state);
@@ -1724,7 +1920,7 @@ TEST_CASE(TestLoadingOldFiles) {
     auto decode_file = [&](String const filename) -> ErrorCodeOr<StateSnapshot> {
         StateSnapshot state;
         auto const data = TRY_I(ReadEntireFile(TestPresetPath(tester, filename), scratch_arena));
-        REQUIRE(DecodeJsonState(state, scratch_arena, data).Succeeded());
+        REQUIRE(DecodeMirageJsonState(state, scratch_arena, data).Succeeded());
         CheckStateIsValid(tester, state);
         return state;
     };
@@ -1916,4 +2112,5 @@ TEST_REGISTRATION(RegisterStateCodingTests) {
     REGISTER_TEST(TestFuzzingJsonState);
     REGISTER_TEST(TestNewSerialisation);
     REGISTER_TEST(TestParsersHandleInvalidData);
+    REGISTER_TEST(TestAdaptPreAddedLayerVelocityCurvesParams);
 }

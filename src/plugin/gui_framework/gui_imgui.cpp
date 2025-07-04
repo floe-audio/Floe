@@ -1067,9 +1067,9 @@ Window* Context::GetPopupFromID(Id id) {
 }
 
 bool Context::SetHot(Rect r, Id id, bool32 is_not_window_content) {
-    // if there is a popup window focused and it is not this window we can leave
-    // early as the popup has focus (we also check that this current window is not
-    // nested inside a popup - in that case we proceed as normal)
+    // If there is a popup window focused and it is not this window we can leave
+    // early as the popup has focus. (We also check that this current window is not
+    // nested inside a popup - in that case we proceed as normal).
     if (focused_popup_window != nullptr && focused_popup_window != curr_window) {
         auto const this_window_is_inside_apopup = curr_window->flags & WindowFlags_NestedInsidePopup;
         auto const this_windows_root_is_the_focused_popup = curr_window->root_window == focused_popup_window;
@@ -1090,11 +1090,11 @@ bool Context::SetHot(Rect r, Id id, bool32 is_not_window_content) {
         }
     }
 
-    // only bother to check if the cursor is in the same window
+    // Only bother to check if the cursor is in the same window.
     if ((curr_window == hovered_window_content || (is_not_window_content && curr_window == hovered_window)) &&
         r.Contains(frame_input.cursor_pos)) {
         temp_hovered_item = id;
-        // only allow it if there is not active item (for example a disallow when a slider is held down)
+        // Only allow it if there is not an active item (for example a disallow when a slider is held down).
         if (GetActive() == 0) {
             SetHotRaw(id);
             return true;

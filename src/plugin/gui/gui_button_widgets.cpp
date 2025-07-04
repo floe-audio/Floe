@@ -5,7 +5,6 @@
 
 #include "gui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
-#include "gui_velocity_buttons.hpp"
 #include "gui_widget_helpers.hpp"
 #include "gui_window.hpp"
 #include "processor/param.hpp"
@@ -208,10 +207,6 @@ static bool ButtonInternal(Gui* g,
                 DrawIconAndTextButton(g, style, r, id, str, state);
                 break;
             }
-
-            case LayoutAndSizeType::VelocityButton:
-                GetVelocityButtonDrawingFunction(style.velocity_button.index)(imgui, r, id, str, state);
-                break;
         }
     };
 

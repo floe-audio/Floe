@@ -1936,7 +1936,6 @@ pub fn build(b: *std.Build) void {
                     plugin_path ++ "/gui/gui_peak_meter_widget.cpp",
                     plugin_path ++ "/gui/gui_prefs.cpp",
                     plugin_path ++ "/gui/gui_top_panel.cpp",
-                    plugin_path ++ "/gui/gui_velocity_buttons.cpp",
                     plugin_path ++ "/gui/gui_waveform.cpp",
                     plugin_path ++ "/gui/gui_widget_compounds.cpp",
                     plugin_path ++ "/gui/gui_widget_helpers.cpp",

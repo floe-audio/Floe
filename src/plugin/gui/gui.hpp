@@ -119,9 +119,6 @@ struct Gui {
     PageAllocator page_allocator;
     ArenaAllocator scratch_arena {page_allocator};
 
-    bool show_purchasable_libraries = false;
-    bool show_news = false;
-
     PreferencesPanelState preferences_panel_state {};
     InfoPanelState info_panel_state {};
     bool attribution_panel_open {};
@@ -133,6 +130,8 @@ struct Gui {
     SavePresetPanelState save_preset_panel_state {};
     PresetPickerState preset_picker_state {};
     LibraryDevPanelState library_dev_panel_state {};
+
+    bool legacy_params_window_open {};
 
     GuiFrameInput& frame_input;
     GuiFrameResult frame_output;

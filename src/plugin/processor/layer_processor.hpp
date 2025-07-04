@@ -11,6 +11,7 @@
 #include "param.hpp"
 #include "processing_utils/adsr.hpp"
 #include "processing_utils/audio_processing_context.hpp"
+#include "processing_utils/curve_map.hpp"
 #include "processing_utils/filters.hpp"
 #include "processing_utils/midi.hpp"
 #include "processing_utils/peak_meter.hpp"
@@ -152,6 +153,11 @@ struct VoiceProcessingController {
 
 struct VoicePool;
 
+constexpr auto k_default_velocity_curve_points = Array {
+    CurveMap::Point {0.0f, 0.3f, 0.0f},
+    CurveMap::Point {1.0f, 1.0f, 0.0f},
+};
+
 struct LayerProcessor {
     LayerProcessor(FloeSmoothedValueSystem& system,
                    u8 index,
@@ -165,7 +171,9 @@ struct LayerProcessor {
               .smoothing_system = system,
               .layer_index = index,
           })
-        , eq_bands(smoothed_value_system) {}
+        , eq_bands(smoothed_value_system) {
+        velocity_curve_map.SetNewPoints(k_default_velocity_curve_points);
+    }
 
     ~LayerProcessor() {
         if (auto sampled_inst =
@@ -295,6 +303,7 @@ struct LayerProcessor {
 
     int num_velocity_regions = 1;
     Bitset<4> active_velocity_regions {};
+    CurveMap velocity_curve_map = {};
 
     StereoPeakMeter peak_meter = {};
 

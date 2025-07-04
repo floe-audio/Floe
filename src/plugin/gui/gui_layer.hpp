@@ -25,7 +25,7 @@ enum class PageType {
     Filter,
     Lfo,
     Eq,
-    Midi,
+    Keyboard,
     Count,
 };
 
@@ -82,9 +82,9 @@ struct LayerLayoutTempIDs {
             layout::Id keytrack;
             layout::Id mono;
             layout::Id retrig;
-            layout::Id velo_buttons;
             layout::Id velo_name;
-        } midi;
+            layout::Id velo_graph;
+        } play;
 
         struct {
             layout::Id on;

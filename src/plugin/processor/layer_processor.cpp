@@ -119,8 +119,21 @@ static void SetVelocityMapping(LayerProcessor& layer, param_values::VelocityMapp
     }
 }
 
-static f32 GetVelocityRegionLevel(LayerProcessor& layer, f32 velocity, f32 velocity_to_volume) {
+static f32 AmplitudeScalingFromVelocity(LayerProcessor& layer, f32 velocity, f32 velocity_to_volume) {
+    ASSERT_HOT(velocity >= 0);
+
     auto mod = MapFrom01(velocity, 1 - velocity_to_volume, 1);
+
+    auto const& curve = layer.velocity_curve_map.lookup_table.Consume().data;
+    auto value = curve[(usize)Round(velocity * (curve.size - 1))];
+
+    // since we're using this as an amplitude, we want to scale by a more pleasing value
+    value = value * value;
+
+    mod *= value;
+
+    // Velocity regions are a legacy features that will only be used if we're running DAW state from an older
+    // version.
     if (layer.num_velocity_regions == 2) {
         mod *= ProcessVeloRegions(k_velo_regions_half.Items(), layer.active_velocity_regions, velocity * 127);
     } else if (layer.num_velocity_regions == 3) {
@@ -393,7 +406,7 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
     if (note_for_samples_unchecked < 0 || note_for_samples_unchecked > 127) return;
     auto const note_for_samples = (u7)note_for_samples_unchecked;
     auto const velocity_volume_modifier =
-        GetVelocityRegionLevel(layer, note_vel_float, velocity_to_volume_01);
+        AmplitudeScalingFromVelocity(layer, note_vel_float, velocity_to_volume_01);
 
     VoiceStartParams p {.params = VoiceStartParams::SamplerParams {}};
     if (auto i_ptr = layer.inst.TryGet<sample_lib::LoadedInstrument const*>()) {

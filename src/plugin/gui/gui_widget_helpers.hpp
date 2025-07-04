@@ -59,5 +59,4 @@ void EndParameterGUI(Gui* g,
 //
 // Misc
 //
-bool DoCloseButtonForCurrentWindow(Gui* g, String tooltip_text, buttons::Style const& style);
 bool DoOverlayClickableBackground(Gui* g);

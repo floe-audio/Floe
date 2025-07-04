@@ -46,7 +46,7 @@ struct AtomicSwapBuffer {
     // we could return a bool to indicate if the buffer was dirty, but we don't need it for now
     ConsumeResult Consume() {
         // if it's not dirty, we don't swap anything, just return the front
-        if (!(middle_buffer_state.Load(LoadMemoryOrder::Relaxed) & k_dirty_bit))
+        if (!(middle_buffer_state.Load(LoadMemoryOrder::Acquire) & k_dirty_bit))
             return {buffers[front_buffer_index].data, false};
 
         // if it's dirty, we swap the middle with the front (with no dirty bit)
@@ -66,7 +66,7 @@ struct AtomicSwapBuffer {
     };
     Buffer buffers[3];
 
-    // producer and consumer, contains both index and dirty bit
+    // producer and consumer. contains both index and dirty bit.
     alignas(k_alignment) Atomic<u32> middle_buffer_state {1};
 
     // producer only

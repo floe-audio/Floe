@@ -8,6 +8,7 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "instrument.hpp"
+#include "plugin/processing_utils/curve_map.hpp"
 
 struct StateMetadata {
     bool operator==(StateMetadata const& other) const = default;
@@ -37,6 +38,7 @@ struct StateSnapshot {
     Array<Bitset<128>, k_num_parameters> param_learned_ccs {};
     StateMetadata metadata {};
     DynamicArrayBounded<char, k_max_instance_id_size> instance_id;
+    Array<CurveMap::Points, k_num_layers> velocity_curve_points {};
 };
 
 enum class StateSource { PresetFile, Daw };

@@ -64,6 +64,7 @@ static void DoDotsMenu(Gui* g) {
             LoadRandomIr(ir_context, g->ir_picker_state);
         }
     }
+    if (top_menu.DoButton("Legacy Parameters")) g->legacy_params_window_open = true;
     if (top_menu.DoButton("Share Feedback")) g->feedback_panel_state.open = true;
     if (top_menu.DoButton("Library Developer Panel")) g->library_dev_panel_state.open = true;
 }
@@ -210,12 +211,6 @@ void TopPanel(Gui* g) {
                              knob_container,
                              dyn,
                              g->engine.processor.params[ToInt(ParamIndex::MasterTimbre)],
-                             UiSizeId::Top2KnobsGapX);
-    LayIDPair velo;
-    LayoutParameterComponent(g,
-                             knob_container,
-                             velo,
-                             g->engine.processor.params[ToInt(ParamIndex::MasterVelocity)],
                              UiSizeId::Top2KnobsGapX);
     LayIDPair vol;
     LayoutParameterComponent(g,
@@ -429,10 +424,6 @@ void TopPanel(Gui* g) {
     KnobAndLabel(g,
                  g->engine.processor.params[ToInt(ParamIndex::MasterVolume)],
                  vol,
-                 knobs::DefaultKnob(g->imgui));
-    KnobAndLabel(g,
-                 g->engine.processor.params[ToInt(ParamIndex::MasterVelocity)],
-                 velo,
                  knobs::DefaultKnob(g->imgui));
 
     {

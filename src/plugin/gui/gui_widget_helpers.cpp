@@ -407,21 +407,6 @@ void EndParameterGUI(Gui* g,
         ParameterValuePopup(g, param, id, r);
 }
 
-bool DoCloseButtonForCurrentWindow(Gui* g, String tooltip_text, buttons::Style const& style) {
-    auto& imgui = g->imgui;
-    f32 const pad = LiveSize(imgui, UiSizeId::SidePanelCloseButtonPad);
-    f32 const size = LiveSize(imgui, UiSizeId::SidePanelCloseButtonSize);
-
-    auto const x = imgui.Width() - (pad + size);
-    Rect const btn_r = {.xywh {x, pad, size, size}};
-
-    auto const btn_id = imgui.GetID("close");
-    bool const button_clicked = buttons::Button(g, btn_id, btn_r, ICON_FA_XMARK, style);
-
-    Tooltip(g, btn_id, btn_r, tooltip_text);
-    return button_clicked;
-}
-
 bool DoOverlayClickableBackground(Gui* g) {
     bool clicked = false;
     auto& imgui = g->imgui;

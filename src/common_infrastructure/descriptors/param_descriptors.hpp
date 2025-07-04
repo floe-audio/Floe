@@ -168,6 +168,7 @@ enum class ParamValueType : u8 {
 
 struct ParamFlags {
     u8 not_automatable : 1;
+    u8 hidden : 1;
 };
 
 enum class ParameterModule : u8 {
@@ -183,7 +184,7 @@ enum class ParameterModule : u8 {
     Lfo,
     Loop,
     Filter,
-    Midi,
+    Playback,
     Eq,
     VolEnv,
 
@@ -210,7 +211,7 @@ constexpr String k_parameter_module_strings[] = {
 
     "Effect",     "Master",
 
-    "LFO",        "Loop",       "Filter",  "MIDI",        "EQ",     "Volume Envelope",
+    "LFO",        "Loop",       "Filter",  "Playback",    "EQ",     "Volume Envelope",
 
     "Distortion", "Reverb",     "Delay",   "StereoWiden", "Chorus", "Phaser",          "Convolution Reverb",
     "Bitcrush",   "Compressor",
@@ -562,7 +563,6 @@ struct ParamDescriptor {
             Range linear_range;
             Optional<Projection> projection;
             f32 default_linear_value;
-            ParamFlags flags;
             ParamDisplayFormat display_format;
             ParamValueType value_type;
             MenuType menu_type;
@@ -575,12 +575,13 @@ struct ParamDescriptor {
         String gui_label;
         String tooltip;
         u8 related_params_group;
+        ParamFlags flags;
     };
 
     constexpr ParamDescriptor(ConstructorArgs args)
         : index((ParamIndex)-1)
         , id(args.id)
-        , flags(args.value_config.flags)
+        , flags(args.flags)
         , display_format(args.value_config.display_format)
         , value_type(args.value_config.value_type)
         , linear_range(args.value_config.linear_range)
@@ -652,8 +653,9 @@ struct ParamDescriptor {
     String gui_label;
     String tooltip;
     MenuType menu_type;
-    u8 grouping_within_module; // if non-zero, signifies that it might be shown grouped with others with the
-                               // same group and in ascending order
+    // If non-zero, signifies that it might be shown grouped with others with the same group and in ascending
+    // order.
+    u8 grouping_within_module;
 };
 
 constexpr ParamIndex ParamIndexFromLayerParamIndex(u32 layer_index, LayerParamIndex layer_param_index) {
@@ -713,13 +715,11 @@ constexpr f32 LogWithBase(f32 base, f32 x) {
 
 struct PercentOptions {
     f32 default_percent;
-    ParamFlags flags;
 };
 constexpr ValConfig Percent(PercentOptions opts) {
     return ValConfig {
         .linear_range = {0, 1},
         .default_linear_value = opts.default_percent / 100,
-        .flags = opts.flags,
         .display_format = ParamDisplayFormat::Percent,
     };
 }
@@ -727,13 +727,11 @@ constexpr ValConfig Percent(PercentOptions opts) {
 struct BidirectionalPercentOptions {
     f32 default_percent;
     ParamDisplayFormat display_format;
-    ParamFlags flags;
 };
 constexpr ValConfig BidirectionalPercent(BidirectionalPercentOptions opts) {
     return ValConfig {
         .linear_range = {-1, 1},
         .default_linear_value = opts.default_percent / 100,
-        .flags = opts.flags,
         .display_format = opts.display_format,
     };
 }
@@ -742,21 +740,18 @@ struct CustomLinearOptions {
     ParamValueType value_type = ParamValueType::Float;
     ParamDescriptor::Range range;
     f32 default_val;
-    ParamFlags flags;
 };
 constexpr ValConfig CustomLinear(CustomLinearOptions opts) {
     return ValConfig {
         .linear_range = opts.range,
         .projection = k_nullopt,
         .default_linear_value = opts.default_val,
-        .flags = opts.flags,
         .value_type = opts.value_type,
     };
 }
 
 struct SemitonesOptions {
     f32 default_val;
-    ParamFlags flags;
     ParamDescriptor::Range range = {0, 128};
 };
 constexpr ValConfig Semitones(SemitonesOptions opts) {
@@ -764,7 +759,6 @@ constexpr ValConfig Semitones(SemitonesOptions opts) {
         .linear_range = opts.range,
         .projection = k_nullopt,
         .default_linear_value = opts.default_val,
-        .flags = opts.flags,
         .display_format = ParamDisplayFormat::Semitones,
     };
 }
@@ -772,34 +766,29 @@ constexpr ValConfig Semitones(SemitonesOptions opts) {
 struct IntOptions {
     ParamDescriptor::Range range;
     f32 default_val;
-    ParamFlags flags;
 };
 constexpr ValConfig Int(IntOptions opts) {
     return CustomLinear({
         .value_type = ParamValueType::Int,
         .range = opts.range,
         .default_val = opts.default_val,
-        .flags = opts.flags,
     });
 }
 
 struct BoolOptions {
     bool default_state;
-    ParamFlags flags;
 };
 constexpr ValConfig Bool(BoolOptions opts) {
     return CustomLinear({
         .value_type = ParamValueType::Bool,
         .range = {0, 1},
         .default_val = (f32)opts.default_state,
-        .flags = opts.flags,
     });
 }
 
 struct MenuOptions {
     ParamDescriptor::MenuType type;
     u32 default_val;
-    ParamFlags flags;
 };
 constexpr ValConfig Menu(MenuOptions opts) {
     auto const items = MenuItems(opts.type);
@@ -808,7 +797,6 @@ constexpr ValConfig Menu(MenuOptions opts) {
         .linear_range = range,
         .projection = k_nullopt,
         .default_linear_value = (f32)opts.default_val,
-        .flags = opts.flags,
         .value_type = ParamValueType::Menu,
         .menu_type = opts.type,
     };
@@ -818,7 +806,6 @@ struct VolumeOptions {
     f32 default_db;
     f32 max_db = 12;
     Optional<f32> exponent = k_nullopt;
-    ParamFlags flags;
 };
 constexpr ValConfig Volume(VolumeOptions opts) {
     auto const max_amp = DbToAmp(opts.max_db);
@@ -833,27 +820,23 @@ constexpr ValConfig Volume(VolumeOptions opts) {
         .projection = p,
         .default_linear_value =
             p.LineariseValue<constexpr_math::Powf>(linear_range, DbToAmp(opts.default_db)),
-        .flags = opts.flags,
         .display_format = ParamDisplayFormat::VolumeAmp,
     };
 }
 
 struct SustainOptions {
     f32 default_db;
-    ParamFlags flags;
 };
 constexpr ValConfig Sustain(SustainOptions opts) {
     return Volume({
         .default_db = opts.default_db,
         .max_db = 0,
         .exponent = 1.3f,
-        .flags = opts.flags,
     });
 }
 
 struct GainOptions {
     f32 default_db;
-    ParamFlags flags;
 };
 constexpr ValConfig Gain(GainOptions opts) {
     ParamDescriptor::Projection const projection {{-30, 30}, 1.6f};
@@ -863,7 +846,6 @@ constexpr ValConfig Gain(GainOptions opts) {
         .projection = projection,
         .default_linear_value =
             projection.LineariseValue<constexpr_math::Powf>(linear_range, opts.default_db),
-        .flags = opts.flags,
         .display_format = ParamDisplayFormat::VolumeDbRange,
     };
 }
@@ -871,7 +853,6 @@ constexpr ValConfig Gain(GainOptions opts) {
 struct MsOptions {
     ParamDescriptor::Projection projection;
     f32 default_ms;
-    ParamFlags flags;
 };
 constexpr ValConfig Ms(MsOptions opts) {
     ParamDescriptor::Range const linear_range = {0, 1};
@@ -880,20 +861,17 @@ constexpr ValConfig Ms(MsOptions opts) {
         .projection = opts.projection,
         .default_linear_value =
             opts.projection.LineariseValue<constexpr_math::Powf>(linear_range, opts.default_ms),
-        .flags = opts.flags,
         .display_format = ParamDisplayFormat::Ms,
     };
 }
 
 struct MsHelperOptions {
     f32 default_ms;
-    ParamFlags flags;
 };
 constexpr ValConfig DelayNewMs(MsHelperOptions opts) {
     return Ms({
         .projection = {{15, 8000}, 2.5f},
         .default_ms = opts.default_ms,
-        .flags = opts.flags,
     });
 }
 
@@ -901,7 +879,6 @@ constexpr ValConfig DelayOldMs(MsHelperOptions opts) {
     return Ms({
         .projection = {{15, 1000}, 1.25f},
         .default_ms = opts.default_ms,
-        .flags = opts.flags,
     });
 }
 
@@ -909,14 +886,12 @@ constexpr ValConfig EnvelopeMs(MsHelperOptions opts) {
     return Ms({
         .projection = {{0, 10000}, 3},
         .default_ms = opts.default_ms,
-        .flags = opts.flags,
     });
 }
 
 struct HzOptions {
     ParamDescriptor::Projection projection;
     f32 default_hz;
-    ParamFlags flags;
 };
 constexpr ValConfig Hz(HzOptions opts) {
     ParamDescriptor::Range const linear_range {0, 1};
@@ -925,26 +900,22 @@ constexpr ValConfig Hz(HzOptions opts) {
         .projection = opts.projection,
         .default_linear_value =
             opts.projection.LineariseValue<constexpr_math::Powf>(linear_range, opts.default_hz),
-        .flags = opts.flags,
         .display_format = ParamDisplayFormat::Hz,
     };
 }
 
 struct FilterOptions {
     f32 default_hz;
-    ParamFlags flags;
 };
 constexpr ValConfig Filter(FilterOptions opts) {
     return Hz({
         .projection = {{15, 20000}, 2.8f},
         .default_hz = opts.default_hz,
-        .flags = opts.flags,
     });
 }
 
 struct HzSlowOptions {
     f32 default_hz;
-    ParamFlags flags;
     f32 exponent = 1.8f;
     ParamDescriptor::Range range = {0.1f, 20};
 };
@@ -952,7 +923,6 @@ constexpr ValConfig HzSlow(HzSlowOptions opts) {
     return Hz({
         .projection = {opts.range, opts.exponent},
         .default_hz = opts.default_hz,
-        .flags = opts.flags,
     });
 }
 
@@ -960,7 +930,6 @@ struct CustomProjectedOptions {
     ParamDisplayFormat display_format;
     f32 default_val;
     ParamDescriptor::Projection projection;
-    ParamFlags flags;
 };
 constexpr ValConfig CustomProjected(CustomProjectedOptions opts) {
     ParamDescriptor::Range const linear_range {0, 1};
@@ -969,7 +938,6 @@ constexpr ValConfig CustomProjected(CustomProjectedOptions opts) {
         .projection = opts.projection,
         .default_linear_value =
             opts.projection.LineariseValue<constexpr_math::Powf>(linear_range, opts.default_val),
-        .flags = opts.flags,
         .display_format = opts.display_format,
     };
 }
@@ -1027,12 +995,13 @@ consteval auto CreateParams() {
 
     mp(MasterVelocity) = Args {
         .id = id(IdRegion::Master, 1), // never change
-        .value_config = val_config_helpers::Percent({.default_percent = 70}),
+        .value_config = val_config_helpers::Percent({.default_percent = 0}),
         .modules = {ParameterModule::Master},
         .name = "Velocity To Volume Strength"_s,
         .gui_label = "Velo"_s,
         .tooltip =
             "The amount that the MIDI velocity affects the volume of notes; 100% means notes will be silent when the velocity is very soft, and 0% means that notes will play full volume regardless of the velocity"_s,
+        .flags = {.hidden = true},
     };
     mp(MasterTimbre) = Args {
         .id = id(IdRegion::Master, 2), // never change
@@ -2074,16 +2043,17 @@ consteval auto CreateParams() {
                 .type = ParamDescriptor::MenuType::VelocityMappingMode,
                 .default_val = (u32)VelocityMappingMode::None,
             }),
-            .modules = {layer_module, ParameterModule::Midi},
+            .modules = {layer_module, ParameterModule::Playback},
             .name = "Velocity Mapping"_s,
             .gui_label = "Velocity Mapping"_s,
             .tooltip =
                 "Choose how MIDI velocity should affect the volume of this layer. There are 6 modes that can be selected for this parameter via the buttons on the GUI. By setting one layer to be quiet at high velocities and another layer to be quiet at low velocities you can create an instrument that sounds different based on how hard the notes are played. (0) Ignore velocity, always play full volume. (1) Loudest at high velocity, quietist at low velocity (2) Loudest at low velocity, quietist at high velocity (3) Loudest at high velocity, quietist at middle velocity and below (4) Loudest at middle velocity, quietist at both high and low velocities (5) Loudest at bottom velocity, quietist at middle velocity and above,"_s,
+            .flags = {.hidden = true},
         };
         lp(Keytrack) = Args {
             .id = id(region, 45), // never change
             .value_config = val_config_helpers::Bool({.default_state = true}),
-            .modules = {layer_module, ParameterModule::Midi},
+            .modules = {layer_module, ParameterModule::Playback},
             .name = "Keytrack On"_s,
             .gui_label = "Keytrack"_s,
             .tooltip =
@@ -2092,7 +2062,7 @@ consteval auto CreateParams() {
         lp(Monophonic) = Args {
             .id = id(region, 46), // never change
             .value_config = val_config_helpers::Bool({.default_state = false}),
-            .modules = {layer_module, ParameterModule::Midi},
+            .modules = {layer_module, ParameterModule::Playback},
             .name = "Monophonic On"_s,
             .gui_label = "Monophonic"_s,
             .tooltip = "Only allow one voice of each sound to play at a time"_s,
@@ -2100,7 +2070,7 @@ consteval auto CreateParams() {
         lp(MidiTranspose) = Args {
             .id = id(region, 48), // never change
             .value_config = val_config_helpers::Int({.range = {-36, 36}, .default_val = 0}),
-            .modules = {layer_module, ParameterModule::Midi},
+            .modules = {layer_module, ParameterModule::Playback},
             .name = "MIDI Transpose On"_s,
             .gui_label = "Transpose"_s,
             .tooltip =
