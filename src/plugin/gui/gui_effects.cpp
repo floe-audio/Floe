@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui_effects.hpp"
@@ -351,7 +351,8 @@ void DoEffectsWindow(Gui* g, Rect r) {
                                         0.0f,
                                         name);
         f32 const epsilon = 2;
-        return f32x2 {Round(size.x + epsilon) + LiveSize(imgui, FXHeadingExtraWidth),
+        return f32x2 {Round(size.x + epsilon) + LiveSize(imgui, FXHeadingExtraWidth) +
+                          LiveSize(imgui, FXHeadingIconWidth),
                       LiveSize(imgui, FXHeadingH)};
     };
 
@@ -789,12 +790,37 @@ void DoEffectsWindow(Gui* g, Rect r) {
         auto const do_heading = [&](Effect& fx, u32 col) {
             {
                 auto const id = imgui.GetID("heading");
-                auto const r = layout::GetRect(lay, ids.heading);
-                buttons::Button(g,
-                                id,
-                                r,
-                                k_effect_info[ToInt(fx.type)].name,
-                                buttons::EffectHeading(imgui, col));
+                auto r = imgui.GetRegisteredAndConvertedRect(layout::GetRect(lay, ids.heading));
+                {
+                    imgui.ButtonBehavior(r, id, {.left_mouse = true, .triggers_on_mouse_up = true});
+
+                    imgui.graphics->AddRectFilled(r.Min(),
+                                                  r.Max(),
+                                                  col,
+                                                  LiveSize(imgui, UiSizeId::CornerRounding),
+                                                  4);
+
+                    rect_cut::CutLeft(r, LiveSize(imgui, FXHeadingExtraWidth) / 2);
+                    auto icon_r = rect_cut::CutLeft(r, LiveSize(imgui, FXHeadingIconWidth));
+
+                    {
+                        imgui.graphics->context->PushFont(g->fonts[ToInt(FontType::Icons)]);
+                        DEFER { imgui.graphics->context->PopFont(); };
+                        imgui.graphics->AddTextJustified(icon_r,
+                                                         ICON_FA_GRIP_VERTICAL,
+                                                         LiveCol(imgui, UiColMap::FXHeadingIcon),
+                                                         TextJustification::Centred,
+                                                         TextOverflowType::AllowOverflow,
+                                                         0.70f);
+                    }
+
+                    imgui.graphics->AddTextJustified(r,
+                                                     k_effect_info[ToInt(fx.type)].name,
+                                                     LiveCol(imgui, UiColMap::FXHeading),
+                                                     TextJustification::Centred,
+                                                     TextOverflowType::AllowOverflow,
+                                                     1.1f);
+                }
 
                 if (imgui.WasJustActivated(id)) {
                     dragging_fx_unit = DraggingFX {id, &fx, FindSlotInEffects(ordered_effects, &fx), {}};
