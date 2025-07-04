@@ -35,6 +35,33 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
     auto const mode =
         ActualLoopBehaviour(layer->instrument, desired_loop_mode, layer->VolumeEnvelopeIsOn(false));
 
+    struct SingleBuiltinLoop {
+        f32 start;
+        f32 end;
+        f32 crossfade;
+    };
+
+    auto const single_builtin_loop = ({
+        Optional<SingleBuiltinLoop> l = {};
+        if (IsBuiltinLoop(mode.value.id)) {
+            // If it's a single sample with a builtin loop, we can use that.
+            if (auto i = layer->instrument.TryGetFromTag<InstrumentType::Sampler>()) {
+                if ((*i)->instrument.regions.size == 1) {
+                    if (auto const loop = (*i)->instrument.regions[0].loop.builtin_loop) {
+                        auto const num_frames = (*i)->audio_datas[0]->num_frames;
+                        auto const checked_loop = CreateBoundsCheckedLoop(*loop, num_frames);
+                        l = SingleBuiltinLoop {
+                            .start = (f32)checked_loop.start / (f32)num_frames,
+                            .end = (f32)checked_loop.end / (f32)num_frames,
+                            .crossfade = (f32)checked_loop.crossfade / (f32)num_frames,
+                        };
+                    }
+                }
+            }
+        }
+        l;
+    });
+
     auto const extra_grabbing_room_x = handle_width;
     auto const extra_grabbing_room_towards_centre = r.h / 3;
     auto const extra_grabbing_room_away_from_centre = r.h / 6;
@@ -67,7 +94,9 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
         u32 back_col;
         u32 back_hover_col;
         u32 text_col;
-        back_col = LiveCol(imgui, UiColMap::Waveform_LoopHandle);
+        back_col = LiveCol(imgui,
+                           !single_builtin_loop ? UiColMap::Waveform_LoopHandle
+                                                : UiColMap::Waveform_LoopHandleInactive);
         back_hover_col = LiveCol(imgui, UiColMap::Waveform_LoopHandleHover);
         text_col = LiveCol(imgui, UiColMap::Waveform_LoopHandleText);
 
@@ -175,10 +204,17 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
         }
     };
 
-    if (mode.value.editable) {
-        auto const loop_start = layer->params[ToInt(LayerParamIndex::LoopStart)].LinearValue();
-        auto const loop_end = Max(layer->params[ToInt(LayerParamIndex::LoopEnd)].LinearValue(), loop_start);
-        auto const raw_crossfade_size = layer->params[ToInt(LayerParamIndex::LoopCrossfade)].LinearValue();
+    if (mode.value.editable || single_builtin_loop) {
+        auto const loop_start = !single_builtin_loop
+                                    ? layer->params[ToInt(LayerParamIndex::LoopStart)].LinearValue()
+                                    : single_builtin_loop->start;
+        auto const loop_end =
+            !single_builtin_loop
+                ? Max(layer->params[ToInt(LayerParamIndex::LoopEnd)].LinearValue(), loop_start)
+                : single_builtin_loop->end;
+        auto const raw_crossfade_size =
+            !single_builtin_loop ? layer->params[ToInt(LayerParamIndex::LoopCrossfade)].LinearValue()
+                                 : single_builtin_loop->crossfade;
         loop_xfade_size =
             ClampCrossfadeSize<f32>(raw_crossfade_size, loop_start, loop_end, 1.0f, *mode.value.mode) * r.w;
         auto loop_start_pos = loop_start * r.w;
@@ -236,19 +272,19 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
             grabber.w += extra_grabbing_room_x;
             if (!reverse) grabber.x -= extra_grabbing_room_x;
 
-            ParamIndex const params[] = {start_param_id, xfade_param_id};
-            do_handle_slider(start_id,
-                             params,
-                             start_param_id,
-                             grabber,
-                             param.LinearValue(),
-                             param.DefaultLinearValue(),
-                             reverse,
-                             [&](f32 val) {
-                                 val = Max(0.0f, Min(loop_end - epsilon, val));
-                                 SetParameterValue(engine.processor, start_param_id, val, {});
-                                 set_xfade_size_if_needed();
-                             });
+            if (!single_builtin_loop)
+                do_handle_slider(start_id,
+                                 Array {start_param_id, xfade_param_id},
+                                 start_param_id,
+                                 grabber,
+                                 param.LinearValue(),
+                                 param.DefaultLinearValue(),
+                                 reverse,
+                                 [&](f32 val) {
+                                     val = Max(0.0f, Min(loop_end - epsilon, val));
+                                     SetParameterValue(engine.processor, start_param_id, val, {});
+                                     set_xfade_size_if_needed();
+                                 });
 
             imgui.RegisterAndConvertRect(&start_line);
             imgui.RegisterAndConvertRect(&start_handle);
@@ -268,19 +304,19 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
             grabber.h += extra_grabbing_room_away_from_centre + extra_grabbing_room_towards_centre;
             if (reverse) grabber.x -= extra_grabbing_room_x;
 
-            ParamIndex const params[] = {end_param_id, xfade_param_id};
-            do_handle_slider(end_id,
-                             params,
-                             end_param_id,
-                             grabber,
-                             param.LinearValue(),
-                             param.DefaultLinearValue(),
-                             reverse,
-                             [&](f32 value) {
-                                 value = Min(1.0f, Max(loop_start + epsilon, value));
-                                 SetParameterValue(engine.processor, end_param_id, value, {});
-                                 set_xfade_size_if_needed();
-                             });
+            if (!single_builtin_loop)
+                do_handle_slider(end_id,
+                                 Array {end_param_id, xfade_param_id},
+                                 end_param_id,
+                                 grabber,
+                                 param.LinearValue(),
+                                 param.DefaultLinearValue(),
+                                 reverse,
+                                 [&](f32 value) {
+                                     value = Min(1.0f, Max(loop_start + epsilon, value));
+                                     SetParameterValue(engine.processor, end_param_id, value, {});
+                                     set_xfade_size_if_needed();
+                                 });
 
             imgui.RegisterAndConvertRect(&end_line);
             imgui.RegisterAndConvertRect(&end_handle);
@@ -292,10 +328,9 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
                 Rect::FromMinMax({waveform_r.x + Min(loop_start_pos, loop_end_pos), waveform_r.y},
                                  {waveform_r.x + Max(loop_start_pos, loop_end_pos), waveform_r.Bottom()});
 
-            if (!(loop_start == 0 && loop_end == 1)) {
-                ParamIndex const params[] = {start_param_id, end_param_id, xfade_param_id};
+            if (!single_builtin_loop && !(loop_start == 0 && loop_end == 1)) {
                 do_handle_slider(loop_region_id,
-                                 params,
+                                 Array {start_param_id, end_param_id, xfade_param_id},
                                  {},
                                  loop_region_r,
                                  loop_start,
@@ -332,7 +367,7 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
             if (reverse && mode.value.mode == sample_lib::LoopMode::Standard)
                 grabber.x -= extra_grabbing_room_x;
 
-            if (xfade_active) {
+            if (xfade_active && !single_builtin_loop) {
                 bool const invert = mode.value.mode == sample_lib::LoopMode::Standard ? !reverse : false;
 
                 do_handle_slider(xfade_id,
@@ -400,7 +435,7 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
     }
 
     // drawing
-    if (mode.value.editable) {
+    if (mode.value.editable || single_builtin_loop) {
         auto other_xfade_line = start_line.WithPos(start_line.TopRight() +
                                                    f32x2 {reverse ? loop_xfade_size : -loop_xfade_size, 0});
         if (mode.value.mode == sample_lib::LoopMode::PingPong)
@@ -453,16 +488,23 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
                                               : LiveCol(imgui, UiColMap::Waveform_RegionOverlay));
         }
 
-        imgui.graphics->AddRectFilled(start_line.Min(),
-                                      start_line.Max(),
-                                      imgui.IsHotOrActive(start_id)
-                                          ? LiveCol(imgui, UiColMap::Waveform_LoopHandleHover)
-                                          : LiveCol(imgui, UiColMap::Waveform_LoopHandle));
-        imgui.graphics->AddRectFilled(end_line.Min(),
-                                      end_line.Max(),
-                                      imgui.IsHotOrActive(end_id)
-                                          ? LiveCol(imgui, UiColMap::Waveform_LoopHandleHover)
-                                          : LiveCol(imgui, UiColMap::Waveform_LoopHandle));
+        struct LineAndId {
+            Rect line;
+            imgui::Id id;
+        };
+        for (auto const [line, id] : Array {
+                 LineAndId {start_line, start_id},
+                 LineAndId {end_line, end_id},
+             }) {
+            imgui.graphics->AddRectFilled(line.Min(),
+                                          line.Max(),
+                                          LiveCol(imgui,
+                                                  imgui.IsHotOrActive(id) ? UiColMap::Waveform_LoopHandleHover
+                                                  : !single_builtin_loop
+                                                      ? UiColMap::Waveform_LoopHandle
+                                                      : UiColMap::Waveform_LoopHandleInactive));
+        }
+
         if (draw_xfade && loop_xfade_size > 0.01f) {
             imgui.graphics->AddRectFilled(xfade_line.Min(),
                                           xfade_line.Max(),
