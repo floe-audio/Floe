@@ -253,8 +253,7 @@ static bool CheckModifierKeys(ButtonFlags flags, GuiFrameInput const& io) {
 
 // use the flags to check whether a click is allowed
 static bool CheckForValidMouseDown(ButtonFlags flags, GuiFrameInput const& io) {
-    if (io.Mouse(MouseButton::Left).is_down && flags.left_mouse && !io.Mouse(MouseButton::Left).double_click)
-        return CheckModifierKeys(flags, io);
+    if (io.Mouse(MouseButton::Left).is_down && flags.left_mouse) return CheckModifierKeys(flags, io);
     if (io.Mouse(MouseButton::Right).is_down && flags.right_mouse) return CheckModifierKeys(flags, io);
     if (io.Mouse(MouseButton::Middle).is_down && flags.middle_mouse) return CheckModifierKeys(flags, io);
     if (io.Mouse(MouseButton::Left).double_click && flags.double_left_mouse)
