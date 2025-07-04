@@ -830,6 +830,7 @@ static bool ClapParamsGetInfo(clap_plugin_t const* plugin, u32 param_index, clap
         if (desc.value_type == ParamValueType::Menu || desc.value_type == ParamValueType::Bool ||
             desc.value_type == ParamValueType::Int)
             param_info->flags |= CLAP_PARAM_IS_STEPPED;
+        if (desc.value_type == ParamValueType::Menu) param_info->flags |= CLAP_PARAM_IS_ENUM;
 
         return true;
     } catch (PanicException) {
