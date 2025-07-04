@@ -443,11 +443,15 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 auto& floe_state = state.common_state_floe_libraries;
                 auto& mirage_state = g->inst_picker_state[layer_obj.index].common_state_mirage_libraries;
 
+                // Bit of a hack. For instruments, we have 2 sets of common state - each state has its own
+                // open bool and rectangle. But we want these to always be in sync - they shouldn't be
+                // separate. To ensure this, we make copy over the state before showing the popup.
                 mirage_state.open = floe_state.open;
                 mirage_state.absolute_button_rect = floe_state.absolute_button_rect;
 
                 DoInstPickerPopup(g->box_system, context, state);
 
+                // If the state changed, we need to copy the open state back to the other.
                 if (state.tab == InstPickerState::Tab::MirageLibraries) floe_state.open = mirage_state.open;
             }
         }
