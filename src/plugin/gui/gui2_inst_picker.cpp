@@ -538,6 +538,7 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
                     .disabled = context.layer.instrument_id.tag == InstrumentType::None,
                     .on_fired = TrivialFunctionRef<void()>([&]() {
                                     LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
+                                    CommonState(state).open = false;
                                 }).CloneObject(box_system.arena),
                 },
             .rhs_do_items = [&](GuiBoxSystem& box_system) { InstPickerItems(box_system, context, state); },
