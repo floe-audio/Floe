@@ -13,6 +13,11 @@
 void detail::CloseNativeFilePicker(GuiPlatform&) {}
 bool detail::NativeFilePickerOnClientMessage(GuiPlatform&, uintptr, uintptr) { return false; }
 
+f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
+    // IMPROVE: get this somehow from the machine
+    return 300.0;
+}
+
 ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& args) {
     ASSERT(g_is_logical_main_thread);
     if (platform.native_file_picker) return k_success;

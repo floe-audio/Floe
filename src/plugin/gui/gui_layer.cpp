@@ -1036,7 +1036,13 @@ static bool DoCurveMap(imgui::Context& imgui, CurveMap& curve_map, f32x2 rect_mi
 
             if (imgui.IsHotOrActive(imgui_id)) {
                 imgui.frame_output.cursor_type = CursorType::AllArrows;
-                if (imgui.frame_input.Mouse(MouseButton::Left).double_click) {
+                if (imgui::ClickCheck(
+                        {
+                            .left_mouse = true,
+                            .double_click = true,
+                            .triggers_on_mouse_down = true,
+                        },
+                        imgui.frame_input)) {
                     remove_index = point_index;
                     imgui.SetActiveIDZero();
                 }
@@ -1054,10 +1060,16 @@ static bool DoCurveMap(imgui::Context& imgui, CurveMap& curve_map, f32x2 rect_mi
         changed = true;
     } else {
         imgui.RegisterRegionForMouseTracking(rect, imgui.GetID("CurveMapMouseTracking"));
-        auto& mouse_button = imgui.frame_input.Mouse(MouseButton::Left);
-        if (mouse_button.double_click && rect.Contains(mouse_button.last_pressed_point)) {
+        if (imgui::ClickCheck(
+                {
+                    .left_mouse = true,
+                    .double_click = true,
+                    .triggers_on_mouse_down = true,
+                },
+                imgui.frame_input,
+                &rect)) {
             // Add a new point at the clicked position then sort the points
-            f32x2 click_pos = mouse_button.last_pressed_point;
+            f32x2 click_pos = imgui.frame_input.Mouse(MouseButton::Left).last_press.point;
             f32x2 new_point = {
                 (click_pos.x - rect_min.x) / width,
                 1.0f - ((click_pos.y - rect_min.y) / height),

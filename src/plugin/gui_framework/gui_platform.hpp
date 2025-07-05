@@ -40,6 +40,7 @@ struct GuiPlatform {
     PuglView* view {};
     CursorType current_cursor {CursorType::Default};
     graphics::DrawContext* graphics_ctx {};
+    f64 double_click_time_ms {300.0};
     GuiFrameResult last_result {};
     GuiFrameInput frame_state {};
     Optional<Gui> gui {};
@@ -128,6 +129,8 @@ void X11SetParent(PuglView* view, uintptr parent);
 // Windows only
 void AddWindowsKeyboardHook(GuiPlatform& platform);
 void RemoveWindowsKeyboardHook(GuiPlatform& platform);
+
+f64 DoubleClickTimeMs(GuiPlatform const& platform);
 
 } // namespace detail
 
@@ -283,6 +286,8 @@ PUBLIC ErrorCodeOr<void> SetVisible(GuiPlatform& platform, bool visible, Engine&
             TRY(Required(puglRealize(platform.view)));
             TRY(Required(
                 puglStartTimer(platform.view, platform.k_pugl_timer_id, 1.0 / (f64)k_gui_refresh_rate_hz)));
+
+            platform.double_click_time_ms = detail::DoubleClickTimeMs(platform);
 
             detail::X11SetParent(platform.view, puglGetParent(platform.view));
 
@@ -466,27 +471,27 @@ static bool EventMouseButton(GuiPlatform& platform, PuglButtonEvent const& butto
     auto const button = RemapMouseButton(button_event.button);
     if (!button) return false;
 
+    auto& btn = platform.frame_state.mouse_buttons[ToInt(*button)];
+
+    auto const now = TimePoint::Now();
     GuiFrameInput::MouseButtonState::Event const e {
         .point = {(f32)button_event.x, (f32)button_event.y},
-        .time = TimePoint::Now(),
+        .time = now,
         .modifiers = CreateModifierFlags(button_event.state),
+        .is_double_click = is_down
+                               ? (e.time - btn.last_press.time) <= (platform.double_click_time_ms / 1000.0)
+                               : btn.last_press.is_double_click,
     };
-    LogDebug(ModuleName::Gui,
-             "button: {} is_down: {}, modifier: {}, alt: {}, shift: {}",
-             *button,
-             is_down,
-             e.modifiers.Get(ModifierKey::Modifier),
-             e.modifiers.Get(ModifierKey::Alt),
-             e.modifiers.Get(ModifierKey::Shift));
 
-    auto& btn = platform.frame_state.mouse_buttons[ToInt(*button)];
-    btn.is_down = is_down;
+    if (e.is_double_click)
+        LogDebug(ModuleName::Gui, "Mouse button {} double-clicked at {}, {}", *button, e.point.x, e.point.y);
+
     if (is_down) {
-        if ((e.time - btn.last_pressed_time) <= k_double_click_interval_seconds) btn.double_click = true;
-        btn.last_pressed_point = e.point;
-        btn.last_pressed_time = e.time;
+        btn.is_down = e;
+        btn.last_press = e;
         btn.presses.Append(e, platform.frame_state.event_arena);
     } else {
+        btn.is_down = k_nullopt;
         if (btn.is_dragging) btn.dragging_ended = true;
         btn.is_dragging = false;
         btn.releases.Append(e, platform.frame_state.event_arena);
@@ -650,7 +655,6 @@ static void ClearImpermanentState(GuiFrameInput& frame_state) {
     for (auto& btn : frame_state.mouse_buttons) {
         btn.dragging_started = false;
         btn.dragging_ended = false;
-        btn.double_click = false;
         btn.presses.Clear();
         btn.releases.Clear();
     }

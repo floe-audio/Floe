@@ -242,22 +242,71 @@ static bool STB_TEXTEDIT_INSERTCHARS(STB_TEXTEDIT_STRING* imgui, //
 
 void Context::SetHotRaw(Id id) { temp_hot_item = id; }
 
-// check the modifier key flags to see if the click is allowed
-static bool CheckModifierKeys(ButtonFlags flags, GuiFrameInput const& io) {
-    if (!(flags.requires_modifer || flags.requires_shift || flags.requires_alt)) return true;
-    if (flags.requires_modifer && io.Key(ModifierKey::Modifier)) return true;
-    if (flags.requires_shift && io.Key(ModifierKey::Shift)) return true;
-    if (flags.requires_alt && io.Key(ModifierKey::Alt)) return true;
+bool ClickCheck(ButtonFlags flags, GuiFrameInput const& io, Rect const* rect) {
+    if (!flags.triggers_on_mouse_down && !flags.triggers_on_mouse_up) return false;
+
+    DynamicArrayBounded<MouseButton, ToInt(MouseButton::Count)> buttons;
+    if (flags.left_mouse) dyn::Append(buttons, MouseButton::Left);
+    if (flags.right_mouse) dyn::Append(buttons, MouseButton::Right);
+    if (flags.middle_mouse) dyn::Append(buttons, MouseButton::Middle);
+
+    Optional<ModifierFlags> required_modifiers {};
+    if (flags.requires_modifer || flags.requires_shift || flags.requires_alt) {
+        required_modifiers = ModifierFlags {};
+        if (flags.requires_modifer) required_modifiers->Set(ModifierKey::Modifier);
+        if (flags.requires_shift) required_modifiers->Set(ModifierKey::Shift);
+        if (flags.requires_alt) required_modifiers->Set(ModifierKey::Alt);
+    }
+
+    for (auto const button : buttons) {
+        auto const& mouse_state = io.Mouse(button);
+        auto const& events = flags.triggers_on_mouse_down ? mouse_state.presses : mouse_state.releases;
+        for (auto const& e : events) {
+            if (rect) {
+                if (!rect->Contains(e.point)) continue;
+                // For a release, the down point must also be inside the rectangle.
+                if (flags.triggers_on_mouse_up && !rect->Contains(mouse_state.last_press.point)) continue;
+            }
+            if (flags.double_click && !e.is_double_click) continue;
+            if (!flags.ignore_double_click && !flags.double_click && e.is_double_click) continue;
+            if (required_modifiers && *required_modifiers != e.modifiers) continue;
+            return true;
+        }
+    }
+
     return false;
 }
 
-// use the flags to check whether a click is allowed
 static bool CheckForValidMouseDown(ButtonFlags flags, GuiFrameInput const& io) {
-    if (io.Mouse(MouseButton::Left).is_down && flags.left_mouse) return CheckModifierKeys(flags, io);
-    if (io.Mouse(MouseButton::Right).is_down && flags.right_mouse) return CheckModifierKeys(flags, io);
-    if (io.Mouse(MouseButton::Middle).is_down && flags.middle_mouse) return CheckModifierKeys(flags, io);
-    if (io.Mouse(MouseButton::Left).double_click && flags.double_left_mouse)
-        return CheckModifierKeys(flags, io);
+    if (!flags.triggers_on_mouse_down && !flags.triggers_on_mouse_up) return false;
+
+    DynamicArrayBounded<MouseButton, ToInt(MouseButton::Count)> buttons;
+    if (flags.left_mouse) dyn::Append(buttons, MouseButton::Left);
+    if (flags.right_mouse) dyn::Append(buttons, MouseButton::Right);
+    if (flags.middle_mouse) dyn::Append(buttons, MouseButton::Middle);
+
+    Optional<ModifierFlags> required_modifiers {};
+    if (flags.requires_modifer || flags.requires_shift || flags.requires_alt) {
+        required_modifiers = ModifierFlags {};
+        if (flags.requires_modifer) required_modifiers->Set(ModifierKey::Modifier);
+        if (flags.requires_shift) required_modifiers->Set(ModifierKey::Shift);
+        if (flags.requires_alt) required_modifiers->Set(ModifierKey::Alt);
+    }
+
+    for (auto const button : buttons) {
+        auto const& mouse_state = io.Mouse(button);
+        if (mouse_state.is_down) {
+            if (flags.double_click && !mouse_state.is_down->is_double_click) continue;
+            if (flags.ignore_double_click && !flags.double_click && mouse_state.is_down->is_double_click)
+                continue;
+            if (required_modifiers) {
+                if (mouse_state.is_down->modifiers == *required_modifiers) return true;
+            } else {
+                return true;
+            }
+        }
+    }
+
     return false;
 }
 
@@ -663,10 +712,8 @@ void Context::Begin(WindowSettings settings) {
     temp_hovered_item = 0;
 
     if (GetActive() && active_item.check_for_release &&
-        !CheckForValidMouseDown(active_item.button_flags, frame_input)) {
-
+        !CheckForValidMouseDown(active_item.button_flags, frame_input))
         SetActiveIDZero();
-    }
 
     next_window_contents_size = {0, 0};
 
@@ -1233,7 +1280,9 @@ TextInputResult Context::TextInput(Rect r,
     };
 
     // Select word
-    if (frame_input.Mouse(MouseButton::Left).double_click) {
+    for (auto const press : frame_input.Mouse(MouseButton::Left).presses) {
+        if (!press.is_double_click) continue;
+
         int start = stb_state.cursor;
         for (; start-- > 0;) {
             auto const c = textedit_text.data[start];
@@ -1248,6 +1297,7 @@ TextInputResult Context::TextInput(Rect r,
             if (c == ' ' || c == '\n' || c == '\r' || c == '\t') break;
         }
         stb_state.select_end = end;
+        break;
     }
 
     if (auto const backspaces = frame_input.Key(KeyCode::Backspace).presses_or_repeats; backspaces.size) {
@@ -1603,10 +1653,7 @@ bool Context::ButtonBehavior(Rect r, Id id, ButtonFlags flags) {
     }
 
     if (SetHot(r, id, flags.is_non_window_content)) {
-        // IMPROVE: check for mouse-pressed not just mouse-down
-        bool const clicked = CheckForValidMouseDown(flags, frame_input);
-
-        if (clicked) {
+        if (CheckForValidMouseDown(flags, frame_input)) {
             SetActiveID(id, flags.closes_popups, flags, !(flags.dont_check_for_release));
 
             button_repeat_counter = {};

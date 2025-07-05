@@ -185,7 +185,13 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
 
         if (imgui.IsHotOrActive(id)) {
             imgui.frame_output.cursor_type = CursorType::HorizontalArrows;
-            if (imgui.frame_input.Mouse(MouseButton::Left).double_click)
+            if (imgui::ClickCheck(
+                    {
+                        .left_mouse = true,
+                        .double_click = true,
+                        .triggers_on_mouse_down = true,
+                    },
+                    imgui.frame_input))
                 g->param_text_editor_to_open = params[0];
         }
 

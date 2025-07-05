@@ -9,10 +9,6 @@
 
 static constexpr u8 k_gui_refresh_rate_hz = 60;
 
-// Pugl doesn't currently (July 2024) support double clicks, so we implement it ourselves. It would be better
-// to get the preferred double-click interval from the OS.
-static constexpr f64 k_double_click_interval_seconds = 0.3;
-
 enum class KeyCode : u32 {
     Tab,
     LeftArrow,
@@ -51,6 +47,7 @@ enum class ModifierKey : u32 {
 };
 
 struct ModifierFlags {
+    bool operator==(ModifierFlags const& other) const = default;
     bool Get(ModifierKey k) const { return flags & (1 << ToInt(k)); }
     void Set(ModifierKey k) { flags |= (1 << ToInt(k)); }
     u8 flags;
@@ -65,14 +62,16 @@ struct GuiFrameInput {
             f32x2 point {};
             TimePoint time {};
             ModifierFlags modifiers {};
+
+            // For press, true if this is a double-click event.
+            // For release, true if the corresponding press was a double-click.
+            bool is_double_click {};
         };
 
         ArenaStack<Event> presses {}; // mouse-down events since last frame, cleared every frame
         ArenaStack<Event> releases {}; // mouse-up events since last frame, cleared every frame
-        f32x2 last_pressed_point {}; // the last known point where the mouse was pressed
-        TimePoint last_pressed_time {}; // the last known time when the mouse was pressed
-        bool is_down {}; // current state
-        bool double_click {}; // cleared every frame
+        Event last_press {};
+        Optional<Event> is_down {}; // current state
         bool is_dragging {};
         bool dragging_started {}; // cleared every frame
         bool dragging_ended {}; // cleared every frame

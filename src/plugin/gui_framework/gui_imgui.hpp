@@ -76,9 +76,10 @@ constexpr String k_imgui_window_flag_text[] = {
 struct ButtonFlags {
     bool32 closes_popups : 1; // when inside a popup, close it when this button is clicked
     bool32 left_mouse : 1;
-    bool32 double_left_mouse : 1;
     bool32 right_mouse : 1;
     bool32 middle_mouse : 1;
+    bool32 double_click : 1;
+    bool32 ignore_double_click : 1;
     bool32 triggers_on_mouse_down : 1;
     bool32 triggers_on_mouse_up : 1;
     bool32 requires_modifer : 1;
@@ -88,9 +89,11 @@ struct ButtonFlags {
     bool32 is_non_window_content : 1; // is something that does not live inside a window (e.g. scrollbar)
     bool32 hold_to_repeat : 1;
     bool32 dont_check_for_release : 1;
-    bool32 padding : 18 = 0; // We want to cast this to bool32 so we need to ensure padding is 0.
+    bool32 padding : 17 = 0; // We want to cast this to bool32 so we need to ensure padding is 0.
 };
 static_assert(sizeof(ButtonFlags) == 4, "Adjust padding");
+
+bool ClickCheck(ButtonFlags flags, GuiFrameInput const& io, Rect const* rect = nullptr);
 
 struct SliderFlags {
     bool32 slower_with_shift : 1;
@@ -912,7 +915,9 @@ PUBLIC TextInputDraggerSettings DefTextInputDraggerInt() {
     s.slider_settings.flags = {.slower_with_shift = true, .default_on_modifer = true};
     s.slider_settings.draw = [](IMGUI_DRAW_SLIDER_ARGS) {};
     s.slider_settings.sensitivity = 500;
-    s.text_input_settings.button_flags = {.double_left_mouse = true, .triggers_on_mouse_down = true};
+    s.text_input_settings.button_flags = {.left_mouse = true,
+                                          .double_click = true,
+                                          .triggers_on_mouse_down = true};
     s.text_input_settings.text_flags = {.chars_decimal = true, .tab_focuses_next_input = true};
     s.text_input_settings.draw = DefaultDrawTextInput;
     s.text_input_settings.select_all_on_first_open = true;

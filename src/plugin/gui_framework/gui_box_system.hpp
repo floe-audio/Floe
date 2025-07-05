@@ -329,9 +329,9 @@ PUBLIC void Run(GuiBoxSystem& builder, Panel* panel) {
                     p->rect = *data.creator_absolute_rect;
                 } else {
                     p->rect = layout::GetRect(builder.layout, data.creator_layout_id);
-                    // we now have a relative position of the creator of the popup (usually a button). We
+                    // We now have a relative position of the creator of the popup (usually a button). We
                     // need to convert it to screen space. When we run the panel, the imgui system will
-                    // take this button rect and find a place for the popup below/right of it.
+                    // take this button rectangle and find a place for the popup below/right of it.
                     p->rect->pos = builder.imgui.WindowPosToScreenPos(p->rect->pos);
                 }
                 break;
@@ -429,6 +429,7 @@ struct BoxConfig {
     bool32 activate_on_click_use_double_click : 1 = false;
     ActivationClickEvent activation_click_event
         : NumBitsNeededToStore(ToInt(ActivationClickEvent::Count)) = ActivationClickEvent::None;
+    bool32 ignore_double_click : 1 = false;
     bool32 parent_dictates_hot_and_active : 1 = false;
     u8 extra_margin_for_mouse_events = 0;
 
@@ -481,7 +482,7 @@ static bool Tooltip(GuiBoxSystem& builder, imgui::Id id, Rect r, TooltipString t
 
         auto const cursor_pos = imgui.frame_input.cursor_pos;
 
-        // shift the x so that it's centred on the cursor
+        // Shift the x so that it's centred on the cursor.
         popup_r.x = cursor_pos.x - popup_r.w / 2;
 
         popup_r.pos = imgui::BestPopupPos(popup_r, r, imgui.frame_input.window_size.ToFloat2(), false);
@@ -595,17 +596,13 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
 
             if (config.activation_click_event != ActivationClickEvent::None ||
                 (config.tooltip.tag != TooltipStringType::None && !config.parent_dictates_hot_and_active)) {
-                if (config.activate_on_click_use_double_click)
-                    ASSERT(config.activate_on_click_button == MouseButton::Left,
-                           "Double-click activation only supported for left mouse button at the moment");
-
                 imgui::ButtonFlags button_flags {
                     .left_mouse = !config.activate_on_click_use_double_click &&
                                   config.activate_on_click_button == MouseButton::Left,
-                    .double_left_mouse = config.activate_on_click_use_double_click &&
-                                         config.activate_on_click_button == MouseButton::Left,
                     .right_mouse = config.activate_on_click_button == MouseButton::Right,
                     .middle_mouse = config.activate_on_click_button == MouseButton::Middle,
+                    .double_click = config.activate_on_click_use_double_click,
+                    .ignore_double_click = config.ignore_double_click,
                     .triggers_on_mouse_down = config.activation_click_event == ActivationClickEvent::Down,
                     .triggers_on_mouse_up = config.activation_click_event == ActivationClickEvent::Up,
                 };
@@ -794,50 +791,18 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
     return {};
 }
 
-struct AdditionalClickConfig {
-    MouseButton button = MouseButton::Right;
-    bool use_double_click = false;
-    ActivationClickEvent activation_click_event {ActivationClickEvent::Up};
-};
-
 PUBLIC bool AdditionalClickBehaviour(GuiBoxSystem& box_system,
                                      Box const& box,
-                                     AdditionalClickConfig const& config,
+                                     imgui::ButtonFlags const& config,
                                      Rect* out_item_rect = nullptr) {
     if (box_system.state->pass == BoxSystemCurrentPanelState::Pass::LayoutBoxes) return false;
 
     auto const item_r =
         box_system.imgui.WindowRectToScreenRect(layout::GetRect(box_system.layout, box.layout_id));
 
-    auto const& mouse_button = box_system.imgui.frame_input.Mouse(config.button);
-
-    if (config.use_double_click)
-        return mouse_button.double_click && item_r.Contains(mouse_button.last_pressed_point);
-
-    switch (config.activation_click_event) {
-        case ActivationClickEvent::Down: {
-            for (auto const& press : mouse_button.presses) {
-                if (item_r.Contains(press.point)) {
-                    if (out_item_rect) *out_item_rect = item_r;
-                    return true;
-                }
-            }
-            break;
-        }
-        case ActivationClickEvent::Up:
-            for (auto const& release : mouse_button.releases) {
-                // If the right-click was released on the item rectangle _and_ the point of the
-                // right-click was in the item rectangle, we trigger the action.
-                if (item_r.Contains(release.point) && item_r.Contains(mouse_button.last_pressed_point)) {
-                    if (out_item_rect) *out_item_rect = item_r;
-                    return true;
-                }
-            }
-            break;
-        case ActivationClickEvent::None:
-        case ActivationClickEvent::Count: PanicIfReached();
-    }
-    return false;
+    auto const result = imgui::ClickCheck(config, box_system.imgui.frame_input, &item_r);
+    if (result && out_item_rect) *out_item_rect = item_r;
+    return result;
 }
 
 // =================================================================================================================

@@ -98,7 +98,13 @@ void GUIDoEnvelope(Gui* g,
 
         if (imgui.IsHotOrActive(attack_imgui_id)) {
             imgui.frame_output.cursor_type = CursorType::HorizontalArrows;
-            if (imgui.frame_input.Mouse(MouseButton::Left).double_click)
+            if (imgui::ClickCheck(
+                    {
+                        .left_mouse = true,
+                        .double_click = true,
+                        .triggers_on_mouse_down = true,
+                    },
+                    imgui.frame_input))
                 g->param_text_editor_to_open = attack_param_id;
         }
 
@@ -161,7 +167,13 @@ void GUIDoEnvelope(Gui* g,
 
         if (imgui.IsHotOrActive(dec_sus_imgui_id)) {
             imgui.frame_output.cursor_type = CursorType::AllArrows;
-            if (imgui.frame_input.Mouse(MouseButton::Left).double_click)
+            if (imgui::ClickCheck(
+                    {
+                        .left_mouse = true,
+                        .double_click = true,
+                        .triggers_on_mouse_down = true,
+                    },
+                    imgui.frame_input))
                 g->param_text_editor_to_open = decay_id;
         }
 
@@ -239,7 +251,13 @@ void GUIDoEnvelope(Gui* g,
 
         if (imgui.IsHotOrActive(release_imgui_id)) {
             imgui.frame_output.cursor_type = CursorType::HorizontalArrows;
-            if (imgui.frame_input.Mouse(MouseButton::Left).double_click)
+            if (imgui::ClickCheck(
+                    {
+                        .left_mouse = true,
+                        .double_click = true,
+                        .triggers_on_mouse_down = true,
+                    },
+                    imgui.frame_input))
                 g->param_text_editor_to_open = release_param_id;
         }
 
@@ -290,7 +308,7 @@ void GUIDoEnvelope(Gui* g,
         do_range_lines(decay_x_range, dec_sus_imgui_id);
         do_range_lines(release_x_range, release_imgui_id);
 
-        // area under line, done with poly fill instead of a series of triangles/rects because it gives
+        // Area under line, done with poly fill instead of a series of triangles/rects because it gives
         // better results
         f32x2 area_points_a[4] = {bottom_left, attack_point_screen, decay_point_screen, point_below_decay};
         f32x2 area_points_b[4] = {decay_point_screen,

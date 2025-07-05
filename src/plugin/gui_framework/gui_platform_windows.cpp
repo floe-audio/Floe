@@ -28,6 +28,12 @@ constexpr uintptr k_file_picker_message_data = 0xD1A106;
         return Win32ErrorCode(HresultToWin32(hr), #windows_call);                                            \
     }
 
+f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
+    auto result = GetDoubleClickTime();
+    if (result == 0) result = 300;
+    return result;
+}
+
 void detail::CloseNativeFilePicker(GuiPlatform& platform) {
     if (!platform.native_file_picker) return;
     auto& native = platform.native_file_picker->As<NativeFilePicker>();

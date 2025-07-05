@@ -19,11 +19,10 @@ void DoRightClickForBox(GuiBoxSystem& box_system,
                         Box const& box,
                         u64 item_hash,
                         RightClickMenuState::Function const& do_menu) {
-    if (AdditionalClickBehaviour(
-            box_system,
-            box,
-            {.button = MouseButton::Right, .activation_click_event = ActivationClickEvent::Up},
-            &state.right_click_menu_state.absolute_creator_rect)) {
+    if (AdditionalClickBehaviour(box_system,
+                                 box,
+                                 {.right_mouse = true, .triggers_on_mouse_up = true},
+                                 &state.right_click_menu_state.absolute_creator_rect)) {
         state.right_click_menu_state.do_menu = do_menu;
         state.right_click_menu_state.item_hash = item_hash;
         box_system.imgui.OpenPopup(k_right_click_menu_popup_id, box.imgui_id);
@@ -40,6 +39,7 @@ Box DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemO
                   .round_background_corners = 0b1111,
                   .activate_on_click_button = MouseButton::Left,
                   .activation_click_event = ActivationClickEvent::Up,
+                  .ignore_double_click = true,
                   .layout =
                       {
                           .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -70,13 +70,12 @@ Box DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemO
               .size_from_text = true,
           });
 
-    if (options.is_current &&
-        AdditionalClickBehaviour(box_system,
+    if (AdditionalClickBehaviour(box_system,
                                  item,
                                  {
-                                     .button = MouseButton::Left,
-                                     .use_double_click = true,
-                                     .activation_click_event = ActivationClickEvent::Down,
+                                     .left_mouse = true,
+                                     .double_click = true,
+                                     .triggers_on_mouse_down = true,
                                  })) {
         state.open = false;
     }

@@ -1206,7 +1206,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
                 }
 
                 if (imgui.IsActive(id) && !dragging_fx) {
-                    auto const click_pos = g->frame_input.mouse_buttons[0].last_pressed_point;
+                    auto const click_pos = g->frame_input.mouse_buttons[0].last_press.point;
                     auto const current_pos = g->frame_input.cursor_pos;
                     auto const delta = current_pos - click_pos;
 

@@ -18,6 +18,12 @@
 
 #include "gui_platform.hpp"
 
+f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
+    auto reuslt = [NSEvent doubleClickInterval] * 1000.0;
+    if (result <= 0) result = 300;
+    return result;
+}
+
 #define DIALOG_DELEGATE_CLASS MAKE_UNIQUE_OBJC_NAME(DialogDelegate)
 
 @interface DIALOG_DELEGATE_CLASS : NSObject <NSOpenSavePanelDelegate>
