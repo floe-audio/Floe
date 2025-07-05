@@ -34,6 +34,28 @@ f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
     return result;
 }
 
+f32 detail::LineHeightPixels(GuiPlatform const&) {
+    HDC hdc = GetDC(nullptr);
+
+    NONCLIENTMETRICS ncm;
+    ncm.cbSize = sizeof(NONCLIENTMETRICS);
+    SystemParametersInfo(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICS), &ncm, 0);
+
+    HFONT h_system_font = CreateFontIndirect(&ncm.lfMessageFont);
+    auto h_old_font = (HFONT)SelectObject(hdc, h_system_font);
+
+    TEXTMETRICW tm;
+    GetTextMetricsW(hdc, &tm);
+
+    auto line_height_pixels = tm.tmHeight + tm.tmExternalLeading;
+
+    SelectObject(hdc, h_old_font);
+    DeleteObject(h_system_font);
+    ReleaseDC(nullptr, hdc);
+
+    return (f32)line_height_pixels;
+}
+
 void detail::CloseNativeFilePicker(GuiPlatform& platform) {
     if (!platform.native_file_picker) return;
     auto& native = platform.native_file_picker->As<NativeFilePicker>();

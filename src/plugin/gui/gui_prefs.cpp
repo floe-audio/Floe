@@ -53,7 +53,7 @@ prefs::Descriptor SettingDescriptor(GuiSetting setting) {
                                 return true;
                             },
                     },
-                .default_value = (s64)k_default_gui_width,
+                .default_value = (s64)1000,
                 .gui_label = "Window width",
                 .long_description = "The size and scaling of Floe's window.",
             };
@@ -68,10 +68,12 @@ UiSize DesiredAspectRatio(prefs::Preferences const& preferences) {
                : k_aspect_ratio_without_keyboard;
 }
 
-UiSize DesiredWindowSize(prefs::Preferences const& preferences) {
+Optional<UiSize> DesiredWindowSize(prefs::Preferences const& preferences) {
     ASSERT(g_is_logical_main_thread);
-    return SizeWithAspectRatio((u16)prefs::GetInt(preferences, SettingDescriptor(GuiSetting::WindowWidth)),
-                               DesiredAspectRatio(preferences));
+    auto const val = prefs::GetValue(preferences, SettingDescriptor(GuiSetting::WindowWidth));
+    if (val.is_default) return k_nullopt;
+    auto const int_val = val.value.Get<s64>();
+    return SizeWithAspectRatio((u16)int_val, DesiredAspectRatio(preferences));
 }
 
 f32 KeyboardHeight(prefs::Preferences const& preferences) {

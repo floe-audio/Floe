@@ -19,9 +19,22 @@
 #include "gui_platform.hpp"
 
 f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
-    auto reuslt = [NSEvent doubleClickInterval] * 1000.0;
+    auto result = [NSEvent doubleClickInterval] * 1000.0;
     if (result <= 0) result = 300;
     return result;
+}
+
+f32 detail::LineHeightPixels(GuiPlatform const&) {
+    NSScreen* mainScreen = [NSScreen mainScreen];
+    CGFloat backingScale = [mainScreen backingScaleFactor];
+
+    NSFont* systemFont = [NSFont systemFontOfSize:[NSFont systemFontSize]];
+
+    // Get proper line height using NSLayoutManager for accurate text metrics
+    NSLayoutManager* layoutManager = [[NSLayoutManager alloc] init];
+    CGFloat lineHeight = [layoutManager defaultLineHeightForFont:systemFont];
+
+    return (f32)(lineHeight * backingScale);
 }
 
 #define DIALOG_DELEGATE_CLASS MAKE_UNIQUE_OBJC_NAME(DialogDelegate)

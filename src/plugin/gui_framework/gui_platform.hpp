@@ -28,8 +28,6 @@ constexpr u16 k_min_gui_width = k_aspect_ratio_with_keyboard.width * 2;
 constexpr u16 k_max_gui_width = k_aspect_ratio_with_keyboard.width * 100;
 constexpr u32 k_largest_gui_size = LargestRepresentableValue<u16>();
 
-constexpr u16 k_default_gui_width = SizeWithAspectRatio(910, k_aspect_ratio_without_keyboard).width;
-
 struct GuiPlatform {
     static constexpr uintptr k_pugl_timer_id = 200;
     static constexpr char const* k_window_class_name = "FloeSampler";
@@ -131,8 +129,15 @@ void AddWindowsKeyboardHook(GuiPlatform& platform);
 void RemoveWindowsKeyboardHook(GuiPlatform& platform);
 
 f64 DoubleClickTimeMs(GuiPlatform const& platform);
+f32 LineHeightPixels(GuiPlatform const& platform);
 
 } // namespace detail
+  
+PUBLIC UiSize DefaultUiSize(GuiPlatform& platform) {
+        auto const line_height_pixels = detail::LineHeightPixels(platform);
+        return SizeWithAspectRatio((u16)Clamp<f32>(line_height_pixels * 55, 0, k_largest_gui_size),
+                                           DesiredAspectRatio(platform.prefs));
+}
 
 PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
     Trace(ModuleName::Gui);
@@ -161,9 +166,12 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
     puglSetViewHint(platform.view, PUGL_RESIZABLE, true);
     puglSetPositionHint(platform.view, PUGL_DEFAULT_POSITION, 0, 0);
 
-    auto const default_size = DesiredWindowSize(platform.prefs);
-    puglSetSizeHint(platform.view, PUGL_DEFAULT_SIZE, default_size.width, default_size.height);
-    puglSetSizeHint(platform.view, PUGL_CURRENT_SIZE, default_size.width, default_size.height);
+    auto default_size = DesiredWindowSize(platform.prefs);
+    if (!default_size) {
+        default_size = DefaultUiSize(platform);
+    }
+    puglSetSizeHint(platform.view, PUGL_DEFAULT_SIZE, default_size->width, default_size->height);
+    puglSetSizeHint(platform.view, PUGL_CURRENT_SIZE, default_size->width, default_size->height);
 
     auto const aspect_ratio = DesiredAspectRatio(platform.prefs);
 

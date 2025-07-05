@@ -18,6 +18,8 @@ f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
     return 300.0;
 }
 
+f32 detail::LineHeightPixels(GuiPlatform const&) { return 20; }
+
 ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& args) {
     ASSERT(g_is_logical_main_thread);
     if (platform.native_file_picker) return k_success;

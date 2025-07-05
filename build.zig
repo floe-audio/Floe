@@ -770,7 +770,6 @@ const FlagsBuilder = struct {
                 "-DNOOPENFILE",
                 "-DNOSERVICE",
                 "-DNOSOUND",
-                "-DNOTEXTMETRIC",
                 "-DSTRICT",
                 "-DNOMINMAX",
             });

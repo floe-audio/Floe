@@ -1652,6 +1652,8 @@ void OnPreferenceChanged(FloeInstanceIndex index, prefs::Key const& key, prefs::
     ASSERT(floe.engine);
 
     if (floe.gui_platform) {
+        // TODO: we should handle the case where WindowWidth becomes default, and request a resize to the
+        // default window size for the OS.
         if (auto const width = prefs::MatchInt(key, value, SettingDescriptor(GuiSetting::WindowWidth))) {
             auto const current_width = GetSize(*floe.gui_platform).width;
             if (current_width != *width) {
@@ -1659,7 +1661,7 @@ void OnPreferenceChanged(FloeInstanceIndex index, prefs::Key const& key, prefs::
                         (clap_host_gui const*)floe.host.get_extension(&floe.host, CLAP_EXT_GUI)) {
                     auto const size =
                         PhysicalPixelsToClapPixels(floe.gui_platform->view,
-                                                   DesiredWindowSize(g_shared_engine_systems->prefs));
+                                                   *DesiredWindowSize(g_shared_engine_systems->prefs));
                     LogInfo(ModuleName::Gui, "Requesting resize to {}x{}", size.width, size.height);
                     host_gui->request_resize(&floe.host, size.width, size.height);
                 }
@@ -1668,9 +1670,9 @@ void OnPreferenceChanged(FloeInstanceIndex index, prefs::Key const& key, prefs::
                        prefs::MatchBool(key, value, SettingDescriptor(GuiSetting::ShowKeyboard))) {
             if (auto const host_gui =
                     (clap_host_gui const*)floe.host.get_extension(&floe.host, CLAP_EXT_GUI)) {
-                auto const size =
-                    PhysicalPixelsToClapPixels(floe.gui_platform->view,
-                                               DesiredWindowSize(g_shared_engine_systems->prefs));
+                auto window_size = DesiredWindowSize(g_shared_engine_systems->prefs);
+                if (!window_size) window_size = DefaultUiSize(*floe.gui_platform);
+                auto const size = PhysicalPixelsToClapPixels(floe.gui_platform->view, *window_size);
                 LogInfo(ModuleName::Gui,
                         "Requesting resize (due to keyboard) to {}x{}",
                         size.width,
