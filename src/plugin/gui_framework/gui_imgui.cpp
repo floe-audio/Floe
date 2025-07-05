@@ -1001,18 +1001,19 @@ bool Context::SliderUnboundedBehavior(Rect r,
     constexpr f32 k_size = 64;
 
     if (ButtonBehavior(r, id, {.left_mouse = true, .triggers_on_mouse_down = true})) {
-        if ((flags.default_on_modifer) && frame_input.Key(ModifierKey::Modifier)) val = default_val;
+        if ((flags.default_on_modifer) && frame_input.modifiers.Get(ModifierKey::Modifier)) val = default_val;
         val_at_click = val;
         start_location = frame_input.cursor_pos;
     }
 
     if (IsActive(id)) {
         if (flags.slower_with_shift) {
-            if (frame_input.Key(ModifierKey::Shift)) {
+            if (frame_input.Key(KeyCode::ShiftL).presses.size ||
+                frame_input.Key(KeyCode::ShiftR).presses.size) {
                 val_at_click = val;
                 start_location = frame_input.cursor_pos;
             }
-            if (frame_input.Key(ModifierKey::Shift)) sensitivity /= 6;
+            if (frame_input.modifiers.Get(ModifierKey::Shift)) sensitivity /= 6;
         }
         if (frame_input.cursor_pos.x != -1 && frame_input.cursor_pos.y != -1) {
             auto d = frame_input.cursor_pos - start_location;
@@ -1420,7 +1421,7 @@ TextInputResult Context::TextInput(Rect r,
         result.buffer_changed = true;
     }
 
-    if (frame_input.input_utf32_chars.size && !frame_input.Key(ModifierKey::Modifier)) {
+    if (frame_input.input_utf32_chars.size && !frame_input.modifiers.Get(ModifierKey::Modifier)) {
         for (auto c : frame_input.input_utf32_chars) {
             if (InputTextFilterCharacter(&c, flags)) {
                 stb_textedit_key(this, &stb_state, (int)c);
@@ -2309,10 +2310,10 @@ void Context::DebugWindow(Rect r) {
 
     if (DebugTextHeading(debug_general, "General")) {
         DebugTextItem("Update", "%llu", frame_input.update_count);
-        DebugTextItem("Key shift", "%d", (int)frame_input.Key(ModifierKey::Shift));
-        DebugTextItem("Key ctrl", "%d", (int)frame_input.Key(ModifierKey::Ctrl));
-        DebugTextItem("Key modifer", "%d", (int)frame_input.Key(ModifierKey::Modifier));
-        DebugTextItem("Key alt", "%d", (int)frame_input.Key(ModifierKey::Alt));
+        DebugTextItem("Key shift", "%d", (int)frame_input.modifiers.Get(ModifierKey::Shift));
+        DebugTextItem("Key ctrl", "%d", (int)frame_input.modifiers.Get(ModifierKey::Ctrl));
+        DebugTextItem("Key modifer", "%d", (int)frame_input.modifiers.Get(ModifierKey::Modifier));
+        DebugTextItem("Key alt", "%d", (int)frame_input.modifiers.Get(ModifierKey::Alt));
         DebugTextItem("Time", "%lld", frame_input.current_time);
         DebugTextItem("WindowSize",
                       "%hu, %hu",

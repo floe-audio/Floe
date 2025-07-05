@@ -197,7 +197,7 @@ static void DoStandaloneErrorGUI(Gui* g) {
     }
     if (floe_ext->standalone_midi_device_error) {
         imgui.frame_output.wants_keyboard_input = true;
-        if (platform->Key(ModifierKey::Shift)) {
+        if (platform->modifiers.Get(ModifierKey::Shift)) {
             auto gen_midi_message = [&](bool on, u7 key) {
                 if (on)
                     engine.processor.events_for_audio_thread.Push(

@@ -32,6 +32,8 @@ enum class KeyCode : u32 {
     F1,
     F2,
     F3,
+    ShiftL,
+    ShiftR,
     Count,
 };
 
@@ -50,7 +52,7 @@ struct ModifierFlags {
     bool operator==(ModifierFlags const& other) const = default;
     bool Get(ModifierKey k) const { return flags & (1 << ToInt(k)); }
     void Set(ModifierKey k) { flags |= (1 << ToInt(k)); }
-    u8 flags;
+    u8 flags {};
 };
 
 enum class MouseButton : u32 { Left, Right, Middle, Count };
@@ -89,7 +91,6 @@ struct GuiFrameInput {
     };
 
     auto const& Mouse(MouseButton n) const { return mouse_buttons[ToInt(n)]; }
-    auto const& Key(ModifierKey n) const { return modifier_keys[ToInt(n)]; }
     auto const& Key(KeyCode n) const { return keys[ToInt(n)]; }
 
     void Reset() {
@@ -98,7 +99,7 @@ struct GuiFrameInput {
         cursor_delta = {};
         mouse_scroll_delta_in_lines = {};
         mouse_buttons = {};
-        modifier_keys = {};
+        modifiers = {};
         keys = {};
         dyn::Clear(clipboard_text);
         dyn::Clear(input_utf32_chars);
@@ -112,7 +113,7 @@ struct GuiFrameInput {
     f32 mouse_scroll_delta_in_lines {};
     Array<MouseButtonState, ToInt(MouseButton::Count)> mouse_buttons {};
     Array<KeyState, ToInt(KeyCode::Count)> keys {};
-    Array<bool, ToInt(ModifierKey::Count)> modifier_keys {};
+    ModifierFlags modifiers {};
     // may contain text from the OS clipboard if you requested it
     DynamicArray<char> clipboard_text {PageAllocator::Instance()};
     DynamicArrayBounded<u32, 16> input_utf32_chars {};

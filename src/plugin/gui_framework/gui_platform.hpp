@@ -391,24 +391,8 @@ static ModifierFlags CreateModifierFlags(u32 pugl_mod_flags) {
     return result;
 }
 
-static void UpdateModifiers(GuiPlatform& platform, PuglMods mods) {
-    if (((mods & PUGL_MOD_SHIFT) != 0) != platform.frame_state.modifier_keys[ToInt(ModifierKey::Shift)])
-        LogDebug(ModuleName::Gui, "shift: {}", (mods & PUGL_MOD_SHIFT) != 0);
-    if (((mods & PUGL_MOD_CTRL) != 0) != platform.frame_state.modifier_keys[ToInt(ModifierKey::Ctrl)])
-        LogDebug(ModuleName::Gui, "ctrl: {}", (mods & PUGL_MOD_CTRL) != 0);
-    if (((mods & PUGL_MOD_ALT) != 0) != platform.frame_state.modifier_keys[ToInt(ModifierKey::Alt)])
-        LogDebug(ModuleName::Gui, "alt: {}", (mods & PUGL_MOD_ALT) != 0);
-    if (((mods & PUGL_MOD_SUPER) != 0) != platform.frame_state.modifier_keys[ToInt(ModifierKey::Super)])
-        LogDebug(ModuleName::Gui, "super: {}", (mods & PUGL_MOD_SUPER) != 0);
-
-    platform.frame_state.modifier_keys[ToInt(ModifierKey::Shift)] = mods & PUGL_MOD_SHIFT;
-    platform.frame_state.modifier_keys[ToInt(ModifierKey::Ctrl)] = mods & PUGL_MOD_CTRL;
-    platform.frame_state.modifier_keys[ToInt(ModifierKey::Alt)] = mods & PUGL_MOD_ALT;
-    platform.frame_state.modifier_keys[ToInt(ModifierKey::Super)] = mods & PUGL_MOD_SUPER;
-}
-
 static bool EventWheel(GuiPlatform& platform, PuglScrollEvent const& scroll_event) {
-    UpdateModifiers(platform, scroll_event.state);
+    platform.frame_state.modifiers = CreateModifierFlags(scroll_event.state);
 
     // IMPROVE: support horizontal scrolling
     if (scroll_event.direction != PUGL_SCROLL_UP && scroll_event.direction != PUGL_SCROLL_DOWN) return false;
@@ -420,7 +404,8 @@ static bool EventWheel(GuiPlatform& platform, PuglScrollEvent const& scroll_even
 }
 
 static bool EventMotion(GuiPlatform& platform, PuglMotionEvent const& motion_event) {
-    UpdateModifiers(platform, motion_event.state);
+    platform.frame_state.modifiers = CreateModifierFlags(motion_event.state);
+
     auto const new_cursor_pos = f32x2 {(f32)motion_event.x, (f32)motion_event.y};
     bool result = false;
     platform.frame_state.cursor_pos = new_cursor_pos;
@@ -467,7 +452,8 @@ static Optional<MouseButton> RemapMouseButton(u32 button) {
 }
 
 static bool EventMouseButton(GuiPlatform& platform, PuglButtonEvent const& button_event, bool is_down) {
-    UpdateModifiers(platform, button_event.state);
+    platform.frame_state.modifiers = CreateModifierFlags(button_event.state);
+
     auto const button = RemapMouseButton(button_event.button);
     if (!button) return false;
 
@@ -477,7 +463,7 @@ static bool EventMouseButton(GuiPlatform& platform, PuglButtonEvent const& butto
     GuiFrameInput::MouseButtonState::Event const e {
         .point = {(f32)button_event.x, (f32)button_event.y},
         .time = now,
-        .modifiers = CreateModifierFlags(button_event.state),
+        .modifiers = platform.frame_state.modifiers,
         .is_double_click = is_down
                                ? (e.time - btn.last_press.time) <= (platform.double_click_time_ms / 1000.0)
                                : btn.last_press.is_double_click,
@@ -554,6 +540,8 @@ static Optional<KeyCode> RemapKeyCode(u32 pugl_key) {
         case PUGL_KEY_F1: return KeyCode::F1;
         case PUGL_KEY_F2: return KeyCode::F2;
         case PUGL_KEY_F3: return KeyCode::F3;
+        case PUGL_KEY_SHIFT_L: return KeyCode::ShiftL;
+        case PUGL_KEY_SHIFT_R: return KeyCode::ShiftR;
         case 'a': return KeyCode::A;
         case 'c': return KeyCode::C;
         case 'v': return KeyCode::V;
@@ -565,14 +553,19 @@ static Optional<KeyCode> RemapKeyCode(u32 pugl_key) {
 }
 
 static bool EventKey(GuiPlatform& platform, PuglKeyEvent const& key_event, bool is_down) {
-    UpdateModifiers(platform, key_event.state);
+    LogDebug(ModuleName::Gui,
+             "key event: key: {}, state: {}, is_down: {}",
+             key_event.key,
+             key_event.state,
+             is_down);
+    platform.frame_state.modifiers = CreateModifierFlags(key_event.state);
     if (auto const key_code = RemapKeyCode(key_event.key))
         return EventKeyRegular(platform, *key_code, is_down, CreateModifierFlags(key_event.state));
     return false;
 }
 
 static bool EventText(GuiPlatform& platform, PuglTextEvent const& text_event) {
-    UpdateModifiers(platform, text_event.state);
+    platform.frame_state.modifiers = CreateModifierFlags(text_event.state);
     dyn::Append(platform.frame_state.input_utf32_chars, text_event.character);
     if (platform.last_result.wants_keyboard_input) return true;
     return false;
