@@ -34,26 +34,45 @@ f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
     return result;
 }
 
-f32 detail::LineHeightPixels(GuiPlatform const&) {
+UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const& platform) {
     HDC hdc = GetDC(nullptr);
+    DEFER { ReleaseDC(nullptr, hdc); };
 
-    NONCLIENTMETRICS ncm;
-    ncm.cbSize = sizeof(NONCLIENTMETRICS);
-    SystemParametersInfo(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICS), &ncm, 0);
+    auto dpi_x = GetDeviceCaps(hdc, LOGPIXELSX);
+    if (dpi_x <= 0) dpi_x = 96;
 
-    HFONT h_system_font = CreateFontIndirect(&ncm.lfMessageFont);
-    auto h_old_font = (HFONT)SelectObject(hdc, h_system_font);
+    // Convert inches to pixels using detected DPI
+    auto target_width = (u16)(k_default_gui_width_inches * (f32)dpi_x);
 
-    TEXTMETRICW tm;
-    GetTextMetricsW(hdc, &tm);
+    // Get screen dimensions to ensure we fit within 90% of screen size
+    auto const screen_width = GetSystemMetrics(SM_CXSCREEN);
+    auto const screen_height = GetSystemMetrics(SM_CYSCREEN);
 
-    auto line_height_pixels = tm.tmHeight + tm.tmExternalLeading;
+    auto const max_width = (u16)((f32)screen_width * k_screen_fit_percentage);
+    auto const max_height = (u16)((f32)screen_height * k_screen_fit_percentage);
 
-    SelectObject(hdc, h_old_font);
-    DeleteObject(h_system_font);
-    ReleaseDC(nullptr, hdc);
+    // Ensure we don't exceed screen limits
+    if (target_width > max_width) target_width = max_width;
 
-    return (f32)line_height_pixels;
+    // Apply aspect ratio and ensure it fits within screen bounds
+    auto const aspect_ratio = DesiredAspectRatio(platform.prefs);
+    auto result = SizeWithAspectRatio(target_width, aspect_ratio);
+
+    // Double-check height constraint
+    if (result.height > max_height) {
+        // If height is too large, calculate width from height constraint
+        auto target_height = max_height;
+        auto width_from_height = (u16)(target_height * aspect_ratio.width / aspect_ratio.height);
+        result = SizeWithAspectRatio(width_from_height, aspect_ratio);
+    }
+
+    // Ensure we stay within the min/max bounds
+    if (result.width < k_min_gui_width)
+        result = SizeWithAspectRatio(k_min_gui_width, aspect_ratio);
+    else if (result.width > k_max_gui_width)
+        result = SizeWithAspectRatio(k_max_gui_width, aspect_ratio);
+
+    return result;
 }
 
 void detail::CloseNativeFilePicker(GuiPlatform& platform) {

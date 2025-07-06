@@ -24,17 +24,79 @@ f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
     return result;
 }
 
-f32 detail::LineHeightPixels(GuiPlatform const&) {
-    NSScreen* mainScreen = [NSScreen mainScreen];
-    CGFloat backingScale = [mainScreen backingScaleFactor];
+UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const& platform) {
+    auto const main_screen = ({
+        auto s = [NSScreen mainScreen];
+        if (!s) s = [NSScreen screens][0]; // Fallback to first screen.
 
-    NSFont* systemFont = [NSFont systemFontOfSize:[NSFont systemFontSize]];
+        if (!s) {
+            auto const aspect_ratio = DesiredAspectRatio(platform.prefs);
+            return SizeWithAspectRatio(960, aspect_ratio); // Default 96 DPI
+        }
+        s;
+    });
 
-    // Get proper line height using NSLayoutManager for accurate text metrics
-    NSLayoutManager* layoutManager = [[NSLayoutManager alloc] init];
-    CGFloat lineHeight = [layoutManager defaultLineHeightForFont:systemFont];
+    auto const backing_scale = [main_screen backingScaleFactor];
 
-    return (f32)(lineHeight * backingScale);
+    auto const dpi_x = ({
+        CGFloat dpi = 0.0;
+        auto const description = [main_screen deviceDescription];
+        NSNumber* const screen_number = description[@"NSScreenNumber"];
+
+        if (screen_number) {
+            auto const display_id = (CGDirectDisplayID)[screen_number unsignedIntValue];
+            auto const physical_size_mm = CGDisplayScreenSize(display_id);
+
+            if (physical_size_mm.width > 0 && physical_size_mm.height > 0) {
+                auto const logical_pixel_size = [[description objectForKey:NSDeviceSize] sizeValue];
+                if (logical_pixel_size.width > 0) {
+                    // logical_pixel_size is in logical pixels, physical_size_mm is in mm
+                    // Convert mm to inches: divide by 25.4
+                    // Calculate logical pixels per inch, then multiply by backing scale for physical pixels
+                    // per inch
+                    dpi = (logical_pixel_size.width / (physical_size_mm.width / 25.4)) * backing_scale;
+                }
+            }
+        }
+
+        if (dpi <= 0) dpi = 72.0 * backing_scale;
+        dpi;
+    });
+
+    auto target_width = (CGFloat)k_default_gui_width_inches * dpi_x;
+    CGFloat max_height {};
+
+    // Ensure width is within our max screen percentage bounds.
+    {
+        auto const screen_frame = [main_screen frame];
+        auto const screen_width = screen_frame.size.width * backing_scale;
+        auto const screen_height = screen_frame.size.height * backing_scale;
+
+        auto const max_width = screen_width * (CGFloat)k_screen_fit_percentage;
+        max_height = screen_height * (CGFloat)k_screen_fit_percentage;
+
+        if (target_width > max_width) target_width = max_width;
+    }
+
+    auto const aspect_ratio = DesiredAspectRatio(platform.prefs);
+    auto result =
+        SizeWithAspectRatio((u16)Min((CGFloat)LargestRepresentableValue<u16>(), target_width), aspect_ratio);
+
+    // Ensure height is within max bounds.
+    if (result.height > max_height) {
+        auto const width_from_height = max_height * aspect_ratio.width / aspect_ratio.height;
+        auto const width_from_height_u16 =
+            (u16)Min((CGFloat)LargestRepresentableValue<u16>(), width_from_height);
+        result = SizeWithAspectRatio(width_from_height_u16, aspect_ratio);
+    }
+
+    // Ensure we stay within the min/max bounds
+    if (result.width < k_min_gui_width)
+        result = SizeWithAspectRatio(k_min_gui_width, aspect_ratio);
+    else if (result.width > k_max_gui_width)
+        result = SizeWithAspectRatio(k_max_gui_width, aspect_ratio);
+
+    return result;
 }
 
 #define DIALOG_DELEGATE_CLASS MAKE_UNIQUE_OBJC_NAME(DialogDelegate)

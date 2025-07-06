@@ -18,7 +18,12 @@ f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
     return 300.0;
 }
 
-f32 detail::LineHeightPixels(GuiPlatform const&) { return 20; }
+UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const& platform) {
+    // On Linux, use a reasonable hardcoded size: 10 inches * 96 DPI = 960 pixels
+    auto target_width = (u16)(k_default_gui_width_inches * 96);
+    auto aspect_ratio = DesiredAspectRatio(platform.prefs);
+    return SizeWithAspectRatio(target_width, aspect_ratio);
+}
 
 ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& args) {
     ASSERT(g_is_logical_main_thread);
