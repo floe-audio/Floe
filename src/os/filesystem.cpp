@@ -304,7 +304,7 @@ ErrorCodeOr<Optional<Entry>> Next(RecursiveIterator& it, ArenaAllocator& result_
                     // because if creating the subiterator fails, we have lost this current entry.
                     if (entry.type == FileType::Directory) {
                         dyn::Assign(it.dir_path_to_iterate, first.base_path);
-                        ASSERT(!EndsWith(it.dir_path_to_iterate, path::k_dir_separator));
+                        ASSERT(!path::IsDirectorySeparator(Last(it.dir_path_to_iterate)));
                         dyn::Append(it.dir_path_to_iterate, path::k_dir_separator);
                         dyn::AppendSpan(it.dir_path_to_iterate, entry.subpath);
                     }
