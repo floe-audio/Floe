@@ -388,7 +388,7 @@ static bool ClapGuiSetScale(clap_plugin_t const* plugin, f64 scale) {
     } catch (PanicException) {
     }
 
-    return false; // we (pugl) negotiate this with the OS ourselves
+    return false; // We negotiate this with the OS ourselves via the Pugl library.
 }
 
 static bool ClapGuiGetSize(clap_plugin_t const* plugin, u32* width, u32* height) {
@@ -494,6 +494,10 @@ GetUsableSizeWithinClapDimensions(GuiPlatform& gui_platform, u32 clap_width, u32
     return PhysicalPixelsToClapPixels(gui_platform.view, *aspect_ratio_conformed_size);
 }
 
+// If the plugin GUI is resizable, then the plugin will calculate the closest usable size which fits in the
+// given size. This method does not change the size.
+//
+// Returns true if the plugin could adjust the given size.
 static bool ClapGuiAdjustSize(clap_plugin_t const* plugin, u32* clap_width, u32* clap_height) {
     ZoneScoped;
     if (PanicOccurred()) return false;
@@ -567,23 +571,23 @@ static bool ClapGuiSetSize(clap_plugin_t const* plugin, u32 clap_width, u32 clap
 
         if (!size || size->width < k_min_gui_width) return false;
 
-        // Some hosts (AUv2 clap-wrapper in Logic, for example) will give us sizes in an aspect ratio we don't
-        // support. In this case, we do our best to conform to the size given but it won't be the exact size
-        // requested.
-        {
-            auto const desired_aspect_ratio = DesiredAspectRatio(g_shared_engine_systems->prefs);
-            if (!IsAspectRatio(*size, desired_aspect_ratio)) {
-                auto const invalid_size = *size;
-                size = NearestAspectRatioSizeInsideSize(*size,
-                                                        DesiredAspectRatio(g_shared_engine_systems->prefs));
-                if (!size) *size = SizeWithAspectRatio(k_min_gui_width, desired_aspect_ratio);
-                LogWarning(ModuleName::Gui,
-                           "invalid size given: {} x {}, we have adjusted to {} x {}",
-                           invalid_size.width,
-                           invalid_size.height,
-                           size->width,
-                           size->height);
-            }
+        // We try to handle some non-CLAP-compliant hosts here that give us sizes that are not in our aspect
+        // ratio. (AUv2 CLAP-wrapper in Logic, for example).
+        if (auto const desired_aspect_ratio = DesiredAspectRatio(g_shared_engine_systems->prefs);
+            !IsAspectRatio(*size, desired_aspect_ratio)) {
+            auto const invalid_size = *size;
+            size =
+                NearestAspectRatioSizeInsideSize(*size, DesiredAspectRatio(g_shared_engine_systems->prefs));
+
+            // Use the default size if the size is still invalid.
+            if (!size) *size = DefaultUiSize(*floe.gui_platform);
+
+            LogWarning(ModuleName::Gui,
+                       "invalid size given: {} x {}, we have adjusted to {} x {}",
+                       invalid_size.width,
+                       invalid_size.height,
+                       size->width,
+                       size->height);
         }
 
         return SetSize(*floe.gui_platform, *size);

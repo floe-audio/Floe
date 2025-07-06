@@ -132,11 +132,11 @@ f64 DoubleClickTimeMs(GuiPlatform const& platform);
 f32 LineHeightPixels(GuiPlatform const& platform);
 
 } // namespace detail
-  
+
 PUBLIC UiSize DefaultUiSize(GuiPlatform& platform) {
-        auto const line_height_pixels = detail::LineHeightPixels(platform);
-        return SizeWithAspectRatio((u16)Clamp<f32>(line_height_pixels * 55, 0, k_largest_gui_size),
-                                           DesiredAspectRatio(platform.prefs));
+    auto const line_height_pixels = detail::LineHeightPixels(platform);
+    return SizeWithAspectRatio((u16)Clamp<f32>(line_height_pixels * 55, 0, k_largest_gui_size),
+                               DesiredAspectRatio(platform.prefs));
 }
 
 PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
@@ -167,9 +167,7 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
     puglSetPositionHint(platform.view, PUGL_DEFAULT_POSITION, 0, 0);
 
     auto default_size = DesiredWindowSize(platform.prefs);
-    if (!default_size) {
-        default_size = DefaultUiSize(platform);
-    }
+    if (!default_size) default_size = DefaultUiSize(platform);
     puglSetSizeHint(platform.view, PUGL_DEFAULT_SIZE, default_size->width, default_size->height);
     puglSetSizeHint(platform.view, PUGL_CURRENT_SIZE, default_size->width, default_size->height);
 
@@ -276,10 +274,23 @@ PUBLIC ErrorCodeOr<void> SetParent(GuiPlatform& platform, clap_window_t const& w
     return k_success;
 }
 
+PUBLIC bool SetSize(GuiPlatform& platform, UiSize new_size) {
+    return puglSetSizeHint(platform.view, PUGL_CURRENT_SIZE, new_size.width, new_size.height) == PUGL_SUCCESS;
+}
+
+PUBLIC UiSize GetSize(GuiPlatform& platform) {
+    auto const size = puglGetSizeHint(platform.view, PUGL_CURRENT_SIZE);
+    return {size.width, size.height};
+}
+
 PUBLIC ErrorCodeOr<void> SetVisible(GuiPlatform& platform, bool visible, Engine& engine) {
     ASSERT(platform.view);
     if (visible) {
         if (!platform.gui) {
+            // It may be possible that the size is invalid, we check that here to be sure.
+            if (auto const size = GetSize(platform); size.width < k_min_gui_width)
+                SetSize(platform, DefaultUiSize(platform));
+
             puglSetHandle(platform.view, &platform);
             TRY(Required(puglSetEventFunc(platform.view, detail::EventHandler)));
 
@@ -338,15 +349,6 @@ PUBLIC ErrorCodeOr<void> SetVisible(GuiPlatform& platform, bool visible, Engine&
         TRY(Required(puglHide(platform.view)));
     }
     return k_success;
-}
-
-PUBLIC bool SetSize(GuiPlatform& platform, UiSize new_size) {
-    return puglSetSizeHint(platform.view, PUGL_CURRENT_SIZE, new_size.width, new_size.height) == PUGL_SUCCESS;
-}
-
-PUBLIC UiSize GetSize(GuiPlatform& platform) {
-    auto const size = puglGetSizeHint(platform.view, PUGL_CURRENT_SIZE);
-    return {size.width, size.height};
 }
 
 // Details
