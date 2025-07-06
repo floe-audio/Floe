@@ -37,8 +37,8 @@
             .hash = "N-V-__8AAJ0IOwDGU09eyNgdU99_TixuQnS6E7dLq1bSlvNA",
         },
         .clap_wrapper = .{
-            .url = "git+https://github.com/SamWindell/clap-wrapper#4b2ab31c0c717abef6fdc6ccbe65741c13adab33",
-            .hash = "N-V-__8AAHwzEACM8t_EWG2ePgPESyylXFOiZqgAyJuoOc0g",
+            .url = "git+https://github.com/SamWindell/clap-wrapper#b21f6e3b94cd0bfa8c6cc021c838418bcc3d0938",
+            .hash = "N-V-__8AAIY3EACKwIcGDvShzrT66k2pvWrR1Z6bVhQsyopb",
         },
         .dr_libs = .{
             .url = "git+https://github.com/mackron/dr_libs#da35f9d6c7374a95353fd1df1d394d44ab66cf01",
