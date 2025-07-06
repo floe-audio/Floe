@@ -98,7 +98,11 @@ check-links:
   if curl -s --head --request GET "$mdbook_localhost" | grep "200 OK" > /dev/null; then
     extra_args=(--remap "https://floe.audio $mdbook_localhost")
   fi
+  # For some reason creativecommons links return 403 via lychee, so we exclude them.
   lychee --exclude 'v%7B%7B#include' \
+         --exclude 'https://creativecommons.org/licenses/by/2.0' \
+         --exclude 'https://creativecommons.org/licenses/by/4.0' \
+         --exclude 'https://creativecommons.org/licenses/by-sa/4.0' \
          "${extra_args[@]}" \
          docs readme.md changelog.md
 

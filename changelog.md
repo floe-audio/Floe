@@ -12,7 +12,7 @@ For instance: 0.0.1. Don't change the headings.
 - Instrument pickers for the 3 layers no longer share the same filter state. This allows you to have different filters on each layer.
 - Fix LFO and delay time not updating with the tempo
 - Reduce pops and clicks with high-frequency LFOs
-- Add new velocity -> volume curve for each layer. This replaces the old mapping buttons and also the master 'Velo' button. There's now much more control. The old parameters are available in a new 'legacy' parameters section but are no longer used unless loading a DAW preset that uses them.
+- Add new velocity -> volume curve for each layer. This replaces the old mapping buttons and the master 'Velo' button. There's now much more control. The old parameters are available in a new 'legacy' parameters section but are no longer used unless loading a DAW preset that uses them.
 - Add new algorithms to distortion: foldback, rectifier and ring-modulator
 - Improve menus:
     - Add left/right buttons to all menus on the GUI
