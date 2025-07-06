@@ -712,7 +712,7 @@ ErrorCodeOr<MutableString> AbsolutePath(Allocator& a, String path) {
     ASSERT(IsValidUtf8(path));
 
     PathArena temp_path_arena {Malloc::Instance()};
-    // relative paths cannot start with the long-path prefix: //?/
+    // Relative paths cannot start with the long-path prefix: //?/
     auto const wide_path = TRY(path::MakePathForWin32(path, temp_path_arena, false));
 
     DynamicArray<wchar_t> wide_result {temp_path_arena};
@@ -731,7 +731,11 @@ ErrorCodeOr<MutableString> AbsolutePath(Allocator& a, String path) {
     dyn::Resize(wide_result, (usize)path_len);
 
     auto result = Narrow(a, wide_result).Value();
-    ASSERT(!path::IsDirectorySeparator(Last(result)));
+
+    // It's possible that we can have a path ending with a directory separator here (Sentry #cefed9eb). Unsure
+    // under what conditions it's possible. Let's just be safe for now.
+    result.size = path::TrimDirectorySeparatorsEnd(result).size;
+
     ASSERT(path::IsAbsolute(result));
     return result;
 }
