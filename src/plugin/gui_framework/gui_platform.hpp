@@ -28,8 +28,8 @@ constexpr u16 k_min_gui_width = k_aspect_ratio_with_keyboard.width * 2;
 constexpr u16 k_max_gui_width = k_aspect_ratio_with_keyboard.width * 100;
 constexpr u32 k_largest_gui_size = LargestRepresentableValue<u16>();
 
-constexpr f32 k_default_gui_width_inches = 10.0f;
-constexpr f32 k_screen_fit_percentage = 0.9f;
+constexpr f32 k_default_gui_width_inches = 9.0f;
+constexpr f32 k_screen_fit_percentage = 0.7f;
 
 struct GuiPlatform {
     static constexpr uintptr k_pugl_timer_id = 200;
@@ -136,9 +136,7 @@ UiSize DefaultUiSizeFromDpi(GuiPlatform const& platform);
 
 } // namespace detail
 
-PUBLIC UiSize DefaultUiSize(GuiPlatform& platform) {
-    return detail::DefaultUiSizeFromDpi(platform);
-}
+PUBLIC UiSize DefaultUiSize(GuiPlatform& platform) { return detail::DefaultUiSizeFromDpi(platform); }
 
 PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
     Trace(ModuleName::Gui);
