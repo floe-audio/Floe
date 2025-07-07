@@ -142,7 +142,16 @@ struct MouseTrackedRect {
     bool mouse_over;
 };
 
-enum class CursorType { Default, Hand, IBeam, AllArrows, HorizontalArrows, VerticalArrows, Count };
+enum class CursorType {
+    Default,
+    Hand,
+    IBeam,
+    AllArrows,
+    HorizontalArrows,
+    VerticalArrows,
+    UpLeftDownRight,
+    Count,
+};
 
 struct FilePickerDialogOptions {
     enum class Type { SaveFile, OpenFile, SelectFolder };

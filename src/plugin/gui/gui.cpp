@@ -392,6 +392,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
             down_size =
                 (int)prefs::GetValue(g->prefs, desc).value.Get<s64>() / k_aspect_ratio_without_keyboard.width;
         }
+        if (g->imgui.IsHotOrActive(id)) g->imgui.frame_output.cursor_type = CursorType::UpLeftDownRight;
         if (g->imgui.IsActive(id)) {
             auto const ar = k_aspect_ratio_with_keyboard.width;
             auto const delta_2 =

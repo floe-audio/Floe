@@ -687,6 +687,9 @@ static void HandlePostUpdateRequests(GuiPlatform& platform) {
                               case CursorType::AllArrows: cursor = PUGL_CURSOR_ALL_SCROLL; break;
                               case CursorType::HorizontalArrows: cursor = PUGL_CURSOR_LEFT_RIGHT; break;
                               case CursorType::VerticalArrows: cursor = PUGL_CURSOR_UP_DOWN; break;
+                              case CursorType::UpLeftDownRight:
+                                  cursor = PUGL_CURSOR_UP_LEFT_DOWN_RIGHT;
+                                  break;
                               case CursorType::Count: break;
                           }
                           cursor;
