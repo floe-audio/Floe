@@ -351,6 +351,61 @@ GuiFrameResult GuiUpdate(Gui* g) {
         imgui.EndWindow();
     }
 
+    // Resize corner in the bottom right.
+    {
+        auto const corner_size = LiveSize(imgui, UiSizeId::WindowResizeCornerSize);
+        imgui::WindowSettings settings {
+            .draw_routine_window_background = [](IMGUI_DRAW_WINDOW_BG_ARGS_TYPES) {},
+        };
+        imgui.BeginWindow(settings,
+                          Rect {
+                              .pos = imgui.Size() - corner_size,
+                              .size = corner_size,
+                          },
+                          "ResizeCorner");
+        DEFER { imgui.EndWindow(); };
+
+        auto const r = imgui.GetRegisteredAndConvertedRect({.pos = 0, .size = imgui.Size()});
+
+        imgui.graphics->AddTriangleFilled(r.TopRight(),
+                                          r.BottomRight(),
+                                          r.BottomLeft(),
+                                          LiveCol(imgui, UiColMap::WindowResizeCornerBackground));
+
+        auto const line_gap = LiveSize(imgui, UiSizeId::WindowResizeCornerLineGap);
+        imgui.graphics->AddLine(r.TopRight() + f32x2 {0, line_gap},
+                                r.BottomLeft() + f32x2 {line_gap, 0},
+                                LiveCol(imgui, UiColMap::WindowResizeCornerLine));
+        imgui.graphics->AddLine(r.TopRight() + f32x2 {0, line_gap * 2},
+                                r.BottomLeft() + f32x2 {line_gap * 2, 0},
+                                LiveCol(imgui, UiColMap::WindowResizeCornerLine));
+
+        auto const& desc = SettingDescriptor(GuiSetting::WindowWidth);
+
+        static f32x2 down_pos {};
+        static int down_size = 0;
+        auto const id = imgui.GetID("resize_corner");
+
+        g->imgui.ButtonBehavior(r, id, {.left_mouse = true, .triggers_on_mouse_down = true});
+        if (g->imgui.WasJustActivated(id)) {
+            down_pos = g->imgui.frame_input.cursor_pos;
+            down_size =
+                (int)prefs::GetValue(g->prefs, desc).value.Get<s64>() / k_aspect_ratio_without_keyboard.width;
+        }
+        if (g->imgui.IsActive(id)) {
+            auto const ar = k_aspect_ratio_with_keyboard.width;
+            auto const delta_2 =
+                ConvertVector(Round((g->imgui.frame_input.cursor_pos - down_pos) / (f32)ar), s32x2);
+            auto const abs_delta_2 = Abs(delta_2);
+            auto const delta = abs_delta_2.x > abs_delta_2.y ? delta_2.x : delta_2.y;
+            auto const new_size = Clamp<s32>(down_size + delta, k_min_gui_width / ar, k_max_gui_width / ar);
+            if (new_size != (int)prefs::GetValue(g->prefs, desc).value.Get<s64>() /
+                                k_aspect_ratio_without_keyboard.width) {
+                prefs::SetValue(g->prefs, desc, (s64)new_size * k_aspect_ratio_without_keyboard.width);
+            }
+        }
+    }
+
     if (!PRODUCTION_BUILD && NullTermStringsEqual(g->engine.host.name, k_floe_standalone_host_name))
         DoStandaloneErrorGUI(g);
 
