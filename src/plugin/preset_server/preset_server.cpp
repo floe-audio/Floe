@@ -473,7 +473,11 @@ ErrorCodeOr<void> ScanFolder(PresetServer& server,
                                           .compact_middle_sections = true,
                                       },
                                       preset_folder->arena);
-            preset_folder->folder = preset_folder->arena.Clone(subfolder_of_scan_folder);
+            preset_folder->folder = ({
+                auto f = preset_folder->arena.Clone(subfolder_of_scan_folder);
+                if constexpr (IS_WINDOWS) Replace(f, '\\', '/');
+                f;
+            });
         }
 
         AddPresetToFolder(*preset_folder, entry, snapshot, file_hash, preset_format);
