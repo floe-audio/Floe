@@ -34,6 +34,7 @@ For instance: 0.0.1. Don't change the headings.
 - GUI: show loop points if an instrument has a single sample with built-in loop
 - GUI: show grab icon on FX heading buttons
 - GUI: add resize corner to the bottom right of the GUI window
+- GUI: don't show markers on ADSR when it's inactive
 
 ## 0.10.3-beta
 - Sample library creation: add 'fade_in_frames' to add_region

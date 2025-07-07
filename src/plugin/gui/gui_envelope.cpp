@@ -318,67 +318,70 @@ void GUIDoEnvelope(Gui* g,
         imgui.graphics->AddConvexPolyFilled(area_points_a, (int)ArraySize(area_points_a), area_col, false);
         imgui.graphics->AddConvexPolyFilled(area_points_b, (int)ArraySize(area_points_b), area_col, false);
 
-        auto& voice_markers = type == GuiEnvelopeType::Volume
-                                  ? engine.processor.voice_pool.voice_vol_env_markers_for_gui.Consume().data
-                                  : engine.processor.voice_pool.voice_fil_env_markers_for_gui.Consume().data;
+        if (!greyed_out) {
+            auto& voice_markers =
+                type == GuiEnvelopeType::Volume
+                    ? engine.processor.voice_pool.voice_vol_env_markers_for_gui.Consume().data
+                    : engine.processor.voice_pool.voice_fil_env_markers_for_gui.Consume().data;
 
-        for (auto const voice_index : ::Range(k_num_voices)) {
-            auto const envelope_marker = voice_markers[voice_index];
-            if (envelope_marker.on && envelope_marker.layer_index == layer->index) {
-                f32 target_pos = 0;
-                f32 const env_pos = envelope_marker.pos / (f32)(UINT16_MAX);
-                ASSERT(env_pos >= 0 && env_pos <= 1);
-                switch (envelope_marker.state) {
-                    case adsr::State::Attack: {
-                        target_pos = bottom_left.x + env_pos * (attack_point_screen.x - bottom_left.x);
-                        break;
+            for (auto const voice_index : ::Range(k_num_voices)) {
+                auto const envelope_marker = voice_markers[voice_index];
+                if (envelope_marker.on && envelope_marker.layer_index == layer->index) {
+                    f32 target_pos = 0;
+                    f32 const env_pos = envelope_marker.pos / (f32)(UINT16_MAX);
+                    ASSERT(env_pos >= 0 && env_pos <= 1);
+                    switch (envelope_marker.state) {
+                        case adsr::State::Attack: {
+                            target_pos = bottom_left.x + env_pos * (attack_point_screen.x - bottom_left.x);
+                            break;
+                        }
+                        case adsr::State::Decay: {
+                            auto const sustain_level = envelope_marker.sustain_level / (f32)UINT16_MAX;
+                            ASSERT(sustain_level >= 0 && sustain_level <= 1);
+                            auto const pos = 1.0f - MapTo01(env_pos, sustain_level, 1.0f);
+                            target_pos =
+                                attack_point_screen.x + pos * (decay_point_screen.x - attack_point_screen.x);
+                            break;
+                        }
+                        case adsr::State::Sustain: {
+                            target_pos = decay_point_screen.x;
+                            break;
+                        }
+                        case adsr::State::Release: {
+                            auto const pos = 1.0f - env_pos;
+                            target_pos = sustain_point_screen.x +
+                                         pos * (release_point_screen.x - sustain_point_screen.x);
+                            break;
+                        }
+                        default: PanicIfReached();
                     }
-                    case adsr::State::Decay: {
-                        auto const sustain_level = envelope_marker.sustain_level / (f32)UINT16_MAX;
-                        ASSERT(sustain_level >= 0 && sustain_level <= 1);
-                        auto const pos = 1.0f - MapTo01(env_pos, sustain_level, 1.0f);
-                        target_pos =
-                            attack_point_screen.x + pos * (decay_point_screen.x - attack_point_screen.x);
-                        break;
-                    }
-                    case adsr::State::Sustain: {
-                        target_pos = decay_point_screen.x;
-                        break;
-                    }
-                    case adsr::State::Release: {
-                        auto const pos = 1.0f - env_pos;
-                        target_pos =
-                            sustain_point_screen.x + pos * (release_point_screen.x - sustain_point_screen.x);
-                        break;
-                    }
-                    default: PanicIfReached();
+
+                    auto& cursor = g->envelope_voice_cursors[(int)type][voice_index];
+                    if (cursor.marker_id != envelope_marker.id) cursor.smoother.ResetWithValue(bottom_left.x);
+                    cursor.marker_id = envelope_marker.id;
+
+                    cursor.smoother.SetValue(target_pos);
+                    f32 const cursor_x = cursor.smoother.GetValue(0.5f);
+
+                    Line line {};
+                    if (cursor_x > sustain_point_screen.x)
+                        line = {sustain_point_screen, release_point_screen};
+                    else if (cursor_x > decay_point_screen.x)
+                        line = {decay_point_screen, sustain_point_screen};
+                    else if (cursor_x > attack_point_screen.x)
+                        line = {attack_point_screen, decay_point_screen};
+                    else
+                        line = {bottom_left, attack_point_screen};
+
+                    f32 cursor_y = attack_point_screen.y;
+                    if (auto p = line.IntersectionWithVerticalLine(cursor_x)) cursor_y = p->y;
+
+                    draw::VoiceMarkerLine(imgui,
+                                          {cursor_x, cursor_y},
+                                          bottom_left.y - cursor_y,
+                                          bottom_left.x,
+                                          line);
                 }
-
-                auto& cursor = g->envelope_voice_cursors[(int)type][voice_index];
-                if (cursor.marker_id != envelope_marker.id) cursor.smoother.ResetWithValue(bottom_left.x);
-                cursor.marker_id = envelope_marker.id;
-
-                cursor.smoother.SetValue(target_pos);
-                f32 const cursor_x = cursor.smoother.GetValue(0.5f);
-
-                Line line {};
-                if (cursor_x > sustain_point_screen.x)
-                    line = {sustain_point_screen, release_point_screen};
-                else if (cursor_x > decay_point_screen.x)
-                    line = {decay_point_screen, sustain_point_screen};
-                else if (cursor_x > attack_point_screen.x)
-                    line = {attack_point_screen, decay_point_screen};
-                else
-                    line = {bottom_left, attack_point_screen};
-
-                f32 cursor_y = attack_point_screen.y;
-                if (auto p = line.IntersectionWithVerticalLine(cursor_x)) cursor_y = p->y;
-
-                draw::VoiceMarkerLine(imgui,
-                                      {cursor_x, cursor_y},
-                                      bottom_left.y - cursor_y,
-                                      bottom_left.x,
-                                      line);
             }
         }
 
