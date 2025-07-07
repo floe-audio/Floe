@@ -387,23 +387,26 @@ GuiFrameResult GuiUpdate(Gui* g) {
         auto const id = imgui.GetID("resize_corner");
 
         g->imgui.ButtonBehavior(r, id, {.left_mouse = true, .triggers_on_mouse_down = true});
+        auto const ar = SimplifyAspectRatio(DesiredAspectRatio(g->prefs));
         if (g->imgui.WasJustActivated(id)) {
             down_pos = g->imgui.frame_input.cursor_pos;
-            down_size =
-                (int)prefs::GetValue(g->prefs, desc).value.Get<s64>() / k_aspect_ratio_without_keyboard.width;
+            down_size = (int)prefs::GetValue(g->prefs, desc).value.Get<s64>() / ar.width;
         }
         if (g->imgui.IsHotOrActive(id)) g->imgui.frame_output.cursor_type = CursorType::UpLeftDownRight;
         if (g->imgui.IsActive(id)) {
-            auto const ar = k_aspect_ratio_with_keyboard.width;
             auto const delta_2 =
-                ConvertVector(Round((g->imgui.frame_input.cursor_pos - down_pos) / (f32)ar), s32x2);
+                ConvertVector(Round((g->imgui.frame_input.cursor_pos - down_pos) / (f32)ar.width), s32x2);
             auto const abs_delta_2 = Abs(delta_2);
             auto const delta = abs_delta_2.x > abs_delta_2.y ? delta_2.x : delta_2.y;
-            auto const new_size = Clamp<s32>(down_size + delta, k_min_gui_width / ar, k_max_gui_width / ar);
-            if (new_size != (int)prefs::GetValue(g->prefs, desc).value.Get<s64>() /
-                                k_aspect_ratio_without_keyboard.width) {
-                prefs::SetValue(g->prefs, desc, (s64)new_size * k_aspect_ratio_without_keyboard.width);
-            }
+            auto const new_size =
+                Clamp<s32>(down_size + delta, k_min_gui_width / ar.width, k_max_gui_width / ar.width);
+            LogDebug(ModuleName::Gui,
+                     "Resize corner: down_size {}, delta {}, new_size {}",
+                     down_size,
+                     delta,
+                     new_size);
+            if (new_size != (int)prefs::GetValue(g->prefs, desc).value.Get<s64>() / ar.width)
+                prefs::SetValue(g->prefs, desc, (s64)new_size * ar.width);
         }
     }
 
