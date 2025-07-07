@@ -380,13 +380,13 @@ static void LegalInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&) {
                   });
         }
 
-        // change state at the end so we don't create a new box if the button is pressed - causing layout
-        // issues
         if (button.button_fired) {
-            auto new_state = !open[i];
-            for (auto& o : open)
-                o = false;
-            open[i] = new_state;
+            dyn::Append(box_system.state->deferred_actions, [i]() {
+                auto new_state = !open[i];
+                for (auto& o : open)
+                    o = false;
+                open[i] = new_state;
+            });
         }
     }
 }
