@@ -341,7 +341,8 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
 
     // Set all params to a random value
     for (auto& p : processor.params)
-        if (!only_effects || (only_effects && p.info.IsEffectParam())) set_any_random(p);
+        if ((!only_effects || (only_effects && p.info.IsEffectParam())) && !p.info.flags.hidden)
+            set_any_random(p);
 
     // Specialise the randomness of specific params for better results
     randomise_near_to_default(processor.params[ToInt(ParamIndex::BitCrushWet)]);
