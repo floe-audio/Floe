@@ -8,22 +8,11 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
-## 0.10.4-beta
-- Instrument pickers for the 3 layers no longer share the same filter state. This allows you to have different filters on each layer.
-- Fix LFO and delay time not updating with the tempo
-- Reduce pops and clicks with high-frequency LFOs
+## 0.11.0-beta
 - Add new velocity -> volume curve for each layer. This replaces the old mapping buttons and the master 'Velo' button. There's now much more control. The old parameters are available in a new 'legacy' parameters section but are no longer used unless loading a DAW preset that uses them.
 - Add new algorithms to distortion: foldback, rectifier and ring-modulator
-- Improve menus:
-    - Add left/right buttons to all menus on the GUI
-    - Allow most menus to be dragged like a slider to change the value
-    - Add randomise button to convolution IR menu as well as left/right buttons
-    - Make all left/right buttons on the UI the same style
-    - Move the left/right buttons to the right of the menu so it's consistent and easy to click forward and back without having to move the mouse long distances
-    - Make the UI window size buttons consistent with the left/right buttons
-- Add missing tooltips for some preferences
-- Work-around CLAP Studio One not using the correct threads
-- GUI: right-click menu for the IR picker with 'unload IR' option
+- Fix LFO and delay time not updating with the tempo
+- Reduce pops and clicks with high-frequency LFOs
 - GUI: improve picker panels behaviour:
     - Background darkens when panel is open
     - New close button on the top right
@@ -31,10 +20,24 @@ For instance: 0.0.1. Don't change the headings.
     - Single-click loads an item, double-click loads and closes the picker panel
     - Add right-click menu on libraries with option to open the library folder
     - Add right-click menu to presets and preset folders with option to open the folder, or delete the preset
+- Improve menus:
+    - Add left/right buttons to all menus on the GUI
+    - Allow most menus to be dragged like a slider to change the value
+    - Add randomise button to convolution IR menu as well as left/right buttons
+    - Make all left/right buttons on the UI the same style
+    - Move the left/right buttons to the right of the menu so it's consistent and easy to click forward and back without having to move the mouse long distances
+    - Make the UI window size buttons consistent with the left/right buttons
 - GUI: show loop points if an instrument has a single sample with built-in loop
-- GUI: show grab icon on FX heading buttons
 - GUI: add resize corner to the bottom right of the GUI window
+- Add missing tooltips for some preferences
+- Work-around CLAP Studio One not using the correct threads
+- GUI: right-click menu for the IR picker with 'unload IR' option
+- GUI: show grab icon on FX heading buttons
 - GUI: don't show markers on ADSR when it's inactive
+- GUI: Instrument pickers now have their own stat for filters (libraries, tags, etc.) allowing for more flexibility particularly with the randomise buttons
+- Fix crash when changing tabs on the 'Legal' tab of the Info panel
+- Fix presets picker not showing nesting of folder on Windows
+- Fix rare crash when loading a library on Windows
 
 ## 0.10.3-beta
 - Sample library creation: add 'fade_in_frames' to add_region
