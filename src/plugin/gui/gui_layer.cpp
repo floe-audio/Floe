@@ -873,7 +873,8 @@ static void DrawCurvedSegment(graphics::DrawList& graphics,
     }
 }
 
-static bool DoCurveMap(imgui::Context& imgui, CurveMap& curve_map, f32x2 rect_min, f32x2 rect_max) {
+static bool DoCurveMap(Gui* g, CurveMap& curve_map, f32x2 rect_min, f32x2 rect_max) {
+    auto& imgui = g->imgui;
     float width = rect_max.x - rect_min.x;
     float height = rect_max.y - rect_min.y;
     auto const rect = Rect::FromMinMax(rect_min, rect_max);
@@ -892,6 +893,7 @@ static bool DoCurveMap(imgui::Context& imgui, CurveMap& curve_map, f32x2 rect_mi
 
     graphics.PathClear();
 
+    constexpr auto k_remove_all = LargestRepresentableValue<usize>();
     Optional<usize> remove_index {};
 
     if (points.size == 0) {
@@ -1008,6 +1010,13 @@ static bool DoCurveMap(imgui::Context& imgui, CurveMap& curve_map, f32x2 rect_mi
                                            LiveCol(imgui, UiColMap::CurveMapLineHover));
                     imgui.frame_output.cursor_type = CursorType::VerticalArrows;
                 }
+
+                if (imgui.IsHot(curve_handle_imgui_id))
+                    Tooltip(g,
+                            curve_handle_imgui_id,
+                            curve_handle_rect,
+                            "Drag to change curve. Double-click to add point.",
+                            true);
             }
         }
 
@@ -1059,6 +1068,44 @@ static bool DoCurveMap(imgui::Context& imgui, CurveMap& curve_map, f32x2 rect_mi
                     imgui.SetActiveIDZero();
                 }
             }
+            if (imgui.IsHot(imgui_id))
+                Tooltip(g, imgui_id, grabber_rect, "Drag to move point. Double-click to remove point.", true);
+
+            // Right-click menu
+            {
+                auto const right_click_id = imgui_id + 1;
+
+                if (imgui.IsHot(imgui_id)) {
+                    if (imgui::ClickCheck(
+                            {
+                                .right_mouse = true,
+                                .triggers_on_mouse_up = true,
+                            },
+                            imgui.frame_input,
+                            &grabber_rect)) {
+                        imgui.OpenPopup(right_click_id, imgui_id);
+                    }
+                }
+
+                if (imgui.BeginWindowPopup(PopupWindowSettings(imgui), right_click_id, grabber_rect)) {
+                    DEFER { imgui.EndWindow(); };
+                    StartFloeMenu(g);
+                    DEFER { EndFloeMenu(g); };
+
+                    auto const k_items = Array {"Remove Point"_s, "Remove All Points"_s};
+
+                    PopupMenuItems menu(g, k_items);
+                    if (menu.DoButton(0)) {
+                        remove_index = point_index;
+                        imgui.SetActiveIDZero();
+                    }
+
+                    if (menu.DoButton(1)) {
+                        remove_index = k_remove_all; // Remove all points
+                        imgui.SetActiveIDZero();
+                    }
+                }
+            }
 
             graphics.AddCircleFilled(screen_pos,
                                      point_radius,
@@ -1068,7 +1115,10 @@ static bool DoCurveMap(imgui::Context& imgui, CurveMap& curve_map, f32x2 rect_mi
     }
 
     if (remove_index) {
-        dyn::Remove(curve_map.points, *remove_index);
+        if (*remove_index == k_remove_all)
+            dyn::Clear(curve_map.points);
+        else
+            dyn::Remove(curve_map.points, *remove_index);
         changed = true;
     } else {
         imgui.RegisterRegionForMouseTracking(rect, imgui.GetID("CurveMapMouseTracking"));
@@ -1487,7 +1537,7 @@ void Draw(Gui* g,
                 auto const velograph_r =
                     g->imgui.GetRegisteredAndConvertedRect(layout::GetRect(g->layout, c.play.velo_graph));
 
-                if (DoCurveMap(g->imgui, layer->velocity_curve_map, velograph_r.Min(), velograph_r.Max()))
+                if (DoCurveMap(g, layer->velocity_curve_map, velograph_r.Min(), velograph_r.Max()))
                     layer->velocity_curve_map.RenderCurveToLookupTable();
             }
 

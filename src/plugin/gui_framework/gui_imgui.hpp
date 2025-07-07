@@ -517,6 +517,9 @@ struct Context {
     Rect WindowRectToScreenRect(Rect rel_rect) {
         return {.pos = WindowPosToScreenPos(rel_rect.pos), .size = rel_rect.size};
     }
+    Rect ScreenRectToWindowRect(Rect screen_rect) {
+        return {.pos = ScreenPosToWindowPos(screen_rect.pos), .size = screen_rect.size};
+    }
 
     void RegisterToWindow(Rect window_bounds);
 
