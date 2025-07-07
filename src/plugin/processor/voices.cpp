@@ -420,6 +420,7 @@ void StartVoice(VoicePool& pool,
     voice.is_active = true;
     voice.pool.num_active_voices.FetchAdd(1, RmwMemoryOrder::Relaxed);
     voice.pool.voices_per_midi_note_for_gui[voice.note_num].FetchAdd(1, RmwMemoryOrder::Relaxed);
+    voice.pool.last_velocity[voice.controller->layer_index].Store(params.note_vel, StoreMemoryOrder::Relaxed);
 }
 
 void EndVoice(Voice& voice) {

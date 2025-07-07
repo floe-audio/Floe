@@ -187,6 +187,7 @@ struct VoicePool {
     AtomicSwapBuffer<Array<VoiceEnvelopeMarkerForGui, k_num_voices>, true> voice_vol_env_markers_for_gui {};
     AtomicSwapBuffer<Array<VoiceEnvelopeMarkerForGui, k_num_voices>, true> voice_fil_env_markers_for_gui {};
     Array<Atomic<s16>, 128> voices_per_midi_note_for_gui {};
+    Array<Atomic<f32>, k_num_layers> last_velocity = {};
 
     unsigned int random_seed = (unsigned)NanosecondsSinceEpoch();
 

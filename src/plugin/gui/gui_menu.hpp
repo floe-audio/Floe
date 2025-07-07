@@ -25,6 +25,7 @@ struct PopupMenuItems {
         labels::Label(m_g, GetItemRect(), text, labels::FakeMenuItem(m_g->imgui));
         m_y_pos += m_h;
     }
+    void DoFakeButton(usize index) { DoFakeButton(m_items[index]); }
 
     bool DoButton(String text, String tooltip = {}, bool closes_popup = true) {
         bool result = false;
@@ -36,7 +37,7 @@ struct PopupMenuItems {
 
         return result;
     }
-    bool DoButton(int index, String tooltip = {}) { return DoButton(m_items[(usize)index], tooltip); }
+    bool DoButton(usize index, String tooltip = {}) { return DoButton(m_items[index], tooltip); }
 
     bool DoToggleButton(String text, bool& state, String tooltip = {}, imgui::Id id = {}) {
         bool result = false;
