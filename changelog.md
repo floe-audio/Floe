@@ -33,6 +33,7 @@ For instance: 0.0.1. Don't change the headings.
     - Add right-click menu to presets and preset folders with option to open the folder, or delete the preset
 - GUI: show loop points if an instrument has a single sample with built-in loop
 - GUI: show grab icon on FX heading buttons
+- GUI: add resize corner to the bottom right of the GUI window
 
 ## 0.10.3-beta
 - Sample library creation: add 'fade_in_frames' to add_region
