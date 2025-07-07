@@ -6,6 +6,7 @@
 #include "gui.hpp"
 #include "gui/gui2_inst_picker.hpp"
 #include "gui/gui2_ir_picker.hpp"
+#include "gui/gui_button_widgets.hpp"
 #include "gui_effects.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
