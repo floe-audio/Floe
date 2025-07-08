@@ -25,4 +25,4 @@ You can shape the sound of each layer in quite a few ways.
 ![Layer Filter](../images/layer-filter.png)
 ![Layer EQ](../images/layer-eq.png)
 ![Layer LFO](../images/layer-lfo.png)
-![Layer MIDI](../images/layer-midi.png)
+![Layer MIDI](../images/layer-play.png)
