@@ -165,10 +165,10 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
     puglSetViewHint(platform.view, PUGL_RESIZABLE, true);
     puglSetPositionHint(platform.view, PUGL_DEFAULT_POSITION, 0, 0);
 
-    auto default_size = DesiredWindowSize(platform.prefs);
-    if (!default_size) default_size = DefaultUiSize(platform);
-    puglSetSizeHint(platform.view, PUGL_DEFAULT_SIZE, default_size->width, default_size->height);
-    puglSetSizeHint(platform.view, PUGL_CURRENT_SIZE, default_size->width, default_size->height);
+    auto window_size = DesiredWindowSize(platform.prefs);
+    if (!window_size) window_size = DefaultUiSize(platform);
+    puglSetSizeHint(platform.view, PUGL_DEFAULT_SIZE, window_size->width, window_size->height);
+    puglSetSizeHint(platform.view, PUGL_CURRENT_SIZE, window_size->width, window_size->height);
 
     auto const min_size = SizeWithAspectRatio(k_min_gui_width, k_gui_aspect_ratio);
     ASSERT(min_size.width >= k_min_gui_width);
