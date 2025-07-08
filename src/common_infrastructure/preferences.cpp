@@ -796,7 +796,7 @@ void SetValue(Preferences& prefs,
     auto const [v, is_default] = ValidatedOrDefault(value, descriptor);
     // If the value is default, we don't need to write it unless it already exists in the file. If it already
     // exists in the file it might have been set deliberately by the user. Whatever the reason, it's a
-    // stronger intention than defering to the default value, and we should explicitly signal that it has a
+    // stronger intention than deferring to the default value, and we should explicitly signal that it has a
     // new value.
     if (is_default) options.overwrite_only = true;
     SetValue(prefs, descriptor.key, v, options);
