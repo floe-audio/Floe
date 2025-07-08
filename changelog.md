@@ -32,7 +32,6 @@ For instance: 0.0.1. Don't change the headings.
 - Add missing tooltips for some preferences
 - Work-around CLAP Studio One not using the correct threads
 - GUI: right-click menu for the IR picker with 'unload IR' option
-- GUI: show grab icon on FX heading buttons
 - GUI: don't show markers on ADSR when it's inactive
 - GUI: Instrument pickers now have their own stat for filters (libraries, tags, etc.) allowing for more flexibility particularly with the randomise buttons
 - GUI: remove option to show/hide the keyboard. It's not often used, and coming soon are new features that only make sense with the keyboard shown.
