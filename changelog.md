@@ -12,7 +12,7 @@ For instance: 0.0.1. Don't change the headings.
 - Add new velocity -> volume curve for each layer. This replaces the old mapping buttons and the master 'Velo' button. There's now much more control. The old parameters are available in a new 'legacy' parameters section but are no longer used unless loading a DAW preset that uses them.
 - Add new algorithms to distortion: foldback, rectifier and ring-modulator
 - Fix LFO and delay time not updating with the tempo
-- Reduce pops and clicks with high-frequency LFOs
+- Reduce pops and clicks with high-frequency LFOs, sharp changes in ADSR and some parameter changes
 - GUI: improve picker panels behaviour:
     - Background darkens when panel is open
     - New close button on the top right
