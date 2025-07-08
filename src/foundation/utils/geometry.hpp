@@ -22,6 +22,7 @@ union UiSize32 {
     constexpr UiSize32(UiSize sz) : width(sz.width), height(sz.height) {}
     constexpr UiSize32(u32 w, u32 h) : width(w), height(h) {}
     f32x2 ToFloat2() const { return {(f32)width, (f32)height}; }
+    bool operator==(UiSize32 const& other) const { return width == other.width && height == other.height; }
 
     struct {
         u32 width;

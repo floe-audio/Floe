@@ -27,10 +27,7 @@
 
 // A very simple 'standalone' host for development purposes.
 
-using EncodedUiSize = u32;
-constexpr EncodedUiSize k_invalid_encoded_ui_size = ~(u32)0;
-static EncodedUiSize EncodeUiSize(u16 width, u16 height) { return (u32)width | ((u32)height << 16); }
-static UiSize DecodeUiSize(EncodedUiSize encoded) { return {(u16)(encoded & 0xFFFF), (u16)(encoded >> 16)}; }
+constexpr UiSize32 k_invalid_ui_size = {0, 0};
 
 inline auto Factory() { return (clap_plugin_factory const*)clap_entry.get_factory(CLAP_PLUGIN_FACTORY_ID); }
 
@@ -68,10 +65,7 @@ struct Standalone {
             [](clap_host_t const* h, uint32_t width, uint32_t height) {
                 auto& standalone = *(Standalone*)h->host_data;
                 ASSERT(standalone.plugin_created);
-                if (width > LargestRepresentableValue<u16>() || height > LargestRepresentableValue<u16>())
-                    return false;
-                standalone.requested_resize.Exchange(EncodeUiSize((u16)width, (u16)height),
-                                                     RmwMemoryOrder::Relaxed);
+                standalone.requested_resize.Exchange({width, height}, RmwMemoryOrder::AcquireRelease);
                 return true;
             },
 
@@ -146,7 +140,7 @@ struct Standalone {
 
     PuglWorld* gui_world {};
     PuglView* gui_view {};
-    Atomic<u32> requested_resize {k_invalid_encoded_ui_size};
+    Atomic<UiSize32> requested_resize {k_invalid_ui_size};
     Atomic<bool> resize_hints_changed {false};
 
     bool quit = false;
@@ -598,10 +592,9 @@ static ErrorCodeOr<void> Main(String exe_path_rel) {
             }
         }
 
-        if (auto const encoded_uisize =
-                standalone.requested_resize.Exchange(k_invalid_encoded_ui_size, RmwMemoryOrder::Relaxed);
-            encoded_uisize != k_invalid_encoded_ui_size) {
-            auto const requested_clap_size = DecodeUiSize(encoded_uisize);
+        if (auto const requested_clap_size =
+                standalone.requested_resize.Exchange(k_invalid_ui_size, RmwMemoryOrder::AcquireRelease);
+            requested_clap_size != k_invalid_ui_size) {
             auto const physical_pixels = *ClapPixelsToPhysicalPixels(standalone.gui_view,
                                                                      requested_clap_size.width,
                                                                      requested_clap_size.height);
