@@ -232,6 +232,57 @@ static bool HasAnyErrorNotifications(Gui* g) {
     return false;
 }
 
+static void DoResizeCorner(Gui* g) {
+    auto& imgui = g->imgui;
+
+    auto const corner_size = LiveSize(imgui, UiSizeId::WindowResizeCornerSize);
+    imgui::WindowSettings settings {
+        .draw_routine_window_background = [](IMGUI_DRAW_WINDOW_BG_ARGS_TYPES) {},
+    };
+    imgui.BeginWindow(settings,
+                      Rect {
+                          .pos = imgui.Size() - corner_size,
+                          .size = corner_size,
+                      },
+                      "ResizeCorner");
+    DEFER { imgui.EndWindow(); };
+
+    auto const r = imgui.GetRegisteredAndConvertedRect({.pos = 0, .size = imgui.Size()});
+
+    imgui.graphics->AddTriangleFilled(r.TopRight(),
+                                      r.BottomRight(),
+                                      r.BottomLeft(),
+                                      LiveCol(imgui, UiColMap::WindowResizeCornerBackground));
+
+    auto const line_gap = LiveSize(imgui, UiSizeId::WindowResizeCornerLineGap);
+    imgui.graphics->AddLine(r.TopRight() + f32x2 {0, line_gap},
+                            r.BottomLeft() + f32x2 {line_gap, 0},
+                            LiveCol(imgui, UiColMap::WindowResizeCornerLine));
+    imgui.graphics->AddLine(r.TopRight() + f32x2 {0, line_gap * 2},
+                            r.BottomLeft() + f32x2 {line_gap * 2, 0},
+                            LiveCol(imgui, UiColMap::WindowResizeCornerLine));
+
+    auto const& desc = SettingDescriptor(GuiSetting::WindowWidth);
+
+    auto const id = imgui.GetID("resize_corner");
+
+    g->imgui.ButtonBehavior(r, id, {.left_mouse = true, .triggers_on_mouse_down = true});
+
+    if (g->imgui.IsHotOrActive(id)) g->imgui.frame_output.cursor_type = CursorType::UpLeftDownRight;
+
+    if (g->imgui.IsActive(id)) {
+        g->imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::Animate);
+
+        auto const cursor = g->imgui.frame_input.cursor_pos;
+        UiSize32 const ui_size = {
+            (u32)Max(cursor.x, 0.0f),
+            (u32)Max(cursor.y, 0.0f),
+        };
+        if (auto const new_size = NearestAspectRatioSizeInsideSize32(ui_size, k_gui_aspect_ratio))
+            prefs::SetValue(g->prefs, desc, (s64)new_size->width);
+    }
+}
+
 GuiFrameResult GuiUpdate(Gui* g) {
     ZoneScoped;
     ASSERT(g_is_logical_main_thread);
@@ -345,68 +396,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
     BotPanel(g);
     imgui.EndWindow();
 
-    // Resize corner in the bottom right.
-    {
-        auto const corner_size = LiveSize(imgui, UiSizeId::WindowResizeCornerSize);
-        imgui::WindowSettings settings {
-            .draw_routine_window_background = [](IMGUI_DRAW_WINDOW_BG_ARGS_TYPES) {},
-        };
-        imgui.BeginWindow(settings,
-                          Rect {
-                              .pos = imgui.Size() - corner_size,
-                              .size = corner_size,
-                          },
-                          "ResizeCorner");
-        DEFER { imgui.EndWindow(); };
-
-        auto const r = imgui.GetRegisteredAndConvertedRect({.pos = 0, .size = imgui.Size()});
-
-        imgui.graphics->AddTriangleFilled(r.TopRight(),
-                                          r.BottomRight(),
-                                          r.BottomLeft(),
-                                          LiveCol(imgui, UiColMap::WindowResizeCornerBackground));
-
-        auto const line_gap = LiveSize(imgui, UiSizeId::WindowResizeCornerLineGap);
-        imgui.graphics->AddLine(r.TopRight() + f32x2 {0, line_gap},
-                                r.BottomLeft() + f32x2 {line_gap, 0},
-                                LiveCol(imgui, UiColMap::WindowResizeCornerLine));
-        imgui.graphics->AddLine(r.TopRight() + f32x2 {0, line_gap * 2},
-                                r.BottomLeft() + f32x2 {line_gap * 2, 0},
-                                LiveCol(imgui, UiColMap::WindowResizeCornerLine));
-
-        auto const& desc = SettingDescriptor(GuiSetting::WindowWidth);
-
-        static f32x2 down_pos {};
-        static int down_size = 0;
-        auto const id = imgui.GetID("resize_corner");
-
-        g->imgui.ButtonBehavior(r, id, {.left_mouse = true, .triggers_on_mouse_down = true});
-        if (g->imgui.WasJustActivated(id)) {
-            down_pos = g->imgui.frame_input.cursor_pos;
-            down_size = (int)prefs::GetValue(g->prefs, desc).value.Get<s64>() / k_gui_aspect_ratio.width;
-        }
-        if (g->imgui.IsHotOrActive(id)) g->imgui.frame_output.cursor_type = CursorType::UpLeftDownRight;
-        if (g->imgui.IsActive(id)) {
-            g->imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::Animate);
-            auto const delta_vec =
-                ConvertVector((g->imgui.frame_input.cursor_pos - down_pos) / (f32)k_gui_aspect_ratio.width,
-                              s32x2);
-            auto const abs_delta_vec = Abs(delta_vec);
-            auto const delta = abs_delta_vec.x > abs_delta_vec.y ? delta_vec.x : delta_vec.y;
-            auto const new_size = Clamp<s32>(down_size + delta,
-                                             k_min_gui_width / k_gui_aspect_ratio.width,
-                                             k_max_gui_width / k_gui_aspect_ratio.width);
-            auto const current_size =
-                (int)prefs::GetValue(g->prefs, desc).value.Get<s64>() / k_gui_aspect_ratio.width;
-            LogDebug(ModuleName::Gui,
-                     "Resize corner: current_size: {}, down_size {}, delta {}, new_size {}",
-                     current_size,
-                     down_size,
-                     delta_vec,
-                     new_size);
-            prefs::SetValue(g->prefs, desc, (s64)new_size * k_gui_aspect_ratio.width);
-        }
-    }
+    DoResizeCorner(g);
 
     if (!PRODUCTION_BUILD && NullTermStringsEqual(g->engine.host.name, k_floe_standalone_host_name))
         DoStandaloneErrorGUI(g);

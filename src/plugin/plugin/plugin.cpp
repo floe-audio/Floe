@@ -1657,8 +1657,8 @@ HandleSizePreferenceChanged(FloePluginInstance& floe, prefs::Key const& key, pre
     auto const new_width = ({
         u16 w {};
         if (value) {
-            auto const vald = prefs::ValidatedOrDefault(*value, desc);
-            if (!vald.is_default) w = (u16)vald.value.Get<s64>();
+            auto const validated = prefs::ValidatedOrDefault(*value, desc);
+            if (!validated.is_default) w = (u16)validated.value.Get<s64>();
         }
         if (!w) w = DefaultUiSize(*floe.gui_platform).width;
         w;

@@ -40,9 +40,7 @@ prefs::Descriptor SettingDescriptor(GuiSetting setting) {
                         .validator =
                             [](s64& value) {
                                 value = Clamp<s64>(value, k_min_gui_width, k_max_gui_width);
-                                value =
-                                    SizeWithAspectRatio((u16)value, SimplifyAspectRatio(k_gui_aspect_ratio))
-                                        .width;
+                                value = SizeWithAspectRatio((u16)value, k_gui_aspect_ratio).width;
                                 return true;
                             },
                     },
