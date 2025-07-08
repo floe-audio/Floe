@@ -5,6 +5,8 @@
 
 #include "common_infrastructure/tags.hpp"
 
+#include "gui_tips.hpp"
+
 bool RootNodeLessThan(FolderNode const* const& a,
                       DummyValueType const&,
                       FolderNode const* const& b,
@@ -78,6 +80,13 @@ Box DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemO
                                      .triggers_on_mouse_down = true,
                                  })) {
         state.open = false;
+    }
+
+    if (item.is_hot) {
+        ShowTipIfNeeded(
+            options.notifications,
+            options.store,
+            "You can double-click on items on picker panels to load the item and close the panel."_s);
     }
 
     return item;

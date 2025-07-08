@@ -253,6 +253,8 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
                         }
                         decltype(PickerItemOptions::icons) {lib_icon_tex};
                     }),
+                    .notifications = context.notifications,
+                    .store = context.persistent_store,
                 });
 
             if (is_current &&

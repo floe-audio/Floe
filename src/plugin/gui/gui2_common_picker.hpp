@@ -3,10 +3,14 @@
 
 #pragma once
 
+#include "common_infrastructure/persistent_store.hpp"
+
 #include "gui/gui2_common_modal_panel.hpp"
 #include "gui/gui_library_images.hpp"
 #include "gui_framework/gui_box_system.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
+
+struct Notifications;
 
 constexpr auto k_picker_item_height = 20.0f;
 constexpr auto k_picker_spacing = 8.0f;
@@ -164,6 +168,8 @@ struct PickerItemOptions {
     TooltipString tooltip = k_nullopt;
     bool is_current;
     Array<graphics::TextureHandle, k_num_layers + 1> icons;
+    Notifications& notifications;
+    persistent_store::Store& store;
 };
 
 Box DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptions const& options);

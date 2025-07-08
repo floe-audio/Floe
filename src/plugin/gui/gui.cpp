@@ -481,6 +481,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
                     .library_images = g->library_images,
                     .engine = g->engine,
                     .unknown_library_icon = UnknownLibraryIcon(g),
+                    .notifications = g->notifications,
+                    .persistent_store = g->shared_engine_systems.persistent_store,
                 };
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };
@@ -510,6 +512,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .library_images = g->library_images,
                 .engine = g->engine,
                 .unknown_library_icon = UnknownLibraryIcon(g),
+                .notifications = g->notifications,
+                .persistent_store = g->shared_engine_systems.persistent_store,
             };
             DoPresetPicker(g->box_system, context, g->preset_picker_state);
         }
@@ -520,6 +524,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .library_images = g->library_images,
                 .engine = g->engine,
                 .unknown_library_icon = UnknownLibraryIcon(g),
+                .notifications = g->notifications,
+                .persistent_store = g->shared_engine_systems.persistent_store,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };

@@ -915,6 +915,8 @@ void Draw(Gui* g,
                 .library_images = g->library_images,
                 .engine = g->engine,
                 .unknown_library_icon = UnknownLibraryIcon(g),
+                .notifications = g->notifications,
+                .persistent_store = g->shared_engine_systems.persistent_store,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
@@ -934,6 +936,8 @@ void Draw(Gui* g,
                 .library_images = g->library_images,
                 .engine = g->engine,
                 .unknown_library_icon = UnknownLibraryIcon(g),
+                .notifications = g->notifications,
+                .persistent_store = g->shared_engine_systems.persistent_store,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
@@ -956,6 +960,8 @@ void Draw(Gui* g,
                     .library_images = g->library_images,
                     .engine = g->engine,
                     .unknown_library_icon = UnknownLibraryIcon(g),
+                    .notifications = g->notifications,
+                    .persistent_store = g->shared_engine_systems.persistent_store,
                 };
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };

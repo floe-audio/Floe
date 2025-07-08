@@ -19,6 +19,9 @@ struct IrPickerContext {
     LibraryImagesArray& library_images;
     Engine& engine;
     Optional<graphics::ImageID>& unknown_library_icon;
+    Notifications& notifications;
+    persistent_store::Store& persistent_store;
+
     Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;
 };
 

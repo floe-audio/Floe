@@ -422,6 +422,8 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
                         }
                         icons;
                     }),
+                    .notifications = context.notifications,
+                    .store = context.persistent_store,
                 });
 
             // Right-click menu.

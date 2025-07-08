@@ -299,6 +299,8 @@ static void InstPickerWaveformItems(GuiBoxSystem& box_system,
                         k_waveform_type_names[ToInt(waveform_type)]);
                 }),
                 .is_current = is_current,
+                .notifications = context.notifications,
+                .store = context.persistent_store,
             });
 
         if (item.button_fired) {
@@ -401,6 +403,8 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
                         }
                         decltype(PickerItemOptions::icons) {lib_icon_tex};
                     }),
+                    .notifications = context.notifications,
+                    .store = context.persistent_store,
                 });
 
             if (is_current &&
