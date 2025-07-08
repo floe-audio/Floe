@@ -12,7 +12,7 @@ static void DrawCurvedSegment(graphics::DrawList& graphics,
                               f32x2 screen_p0,
                               f32x2 screen_p1,
                               float curve_value,
-                              int num_samples = 10) {
+                              int num_samples = 14) {
     if (Abs(curve_value) < 0.01f) {
         // Linear segment
         graphics.PathLineTo(screen_p1);
@@ -193,7 +193,9 @@ DoCurveMap(Gui* g, CurveMap& curve_map, f32x2 rect_min, f32x2 rect_max, Optional
                     .h = height,
                 };
 
-                f32 percent = MapTo01(-working_point.curve, -1.0f, 1.0f);
+                auto const inverted = next_working_point.y > working_point.y;
+
+                f32 percent = MapTo01(working_point.curve * (inverted ? -1.0f : 1.0f), -1.0f, 1.0f);
 
                 if (imgui.SliderBehavior(curve_handle_rect,
                                          curve_handle_imgui_id,
@@ -204,7 +206,7 @@ DoCurveMap(Gui* g, CurveMap& curve_map, f32x2 rect_min, f32x2 rect_max, Optional
                                              .slower_with_shift = true,
                                              .default_on_modifer = true,
                                          })) {
-                    working_point.curve = -MapFrom01(percent, -1.0f, 1.0f);
+                    working_point.curve = MapFrom01(percent, -1.0f, 1.0f) * (inverted ? -1.0f : 1.0f);
                     changed = true;
                 }
 

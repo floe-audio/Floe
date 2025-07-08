@@ -17,16 +17,14 @@ struct CurveMap {
         f32 curve;
     };
 
-    // For simplifying the logic.
+    // Used just to simplify the code.
     struct WorkingPoint : Point {
-        bool is_virtual; // true for (0,0) and (1,1) endpoints
+        bool is_virtual;
         s8 real_index;
     };
 
-    // This constant controls how extreme the curves can get - it scales the curve parameter (-1.0 to 1.0) to
-    // create exponents ranging from 0.25 to 4.0, which gives a good balance between subtle and dramatic curve
-    // shapes without becoming unusably extreme.
-    static constexpr float k_curve_exponent_multiplier = 3.0f;
+    // This constant controls how extreme the curves can get - it scales the curve parameter (-1.0 to 1.0).
+    static constexpr float k_curve_exponent_multiplier = 6.0f;
 
     using FloatArray = Array<f32, 200>;
     using Points = DynamicArrayBounded<Point, 8>;
