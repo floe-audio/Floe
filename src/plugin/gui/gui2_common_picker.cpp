@@ -195,6 +195,7 @@ Box DoFilterButton(GuiBoxSystem& box_system,
               .text_fill_hot = style::Colour::Text,
               .text_fill_active = style::Colour::Text,
               .size_from_text = !options.full_width,
+              .text_overflow = TextOverflowType::ShowDotsOnRight,
               .parent_dictates_hot_and_active = true,
               .layout =
                   {
