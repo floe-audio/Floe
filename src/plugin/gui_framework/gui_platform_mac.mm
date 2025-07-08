@@ -92,6 +92,8 @@ UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const&) {
     else if (result.width > k_max_gui_width)
         result = SizeWithAspectRatio(k_max_gui_width, k_gui_aspect_ratio);
 
+    ASSERT(NearestAspectRatioSizeInsideSize(result, k_gui_aspect_ratio) == result);
+
     return result;
 }
 
