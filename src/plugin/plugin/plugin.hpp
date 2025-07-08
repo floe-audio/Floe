@@ -113,8 +113,8 @@ PUBLIC UiSize PhysicalPixelsToClapPixels(PuglView* view, UiSize size) {
     if constexpr (IS_MACOS) {
         auto scale_factor = puglGetScaleFactor(view);
         if (scale_factor > 0) {
-            size.width = CheckedCast<u16>(size.width / scale_factor);
-            size.height = CheckedCast<u16>(size.height / scale_factor);
+            size.width = CheckedCast<u16>(Round(size.width / scale_factor));
+            size.height = CheckedCast<u16>(Round(size.height / scale_factor));
         }
     }
     return size;
@@ -125,8 +125,8 @@ PUBLIC Optional<UiSize> ClapPixelsToPhysicalPixels(PuglView* view, u32 width, u3
     if constexpr (IS_MACOS) {
         auto scale_factor = puglGetScaleFactor(view);
         if (scale_factor > 0) {
-            width = u32(width * scale_factor);
-            height = u32(height * scale_factor);
+            width = u32(Round(width * scale_factor));
+            height = u32(Round(height * scale_factor));
         }
     }
     if (width > LargestRepresentableValue<u16>() || height > LargestRepresentableValue<u16>())
