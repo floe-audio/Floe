@@ -417,8 +417,7 @@ PUBLIC Style EffectButtonGrabber(imgui::Context const& imgui) {
 
 PUBLIC Style EffectHeading(imgui::Context const& imgui, u32 back_col) {
     Style s {};
-    s.type = buttons::LayoutAndSizeType::IconAndText;
-    s.icon_and_text.on_icon = ICON_FA_GRIP_VERTICAL;
+    s.type = buttons::LayoutAndSizeType::IconOrText;
     s.icon_or_text.justification = TextJustification::Centred;
     s.main_cols.reg = LiveCol(imgui, UiColMap::FXHeading);
     s.main_cols.active_on = s.main_cols.reg;
