@@ -34,7 +34,7 @@ f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
     return result;
 }
 
-UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const& platform) {
+UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const&) {
     HDC hdc = GetDC(nullptr);
     DEFER { ReleaseDC(nullptr, hdc); };
 
@@ -55,22 +55,21 @@ UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const& platform) {
     if (target_width > max_width) target_width = max_width;
 
     // Apply aspect ratio and ensure it fits within screen bounds
-    auto const aspect_ratio = DesiredAspectRatio(platform.prefs);
-    auto result = SizeWithAspectRatio(target_width, aspect_ratio);
+    auto result = SizeWithAspectRatio(target_width, k_gui_aspect_ratio);
 
     // Double-check height constraint
     if (result.height > max_height) {
         // If height is too large, calculate width from height constraint
         auto target_height = max_height;
-        auto width_from_height = (u16)(target_height * aspect_ratio.width / aspect_ratio.height);
-        result = SizeWithAspectRatio(width_from_height, aspect_ratio);
+        auto width_from_height = (u16)(target_height * k_gui_aspect_ratio.width / k_gui_aspect_ratio.height);
+        result = SizeWithAspectRatio(width_from_height, k_gui_aspect_ratio);
     }
 
     // Ensure we stay within the min/max bounds
     if (result.width < k_min_gui_width)
-        result = SizeWithAspectRatio(k_min_gui_width, aspect_ratio);
+        result = SizeWithAspectRatio(k_min_gui_width, k_gui_aspect_ratio);
     else if (result.width > k_max_gui_width)
-        result = SizeWithAspectRatio(k_max_gui_width, aspect_ratio);
+        result = SizeWithAspectRatio(k_max_gui_width, k_gui_aspect_ratio);
 
     return result;
 }

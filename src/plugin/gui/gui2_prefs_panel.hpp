@@ -578,10 +578,10 @@ static void GeneralPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCo
                                      .tooltip = desc.long_description,
                                      .width = k_settings_int_field_width,
                                      .value = prefs::GetValue(context.prefs, desc).value.Get<s64>() /
-                                              k_aspect_ratio_without_keyboard.width,
+                                              k_gui_aspect_ratio.width,
                                      .constrainer =
                                          [&int_info](s64 value) {
-                                             value *= k_aspect_ratio_without_keyboard.width;
+                                             value *= k_gui_aspect_ratio.width;
                                              if (int_info.validator) int_info.validator(value);
                                              return value;
                                          },

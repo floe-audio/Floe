@@ -23,7 +23,6 @@
 #include "gui/gui_file_picker.hpp"
 #include "gui_editor_widgets.hpp"
 #include "gui_editors.hpp"
-#include "gui_framework/aspect_ratio.hpp"
 #include "gui_framework/draw_list.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -276,12 +275,9 @@ GuiFrameResult GuiUpdate(Gui* g) {
     g->frame_input.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Body)]);
     DEFER { g->frame_input.graphics_ctx->PopFont(); };
 
-    auto const top_and_mid_h =
-        HeightFromWidth(g->frame_input.window_size.width, k_aspect_ratio_without_keyboard);
-
     auto const top_h = LiveSize(imgui, UiSizeId::Top2Height);
-    auto const mid_h = top_and_mid_h - top_h;
-    auto const bot_h = g->frame_input.window_size.height - top_and_mid_h;
+    auto const bot_h = LiveSize(imgui, UiSizeId::BotPanelHeight);
+    auto const mid_h = g->frame_input.window_size.height - top_h - bot_h;
 
     auto draw_top_window = [](IMGUI_DRAW_WINDOW_BG_ARGS) {
         auto r = window->unpadded_bounds;
@@ -341,15 +337,13 @@ GuiFrameResult GuiUpdate(Gui* g) {
         imgui.EndWindow();
     }
 
-    if (prefs::GetBool(g->prefs, SettingDescriptor(GuiSetting::ShowKeyboard)) && bot_h > 1) {
-        auto bot_settings = imgui::DefWindow();
-        bot_settings.pad_top_left = {8, 8};
-        bot_settings.pad_bottom_right = {8, 8};
-        bot_settings.draw_routine_window_background = draw_bot_window;
-        imgui.BeginWindow(bot_settings, {.xywh {0, top_h + mid_h, imgui.Width(), bot_h}}, "BotPanel");
-        BotPanel(g);
-        imgui.EndWindow();
-    }
+    auto bot_settings = imgui::DefWindow();
+    bot_settings.pad_top_left = {8, 8};
+    bot_settings.pad_bottom_right = {8, 8};
+    bot_settings.draw_routine_window_background = draw_bot_window;
+    imgui.BeginWindow(bot_settings, {.xywh {0, top_h + mid_h, imgui.Width(), bot_h}}, "BotPanel");
+    BotPanel(g);
+    imgui.EndWindow();
 
     // Resize corner in the bottom right.
     {
@@ -387,26 +381,30 @@ GuiFrameResult GuiUpdate(Gui* g) {
         auto const id = imgui.GetID("resize_corner");
 
         g->imgui.ButtonBehavior(r, id, {.left_mouse = true, .triggers_on_mouse_down = true});
-        auto const ar = SimplifyAspectRatio(DesiredAspectRatio(g->prefs));
         if (g->imgui.WasJustActivated(id)) {
             down_pos = g->imgui.frame_input.cursor_pos;
-            down_size = (int)prefs::GetValue(g->prefs, desc).value.Get<s64>() / ar.width;
+            down_size = (int)prefs::GetValue(g->prefs, desc).value.Get<s64>() / k_gui_aspect_ratio.width;
         }
         if (g->imgui.IsHotOrActive(id)) g->imgui.frame_output.cursor_type = CursorType::UpLeftDownRight;
         if (g->imgui.IsActive(id)) {
-            auto const delta_2 =
-                ConvertVector(Round((g->imgui.frame_input.cursor_pos - down_pos) / (f32)ar.width), s32x2);
-            auto const abs_delta_2 = Abs(delta_2);
-            auto const delta = abs_delta_2.x > abs_delta_2.y ? delta_2.x : delta_2.y;
-            auto const new_size =
-                Clamp<s32>(down_size + delta, k_min_gui_width / ar.width, k_max_gui_width / ar.width);
+            g->imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::Animate);
+            auto const delta_vec =
+                ConvertVector((g->imgui.frame_input.cursor_pos - down_pos) / (f32)k_gui_aspect_ratio.width,
+                              s32x2);
+            auto const abs_delta_vec = Abs(delta_vec);
+            auto const delta = abs_delta_vec.x > abs_delta_vec.y ? delta_vec.x : delta_vec.y;
+            auto const new_size = Clamp<s32>(down_size + delta,
+                                             k_min_gui_width / k_gui_aspect_ratio.width,
+                                             k_max_gui_width / k_gui_aspect_ratio.width);
+            auto const current_size =
+                (int)prefs::GetValue(g->prefs, desc).value.Get<s64>() / k_gui_aspect_ratio.width;
             LogDebug(ModuleName::Gui,
-                     "Resize corner: down_size {}, delta {}, new_size {}",
+                     "Resize corner: current_size: {}, down_size {}, delta {}, new_size {}",
+                     current_size,
                      down_size,
-                     delta,
+                     delta_vec,
                      new_size);
-            if (new_size != (int)prefs::GetValue(g->prefs, desc).value.Get<s64>() / ar.width)
-                prefs::SetValue(g->prefs, desc, (s64)new_size * ar.width);
+            prefs::SetValue(g->prefs, desc, (s64)new_size * k_gui_aspect_ratio.width);
         }
     }
 

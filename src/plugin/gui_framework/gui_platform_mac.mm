@@ -24,15 +24,12 @@ f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
     return result;
 }
 
-UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const& platform) {
+UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const&) {
     auto const main_screen = ({
         auto s = [NSScreen mainScreen];
         if (!s) s = [NSScreen screens][0]; // Fallback to first screen.
 
-        if (!s) {
-            auto const aspect_ratio = DesiredAspectRatio(platform.prefs);
-            return SizeWithAspectRatio(960, aspect_ratio); // Default 96 DPI
-        }
+        if (!s) return SizeWithAspectRatio(960, k_gui_aspect_ratio); // Default 96 DPI
         s;
     });
 
@@ -78,23 +75,22 @@ UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const& platform) {
         if (target_width > max_width) target_width = max_width;
     }
 
-    auto const aspect_ratio = DesiredAspectRatio(platform.prefs);
-    auto result =
-        SizeWithAspectRatio((u16)Min((CGFloat)LargestRepresentableValue<u16>(), target_width), aspect_ratio);
+    auto result = SizeWithAspectRatio((u16)Min((CGFloat)LargestRepresentableValue<u16>(), target_width),
+                                      k_gui_aspect_ratio);
 
     // Ensure height is within max bounds.
     if (result.height > max_height) {
-        auto const width_from_height = max_height * aspect_ratio.width / aspect_ratio.height;
+        auto const width_from_height = max_height * k_gui_aspect_ratio.width / k_gui_aspect_ratio.height;
         auto const width_from_height_u16 =
             (u16)Min((CGFloat)LargestRepresentableValue<u16>(), width_from_height);
-        result = SizeWithAspectRatio(width_from_height_u16, aspect_ratio);
+        result = SizeWithAspectRatio(width_from_height_u16, k_gui_aspect_ratio);
     }
 
     // Ensure we stay within the min/max bounds
     if (result.width < k_min_gui_width)
-        result = SizeWithAspectRatio(k_min_gui_width, aspect_ratio);
+        result = SizeWithAspectRatio(k_min_gui_width, k_gui_aspect_ratio);
     else if (result.width > k_max_gui_width)
-        result = SizeWithAspectRatio(k_max_gui_width, aspect_ratio);
+        result = SizeWithAspectRatio(k_max_gui_width, k_gui_aspect_ratio);
 
     return result;
 }

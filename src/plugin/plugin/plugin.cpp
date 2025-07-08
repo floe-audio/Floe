@@ -471,9 +471,8 @@ static bool ClapGuiGetResizeHints(clap_plugin_t const* plugin, clap_gui_resize_h
         hints->can_resize_vertically = true;
         hints->can_resize_horizontally = true;
         hints->preserve_aspect_ratio = true;
-        auto const ratio = DesiredAspectRatio(g_shared_engine_systems->prefs);
-        hints->aspect_ratio_width = ratio.width;
-        hints->aspect_ratio_height = ratio.height;
+        hints->aspect_ratio_width = k_gui_aspect_ratio.width;
+        hints->aspect_ratio_height = k_gui_aspect_ratio.height;
         return true;
     } catch (PanicException) {
         return false;
@@ -485,8 +484,7 @@ GetUsableSizeWithinClapDimensions(GuiPlatform& gui_platform, u32 clap_width, u32
     auto const size = ClapPixelsToPhysicalPixels(gui_platform.view, clap_width, clap_height);
     if (!size) return k_nullopt;
 
-    auto const aspect_ratio_conformed_size =
-        NearestAspectRatioSizeInsideSize(*size, DesiredAspectRatio(g_shared_engine_systems->prefs));
+    auto const aspect_ratio_conformed_size = NearestAspectRatioSizeInsideSize(*size, k_gui_aspect_ratio);
 
     if (!aspect_ratio_conformed_size) return k_nullopt;
     if (aspect_ratio_conformed_size->width < k_min_gui_width) return k_nullopt;
@@ -525,8 +523,7 @@ static bool ClapGuiAdjustSize(clap_plugin_t const* plugin, u32* clap_width, u32*
             // reasonable result by getting the nearest aspect ratio size.
 
             auto const aspect_ratio_conformed_size =
-                NearestAspectRatioSizeInsideSize32({*clap_width, *clap_height},
-                                                   DesiredAspectRatio(g_shared_engine_systems->prefs));
+                NearestAspectRatioSizeInsideSize32({*clap_width, *clap_height}, k_gui_aspect_ratio);
 
             if (!aspect_ratio_conformed_size) return false;
 
@@ -573,11 +570,10 @@ static bool ClapGuiSetSize(clap_plugin_t const* plugin, u32 clap_width, u32 clap
 
         // We try to handle some non-CLAP-compliant hosts here that give us sizes that are not in our aspect
         // ratio. (AUv2 CLAP-wrapper in Logic, for example).
-        if (auto const desired_aspect_ratio = DesiredAspectRatio(g_shared_engine_systems->prefs);
+        if (auto const desired_aspect_ratio = k_gui_aspect_ratio;
             !IsAspectRatio(*size, desired_aspect_ratio)) {
             auto const invalid_size = *size;
-            size =
-                NearestAspectRatioSizeInsideSize(*size, DesiredAspectRatio(g_shared_engine_systems->prefs));
+            size = NearestAspectRatioSizeInsideSize(*size, k_gui_aspect_ratio);
 
             // Use the default size if the size is still invalid.
             if (!size) *size = DefaultUiSize(*floe.gui_platform);
@@ -1655,47 +1651,26 @@ HandleSizePreferenceChanged(FloePluginInstance& floe, prefs::Key const& key, pre
     auto const host_gui = (clap_host_gui const*)floe.host.get_extension(&floe.host, CLAP_EXT_GUI);
     if (!host_gui) return;
 
-    if (auto const& desc = SettingDescriptor(GuiSetting::WindowWidth); key == desc.key) {
-        auto const new_width = ({
-            u16 w {};
-            if (value) {
-                auto const vald = prefs::ValidatedOrDefault(*value, desc);
-                if (!vald.is_default) w = (u16)vald.value.Get<s64>();
-            }
-            if (!w) w = DefaultUiSize(*floe.gui_platform).width;
-            w;
-        });
+    auto const& desc = SettingDescriptor(GuiSetting::WindowWidth);
+    if (key != desc.key) return;
 
-        auto const current_width = GetSize(*floe.gui_platform).width;
-
-        if (current_width != new_width) {
-            auto const new_size = SizeWithAspectRatio(CheckedCast<u16>(new_width),
-                                                      DesiredAspectRatio(g_shared_engine_systems->prefs));
-            LogInfo(ModuleName::Gui, "Requesting resize to {}x{}", new_size.width, new_size.height);
-
-            {
-                auto const clap_size = PhysicalPixelsToClapPixels(floe.gui_platform->view, new_size);
-                host_gui->request_resize(&floe.host, clap_size.width, clap_size.height);
-            }
+    auto const new_width = ({
+        u16 w {};
+        if (value) {
+            auto const vald = prefs::ValidatedOrDefault(*value, desc);
+            if (!vald.is_default) w = (u16)vald.value.Get<s64>();
         }
-    } else if (auto const show_keyboard =
-                   prefs::MatchBool(key, value, SettingDescriptor(GuiSetting::ShowKeyboard))) {
-        auto const new_size = ({
-            UiSize s {};
-            if (auto const set_size = DesiredWindowSize(g_shared_engine_systems->prefs))
-                s = *set_size;
-            else
-                s = DefaultUiSize(*floe.gui_platform);
-            s;
-        });
+        if (!w) w = DefaultUiSize(*floe.gui_platform).width;
+        w;
+    });
 
-        LogInfo(ModuleName::Gui,
-                "Requesting resize (due to keyboard shown/hidden) to {}x{}",
-                new_size.width,
-                new_size.height);
+    auto const current_width = GetSize(*floe.gui_platform).width;
+
+    if (current_width != new_width) {
+        auto const new_size = SizeWithAspectRatio(CheckedCast<u16>(new_width), k_gui_aspect_ratio);
+        LogInfo(ModuleName::Gui, "Requesting resize to {}x{}", new_size.width, new_size.height);
 
         {
-            host_gui->resize_hints_changed(&floe.host);
             auto const clap_size = PhysicalPixelsToClapPixels(floe.gui_platform->view, new_size);
             host_gui->request_resize(&floe.host, clap_size.width, clap_size.height);
         }

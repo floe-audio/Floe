@@ -16,14 +16,6 @@ prefs::Descriptor SettingDescriptor(GuiSetting setting) {
                 .gui_label = "Show tooltips",
                 .long_description = "Show descriptions when hovering over controls.",
             };
-        case GuiSetting::ShowKeyboard:
-            return {
-                .key = prefs::key::k_show_keyboard,
-                .value_requirements = prefs::ValueType::Bool,
-                .default_value = true,
-                .gui_label = "Show keyboard",
-                .long_description = "Show the on-screen keyboard.",
-            };
         case GuiSetting::HighContrastGui:
             return {
                 .key = prefs::key::k_high_contrast_gui,
@@ -47,9 +39,10 @@ prefs::Descriptor SettingDescriptor(GuiSetting setting) {
                     prefs::Descriptor::IntRequirements {
                         .validator =
                             [](s64& value) {
-                                value = Clamp<s64>(value, k_min_gui_width, k_largest_gui_size);
+                                value = Clamp<s64>(value, k_min_gui_width, k_max_gui_width);
                                 value =
-                                    SizeWithAspectRatio((u16)value, k_aspect_ratio_without_keyboard).width;
+                                    SizeWithAspectRatio((u16)value, SimplifyAspectRatio(k_gui_aspect_ratio))
+                                        .width;
                                 return true;
                             },
                     },
@@ -61,26 +54,10 @@ prefs::Descriptor SettingDescriptor(GuiSetting setting) {
     }
 }
 
-UiSize DesiredAspectRatio(prefs::Preferences const& preferences) {
-    ASSERT(g_is_logical_main_thread);
-    return prefs::GetBool(preferences, SettingDescriptor(GuiSetting::ShowKeyboard))
-               ? k_aspect_ratio_with_keyboard
-               : k_aspect_ratio_without_keyboard;
-}
-
 Optional<UiSize> DesiredWindowSize(prefs::Preferences const& preferences) {
     ASSERT(g_is_logical_main_thread);
     auto const val = prefs::GetValue(preferences, SettingDescriptor(GuiSetting::WindowWidth));
     if (val.is_default) return k_nullopt;
     auto const int_val = val.value.Get<s64>();
-    return SizeWithAspectRatio((u16)int_val, DesiredAspectRatio(preferences));
-}
-
-f32 KeyboardHeight(prefs::Preferences const& preferences) {
-    ASSERT(g_is_logical_main_thread);
-    static_assert(k_aspect_ratio_with_keyboard.height > k_aspect_ratio_without_keyboard.height);
-    static_assert(k_aspect_ratio_with_keyboard.width == k_aspect_ratio_without_keyboard.width);
-    auto const width = (u16)prefs::GetInt(preferences, SettingDescriptor(GuiSetting::WindowWidth));
-    return (f32)(SizeWithAspectRatio(width, k_aspect_ratio_with_keyboard).height -
-                 SizeWithAspectRatio(width, k_aspect_ratio_without_keyboard).height);
+    return SizeWithAspectRatio((u16)int_val, k_gui_aspect_ratio);
 }

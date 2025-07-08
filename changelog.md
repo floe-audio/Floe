@@ -35,6 +35,7 @@ For instance: 0.0.1. Don't change the headings.
 - GUI: show grab icon on FX heading buttons
 - GUI: don't show markers on ADSR when it's inactive
 - GUI: Instrument pickers now have their own stat for filters (libraries, tags, etc.) allowing for more flexibility particularly with the randomise buttons
+- GUI: remove option to show/hide the keyboard. It's not often used, and coming soon are new features that only make sense with the keyboard shown.
 - Fix crash when changing tabs on the 'Legal' tab of the Info panel
 - Fix presets picker not showing nesting of folder on Windows
 - Fix rare crash when loading a library on Windows

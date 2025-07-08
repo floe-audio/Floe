@@ -8,7 +8,6 @@
 enum class GuiSetting : u8 {
     WindowWidth,
     ShowTooltips,
-    ShowKeyboard,
     HighContrastGui,
     ShowInstanceName,
     Count,
@@ -16,5 +15,4 @@ enum class GuiSetting : u8 {
 
 prefs::Descriptor SettingDescriptor(GuiSetting);
 
-UiSize DesiredAspectRatio(prefs::Preferences const&);
 Optional<UiSize> DesiredWindowSize(prefs::Preferences const&);

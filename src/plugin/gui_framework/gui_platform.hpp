@@ -21,12 +21,12 @@
 
 constexpr bool k_debug_gui_platform = false;
 
-constexpr UiSize k_aspect_ratio_without_keyboard = {100, 63};
-constexpr UiSize k_aspect_ratio_with_keyboard = {100, 70};
+constexpr UiSize k_gui_aspect_ratio = {10, 7};
 
-constexpr u16 k_min_gui_width = k_aspect_ratio_with_keyboard.width * 2;
-constexpr u16 k_max_gui_width = k_aspect_ratio_with_keyboard.width * 100;
-constexpr u32 k_largest_gui_size = LargestRepresentableValue<u16>();
+constexpr u16 k_min_gui_width = SizeWithAspectRatio(300, k_gui_aspect_ratio).width;
+constexpr u32 k_max_gui_width =
+    SizeWithAspectRatio(LargestRepresentableValue<u16>() - k_gui_aspect_ratio.width, k_gui_aspect_ratio)
+        .width;
 
 constexpr f32 k_default_gui_width_inches = 9.0f;
 constexpr f32 k_screen_fit_percentage = 0.7f;
@@ -170,17 +170,14 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
     puglSetSizeHint(platform.view, PUGL_DEFAULT_SIZE, default_size->width, default_size->height);
     puglSetSizeHint(platform.view, PUGL_CURRENT_SIZE, default_size->width, default_size->height);
 
-    auto const aspect_ratio = DesiredAspectRatio(platform.prefs);
-
-    auto const min_size = SizeWithAspectRatio(k_min_gui_width, aspect_ratio);
+    auto const min_size = SizeWithAspectRatio(k_min_gui_width, k_gui_aspect_ratio);
     ASSERT(min_size.width >= k_min_gui_width);
     puglSetSizeHint(platform.view, PUGL_MIN_SIZE, min_size.width, min_size.height);
 
-    auto const max_size = SizeWithAspectRatio(k_max_gui_width, aspect_ratio);
-    ASSERT(max_size.width <= k_largest_gui_size);
+    auto const max_size = SizeWithAspectRatio(k_max_gui_width, k_gui_aspect_ratio);
     puglSetSizeHint(platform.view, PUGL_MAX_SIZE, max_size.width, max_size.height);
 
-    puglSetSizeHint(platform.view, PUGL_FIXED_ASPECT, aspect_ratio.width, aspect_ratio.height);
+    puglSetSizeHint(platform.view, PUGL_FIXED_ASPECT, k_gui_aspect_ratio.width, k_gui_aspect_ratio.height);
 
     return k_success;
 }
@@ -822,8 +819,8 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
                     puglSetSizeHint(view, PUGL_CURRENT_SIZE, configure.width, configure.height);
                 }
                 LogDebug(ModuleName::Gui, "configure {}", fmt::DumpStruct(configure));
-                auto const size = NearestAspectRatioSizeInsideSize({configure.width, configure.height},
-                                                                   DesiredAspectRatio(platform.prefs));
+                auto const size =
+                    NearestAspectRatioSizeInsideSize({configure.width, configure.height}, k_gui_aspect_ratio);
 
                 if (size && size->width >= k_min_gui_width && size->width <= k_max_gui_width) {
                     prefs::SetValue(platform.prefs,
