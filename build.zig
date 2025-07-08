@@ -1842,6 +1842,7 @@ pub fn build(b: *std.Build) void {
                     path ++ "/package_format.cpp",
                     path ++ "/paths.cpp",
                     path ++ "/preferences.cpp",
+                    path ++ "/persistent_store.cpp",
                     path ++ "/sample_library/audio_file.cpp",
                     path ++ "/sample_library/sample_library.cpp",
                     path ++ "/sample_library/sample_library_lua.cpp",

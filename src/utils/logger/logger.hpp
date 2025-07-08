@@ -59,6 +59,7 @@ enum class ModuleName {
     Preferences,
     Standalone,
     PresetServer,
+    PersistentStore,
 };
 
 constexpr String ModuleNameString(ModuleName module_name) {
@@ -75,6 +76,7 @@ constexpr String ModuleNameString(ModuleName module_name) {
         case ModuleName::Preferences: return "⚙️sett";
         case ModuleName::Standalone: return "🧍stand";
         case ModuleName::PresetServer: return "📂prst-srv";
+        case ModuleName::PersistentStore: return "🗄️store";
     }
 }
 

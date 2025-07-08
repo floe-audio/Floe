@@ -60,6 +60,14 @@ PUBLIC NodeType* SinglyLinkedListLast(NodeType* head) {
 }
 
 template <typename NodeType>
+PUBLIC usize SinglyLinkedListSize(NodeType* head) {
+    usize count = 0;
+    for (auto i = head; i != nullptr; i = i->next)
+        ++count;
+    return count;
+}
+
+template <typename NodeType>
 PUBLIC NodeType* SinglyLinkedListPartition(NodeType* first, NodeType* last, auto less_than_function) {
     // Get first node of given linked list
     NodeType* pivot = first;

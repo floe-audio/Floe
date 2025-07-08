@@ -31,6 +31,7 @@ void SharedEngineSystems::StartPollingThreadIfNeeded() {
                         OnPollThread(index);
                 }
                 check_for_update::CheckForUpdateIfNeeded(check_for_update_state);
+                persistent_store::StoreActualFileModifiedTime(persistent_store);
             }
         },
         "polling");
@@ -40,6 +41,7 @@ SharedEngineSystems::SharedEngineSystems(Span<sentry::Tag const> tags)
     : arena(PageAllocator::Instance(), Kb(4))
     , paths(CreateFloePaths(arena))
     , prefs {.arena = PageAllocator::Instance()}
+    , persistent_store {.filepath = paths.persistent_store_path}
     , sample_library_server(thread_pool,
                             paths.always_scanned_folder[ToInt(ScanFolderType::Libraries)],
                             error_notifications)

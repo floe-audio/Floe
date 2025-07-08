@@ -29,6 +29,7 @@
     X(RegisterPackageFormatTests)                                                                            \
     X(RegisterPackageInstallationTests)                                                                      \
     X(RegisterParamDescriptorTests)                                                                          \
+    X(RegisterPersistentStoreTests)                                                                          \
     X(RegisterPreferencesTests)                                                                              \
     X(RegisterSampleLibraryServerTests)                                                                      \
     X(RegisterSentryTests)                                                                                   \

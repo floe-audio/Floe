@@ -16,6 +16,7 @@ struct FloePaths {
     String preferences_path; // path to write to
     Span<String> possible_preferences_paths; // sorted. the first is recommended path to read
     String autosave_path;
+    String persistent_store_path;
     Array<DynamicArray<char>, ToInt(PresetFilePickerMode::Count)> file_picker_last_path;
 };
 

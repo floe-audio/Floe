@@ -120,6 +120,24 @@ FloePaths CreateFloePaths(ArenaAllocator& arena) {
         }
     }
 
+    {
+        DynamicArrayBounded<char, Kb(1)> error_log;
+        auto writer = dyn::WriterFor(error_log);
+        result.persistent_store_path =
+            KnownDirectoryWithSubdirectories(arena,
+                                             KnownDirectoryType::UserData,
+                                             Array {"Floe"_s},
+                                             "persistent_store",
+                                             {.create = true, .error_log = &writer});
+        if (error_log.size) {
+            ReportError(ErrorLevel::Warning,
+                        HashComptime("persistent store path"),
+                        "Failed to get persistent store path {}\n{}",
+                        result.persistent_store_path,
+                        error_log);
+        }
+    }
+
     return result;
 }
 

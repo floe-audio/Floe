@@ -6,6 +6,7 @@
 #include "utils/thread_extra/thread_pool.hpp"
 
 #include "common_infrastructure/paths.hpp"
+#include "common_infrastructure/persistent_store.hpp"
 #include "common_infrastructure/preferences.hpp"
 #include "common_infrastructure/sentry/sentry.hpp"
 
@@ -34,6 +35,7 @@ struct SharedEngineSystems {
     ThreadsafeErrorNotifications error_notifications {};
     FloePaths paths;
     prefs::Preferences prefs;
+    persistent_store::Store persistent_store;
     ThreadPool thread_pool;
     sample_lib_server::Server sample_library_server;
     Optional<LockableSharedMemory> shared_attributions_store {};
