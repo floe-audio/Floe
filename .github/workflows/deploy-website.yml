@@ -53,6 +53,7 @@ jobs:
           wget https://raw.githubusercontent.com/floe-audio/Floe-Logos/main/rasterized/favicon.png -P theme
           wget https://raw.githubusercontent.com/floe-audio/Floe-Logos/main/rasterized/favicon.svg -P theme
           mdbook build
+          mdbook-sitemap-generator --domain floe.audio --output book/sitemap.xml
           git worktree add gh-pages
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
