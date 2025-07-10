@@ -5,7 +5,11 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Previously known as Mirage
 
-Floe is a continuation of FrozenPlain's Mirage plugin (developed from 2018 to 2024). It adds [new features and improvements](../changelog.md#mirage) but is similar in a lot of ways. Floe is backwards-compatible with Mirage libraries and presets. Mirage will no longer be developed.
+[Mirage](https://www.frozenplain.com/mirage) is FrozenPlain's sample library platform, developed from 2018 to 2024. 
+
+Floe is Mirage's successor - an evolution of the same project with modern plugin formats, open-source development, and enhanced capabilities.
+
+FrozenPlain are phasing out Mirage and transitioning to Floe.
 
 ### Why the name change?
 The project has taken a new direction and so we decided to give it a new name.
@@ -16,11 +20,13 @@ The project has taken a new direction and so we decided to give it a new name.
 ### Backwards-compatible with Mirage
 Floe can load Mirage's libraries, presets and preferences file. If you have Mirage installed already, Floe will be able to find the same libraries and presets as Mirage. 
 
-For this backwards-compatibility to work, you will need to install the Mirage Compatibility package available from FrozenPlain's website.
+<div class="warning">
+For this backwards-compatibility to work, you will need to install the <strong>Mirage Compatibility package</strong> available on the <a href="https://floe.audio/packages/available-packages.html">packages page</a>.
+</div>
 
 You can leave Mirage installed if you want to keep using it: Floe will not interfere with Mirage's installation.
 
 Floe is a new plugin with a new name and new internals, targeting new plugin formats. Floe can't replace Mirage automatically in your old, saved DAW projects.
 
-### Installation is different
-Floe has a new, offline installer. Sample libraries are installed separately using Floe Packages.
+## What's new in Floe
+Floe has an ever-growing list of new features and improvements over Mirage including: CLAP and VST3 support, combine sounds from multiple libraries at the same time, tags and filters, and easy library installation. See the [changelog](../changelog.md) for full details.

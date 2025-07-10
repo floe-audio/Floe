@@ -65,7 +65,9 @@ Handmade and detail-focused, Floe is a professional-grade tool available to ever
 Anyone can make libraries for Floe and contribute to the open source project. By consolidating our efforts into improving this engine, we improve the capabilities of all of its libraries for everyone.
 
 ## Built on a solid foundation
-Built on the architecture of FrozenPlain's Mirage, used in professional productions for years. Floe is the next evolution, designed with careful attention to reliability and performance. We're committed to further expanding its capabilities while maintaining backwards compatibility.
+Built on the proven architecture of FrozenPlain's Mirage, used in professional productions for years, Floe is the next evolution, designed with careful attention to reliability and performance. We're committed to further expanding its capabilities while maintaining backwards compatibility.
+
+Already use Mirage? Read more about the [transition to Floe](./about-the-project/mirage.md).
 
 ## About this website
 This website contains everything you need to know about Floe. It's presented in a book-like format, with chapters in the sidebar. 
