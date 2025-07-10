@@ -136,6 +136,13 @@ jobs:
         with:
           release: ${{ env.VERSION }}
 
+      - name: Trigger website deployment
+        if: success()
+        run: |
+          gh workflow run deploy-website.yml --ref main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - if: '!cancelled()'
         run: |
           icon=""
