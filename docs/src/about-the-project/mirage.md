@@ -11,18 +11,22 @@ Floe is Mirage's successor - an evolution of the same project with modern plugin
 
 FrozenPlain are phasing out Mirage and transitioning to Floe.
 
-### Why the name change?
+## Install Mirage products
+Mirage products use the same package format as Floe. They're _Floe packages_. Simply follow the same procedure to [install](../packages/install-packages.md) Mirage products as you would for Floe products.
+
+**You must also install the Mirage Compatibility package**. Download it from the [packages page](../packages/available-packages.md).
+
+## Phasing-out Mirage
+FrozenPlain are upgrading their products to use the Floe-native format to make use of Floe's new features. These will be free updates.
+
+## Why the name change?
 The project has taken a new direction and so we decided to give it a new name.
 - Floe is free and open-source, whereas Mirage was closed-source.
 - Floe is not directly tied to FrozenPlain. It's a separate project that's open to anyone - we want to encourage growth of Floe without being tied to a specific company.
 - Mirage is already the name of a hardware sampler from the 80s - we want to avoid confusion.
 
-### Backwards-compatible with Mirage
+## Backwards-compatible with Mirage
 Floe can load Mirage's libraries, presets and preferences file. If you have Mirage installed already, Floe will be able to find the same libraries and presets as Mirage. 
-
-<div class="warning">
-For this backwards-compatibility to work, you will need to install the <strong>Mirage Compatibility package</strong> available on the <a href="https://floe.audio/packages/available-packages.html">packages page</a>.
-</div>
 
 You can leave Mirage installed if you want to keep using it: Floe will not interfere with Mirage's installation.
 
