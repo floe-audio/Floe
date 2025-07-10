@@ -11,19 +11,23 @@ Floe can install sample libraries and presets from ZIP files called _Floe packag
 
 ![Floe's GUI](../images/install-package-gui.png)
 
-If you don't already have Floe, [install](../installation/download-and-install-floe.md) it first, and open it in your DAW.
+### At a glance
 
-Next, download your chosen package(s). Remember, [packages](./about-packages.md) are ZIP files that contain sample libraries and presets.
+Download your package ZIP file(s). Don't extract them. Instead, click the 'Install package' button in Floe's Preferences panel. Direct it to the ZIP file.
 
-__Don't extract it though__. Instead, use the 'Install package' button in the preferences panel of Floe and direct it to the ZIP file. It will extract the package into the correct folders. The library/presets will be available immediately, no need to restart Floe.
+### Instructions
 
-### Here's the full steps:
+First, [install Floe](../installation/download-and-install-floe.md) and open it in your DAW.
 
-1. Open Floe.
-1. Open the Preferences panel using the <i class="fa fa-cog"></i> cog icon at the top.
-1. Open the Packages tab.
-1. Click the 'Install package' button. A file browser will open. Use it to select the [package(s)](./about-packages.md) you want to install. Packages are ZIP files that contain sample libraries and presets. They normally follow this naming scheme `Developer Name - Library Name Package.zip`.
-1. Done. After installation, you may delete the package ZIP file. No need to restart Floe.
+Download your chosen [package(s)](./about-packages.md) (ZIP files containing sample libraries and presets). **Don't extract them.**
+
+To install:
+1. Open Floe's Preferences panel (<i class="fa fa-cog"></i> cog icon)
+2. Go to the Packages tab
+3. Click 'Install package' and select your ZIP file(s)
+4. Done - libraries/presets are immediately available
+
+The package ZIP files can be deleted after installation. No restart required.
 
 ### Mirage Compatibility
 If the package is a Mirage library you will also need to install the Mirage Compatibility package. Download and install it the same way as the main package. [Download Mirage Compatibility Package.zip](https://github.com/FrozenPlain/floe-mirage-compatibility/releases/download/v1.1/FrozenPlain.-.Mirage.Compatibility.Package.zip).
