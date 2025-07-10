@@ -24,12 +24,12 @@ For developers: Floe Ports libraries are available on [Floe's GitHub](https://gi
 
 ## FrozenPlain Libraries
 
-Floe fully supports all libraries from [FrozenPlain's](https://www.frozenplain.com) catalog of professional sample libraries (except their Kontakt-format libraries).
+Floe fully supports all libraries from [FrozenPlain's](https://www.frozenplain.com) catalogue of professional sample libraries (except their Kontakt-format libraries).
 
 | Name | Details | Download |
 |:--|:--|:--|
 | **Music Box Suite Free** by FrozenPlain<br/>![MBSF GUI](../images/mbsf-gui.png) | Free multisampled music box from FrozenPlain.<br/>*1 instrument, 12 presets* | [Visit webpage →](https://www.frozenplain.com/product/music-box-suite-free)<br/> |
-| **Professional Library Catalog** by FrozenPlain<br/>![](https://d1e9gx2m5baxk1.cloudfront.net/images/libraries-gui-medley.png) | Range of professional sample libraries covering ambient, cinematic, and sound design. (Paid products). | [Browse FrozenPlain Libraries →](https://www.frozenplain.com/products?format=Mirage+Library%2CFloe+Library) |
+| **Professional Library Catalogue** by FrozenPlain<br/>![](https://d1e9gx2m5baxk1.cloudfront.net/images/libraries-gui-medley.png) | Range of professional sample libraries covering ambient, cinematic, and sound design. (Paid products). | [Browse FrozenPlain Libraries →](https://www.frozenplain.com/products?format=Mirage+Library%2CFloe+Library) |
 | **Mirage Compatibility** by FrozenPlain | Required compatibility package for using FrozenPlain's [Mirage](../about-the-project/mirage.md) libraries inside Floe. | [Download Package (8.9 MB)](https://github.com/FrozenPlain/floe-mirage-compatibility/releases/download/v1.1/FrozenPlain.-.Mirage.Compatibility.Package.zip) |
 
 <div style="margin-bottom: 60px;"></div>
