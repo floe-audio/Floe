@@ -22,10 +22,12 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
 enum class PresetFormat : u8 { Floe, Mirage, Count };
 
-PresetFormat PresetFormatFromPath(String path);
+Optional<PresetFormat> PresetFormatFromPath(String path);
 
 ErrorCodeOr<void>
 DecodeMirageJsonState(StateSnapshot& state, ArenaAllocator& scratch_arena, String json_data);
+
+ErrorCodeOr<StateSnapshot> DecodeFromMemory(Span<u8 const> data, StateSource source, bool abbreviated_read);
 
 ErrorCodeOr<StateSnapshot>
 LoadPresetFile(String filepath, ArenaAllocator& scratch_arena, bool abbreviated_read);

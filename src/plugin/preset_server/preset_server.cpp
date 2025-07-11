@@ -404,12 +404,6 @@ static void RemoveFolderAndPublish(PresetServer& server, usize index, ArenaAlloc
     server.published_version.FetchAdd(1, RmwMemoryOrder::AcquireRelease);
 }
 
-static bool EntryIsPreset(dir_iterator::Entry const& entry) {
-    if (entry.type != FileType::File) return false;
-    auto const ext = path::Extension(entry.subpath);
-    return ext == FLOE_PRESET_FILE_EXTENSION || StartsWithSpan(ext, ".mirage"_s);
-}
-
 ErrorCodeOr<void> ScanFolder(PresetServer& server,
                              String subfolder_of_scan_folder,
                              ArenaAllocator& scratch_arena,
@@ -441,7 +435,9 @@ ErrorCodeOr<void> ScanFolder(PresetServer& server,
     PresetFolder* preset_folder {};
 
     for (auto const& entry : entries) {
-        if (!EntryIsPreset(entry)) continue;
+        if (entry.type != FileType::File) continue;
+        auto const preset_format = PresetFormatFromPath(entry.subpath);
+        if (!preset_format) continue;
 
         if constexpr (IS_WINDOWS) Replace(entry.subpath, '\\', '/');
 
@@ -457,10 +453,8 @@ ErrorCodeOr<void> ScanFolder(PresetServer& server,
         if (server.preset_file_hashes.Contains(file_hash)) continue;
         server.preset_file_hashes.Insert(file_hash);
 
-        auto const preset_format = PresetFormatFromPath(entry.subpath);
-
         auto reader = Reader::FromMemory(file_data);
-        auto const snapshot = TRY_OR(LoadPresetFile(preset_format, reader, scratch_arena, true), continue);
+        auto const snapshot = TRY_OR(LoadPresetFile(*preset_format, reader, scratch_arena, true), continue);
 
         if (!preset_folder) {
             preset_folder = server.folder_pool.PrependUninitialised(server.arena);
@@ -480,7 +474,7 @@ ErrorCodeOr<void> ScanFolder(PresetServer& server,
             });
         }
 
-        AddPresetToFolder(*preset_folder, entry, snapshot, file_hash, preset_format);
+        AddPresetToFolder(*preset_folder, entry, snapshot, file_hash, *preset_format);
     }
 
     if (preset_folder) {

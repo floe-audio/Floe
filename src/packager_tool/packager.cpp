@@ -8,12 +8,13 @@
 #include "foundation/foundation.hpp"
 #include "os/misc.hpp"
 #include "utils/cli_arg_parse.hpp"
+#include "utils/json/json_writer.hpp"
 
 #include "common_infrastructure/common_errors.hpp"
-#include "common_infrastructure/error_reporting.hpp"
 #include "common_infrastructure/global.hpp"
 #include "common_infrastructure/package_format.hpp"
 #include "common_infrastructure/sample_library/sample_library.hpp"
+#include "common_infrastructure/state/state_coding.hpp"
 
 #include "build_resources/embedded_files.h"
 
@@ -161,6 +162,147 @@ PackageName(ArenaAllocator& arena, sample_lib::Library const* lib, CommandLineAr
         arena);
 }
 
+struct PackageInfo {
+    struct Instrument {
+        String name;
+        Optional<String> description;
+        Instrument* next;
+    };
+
+    struct Library {
+        String name;
+        HashTable<String, Instrument*> instruments_by_folder;
+        Set<String> instrument_tags;
+    };
+
+    HashTable<sample_lib::LibraryId, Library> libraries;
+    HashTable<String, u32> preset_folders; // path -> num presets
+    HashTable<String, u32> preset_tags;
+    usize package_size {0}; // total size of the package in bytes
+    String name;
+};
+
+static void AddLibrary(PackageInfo& info, sample_lib::Library const& lib, ArenaAllocator& arena) {
+    auto lib_result = info.libraries.FindOrInsertGrowIfNeeded(arena, lib.Id(), {});
+    if (lib_result.inserted) lib_result.element.data.name = arena.Clone(lib.name);
+
+    auto& insts = lib_result.element.data.instruments_by_folder;
+    for (auto const [inst_name, inst, _] : lib.insts_by_name) {
+        // Add instrument.
+        {
+            auto instrument = arena.New<PackageInfo::Instrument>(PackageInfo::Instrument {
+                .name = arena.Clone(inst_name),
+                .description = inst->description.Clone(arena),
+                .next = nullptr,
+            });
+
+            DynamicArray<char> folder {arena};
+            for (auto f = inst->folder; f; f = f->parent) {
+                if (!f->parent) continue; // skip the root folder
+                if (folder.size) dyn::Prepend(folder, '/');
+                if (f->parent) dyn::PrependSpan(folder, f->name);
+            }
+
+            auto inst_result = insts.FindOrInsertGrowIfNeeded(arena, folder.ToOwnedSpan(), instrument);
+            if (!inst_result.inserted) SinglyLinkedListPrepend(inst_result.element.data, instrument);
+        }
+
+        for (auto const [tag, _] : inst->tags) {
+            auto tag_result = lib_result.element.data.instrument_tags.FindOrInsertGrowIfNeeded(arena, tag);
+            if (tag_result.inserted) tag_result.element.key = arena.Clone(tag);
+        }
+    }
+}
+
+static void
+AddPresetIfNeeded(PackageInfo& info, String path_in_zip, ArenaAllocator& arena, Span<u8 const> file_data) {
+    if (!StartsWithSpan(path_in_zip, package::k_presets_subdir)) return;
+    if (!PresetFormatFromPath(path_in_zip)) return;
+
+    {
+        path_in_zip = path_in_zip.SubSpan(package::k_presets_subdir.size);
+        path_in_zip = path::TrimDirectorySeparatorsStart(path_in_zip);
+
+        auto const folder = path::Directory(path_in_zip, path::Format::Posix).ValueOr("/");
+        auto found = info.preset_folders.FindOrInsertGrowIfNeeded(arena, folder, 0);
+        if (found.inserted) found.element.key = arena.Clone(folder);
+        ++found.element.data;
+    }
+
+    if (auto const outcome = DecodeFromMemory(file_data, StateSource::PresetFile, true); outcome.HasValue()) {
+        auto const& state = outcome.Value();
+        for (auto const tag : state.metadata.tags) {
+            auto tag_result = info.preset_tags.FindOrInsertGrowIfNeeded(arena, tag, 0);
+            if (tag_result.inserted) tag_result.element.key = arena.Clone(tag);
+            ++tag_result.element.data;
+        }
+    }
+}
+
+static ErrorCodeOr<String> ToJson(PackageInfo const& info, ArenaAllocator& arena) {
+    DynamicArray<char> json_buffer {arena};
+    json::WriteContext json {
+        .out = dyn::WriterFor(json_buffer),
+    };
+
+    TRY(json::WriteObjectBegin(json));
+
+    TRY(json::WriteKeyValue(json, "size", info.package_size));
+    TRY(json::WriteKeyValue(json, "name", info.name));
+
+    TRY(json::WriteKeyArrayBegin(json, "libraries"));
+    for (auto const& [lib_id, lib, _] : info.libraries) {
+        TRY(json::WriteObjectBegin(json));
+        TRY(json::WriteKeyValue(json, "name", lib.name));
+        TRY(json::WriteKeyArrayBegin(json, "instrument_folders"));
+        for (auto const& [folder, inst_list, _] : lib.instruments_by_folder) {
+            TRY(json::WriteObjectBegin(json));
+            TRY(json::WriteKeyValue(json, "name", folder));
+
+            TRY(json::WriteKeyArrayBegin(json, "instruments"));
+            for (auto i = inst_list; i; i = i->next) {
+                auto const inst = i;
+                TRY(json::WriteObjectBegin(json));
+                TRY(json::WriteKeyValue(json, "name", inst->name));
+                if (inst->description) TRY(json::WriteKeyValue(json, "description", *inst->description));
+                TRY(json::WriteObjectEnd(json));
+            }
+            TRY(json::WriteArrayEnd(json)); // instruments
+
+            TRY(json::WriteKeyArrayBegin(json, "instrument_tags"));
+            for (auto const [tag, _] : lib.instrument_tags)
+                TRY(json::WriteValue(json, tag));
+            TRY(json::WriteArrayEnd(json)); // instrument_tags
+
+            TRY(json::WriteObjectEnd(json)); // folder
+        }
+        TRY(json::WriteArrayEnd(json)); // instruments
+        TRY(json::WriteObjectEnd(json)); // library
+    }
+    TRY(json::WriteArrayEnd(json)); // libraries
+
+    TRY(json::WriteKeyObjectBegin(json, "presets"));
+    for (auto const& [folder, num_presets, _] : info.preset_folders) {
+        TRY(json::WriteKeyObjectBegin(json, folder));
+        TRY(json::WriteKeyValue(json, "num_presets", num_presets));
+        TRY(json::WriteObjectEnd(json));
+    }
+    TRY(json::WriteObjectEnd(json));
+
+    TRY(json::WriteKeyArrayBegin(json, "preset_tags"));
+    for (auto const& [tag, num_presets, _] : info.preset_tags) {
+        TRY(json::WriteObjectBegin(json));
+        TRY(json::WriteKeyValue(json, "name", tag));
+        TRY(json::WriteKeyValue(json, "num_presets", num_presets));
+        TRY(json::WriteObjectEnd(json));
+    }
+    TRY(json::WriteArrayEnd(json)); // preset_tags
+
+    TRY(json::WriteObjectEnd(json));
+
+    return json_buffer.ToOwnedSpan();
+}
+
 static ErrorCodeOr<int> Main(ArgsCstr args) {
     GlobalInit({.init_error_reporting = true, .set_main_thread = true});
     DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
@@ -184,7 +326,12 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     auto package = package::WriterCreate(writer);
     DEFER { package::WriterDestroy(package); };
 
+    PackageInfo package_info {};
+
     auto const create_package = cli_args[ToInt(PackagerCliArgId::OutputPackageFolder)].was_provided;
+
+    auto const generate_package_info =
+        cli_args[ToInt(PackagerCliArgId::OutputPackageInfoJsonFile)].was_provided;
 
     sample_lib::Library* lib_for_package_name = nullptr;
 
@@ -212,14 +359,16 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
             }
             auto lib = outcome.Get<sample_lib::Library*>();
             lib_for_package_name = lib;
-            if (create_package)
-                TRY_OR(package::WriterAddLibrary(package, *lib, arena, program_name), {
-                    StdPrintF(StdStream::Err,
-                              "Error: failed to add library {} to package: {}\n",
-                              library_path,
-                              error);
-                    return error;
-                });
+
+            if (generate_package_info) AddLibrary(package_info, *lib, arena);
+
+            TRY_OR(package::WriterAddLibrary(package, *lib, arena, program_name), {
+                StdPrintF(StdStream::Err,
+                          "Error: failed to add library {} to package: {}\n",
+                          library_path,
+                          error);
+                return error;
+            });
 
             continue;
         }
@@ -234,6 +383,9 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
             return error;
         });
         lib_for_package_name = lib;
+
+        if (generate_package_info) AddLibrary(package_info, *lib, arena);
+
         if (!sample_lib::CheckAllReferencedFilesExist(*lib, StdWriter(StdStream::Err))) {
             StdPrintF(StdStream::Err,
                       "Error: library {} has missing files, cannot create package\n",
@@ -241,50 +393,54 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
             return ErrorCode {CommonError::NotFound};
         }
 
-        if (create_package) {
-            auto const library_folder_in_zip =
-                TRY_OR(package::WriterAddLibrary(package, *lib, arena, program_name), {
-                    StdPrintF(StdStream::Err,
-                              "Error: failed to add library {} to package: {}\n",
-                              library_path,
-                              error);
-                    return error;
-                });
-            auto const about_doc =
-                TRY_OR(WriteAboutLibraryDocument(*lib, arena, paths, *library_folder_in_zip), {
-                    StdPrintF(StdStream::Err,
-                              "Error: failed to write about document for library {}: {}\n",
-                              lib->name,
-                              error);
-                    return error;
-                });
-            if (!package::WriterAddFile(package,
-                                        about_doc.filename_in_zip,
-                                        about_doc.file_data.ToByteSpan())) {
-                StdPrintF(StdStream::Out,
-                          "Error: auto-generated {} already exists - remove it\n",
-                          about_doc.filename_in_zip);
-                return ErrorCode {FilesystemError::PathAlreadyExists};
-            }
-            StdPrintF(StdStream::Out, "Added library document: {}\n", about_doc.filename_in_zip);
-        }
-    }
-
-    if (create_package)
-        for (auto const p : cli_args[ToInt(PackagerCliArgId::PresetFolder)].values) {
-            auto const preset_folder = TRY_OR(AbsolutePath(arena, p), {
-                StdPrintF(StdStream::Err, "Error: failed to resolve preset folder '{}'\n", p);
+        auto const library_folder_in_zip =
+            TRY_OR(package::WriterAddLibrary(package, *lib, arena, program_name), {
+                StdPrintF(StdStream::Err,
+                          "Error: failed to add library {} to package: {}\n",
+                          library_path,
+                          error);
                 return error;
             });
-            TRY_OR(package::WriterAddPresetsFolder(package, preset_folder, arena, program_name), {
-                StdPrintF(StdStream::Err,
-                          "Error: failed to add presets folder {} to package: {}\n",
-                          preset_folder,
-                          error);
-            });
+        auto const about_doc = TRY_OR(WriteAboutLibraryDocument(*lib, arena, paths, *library_folder_in_zip), {
+            StdPrintF(StdStream::Err,
+                      "Error: failed to write about document for library {}: {}\n",
+                      lib->name,
+                      error);
+            return error;
+        });
+        if (!package::WriterAddFile(package, about_doc.filename_in_zip, about_doc.file_data.ToByteSpan())) {
+            StdPrintF(StdStream::Out,
+                      "Error: auto-generated {} already exists - remove it\n",
+                      about_doc.filename_in_zip);
+            return ErrorCode {FilesystemError::PathAlreadyExists};
         }
+        if (create_package)
+            StdPrintF(StdStream::Out, "Added library document: {}\n", about_doc.filename_in_zip);
+    }
 
-    if (create_package) {
+    for (auto const p : cli_args[ToInt(PackagerCliArgId::PresetFolder)].values) {
+        auto const preset_folder = TRY_OR(AbsolutePath(arena, p), {
+            StdPrintF(StdStream::Err, "Error: failed to resolve preset folder '{}'\n", p);
+            return error;
+        });
+        // We add presets to the package even when generating package info only because the ZIP structure
+        // is convenient to read the filename from.
+        TRY_OR(package::WriterAddPresetsFolder(package,
+                                               preset_folder,
+                                               arena,
+                                               program_name,
+                                               [&](String path, Span<u8 const> file_data) {
+                                                   AddPresetIfNeeded(package_info, path, arena, file_data);
+                                               }),
+               {
+                   StdPrintF(StdStream::Err,
+                             "Error: failed to add presets folder {} to package: {}\n",
+                             preset_folder,
+                             error);
+               });
+    }
+
+    {
         auto const how_to_install_doc = ({
             auto data = EmbeddedPackageInstallationRtf();
             arena.Clone(Span {(char const*)data.data, data.size});
@@ -296,39 +452,120 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                       k_installation_doc_name);
             return ErrorCode {FilesystemError::PathAlreadyExists};
         }
-        StdPrintF(StdStream::Out, "Added installation document: {}\n", k_installation_doc_name);
+        if (create_package)
+            StdPrintF(StdStream::Out, "Added installation document: {}\n", k_installation_doc_name);
+    }
 
-        String const folder =
-            TRY_OR(AbsolutePath(arena, cli_args[ToInt(PackagerCliArgId::OutputPackageFolder)].values[0]), {
-                StdPrintF(StdStream::Err, "Error: failed to resolve output package folder: {}\n", error);
+    // We do input packages last because we prioritise file from libraries/presets. We ignore files from
+    // packages if they already exist from the libraries/presets.
+    for (auto const path : cli_args[ToInt(PackagerCliArgId::InputPackages)].values) {
+        auto const package_path = TRY_OR(AbsolutePath(arena, path), {
+            StdPrintF(StdStream::Err, "Error: failed to resolve input package path '{}'\n", path);
+            return error;
+        });
+
+        auto reader = TRY_OR(Reader::FromFile(package_path), {
+            StdPrintF(StdStream::Err, "Error: failed to open input package file '{}'\n", package_path);
+            return error;
+        });
+
+        package::PackageReader input_package {reader};
+        TRY_OR(package::ReaderInit(input_package), {
+            StdPrintF(StdStream::Err, "Error: failed to read input package '{}': {}\n", package_path, error);
+            return error;
+        });
+        DEFER { package::ReaderDeinit(input_package); };
+
+        if (generate_package_info) {
+            package::PackageComponentIndex iterator = 0;
+            while (true) {
+                auto const component = ({
+                    auto const o = package::IteratePackageComponents(input_package, iterator, arena);
+                    if (o.HasError()) {
+                        StdPrintF(StdStream::Err,
+                                  "Error: failed to read input package component: {}\n",
+                                  o.Error());
+                        return o.Error();
+                    }
+                    o.Value();
+                });
+                if (!component) break;
+
+                if (component->type == package::ComponentType::Library)
+                    AddLibrary(package_info, *component->library, arena);
+            }
+        }
+
+        TRY_OR(package::WriterAddPackage(package,
+                                         input_package,
+                                         arena,
+                                         [&](String path, Span<u8 const> file_data) {
+                                             AddPresetIfNeeded(package_info, path, arena, file_data);
+                                         }),
+               {
+                   StdPrintF(StdStream::Err,
+                             "Error: failed to add input package {} to output package: {}\n",
+                             package_path,
+                             error);
+                   return error;
+               });
+    }
+
+    {
+        package::WriterFinalise(package);
+
+        auto const package_name =
+            PackageName(arena, lib_for_package_name, cli_args[ToInt(PackagerCliArgId::PackageName)]);
+        if (generate_package_info) package_info.name = package_name;
+
+        if (create_package) {
+            String const folder = TRY_OR(
+                AbsolutePath(arena, cli_args[ToInt(PackagerCliArgId::OutputPackageFolder)].values[0]),
+                {
+                    StdPrintF(StdStream::Err, "Error: failed to resolve output package folder: {}\n", error);
+                    return error;
+                });
+            TRY_OR(
+                CreateDirectory(folder, {.create_intermediate_directories = true, .fail_if_exists = false}),
+                {
+                    StdPrintF(StdStream::Err,
+                              "Error: failed to create output package folder '{}': {}\n",
+                              folder,
+                              error);
+                    return error;
+                });
+
+            auto const package_path = path::Join(arena, Array {folder, package_name});
+
+            TRY_OR(WriteFile(package_path, zip_data), {
+                StdPrintF(StdStream::Err,
+                          "Error: failed to write package file to '{}': {}\n",
+                          package_path,
+                          error);
                 return error;
             });
-        TRY_OR(CreateDirectory(folder, {.create_intermediate_directories = true, .fail_if_exists = false}), {
-            StdPrintF(StdStream::Err,
-                      "Error: failed to create output package folder '{}': {}\n",
-                      folder,
-                      error);
+            StdPrintF(StdStream::Out, "Successfully created package: {}\n", package_path);
+        }
+
+        if (generate_package_info) package_info.package_size = zip_data.size;
+    }
+
+    if (generate_package_info) {
+        auto const json = TRY_OR(ToJson(package_info, arena), {
+            StdPrintF(StdStream::Err, "Error: failed to write package info JSON: {}\n", error);
             return error;
         });
 
-        auto const package_path = path::Join(
-            arena,
-            Array {folder,
-                   PackageName(arena, lib_for_package_name, cli_args[ToInt(PackagerCliArgId::PackageName)])});
-
-        package::WriterFinalise(package);
-        TRY_OR(WriteFile(package_path, zip_data), {
+        auto const output_json_path =
+            path::Join(arena, Array {cli_args[ToInt(PackagerCliArgId::OutputPackageInfoJsonFile)].values[0]});
+        TRY_OR(WriteFile(output_json_path, json), {
             StdPrintF(StdStream::Err,
-                      "Error: failed to write package file to '{}': {}\n",
-                      package_path,
+                      "Error: failed to write package info JSON file to '{}': {}\n",
+                      output_json_path,
                       error);
             return error;
         });
-        StdPrintF(StdStream::Out, "Successfully created package: {}\n", package_path);
-    } else {
-        StdPrintF(
-            StdStream::Err,
-            "No output packge folder provided, not creating a package file\nRun with --help for usage info\n");
+        StdPrintF(StdStream::Out, "Successfully wrote package info JSON to: {}\n", output_json_path);
     }
 
     return 0;

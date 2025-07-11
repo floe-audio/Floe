@@ -160,7 +160,8 @@ namespace detail {
 static ErrorCodeOr<void> WriterAddAllFiles(mz_zip_archive& zip,
                                            String folder,
                                            ArenaAllocator& scratch_arena,
-                                           Span<String const> subdirs_in_zip) {
+                                           Span<String const> subdirs_in_zip,
+                                           FunctionRef<void(String, Span<u8 const>)> file_read_hook) {
     auto it = TRY(dir_iterator::RecursiveCreate(scratch_arena,
                                                 folder,
                                                 {
@@ -183,6 +184,7 @@ static ErrorCodeOr<void> WriterAddAllFiles(mz_zip_archive& zip,
             auto const file_data =
                 TRY(ReadEntireFile(dir_iterator::FullPath(it, *entry, inner_arena), inner_arena))
                     .ToByteSpan();
+            if (file_read_hook) file_read_hook(archive_path, file_data);
             if (!WriterAddFile(zip, archive_path, file_data)) return {FilesystemError::PathAlreadyExists};
         }
     }
@@ -265,17 +267,19 @@ PUBLIC ErrorCodeOr<Optional<String>> WriterAddLibrary(mz_zip_archive& zip,
                                          scratch_arena)};
     auto const subdirs_str = path::Join(scratch_arena, subdirs, path::Format::Posix);
 
-    TRY(detail::WriterAddAllFiles(zip, *path::Directory(lib.path), scratch_arena, subdirs));
+    TRY(detail::WriterAddAllFiles(zip, *path::Directory(lib.path), scratch_arena, subdirs, {}));
     detail::WriterAddChecksumForFolder(zip, subdirs_str, scratch_arena, program_name);
     return subdirs_str;
 }
 
-PUBLIC ErrorCodeOr<void> WriterAddPresetsFolder(mz_zip_archive& zip,
-                                                String folder,
-                                                ArenaAllocator& scratch_arena,
-                                                String program_name) {
+PUBLIC ErrorCodeOr<void>
+WriterAddPresetsFolder(mz_zip_archive& zip,
+                       String folder,
+                       ArenaAllocator& scratch_arena,
+                       String program_name,
+                       FunctionRef<void(String, Span<u8 const>)> file_read_hook = {}) {
     auto const subdirs = Array {k_presets_subdir, path::Filename(folder)};
-    TRY(detail::WriterAddAllFiles(zip, folder, scratch_arena, subdirs));
+    TRY(detail::WriterAddAllFiles(zip, folder, scratch_arena, subdirs, file_read_hook));
     detail::WriterAddChecksumForFolder(zip,
                                        path::Join(scratch_arena, subdirs, path::Format::Posix),
                                        scratch_arena,
@@ -530,6 +534,41 @@ IteratePackageComponents(PackageReader& package, PackageComponentIndex& file_ind
         }
     }
     return Optional<Component> {k_nullopt};
+}
+
+// If a file already exists in the zip, we don't replace it, we just skip it.
+PUBLIC ErrorCodeOr<void>
+WriterAddPackage(mz_zip_archive& zip,
+                 PackageReader& package,
+                 ArenaAllocator& scratch_arena,
+                 FunctionRef<void(String path, Span<u8 const> file_data)> file_read_hook = {}) {
+    for (auto const file_index : Range(mz_zip_reader_get_num_files(&package.zip))) {
+        auto const cursor = scratch_arena.TotalUsed();
+        DEFER { scratch_arena.TryShrinkTotalUsed(cursor); };
+
+        auto const file_stat = TRY(detail::FileStat(package, file_index));
+        if (file_stat.m_is_directory) continue;
+
+        auto const path = detail::PathWithoutTrailingSlash(file_stat.m_filename);
+
+        auto file_data = TRY(detail::ExtractFileToMem(package, file_stat, scratch_arena));
+        if (file_read_hook) file_read_hook(path, file_data);
+
+        // We don't care if it failed because the file already exists, we just skip it.
+        auto const _ = WriterAddFile(zip, path, file_data);
+    }
+
+    return k_success;
+}
+
+PUBLIC void ForEachFile(mz_zip_archive& zip, FunctionRef<void(String)> callback) {
+    for (auto const file_index : Range(mz_zip_reader_get_num_files(&zip))) {
+        mz_zip_archive_file_stat file_stat;
+        if (!mz_zip_reader_file_stat(&zip, file_index, &file_stat)) continue;
+        if (file_stat.m_is_directory) continue;
+        auto const path = detail::PathWithoutTrailingSlash(file_stat.m_filename);
+        callback(path);
+    }
 }
 
 } // namespace package

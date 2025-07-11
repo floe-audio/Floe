@@ -6,8 +6,10 @@
 enum class PackagerCliArgId : u32 {
     LibraryFolder,
     PresetFolder,
+    InputPackages,
     OutputPackageFolder,
     PackageName,
+    OutputPackageInfoJsonFile,
     Count,
 };
 
@@ -29,6 +31,14 @@ auto constexpr k_packager_command_line_args_defs = MakeCommandLineArgDefs<Packag
         .num_values = -1,
     },
     {
+        .id = (u32)PackagerCliArgId::InputPackages,
+        .key = "input-packages",
+        .description = "One or more input package files to include in the output package",
+        .value_type = "path",
+        .required = false,
+        .num_values = -1,
+    },
+    {
         .id = (u32)PackagerCliArgId::OutputPackageFolder,
         .key = "output-folder",
         .description = "Folder to write the created package to",
@@ -44,10 +54,20 @@ auto constexpr k_packager_command_line_args_defs = MakeCommandLineArgDefs<Packag
         .required = false,
         .num_values = 1,
     },
+    {
+        .id = (u32)PackagerCliArgId::OutputPackageInfoJsonFile,
+        .key = "output-info-json",
+        .description =
+            "If set, writes a JSON file with comprehensive package information: instruments, presets, tags, etc.",
+        .value_type = "path",
+        .required = false,
+        .num_values = 1,
+    },
 });
 
 constexpr String k_packager_description =
     "Takes libraries and presets and turns them into a Floe package file (ZIP).\n"
+    "Also accepts existing packages to merge into the output package.\n"
     "You can specify multiple libraries and preset-folders. Additionally:\n"
     "- Validates any Lua files.\n"
     "- Ensures libraries have a License file.\n"

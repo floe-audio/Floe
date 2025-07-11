@@ -1424,9 +1424,16 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     return k_success;
 }
 
-PresetFormat PresetFormatFromPath(String path) {
-    if (path::Extension(path) == FLOE_PRESET_FILE_EXTENSION) return PresetFormat::Floe;
-    return PresetFormat::Mirage;
+Optional<PresetFormat> PresetFormatFromPath(String path) {
+    auto const ext = path::Extension(path);
+    if (path::Equal(ext, FLOE_PRESET_FILE_EXTENSION)) return PresetFormat::Floe;
+    constexpr auto k_mirage_ext = ".mirage-"_s;
+    if constexpr (IS_WINDOWS) {
+        if (StartsWithCaseInsensitiveAscii(ext, k_mirage_ext)) return PresetFormat::Mirage;
+    } else {
+        if (StartsWithSpan(ext, k_mirage_ext)) return PresetFormat::Mirage;
+    }
+    return k_nullopt;
 }
 
 ErrorCodeOr<StateSnapshot>
@@ -1460,7 +1467,10 @@ ErrorCodeOr<StateSnapshot>
 LoadPresetFile(String const filepath, ArenaAllocator& scratch_arena, bool abbreviated_read) {
     StateSnapshot state;
     auto reader = TRY(Reader::FromFile(filepath));
-    return LoadPresetFile(PresetFormatFromPath(filepath), reader, scratch_arena, abbreviated_read);
+    return LoadPresetFile(PresetFormatFromPath(filepath).ValueOr(PresetFormat::Mirage),
+                          reader,
+                          scratch_arena,
+                          abbreviated_read);
 }
 
 ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state) {
@@ -1482,6 +1492,25 @@ ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state) {
                       .abbreviated_read = false,
                   }));
     return k_success;
+}
+
+ErrorCodeOr<StateSnapshot> DecodeFromMemory(Span<u8 const> data, StateSource source, bool abbreviated_read) {
+    StateSnapshot state;
+    usize read_pos = 0;
+    TRY(CodeState(state,
+                  CodeStateArguments {
+                      .mode = CodeStateArguments::Mode::Decode,
+                      .read_or_write_data = [&](void* out_data, usize bytes) -> ErrorCodeOr<void> {
+                          if ((read_pos + bytes) > data.size)
+                              return ErrorCode(CommonError::InvalidFileFormat);
+                          CopyMemory(out_data, data.data + read_pos, bytes);
+                          read_pos += bytes;
+                          return k_success;
+                      },
+                      .source = source,
+                      .abbreviated_read = abbreviated_read,
+                  }));
+    return state;
 }
 
 //=================================================
@@ -1645,21 +1674,8 @@ TEST_CASE(TestParsersHandleInvalidData) {
     SUBCASE("binary") {
         for ([[maybe_unused]] auto i : Range(0, 20)) {
             auto const data = make_random_data();
-            usize read_pos = 0;
-            auto const result =
-                CodeState(state,
-                          CodeStateArguments {
-                              .mode = CodeStateArguments::Mode::Decode,
-                              .read_or_write_data = [&](void* out_data, usize bytes) -> ErrorCodeOr<void> {
-                                  if ((read_pos + bytes) > data.size)
-                                      return ErrorCode(CommonError::InvalidFileFormat);
-                                  CopyMemory(out_data, data.data + read_pos, bytes);
-                                  read_pos += bytes;
-                                  return k_success;
-                              },
-                              .source = StateSource::PresetFile,
-                          });
-            CHECK(!result.Succeeded());
+            auto const result = DecodeFromMemory(data.ToByteSpan(), StateSource::PresetFile, false);
+            CHECK(!result.HasValue());
         }
     }
 
