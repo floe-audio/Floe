@@ -150,16 +150,21 @@ static ErrorCodeOr<void> CheckNeededPackageCliArgs(Span<CommandLineArg const> ar
 }
 
 static String
-PackageName(ArenaAllocator& arena, sample_lib::Library const* lib, CommandLineArg const& package_name_arg) {
-    if (package_name_arg.was_provided)
-        return fmt::Format(arena,
-                           "{} Package{}",
-                           path::MakeSafeForFilename(package_name_arg.values[0], arena),
-                           package::k_file_extension);
-    ASSERT(lib);
-    return path::MakeSafeForFilename(
-        fmt::Format(arena, "{} - {} Package{}", lib->author, lib->name, package::k_file_extension),
-        arena);
+PackageName(ArenaAllocator& arena, sample_lib::Library const* lib, Span<CommandLineArg const> args) {
+    if (args[ToInt(PackagerCliArgId::PackageName)].was_provided)
+        return fmt::Format(
+            arena,
+            "{} Package{}",
+            path::MakeSafeForFilename(args[ToInt(PackagerCliArgId::PackageName)].values[0], arena),
+            package::k_file_extension);
+    if (lib)
+        return path::MakeSafeForFilename(
+            fmt::Format(arena, "{} - {} Package{}", lib->author, lib->name, package::k_file_extension),
+            arena);
+    if (args[ToInt(PackagerCliArgId::InputPackages)].was_provided)
+        return args[ToInt(PackagerCliArgId::InputPackages)].values[0];
+
+    return fmt::Format(arena, "Floe Package{}", package::k_file_extension);
 }
 
 struct PackageInfo {
@@ -171,20 +176,27 @@ struct PackageInfo {
 
     struct Library {
         String name;
-        HashTable<String, Instrument*> instruments_by_folder;
+        sample_lib::FileFormat file_format {};
+        OrderedHashTable<String, Instrument*> instruments_by_folder;
         Set<String> instrument_tags;
     };
 
-    HashTable<sample_lib::LibraryId, Library> libraries;
-    HashTable<String, u32> preset_folders; // path -> num presets
-    HashTable<String, u32> preset_tags;
+    OrderedHashTable<sample_lib::LibraryId, Library> libraries;
+    OrderedHashTable<String, u32> preset_folders; // path -> num presets
+    OrderedHashTable<String, u32> preset_tags;
     usize package_size {0}; // total size of the package in bytes
     String name;
 };
 
-static void AddLibrary(PackageInfo& info, sample_lib::Library const& lib, ArenaAllocator& arena) {
+static void AddLibrary(PackageInfo& info,
+                       sample_lib::Library const& lib,
+                       ArenaAllocator& arena,
+                       ArenaAllocator& scratch) {
     auto lib_result = info.libraries.FindOrInsertGrowIfNeeded(arena, lib.Id(), {});
-    if (lib_result.inserted) lib_result.element.data.name = arena.Clone(lib.name);
+    if (lib_result.inserted) {
+        lib_result.element.data.name = arena.Clone(lib.name);
+        lib_result.element.data.file_format = lib.file_format_specifics.tag;
+    }
 
     auto& insts = lib_result.element.data.instruments_by_folder;
     for (auto const [inst_name, inst, _] : lib.insts_by_name) {
@@ -196,14 +208,15 @@ static void AddLibrary(PackageInfo& info, sample_lib::Library const& lib, ArenaA
                 .next = nullptr,
             });
 
-            DynamicArray<char> folder {arena};
+            DynamicArray<char> folder {scratch};
             for (auto f = inst->folder; f; f = f->parent) {
                 if (!f->parent) continue; // skip the root folder
                 if (folder.size) dyn::Prepend(folder, '/');
                 if (f->parent) dyn::PrependSpan(folder, f->name);
             }
 
-            auto inst_result = insts.FindOrInsertGrowIfNeeded(arena, folder.ToOwnedSpan(), instrument);
+            auto inst_result = insts.FindOrInsertGrowIfNeeded(arena, folder, instrument);
+            if (inst_result.inserted) inst_result.element.key = arena.Clone((String)folder);
             if (!inst_result.inserted) SinglyLinkedListPrepend(inst_result.element.data, instrument);
         }
 
@@ -254,6 +267,14 @@ static ErrorCodeOr<String> ToJson(PackageInfo const& info, ArenaAllocator& arena
     for (auto const& [lib_id, lib, _] : info.libraries) {
         TRY(json::WriteObjectBegin(json));
         TRY(json::WriteKeyValue(json, "name", lib.name));
+        TRY(json::WriteKeyValue(json, "file_format", ({
+                                    String s;
+                                    switch (lib.file_format) {
+                                        case sample_lib::FileFormat::Lua: s = "Floe"_s; break;
+                                        case sample_lib::FileFormat::Mdata: s = "Mirage"_s; break;
+                                    }
+                                    s;
+                                })));
         TRY(json::WriteKeyArrayBegin(json, "instrument_folders"));
         for (auto const& [folder, inst_list, _] : lib.instruments_by_folder) {
             TRY(json::WriteObjectBegin(json));
@@ -308,6 +329,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
 
     ArenaAllocator arena {PageAllocator::Instance()};
+    ArenaAllocator scratch {PageAllocator::Instance()};
     auto const program_name = path::Filename(FromNullTerminated(args.args[0]));
 
     auto const cli_args = TRY(ParseCommandLineArgsStandard(arena,
@@ -336,7 +358,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     sample_lib::Library* lib_for_package_name = nullptr;
 
     for (auto const path : cli_args[ToInt(PackagerCliArgId::LibraryFolder)].values) {
-        auto const library_path = TRY_OR(AbsolutePath(arena, path), {
+        auto const library_path = TRY_OR(AbsolutePath(scratch, path), {
             StdPrintF(StdStream::Err, "Error: failed to resolve library path '{}'\n", path);
             return error;
         });
@@ -347,8 +369,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                 StdPrintF(StdStream::Err, "Error: failed to open library file '{}'\n", library_path);
                 return error;
             });
-            ArenaAllocator scratch_arena {PageAllocator::Instance()};
-            auto outcome = sample_lib::ReadMdata(reader, library_path, arena, scratch_arena);
+            auto outcome = sample_lib::ReadMdata(reader, library_path, arena, scratch);
             if (outcome.HasError()) {
                 StdPrintF(StdStream::Err,
                           "Error: failed to read {}: {}, {}\n",
@@ -360,9 +381,9 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
             auto lib = outcome.Get<sample_lib::Library*>();
             lib_for_package_name = lib;
 
-            if (generate_package_info) AddLibrary(package_info, *lib, arena);
+            if (generate_package_info) AddLibrary(package_info, *lib, arena, scratch);
 
-            TRY_OR(package::WriterAddLibrary(package, *lib, arena, program_name), {
+            TRY_OR(package::WriterAddLibrary(package, *lib, scratch, program_name), {
                 StdPrintF(StdStream::Err,
                           "Error: failed to add library {} to package: {}\n",
                           library_path,
@@ -384,7 +405,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         });
         lib_for_package_name = lib;
 
-        if (generate_package_info) AddLibrary(package_info, *lib, arena);
+        if (generate_package_info) AddLibrary(package_info, *lib, arena, scratch);
 
         if (!sample_lib::CheckAllReferencedFilesExist(*lib, StdWriter(StdStream::Err))) {
             StdPrintF(StdStream::Err,
@@ -394,7 +415,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         }
 
         auto const library_folder_in_zip =
-            TRY_OR(package::WriterAddLibrary(package, *lib, arena, program_name), {
+            TRY_OR(package::WriterAddLibrary(package, *lib, scratch, program_name), {
                 StdPrintF(StdStream::Err,
                           "Error: failed to add library {} to package: {}\n",
                           library_path,
@@ -419,7 +440,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     }
 
     for (auto const p : cli_args[ToInt(PackagerCliArgId::PresetFolder)].values) {
-        auto const preset_folder = TRY_OR(AbsolutePath(arena, p), {
+        auto const preset_folder = TRY_OR(AbsolutePath(scratch, p), {
             StdPrintF(StdStream::Err, "Error: failed to resolve preset folder '{}'\n", p);
             return error;
         });
@@ -427,7 +448,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         // is convenient to read the filename from.
         TRY_OR(package::WriterAddPresetsFolder(package,
                                                preset_folder,
-                                               arena,
+                                               scratch,
                                                program_name,
                                                [&](String path, Span<u8 const> file_data) {
                                                    AddPresetIfNeeded(package_info, path, arena, file_data);
@@ -459,7 +480,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     // We do input packages last because we prioritise file from libraries/presets. We ignore files from
     // packages if they already exist from the libraries/presets.
     for (auto const path : cli_args[ToInt(PackagerCliArgId::InputPackages)].values) {
-        auto const package_path = TRY_OR(AbsolutePath(arena, path), {
+        auto const package_path = TRY_OR(AbsolutePath(scratch, path), {
             StdPrintF(StdStream::Err, "Error: failed to resolve input package path '{}'\n", path);
             return error;
         });
@@ -492,13 +513,13 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                 if (!component) break;
 
                 if (component->type == package::ComponentType::Library)
-                    AddLibrary(package_info, *component->library, arena);
+                    AddLibrary(package_info, *component->library, arena, scratch);
             }
         }
 
         TRY_OR(package::WriterAddPackage(package,
                                          input_package,
-                                         arena,
+                                         scratch,
                                          [&](String path, Span<u8 const> file_data) {
                                              AddPresetIfNeeded(package_info, path, arena, file_data);
                                          }),
@@ -514,8 +535,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     {
         package::WriterFinalise(package);
 
-        auto const package_name =
-            PackageName(arena, lib_for_package_name, cli_args[ToInt(PackagerCliArgId::PackageName)]);
+        auto const package_name = PackageName(arena, lib_for_package_name, cli_args);
         if (generate_package_info) package_info.name = package_name;
 
         if (create_package) {

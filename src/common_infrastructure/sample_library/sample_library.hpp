@@ -256,6 +256,11 @@ struct LibraryId {
     u64 Hash() const { return Ref().Hash(); }
     bool operator==(LibraryId const& other) const = default;
     bool operator==(LibraryIdRef const& other) const { return Ref() == other; }
+    bool operator<(LibraryId const& other) const {
+        if (author < other.author) return true;
+        if (author == other.author) return name < other.name;
+        return false;
+    }
 
     DynamicArrayBounded<char, k_max_library_author_size> author;
     DynamicArrayBounded<char, k_max_library_name_size> name;
