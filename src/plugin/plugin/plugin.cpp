@@ -569,7 +569,9 @@ static bool ClapGuiSetSize(clap_plugin_t const* plugin, u32 clap_width, u32 clap
         if (!size || size->width < k_min_gui_width) return false;
 
         // We try to handle some non-CLAP-compliant hosts here that give us sizes that are not in our aspect
-        // ratio. (AUv2 CLAP-wrapper in Logic, for example).
+        // ratio. Alternatively, it's actually expected to get non-compliant sizes due to the lossy nature of
+        // our logical-to-physical pixel conversion. For example, an odd number of pixels when divided by a
+        // scaling factor of 2 will suffer from integer division truncation.
         if (auto const desired_aspect_ratio = k_gui_aspect_ratio;
             !IsAspectRatio(*size, desired_aspect_ratio)) {
             auto const invalid_size = *size;
