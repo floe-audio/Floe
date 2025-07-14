@@ -2608,6 +2608,7 @@ TEST_CASE(TestPath) {
     auto& scratch_arena = tester.scratch_arena;
 
     using namespace path;
+
     SUBCASE("Trim") {
         CHECK_EQ(TrimDirectorySeparatorsEnd("foo/"_s, Format::Posix), "foo"_s);
         CHECK_EQ(TrimDirectorySeparatorsEnd("/"_s, Format::Posix), "/"_s);
@@ -2615,17 +2616,96 @@ TEST_CASE(TestPath) {
         CHECK_EQ(TrimDirectorySeparatorsEnd("foo////\\\\"_s, Format::Windows), "foo"_s);
 
         SUBCASE("windows") {
+            // Basic drive paths - should trim normally
             CHECK_EQ(TrimDirectorySeparatorsEnd("C:/foo////"_s, Format::Windows), "C:/foo"_s);
-            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\unc\\share\\foo\\bar\\", Format::Windows),
-                     "\\\\unc\\share\\foo\\bar"_s);
-            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\unc\\share\\", Format::Windows), "\\\\unc\\share"_s);
             CHECK_EQ(TrimDirectorySeparatorsEnd("C:/foo/"_s, Format::Windows), "C:/foo"_s);
             CHECK_EQ(TrimDirectorySeparatorsEnd("C:/foo"_s, Format::Windows), "C:/foo"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("C:\\Documents\\"_s, Format::Windows), "C:\\Documents"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("C:\\Documents\\\\\\\\"_s, Format::Windows),
+                     "C:\\Documents"_s);
+
+            // Drive roots - should NOT be trimmed (these are filesystem roots)
+            CHECK_EQ(TrimDirectorySeparatorsEnd("C:\\"_s, Format::Windows), "C:\\"_s);
             CHECK_EQ(TrimDirectorySeparatorsEnd("C:/"_s, Format::Windows), "C:/"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("D:\\"_s, Format::Windows), "D:\\"_s);
+
+            // Multiple separators after drive root - should trim to single separator
             CHECK_EQ(TrimDirectorySeparatorsEnd("C:////"_s, Format::Windows), "C:/"_s);
-            CHECK_EQ(TrimDirectorySeparatorsEnd("C:////"_s, Format::Windows), "C:/"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("C:\\\\\\\\"_s, Format::Windows), "C:\\"_s);
+
+            // UNC paths - network shares
+            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\server\\share\\foo\\bar\\"_s, Format::Windows),
+                     "\\\\server\\share\\foo\\bar"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\server\\share\\foo\\bar\\\\\\\\"_s, Format::Windows),
+                     "\\\\server\\share\\foo\\bar"_s);
+
+            // UNC share roots - should NOT be trimmed (these are network filesystem roots)
+            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\server\\share\\"_s, Format::Windows),
+                     "\\\\server\\share\\"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\server\\share"_s, Format::Windows),
+                     "\\\\server\\share"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\192.168.1.100\\c$\\"_s, Format::Windows),
+                     "\\\\192.168.1.100\\c$\\"_s);
+
+            // DOS device paths - should NEVER be trimmed
             CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\?\\C:\\"_s, Format::Windows), "\\\\?\\C:\\"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\?\\C:\\temp\\"_s, Format::Windows), "\\\\?\\C:\\temp"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\.\\C:\\"_s, Format::Windows), "\\\\.\\C:\\"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\.\\PhysicalDrive0\\"_s, Format::Windows),
+                     "\\\\.\\PhysicalDrive0\\"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\?\\Volume{b75e2c83-0000-0000-0000-602f00000000}\\"_s,
+                                                Format::Windows),
+                     "\\\\?\\Volume{b75e2c83-0000-0000-0000-602f00000000}\\"_s);
+
+            // DOS device UNC paths
+            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\?\\UNC\\server\\share\\"_s, Format::Windows),
+                     "\\\\?\\UNC\\server\\share"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\.\\UNC\\server\\share\\folder\\"_s, Format::Windows),
+                     "\\\\.\\UNC\\server\\share\\folder"_s);
+
+            // Root of current drive - should NOT be trimmed
+            CHECK_EQ(TrimDirectorySeparatorsEnd("\\"_s, Format::Windows), "\\"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("/"_s, Format::Windows), "/"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\\\\\"_s, Format::Windows), "\\"_s);
+
+            // Drive-relative paths (no separator after colon) - should trim normally
+            CHECK_EQ(TrimDirectorySeparatorsEnd("C:temp\\"_s, Format::Windows), "C:temp"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("D:Documents\\files\\"_s, Format::Windows),
+                     "D:Documents\\files"_s);
+
+            // Relative paths - should trim normally
+            CHECK_EQ(TrimDirectorySeparatorsEnd("folder\\"_s, Format::Windows), "folder"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("folder\\subfolder\\"_s, Format::Windows),
+                     "folder\\subfolder"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("..\\parent\\"_s, Format::Windows), "..\\parent"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd(".\\current\\"_s, Format::Windows), ".\\current"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("Documents\\\\\\\\\\\\\\\\"_s, Format::Windows),
+                     "Documents"_s);
+
+            // Mixed separators - should handle both \ and /
+            CHECK_EQ(TrimDirectorySeparatorsEnd("C:/Documents\\Files/"_s, Format::Windows),
+                     "C:/Documents\\Files"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("folder/subfolder\\//\\\\"_s, Format::Windows),
+                     "folder/subfolder"_s);
+
+            // Edge cases
             CHECK_EQ(TrimDirectorySeparatorsEnd(""_s, Format::Windows), ""_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("filename"_s, Format::Windows), "filename"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("C:"_s, Format::Windows), "C:"_s);
+
+            // Filenames with extensions
+            CHECK_EQ(TrimDirectorySeparatorsEnd("C:\\file.txt\\"_s, Format::Windows), "C:\\file.txt"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("document.pdf\\\\\\\\"_s, Format::Windows), "document.pdf"_s);
+
+            // Long UNC paths with multiple levels
+            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\fileserver\\department\\projects\\2024\\Q4\\"_s,
+                                                Format::Windows),
+                     "\\\\fileserver\\department\\projects\\2024\\Q4"_s);
+
+            // Invalid/malformed paths that should still be handled gracefully
+            CHECK_EQ(TrimDirectorySeparatorsEnd("\\\\\\server\\share\\"_s, Format::Windows),
+                     "\\\\\\server\\share"_s);
+            CHECK_EQ(TrimDirectorySeparatorsEnd("C::\\"_s, Format::Windows), "C::"_s);
         }
 
         SUBCASE("posix") {

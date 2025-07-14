@@ -142,22 +142,37 @@ PUBLIC constexpr usize Depth(String subpath, Format format = Format::Native) {
 
 [[nodiscard]] PUBLIC constexpr String TrimDirectorySeparatorsEnd(String path,
                                                                  Format format = Format::Native) {
-    auto result = path;
-    while (EndsWithDirectorySeparator(result, format))
-        result.RemoveSuffix(1);
+    switch (format) {
+        case Format::Windows: {
+            if (!path.size) return path;
 
-    // We need to respect the root directories. On posix we can't get rid of the initial / if that's the
-    // only thing. And on Windows we can't get rid of the slash after the drive (C:/foo is an absolute
-    // path, yet C:foo is a relative path)
-    if (IsAbsolute(path, format)) {
-        if (format == Format::Windows) {
-            if (EndsWith(result, ':') && path.size != result.size) result = {path.data, result.size + 1};
-        } else {
-            if (result.size == 0 && path.size != 0) result = path.SubSpan(0, 1);
+            auto const path_info = ParseWindowsPath(path);
+
+            auto path_section = path.SubSpan(path_info.drive.size);
+
+            if (!path_section.size) return path;
+
+            while (EndsWithDirectorySeparator(path_section, format)) {
+                if (path_section.size == 1) break;
+                path_section.RemoveSuffix(1);
+            }
+
+            return {path.data, (usize)(End(path_section) - path.data)};
+        }
+        case Format::Posix: {
+            if (path.size == 0) return path;
+
+            usize end = path.size;
+            while (end > 0 && path.data[end - 1] == '/')
+                --end;
+
+            // Special case: if we would trim everything (path was all slashes),
+            // preserve a single slash to represent the root directory
+            if (end == 0) end = 1;
+
+            return path.SubSpan(0, end);
         }
     }
-
-    return result;
 }
 
 [[nodiscard]] PUBLIC constexpr String TrimDirectorySeparatorsStart(String path,
