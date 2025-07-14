@@ -979,6 +979,7 @@ namespace dir_iterator {
 static Entry MakeEntry(WIN32_FIND_DATAW const& data, ArenaAllocator& arena) {
     auto filename = Narrow(arena, FromNullTerminated(data.cFileName)).Value();
     ASSERT(IsValidUtf8(filename));
+    filename = path::TrimDirectorySeparatorsEnd(filename);
     return {
         .subpath = filename,
         .type = (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? FileType::Directory : FileType::File,

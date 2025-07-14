@@ -1763,6 +1763,8 @@ void SetExtraScanFolders(Server& server, Span<String const> extra_folders) {
 
         // Add any new extra_folders that are not already present.
         for (auto const path : extra_folders) {
+            ASSERT(IsValidUtf8(path));
+
             // We don't need to add folders that are already in the array.
             if (FindIf(server.scan_folders.folders, [path](ScanFolder* f) {
                     return f->source == ScanFolder::Source::ExtraFolder && f->path == path;
