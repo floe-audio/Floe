@@ -81,8 +81,7 @@ static String AlwaysScannedFolder(ScanFolderType type, ArenaAllocator& allocator
     if (error_log.size) {
         ReportError(ErrorLevel::Warning,
                     HashComptime("always scanned folder") + ToInt(dir_type),
-                    "Failed to get always scanned folder {}\n{}",
-                    result,
+                    "Failed to get always scanned folder\n{}",
                     error_log);
     }
     return result;
@@ -114,8 +113,7 @@ FloePaths CreateFloePaths(ArenaAllocator& arena) {
         if (error_log.size) {
             ReportError(ErrorLevel::Warning,
                         HashComptime("autosave path"),
-                        "Failed to get autosave path {}\n{}",
-                        result.autosave_path,
+                        "Failed to get autosave path\n{}",
                         error_log);
         }
     }
