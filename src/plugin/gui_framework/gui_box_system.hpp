@@ -438,6 +438,19 @@ struct BoxConfig {
     TooltipString tooltip = k_nullopt;
 };
 
+PUBLIC auto ScopedEnableTooltips(GuiBoxSystem& builder, bool enable) {
+    struct ScopeGuard {
+        GuiBoxSystem& builder;
+        bool old_value;
+
+        ScopeGuard(GuiBoxSystem& b, bool old) : builder(b), old_value(old) {}
+        ~ScopeGuard() { builder.show_tooltips = old_value; }
+    };
+    auto old_value = builder.show_tooltips;
+    builder.show_tooltips = enable;
+    return ScopeGuard {builder, old_value};
+}
+
 static bool Tooltip(GuiBoxSystem& builder, imgui::Id id, Rect r, TooltipString tooltip_str) {
     ZoneScoped;
     if (!builder.show_tooltips) return false;

@@ -32,6 +32,8 @@ void DoRightClickForBox(GuiBoxSystem& box_system,
 }
 
 Box DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptions const& options) {
+    auto const scoped_tooltips = ScopedEnableTooltips(box_system, true);
+
     auto item =
         DoBox(box_system,
               {
@@ -109,6 +111,8 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                    CommonPickerState& state,
                    FilterItemInfo const& info,
                    FilterButtonOptions const& options) {
+    auto const scoped_tooltips = ScopedEnableTooltips(box_system, true);
+
     auto const num_used = ({
         u32 n = 0;
         switch (options.filter_mode) {
