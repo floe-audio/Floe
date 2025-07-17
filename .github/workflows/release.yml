@@ -134,7 +134,7 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         with:
-          release: ${{ env.VERSION }}
+          release: floe@${{ env.VERSION }}
 
       - name: Trigger website deployment
         if: success()
