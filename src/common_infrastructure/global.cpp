@@ -3,6 +3,8 @@
 
 #include "global.hpp"
 
+#include <signal.h>
+#include <stdlib.h>
 #include <valgrind/valgrind.h>
 
 #include "utils/debug_info/debug_info.h"
@@ -127,14 +129,12 @@ void GlobalInit(GlobalInitOptions options) {
     InitLogFolderIfNeeded();
 
     // after tracy
-    BeginCrashDetection([](String crash_message, uintptr error_program_counter) {
+    BeginCrashDetection([](String crash_message, StacktraceStack const& stacktrace) {
         // This function is async-signal-safe.
-
-        auto const stacktrace = CurrentStacktrace(ProgramCounter {error_program_counter});
 
         // We might be running as a shared library and the crash could have occurred in a callstack
         // completely unrelated to us. We don't want to write a crash report in that case.
-        if (stacktrace && !HasAddressesInCurrentModule(*stacktrace)) return;
+        if (!HasAddressesInCurrentModule(stacktrace)) return;
 
         if (!PRODUCTION_BUILD && IsRunningUnderDebugger()) __builtin_debugtrap();
 
@@ -149,22 +149,18 @@ void GlobalInit(GlobalInitOptions options) {
             auto writer = buffered_writer.Writer();
             DEFER { buffered_writer.FlushReset(); };
 
-            auto _ =
-                fmt::FormatToWriter(writer,
-                                    "\n" ANSI_COLOUR_SET_FOREGROUND_RED
-                                    "[crash] ({}) {} (address: 0x{x}, thread: {})" ANSI_COLOUR_RESET "\n",
-                                    ToString(g_final_binary_type),
-                                    crash_message,
-                                    error_program_counter,
-                                    thread_id);
-            if (stacktrace) {
-                auto _ = WriteStacktrace(*stacktrace,
-                                         writer,
-                                         {
-                                             .ansi_colours = true,
-                                             .demangle = IS_WINDOWS,
-                                         });
-            }
+            auto _ = fmt::FormatToWriter(writer,
+                                         "\n" ANSI_COLOUR_SET_FOREGROUND_RED
+                                         "[crash] ({}) {} (thread: {})" ANSI_COLOUR_RESET "\n",
+                                         ToString(g_final_binary_type),
+                                         crash_message,
+                                         thread_id);
+            auto _ = WriteStacktrace(stacktrace,
+                                     writer,
+                                     {
+                                         .ansi_colours = true,
+                                         .demangle = IS_WINDOWS,
+                                     });
             auto _ = writer.WriteChar('\n');
         }
 

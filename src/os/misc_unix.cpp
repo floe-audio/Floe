@@ -446,26 +446,125 @@ static String SignalString(int signal_num, siginfo_t* info) {
 
 constexpr StdStream k_signal_output_stream = StdStream::Err;
 
-static uintptr ErrorAddress(void* _ctx) {
-    if (!_ctx) return 0;
+// Signal-safe memory validation
+bool IsValidMemoryAddress(void* addr) {
+    // mincore() is NOT signal-safe! We need an alternative approach.
+    // Use a simple bounds check instead - this is signal-safe
 
-    auto* uctx = (ucontext_t*)(_ctx);
+    auto ptr = (uintptr_t)addr;
 
-#if defined(__x86_64__)
+    // Basic sanity checks that are signal-safe
+    if (ptr == 0) return false;
+
+    // Check alignment (must be pointer-aligned)
+    if (ptr & (sizeof(void*) - 1)) return false;
+
+    // On most systems, valid addresses are above this threshold
+    // and below the kernel space
+#ifdef __LP64__
+    // 64-bit systems
+    if (ptr < 0x100000 || ptr > 0x7FFFFFFFFFFF) return false;
+#else
+    // 32-bit systems
+    if (ptr < 0x100000 || ptr > 0xBFFFFFFF) return false;
+#endif
+
+    return true;
+}
+
+StacktraceStack GetInterruptedStackTrace(ucontext_t* uctx) {
+    StacktraceStack result;
+
+    uintptr_t crash_pc = 0;
+    uintptr_t fp = 0;
+    uintptr_t sp = 0;
+
+    // Platform-specific register extraction
 #if defined(__APPLE__)
-    return CheckedCast<uintptr>(uctx->uc_mcontext->__ss.__rip);
+#if defined(__aarch64__)
+    // macOS ARM64
+    crash_pc = uctx->uc_mcontext->__ss.__pc;
+    fp = uctx->uc_mcontext->__ss.__fp;
+    sp = uctx->uc_mcontext->__ss.__sp;
+#elif defined(__x86_64__)
+    // macOS x86_64
+    crash_pc = uctx->uc_mcontext->__ss.__rip;
+    fp = uctx->uc_mcontext->__ss.__rbp;
+    sp = uctx->uc_mcontext->__ss.__rsp;
 #else
-    return CheckedCast<uintptr>(uctx->uc_mcontext.gregs[REG_RIP]);
+#error "Unsupported architecture on macOS"
 #endif
-#elif defined(__aarch64__)
-#if defined(__APPLE__)
-    return CheckedCast<uintptr>(uctx->uc_mcontext->__ss.__pc);
+#elif defined(__linux__)
+#if defined(__aarch64__)
+    // Linux ARM64
+    crash_pc = uctx->uc_mcontext.pc;
+    fp = uctx->uc_mcontext.regs[29]; // x29 is frame pointer
+    sp = uctx->uc_mcontext.sp;
+#elif defined(__x86_64__)
+    // Linux x86_64
+    crash_pc = uctx->uc_mcontext.gregs[REG_RIP];
+    fp = uctx->uc_mcontext.gregs[REG_RBP];
+    sp = uctx->uc_mcontext.gregs[REG_RSP];
 #else
-    return CheckedCast<uintptr>(uctx->uc_mcontext.pc);
+#error "Unsupported architecture on Linux"
 #endif
 #else
-#error "Only x86_64 and aarch64 architectures are supported"
+#error "Unsupported platform"
 #endif
+
+    // Start with the crash PC
+    dyn::Append(result, crash_pc);
+
+    // Architecture-specific stack walking
+#if defined(__aarch64__)
+    // ARM64 stack walking
+    while (fp != 0 && result.size < result.Capacity()) {
+        // Validate frame pointer
+        if (fp < sp || fp > sp + 0x100000) break;
+        if (fp & 0xF) break; // Must be 16-byte aligned on ARM64
+
+        // ARM64 frame layout: [previous_fp][return_address][locals...]
+        uintptr_t* frame = (uintptr_t*)fp;
+
+        if (!IsValidMemoryAddress(frame)) break;
+
+        uintptr_t return_addr = frame[1]; // Link register (LR)
+        if (return_addr == 0) break;
+
+        // Add return address - 1 to get call site
+        dyn::Append(result, return_addr - 1);
+
+        // Move to previous frame
+        uintptr_t prev_fp = frame[0];
+        if (prev_fp <= fp) break; // Prevent infinite loops
+        fp = prev_fp;
+    }
+#elif defined(__x86_64__)
+    // x86_64 stack walking
+    while (fp != 0 && result.size < result.Capacity()) {
+        // Validate frame pointer
+        if (fp < sp || fp > sp + 0x100000) break;
+        if (fp & 0x7) break; // Must be 8-byte aligned on x86_64
+
+        // x86_64 frame layout: [previous_rbp][return_address][locals...]
+        uintptr_t* frame = (uintptr_t*)fp;
+
+        if (!IsValidMemoryAddress(frame)) break;
+
+        uintptr_t return_addr = frame[1]; // Return address
+        if (return_addr == 0) break;
+
+        // Add return address - 1 to get call site
+        dyn::Append(result, return_addr - 1);
+
+        // Move to previous frame
+        uintptr_t prev_fp = frame[0];
+        if (prev_fp <= fp) break; // Prevent infinite loops
+        fp = prev_fp;
+    }
+#endif
+
+    return result;
 }
 
 // remember we can only use async-signal-safe functions here:
@@ -489,8 +588,10 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
 #endif
         }
 
-        if (auto hook = g_crash_hook.Load(LoadMemoryOrder::Acquire))
-            hook(signal_description, ErrorAddress(context));
+        if (auto hook = g_crash_hook.Load(LoadMemoryOrder::Acquire)) {
+            auto const stacktrace = GetInterruptedStackTrace((ucontext_t*)(context));
+            hook(signal_description, stacktrace);
+        }
 
         for (auto [index, s] : Enumerate(k_signals)) {
             if (s == signal_num) {
