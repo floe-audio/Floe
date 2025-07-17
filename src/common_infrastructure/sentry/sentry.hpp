@@ -125,6 +125,10 @@ static constexpr usize k_max_message_length = 8192;
 static constexpr String k_environment = PRODUCTION_BUILD ? "production"_s : "development"_s;
 static constexpr String k_user_agent = "floe/" FLOE_VERSION_STRING;
 
+// The default fingerprinting algorithm doesn't produce great results for us, so we can manually set it.
+// Sentry uses the fingerprint to group events into 'issues'.
+static constexpr bool k_use_custom_fingerprint = false;
+
 constexpr auto k_report_file_extension = "floe-report"_ca;
 
 static fmt::UuidArray Uuid(Atomic<u64>& seed) {
@@ -613,9 +617,7 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
         TRY(json::WriteObjectEnd(json_writer));
     }
 
-    // The default fingerprinting algorithm doesn't produce great results for us, so we manually set it here.
-    // Sentry uses the fingerprint to group events into 'issues'.
-    {
+    if constexpr (detail::k_use_custom_fingerprint) {
         if (fingerprint == HashInit()) HashUpdate(fingerprint, event.message);
         TRY(json::WriteKeyArrayBegin(json_writer, "fingerprint"));
         TRY(json::WriteValue(json_writer, fmt::IntToString(fingerprint)));
