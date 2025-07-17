@@ -30,7 +30,7 @@ static constexpr Optional<FilesystemError> TranslateWin32Code(DWORD win32_code) 
         case ERROR_PATH_NOT_FOUND: return FilesystemError::PathDoesNotExist;
         case ERROR_TOO_MANY_OPEN_FILES: return FilesystemError::TooManyFilesOpen;
         case ERROR_ACCESS_DENIED: return FilesystemError::AccessDenied;
-        case ERROR_SHARING_VIOLATION: return FilesystemError::AccessDenied;
+        case ERROR_SHARING_VIOLATION: return FilesystemError::UsedByAnotherProcess;
         case ERROR_ALREADY_EXISTS: return FilesystemError::PathAlreadyExists;
         case ERROR_FILE_EXISTS: return FilesystemError::PathAlreadyExists;
         case ERROR_NOT_SAME_DEVICE: return FilesystemError::DifferentFilesystems;

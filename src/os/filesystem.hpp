@@ -12,6 +12,7 @@ enum class FilesystemError : u32 {
     TooManyFilesOpen,
     FolderContainsTooManyFiles,
     AccessDenied,
+    UsedByAnotherProcess,
     PathIsAFile,
     PathIsAsDirectory,
     FileWatcherCreationFailed,

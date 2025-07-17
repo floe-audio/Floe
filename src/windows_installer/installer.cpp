@@ -106,7 +106,8 @@ static ErrorCodeOr<void> TryInstall(Component const& comp) {
     PathArena arena {Malloc::Instance()};
     auto const path = path::Join(arena, Array {comp.install_dir, comp.info.filename});
     TRY_OR(WriteFile(path, comp.data), {
-        ReportError(ErrorLevel::Warning, k_nullopt, "Failed to install file: {}", error);
+        if (error != FilesystemError::UsedByAnotherProcess)
+            ReportError(ErrorLevel::Warning, k_nullopt, "Failed to install file: {}", error);
         return error;
     });
 
@@ -205,7 +206,8 @@ static void SwitchPage(Application& app, GuiFramework& framework, Pages page) {
                                 app.components[comp_index].info.filename,
                                 app.components[comp_index].install_dir,
                                 result.Error());
-                    if (result.Error() == FilesystemError::AccessDenied)
+                    if (result.Error() == FilesystemError::AccessDenied ||
+                        result.Error() == FilesystemError::UsedByAnotherProcess)
                         fmt::Append(summary_text, "\nTry closing your DAW and trying again.");
                 }
                 dyn::AppendSpan(summary_text, "\n\n");

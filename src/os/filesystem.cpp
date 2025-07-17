@@ -18,6 +18,8 @@ static constexpr ErrorCodeCategory k_fp_error_category {
                 case FilesystemError::TooManyFilesOpen: return "too many files open";
                 case FilesystemError::FolderContainsTooManyFiles: return "folder is too large";
                 case FilesystemError::AccessDenied: return "access is denied to this file or folder";
+                case FilesystemError::UsedByAnotherProcess:
+                    return "file or folder is used by another process";
                 case FilesystemError::PathIsAFile: return "path is a file";
                 case FilesystemError::PathIsAsDirectory: return "path is a folder";
                 case FilesystemError::PathAlreadyExists: return "path already exists";
