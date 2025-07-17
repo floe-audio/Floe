@@ -27,7 +27,7 @@ namespace graphics {
 static constexpr ErrorCodeCategory k_gl_error_category {
     .category_id = "GL",
     .message = [](Writer const& writer, ErrorCode code) -> ErrorCodeOr<void> {
-        String str {"unknown"};
+        String str {"unknown GL error"};
         switch (code.code) {
             case GL_NO_ERROR: PanicIfReached(); break;
             case GL_INVALID_ENUM: str = "invalid enum"; break;
@@ -38,9 +38,6 @@ static constexpr ErrorCodeCategory k_gl_error_category {
             case GL_OUT_OF_MEMORY: str = "out of memory"; break;
             case GL_TABLE_TOO_LARGE: str = "table too large"; break;
             case GL_INVALID_FRAMEBUFFER_OPERATION: str = "invalid framebuffer operation"; break;
-            default: {
-                PanicIfReached();
-            }
         }
         return writer.WriteChars(str);
     },
