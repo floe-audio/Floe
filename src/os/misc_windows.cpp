@@ -289,7 +289,7 @@ static String ExceptionCodeString(DWORD code) {
 bool IsValidMemoryAddressWindows(void* addr) {
     if (addr == nullptr) return false;
 
-    uintptr_t ptr = (uintptr_t)addr;
+    auto const ptr = (uintptr)addr;
 
     if (ptr & (sizeof(void*) - 1)) return false;
 
