@@ -308,85 +308,46 @@ StacktraceStack GetInterruptedStackTraceWindows(PEXCEPTION_POINTERS exception_in
     StacktraceStack result;
 
     PCONTEXT context = exception_info->ContextRecord;
-    uintptr_t crash_pc = 0;
-    uintptr_t fp = 0;
-    uintptr_t sp = 0;
+    uintptr crash_pc = 0;
+    uintptr fp = 0;
+    uintptr sp = 0;
+    uintptr req_alignment = 0;
 
 #if defined(_M_X64) || defined(__x86_64__)
     // x86_64 Windows
     crash_pc = context->Rip;
     fp = context->Rbp;
     sp = context->Rsp;
+    req_alignment = 8;
 #elif defined(_M_ARM64) || defined(__aarch64__)
     // ARM64 Windows
     crash_pc = context->Pc;
     fp = context->Fp; // x29
     sp = context->Sp;
-#elif defined(_M_IX86) || defined(__i386__)
-    // x86 Windows (32-bit)
-    crash_pc = context->Eip;
-    fp = context->Ebp;
-    sp = context->Esp;
-#else
+    req_alignment = 16;
 #error "Unsupported architecture on Windows"
 #endif
 
     // Start with the crash PC
     dyn::Append(result, crash_pc);
 
-    // Walk the stack using frame pointers
-#if defined(_M_X64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
-    // x86/x64 stack walking
     while (fp != 0 && result.size < result.Capacity()) {
-        // Validate frame pointer
         if (fp < sp || fp > sp + 0x100000) break;
+        if (!IsAligned((void const*)fp, req_alignment)) break;
 
-#if defined(_M_X64) || defined(__x86_64__)
-        if (fp & 0x7) break; // Must be 8-byte aligned on x64
-#else
-        if (fp & 0x3) break; // Must be 4-byte aligned on x86
-#endif
-
-        // x86/x64 frame layout: [previous_ebp/rbp][return_address][locals...]
-        uintptr_t* frame = (uintptr_t*)fp;
+        auto* frame = (uintptr*)fp;
 
         if (!IsValidMemoryAddressWindows(frame)) break;
 
-        uintptr_t return_addr = frame[1]; // Return address
+        auto return_addr = frame[1];
         if (return_addr == 0) break;
 
-        // Add return address - 1 to get call site
         dyn::Append(result, return_addr - 1);
 
-        // Move to previous frame
-        uintptr_t prev_fp = frame[0];
+        auto prev_fp = frame[0];
         if (prev_fp <= fp) break; // Prevent infinite loops
         fp = prev_fp;
     }
-#elif defined(_M_ARM64) || defined(__aarch64__)
-    // ARM64 stack walking
-    while (fp != 0 && result.size < result.Capacity()) {
-        // Validate frame pointer
-        if (fp < sp || fp > sp + 0x100000) break;
-        if (fp & 0xF) break; // Must be 16-byte aligned on ARM64
-
-        // ARM64 frame layout: [previous_fp][return_address][locals...]
-        uintptr_t* frame = (uintptr_t*)fp;
-
-        if (!IsValidMemoryAddressWindows(frame)) break;
-
-        uintptr_t return_addr = frame[1]; // Link register (LR)
-        if (return_addr == 0) break;
-
-        // Add return address - 1 to get call site
-        dyn::Append(result, return_addr - 1);
-
-        // Move to previous frame
-        uintptr_t prev_fp = frame[0];
-        if (prev_fp <= fp) break; // Prevent infinite loops
-        fp = prev_fp;
-    }
-#endif
 
     return result;
 }

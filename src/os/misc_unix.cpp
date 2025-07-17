@@ -446,38 +446,21 @@ static String SignalString(int signal_num, siginfo_t* info) {
 
 constexpr StdStream k_signal_output_stream = StdStream::Err;
 
-// Signal-safe memory validation
-bool IsValidMemoryAddress(void* addr) {
-    // mincore() is NOT signal-safe! We need an alternative approach.
-    // Use a simple bounds check instead - this is signal-safe
-
-    auto ptr = (uintptr_t)addr;
-
-    // Basic sanity checks that are signal-safe
+static bool IsValidMemoryAddress(void* addr) {
+    auto const ptr = (uintptr_t)addr;
     if (ptr == 0) return false;
-
-    // Check alignment (must be pointer-aligned)
     if (ptr & (sizeof(void*) - 1)) return false;
-
-    // On most systems, valid addresses are above this threshold
-    // and below the kernel space
-#ifdef __LP64__
-    // 64-bit systems
     if (ptr < 0x100000 || ptr > 0x7FFFFFFFFFFF) return false;
-#else
-    // 32-bit systems
-    if (ptr < 0x100000 || ptr > 0xBFFFFFFF) return false;
-#endif
-
     return true;
 }
 
-StacktraceStack GetInterruptedStackTrace(ucontext_t* uctx) {
+static StacktraceStack GetInterruptedStackTrace(ucontext_t* uctx) {
     StacktraceStack result;
 
-    uintptr_t crash_pc = 0;
-    uintptr_t fp = 0;
-    uintptr_t sp = 0;
+    uintptr crash_pc = 0;
+    uintptr fp = 0;
+    uintptr sp = 0;
+    uintptr req_alignment = 0;
 
     // Platform-specific register extraction
 #if defined(__APPLE__)
@@ -486,11 +469,13 @@ StacktraceStack GetInterruptedStackTrace(ucontext_t* uctx) {
     crash_pc = uctx->uc_mcontext->__ss.__pc;
     fp = uctx->uc_mcontext->__ss.__fp;
     sp = uctx->uc_mcontext->__ss.__sp;
+    req_alignment = 16;
 #elif defined(__x86_64__)
     // macOS x86_64
     crash_pc = uctx->uc_mcontext->__ss.__rip;
     fp = uctx->uc_mcontext->__ss.__rbp;
     sp = uctx->uc_mcontext->__ss.__rsp;
+    req_alignment = 8;
 #else
 #error "Unsupported architecture on macOS"
 #endif
@@ -500,11 +485,13 @@ StacktraceStack GetInterruptedStackTrace(ucontext_t* uctx) {
     crash_pc = uctx->uc_mcontext.pc;
     fp = uctx->uc_mcontext.regs[29]; // x29 is frame pointer
     sp = uctx->uc_mcontext.sp;
+    req_alignment = 16;
 #elif defined(__x86_64__)
     // Linux x86_64
-    crash_pc = uctx->uc_mcontext.gregs[REG_RIP];
-    fp = uctx->uc_mcontext.gregs[REG_RBP];
-    sp = uctx->uc_mcontext.gregs[REG_RSP];
+    crash_pc = CheckedCast<uintptr>(uctx->uc_mcontext.gregs[REG_RIP]);
+    fp = CheckedCast<uintptr>(uctx->uc_mcontext.gregs[REG_RBP]);
+    sp = CheckedCast<uintptr>(uctx->uc_mcontext.gregs[REG_RSP]);
+    req_alignment = 8;
 #else
 #error "Unsupported architecture on Linux"
 #endif
@@ -512,57 +499,26 @@ StacktraceStack GetInterruptedStackTrace(ucontext_t* uctx) {
 #error "Unsupported platform"
 #endif
 
-    // Start with the crash PC
     dyn::Append(result, crash_pc);
 
-    // Architecture-specific stack walking
-#if defined(__aarch64__)
-    // ARM64 stack walking
     while (fp != 0 && result.size < result.Capacity()) {
-        // Validate frame pointer
         if (fp < sp || fp > sp + 0x100000) break;
-        if (fp & 0xF) break; // Must be 16-byte aligned on ARM64
+        if (!IsAligned((void const*)fp, req_alignment)) break;
 
-        // ARM64 frame layout: [previous_fp][return_address][locals...]
-        uintptr_t* frame = (uintptr_t*)fp;
+        auto* frame = (uintptr*)fp;
 
         if (!IsValidMemoryAddress(frame)) break;
 
-        uintptr_t return_addr = frame[1]; // Link register (LR)
+        auto return_addr = frame[1];
         if (return_addr == 0) break;
 
-        // Add return address - 1 to get call site
         dyn::Append(result, return_addr - 1);
 
         // Move to previous frame
-        uintptr_t prev_fp = frame[0];
+        auto prev_fp = frame[0];
         if (prev_fp <= fp) break; // Prevent infinite loops
         fp = prev_fp;
     }
-#elif defined(__x86_64__)
-    // x86_64 stack walking
-    while (fp != 0 && result.size < result.Capacity()) {
-        // Validate frame pointer
-        if (fp < sp || fp > sp + 0x100000) break;
-        if (fp & 0x7) break; // Must be 8-byte aligned on x86_64
-
-        // x86_64 frame layout: [previous_rbp][return_address][locals...]
-        uintptr_t* frame = (uintptr_t*)fp;
-
-        if (!IsValidMemoryAddress(frame)) break;
-
-        uintptr_t return_addr = frame[1]; // Return address
-        if (return_addr == 0) break;
-
-        // Add return address - 1 to get call site
-        dyn::Append(result, return_addr - 1);
-
-        // Move to previous frame
-        uintptr_t prev_fp = frame[0];
-        if (prev_fp <= fp) break; // Prevent infinite loops
-        fp = prev_fp;
-    }
-#endif
 
     return result;
 }
