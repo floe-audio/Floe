@@ -101,10 +101,17 @@ UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const&) {
 
 @interface DIALOG_DELEGATE_CLASS : NSObject <NSOpenSavePanelDelegate>
 @property Span<FilePickerDialogOptions::FileFilter const> filters; // NOLINT
+@property Mutex* mutex; // NOLINT
 @end
 
 @implementation DIALOG_DELEGATE_CLASS
+// Not necessary main-thread.
 - (BOOL)panel:(id)sender shouldEnableURL:(NSURL*)url {
+    if (!url) return NO;
+
+    self.mutex->Lock();
+    DEFER { self.mutex->Unlock(); };
+
     // Enable directories so that the user can navigate into them.
     BOOL is_directory;
     [[NSFileManager defaultManager] fileExistsAtPath:[url path] isDirectory:&is_directory];
@@ -124,6 +131,7 @@ UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const&) {
 
 struct NativeFilePicker {
     NSSavePanel* panel = nullptr;
+    Mutex mutex;
     DIALOG_DELEGATE_CLASS* delegate = nullptr;
 };
 
@@ -192,6 +200,7 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform,
                 native_file_picker.panel = (NSSavePanel*)open_panel; // retain
 
                 native_file_picker.delegate = [[DIALOG_DELEGATE_CLASS alloc] init];
+                native_file_picker.delegate.mutex = &native_file_picker.mutex;
                 native_file_picker.delegate.filters =
                     platform.file_picker_result_arena.Clone(options.filters, CloneType::Deep);
                 open_panel.delegate = native_file_picker.delegate;
@@ -242,11 +251,17 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform,
 }
 
 void detail::CloseNativeFilePicker(GuiPlatform& platform) {
+    ASSERT([NSThread isMainThread]);
+
     if (!platform.native_file_picker) return;
     auto& native_file_picker = platform.native_file_picker->As<NativeFilePicker>();
     if (!native_file_picker.panel) return;
-    [native_file_picker.panel close];
-    native_file_picker.panel = nullptr; // release
-    native_file_picker.delegate = nullptr; // release
+    {
+        native_file_picker.mutex.Lock();
+        DEFER { native_file_picker.mutex.Unlock(); };
+        [native_file_picker.panel close];
+        native_file_picker.panel = nullptr; // release
+        native_file_picker.delegate = nullptr; // release
+    }
     platform.native_file_picker.Clear();
 }

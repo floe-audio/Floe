@@ -50,7 +50,7 @@ struct GuiPlatform {
     bool inside_update {};
     bool first_update_made {};
     ArenaAllocator file_picker_result_arena {Malloc::Instance()};
-    Optional<OpaqueHandle<IS_WINDOWS ? 160 : 16>> native_file_picker {};
+    Optional<OpaqueHandle<IS_WINDOWS ? 160 : IS_MACOS ? 80 : 16>> native_file_picker {};
     bool windows_keyboard_hook_added {};
 };
 
