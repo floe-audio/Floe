@@ -32,11 +32,23 @@ PUBLIC Optional<String> UninstallerPath(ArenaAllocator& arena, bool create) {
     auto path = *Narrow(arena, FromNullTerminated(wide_dir));
     path = path::JoinAppendResizeAllocation(arena, path, Array {"Floe"_s});
 
+    ASSERT(path::IsAbsolute(path));
+    ASSERT(IsValidUtf8(path));
+    ASSERT(path::TrimDirectorySeparatorsEnd(path).size == path.size);
+
     if (create) {
-        TRY_OR(CreateDirectory(path, {.create_intermediate_directories = false, .fail_if_exists = false}), {
-            ReportError(ErrorLevel::Warning, k_nullopt, "Failed to create directory: {}", error);
-            return k_nullopt;
-        });
+        // We give it a few attempts in case antivirus is doing a scan.
+        for (auto const attempt : Range(3)) {
+            TRY_OR(
+                CreateDirectory(path, {.create_intermediate_directories = false, .fail_if_exists = false}),
+                {
+                    if (attempt == 2) {
+                        ReportError(ErrorLevel::Warning, k_nullopt, "Failed to create directory: {}", error);
+                        return k_nullopt;
+                    }
+                });
+            Sleep(100);
+        }
     }
 
     path = path::JoinAppendResizeAllocation(arena,
