@@ -140,10 +140,11 @@ PUBLIC void CreateUninstallRegistryKey(ArenaAllocator& arena, String uninstaller
 
 PUBLIC void RemoveUninstallRegistryKey() {
     if (auto const rc = RegDeleteKeyW(HKEY_LOCAL_MACHINE, k_uninstall_key); rc != ERROR_SUCCESS)
-        ReportError(ErrorLevel::Warning,
-                    k_nullopt,
-                    "Failed to delete uninstall registry key: {}",
-                    Win32ErrorCode((DWORD)rc));
+        if (rc != ERROR_FILE_NOT_FOUND) // It's fine if the key doesn't exist.
+            ReportError(ErrorLevel::Warning,
+                        k_nullopt,
+                        "Failed to delete uninstall registry key: {}",
+                        Win32ErrorCode((DWORD)rc));
 }
 
 PUBLIC void RemoveFileOnReboot(String path, ArenaAllocator& arena) {
