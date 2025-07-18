@@ -461,15 +461,8 @@ static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
             .full_width = true,
         });
 
-    if (folder_filters.do_right_click_menu) {
-        DoRightClickForBox(box_system,
-                           state,
-                           button,
-                           folder->Hash(),
-                           [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
-                               folder_filters.do_right_click_menu(box_system, menu_state);
-                           });
-    }
+    if (folder_filters.do_right_click_menu)
+        DoRightClickForBox(box_system, state, button, folder->Hash(), folder_filters.do_right_click_menu);
 
     ++indent;
     for (auto* child = folder->first_child; child; child = child->next)
