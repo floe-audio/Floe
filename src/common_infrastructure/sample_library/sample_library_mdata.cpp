@@ -506,7 +506,7 @@ ReadMdata(Reader& reader, String filepath, ArenaAllocator& result_arena, ArenaAl
         o.Value();
     });
 
-    library->path = String(filepath.Clone(result_arena));
+    library->path = filepath.Clone(result_arena);
     if (reader.memory)
         library->file_format_specifics.Get<MdataSpecifics>().file_data = {reader.memory, reader.size};
 

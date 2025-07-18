@@ -276,7 +276,7 @@ static bool UpdateLibraryJobs(Server& server,
     ASSERT_EQ(CurrentThreadId(), pending_library_jobs.server_thread_id);
     ZoneNamed(outer, true);
 
-    // trigger folder scanning if any are marked as 'rescan-requested'
+    // Trigger folder scanning they're marked as 'rescan-requested'.
     for (auto& f : pending_library_jobs.folders) {
         ASSERT(f);
         auto expected = ScanFolder::State::RescanRequested;
@@ -305,7 +305,7 @@ static bool UpdateLibraryJobs(Server& server,
         AddAsyncJob(pending_library_jobs, server.libraries, scan_job);
     }
 
-    // handle async jobs that have completed
+    // Handle async jobs that have completed.
     for (auto node = pending_library_jobs.jobs.Load(LoadMemoryOrder::Acquire); node != nullptr;
          node = node->next) {
         if (node->result_handled) continue;
@@ -344,15 +344,14 @@ static bool UpdateLibraryJobs(Server& server,
 
                         bool not_wanted = false;
 
-                        // Check if we actually want this library
+                        // Check if we actually want this library.
                         for (auto it = server.libraries.begin(); it != server.libraries.end();)
                             if (path::Equal(it->value.lib->path, lib->path)) {
                                 it = server.libraries.Remove(it);
                                 NotifyAllChannelsOfLibraryChange(server, lib->Id());
                             } else if (it->value.lib->Id() == lib->Id()) {
                                 if (it->value.lib->minor_version > lib->minor_version) {
-                                    // the existing library is newer
-                                    not_wanted = true;
+                                    not_wanted = true; // The existing library is newer.
                                     ++it;
                                 } else {
                                     it = server.libraries.Remove(it);
@@ -622,7 +621,7 @@ static bool UpdateLibraryJobs(Server& server,
             ++it;
     }
 
-    // remove libraries do not exist on the filesystem
+    // Remove libraries do not exist on the filesystem.
     for (auto it = server.libraries.begin(); it != server.libraries.end();) {
         auto const& lib = *it->value.lib;
         if (lib.Id() != sample_lib::k_builtin_library_id && GetFileType(lib.path).HasError())
@@ -631,7 +630,7 @@ static bool UpdateLibraryJobs(Server& server,
             ++it;
     }
 
-    // update libraries_by_id
+    // Update libraries_by_id.
     {
         ZoneNamedN(rebuild_htab, "rehash", true);
         server.libraries_by_id_mutex.Lock();
