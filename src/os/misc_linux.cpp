@@ -69,7 +69,7 @@ OsInfo GetOsInfo() {
 
 String GetFileBrowserAppName() { return "File Explorer"; }
 
-bool FillCpuInfo(SystemStats& stats, char const* filename) {
+static bool FillCpuInfo(SystemStats& stats, char const* filename) {
     auto fd = open(filename, O_RDONLY);
     if (fd == -1) return false;
     DEFER { close(fd); };
@@ -97,6 +97,39 @@ bool FillCpuInfo(SystemStats& stats, char const* filename) {
     return true;
 }
 
+static bool FillMemoryInfo(SystemStats& stats, char const* filename) {
+    auto fd = open(filename, O_RDONLY);
+    if (fd == -1) return false;
+    DEFER { close(fd); };
+
+    constexpr usize k_max_file_size = Kb(4);
+    DynamicArrayBounded<char, k_max_file_size> file_data {};
+    auto const num_read = read(fd, file_data.data, k_max_file_size);
+    if (num_read == -1) return false;
+    file_data.size = (usize)num_read;
+
+    for (auto const line : SplitIterator {file_data, '\n'}) {
+        auto const colon_pos = Find(line, ':');
+        if (!colon_pos) continue;
+
+        auto const key = WhitespaceStripped(line.SubSpan(0, *colon_pos));
+        auto value = WhitespaceStripped(line.SubSpan(*colon_pos + 1));
+
+        if (key == "MemTotal") {
+            // Parse value like "16384000 kB"
+            auto const space_pos = Find(value, ' ');
+            if (space_pos) {
+                auto const kb_str = value.SubSpan(0, *space_pos);
+                if (auto const kb = ParseInt(kb_str, ParseIntBase::Decimal)) {
+                    stats.total_ram_bytes = CheckedCast<usize>(*kb * 1024);
+                    break;
+                }
+            }
+        }
+    }
+    return true;
+}
+
 SystemStats GetSystemStats() {
     SystemStats result {};
     if (!result.page_size) {
@@ -105,6 +138,7 @@ SystemStats GetSystemStats() {
         ASSERT(result.num_logical_cpus);
         ASSERT(result.page_size);
         FillCpuInfo(result, "/proc/cpuinfo");
+        FillMemoryInfo(result, "/proc/meminfo");
     }
     return result;
 }

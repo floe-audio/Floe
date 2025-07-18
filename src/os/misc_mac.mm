@@ -125,6 +125,8 @@ SystemStats GetSystemStats() {
     if (sysctlbyname("hw.cpufrequency", &freq, &size, nullptr, 0) == 0)
         result.frequency_mhz = (double)freq / 1000000.0;
 
+    result.total_ram_bytes = [[NSProcessInfo processInfo] physicalMemory];
+
     return result;
 }
 

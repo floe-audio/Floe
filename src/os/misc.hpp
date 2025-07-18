@@ -37,6 +37,7 @@ struct SystemStats {
     u32 page_size = 0;
     DynamicArrayBounded<char, 256> cpu_name {};
     double frequency_mhz = 0;
+    usize total_ram_bytes = 0;
 };
 
 SystemStats GetSystemStats();

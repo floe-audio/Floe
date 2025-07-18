@@ -520,6 +520,12 @@ SystemStats GetSystemStats() {
     result.page_size = (u32)system_info.dwPageSize;
     ASSERT(result.page_size);
 
+    {
+        MEMORYSTATUSEX mem_status {};
+        mem_status.dwLength = sizeof(mem_status);
+        if (GlobalMemoryStatusEx(&mem_status)) result.total_ram_bytes = mem_status.ullTotalPhys;
+    }
+
     HKEY hkey;
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
                       L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",

@@ -140,6 +140,7 @@ static void InitSentry(Sentry& sentry, DsnInfo dsn, Span<Tag const> tags) {
         TRY(json::WriteKeyValue(json, "cpu_description", system.cpu_name));
         TRY(json::WriteKeyValue(json, "processor_count", system.num_logical_cpus));
         TRY(json::WriteKeyValue(json, "processor_frequency", system.frequency_mhz));
+        TRY(json::WriteKeyValue(json, "memory_size", system.total_ram_bytes));
         TRY(json::WriteObjectEnd(json));
         return k_success;
     });
