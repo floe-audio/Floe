@@ -5,9 +5,9 @@
 
 #include "os/misc.hpp"
 
+#include "common_infrastructure/autosave.hpp"
 #include "common_infrastructure/error_reporting.hpp"
 
-#include "engine/autosave.hpp"
 #include "engine/check_for_update.hpp"
 #include "engine/package_installation.hpp"
 #include "gui/gui_file_picker.hpp"

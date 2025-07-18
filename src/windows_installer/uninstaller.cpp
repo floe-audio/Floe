@@ -3,6 +3,10 @@
 
 #include "os/filesystem.hpp"
 
+#include "common_infrastructure/autosave.hpp"
+#include "common_infrastructure/paths.hpp"
+#include "common_infrastructure/sentry/sentry.hpp"
+
 #include "gui.hpp"
 #include "windows_installer/registry.hpp"
 
@@ -122,7 +126,9 @@ Application* CreateApplication(GuiFramework& framework, u32 root_layout) {
 }
 
 static void UninstallFloe(ArenaAllocator& scratch, DynamicArray<char>& error_log) {
-    // Delete plugins
+    auto const paths = CreateFloePaths(scratch, false);
+
+    // Delete plugins.
     struct Plugin {
         KnownDirectoryType type;
         String name;
@@ -139,12 +145,59 @@ static void UninstallFloe(ArenaAllocator& scratch, DynamicArray<char>& error_log
                { fmt::Append(error_log, "Failed to delete '{}': {}\n", path, error); });
     }
 
-    // Delete preferences
+    // Delete preferences.
     {
         auto const path = PreferencesFilepath();
         TRY_OR(Delete(path, {.type = DeleteOptions::Type::File, .fail_if_not_exists = false}),
                { fmt::Append(error_log, "Failed to delete '{}': {}\n", path, error); });
 
+        if (auto const dir = path::Directory(path)) {
+            auto _ = Delete(*dir,
+                            {.type = DeleteOptions::Type::DirectoryOnlyIfEmpty, .fail_if_not_exists = false});
+        }
+    }
+
+    // Delete autosaves.
+    {
+        TRY_OR(CleanupOldAutosavesIfNeeded(paths, scratch, 0), {
+            if (error != FilesystemError::PathDoesNotExist)
+                fmt::Append(error_log, "Failed to clean up old autosaves: {}\n", error);
+        });
+        if (auto const dir = path::Directory(paths.autosave_path)) {
+            auto _ = Delete(*dir,
+                            {.type = DeleteOptions::Type::DirectoryOnlyIfEmpty, .fail_if_not_exists = false});
+        }
+    }
+
+    // Delete persistent store.
+    {
+        auto const path = paths.persistent_store_path;
+        TRY_OR(Delete(path, {.type = DeleteOptions::Type::File, .fail_if_not_exists = false}),
+               { fmt::Append(error_log, "Failed to delete file '{}': {}\n", path, error); });
+
+        if (auto const dir = path::Directory(path)) {
+            auto _ = Delete(*dir,
+                            {.type = DeleteOptions::Type::DirectoryOnlyIfEmpty, .fail_if_not_exists = false});
+        }
+    }
+
+    // Delete device ID file.
+    {
+        auto const path = sentry::DeviceIdPath(scratch, false);
+        TRY_OR(Delete(path, {.type = DeleteOptions::Type::File, .fail_if_not_exists = false}),
+               { fmt::Append(error_log, "Failed to delete file '{}': {}\n", path, error); });
+
+        if (auto const dir = path::Directory(path)) {
+            auto _ = Delete(*dir,
+                            {.type = DeleteOptions::Type::DirectoryOnlyIfEmpty, .fail_if_not_exists = false});
+        }
+    }
+
+    // Lua defs filepath.
+    {
+        auto const path = sample_lib::LuaDefinitionsFilepath(scratch);
+        TRY_OR(Delete(path, {.type = DeleteOptions::Type::File, .fail_if_not_exists = false}),
+               { fmt::Append(error_log, "Failed to delete file '{}': {}\n", path, error); });
         if (auto const dir = path::Directory(path)) {
             auto _ = Delete(*dir,
                             {.type = DeleteOptions::Type::DirectoryOnlyIfEmpty, .fail_if_not_exists = false});

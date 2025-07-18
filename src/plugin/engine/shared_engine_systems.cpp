@@ -39,7 +39,7 @@ void SharedEngineSystems::StartPollingThreadIfNeeded() {
 
 SharedEngineSystems::SharedEngineSystems(Span<sentry::Tag const> tags)
     : arena(PageAllocator::Instance(), Kb(4))
-    , paths(CreateFloePaths(arena))
+    , paths(CreateFloePaths(arena, true))
     , prefs {.arena = PageAllocator::Instance()}
     , persistent_store {.filepath = paths.persistent_store_path}
     , sample_library_server(thread_pool,

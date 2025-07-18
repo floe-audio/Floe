@@ -93,9 +93,9 @@ Autosave(AutosaveState& state, StateSnapshot const& snapshot, FloePaths const& p
 }
 
 // background thread
-static ErrorCodeOr<void> CleanupOldAutosavesIfNeeded(FloePaths const& paths,
-                                                     ArenaAllocator& scratch_arena,
-                                                     u16 k_autosave_max_age_days) {
+ErrorCodeOr<void> CleanupOldAutosavesIfNeeded(FloePaths const& paths,
+                                              ArenaAllocator& scratch_arena,
+                                              u16 k_autosave_max_age_days) {
     ZoneScoped;
     constexpr auto k_wildcard =
         ConcatArrays("*"_ca, k_autosave_filename_prefix, "*"_ca, FLOE_PRESET_FILE_EXTENSION ""_ca);
@@ -345,7 +345,7 @@ static String TestPresetPath(tests::Tester& tester, String filename) {
 
 TEST_CASE(TestAutosave) {
     AutosaveState state {};
-    auto const paths = CreateFloePaths(tester.arena);
+    auto const paths = CreateFloePaths(tester.arena, true);
     prefs::Preferences preferences {};
 
     // We need to load some valid state to test autosave.

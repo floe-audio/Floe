@@ -4,12 +4,12 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
+#include "common_infrastructure/autosave.hpp"
 #include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/sample_library/attribution_requirements.hpp"
 #include "common_infrastructure/state/instrument.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
-#include "autosave.hpp"
 #include "engine/package_installation.hpp"
 #include "processor/processor.hpp"
 #include "sample_lib_server/sample_library_server.hpp"

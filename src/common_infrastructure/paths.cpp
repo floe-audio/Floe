@@ -64,7 +64,7 @@ static Span<String> PossiblePrefFilePaths(ArenaAllocator& arena) {
     return result.ToOwnedSpan();
 }
 
-static String AlwaysScannedFolder(ScanFolderType type, ArenaAllocator& allocator) {
+static String AlwaysScannedFolder(ScanFolderType type, ArenaAllocator& allocator, bool create) {
     auto const dir_type = ({
         FloeKnownDirectoryType d {};
         switch (type) {
@@ -77,7 +77,7 @@ static String AlwaysScannedFolder(ScanFolderType type, ArenaAllocator& allocator
     DynamicArrayBounded<char, 500> error_log;
     auto error_writer = dyn::WriterFor(error_log);
     auto const result =
-        FloeKnownDirectory(allocator, dir_type, k_nullopt, {.create = true, .error_log = &error_writer});
+        FloeKnownDirectory(allocator, dir_type, k_nullopt, {.create = create, .error_log = &error_writer});
     if (error_log.size) {
         ReportError(ErrorLevel::Warning,
                     HashComptime("always scanned folder") + ToInt(dir_type),
@@ -87,7 +87,7 @@ static String AlwaysScannedFolder(ScanFolderType type, ArenaAllocator& allocator
     return result;
 }
 
-FloePaths CreateFloePaths(ArenaAllocator& arena) {
+FloePaths CreateFloePaths(ArenaAllocator& arena, bool create_folders) {
     auto const possible_prefs_paths = PossiblePrefFilePaths(arena);
 
     FloePaths result {
@@ -101,7 +101,7 @@ FloePaths CreateFloePaths(ArenaAllocator& arena) {
     };
 
     for (auto const type : Range(ToInt(ScanFolderType::Count)))
-        result.always_scanned_folder[type] = AlwaysScannedFolder((ScanFolderType)type, arena);
+        result.always_scanned_folder[type] = AlwaysScannedFolder((ScanFolderType)type, arena, create_folders);
 
     {
         DynamicArrayBounded<char, Kb(1)> error_log;
@@ -109,7 +109,7 @@ FloePaths CreateFloePaths(ArenaAllocator& arena) {
         result.autosave_path = FloeKnownDirectory(arena,
                                                   FloeKnownDirectoryType::Autosaves,
                                                   k_nullopt,
-                                                  {.create = true, .error_log = &writer});
+                                                  {.create = create_folders, .error_log = &writer});
         if (error_log.size) {
             ReportError(ErrorLevel::Warning,
                         HashComptime("autosave path"),
@@ -126,7 +126,7 @@ FloePaths CreateFloePaths(ArenaAllocator& arena) {
                                              KnownDirectoryType::UserData,
                                              Array {"Floe"_s},
                                              "persistent_store",
-                                             {.create = true, .error_log = &writer});
+                                             {.create = create_folders, .error_log = &writer});
         if (error_log.size) {
             ReportError(ErrorLevel::Warning,
                         HashComptime("persistent store path"),

@@ -235,6 +235,8 @@ static ErrorCodeOr<void> ConsumeAndSubmitFiles(Sentry& sentry,
 
 } // namespace detail
 
+String DeviceIdPath(ArenaAllocator& arena, bool create);
+
 // We only support the format: https://<public_key>@<host>/<project_id>
 constexpr Optional<DsnInfo> ParseDsn(String dsn) {
     auto read_until = [](String& s, char c) {

@@ -30,6 +30,8 @@ void InitAutosaveState(AutosaveState& state,
 bool AutosaveNeeded(AutosaveState const& state, prefs::Preferences const& preferences);
 void QueueAutosave(AutosaveState& state, StateSnapshot const& snapshot);
 void SetInstanceId(AutosaveState& state, String instance_id);
+ErrorCodeOr<void>
+CleanupOldAutosavesIfNeeded(FloePaths const& paths, ArenaAllocator& scratch_arena, u16 max_age_days);
 
 // threadsafe
 DynamicArrayBounded<char, k_max_instance_id_size> InstanceId(AutosaveState& state);

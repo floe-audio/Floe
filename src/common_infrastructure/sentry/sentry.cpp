@@ -11,14 +11,18 @@
 
 namespace sentry {
 
-// A random string that we save to disk to identify if errors occur for multple 'users'.
+String DeviceIdPath(ArenaAllocator& arena, bool create) {
+    return KnownDirectoryWithSubdirectories(arena,
+                                            KnownDirectoryType::UserData,
+                                            Array {"Floe"_s},
+                                            "device_id",
+                                            {.create = create});
+}
+
+// A random string that we save to disk to identify if errors occur for multiple 'users'.
 static Optional<fmt::UuidArray> DeviceId(Atomic<u64>& seed) {
     PathArena path_arena {PageAllocator::Instance()};
-    auto const path = KnownDirectoryWithSubdirectories(path_arena,
-                                                       KnownDirectoryType::UserData,
-                                                       Array {"Floe"_s},
-                                                       "device_id",
-                                                       {.create = true});
+    auto const path = DeviceIdPath(path_arena, true);
 
     auto file = TRY_OR(OpenFile(path, FileMode::ReadWrite()), {
         LogError(ModuleName::ErrorReporting, "Failed to create device_id file: {}", error);

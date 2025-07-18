@@ -20,7 +20,7 @@ struct FloePaths {
     Array<DynamicArray<char>, ToInt(PresetFilePickerMode::Count)> file_picker_last_path;
 };
 
-FloePaths CreateFloePaths(ArenaAllocator& arena);
+FloePaths CreateFloePaths(ArenaAllocator& arena, bool create_folders);
 
 // String. Use this with prefs::GetString and prefs::SetValue
 prefs::Descriptor

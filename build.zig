@@ -1833,6 +1833,7 @@ pub fn build(b: *std.Build) void {
             common_infrastructure.addCSourceFiles(.{
                 .files = &.{
                     path ++ "/audio_utils.cpp",
+                    path ++ "/autosave.cpp",
                     path ++ "/checksum_crc32_file.cpp",
                     path ++ "/common_errors.cpp",
                     path ++ "/descriptors/param_descriptors.cpp",
@@ -1841,8 +1842,8 @@ pub fn build(b: *std.Build) void {
                     path ++ "/global.cpp",
                     path ++ "/package_format.cpp",
                     path ++ "/paths.cpp",
-                    path ++ "/preferences.cpp",
                     path ++ "/persistent_store.cpp",
+                    path ++ "/preferences.cpp",
                     path ++ "/sample_library/audio_file.cpp",
                     path ++ "/sample_library/sample_library.cpp",
                     path ++ "/sample_library/sample_library_lua.cpp",
@@ -1907,7 +1908,6 @@ pub fn build(b: *std.Build) void {
 
             plugin.addCSourceFiles(.{
                 .files = &(.{
-                    plugin_path ++ "/engine/autosave.cpp",
                     plugin_path ++ "/engine/check_for_update.cpp",
                     plugin_path ++ "/engine/engine.cpp",
                     plugin_path ++ "/engine/package_installation.cpp",
