@@ -82,6 +82,10 @@ Autosave(AutosaveState& state, StateSnapshot const& snapshot, FloePaths const& p
                     RandomIntInRange<u32>(seed, 1000, 9999));
     }
 
+    // The directory may have been deleted since Floe started.
+    TRY(CreateDirectory(paths.autosave_path,
+                        {.create_intermediate_directories = false, .fail_if_exists = false}));
+
     auto const path = path::Join(arena, Array {paths.autosave_path, filename});
     TRY(SavePresetFile(path, snapshot));
 
@@ -186,17 +190,20 @@ void AutosaveToFileIfNeeded(AutosaveState& state, FloePaths const& paths) {
                                             scratch_arena,
                                             state.autosave_delete_after_days.Load(LoadMemoryOrder::Relaxed)),
                 {
-                    ReportError(ErrorLevel::Error,
-                                HashComptime("autosave cleanup"),
-                                "cleanup old autosaves failed: {}",
-                                error);
+                    if (error != FilesystemError::PathDoesNotExist)
+                        ReportError(ErrorLevel::Error,
+                                    HashComptime("autosave cleanup"),
+                                    "cleanup old autosaves failed: {}",
+                                    error);
                 });
         }
-        TRY_OR(CleanupExcessInstanceAutosaves(state, paths, scratch_arena),
-               ReportError(ErrorLevel::Error,
-                           HashComptime("autosave cleanup"),
-                           "cleanup excess autosaves failed: {}",
-                           error););
+        TRY_OR(CleanupExcessInstanceAutosaves(state, paths, scratch_arena), {
+            if (error != FilesystemError::PathDoesNotExist)
+                ReportError(ErrorLevel::Error,
+                            HashComptime("autosave cleanup"),
+                            "cleanup excess autosaves failed: {}",
+                            error);
+        });
     }
 }
 
