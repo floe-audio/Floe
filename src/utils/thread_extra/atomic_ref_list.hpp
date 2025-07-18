@@ -29,10 +29,10 @@
 
 template <typename ValueType>
 struct AtomicRefList {
-    // Nodes are never destroyed or freed until this class is destroyed so use-after-free is not an issue. To
+    // Nodes are never destroyed or freed until this class is destroyed, so use-after-free is not an issue. To
     // get around the issues of using-after-destructor, we use weak reference counting involving a bit flag.
     struct Node {
-        // reader
+        // Reader thread.
         [[nodiscard]] ValueType* TryRetain() {
             auto const r = reader_uses.FetchAdd(1, RmwMemoryOrder::Acquire);
             if (r & k_dead_bit) [[unlikely]] {
@@ -42,7 +42,7 @@ struct AtomicRefList {
             return &value;
         }
 
-        // reader, if TryRetain() returned non-null
+        // Reader thread. Only use if TryRetain() returned non-null.
         void Release() {
             auto const r = reader_uses.FetchSub(1, RmwMemoryOrder::Release);
             ASSERT(r != 0);
@@ -105,7 +105,7 @@ struct AtomicRefList {
         ASSERT(dead_list == nullptr);
     }
 
-    // reader or writer
+    // Reader or writer thread.
     // If you are the reader the values should be consider weak references: you MUST call TryRetain (and
     // afterwards Release) on the object before using it.
     Iterator begin() const { return Iterator(live_list.Load(LoadMemoryOrder::Acquire), nullptr); }
@@ -125,16 +125,16 @@ struct AtomicRefList {
         return node;
     }
 
-    // writer, only pass a node just acquired from AllocateUnitialised and placement-new'ed
+    // Writer thread. Only pass this a node just acquired from AllocateUnitialised and placement-new'ed.
     void DiscardAllocatedInitialised(Node* node) {
         node->value.~ValueType();
         node->writer_next = free_list;
         free_list = node;
     }
 
-    // writer, node from AllocateUninitalised
+    // Writer thread. Pass a node from AllocateUninitalised.
     void Insert(Node* node) {
-        // insert so the memory is sequential for better cache locality
+        // We insert so the memory is sequential for better cache locality.
         Node* insert_after {};
         {
             Node* prev {};
@@ -148,7 +148,7 @@ struct AtomicRefList {
             }
         }
 
-        // put it into the live list
+        // Put it into the live list.
         if (insert_after) {
             node->next.Store(insert_after->next.Load(LoadMemoryOrder::Relaxed), StoreMemoryOrder::Relaxed);
             insert_after->next.Store(node, StoreMemoryOrder::Release);
@@ -158,11 +158,11 @@ struct AtomicRefList {
             live_list.Store(node, StoreMemoryOrder::Release);
         }
 
-        // signal that the readers can now use this node
+        // Signal that the readers can now use this node.
         node->reader_uses.FetchAnd(~Node::k_dead_bit, RmwMemoryOrder::AcquireRelease);
     }
 
-    // writer, returns next iterator (i.e. instead of ++it in a loop)
+    // Writer thread. Returns next iterator (i.e. instead of ++it in a loop).
     Iterator Remove(Iterator iterator) {
         if constexpr (RUNTIME_SAFETY_CHECKS_ON) {
             bool found = false;
@@ -176,20 +176,21 @@ struct AtomicRefList {
             ASSERT(found);
         }
 
-        // remove it from the live_list
+        // Remove it from the live_list.
         if (iterator.prev)
             iterator.prev->next.Store(iterator.node->next.Load(LoadMemoryOrder::Relaxed),
                                       StoreMemoryOrder::Release);
         else
             live_list.Store(iterator.node->next.Load(LoadMemoryOrder::Relaxed), StoreMemoryOrder::Release);
 
-        // add it to the dead list. we use a separate 'next' variable for this because the reader still might
-        // be using the node and it needs to know how to correctly iterate through the list rather than
-        // suddendly being redirecting into iterating the dead list
+        // Add it to the dead list.
+        // We use a separate 'next' variable for this because the reader still might be using the node and it
+        // needs to know how to correctly iterate through the list rather than suddenly being redirected into
+        // iterating the dead list.
         iterator.node->writer_next = dead_list;
         dead_list = iterator.node;
 
-        // signal that the readers should no longer use this node
+        // Signal that the readers should no longer use this node.
         // NOTE: we use the ADD operation here instead of bitwise-OR because it's probably faster on x86: the
         // XADD instruction vs the CMPXCHG instruction. This is fine because we know that the dead bit isn't
         // already set and is a power-of-2 and so doing and ADD is the same as doing an OR.
@@ -200,7 +201,7 @@ struct AtomicRefList {
         return Iterator {.node = iterator.node->next.Load(LoadMemoryOrder::Relaxed), .prev = iterator.prev};
     }
 
-    // writer
+    // Writer thread.
     void Remove(Node* node) {
         Node* previous {};
         for (auto it = begin(); it != end(); ++it) {
@@ -210,13 +211,13 @@ struct AtomicRefList {
         Remove(Iterator {node, previous});
     }
 
-    // writer
+    // Writer thread.
     void RemoveAll() {
         for (auto it = begin(); it != end();)
             it = Remove(it);
     }
 
-    // writer, call this regularly
+    // Writer thread. Call this regularly.
     void DeleteRemovedAndUnreferenced() {
         Node* previous = nullptr;
         for (auto i = dead_list; i != nullptr;) {
@@ -246,8 +247,8 @@ struct AtomicRefList {
         }
     }
 
-    Atomic<Node*> live_list {}; // reader or writer
-    Node* dead_list {}; // writer
-    Node* free_list {}; // writer
-    ArenaAllocator arena {Malloc::Instance()}; // writer
+    Atomic<Node*> live_list {}; // Reader or writer thread.
+    Node* dead_list {}; // Writer thread.
+    Node* free_list {}; // Writer thread.
+    ArenaAllocator arena {Malloc::Instance()}; // Writer thread.
 };

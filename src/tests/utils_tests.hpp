@@ -649,7 +649,11 @@ TEST_CASE(TestAtomicQueue) {
 
 struct MallocedObj {
     MallocedObj(char c) : obj((char*)GpaAlloc(10)) { FillMemory({(u8*)obj, 10}, (u8)c); }
-    ~MallocedObj() { GpaFree(obj); }
+    ~MallocedObj() {
+        GpaFree(obj);
+        obj = nullptr;
+    }
+    bool operator==(char c) const { return obj[0] == c; }
     char* obj;
 };
 
@@ -778,24 +782,29 @@ TEST_CASE(TestAtomicRefList) {
     }
 
     SUBCASE("multithreading") {
-        Thread thread;
+        Thread writer_thread;
         Atomic<bool> done {false};
 
         StartingGun starting_gun;
         Atomic<bool> thread_ready {false};
 
-        thread.Start(
+        usize inserted = 0;
+        usize removed = 0;
+        usize garbage_collections = 0;
+
+        writer_thread.Start(
             [&]() {
                 thread_ready.Store(true, StoreMemoryOrder::Relaxed);
                 starting_gun.WaitUntilFired();
-                auto seed = (u64)NanosecondsSinceEpoch();
-                for (auto _ : Range(5000)) {
+                auto seed = RandomSeed();
+                for (auto _ : Range(500000)) {
                     for (char c = 'a'; c <= 'z'; ++c) {
                         auto const r = RandomIntInRange(seed, 0, 2);
                         if (r == 0) {
                             for (auto it = map.begin(); it != map.end();)
-                                if (it->value.obj[0] == c) {
+                                if (it->value == c) {
                                     it = map.Remove(it);
+                                    ++removed;
                                     break;
                                 } else {
                                     ++it;
@@ -803,7 +812,7 @@ TEST_CASE(TestAtomicRefList) {
                         } else if (r == 1) {
                             bool found = false;
                             for (auto& it : map) {
-                                if (it.value.obj[0] == c) {
+                                if (it.value == c) {
                                     found = true;
                                     break;
                                 }
@@ -812,9 +821,11 @@ TEST_CASE(TestAtomicRefList) {
                                 auto node = map.AllocateUninitialised();
                                 PLACEMENT_NEW(&node->value) MallocedObj(c);
                                 map.Insert(node);
+                                ++inserted;
                             }
                         } else if (r == 2) {
                             map.DeleteRemovedAndUnreferenced();
+                            ++garbage_collections;
                         }
                     }
                     YieldThisThread();
@@ -836,7 +847,12 @@ TEST_CASE(TestAtomicRefList) {
             YieldThisThread();
         }
 
-        thread.Join();
+        writer_thread.Join();
+
+        tester.log.Debug("Inserted: {}, removed: {}, garbage collections: {}",
+                         inserted,
+                         removed,
+                         garbage_collections);
 
         for (auto n = map.live_list.Load(LoadMemoryOrder::Relaxed); n != nullptr;
              n = n->next.Load(LoadMemoryOrder::Relaxed))
