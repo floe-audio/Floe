@@ -365,11 +365,21 @@ static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
     auto const temp_path = ({
         ASSERT(GetFileType(destination_path).HasValue());
 
-        auto result = (String)TRY_OR(TemporaryDirectoryOnSameFilesystemAs(destination_path, scratch_arena), {
-            ReportError(ErrorLevel::Warning,
-                        SourceLocationHash(),
-                        "Unable to access a temporary folder: {}",
-                        error);
+        String result = ({
+            String s {};
+            if (auto const o = TemporaryDirectoryOnSameFilesystemAs(destination_path, scratch_arena);
+                o.HasValue()) {
+                s = o.Value();
+            } else {
+                // If we can't get a temporary directory on the same filesystem, we shall try to use a
+                // standard directory - it might work. If not, then we will fail later.
+                s = KnownDirectoryWithSubdirectories(scratch_arena,
+                                                     KnownDirectoryType::Temporary,
+                                                     Array {"Floe-Package-Install"_s},
+                                                     k_nullopt,
+                                                     {.create = true});
+            }
+            s;
         });
 
         if (single_file) result = path::Join(scratch_arena, Array {result, path::Filename(component.path)});
