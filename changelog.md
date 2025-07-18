@@ -8,6 +8,16 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 0.11.1-beta
+- Add sitemap.xml for the website
+- Improve the website homepage, installation, mirage, packages, roadmap pages.
+- Packager tool:
+  - Add ability to merge multiple packages into one
+  - Add ability to output a JSON file with comprehensive information about the package
+- Improve error reporting: show RAM, let Sentry decide on fingerprint, fix getting reports of crashes from outside of the plugin
+- Fix a whole bunch of rare crashes
+- Windows: fix uninstaller not uninstalling some small files
+
 ## 0.11.0-beta
 - Add new velocity -> volume curve for each layer. This replaces the old mapping buttons and the master 'Velo' button. There's now much more control. The old parameters are available in a new 'legacy' parameters section but are no longer used unless loading a DAW preset that uses them.
 - Add new algorithms to distortion: foldback, rectifier and ring-modulator
