@@ -597,14 +597,28 @@ static constexpr ErrorCodeCategory k_error_category {
     .category_id = "WIN",
     .message = [](Writer const& writer, ErrorCode code) -> ErrorCodeOr<void> {
         WCHAR buf[200];
-        auto const num_chars_written =
-            FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                           nullptr,
-                           (DWORD)code.code,
-                           MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
-                           buf,
-                           (DWORD)ArraySize(buf),
-                           nullptr);
+        DWORD num_chars_written = 0;
+
+        // Try languages in order: US English first, then default language
+        for (auto const lang_id :
+             Array {(DWORD)MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), LANG_SYSTEM_DEFAULT}) {
+            num_chars_written = FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                                               nullptr,
+                                               (DWORD)code.code,
+                                               lang_id,
+                                               buf,
+                                               (DWORD)ArraySize(buf),
+                                               nullptr);
+
+            if (num_chars_written == 0)
+                if (GetLastError() == ERROR_MUI_FILE_NOT_FOUND)
+                    continue; // Try again if the language is not available.
+                else
+                    break; // Some other error occurred, stop trying.
+            else
+                break; // Success.
+        }
+
         if (num_chars_written) {
             WString error_text_wide {(const WCHAR*)buf, num_chars_written};
             while (error_text_wide.size && (Last(error_text_wide) == L'\n' || Last(error_text_wide) == L'\r'))
@@ -613,7 +627,6 @@ static constexpr ErrorCodeCategory k_error_category {
             if (auto o = Narrow(temp_allocator, error_text_wide); o.HasValue())
                 return writer.WriteChars(o.Value());
         }
-
         return fmt::FormatToWriter(writer, "FormatMessage failed: {}", GetLastError());
     }};
 
