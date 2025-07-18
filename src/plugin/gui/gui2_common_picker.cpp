@@ -221,12 +221,14 @@ Box DoFilterButton(GuiBoxSystem& box_system,
     // We size to the largest possible number so that the layout doesn't jump around as the num_used changes.
     auto const total_text = fmt::FormatInline<32>("({})"_s, info.total_available);
     auto const number_size =
-        !options.full_width ? box_system.fonts[ToInt(FontType::Body)]->CalcTextSizeA(style::k_font_body_size,
-                                                                                     FLT_MAX,
-                                                                                     0.0f,
-                                                                                     total_text) -
-                                  f32x2 {4, 0}
-                            : f32x2 {};
+        !options.full_width
+            ? Max(box_system.fonts[ToInt(FontType::Body)]->CalcTextSizeA(style::k_font_body_size,
+                                                                         FLT_MAX,
+                                                                         0.0f,
+                                                                         total_text) -
+                      f32x2 {4, 0},
+                  f32x2 {0, 0})
+            : f32x2 {};
     DoBox(
         box_system,
         {
