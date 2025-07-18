@@ -87,8 +87,14 @@ struct RefCounted {
     }
 
     constexpr explicit operator bool() const { return m_data != nullptr; }
-    constexpr Type const* operator->() const { return m_data; }
-    constexpr Type const& operator*() const { return *m_data; }
+    constexpr Type const* operator->() const {
+        ASSERT(m_data);
+        return m_data;
+    }
+    constexpr Type const& operator*() const {
+        ASSERT(m_data);
+        return *m_data;
+    }
 
   private:
     Type const* m_data {};

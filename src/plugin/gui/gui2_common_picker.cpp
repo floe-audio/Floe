@@ -516,23 +516,24 @@ static void DoLibraryRightClickMenu(GuiBoxSystem& box_system,
                                 },
                             });
 
-    auto const find_library = [&](u64 library_hash) -> Optional<sample_lib::LibraryIdRef> {
-        for (auto const& [lib_id, lib_info, lib_hash] : library_filters.libraries)
-            if (lib_hash == library_hash) return lib_id;
-        return k_nullopt;
-    };
-
     if (MenuItem(box_system,
                  root,
                  {
                      .text = "Open Containing Folder",
                      .is_selected = false,
                  })) {
+        auto const find_library = [&](u64 library_hash) -> Optional<sample_lib::LibraryIdRef> {
+            for (auto const& [lib_id, lib_info, lib_hash] : library_filters.libraries)
+                if (lib_hash == library_hash) return lib_id;
+            return k_nullopt;
+        };
+
         if (auto const lib_id = find_library(menu_state.item_hash)) {
             auto lib = sample_lib_server::FindLibraryRetained(context.sample_library_server, *lib_id);
             DEFER { lib.Release(); };
 
-            if (auto const dir = path::Directory(lib->path)) OpenFolderInFileBrowser(*dir);
+            if (lib)
+                if (auto const dir = path::Directory(lib->path)) OpenFolderInFileBrowser(*dir);
         }
     }
 }
