@@ -465,11 +465,14 @@ void detail::AddWindowsKeyboardHook(GuiPlatform& platform) {
     ASSERT(window);
 
     HMODULE instance = nullptr;
+    bool got_module_handle_from_address = false;
     if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                                 GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                             (LPCTSTR)detail::AddWindowsKeyboardHook,
                             &instance)) {
         instance = GetModuleHandleW(nullptr);
+    } else {
+        got_module_handle_from_address = true;
     }
     ASSERT(instance);
 
@@ -478,7 +481,8 @@ void detail::AddWindowsKeyboardHook(GuiPlatform& platform) {
     if (!g_keyboard_hook) {
         ReportError(ErrorLevel::Warning,
                     SourceLocationHash(),
-                    "failed to install keyboard hook, {}",
+                    "failed to install keyboard hook (got module handle from address: {}), {}",
+                    got_module_handle_from_address,
                     Win32ErrorCode(GetLastError()));
     }
 }
