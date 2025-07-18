@@ -312,19 +312,19 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
                                 },
                             });
 
-    auto const find_folder = [&](u64 folder_hash) -> PresetFolder const* {
-        for (auto const folder_index : Range(context.presets_snapshot.folders.size))
-            if (context.presets_snapshot.folder_nodes[folder_index]->Hash() == folder_hash)
-                return context.presets_snapshot.folders[folder_index];
-        return nullptr;
-    };
-
     if (MenuItem(box_system,
                  root,
                  {
                      .text = fmt::Format(box_system.arena, "Open Folder in {}", GetFileBrowserAppName()),
                      .is_selected = false,
                  })) {
+        auto const find_folder = [&](u64 folder_hash) -> PresetFolder const* {
+            for (auto const folder_index : Range(context.presets_snapshot.folders.size))
+                if (context.presets_snapshot.folder_nodes[folder_index]->Hash() == folder_hash)
+                    return context.presets_snapshot.folders[folder_index];
+            return nullptr;
+        };
+
         if (auto const folder = find_folder(menu_state.item_hash)) {
             OpenFolderInFileBrowser(
                 path::Join(box_system.arena, Array {folder->scan_folder, folder->folder}));
@@ -358,7 +358,7 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
                     .parent = root,
                     .folder = context.presets_snapshot.folder_nodes[cursor.folder_index],
                     .right_click_menu =
-                        [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
+                        [&context, &state](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
                             PresetFolderRightClickMenu(box_system, context, state, menu_state);
                         },
                 });

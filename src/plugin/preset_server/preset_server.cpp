@@ -67,8 +67,10 @@ static Span<FolderNode const*> CloneFolderNodesIntoPointerSpan(PresetServer cons
     ASSERT_EQ(server.folder_node_order_indices.size, server.folders.size);
     auto result =
         arena.AllocateExactSizeUninitialised<FolderNode const*>(server.folder_node_order_indices.size);
-    for (usize i = 0; i < server.folder_node_order_indices.size; ++i)
+    for (auto const i : Range(server.folder_node_order_indices.size)) {
         result[i] = &folders[server.folder_node_order_indices[i]];
+        ASSERT(result[i] != nullptr);
+    }
     return result;
 }
 
