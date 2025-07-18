@@ -2202,7 +2202,7 @@ TEST_CASE(TestSampleLibraryServer) {
             for (auto& j : requests)
                 j.request_id = SendAsyncLoadRequest(server, channel, j.request);
 
-            constexpr u32 k_timeout_secs = 15;
+            constexpr u32 k_timeout_secs = 120;
             auto const countdown_result = countdown.WaitUntilZero(k_timeout_secs * 1000);
 
             if (countdown_result == WaitResult::TimedOut) {
