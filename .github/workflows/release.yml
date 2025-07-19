@@ -95,6 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write # Allow workflow dispatch for website deployment
     env:
       RELEASE_ARTIFACTS_FOLDER: release_artifacts
     steps:
