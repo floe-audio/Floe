@@ -7,20 +7,14 @@
 
 #include "debug.hpp"
 
-#if ZIG_BACKTRACE
-#include <unwind.h>
-
-#include "utils/debug_info/debug_info.h"
-#else
-#include <backtrace.h>
-#include <cxxabi.h>
-#endif
 #include <signal.h>
 #include <stdlib.h> // EXIT_FAILURE
+#include <unwind.h>
 
 #include "foundation/foundation.hpp"
 #include "os/filesystem.hpp"
 #include "os/misc.hpp"
+#include "utils/debug_info/debug_info.h"
 #include "utils/logger/logger.hpp"
 
 static void DefaultPanicHook(char const* message, SourceLocation loc, uintptr pc) {
@@ -387,57 +381,18 @@ ErrorCodeCategory const g_stacktrace_error_category {
 
 struct BacktraceState {
     Optional<DynamicArrayBounded<char, 256>> failed_init_error {};
-#if ZIG_BACKTRACE
-    void* state = nullptr;
-#else
-    backtrace_state* state = nullptr;
-#endif
+    SelfModuleHandle state = nullptr;
 };
 
 alignas(BacktraceState) static u8 g_backtrace_state_storage[sizeof(BacktraceState)] {};
 static Atomic<BacktraceState*> g_backtrace_state {};
 static CountedInitFlag g_init {};
 
-#if !ZIG_BACKTRACE
-static MutableString g_current_binary_path {}; // includes null terminator
-static Allocator& StateAllocator() { return PageAllocator::Instance(); }
-#endif
-
-Optional<String> InitStacktraceState(Optional<String> current_binary_path) {
+Optional<String> InitStacktraceState() {
     ZoneScoped;
-    CountedInit(g_init, [current_binary_path] {
-#if !ZIG_BACKTRACE
-        if (current_binary_path) {
-            ASSERT(current_binary_path->size);
-            ASSERT(path::IsAbsolute(*current_binary_path));
-            ASSERT(IsValidUtf8(*current_binary_path));
-            g_current_binary_path =
-                StateAllocator().AllocateExactSizeUninitialised<char>(current_binary_path->size + 1);
-            usize pos = 0;
-            WriteAndIncrement(pos, g_current_binary_path, *current_binary_path);
-            WriteAndIncrement(pos, g_current_binary_path, '\0');
-        } else {
-            auto const o = CurrentBinaryPath(StateAllocator());
-            if (o.HasError()) {
-                auto state = PLACEMENT_NEW(g_backtrace_state_storage) BacktraceState;
-                state->failed_init_error.Emplace();
-                fmt::Assign(*state->failed_init_error,
-                            "Stacktrace error: failed to get executable path: {}",
-                            o.Error());
-                g_backtrace_state.Store(state, StoreMemoryOrder::Release);
-                return;
-            }
-            g_current_binary_path = o.Value();
-            auto p = DynamicArray<char>::FromOwnedSpan(g_current_binary_path, StateAllocator());
-            dyn::Append(p, '\0');
-            g_current_binary_path = p.ToOwnedSpan();
-        }
-#else
-        (void)current_binary_path;
-#endif
-
+    CountedInit(g_init, [] {
         auto state = PLACEMENT_NEW(g_backtrace_state_storage) BacktraceState;
-#if ZIG_BACKTRACE
+
         state->failed_init_error.Emplace();
         state->state =
             CreateSelfModuleInfo(state->failed_init_error->data, state->failed_init_error->Capacity());
@@ -445,37 +400,6 @@ Optional<String> InitStacktraceState(Optional<String> current_binary_path) {
             state->failed_init_error.Clear();
         else
             state->failed_init_error->size = NullTerminatedSize(state->failed_init_error->data);
-#else
-        state->state = backtrace_create_state(
-            g_current_binary_path.data, // filename must be a permanent, null-terminated buffer
-            true,
-            [](void* user_data, char const* msg, int errnum) {
-                auto& self = *(BacktraceState*)user_data;
-                self.failed_init_error.Emplace();
-                if (errnum > 0)
-                    fmt::Assign(*self.failed_init_error, "Stacktrace error ({}): {}", errnum, msg);
-                else
-                    fmt::Assign(*self.failed_init_error,
-                                "Stacktrace error: no debug info is available ({}): {}",
-                                errnum,
-                                msg);
-            },
-            state);
-
-        if constexpr (IS_WINDOWS) {
-            // NOTE(Sam): Feb, 2024. libbacktrace initialises the state in the first call to one of its
-            // functions. This is meant to be done in a thread-safe manner, but I'm finding it's not working
-            // on Windows there is a crash due to reading null filename_fn. I've walked through the code and
-            // can't obviously find the cause. This is a workaround to force the initialisation to happen on a
-            // single thread.
-            backtrace_pcinfo(
-                state->state,
-                (uintptr)__builtin_return_address(0),
-                [](void*, uintptr_t, char const*, int, char const*) -> int { return 0; },
-                [](void*, char const*, int) -> void {},
-                nullptr);
-        }
-#endif
 
         g_backtrace_state.Store(state, StoreMemoryOrder::Release);
     });
@@ -492,11 +416,7 @@ void ShutdownStacktraceState() {
     ZoneScoped;
     CountedDeinit(g_init, [] {
         if (auto state = g_backtrace_state.Exchange(nullptr, RmwMemoryOrder::AcquireRelease)) {
-#if ZIG_BACKTRACE
             DestroySelfModuleInfo(state->state);
-#else
-            if (g_current_binary_path.size) StateAllocator().Free(g_current_binary_path.ToByteSpan());
-#endif
             state->~BacktraceState();
         }
     });
@@ -511,33 +431,12 @@ static void SkipUntil(StacktraceStack& stack, uintptr pc) {
         }
 }
 
-#if !ZIG_BACKTRACE
-static int NumSkipFrames(StacktraceSkipOptions skip) {
-    return CheckedCast<int>(skip.TryGetOpt<StacktraceFrames>().ValueOr(StacktraceFrames {1}));
-}
-
-static String Filename(char const* filename) {
-    if (!filename) return ""_s;
-    auto result = FromNullTerminated(filename);
-
-    // NOTE(Sam, 2nd March, Linux): despite using -fmacro-prefix-map -fdebug-prefix-map and
-    // -ffile-prefix-map, we still sometimes get absolute paths - somehow on some files the
-    // absolute prefix is added back on after the prefix map is applied. I know this because if we
-    // use prefix-map to create a nonsense name, we can see the nonsense name in the output - in
-    // the middle of the path.
-    result =
-        TrimStartIfMatches(result, ConcatArrays(FLOE_PROJECT_ROOT_PATH ""_ca, path::k_dir_separator_str));
-    return result;
-}
-#endif
-
 Optional<StacktraceStack> CurrentStacktrace(StacktraceSkipOptions skip) {
     auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
 
     if (!state || state->failed_init_error) return k_nullopt;
 
     StacktraceStack result;
-#if ZIG_BACKTRACE
     _Unwind_Backtrace(
         [](struct _Unwind_Context* context, void* user) -> _Unwind_Reason_Code {
             auto& stack = *(StacktraceStack*)user;
@@ -558,21 +457,6 @@ Optional<StacktraceStack> CurrentStacktrace(StacktraceSkipOptions skip) {
             SkipUntil(result, ToInt(skip.Get<ProgramCounter>()));
             break;
     }
-#else
-    backtrace_simple(
-        state->state,
-        NumSkipFrames(skip),
-        [](void* data, uintptr_t pc) -> int {
-            auto& result = *(StacktraceStack*)data;
-            dyn::Append(result, pc);
-            return 0;
-        },
-        []([[maybe_unused]] void* data, [[maybe_unused]] char const* msg, [[maybe_unused]] int errnum) {
-            // error callback. I think we just ignore errors; they will become known when the stacktrace is
-            // printed
-        },
-        &result);
-#endif
 
     if (auto const pc = skip.TryGet<ProgramCounter>()) SkipUntil(result, (uintptr)*pc);
 
@@ -586,54 +470,12 @@ struct StacktraceContext {
     ErrorCodeOr<void> return_value;
 };
 
-#if !ZIG_BACKTRACE
-static int HandleStacktraceLine(void* data,
-                                [[maybe_unused]] uintptr_t program_counter,
-                                char const* filename,
-                                int lineno,
-                                char const* function) {
-    auto& ctx = *(StacktraceContext*)data;
-
-    String function_name = {};
-    char* demangled_func = nullptr;
-    DEFER { free(demangled_func); };
-    if (function && ctx.options.demangle) {
-        int status;
-        demangled_func = abi::__cxa_demangle(function, nullptr, nullptr, &status);
-        if (status == 0) function_name = FromNullTerminated(demangled_func);
-    }
-    if (!function_name.size) function_name = function ? FromNullTerminated(function) : ""_s;
-
-    FrameInfo const frame {
-        .address = program_counter,
-        .function_name = function_name,
-        .filename = filename ? Filename(filename) : "unknown-file"_s,
-        .line = lineno,
-        .column = -1,
-        .in_self_module = true, // IMPROVE: we don't actually know
-    };
-    ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
-
-    return 0;
-}
-
-static void HandleStacktraceError(void* data, char const* message, [[maybe_unused]] int errnum) {
-    auto& ctx = *(StacktraceContext*)data;
-
-    auto _ = fmt::FormatToWriter(ctx.writer,
-                                 "[{}] Stacktrace error: {}\n",
-                                 ctx.line_num++,
-                                 FromNullTerminated(message));
-}
-#else
 // Our Zig code calls this function when it panics.
 void PanicHandler(char const* message, size_t message_length) {
     char buffer[256];
     CopyStringIntoBufferWithNullTerm(buffer, String {message, message_length});
     Panic(buffer, SourceLocation::Current());
 }
-
-#endif
 
 ErrorCodeOr<void> WriteStacktrace(Span<uintptr const> stack, Writer writer, StacktracePrintOptions options) {
     auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
@@ -643,7 +485,6 @@ ErrorCodeOr<void> WriteStacktrace(Span<uintptr const> stack, Writer writer, Stac
 
     StacktraceContext ctx {.options = options, .writer = writer};
 
-#if ZIG_BACKTRACE
     SymbolInfo(state->state,
                stack.data,
                stack.size,
@@ -663,12 +504,6 @@ ErrorCodeOr<void> WriteStacktrace(Span<uintptr const> stack, Writer writer, Stac
                    ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
                });
     if (ctx.return_value.HasError()) return ctx.return_value;
-#else
-    for (auto const pc : stack) {
-        backtrace_pcinfo(state->state, pc, HandleStacktraceLine, HandleStacktraceError, &ctx);
-        if (ctx.return_value.HasError()) return ctx.return_value;
-    }
-#endif
 
     return k_success;
 }
@@ -686,7 +521,6 @@ MutableString StacktraceString(Span<uintptr const> stack, Allocator& a, Stacktra
 
     DynamicArray<char> result {a};
     StacktraceContext ctx {.options = options, .writer = dyn::WriterFor(result)};
-#if ZIG_BACKTRACE
     SymbolInfo(state->state,
                stack.data,
                stack.size,
@@ -705,10 +539,6 @@ MutableString StacktraceString(Span<uintptr const> stack, Allocator& a, Stacktra
                    };
                    ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
                });
-#else
-    for (auto const pc : stack)
-        backtrace_pcinfo(state->state, pc, HandleStacktraceLine, HandleStacktraceError, &ctx);
-#endif
 
     return result.ToOwnedSpan();
 }
@@ -733,7 +563,6 @@ void StacktraceToCallback(Span<uintptr const> stack,
     };
     Context context {callback, options};
 
-#if ZIG_BACKTRACE
     SymbolInfo(state->state,
                stack.data,
                stack.size,
@@ -751,42 +580,6 @@ void StacktraceToCallback(Span<uintptr const> stack,
                    };
                    ctx.callback(frame);
                });
-#else
-    for (auto const pc : stack)
-        backtrace_pcinfo(
-            state->state,
-            pc,
-            [](void* data,
-               [[maybe_unused]] uintptr_t program_counter,
-               char const* filename,
-               int lineno,
-               char const* function) {
-                auto& ctx = *(Context*)data;
-
-                String function_name = {};
-                char* demangled_func = nullptr;
-                DEFER { free(demangled_func); };
-                if (function && ctx.options.demangle) {
-                    int status;
-                    demangled_func = abi::__cxa_demangle(function, nullptr, nullptr, &status);
-                    if (status == 0) function_name = FromNullTerminated(demangled_func);
-                }
-                if (!function_name.size) function_name = function ? FromNullTerminated(function) : ""_s;
-
-                ctx.callback({
-                    .address = program_counter,
-                    .function_name = function_name,
-                    .filename = Filename(filename),
-                    .line = lineno,
-                    .column = -1,
-                    .in_self_module = true, // IMPROVE: we don't actually know
-                });
-
-                return 0;
-            },
-            [](void*, char const*, int) {},
-            &context);
-#endif
 }
 
 void CurrentStacktraceToCallback(FunctionRef<void(FrameInfo const&)> callback,
@@ -804,23 +597,13 @@ PrintCurrentStacktrace(StdStream stream, StacktracePrintOptions options, Stacktr
 bool HasAddressesInCurrentModule(Span<uintptr const> addresses) {
     auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
     if (!state || state->failed_init_error) return true;
-#if ZIG_BACKTRACE
     for (auto const address : addresses)
         if (IsAddressInCurrentModule(state->state, address)) return true;
     return false;
-#else
-    (void)addresses;
-    return true; // IMPROVE: we don't have this information in libbacktrace so we say yes.
-#endif
 }
 
 bool IsAddressInCurrentModule(usize address) {
     auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
     if (!state || state->failed_init_error) return false;
-#if ZIG_BACKTRACE
     return IsAddressInCurrentModule(state->state, address);
-#else
-    (void)address;
-    return true; // IMPROVE: we don't have this information in libbacktrace so we say yes.
-#endif
 }

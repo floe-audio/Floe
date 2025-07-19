@@ -692,7 +692,6 @@ const BuildContext = struct {
     dep_flac: *std.Build.Dependency,
     dep_icon_font_cpp_headers: *std.Build.Dependency,
     dep_miniz: *std.Build.Dependency,
-    dep_libbacktrace: *std.Build.Dependency,
     dep_lua: *std.Build.Dependency,
     dep_pugl: *std.Build.Dependency,
     dep_pffft: *std.Build.Dependency,
@@ -824,9 +823,9 @@ const FlagsBuilder = struct {
 
         // A bit of information about debug symbols:
         //
-        // DWARF is a debugging information format. It is used widely, particularly on Linux and macOS. libbacktrace,
+        // DWARF is a debugging information format. It is used widely, particularly on Linux and macOS. Zig/libbacktrace,
         // which we use for getting nice stack traces can read DWARF information from the executable on any OS. All
-        // we need to do is make sure that the DWARF info is available for libbacktrace to read.
+        // we need to do is make sure that the DWARF info is available for Zig/libbacktrace to read.
         //
         // On Windows, there is the PDB format, this is a separate file that contains the debug information. Zig
         // generates this too, but we can tell it to also embed DWARF debug info into the executable, that's what the
@@ -840,10 +839,10 @@ const FlagsBuilder = struct {
         // 'dsymutil --dump-debug-map my-exe'.
         //
         // In order to aggregate the DWARF info into the final executable, we need to run 'dsymutil my-exe'. This then
-        // outputs a .dSYM folder which contains the aggregated DWARF info. libbacktrace looks for this dSYM folder
+        // outputs a .dSYM folder which contains the aggregated DWARF info. Zig/libbacktrace looks for this dSYM folder
         // adjacent to the executable.
 
-        // Include dwarf debug info, even on windows. This means we can use the libbacktrace/Zig everywhere to get
+        // Include dwarf debug info, even on windows. This means we can use the Zig/libbacktraceeverywhere to get
         // really good stack traces.
         //
         // We use DWARF 4 because Zig has a problem with version 5: https://github.com/ziglang/zig/issues/23732
@@ -918,7 +917,6 @@ fn applyUniversalSettings(context: *BuildContext, step: *std.Build.Step.Compile)
     step.addIncludePath(context.dep_icon_font_cpp_headers.path(""));
     step.addIncludePath(context.dep_dr_libs.path(""));
     step.addIncludePath(context.dep_flac.path("include"));
-    step.addIncludePath(context.dep_libbacktrace.path(""));
     step.addIncludePath(context.dep_lua.path(""));
     step.addIncludePath(context.dep_pugl.path("include"));
     step.addIncludePath(context.dep_clap_wrapper.path("include"));
@@ -1104,7 +1102,6 @@ pub fn build(b: *std.Build) void {
         .dep_flac = b.dependency("flac", .{}),
         .dep_icon_font_cpp_headers = b.dependency("icon_font_cpp_headers", .{}),
         .dep_miniz = b.dependency("miniz", .{}),
-        .dep_libbacktrace = b.dependency("libbacktrace", .{}),
         .dep_lua = b.dependency("lua", .{}),
         .dep_pugl = b.dependency("pugl", .{}),
         .dep_pffft = b.dependency("pffft", .{}),
@@ -1186,7 +1183,6 @@ pub fn build(b: *std.Build) void {
             .FLOE_PROJECT_CACHE_PATH = b.pathJoin(&.{ b.build_root.path.?, floe_cache_relative }),
             .FLOE_VENDOR = floe_vendor,
             .FLOE_CLAP_ID = floe_clap_id,
-            .ZIG_BACKTRACE = true,
             .IS_WINDOWS = target.result.os.tag == .windows,
             .IS_MACOS = target.result.os.tag == .macos,
             .IS_LINUX = target.result.os.tag == .linux,
@@ -1297,143 +1293,6 @@ pub fn build(b: *std.Build) void {
             vitfx.addIncludePath(build_context.dep_tracy.path("public"));
 
             b.getInstallStep().dependOn(&b.addInstallArtifact(vitfx, .{ .dest_dir = install_subfolder }).step);
-        }
-
-        const libbacktrace = b.addStaticLibrary(.{
-            .name = "backtrace",
-            .root_module = b.createModule(module_options),
-        });
-        if (true) {
-            const libbacktrace_root_path = build_context.dep_libbacktrace.path("");
-            const posix_sources = .{
-                "mmap.c",
-                "mmapio.c",
-            };
-
-            const backtrace_flags = FlagsBuilder.init(&build_context, target, .{}).flags.items;
-
-            libbacktrace.addCSourceFiles(.{
-                .root = libbacktrace_root_path,
-                .files = &.{
-                    "backtrace.c",
-                    "dwarf.c",
-                    "fileline.c",
-                    "print.c",
-                    "read.c",
-                    "simple.c",
-                    "sort.c",
-                    "state.c",
-                    "posix.c",
-                },
-                .flags = backtrace_flags,
-            });
-
-            const backtrace_supported_header = b.addConfigHeader(
-                .{
-                    .include_path = "backtrace-supported.h",
-                },
-                .{
-                    .BACKTRACE_SUPPORTED = 1,
-                    .BACKTRACE_USES_MALLOC = @intFromBool(target.result.os.tag == .windows),
-                    .BACKTRACE_SUPPORTS_THREADS = 1,
-                    .BACKTRACE_SUPPORTS_DATA = 1,
-                },
-            );
-
-            const config_header = b.addConfigHeader(
-                .{
-                    .include_path = "config.h",
-                },
-                .{
-                    .BACKTRACE_ELF_SIZE = target.result.ptrBitWidth(),
-                    .BACKTRACE_XCOFF_SIZE = target.result.ptrBitWidth(),
-                    .HAVE_ATOMIC_FUNCTIONS = 1,
-                    .HAVE_SYNC_FUNCTIONS = 1,
-                    .HAVE_DECL_STRNLEN = 1,
-                    .HAVE_DLFCN_H = 1,
-                    .HAVE_DL_ITERATE_PHDR = 1,
-                    .HAVE_INTTYPES_H = 1,
-                    .HAVE_LINK_H = 1,
-                    .HAVE_LSTAT = 1,
-                    .HAVE_MEMORY_H = 1,
-                    .HAVE_READLINK = 1,
-                    .HAVE_STDINT_H = 1,
-                    .HAVE_STDLIB_H = 1,
-                    .HAVE_STRINGS_H = 1,
-                    .HAVE_STRING_H = 1,
-                    .HAVE_SYS_LDR_H = 1,
-                    .HAVE_SYS_MMAN_H = 1,
-                    .HAVE_SYS_STAT_H = 1,
-                    .HAVE_SYS_TYPES_H = 1,
-                    .HAVE_UNISTD_H = 1,
-                    .STDC_HEADERS = 1,
-                    ._FILE_OFFSET_BITS = 64,
-                    ._LARGE_FILES = 1,
-                },
-            );
-
-            switch (target.result.os.tag) {
-                .windows => {
-                    config_header.addValues(.{
-                        .HAVE_DECL__PGMPTR = target.result.os.tag == .windows,
-                        .HAVE_WINDOWS_H = 1,
-                    });
-
-                    libbacktrace.addCSourceFiles(.{
-                        .root = libbacktrace_root_path,
-                        .files = &.{
-                            "pecoff.c",
-                            "alloc.c",
-                        },
-                        .flags = backtrace_flags,
-                    });
-                },
-                .macos => {
-                    config_header.addValues(.{
-                        .HAVE_MACH_O_DYLD_H = 1,
-                        .HAVE_FCNTL = 1,
-                    });
-
-                    libbacktrace.addCSourceFiles(.{
-                        .root = libbacktrace_root_path,
-                        .files = &posix_sources,
-                        .flags = backtrace_flags,
-                    });
-                    libbacktrace.addCSourceFiles(.{
-                        .root = libbacktrace_root_path,
-                        .files = &.{"macho.c"},
-                        .flags = backtrace_flags,
-                    });
-                },
-                .linux => {
-                    config_header.addValues(.{
-                        ._POSIX_SOURCE = 1,
-                        ._GNU_SOURCE = 1,
-                        .HAVE_CLOCK_GETTIME = target.result.os.tag == .linux,
-                        .HAVE_DECL_GETPAGESIZE = target.result.os.tag == .linux,
-                        .HAVE_FCNTL = 1,
-                    });
-
-                    libbacktrace.addCSourceFiles(.{
-                        .root = libbacktrace_root_path,
-                        .files = &.{"elf.c"},
-                        .flags = backtrace_flags,
-                    });
-                    libbacktrace.addCSourceFiles(.{
-                        .root = libbacktrace_root_path,
-                        .files = &posix_sources,
-                        .flags = backtrace_flags,
-                    });
-                },
-                else => {
-                    unreachable;
-                },
-            }
-
-            libbacktrace.linkLibC();
-            libbacktrace.addConfigHeader(config_header);
-            libbacktrace.addConfigHeader(backtrace_supported_header);
-            applyUniversalSettings(&build_context, libbacktrace);
         }
 
         const pugl = b.addStaticLibrary(.{
@@ -1630,7 +1489,6 @@ pub fn build(b: *std.Build) void {
             library.linkLibrary(tracy);
             library.addObject(debug_info_lib);
             library.addObject(stb_sprintf);
-            library.linkLibrary(libbacktrace);
             join_compile_commands.step.dependOn(&library.step);
             applyUniversalSettings(&build_context, library);
         }

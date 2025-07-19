@@ -33,7 +33,7 @@ using StacktraceSkipOptions = TaggedUnion<StacktraceSkipType,
 
 using StacktraceStack = DynamicArrayBounded<uintptr, 32>;
 Optional<StacktraceStack> CurrentStacktrace(StacktraceSkipOptions skip = StacktraceFrames {1});
-Optional<String> InitStacktraceState(Optional<String> current_binary_path); // returns error message if failed
+Optional<String> InitStacktraceState(); // returns error message if failed
 void ShutdownStacktraceState();
 
 struct FrameInfo {

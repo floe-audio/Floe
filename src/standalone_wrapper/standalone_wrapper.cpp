@@ -474,18 +474,16 @@ inline ErrorCodeCategory const& ErrorCategoryForEnum(StandaloneError) { return s
 
 extern clap_plugin_entry const clap_entry;
 
-static ErrorCodeOr<void> Main(String exe_path_rel) {
+static ErrorCodeOr<void> Main() {
     FixedSizeAllocator<Kb(1)> allocator {nullptr};
-    auto exe_path = DynamicArray<char>::FromOwnedSpan(TRY(AbsolutePath(allocator, exe_path_rel)), allocator);
 
     GlobalInit({
-        .current_binary_path = exe_path,
         .init_error_reporting = true,
         .set_main_thread = true,
     });
     DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
 
-    clap_entry.init(dyn::NullTerminated(exe_path));
+    clap_entry.init("");
     DEFER { clap_entry.deinit(); };
 
     Standalone standalone {};
@@ -616,9 +614,9 @@ static ErrorCodeOr<void> Main(String exe_path_rel) {
     return k_success;
 }
 
-int main(int, char** argv) {
+int main(int, char**) {
     auto _ = EnterLogicalMainThread();
-    auto const o = Main(FromNullTerminated(argv[0]));
+    auto const o = Main();
     if (o.HasError()) {
         LogError(ModuleName::Standalone, "Standalone error: {}", o.Error());
         return 1;

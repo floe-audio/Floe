@@ -5,7 +5,6 @@
 #include "foundation/foundation.hpp"
 
 struct GlobalInitOptions {
-    Optional<String> current_binary_path {};
     bool init_error_reporting = false;
     bool set_main_thread = false;
 };

@@ -56,10 +56,6 @@
             .url = "https://github.com/richgel999/miniz/archive/refs/tags/3.0.2.tar.gz",
             .hash = "N-V-__8AAERZCACWezRV1bLpUKNG2scSJbJdweF1Id_3JKc7",
         },
-        .libbacktrace = .{
-            .url = "git+https://github.com/SamWindell/libbacktrace#8c232c7dc09fcb8bb21addf44c9b7fab4ff37499",
-            .hash = "N-V-__8AANzfJgCHUpimVG6JMjnl2MmiUoqrzKhdjRG_646g",
-        },
         .lua = .{
             .url = "https://github.com/lua/lua/archive/refs/tags/v5.4.7.tar.gz",
             .hash = "N-V-__8AAA2SGQDIowqfBdNuGGJ03b-aevlPIR3TaFV3knJ9",

@@ -88,7 +88,7 @@ static Atomic<u32> g_inside_call {0};
 
 // init and deinit are never called at the same time as any other clap function, including itself.
 // Might be called more than once. See the clap docs for full details.
-static bool ClapEntryInit(char const* plugin_path_c_str) {
+static bool ClapEntryInit(char const*) {
     if (PanicOccurred()) return false;
 
     try {
@@ -98,29 +98,7 @@ static bool ClapEntryInit(char const* plugin_path_c_str) {
 
         if (Exchange(g_init, true)) return true; // already initialised
 
-        if (!plugin_path_c_str) return false;
-        auto const plugin_path = FromNullTerminated(plugin_path_c_str);
-        constexpr auto k_plugin_path_max_len = Kb(2);
-        if (plugin_path.size > k_plugin_path_max_len) return false;
-        if (!path::IsAbsolute(plugin_path)) return false;
-        if (!IsValidUtf8(plugin_path)) return false;
-
-        DynamicArrayBounded<char, k_plugin_path_max_len> modified_plugin_path;
         GlobalInit({
-            .current_binary_path = ({
-                String p = plugin_path;
-                // the CLAP spec says that the path is to the bundle on macOS, so we need to append
-                // the subpaths to get the binary path
-                if (IS_MACOS && g_final_binary_type != FinalBinaryType::Standalone) {
-                    constexpr String k_subpath = "/Contents/MacOS/Floe"_s;
-                    if (p.size + k_subpath.size > k_plugin_path_max_len) return false;
-                    dyn::AppendSpanAssumeCapacity(modified_plugin_path, p);
-                    dyn::AppendSpanAssumeCapacity(modified_plugin_path, k_subpath);
-                    p = modified_plugin_path;
-                    if constexpr (!PRODUCTION_BUILD) ASSERT(GetFileType(p).HasValue());
-                }
-                p;
-            }),
             .init_error_reporting = false,
             .set_main_thread = false,
         });
@@ -128,8 +106,6 @@ static bool ClapEntryInit(char const* plugin_path_c_str) {
         LogInfo(ModuleName::Clap,
                 "entry.init: ver: " FLOE_VERSION_STRING ", os: " OS_DISPLAY_NAME
                 ", arch: " ARCH_DISPLAY_NAME);
-
-        LogDebug(ModuleName::Global, "given plugin path: {}", plugin_path);
 
         return true;
     } catch (PanicException) {
