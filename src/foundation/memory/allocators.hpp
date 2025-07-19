@@ -10,11 +10,6 @@
 #include "foundation/utils/linked_list.hpp"
 #include "foundation/utils/memory.hpp"
 
-// GPA = General Purpose Allocator
-PUBLIC ALWAYS_INLINE inline void* GpaAlloc(usize size) { return __builtin_malloc(size); }
-PUBLIC ALWAYS_INLINE inline void GpaFree(void* ptr) { __builtin_free(ptr); }
-PUBLIC ALWAYS_INLINE inline void* GpaRealloc(void* ptr, usize size) { return __builtin_realloc(ptr, size); }
-
 enum class AllocatorCommand {
     Allocate,
     Free,

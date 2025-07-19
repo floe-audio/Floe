@@ -65,7 +65,7 @@ struct Vector {
         data = nullptr;
     }
     ~Vector() {
-        if (data) GpaFree(data);
+        if (data) GlobalFreeNoSize(data);
     }
 
     bool Empty() const { return size == 0; }
@@ -84,7 +84,7 @@ struct Vector {
     void Clear() {
         if (data) {
             size = capacity = 0;
-            GpaFree(data);
+            GlobalFreeNoSize(data);
             data = nullptr;
         }
     }
@@ -120,10 +120,10 @@ struct Vector {
     }
     void Reserve(int new_capacity) {
         if (new_capacity <= capacity) return;
-        auto* new_data = (ValueType*)GpaAlloc((usize)new_capacity * sizeof(ValueType));
+        auto* new_data = (ValueType*)GlobalAlloc({.size = (usize)new_capacity * sizeof(ValueType)}).data;
         if (data) {
             CopyMemory(new_data, data, (usize)size * sizeof(ValueType));
-            GpaFree(data);
+            GlobalFreeNoSize(data);
         }
         data = new_data;
         capacity = new_capacity;

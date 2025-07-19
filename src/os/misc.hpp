@@ -58,8 +58,28 @@ void* AllocatePages(usize bytes);
 void FreePages(void* ptr, usize bytes);
 void TryShrinkPages(void* ptr, usize old_size, usize new_size);
 
-void* AlignedAlloc(usize alignment, usize size);
-void AlignedFree(void* ptr);
+// Malloc-like allocator but with alignment support.
+struct Memory {
+    Memory() = default;
+    Memory(void* data, usize size) : data(data), size(size) {}
+    Memory(Span<u8> span) : data(span.data), size(span.size) {}
+    operator Span<u8>() const { return {(u8*)data, size}; }
+    void* data;
+    usize size;
+};
+struct AllocOptions {
+    usize size;
+    usize align = k_max_alignment;
+    bool zero;
+};
+Memory GlobalAlloc(AllocOptions options);
+struct ReallocOptions {
+    usize size;
+    usize align = k_max_alignment;
+};
+Memory GlobalRealloc(Memory allocation, ReallocOptions options);
+void GlobalFree(Memory allocation);
+void GlobalFreeNoSize(void* ptr);
 
 // NOT thread-safe. Use only in single-threaded contexts. We use getenv() on Unix.
 Optional<MutableString> GetEnvironmentVariable(char const* name, Allocator& a);
@@ -97,15 +117,15 @@ class Malloc final : public Allocator {
         switch (command.tag) {
             case AllocatorCommand::Allocate: {
                 auto const& cmd = command.Get<AllocateCommand>();
-                auto ptr = AlignedAlloc(cmd.alignment, cmd.size);
-                if (ptr == nullptr) Panic("out of memory");
-                return {(u8*)ptr, cmd.size};
+                auto mem = GlobalAlloc({.size = cmd.size, .align = cmd.alignment});
+                if (mem.data == nullptr) Panic("out of memory");
+                return mem;
             }
             case AllocatorCommand::Free: {
                 auto const& cmd = command.Get<FreeCommand>();
                 if constexpr (RUNTIME_SAFETY_CHECKS_ON)
                     FillMemory(cmd.allocation.data, 0xCD, cmd.allocation.size);
-                AlignedFree(cmd.allocation.data);
+                GlobalFree(cmd.allocation);
                 break;
             }
             case AllocatorCommand::Resize: {
@@ -121,15 +141,15 @@ class Malloc final : public Allocator {
                             : k_max_alignment;
 
                     // fallback: new allocation and move memory
-                    auto new_allocation = AlignedAlloc(alignment, cmd.new_size);
+                    auto new_allocation = GlobalAlloc({.size = cmd.new_size, .align = alignment});
                     if (cmd.move_memory_handler.function)
                         cmd.move_memory_handler.function({.context = cmd.move_memory_handler.context,
-                                                          .destination = new_allocation,
+                                                          .destination = new_allocation.data,
                                                           .source = cmd.allocation.data,
                                                           .num_bytes = cmd.allocation.size});
-                    AlignedFree(cmd.allocation.data);
+                    GlobalFree(cmd.allocation);
 
-                    return {(u8*)new_allocation, cmd.new_size};
+                    return new_allocation;
                 } else if (cmd.new_size < cmd.allocation.size) {
                     // IMPROVE: use realloc
 

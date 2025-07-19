@@ -11,19 +11,27 @@
 
 namespace layout {
 
-void ReserveItemsCapacity(Context& ctx, u32 count) {
-    if (count >= ctx.capacity) {
-        ctx.capacity = count;
-        auto const item_size = sizeof(Item) + sizeof(f32x4);
-        ctx.items = (Item*)GpaRealloc(ctx.items, ctx.capacity * item_size);
+constexpr usize k_total_item_size = sizeof(Item) + sizeof(f32x4);
+
+static Span<u8> Allocation(Context& ctx) { return {(u8*)ctx.items, ctx.capacity * k_total_item_size}; }
+
+void ReserveItemsCapacity(Context& ctx, Allocator& a, u32 new_capacity) {
+    if (new_capacity >= ctx.capacity) {
+        ctx.items = (Item*)(void*)a
+                        .Reallocate<u8>(new_capacity * (sizeof(Item) + sizeof(f32x4)),
+                                        Allocation(ctx),
+                                        ctx.capacity * k_total_item_size,
+                                        true)
+                        .data;
+        ctx.capacity = new_capacity;
         auto const* past_last = ctx.items + ctx.capacity;
         ctx.rects = (f32x4*)past_last;
     }
 }
 
-void DestroyContext(Context& ctx) {
+void DestroyContext(Context& ctx, Allocator& a) {
     if (ctx.items != nullptr) {
-        GpaFree(ctx.items);
+        a.Free(Allocation(ctx));
         ctx.items = nullptr;
         ctx.rects = nullptr;
     }
@@ -61,16 +69,10 @@ u32 ItemsCount(Context& ctx) { return ctx.num_items; }
 
 u32 ItemsCapacity(Context& ctx) { return ctx.capacity; }
 
-Id CreateItem(Context& ctx) {
+Id CreateItem(Context& ctx, Allocator& a) {
     Id idx {ctx.num_items++};
 
-    if (ToInt(idx) >= ctx.capacity) {
-        ctx.capacity = ctx.capacity < 1 ? 32 : (ctx.capacity * 4);
-        auto const item_size = sizeof(Item) + sizeof(f32x4);
-        ctx.items = (Item*)GpaRealloc(ctx.items, ctx.capacity * item_size);
-        auto const* past_last = ctx.items + ctx.capacity;
-        ctx.rects = (f32x4*)past_last;
-    }
+    if (ToInt(idx) >= ctx.capacity) ReserveItemsCapacity(ctx, a, ctx.capacity < 1 ? 32 : (ctx.capacity * 4));
 
     auto* item = GetItem(ctx, idx);
     // We can either do this here, or when creating/resetting buffer
@@ -584,9 +586,10 @@ struct LayoutImageArgs {
 
 static ErrorCodeOr<String> GenerateSvgContainerHugChildFill(ArenaAllocator& arena) {
     layout::Context ctx;
-    DEFER { layout::DestroyContext(ctx); };
+    DEFER { layout::DestroyContext(ctx, arena); };
 
     auto const root = layout::CreateItem(ctx,
+                                         arena,
                                          {
                                              .size = layout::k_hug_contents,
                                              .contents_direction = layout::Direction::Column,
@@ -594,12 +597,14 @@ static ErrorCodeOr<String> GenerateSvgContainerHugChildFill(ArenaAllocator& aren
 
     auto const child1_wrapper =
         layout::CreateItem(ctx,
+                           arena,
                            {
                                .parent = root,
                                .size = {layout::k_hug_contents, layout::k_hug_contents},
                            });
 
     auto const child1_inner = layout::CreateItem(ctx,
+                                                 arena,
                                                  {
                                                      .parent = child1_wrapper,
                                                      .size = {60, 20},
@@ -607,12 +612,14 @@ static ErrorCodeOr<String> GenerateSvgContainerHugChildFill(ArenaAllocator& aren
 
     auto const child2_wrapper =
         layout::CreateItem(ctx,
+                           arena,
                            {
                                .parent = root,
                                .size = {layout::k_fill_parent, layout::k_hug_contents},
                            });
 
     auto const child2_inner = layout::CreateItem(ctx,
+                                                 arena,
                                                  {
                                                      .parent = child2_wrapper,
                                                      .size = {100, 20},
@@ -665,15 +672,15 @@ static ErrorCodeOr<String> GenerateSvgContainerHugChildFill(ArenaAllocator& aren
 
 static ErrorCodeOr<String> GenerateLayoutSvg3ChildElements(ArenaAllocator& arena, LayoutImageArgs args) {
     layout::Context ctx;
-    DEFER { layout::DestroyContext(ctx); };
+    DEFER { layout::DestroyContext(ctx, arena); };
 
-    auto root = layout::CreateItem(ctx, args.root_options);
+    auto root = layout::CreateItem(ctx, arena, args.root_options);
     for (auto& child_options : args.child_options)
         child_options.parent = root;
 
     Array<layout::Id, args.child_options.size> children;
     for (auto const i : Range(children.size))
-        children[i] = layout::CreateItem(ctx, args.child_options[i]);
+        children[i] = layout::CreateItem(ctx, arena, args.child_options[i]);
 
     layout::RunContext(ctx);
 

@@ -22,6 +22,7 @@ void BotPanel(Gui* g) {
     if (imgui.Width() <= 0 || imgui.Height() <= 0) return;
 
     auto root = layout::CreateItem(lay,
+                                   g->scratch_arena,
                                    {
                                        .size = imgui.Size(),
                                        .contents_direction = layout::Direction::Row,
@@ -29,6 +30,7 @@ void BotPanel(Gui* g) {
                                    });
     auto controls = layout::CreateItem(
         lay,
+        g->scratch_arena,
         {
             .parent = root,
             .size = {LiveSize(imgui, UiSizeId::MidiKeyboardControlWidth), imgui.Height() * 0.9f},
@@ -38,6 +40,7 @@ void BotPanel(Gui* g) {
 
     auto oct_container = layout::CreateItem(
         lay,
+        g->scratch_arena,
         {
             .parent = controls,
             .size = {LiveSize(imgui, UiSizeId::MidiKeyboardSlider) * 1.5f, layout::k_fill_parent},
@@ -46,22 +49,26 @@ void BotPanel(Gui* g) {
         });
 
     auto oct_up = layout::CreateItem(lay,
+                                     g->scratch_arena,
                                      {
                                          .parent = oct_container,
                                          .size = {layout::k_fill_parent, button_h},
                                      });
     auto oct_text = layout::CreateItem(lay,
+                                       g->scratch_arena,
                                        {
                                            .parent = oct_container,
                                            .size = {layout::k_fill_parent, button_h},
                                            .margins = {.tb = button_ygap},
                                        });
     auto oct_dn = layout::CreateItem(lay,
+                                     g->scratch_arena,
                                      {
                                          .parent = oct_container,
                                          .size = {layout::k_fill_parent, button_h},
                                      });
     auto keyboard = layout::CreateItem(lay,
+                                       g->scratch_arena,
                                        {
                                            .parent = root,
                                            .size = layout::k_fill_parent,

@@ -35,6 +35,7 @@ struct Item {
 };
 
 struct Context {
+    Span<u8> memory {};
     Item* items {};
     f32x4* rects {};
     u32 capacity {};
@@ -125,9 +126,9 @@ enum : u32 {
 
 } // namespace flags
 
-void ReserveItemsCapacity(Context& ctx, u32 count);
+void ReserveItemsCapacity(Context& ctx, Allocator& a, u32 count);
 
-void DestroyContext(Context& ctx);
+void DestroyContext(Context& ctx, Allocator& a);
 
 // Resets but doesn't free memory.
 void ResetContext(Context& ctx);
@@ -164,7 +165,7 @@ u32 ItemsCapacity(Context& ctx);
 
 // Create a new item, which can just be thought of as a rectangle. Returns the id (handle) used to identify
 // the item.
-Id CreateItem(Context& ctx);
+Id CreateItem(Context& ctx, Allocator& a);
 
 // Inserts an item into another item, forming a parent - child relationship. An item can contain any number of
 // child items. Items inserted into a parent are put at the end of the ordering, after any existing siblings.
@@ -355,8 +356,8 @@ PUBLIC Margins GetMargins(Context& ctx, Id id) {
     return {.lrtb = __builtin_shufflevector(ltrb, ltrb, 0, 2, 1, 3)};
 }
 
-PUBLIC Id CreateItem(Context& ctx, ItemOptions options) {
-    auto const id = CreateItem(ctx);
+PUBLIC Id CreateItem(Context& ctx, Allocator& a, ItemOptions options) {
+    auto const id = CreateItem(ctx, a);
 
     if (ToInt(id) == 0) {
         ASSERT(All(options.size != k_fill_parent));

@@ -648,9 +648,9 @@ TEST_CASE(TestAtomicQueue) {
 }
 
 struct MallocedObj {
-    MallocedObj(char c) : obj((char*)GpaAlloc(10)) { FillMemory({(u8*)obj, 10}, (u8)c); }
+    MallocedObj(char c) : obj((char*)GlobalAlloc({.size = 10}).data) { FillMemory({(u8*)obj, 10}, (u8)c); }
     ~MallocedObj() {
-        GpaFree(obj);
+        GlobalFreeNoSize(obj);
         obj = nullptr;
     }
     bool operator==(char c) const { return obj[0] == c; }

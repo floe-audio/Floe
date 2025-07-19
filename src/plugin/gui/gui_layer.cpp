@@ -281,6 +281,7 @@ void Layout(Gui* g,
     auto const page_heading_height = LiveSize(g->imgui, Page_HeadingHeight);
 
     auto container = layout::CreateItem(g->layout,
+                                        g->scratch_arena,
                                         {
                                             .size = {width, height},
                                             .contents_direction = layout::Direction::Column,
@@ -292,6 +293,7 @@ void Layout(Gui* g,
 
         c.selector_box = layout::CreateItem(
             g->layout,
+            g->scratch_arena,
             {
                 .parent = container,
                 .size = {layout::k_fill_parent, LiveSize(g->imgui, LayerSelectorBoxHeight)},
@@ -304,6 +306,7 @@ void Layout(Gui* g,
             });
 
         c.selector_menu = layout::CreateItem(g->layout,
+                                             g->scratch_arena,
                                              {
                                                  .parent = c.selector_box,
                                                  .size = layout::k_fill_parent,
@@ -314,17 +317,20 @@ void Layout(Gui* g,
         auto const layer_selector_box_buttons_margin_r = LiveSize(g->imgui, LayerSelectorBoxButtonsMarginR);
 
         c.selector_l = layout::CreateItem(g->layout,
+                                          g->scratch_arena,
                                           {
                                               .parent = c.selector_box,
                                               .size = {layer_selector_lr_button_w, layout::k_fill_parent},
                                           });
         c.selector_r = layout::CreateItem(g->layout,
+                                          g->scratch_arena,
                                           {
                                               .parent = c.selector_box,
                                               .size = {layer_selector_lr_button_w, layout::k_fill_parent},
                                           });
         c.selector_randomise =
             layout::CreateItem(g->layout,
+                               g->scratch_arena,
                                {
                                    .parent = c.selector_box,
                                    .size = {layer_selector_button_w, layout::k_fill_parent},
@@ -337,6 +343,7 @@ void Layout(Gui* g,
     // mixer container 1
     {
         auto subcontainer_1 = layout::CreateItem(g->layout,
+                                                 g->scratch_arena,
                                                  {
                                                      .parent = container,
                                                      .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -351,6 +358,7 @@ void Layout(Gui* g,
                                                  });
 
         c.volume = layout::CreateItem(g->layout,
+                                      g->scratch_arena,
                                       {
                                           .parent = subcontainer_1,
                                           .size = LiveSize(g->imgui, LayerVolumeKnobSize),
@@ -359,6 +367,7 @@ void Layout(Gui* g,
 
         c.mute_solo = layout::CreateItem(
             g->layout,
+            g->scratch_arena,
             {
                 .parent = subcontainer_1,
                 .size = {LiveSize(g->imgui, LayerMuteSoloWidth), LiveSize(g->imgui, LayerMuteSoloHeight)},
@@ -374,6 +383,7 @@ void Layout(Gui* g,
     // mixer container 2
     {
         auto subcontainer_2 = layout::CreateItem(g->layout,
+                                                 g->scratch_arena,
                                                  {
                                                      .parent = container,
                                                      .size = layout::k_hug_contents,
@@ -413,6 +423,7 @@ void Layout(Gui* g,
     auto const layer_mixer_divider_vert_margins = LiveSize(g->imgui, LayerMixerDividerVertMargins);
     // divider
     c.divider = layout::CreateItem(g->layout,
+                                   g->scratch_arena,
                                    {
                                        .parent = container,
                                        .size = {layout::k_fill_parent, 1},
@@ -423,6 +434,7 @@ void Layout(Gui* g,
     {
         auto tab_lay =
             layout::CreateItem(g->layout,
+                               g->scratch_arena,
                                {
                                    .parent = container,
                                    .size = {layout::k_fill_parent, LiveSize(g->imgui, LayerParamsGroupTabsH)},
@@ -440,6 +452,7 @@ void Layout(Gui* g,
                 size += LiveSize(g->imgui, LayerParamsGroupTabsIconW2);
             c.tabs[i] =
                 layout::CreateItem(g->layout,
+                                   g->scratch_arena,
                                    {
                                        .parent = tab_lay,
                                        .size = {size + layer_params_group_tabs_gap, layout::k_fill_parent},
@@ -450,6 +463,7 @@ void Layout(Gui* g,
     // divider2
     {
         c.divider2 = layout::CreateItem(g->layout,
+                                        g->scratch_arena,
                                         {
                                             .parent = container,
                                             .size = {layout::k_fill_parent, 1},
@@ -469,6 +483,7 @@ void Layout(Gui* g,
         };
 
         auto page_container = layout::CreateItem(g->layout,
+                                                 g->scratch_arena,
                                                  {
                                                      .parent = container,
                                                      .size = layout::k_fill_parent,
@@ -483,6 +498,7 @@ void Layout(Gui* g,
                 auto const waveform_margins_lr = LiveSize(g->imgui, Main_WaveformMarginLR);
                 c.main.waveform = layout::CreateItem(
                     g->layout,
+                    g->scratch_arena,
                     {
                         .parent = page_container,
                         .size = {layout::k_fill_parent, LiveSize(g->imgui, Main_WaveformH)},
@@ -495,6 +511,7 @@ void Layout(Gui* g,
 
                 c.main.waveform_label = layout::CreateItem(
                     g->layout,
+                    g->scratch_arena,
                     {
                         .parent = page_container,
                         .size = {layout::k_fill_parent, LiveSize(g->imgui, Main_WaveformLabelH)},
@@ -507,6 +524,7 @@ void Layout(Gui* g,
                 auto const main_item_gap_y = LiveSize(g->imgui, Main_ItemGapY);
                 auto btn_container =
                     layout::CreateItem(g->layout,
+                                       g->scratch_arena,
                                        {
                                            .parent = page_container,
                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -515,6 +533,7 @@ void Layout(Gui* g,
                                        });
                 c.main.reverse = layout::CreateItem(
                     g->layout,
+                    g->scratch_arena,
                     {
                         .parent = btn_container,
                         .size = {LiveSize(g->imgui, Main_ReverseButtonWidth), main_item_height},
@@ -522,6 +541,7 @@ void Layout(Gui* g,
                     });
                 c.main.loop_mode =
                     layout::CreateItem(g->layout,
+                                       g->scratch_arena,
                                        {
                                            .parent = btn_container,
                                            .size = {layout::k_fill_parent, param_popup_button_height},
@@ -532,6 +552,7 @@ void Layout(Gui* g,
                 auto const main_divider_margin_b = LiveSize(g->imgui, Main_DividerMarginB);
                 c.main.divider = layout::CreateItem(
                     g->layout,
+                    g->scratch_arena,
                     {
                         .parent = page_container,
                         .size = {layout::k_fill_parent, 1},
@@ -539,6 +560,7 @@ void Layout(Gui* g,
                     });
 
                 c.main.env_on = layout::CreateItem(g->layout,
+                                                   g->scratch_arena,
                                                    {
                                                        .parent = page_container,
                                                        .size = {layout::k_fill_parent, page_heading_height},
@@ -550,6 +572,7 @@ void Layout(Gui* g,
                                                    });
 
                 c.main.envelope = layout::CreateItem(g->layout,
+                                                     g->scratch_arena,
                                                      {
                                                          .parent = page_container,
                                                          .size = {layout::k_fill_parent, main_envelope_h},
@@ -565,6 +588,7 @@ void Layout(Gui* g,
 
                 auto filter_heading_container =
                     layout::CreateItem(g->layout,
+                                       g->scratch_arena,
                                        {
                                            .parent = page_container,
                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -573,6 +597,7 @@ void Layout(Gui* g,
                                        });
                 c.filter.filter_on =
                     layout::CreateItem(g->layout,
+                                       g->scratch_arena,
                                        {
                                            .parent = filter_heading_container,
                                            .size = {LiveSize(g->imgui, Filter_OnWidth), page_heading_height},
@@ -581,6 +606,7 @@ void Layout(Gui* g,
                                        });
                 c.filter.filter_type =
                     layout::CreateItem(g->layout,
+                                       g->scratch_arena,
                                        {
                                            .parent = filter_heading_container,
                                            .size = {layout::k_fill_parent, param_popup_button_height},
@@ -589,6 +615,7 @@ void Layout(Gui* g,
 
                 auto filter_knobs_container =
                     layout::CreateItem(g->layout,
+                                       g->scratch_arena,
                                        {
                                            .parent = page_container,
                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -613,6 +640,7 @@ void Layout(Gui* g,
 
                 c.filter.envelope =
                     layout::CreateItem(g->layout,
+                                       g->scratch_arena,
                                        {
                                            .parent = page_container,
                                            .size = {layout::k_fill_parent, main_envelope_h},
@@ -625,6 +653,7 @@ void Layout(Gui* g,
             }
             case PageType::Eq: {
                 c.eq.on = layout::CreateItem(g->layout,
+                                             g->scratch_arena,
                                              {
                                                  .parent = page_container,
                                                  .size = {layout::k_fill_parent, page_heading_height},
@@ -635,6 +664,7 @@ void Layout(Gui* g,
                 {
                     c.eq.type[0] =
                         layout::CreateItem(g->layout,
+                                           g->scratch_arena,
                                            {
                                                .parent = page_container,
                                                .size = {layout::k_fill_parent, param_popup_button_height},
@@ -646,6 +676,7 @@ void Layout(Gui* g,
 
                     auto knob_container =
                         layout::CreateItem(g->layout,
+                                           g->scratch_arena,
                                            {
                                                .parent = page_container,
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -673,6 +704,7 @@ void Layout(Gui* g,
                 {
                     c.eq.type[1] =
                         layout::CreateItem(g->layout,
+                                           g->scratch_arena,
                                            {
                                                .parent = page_container,
                                                .size = {layout::k_fill_parent, param_popup_button_height},
@@ -683,6 +715,7 @@ void Layout(Gui* g,
                                            });
                     auto knob_container =
                         layout::CreateItem(g->layout,
+                                           g->scratch_arena,
                                            {
                                                .parent = page_container,
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -717,6 +750,7 @@ void Layout(Gui* g,
                 auto layout_item = [&](layout::Id& control, layout::Id& name, f32 height) {
                     auto parent =
                         layout::CreateItem(g->layout,
+                                           g->scratch_arena,
                                            {
                                                .parent = page_container,
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -724,6 +758,7 @@ void Layout(Gui* g,
 
                                            });
                     control = layout::CreateItem(g->layout,
+                                                 g->scratch_arena,
                                                  {
                                                      .parent = parent,
                                                      .size = {midi_item_width, height},
@@ -733,6 +768,7 @@ void Layout(Gui* g,
                                                      },
                                                  });
                     name = layout::CreateItem(g->layout,
+                                              g->scratch_arena,
                                               {
                                                   .parent = parent,
                                                   .size = {layout::k_fill_parent, height},
@@ -749,12 +785,13 @@ void Layout(Gui* g,
                         .tb = midi_item_gap_y,
                     },
                 };
-                c.play.keytrack = layout::CreateItem(g->layout, button_options);
-                c.play.mono = layout::CreateItem(g->layout, button_options);
-                c.play.retrig = layout::CreateItem(g->layout, button_options);
+                c.play.keytrack = layout::CreateItem(g->layout, g->scratch_arena, button_options);
+                c.play.mono = layout::CreateItem(g->layout, g->scratch_arena, button_options);
+                c.play.retrig = layout::CreateItem(g->layout, g->scratch_arena, button_options);
 
                 c.play.velo_name =
                     layout::CreateItem(g->layout,
+                                       g->scratch_arena,
                                        {
                                            .parent = page_container,
                                            .size = {layout::k_fill_parent, midi_item_height},
@@ -762,6 +799,7 @@ void Layout(Gui* g,
                                        });
                 c.play.velo_graph = layout::CreateItem(
                     g->layout,
+                    g->scratch_arena,
                     {
                         .parent = page_container,
                         .size = {layout::k_fill_parent, LiveSize(g->imgui, MIDI_VeloGraphHeight)},
@@ -771,6 +809,7 @@ void Layout(Gui* g,
             }
             case PageType::Lfo: {
                 c.lfo.on = layout::CreateItem(g->layout,
+                                              g->scratch_arena,
                                               {
                                                   .parent = page_container,
                                                   .size = {layout::k_fill_parent, page_heading_height},
@@ -779,6 +818,7 @@ void Layout(Gui* g,
                 auto layout_item = [&](layout::Id& control, layout::Id& name) {
                     auto parent =
                         layout::CreateItem(g->layout,
+                                           g->scratch_arena,
                                            {
                                                .parent = page_container,
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -786,6 +826,7 @@ void Layout(Gui* g,
                                            });
                     control = layout::CreateItem(
                         g->layout,
+                        g->scratch_arena,
                         {
                             .parent = parent,
                             .size = {LiveSize(g->imgui, LFO_ItemWidth), param_popup_button_height},
@@ -796,6 +837,7 @@ void Layout(Gui* g,
                             },
                         });
                     name = layout::CreateItem(g->layout,
+                                              g->scratch_arena,
                                               {
                                                   .parent = parent,
                                                   .size = {layout::k_fill_parent, param_popup_button_height},
@@ -808,6 +850,7 @@ void Layout(Gui* g,
 
                 auto knob_container =
                     layout::CreateItem(g->layout,
+                                       g->scratch_arena,
                                        {
                                            .parent = page_container,
                                            .size = {layout::k_fill_parent, layout::k_hug_contents},

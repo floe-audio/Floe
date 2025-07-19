@@ -288,6 +288,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
     //
     auto const root_width = imgui.Width();
     auto effects_root = layout::CreateItem(lay,
+                                           g->scratch_arena,
                                            {
                                                .size = imgui.Size(),
                                                .contents_direction = layout::Direction::Column,
@@ -302,6 +303,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
 
         auto switches_container =
             layout::CreateItem(lay,
+                               g->scratch_arena,
                                {
                                    .parent = effects_root,
                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -313,6 +315,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
                                });
 
         auto left = layout::CreateItem(lay,
+                                       g->scratch_arena,
                                        {
                                            .parent = switches_container,
                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -320,6 +323,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
 
                                        });
         auto right = layout::CreateItem(lay,
+                                        g->scratch_arena,
                                         {
                                             .parent = switches_container,
                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -331,6 +335,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
             auto const parent = (i < switches_left_col_size) ? left : right;
             switches[i] = layout::CreateItem(
                 lay,
+                g->scratch_arena,
                 {
                     .parent = parent,
                     .size = {(root_width / 2) - fx_switch_board_margin_l - fx_switch_board_margin_r,
@@ -340,6 +345,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
     }
 
     switches_bottom_divider = layout::CreateItem(lay,
+                                                 g->scratch_arena,
                                                  {
                                                      .parent = effects_root,
                                                      .size = {layout::k_fill_parent, 1},
@@ -363,6 +369,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
 
         auto master_heading_container =
             layout::CreateItem(lay,
+                               g->scratch_arena,
                                {
                                    .parent = effects_root,
                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -373,6 +380,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
         auto const heading_size = get_heading_size(k_effect_info[ToInt(fx.type)].name);
         ids.heading = layout::CreateItem(
             lay,
+            g->scratch_arena,
             {
                 .parent = master_heading_container,
                 .size = {heading_size.x, heading_size.y},
@@ -382,6 +390,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
 
         auto heading_container =
             layout::CreateItem(lay,
+                               g->scratch_arena,
                                {
                                    .parent = master_heading_container,
                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -391,6 +400,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
 
         ids.close = layout::CreateItem(
             lay,
+            g->scratch_arena,
             {
                 .parent = master_heading_container,
                 .size = {LiveSize(imgui, FXCloseButtonWidth), LiveSize(imgui, FXCloseButtonHeight)},
@@ -416,6 +426,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
 
     auto create_subcontainer = [&](layout::Id parent) {
         return layout::CreateItem(lay,
+                                  g->scratch_arena,
                                   {
                                       .parent = parent,
                                       .size = layout::k_hug_contents,
@@ -424,7 +435,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
     };
 
     auto layout_all = [&](Span<LayIDPair> ids, Span<ParamIndex const> params) {
-        auto param_container = layout::CreateItem(lay, param_container_options);
+        auto param_container = layout::CreateItem(lay, g->scratch_arena, param_container_options);
 
         Optional<layout::Id> container {};
         u8 previous_group = 0;
@@ -451,7 +462,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
         switch (fx->type) {
             case EffectType::Distortion: {
                 auto ids = create_fx_ids(engine.processor.distortion, nullptr);
-                auto param_container = layout::CreateItem(lay, param_container_options);
+                auto param_container = layout::CreateItem(lay, g->scratch_arena, param_container_options);
 
                 LayoutParameterComponent(g,
                                          param_container,
@@ -462,14 +473,14 @@ void DoEffectsWindow(Gui* g, Rect r) {
                                          ids.distortion.amount,
                                          engine.processor.params[ToInt(ParamIndex::DistortionDrive)]);
 
-                ids.divider = layout::CreateItem(lay, divider_options);
+                ids.divider = layout::CreateItem(lay, g->scratch_arena, divider_options);
                 dyn::Append(effects, ids);
                 break;
             }
 
             case EffectType::BitCrush: {
                 auto ids = create_fx_ids(engine.processor.bit_crush, nullptr);
-                auto param_container = layout::CreateItem(lay, param_container_options);
+                auto param_container = layout::CreateItem(lay, g->scratch_arena, param_container_options);
 
                 LayoutParameterComponent(g,
                                          param_container,
@@ -491,7 +502,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
                                          ids.bit_crush.dry,
                                          engine.processor.params[ToInt(ParamIndex::BitCrushDry)]);
 
-                ids.divider = layout::CreateItem(lay, divider_options);
+                ids.divider = layout::CreateItem(lay, g->scratch_arena, divider_options);
                 dyn::Append(effects, ids);
                 break;
             }
@@ -499,10 +510,11 @@ void DoEffectsWindow(Gui* g, Rect r) {
             case EffectType::Compressor: {
                 layout::Id heading_container;
                 auto ids = create_fx_ids(engine.processor.compressor, &heading_container);
-                auto param_container = layout::CreateItem(lay, param_container_options);
+                auto param_container = layout::CreateItem(lay, g->scratch_arena, param_container_options);
 
                 ids.compressor.auto_gain = layout::CreateItem(
                     lay,
+                    g->scratch_arena,
                     {
                         .parent = heading_container,
                         .size = {LiveSize(imgui, FXCompressorAutoGainWidth), fx_param_button_height},
@@ -521,14 +533,14 @@ void DoEffectsWindow(Gui* g, Rect r) {
                                          ids.compressor.gain,
                                          engine.processor.params[ToInt(ParamIndex::CompressorGain)]);
 
-                ids.divider = layout::CreateItem(lay, divider_options);
+                ids.divider = layout::CreateItem(lay, g->scratch_arena, divider_options);
                 dyn::Append(effects, ids);
                 break;
             }
 
             case EffectType::FilterEffect: {
                 auto ids = create_fx_ids(engine.processor.filter_effect, nullptr);
-                auto param_container = layout::CreateItem(lay, param_container_options);
+                auto param_container = layout::CreateItem(lay, g->scratch_arena, param_container_options);
 
                 LayoutParameterComponent(g,
                                          param_container,
@@ -550,28 +562,28 @@ void DoEffectsWindow(Gui* g, Rect r) {
                                          ids.filter.gain,
                                          engine.processor.params[ToInt(ParamIndex::FilterGain)]);
 
-                ids.divider = layout::CreateItem(lay, divider_options);
+                ids.divider = layout::CreateItem(lay, g->scratch_arena, divider_options);
                 dyn::Append(effects, ids);
                 break;
             }
 
             case EffectType::StereoWiden: {
                 auto ids = create_fx_ids(engine.processor.stereo_widen, nullptr);
-                auto param_container = layout::CreateItem(lay, param_container_options);
+                auto param_container = layout::CreateItem(lay, g->scratch_arena, param_container_options);
 
                 LayoutParameterComponent(g,
                                          param_container,
                                          ids.stereo.width,
                                          engine.processor.params[ToInt(ParamIndex::StereoWidenWidth)]);
 
-                ids.divider = layout::CreateItem(lay, divider_options);
+                ids.divider = layout::CreateItem(lay, g->scratch_arena, divider_options);
                 dyn::Append(effects, ids);
                 break;
             }
 
             case EffectType::Chorus: {
                 auto ids = create_fx_ids(engine.processor.chorus, nullptr);
-                auto param_container = layout::CreateItem(lay, param_container_options);
+                auto param_container = layout::CreateItem(lay, g->scratch_arena, param_container_options);
 
                 LayoutParameterComponent(g,
                                          param_container,
@@ -596,7 +608,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
                                          ids.chorus.dry,
                                          engine.processor.params[ToInt(ParamIndex::ChorusDry)]);
 
-                ids.divider = layout::CreateItem(lay, divider_options);
+                ids.divider = layout::CreateItem(lay, g->scratch_arena, divider_options);
                 dyn::Append(effects, ids);
                 break;
             }
@@ -606,7 +618,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
 
                 layout_all(ids.reverb.ids, k_reverb_params);
 
-                ids.divider = layout::CreateItem(lay, divider_options);
+                ids.divider = layout::CreateItem(lay, g->scratch_arena, divider_options);
                 dyn::Append(effects, ids);
                 break;
             }
@@ -616,7 +628,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
 
                 layout_all(ids.phaser.ids, k_phaser_params);
 
-                ids.divider = layout::CreateItem(lay, divider_options);
+                ids.divider = layout::CreateItem(lay, g->scratch_arena, divider_options);
                 dyn::Append(effects, ids);
                 break;
             }
@@ -624,10 +636,11 @@ void DoEffectsWindow(Gui* g, Rect r) {
             case EffectType::Delay: {
                 layout::Id heading_container;
                 auto ids = create_fx_ids(engine.processor.delay, &heading_container);
-                auto param_container = layout::CreateItem(lay, param_container_options);
+                auto param_container = layout::CreateItem(lay, g->scratch_arena, param_container_options);
 
                 ids.delay.sync_btn = layout::CreateItem(
                     lay,
+                    g->scratch_arena,
                     {
                         .parent = heading_container,
                         .size = {LiveSize(imgui, FXDelaySyncBtnWidth), fx_param_button_height},
@@ -669,14 +682,14 @@ void DoEffectsWindow(Gui* g, Rect r) {
                                          ids.delay.mix,
                                          engine.processor.params[ToInt(ParamIndex::DelayMix)]);
 
-                ids.divider = layout::CreateItem(lay, divider_options);
+                ids.divider = layout::CreateItem(lay, g->scratch_arena, divider_options);
                 dyn::Append(effects, ids);
                 break;
             }
 
             case EffectType::ConvolutionReverb: {
                 auto ids = create_fx_ids(engine.processor.convo, nullptr);
-                auto param_container = layout::CreateItem(lay, param_container_options);
+                auto param_container = layout::CreateItem(lay, g->scratch_arena, param_container_options);
 
                 LayoutParameterComponent(g,
                                          param_container,
@@ -701,7 +714,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
                                          ids.convo.dry,
                                          engine.processor.params[ToInt(ParamIndex::ConvolutionReverbDry)]);
 
-                ids.divider = layout::CreateItem(lay, divider_options);
+                ids.divider = layout::CreateItem(lay, g->scratch_arena, divider_options);
                 dyn::Append(effects, ids);
             } break;
 

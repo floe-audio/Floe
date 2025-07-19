@@ -217,6 +217,7 @@ static void DoLegacyParamsModal(Gui* g) {
     DEFER { imgui.EndWindow(); };
 
     auto root = layout::CreateItem(g->layout,
+                                   g->scratch_arena,
                                    {
                                        .size = g->imgui.Size(),
                                        .contents_gap = {0, 10},
@@ -238,6 +239,7 @@ static void DoLegacyParamsModal(Gui* g) {
 
     for (auto& p : hidden_params) {
         auto const container = layout::CreateItem(g->layout,
+                                                  g->scratch_arena,
                                                   {
                                                       .parent = root,
                                                       .size = layout::k_hug_contents,
@@ -250,6 +252,7 @@ static void DoLegacyParamsModal(Gui* g) {
                                  g->engine.processor.params[ToInt(p.index)],
                                  UiSizeId::Top2KnobsGapX);
         p.extra_label = layout::CreateItem(g->layout,
+                                           g->scratch_arena,
                                            {
                                                .parent = container,
                                                .size = {layout::k_fill_parent, body_font->font_size},

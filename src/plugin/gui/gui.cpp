@@ -122,8 +122,6 @@ Gui::Gui(GuiFrameInput& frame_input, Engine& engine)
     ASSERT(!engine.stated_changed_callback);
     engine.stated_changed_callback = [this]() { OnEngineStateChange(save_preset_panel_state, this->engine); };
 
-    layout::ReserveItemsCapacity(layout, 2048);
-
     // The GUI has opened, we can check for updates if needed. We don't want to do this before because it has
     // no use until the GUI is open.
     check_for_update::FetchLatestIfNeeded(shared_engine_systems.check_for_update_state);
@@ -133,7 +131,6 @@ Gui::Gui(GuiFrameInput& frame_input, Engine& engine)
 Gui::~Gui() {
     engine.stated_changed_callback = {};
 
-    layout::DestroyContext(layout);
     sample_lib_server::CloseAsyncCommsChannel(engine.shared_engine_systems.sample_library_server,
                                               sample_lib_server_async_channel);
     Trace(ModuleName::Gui);
@@ -296,6 +293,13 @@ GuiFrameResult GuiUpdate(Gui* g) {
         prefs::GetBool(g->prefs,
                        SettingDescriptor(GuiSetting::HighContrastGui)); // IMPROVE: hacky
     g->scratch_arena.ResetCursorAndConsolidateRegions();
+
+    layout::ReserveItemsCapacity(g->layout, g->scratch_arena, 2048);
+    DEFER {
+        // We use the scratch arena for the layout, so we can just reset it to zero rather than having to do
+        // the deallocations.
+        g->layout = {};
+    };
 
     while (auto function = g->main_thread_callbacks.TryPop(g->scratch_arena))
         (*function)();

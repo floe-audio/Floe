@@ -284,6 +284,7 @@ PUBLIC void Run(GuiBoxSystem& builder, Panel* panel) {
         DEFER { builder.state = nullptr; };
 
         {
+            layout::ReserveItemsCapacity(builder.layout, builder.arena, 2048);
             ZoneNamedN(prof1, "Box system: create layout", true);
             panel->run(builder);
         }
@@ -542,7 +543,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
             ZoneNamedN(tracy_layout, "Box system: layout boxes", true);
             auto const box = Box {
                 .layout_id =
-                    layout::CreateItem(builder.layout, ({
+                    layout::CreateItem(builder.layout, builder.arena, ({
                                            layout::ItemOptions layout = config.layout;
 
                                            if (config.parent) [[likely]]

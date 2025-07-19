@@ -112,16 +112,25 @@ bool IsRunningUnderWine() {
 
 void WindowsRaiseException(u32 code) { RaiseException(code, EXCEPTION_NONCONTINUABLE, 0, nullptr); }
 
-void* AlignedAlloc(usize alignment, usize size) {
-    ASSERT(IsPowerOfTwo(alignment));
-    auto result = _aligned_malloc(size, alignment);
-    TracyAlloc(result, size);
-    return result;
+Memory GlobalAlloc(AllocOptions options) {
+    ASSERT(IsPowerOfTwo(options.align));
+    auto result = _aligned_malloc(options.size, options.align);
+    TracyAlloc(result, options.size);
+    return {result, options.size};
 }
-void AlignedFree(void* ptr) {
-    _aligned_free(ptr);
-    TracyFree(ptr);
+
+Memory GlobalRealloc(Memory allocation, ReallocOptions options) {
+    TracyFree(allocation.data);
+    auto result = _aligned_realloc(allocation.data, options.size, options.align);
+    TracyAlloc(result, options.size);
+    return {result, options.size};
 }
+
+void GlobalFree(Memory allocation) {
+    _aligned_free(allocation.data);
+    TracyFree(allocation.data);
+}
+void GlobalFreeNoSize(void* ptr) { GlobalFree({ptr, 0}); }
 
 void* AllocatePages(usize bytes) {
     auto p = VirtualAlloc(nullptr, (DWORD)bytes, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);

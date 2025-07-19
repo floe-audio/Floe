@@ -3884,10 +3884,10 @@ TEST_CASE(TestBoundedList) {
     struct MallocedInt {
         NON_COPYABLE_AND_MOVEABLE(MallocedInt);
         MallocedInt(int i) {
-            data = (int*)GpaAlloc(sizeof(int));
+            data = (int*)GlobalAlloc({.size = sizeof(int)}).data;
             *data = i;
         }
-        ~MallocedInt() { GpaFree(data); }
+        ~MallocedInt() { GlobalFreeNoSize(data); }
         bool operator==(int i) const { return *data == i; }
         int* data;
     };

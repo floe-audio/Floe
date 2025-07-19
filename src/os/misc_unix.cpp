@@ -24,21 +24,30 @@
 
 #include "time.h"
 
-void* AlignedAlloc(usize alignment, usize size) {
-    void* result;
-    if (alignment <= k_max_alignment) {
-        result = malloc(size);
-    } else {
-        // posix_memalign requires alignment to be a multiple of sizeof(void*).
-        alignment = __builtin_align_up(alignment, sizeof(void*));
-        if (posix_memalign(&result, alignment, size) != 0) Panic("posix_memalign failed");
-    }
-    TracyAlloc(result, size);
+Memory GlobalAlloc(AllocOptions options) {
+    // "The size parameter must be an integral multiple of alignment."
+    options.size = AlignForward(options.size, options.align);
+    auto ptr = aligned_alloc(options.align, options.size);
+    TracyAlloc(ptr, options.size);
+    auto result = Memory {ptr, options.size};
+    if (options.zero) FillMemory(result, 0);
     return result;
 }
-void AlignedFree(void* ptr) {
-    TracyFree(ptr);
-    free(ptr);
+
+Memory GlobalRealloc(Memory allocation, ReallocOptions options) {
+    // IMPROVE: maybe there's a way to do this without freeing and reallocating but there doesn't appear to be
+    // a simple solution.
+    auto new_mem = GlobalAlloc({.size = options.size, .align = options.align});
+    CopyMemory(new_mem.data, allocation.data, Min(new_mem.size, allocation.size));
+    GlobalFree(allocation);
+    return new_mem;
+}
+
+void GlobalFreeNoSize(void* ptr) { GlobalFree({ptr, 0}); }
+
+void GlobalFree(Memory allocation) {
+    TracyFree(allocation.data);
+    free(allocation.data);
 }
 
 void* AllocatePages(usize bytes) {

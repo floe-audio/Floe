@@ -91,6 +91,7 @@ void TopPanel(Gui* g) {
     auto const icon_height = LiveSize(g->imgui, UiSizeId::Top2IconHeight);
 
     auto root = layout::CreateItem(g->layout,
+                                   g->scratch_arena,
                                    {
                                        .size = g->imgui.Size(),
                                        .contents_direction = layout::Direction::Row,
@@ -98,6 +99,7 @@ void TopPanel(Gui* g) {
                                    });
 
     auto left_container = layout::CreateItem(g->layout,
+                                             g->scratch_arena,
                                              {
                                                  .parent = root,
                                                  .size = {layout::k_hug_contents, layout::k_fill_parent},
@@ -107,6 +109,7 @@ void TopPanel(Gui* g) {
 
     auto title =
         layout::CreateItem(g->layout,
+                           g->scratch_arena,
                            {
                                .parent = left_container,
                                .size = {LiveSize(g->imgui, UiSizeId::Top2TitleWidth), layout::k_fill_parent},
@@ -114,12 +117,14 @@ void TopPanel(Gui* g) {
                                            .r = LiveSize(g->imgui, UiSizeId::Top2TitleSubtitleGap)},
                            });
     auto subtitle = layout::CreateItem(g->layout,
+                                       g->scratch_arena,
                                        {
                                            .parent = left_container,
                                            .size = {layout::k_fill_parent, layout::k_fill_parent},
                                        });
 
     auto right_container = layout::CreateItem(g->layout,
+                                              g->scratch_arena,
                                               {
                                                   .parent = root,
                                                   .size = layout::k_fill_parent,
@@ -129,6 +134,7 @@ void TopPanel(Gui* g) {
 
     auto preset_box =
         layout::CreateItem(g->layout,
+                           g->scratch_arena,
                            {
                                .parent = right_container,
                                .size = layout::k_hug_contents,
@@ -140,28 +146,33 @@ void TopPanel(Gui* g) {
 
     auto preset_menu =
         layout::CreateItem(g->layout,
+                           g->scratch_arena,
                            {
                                .parent = preset_box,
                                .size = {LiveSize(g->imgui, UiSizeId::Top2PresetBoxW), icon_height},
                            });
 
     auto preset_left = layout::CreateItem(g->layout,
+                                          g->scratch_arena,
                                           {
                                               .parent = preset_box,
                                               .size = {preset_lr_button_width, icon_height},
                                           });
     auto preset_right = layout::CreateItem(g->layout,
+                                           g->scratch_arena,
                                            {
                                                .parent = preset_box,
                                                .size = {preset_lr_button_width, icon_height},
                                            });
     auto preset_random = layout::CreateItem(g->layout,
+                                            g->scratch_arena,
                                             {
                                                 .parent = preset_box,
                                                 .size = {preset_box_icon_width, icon_height},
                                                 .margins = {.r = g->imgui.VwToPixels(2)},
                                             });
     auto preset_save = layout::CreateItem(g->layout,
+                                          g->scratch_arena,
                                           {
                                               .parent = preset_box,
                                               .size = {preset_box_icon_width, icon_height},
@@ -169,6 +180,7 @@ void TopPanel(Gui* g) {
 
     auto preset_load =
         layout::CreateItem(g->layout,
+                           g->scratch_arena,
                            {
                                .parent = preset_box,
                                .size = {preset_box_icon_width, icon_height},
@@ -176,11 +188,13 @@ void TopPanel(Gui* g) {
                            });
 
     auto cog = layout::CreateItem(g->layout,
+                                  g->scratch_arena,
                                   {
                                       .parent = right_container,
                                       .size = {icon_width, icon_height},
                                   });
     auto info = layout::CreateItem(g->layout,
+                                   g->scratch_arena,
                                    {
                                        .parent = right_container,
                                        .size = {icon_width, icon_height},
@@ -189,6 +203,7 @@ void TopPanel(Gui* g) {
     auto attribution_icon =
         g->engine.attribution_requirements.formatted_text.size
             ? Optional<layout::Id> {layout::CreateItem(g->layout,
+                                                       g->scratch_arena,
                                                        {
                                                            .parent = right_container,
                                                            .size = {icon_width, icon_height},
@@ -196,6 +211,7 @@ void TopPanel(Gui* g) {
             : k_nullopt;
 
     auto dots_menu = layout::CreateItem(g->layout,
+                                        g->scratch_arena,
                                         {
                                             .parent = right_container,
                                             .size = {icon_width, icon_height},
@@ -203,6 +219,7 @@ void TopPanel(Gui* g) {
 
     auto knob_container =
         layout::CreateItem(g->layout,
+                           g->scratch_arena,
                            {
                                .parent = right_container,
                                .size = layout::k_hug_contents,
@@ -224,6 +241,7 @@ void TopPanel(Gui* g) {
                              UiSizeId::Top2KnobsGapX);
 
     auto level = layout::CreateItem(g->layout,
+                                    g->scratch_arena,
                                     {
                                         .parent = right_container,
                                         .size = {LiveSize(g->imgui, UiSizeId::Top2PeakMeterW),

@@ -59,6 +59,7 @@ layout::Id LayoutParameterComponent(Gui* g,
     }
 
     auto container = layout::CreateItem(g->layout,
+                                        g->scratch_arena,
                                         {
                                             .parent = parent,
                                             .size = layout::k_hug_contents,
@@ -68,12 +69,14 @@ layout::Id LayoutParameterComponent(Gui* g,
                                         });
 
     ids.control = layout::CreateItem(g->layout,
+                                     g->scratch_arena,
                                      {
                                          .parent = container,
                                          .size = {width, height},
                                          .margins = {.b = LiveSize(imgui, UiSizeId::ParamComponentLabelGapY)},
                                      });
     ids.label = layout::CreateItem(g->layout,
+                                   g->scratch_arena,
                                    {
                                        .parent = container,
                                        .size = {width, (imgui.graphics->context->CurrentFontSize())},

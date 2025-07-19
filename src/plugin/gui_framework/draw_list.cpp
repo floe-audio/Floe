@@ -1515,8 +1515,8 @@ void DrawList::AddImageRounded(TextureHandle user_texture_id,
 #define STBTT_cos(x)       Cos(x)
 #define STBTT_acos(x)      Acos(x)
 #define STBTT_fabs(x)      Fabs(x)
-#define STBTT_malloc(x, u) ((void)(u), GpaAlloc(x))
-#define STBTT_free(x, u)   ((void)(u), GpaFree(x))
+#define STBTT_malloc(x, u) ((void)(u), GlobalAlloc({(usize)x}).data)
+#define STBTT_free(x, u)   ((void)(u), GlobalFreeNoSize(x))
 #define STBTT_assert(x)    ASSERT(x)
 #define STBTT_strlen(x)    NullTerminatedSize(x)
 #define STBTT_memcpy       CopyMemory
@@ -1534,7 +1534,7 @@ void FontAtlas::ClearInputData() {
     for (int i = 0; i < config_data.size; i++)
         if (!config_data[i].font_data_reference_only && config_data[i].font_data &&
             config_data[i].font_data_owned_by_atlas) {
-            GpaFree(config_data[i].font_data);
+            GlobalFreeNoSize(config_data[i].font_data);
             config_data[i].font_data = nullptr;
         }
 
@@ -1548,8 +1548,8 @@ void FontAtlas::ClearInputData() {
 }
 
 void FontAtlas::ClearTexData() {
-    if (tex_pixels_alpha8) GpaFree(tex_pixels_alpha8);
-    if (tex_pixels_rgb_a32) GpaFree(tex_pixels_rgb_a32);
+    if (tex_pixels_alpha8) GlobalFreeNoSize(tex_pixels_alpha8);
+    if (tex_pixels_rgb_a32) GlobalFreeNoSize(tex_pixels_rgb_a32);
     tex_pixels_alpha8 = nullptr;
     tex_pixels_rgb_a32 = nullptr;
 }
@@ -1557,7 +1557,7 @@ void FontAtlas::ClearTexData() {
 void FontAtlas::ClearFonts() {
     for (int i = 0; i < fonts.size; i++) {
         fonts[i]->~Font();
-        GpaFree(fonts[i]);
+        GlobalFreeNoSize(fonts[i]);
     }
     fonts.Clear();
 }
@@ -1593,7 +1593,7 @@ void FontAtlas::GetTexDataAsRGBA32(unsigned char** out_pixels,
     if (!tex_pixels_rgb_a32) {
         unsigned char* pixels;
         GetTexDataAsAlpha8(&pixels, nullptr, nullptr);
-        tex_pixels_rgb_a32 = (unsigned int*)GpaAlloc((usize)(tex_width * tex_height * 4));
+        tex_pixels_rgb_a32 = (unsigned int*)GlobalAlloc({(usize)(tex_width * tex_height * 4)}).data;
         unsigned char const* src = pixels;
         unsigned int* dst = tex_pixels_rgb_a32;
         for (int n = tex_width * tex_height; n > 0; n--)
@@ -1612,7 +1612,7 @@ Font* FontAtlas::AddFont(FontConfig const* font_cfg) {
 
     // Create new font
     if (!font_cfg->merge_mode) {
-        auto* font = (Font*)GpaAlloc(sizeof(Font));
+        auto* font = (Font*)GlobalAlloc({sizeof(Font)}).data;
         PLACEMENT_NEW(font) Font();
         fonts.PushBack(font);
     }
@@ -1621,7 +1621,7 @@ Font* FontAtlas::AddFont(FontConfig const* font_cfg) {
     FontConfig& new_font_cfg = config_data.Back();
     if (!new_font_cfg.dst_font) new_font_cfg.dst_font = fonts.Back();
     if (!new_font_cfg.font_data_reference_only && !new_font_cfg.font_data_owned_by_atlas) {
-        new_font_cfg.font_data = GpaAlloc((usize)new_font_cfg.font_data_size);
+        new_font_cfg.font_data = GlobalAlloc({(usize)new_font_cfg.font_data_size}).data;
         new_font_cfg.font_data_owned_by_atlas = true;
         CopyMemory(new_font_cfg.font_data, font_cfg->font_data, (usize)new_font_cfg.font_data_size);
     }
@@ -1663,7 +1663,8 @@ bool FontAtlas::Build() {
         stbtt_pack_range* ranges;
         int ranges_count;
     };
-    auto* tmp_array = (FontTempBuildData*)GpaAlloc((usize)config_data.size * sizeof(FontTempBuildData));
+    auto* tmp_array =
+        (FontTempBuildData*)GlobalAlloc({(usize)config_data.size * sizeof(FontTempBuildData)}).data;
 
     // Initialize font information early (so we can error without any cleanup) + count glyphs
     int total_glyph_count = 0;
@@ -1711,9 +1712,11 @@ bool FontAtlas::Build() {
     int buf_packedchars_n = 0;
     int buf_rects_n = 0;
     int buf_ranges_n = 0;
-    auto* buf_packedchars = (stbtt_packedchar*)GpaAlloc((usize)total_glyph_count * sizeof(stbtt_packedchar));
-    auto* buf_rects = (stbrp_rect*)GpaAlloc((usize)total_glyph_count * sizeof(stbrp_rect));
-    auto* buf_ranges = (stbtt_pack_range*)GpaAlloc((usize)total_glyph_range_count * sizeof(stbtt_pack_range));
+    auto* buf_packedchars =
+        (stbtt_packedchar*)GlobalAlloc({(usize)total_glyph_count * sizeof(stbtt_packedchar)}).data;
+    auto* buf_rects = (stbrp_rect*)GlobalAlloc({(usize)total_glyph_count * sizeof(stbrp_rect)}).data;
+    auto* buf_ranges =
+        (stbtt_pack_range*)GlobalAlloc({(usize)total_glyph_range_count * sizeof(stbtt_pack_range)}).data;
     ZeroMemory(buf_packedchars, (usize)total_glyph_count * sizeof(stbtt_packedchar));
     ZeroMemory(buf_rects,
                (usize)total_glyph_count *
@@ -1764,7 +1767,7 @@ bool FontAtlas::Build() {
 
     // Create texture
     tex_height = (int)NextPowerOf2((u32)tex_height);
-    tex_pixels_alpha8 = (unsigned char*)GpaAlloc((usize)(tex_width * tex_height));
+    tex_pixels_alpha8 = (unsigned char*)GlobalAlloc({(usize)(tex_width * tex_height)}).data;
     ZeroMemory(tex_pixels_alpha8, (usize)(tex_width * tex_height));
     spc.pixels = tex_pixels_alpha8;
     spc.height = tex_height;
@@ -1780,7 +1783,7 @@ bool FontAtlas::Build() {
 
     // End packing
     stbtt_PackEnd(&spc);
-    GpaFree(buf_rects);
+    GlobalFreeNoSize(buf_rects);
     buf_rects = nullptr;
 
     // Third pass: setup Font and glyphs for runtime
@@ -1852,9 +1855,9 @@ bool FontAtlas::Build() {
     }
 
     // Cleanup temporaries
-    GpaFree(buf_packedchars);
-    GpaFree(buf_ranges);
-    GpaFree(tmp_array);
+    GlobalFreeNoSize(buf_packedchars);
+    GlobalFreeNoSize(buf_ranges);
+    GlobalFreeNoSize(tmp_array);
 
     // Render into our custom data block
     RenderCustomTexData(1, &extra_rects);
