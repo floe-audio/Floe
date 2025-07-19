@@ -25,14 +25,21 @@
 #include "time.h"
 
 void* AlignedAlloc(usize alignment, usize size) {
-    if (alignment <= k_max_alignment) return malloc(size);
-    // posix_memalign requires alignment to be a multiple of sizeof(void*).
-    alignment = __builtin_align_up(alignment, sizeof(void*));
-    void* result = nullptr;
-    if (posix_memalign(&result, alignment, size) != 0) Panic("posix_memalign failed");
+    void* result;
+    if (alignment <= k_max_alignment) {
+        result = malloc(size);
+    } else {
+        // posix_memalign requires alignment to be a multiple of sizeof(void*).
+        alignment = __builtin_align_up(alignment, sizeof(void*));
+        if (posix_memalign(&result, alignment, size) != 0) Panic("posix_memalign failed");
+    }
+    TracyAlloc(result, size);
     return result;
 }
-void AlignedFree(void* ptr) { free(ptr); }
+void AlignedFree(void* ptr) {
+    TracyFree(ptr);
+    free(ptr);
+}
 
 void* AllocatePages(usize bytes) {
     if constexpr (!PRODUCTION_BUILD) {

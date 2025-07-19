@@ -539,7 +539,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
 
     switch (builder.state->pass) {
         case BoxSystemCurrentPanelState::Pass::LayoutBoxes: {
-            ZoneScopedN("Box system: layout boxes");
+            ZoneNamedN(tracy_layout, "Box system: layout boxes", true);
             auto const box = Box {
                 .layout_id =
                     layout::CreateItem(builder.layout, ({
@@ -595,7 +595,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
             return box;
         }
         case BoxSystemCurrentPanelState::Pass::HandleInputAndRender: {
-            ZoneScopedN("Box system: handle input and render");
+            ZoneNamedN(tracy_input, "Box system: handle input and render", true);
             auto& box = builder.state->boxes[box_index];
             ASSERT(box.source_location == source_location,
                    "GUI has changed between layout and render, see deffered_actions");

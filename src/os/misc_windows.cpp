@@ -114,9 +114,14 @@ void WindowsRaiseException(u32 code) { RaiseException(code, EXCEPTION_NONCONTINU
 
 void* AlignedAlloc(usize alignment, usize size) {
     ASSERT(IsPowerOfTwo(alignment));
-    return _aligned_malloc(size, alignment);
+    auto result = _aligned_malloc(size, alignment);
+    TracyAlloc(result, size);
+    return result;
 }
-void AlignedFree(void* ptr) { return _aligned_free(ptr); }
+void AlignedFree(void* ptr) {
+    _aligned_free(ptr);
+    TracyFree(ptr);
+}
 
 void* AllocatePages(usize bytes) {
     auto p = VirtualAlloc(nullptr, (DWORD)bytes, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
