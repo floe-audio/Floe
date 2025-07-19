@@ -8,6 +8,9 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 0.11.2-beta
+- Fix rare crash when resizing the GUI to a very small size
+
 ## 0.11.1-beta
 - Add sitemap.xml for the website
 - Improve the website homepage, installation, mirage, packages, roadmap pages.

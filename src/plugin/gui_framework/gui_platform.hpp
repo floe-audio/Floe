@@ -790,7 +790,11 @@ static void UpdateAndRender(GuiPlatform& platform) {
     };
 
     auto const window_size = GetSize(platform);
-    ASSERT(window_size.width >= k_min_gui_width && window_size.width <= k_max_gui_width);
+    if (window_size.width < k_min_gui_width || window_size.width > k_max_gui_width) {
+        // Despite our best efforts, the window size might not be ideal for us.
+        // We don't want to handle all the edge cases of tiny or huge windows, so we just don't update.
+        return;
+    }
 
     // We delete our textures if the window size changes because we want to scale up all fonts/images to be
     // more appropriate for the new window size. We could be smarter about this in the future.
@@ -863,25 +867,16 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
             // resized or moved
             case PUGL_CONFIGURE: {
                 auto const& configure = event->configure;
-                if constexpr (IS_LINUX) {
-                    // It seems that at this stage, our view might not have the same size as the configure
-                    // struct indicates. Not sure if this is a bug or not.
-                    puglSetSizeHint(view, PUGL_CURRENT_SIZE, configure.width, configure.height);
-                }
-                LogDebug(ModuleName::Gui, "configure {}", fmt::DumpStruct(configure));
-                auto const size =
-                    NearestAspectRatioSizeInsideSize({configure.width, configure.height}, k_gui_aspect_ratio);
 
-                if (size && size->width >= k_min_gui_width && size->width <= k_max_gui_width) {
-                    prefs::SetValue(platform.prefs,
-                                    SettingDescriptor(GuiSetting::WindowWidth),
-                                    (s64)size->width);
-                } else {
-                    LogWarning(ModuleName::Gui,
-                               "resized to an invalid size: {} x {}",
-                               configure.width,
-                               configure.height);
-                }
+                // Despite our best efforts, the window size might not be ideal for us. The OS can allow
+                // windows to be resized to non-aspect-ratio sizes or tiny sizes. We need to handle this. We
+                // save the size in the preferences because it's likely that this size is the user's request.
+                // The prefs descriptor will constrain the width to a valid number, we can just pass it
+                // anything.
+                prefs::SetValue(platform.prefs,
+                                SettingDescriptor(GuiSetting::WindowWidth),
+                                (s64)configure.width,
+                                {.dont_send_on_change_event = true});
 
                 break;
             }
