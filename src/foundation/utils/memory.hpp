@@ -8,6 +8,7 @@
 
 PUBLIC constexpr usize Kb(usize kb) { return kb * 1024; }
 PUBLIC constexpr usize Mb(usize mb) { return mb * 1024 * 1024; }
+PUBLIC constexpr usize Gb(usize gb) { return gb * 1024 * 1024 * 1024; }
 
 PUBLIC inline void ZeroMemory(Span<u8> bytes) {
     for (auto& b : bytes)

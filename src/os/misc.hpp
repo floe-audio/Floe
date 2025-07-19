@@ -150,7 +150,11 @@ class Malloc final : public Allocator {
 
 // Allocate whole pages at a time: 4kb or 16kb each; this is the smallest size that the OS gives out.
 class PageAllocator final : public Allocator {
-    static usize AlignUpToPageSize(usize size) { return AlignForward(size, CachedSystemStats().page_size); }
+    static usize AlignUpToPageSize(usize size) {
+        auto const page_size = CachedSystemStats().page_size;
+        ASSERT(page_size);
+        return AlignForward(size, page_size);
+    }
 
   public:
     Span<u8> DoCommand(AllocatorCommandUnion const& command_union) {

@@ -268,6 +268,7 @@ static void CheckAllocatorCommandIsValid(AllocatorCommandUnion const& command_un
         case AllocatorCommand::Allocate: {
             auto const& cmd = command_union.Get<AllocateCommand>();
             ASSERT(cmd.size != 0);
+            ASSERT(cmd.size < Gb(10));
             ASSERT(cmd.alignment != 0);
             ASSERT(IsPowerOfTwo(cmd.alignment));
             break;
