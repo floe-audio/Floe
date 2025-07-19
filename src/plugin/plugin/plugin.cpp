@@ -220,7 +220,7 @@ static clap_plugin_state const floe_plugin_state {
     .load = ClapStateLoad,
 };
 
-static bool LogIfError(ErrorCodeOr<void> const& ec, String name) {
+static bool ReportIfError(ErrorCodeOr<void> const& ec, String name) {
     if (ec.HasError()) {
         ReportError(ErrorLevel::Warning, Hash(name), "{}: {}", name, ec.Error());
         return false;
@@ -338,7 +338,7 @@ static bool ClapGuiCreate(clap_plugin_t const* plugin, char const* api, bool is_
         if (floe.gui_platform) return true;
 
         floe.gui_platform.Emplace(floe.host, g_shared_engine_systems->prefs);
-        return LogIfError(CreateView(*floe.gui_platform), "CreateView");
+        return ReportIfError(CreateView(*floe.gui_platform), "CreateView");
     } catch (PanicException) {
         return false;
     }
@@ -594,6 +594,59 @@ static bool ClapGuiSetSize(clap_plugin_t const* plugin, u32 clap_width, u32 clap
     }
 }
 
+static bool ClapGuiShow(clap_plugin_t const* plugin) {
+    ZoneScoped;
+    if (PanicOccurred()) return false;
+
+    try {
+        constexpr String k_func = "gui.show";
+
+        auto& floe = *({
+            auto f = ExtractFloe(plugin);
+            if (!Check(f, k_func, "plugin ptr is invalid")) return false;
+            f;
+        });
+
+        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
+            return false;
+
+        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
+        DEFER { LeaveLogicalMainThread(); };
+
+        if (!Check(floe, floe.gui_platform.HasValue(), k_func, "no gui created")) return false;
+
+        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
+
+        // It may be possible that the size is invalid, we check that here to be sure.
+        if (auto const size = GetSize(*floe.gui_platform); size.width < k_min_gui_width) {
+            auto const new_size = DefaultUiSize(*floe.gui_platform);
+            ASSERT(new_size.width >= k_min_gui_width);
+            SetSize(*floe.gui_platform, new_size);
+
+            // We also try to let the host know about the new size.
+            if (auto const host_gui =
+                    (clap_host_gui const*)floe.host.get_extension(&floe.host, CLAP_EXT_GUI)) {
+                auto const clap_size = PhysicalPixelsToClapPixels(floe.gui_platform->view, new_size);
+                host_gui->request_resize(&floe.host, clap_size.width, clap_size.height);
+            }
+        }
+
+        bool const result = ReportIfError(SetVisible(*floe.gui_platform, true, *floe.engine), "SetVisible");
+        if (result) {
+            static bool shown_graphics_info = false;
+            if (!shown_graphics_info) {
+                shown_graphics_info = true;
+                LogInfo(ModuleName::Gui,
+                        "\n{}",
+                        floe.gui_platform->graphics_ctx->graphics_device_info.Items());
+            }
+        }
+        return result;
+    } catch (PanicException) {
+        return false;
+    }
+}
+
 static bool ClapGuiSetParent(clap_plugin_t const* plugin, clap_window_t const* window) {
     ZoneScoped;
     if (PanicOccurred()) return false;
@@ -617,10 +670,9 @@ static bool ClapGuiSetParent(clap_plugin_t const* plugin, clap_window_t const* w
 
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
-        auto const result = LogIfError(SetParent(*floe.gui_platform, *window), "SetParent");
+        auto const result = ReportIfError(SetParent(*floe.gui_platform, *window), "SetParent");
 
-        // Bitwig never calls show() so we do it here
-        auto _ = SetVisible(*floe.gui_platform, true, *floe.engine);
+        ClapGuiShow(plugin); // Bitwig never calls show() so we do it here.
 
         return result;
     } catch (PanicException) {
@@ -669,45 +721,6 @@ static void ClapGuiSuggestTitle(clap_plugin_t const* plugin, char const*) {
     }
 }
 
-static bool ClapGuiShow(clap_plugin_t const* plugin) {
-    ZoneScoped;
-    if (PanicOccurred()) return false;
-
-    try {
-        constexpr String k_func = "gui.show";
-
-        auto& floe = *({
-            auto f = ExtractFloe(plugin);
-            if (!Check(f, k_func, "plugin ptr is invalid")) return false;
-            f;
-        });
-
-        if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
-            return false;
-
-        if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
-        DEFER { LeaveLogicalMainThread(); };
-
-        if (!Check(floe, floe.gui_platform.HasValue(), k_func, "no gui created")) return false;
-
-        LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
-
-        bool const result = LogIfError(SetVisible(*floe.gui_platform, true, *floe.engine), "SetVisible");
-        if (result) {
-            static bool shown_graphics_info = false;
-            if (!shown_graphics_info) {
-                shown_graphics_info = true;
-                LogInfo(ModuleName::Gui,
-                        "\n{}",
-                        floe.gui_platform->graphics_ctx->graphics_device_info.Items());
-            }
-        }
-        return result;
-    } catch (PanicException) {
-        return false;
-    }
-}
-
 static bool ClapGuiHide(clap_plugin_t const* plugin) {
     ZoneScoped;
     if (PanicOccurred()) return false;
@@ -729,7 +742,7 @@ static bool ClapGuiHide(clap_plugin_t const* plugin) {
 
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
-        return LogIfError(SetVisible(*floe.gui_platform, false, *floe.engine), "SetVisible");
+        return ReportIfError(SetVisible(*floe.gui_platform, false, *floe.engine), "SetVisible");
     } catch (PanicException) {
         return false;
     }

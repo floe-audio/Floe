@@ -47,6 +47,7 @@ struct GuiPlatform {
     Optional<Gui> gui {};
     Optional<clap_id> clap_timer_id {};
     Optional<int> clap_posix_fd {};
+    bool pugl_timer_running {};
     bool inside_update {};
     bool first_update_made {};
     ArenaAllocator file_picker_result_arena {Malloc::Instance()};
@@ -134,6 +135,103 @@ void RemoveWindowsKeyboardHook(GuiPlatform& platform);
 f64 DoubleClickTimeMs(GuiPlatform const& platform);
 UiSize DefaultUiSizeFromDpi(GuiPlatform const& platform);
 
+enum class SetTimerType : u8 { Start, Stop };
+static void SetTimers(GuiPlatform& platform, SetTimerType type) {
+    switch (type) {
+        case SetTimerType::Start: {
+            // Set the timer if not already running.
+            if (!platform.pugl_timer_running) {
+                if (auto const status = puglStartTimer(platform.view,
+                                                       platform.k_pugl_timer_id,
+                                                       1.0 / (f64)k_gui_refresh_rate_hz);
+                    status == PUGL_SUCCESS) {
+                    platform.pugl_timer_running = true;
+                } else {
+                    ReportError(ErrorLevel::Warning,
+                                SourceLocationHash(),
+                                "Failed to start Pugl timer: {}",
+                                ({
+                                    String s {};
+                                    switch (status) {
+                                        case PUGL_FAILURE: s = "timers not supported by system"; break;
+                                        case PUGL_UNKNOWN_ERROR: s = "unknown failure"; break;
+                                        default: Panic("unexpected pugl status");
+                                    }
+                                    s;
+                                }));
+                };
+            }
+
+            // Set the CLAP timer/fd if not already done.
+            // https://nakst.gitlab.io/tutorial/clap-part-3.html
+            if constexpr (IS_LINUX) {
+                if (!platform.clap_posix_fd) {
+                    if (auto const posix_fd_extension =
+                            (clap_host_posix_fd_support const*)
+                                platform.host.get_extension(&platform.host, CLAP_EXT_POSIX_FD_SUPPORT);
+                        posix_fd_extension && posix_fd_extension->register_fd) {
+                        auto const fd = detail::FdFromPuglWorld(platform.world);
+                        ASSERT(fd != -1);
+                        if (posix_fd_extension->register_fd(&platform.host, fd, CLAP_POSIX_FD_READ))
+                            platform.clap_posix_fd = fd;
+                        else
+                            LogError(ModuleName::Gui, "failed to register fd {}", fd);
+                    }
+                }
+
+                if (!platform.clap_timer_id) {
+                    if (auto const timer_support_extension =
+                            (clap_host_timer_support const*)
+                                platform.host.get_extension(&platform.host, CLAP_EXT_TIMER_SUPPORT);
+                        timer_support_extension && timer_support_extension->register_timer) {
+                        clap_id timer_id;
+                        if (timer_support_extension->register_timer(&platform.host,
+                                                                    (u32)(1000.0 / k_gui_refresh_rate_hz),
+                                                                    &timer_id)) {
+                            platform.clap_timer_id = timer_id;
+                        } else
+                            LogError(ModuleName::Gui, "failed to register timer");
+                    }
+                }
+            }
+            break;
+        }
+        case SetTimerType::Stop: {
+            if constexpr (IS_LINUX) {
+                if (platform.clap_posix_fd) {
+                    auto const ext = (clap_host_posix_fd_support const*)platform.host.get_extension(
+                        &platform.host,
+                        CLAP_EXT_POSIX_FD_SUPPORT);
+                    if (ext && ext->unregister_fd) {
+                        bool const success = ext->unregister_fd(&platform.host, *platform.clap_posix_fd);
+                        if (!success) LogError(ModuleName::Gui, "failed to unregister fd");
+                    }
+                    platform.clap_posix_fd = k_nullopt;
+                }
+
+                if (platform.clap_timer_id) {
+                    auto const ext =
+                        (clap_host_timer_support const*)platform.host.get_extension(&platform.host,
+                                                                                    CLAP_EXT_TIMER_SUPPORT);
+                    if (ext && ext->unregister_timer) {
+                        bool const success = ext->unregister_timer(&platform.host, *platform.clap_timer_id);
+                        if (!success) LogError(ModuleName::Gui, "failed to unregister timer");
+                    }
+                    platform.clap_timer_id = k_nullopt;
+                }
+            }
+
+            if (platform.view) {
+                if (platform.pugl_timer_running) {
+                    puglStopTimer(platform.view, platform.k_pugl_timer_id);
+                    platform.pugl_timer_running = false;
+                }
+            }
+            break;
+        }
+    }
+}
+
 } // namespace detail
 
 PUBLIC UiSize DefaultUiSize(GuiPlatform& platform) { return detail::DefaultUiSizeFromDpi(platform); }
@@ -179,6 +277,16 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
 
     puglSetSizeHint(platform.view, PUGL_FIXED_ASPECT, k_gui_aspect_ratio.width, k_gui_aspect_ratio.height);
 
+    puglSetHandle(platform.view, &platform);
+    TRY(Required(puglSetEventFunc(platform.view, detail::EventHandler)));
+
+    // IMPROVE: we might want a DirectX backend for Windows
+    TRY(Required(puglSetBackend(platform.view, puglGlBackend())));
+    TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_VERSION_MAJOR, 3)));
+    TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_VERSION_MINOR, 3)));
+    TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_PROFILE, PUGL_OPENGL_COMPATIBILITY_PROFILE)));
+    puglSetViewHint(platform.view, PUGL_CONTEXT_DEBUG, RUNTIME_SAFETY_CHECKS_ON);
+
     return k_success;
 }
 
@@ -191,40 +299,17 @@ PUBLIC void DestroyView(GuiPlatform& platform) {
 
     detail::CloseNativeFilePicker(platform);
 
-    if (platform.gui) {
-        platform.gui.Clear();
+    if (platform.gui) platform.gui.Clear();
 
-        if constexpr (IS_LINUX) {
-            if (platform.clap_posix_fd) {
-                auto const ext =
-                    (clap_host_posix_fd_support const*)platform.host.get_extension(&platform.host,
-                                                                                   CLAP_EXT_POSIX_FD_SUPPORT);
-                if (ext && ext->unregister_fd) {
-                    bool const success = ext->unregister_fd(&platform.host, *platform.clap_posix_fd);
-                    if (!success) LogError(ModuleName::Gui, "failed to unregister fd");
-                }
-                platform.clap_posix_fd = k_nullopt;
-            }
+    detail::SetTimers(platform, detail::SetTimerType::Stop);
 
-            if (platform.clap_timer_id) {
-                auto const ext =
-                    (clap_host_timer_support const*)platform.host.get_extension(&platform.host,
-                                                                                CLAP_EXT_TIMER_SUPPORT);
-                if (ext && ext->unregister_timer) {
-                    bool const success = ext->unregister_timer(&platform.host, *platform.clap_timer_id);
-                    if (!success) LogError(ModuleName::Gui, "failed to unregister timer");
-                }
-                platform.clap_timer_id = k_nullopt;
-            }
-        }
-
-        ASSERT(platform.view);
-        puglStopTimer(platform.view, platform.k_pugl_timer_id);
+    if (platform.view) {
+        // We don't need to check if the view is realized, because puglUnrealize will do nothing if it is not.
         puglUnrealize(platform.view);
-    }
 
-    puglFreeView(platform.view);
-    platform.view = nullptr;
+        puglFreeView(platform.view);
+        platform.view = nullptr;
+    }
 
     platform.first_update_made = false;
 
@@ -265,7 +350,7 @@ PUBLIC ErrorCodeOr<void> SetParent(GuiPlatform& platform, clap_window_t const& w
     }
 
     ASSERT(!puglGetNativeView(platform.view), "SetParent called after window realised");
-    // NOTE: "This must be called before puglRealize(), reparenting is not supported"
+    // NOTE: "This must be called before puglRealize(), re-parenting is not supported"
     TRY(Required(puglSetParent(platform.view, (uintptr)window.ptr)));
     return k_success;
 }
@@ -281,69 +366,34 @@ PUBLIC UiSize GetSize(GuiPlatform& platform) {
 
 PUBLIC ErrorCodeOr<void> SetVisible(GuiPlatform& platform, bool visible, Engine& engine) {
     ASSERT(platform.view);
+
+    if (puglGetVisible(platform.view) == visible) {
+        LogInfo(ModuleName::Gui, "SetVisible called with same visibility state, ignoring");
+        return k_success;
+    }
+
     if (visible) {
-        if (!platform.gui) {
-            // It may be possible that the size is invalid, we check that here to be sure.
-            if (auto const size = GetSize(platform); size.width < k_min_gui_width)
-                SetSize(platform, DefaultUiSize(platform));
-
-            puglSetHandle(platform.view, &platform);
-            TRY(Required(puglSetEventFunc(platform.view, detail::EventHandler)));
-
-            // IMPROVE: we might want a DirectX backend for Windows
-            TRY(Required(puglSetBackend(platform.view, puglGlBackend())));
-            TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_VERSION_MAJOR, 3)));
-            TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_VERSION_MINOR, 3)));
-            TRY(Required(
-                puglSetViewHint(platform.view, PUGL_CONTEXT_PROFILE, PUGL_OPENGL_COMPATIBILITY_PROFILE)));
-            puglSetViewHint(platform.view, PUGL_CONTEXT_DEBUG, RUNTIME_SAFETY_CHECKS_ON);
-
+        // Realize if not already done.
+        if (!puglGetNativeView(platform.view)) {
             TRY(Required(puglRealize(platform.view)));
-            TRY(Required(
-                puglStartTimer(platform.view, platform.k_pugl_timer_id, 1.0 / (f64)k_gui_refresh_rate_hz)));
-
             platform.double_click_time_ms = detail::DoubleClickTimeMs(platform);
-
             detail::X11SetParent(platform.view, puglGetParent(platform.view));
-
-            platform.gui.Emplace(platform.frame_state, engine);
-
-            if constexpr (IS_LINUX) {
-                // https://nakst.gitlab.io/tutorial/clap-part-3.html
-                if (auto const posix_fd_extension =
-                        (clap_host_posix_fd_support const*)
-                            platform.host.get_extension(&platform.host, CLAP_EXT_POSIX_FD_SUPPORT);
-                    posix_fd_extension && posix_fd_extension->register_fd) {
-                    auto const fd = detail::FdFromPuglWorld(platform.world);
-                    ASSERT(fd != -1);
-                    if (posix_fd_extension->register_fd(&platform.host, fd, CLAP_POSIX_FD_READ))
-                        platform.clap_posix_fd = fd;
-                    else
-                        LogError(ModuleName::Gui, "failed to register fd {}", fd);
-                }
-
-                if (auto const timer_support_extension =
-                        (clap_host_timer_support const*)platform.host.get_extension(&platform.host,
-                                                                                    CLAP_EXT_TIMER_SUPPORT);
-                    timer_support_extension && timer_support_extension->register_timer) {
-                    clap_id timer_id;
-                    if (timer_support_extension->register_timer(&platform.host,
-                                                                (u32)(1000.0 / k_gui_refresh_rate_hz),
-                                                                &timer_id)) {
-                        platform.clap_timer_id = timer_id;
-                    } else
-                        LogError(ModuleName::Gui, "failed to register timer");
-                }
-            }
         }
+
+        // Start timers if needed.
+        detail::SetTimers(platform, detail::SetTimerType::Start);
+
+        // Create GUI if not already done.
+        if (!platform.gui) platform.gui.Emplace(platform.frame_state, engine);
 
         TRY(Required(puglShow(platform.view, PUGL_SHOW_PASSIVE)));
     } else {
         platform.frame_state.Reset();
         detail::CloseNativeFilePicker(platform);
-        // IMRPOVE: stop update timers, make things more efficient
+        detail::SetTimers(platform, detail::SetTimerType::Stop);
         TRY(Required(puglHide(platform.view)));
     }
+
     return k_success;
 }
 
