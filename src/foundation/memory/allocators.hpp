@@ -356,6 +356,7 @@ struct ArenaAllocator : public Allocator {
         Region* next;
         Region* prev;
         usize size;
+        bool from_child_allocator;
 
         Span<u8> AllocedMemory() {
             ASSERT(size != 0);
@@ -379,6 +380,21 @@ struct ArenaAllocator : public Allocator {
         : minimum_bytes_per_region(minimum_bytes_per_region)
         , child_allocator(child_allocator) {
         if (reserve_first_region_bytes) CreateAndPrependRegionToList(reserve_first_region_bytes, 0);
+    }
+
+    ArenaAllocator(Allocator& child_allocator, Span<u8> inline_storage, usize minimum_bytes_per_region = 64)
+        : minimum_bytes_per_region(minimum_bytes_per_region)
+        , child_allocator(child_allocator) {
+        if (inline_storage.size > Region::HeaderAllocSize()) {
+            ASSERT(IsAligned(inline_storage.data, alignof(Region)), "larger alignment required");
+
+            auto new_region = CheckedPointerCast<Region*>(inline_storage.data);
+            new_region->size = inline_storage.size;
+            new_region->from_child_allocator = false;
+
+            DoublyLinkedListPrepend(*this, new_region);
+            current_region_cursor = 0;
+        }
     }
     ~ArenaAllocator() { FreeAll(); }
 
@@ -476,7 +492,7 @@ struct ArenaAllocator : public Allocator {
             auto region_to_free = region;
             region = region->next; // needs to be done prior to freeing
 
-            child_allocator.Free(region_to_free->AllocedMemory());
+            if (region_to_free->from_child_allocator) child_allocator.Free(region_to_free->AllocedMemory());
         }
         first = nullptr;
         last = nullptr;
@@ -500,10 +516,14 @@ struct ArenaAllocator : public Allocator {
 
             auto const region_to_free = r;
             r = r->next;
-            child_allocator.Free(region_to_free->AllocedMemory());
+            if (region_to_free->from_child_allocator) child_allocator.Free(region_to_free->AllocedMemory());
         }
 
         // The first region is the newest and largest region so we use that for resizing.
+        // If there's inline storage, it should be the oldest region (it's created in the constructor). If we
+        // got this far, we must have multiple regions and therefore the newest region must have been
+        // allocated.
+        ASSERT(first->from_child_allocator);
         auto const data = child_allocator.Resize({
             .allocation = first->AllocedMemory(),
             .new_size = size_used + Region::HeaderAllocSize(),
@@ -514,6 +534,7 @@ struct ArenaAllocator : public Allocator {
         new_region->size = data.size;
         new_region->next = nullptr;
         new_region->prev = nullptr;
+        new_region->from_child_allocator = true;
 
         first = new_region;
         last = new_region;
@@ -572,18 +593,18 @@ struct ArenaAllocator : public Allocator {
         return result;
     }
 
-    // private
+    // Private.
     Region* CreateAndPrependRegionToList(usize size, usize previous_size) {
         auto const memory_region_size = Max(minimum_bytes_per_region, size, previous_size * 2);
-        auto data = child_allocator.Allocate({
+        auto region_bytes = child_allocator.Allocate({
             .size = memory_region_size + Region::HeaderAllocSize(),
             .alignment = k_max_alignment,
             .allow_oversized_result = true,
         });
 
-        // put the new region at the start of the region linked list
-        auto new_region = CheckedPointerCast<Region*>(data.data);
-        new_region->size = data.size;
+        auto new_region = CheckedPointerCast<Region*>(region_bytes.data);
+        new_region->size = region_bytes.size;
+        new_region->from_child_allocator = true;
 
         DoublyLinkedListPrepend(*this, new_region);
 
@@ -598,7 +619,7 @@ struct ArenaAllocator : public Allocator {
     }
 
     usize minimum_bytes_per_region {};
-    Region* first {}; // AKA current
+    Region* first {}; // A.K.A. current.
     Region* last {};
     usize current_region_cursor {};
     Allocator& child_allocator;
@@ -667,13 +688,9 @@ class FixedSizeAllocator : public Allocator {
     alignas(k_max_alignment) u8 m_stack_data[static_size];
 };
 
-// IMRPOVE: make a proper specialisation of this; there's lots of room for more efficiency
 template <usize static_size>
-struct ArenaAllocatorWithInlineStorage final : public ArenaAllocator {
+struct ArenaAllocatorWithInlineStorage : public ArenaAllocator {
     ArenaAllocatorWithInlineStorage(Allocator& fallback)
-        : ArenaAllocator(inline_allocator)
-        , inline_allocator(&fallback) {
-        CreateAndPrependRegionToList(static_size, 0);
-    }
-    FixedSizeAllocator<static_size> inline_allocator;
+        : ArenaAllocator(fallback, Span<u8>(inline_storage, static_size)) {}
+    alignas(k_max_alignment) u8 inline_storage[static_size];
 };

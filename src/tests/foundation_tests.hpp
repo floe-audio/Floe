@@ -3536,6 +3536,10 @@ struct ArenaAllocatorPage : ArenaAllocator {
     ArenaAllocatorPage() : ArenaAllocator(PageAllocator::Instance()) {}
 };
 
+struct ArenaAllocatorWithInlineStorage100 : ArenaAllocatorWithInlineStorage<100> {
+    ArenaAllocatorWithInlineStorage100() : ArenaAllocatorWithInlineStorage<100>(Malloc::Instance()) {}
+};
+
 struct ArenaAllocatorBigBuf : ArenaAllocator {
     ArenaAllocatorBigBuf() : ArenaAllocator(big_buf) {}
     FixedSizeAllocator<1000> big_buf {&Malloc::Instance()};
@@ -3750,6 +3754,8 @@ TEST_CASE(TestAllocatorTypes) {
             type_name = "LeakDetectingAllocator";
         else if constexpr (Same<AllocatorType, LeakDetectingAllocator>)
             type_name = "LeakDetectingAllocator";
+        else if constexpr (Same<AllocatorType, ArenaAllocatorWithInlineStorage100>)
+            type_name = "ArenaAllocatorWithInlineStorage100";
         else
             PanicIfReached();
 
@@ -3795,6 +3801,77 @@ TEST_CASE(TestArenaAllocatorCursor) {
 
     arena.ResetCursorAndConsolidateRegions();
     CHECK_EQ(arena.TotalUsed(), (usize)0);
+    return k_success;
+}
+
+TEST_CASE(TestArenaAllocatorInlineStorage) {
+    LeakDetectingAllocator leak_detecting_allocator;
+
+    SUBCASE("inline storage used for first region") {
+        constexpr usize k_size = 1024;
+        alignas(k_max_alignment) u8 inline_storage[k_size];
+        ArenaAllocator arena(leak_detecting_allocator, {inline_storage, k_size});
+
+        // First allocation should come from inline storage
+        auto ptr1 = arena.AllocateExactSizeUninitialised<u64>(10);
+        CHECK((u8*)ptr1.data >= inline_storage && (u8*)ptr1.data < inline_storage + k_size);
+        CHECK(arena.TotalUsed() == ptr1.size * sizeof(u64));
+
+        // Fill most of inline storage
+        auto remaining_space = k_size - ArenaAllocator::Region::HeaderAllocSize() - arena.TotalUsed();
+        auto ptr2 = arena.AllocateExactSizeUninitialised<u8>(remaining_space - 64);
+        CHECK(ptr2.data >= inline_storage && ptr2.data < inline_storage + k_size);
+    }
+
+    SUBCASE("fallback to child allocator when inline storage full") {
+        constexpr usize k_size = 256;
+        alignas(k_max_alignment) u8 inline_storage[k_size];
+        ArenaAllocator arena(leak_detecting_allocator, {inline_storage, k_size});
+
+        // Fill inline storage
+        auto inline_capacity = k_size - ArenaAllocator::Region::HeaderAllocSize() - 32;
+        auto ptr1 = arena.AllocateExactSizeUninitialised<u8>(inline_capacity);
+        CHECK(ptr1.data >= inline_storage && ptr1.data < inline_storage + k_size);
+
+        // Next allocation should trigger child allocator
+        auto ptr2 = arena.AllocateExactSizeUninitialised<u64>(64);
+        CHECK((u8*)ptr2.data < inline_storage || (u8*)ptr2.data >= inline_storage + k_size);
+    }
+
+    SUBCASE("inline storage not freed in destructor") {
+        constexpr usize k_size = 512;
+        alignas(k_max_alignment) u8 inline_storage[k_size];
+
+        {
+            ArenaAllocator arena(leak_detecting_allocator, {inline_storage, k_size});
+            auto ptr = arena.AllocateExactSizeUninitialised<u32>(32);
+            CHECK((u8*)ptr.data >= inline_storage && (u8*)ptr.data < inline_storage + k_size);
+
+            // Force allocation from child allocator too
+            auto large_ptr = arena.AllocateExactSizeUninitialised<u8>(1024);
+            CHECK(large_ptr.data < inline_storage || large_ptr.data >= inline_storage + k_size);
+        }
+        // Arena destructor should only free child allocator regions, not inline storage
+        // leak_detecting_allocator will catch any issues
+    }
+
+    SUBCASE("empty inline storage handled gracefully") {
+        ArenaAllocator arena(leak_detecting_allocator, Span<u8> {});
+
+        auto ptr = arena.AllocateExactSizeUninitialised<u64>(8);
+        CHECK(ptr.size == 8);
+    }
+
+    SUBCASE("tiny inline storage too small for region header") {
+        constexpr usize k_size = 16;
+        alignas(k_max_alignment) u8 tiny_storage[k_size];
+        ArenaAllocator arena(leak_detecting_allocator, {tiny_storage, ArraySize(tiny_storage)});
+
+        // Should fallback to child allocator since storage too small for header
+        auto ptr = arena.AllocateExactSizeUninitialised<u32>(4);
+        CHECK((u8*)ptr.data < tiny_storage || (u8*)ptr.data >= tiny_storage + ArraySize(tiny_storage));
+    }
+
     return k_success;
 }
 
@@ -3960,7 +4037,9 @@ TEST_REGISTRATION(RegisterFoundationTests) {
     REGISTER_TEST(TestAllocatorTypes<LeakDetectingAllocator>);
     REGISTER_TEST(TestAllocatorTypes<Malloc>);
     REGISTER_TEST(TestAllocatorTypes<PageAllocator>);
+    REGISTER_TEST(TestAllocatorTypes<ArenaAllocatorWithInlineStorage100>);
     REGISTER_TEST(TestArenaAllocatorCursor);
+    REGISTER_TEST(TestArenaAllocatorInlineStorage);
     REGISTER_TEST(TestAsciiToLowercase);
     REGISTER_TEST(TestAsciiToUppercase);
     REGISTER_TEST(TestBinarySearch);
@@ -3981,8 +4060,8 @@ TEST_REGISTRATION(RegisterFoundationTests) {
     REGISTER_TEST(TestFormatStringReplace);
     REGISTER_TEST(TestFunction);
     REGISTER_TEST(TestFunctionQueue);
-    REGISTER_TEST(TestHashTable<HashTableOrdering::Unordered>);
     REGISTER_TEST(TestHashTable<HashTableOrdering::Ordered>);
+    REGISTER_TEST(TestHashTable<HashTableOrdering::Unordered>);
     REGISTER_TEST(TestIntToString);
     REGISTER_TEST(TestLinkedList);
     REGISTER_TEST(TestMatchWildcard);
