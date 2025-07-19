@@ -1140,8 +1140,10 @@ FlushParameterEvents(AudioProcessor& processor, clap_input_events const& in, cla
     ConsumeParamEventsFromGui(processor, out, params_changed);
 
     if (processor.activated) {
-        if (params_changed.AnyValuesSet())
+        if (params_changed.AnyValuesSet()) {
             ProcessorOnParamChange(processor, {processor.params, params_changed});
+            processor.listener.OnProcessorChange(ProcessorListener::ParamChanged);
+        }
     } else {
         // If we are not activated, then we don't need to call processor param change because the
         // state of the processing plugin will be reset activate()
@@ -1277,8 +1279,10 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         default: break;
     }
 
-    if (params_changed.AnyValuesSet())
+    if (params_changed.AnyValuesSet()) {
         ProcessorOnParamChange(processor, {processor.params.data, params_changed});
+        change_flags |= ProcessorListener::ParamChanged;
+    }
 
     processor.smoothed_value_system.ProcessBlock(num_sample_frames);
 
