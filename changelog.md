@@ -10,6 +10,7 @@ For instance: 0.0.1. Don't change the headings.
 # Changelog
 ## 0.11.2-beta
 - Fix rare crash when resizing the GUI to a very small size
+- Improve UI size control on the preferences panel so that incrementing/decrementing feels more significant
 
 ## 0.11.1-beta
 - Add sitemap.xml for the website

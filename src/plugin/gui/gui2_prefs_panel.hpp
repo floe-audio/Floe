@@ -548,6 +548,15 @@ constexpr s64 AlignTo(s64 value, s64 alignment) {
     return value + (alignment - remainder);
 }
 
+// We want a step that is a multiple of the GUI aspect ratio width, but a large enough step so that doing +1
+// step feels like a reasonable change.
+constexpr u16 k_prefs_window_width_step = []() {
+    u16 step = k_gui_aspect_ratio.width;
+    while (step < 100)
+        step += k_gui_aspect_ratio.width;
+    return step;
+}();
+
 static void GeneralPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context) {
     auto const root = DoBox(box_system,
                             {
@@ -578,10 +587,10 @@ static void GeneralPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCo
                                      .tooltip = desc.long_description,
                                      .width = k_settings_int_field_width,
                                      .value = prefs::GetValue(context.prefs, desc).value.Get<s64>() /
-                                              k_gui_aspect_ratio.width,
+                                              k_prefs_window_width_step,
                                      .constrainer =
                                          [&int_info](s64 value) {
-                                             value *= k_gui_aspect_ratio.width;
+                                             value *= k_prefs_window_width_step;
                                              if (int_info.validator) int_info.validator(value);
                                              return value;
                                          },
