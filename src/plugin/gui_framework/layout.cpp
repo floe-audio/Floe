@@ -16,21 +16,35 @@ constexpr usize k_total_item_size = sizeof(Item) + sizeof(f32x4);
 static Span<u8> Allocation(Context& ctx) { return {(u8*)ctx.items, ctx.capacity * k_total_item_size}; }
 
 void ReserveItemsCapacity(Context& ctx, Allocator& a, u32 new_capacity) {
-    if (new_capacity >= ctx.capacity) {
+    if (new_capacity <= ctx.capacity) return;
+
+    if (auto existing_allocation = Allocation(ctx); !existing_allocation.size) {
         ctx.items = (Item*)(void*)a
-                        .Reallocate<u8>(new_capacity * (sizeof(Item) + sizeof(f32x4)),
-                                        Allocation(ctx),
-                                        ctx.capacity * k_total_item_size,
-                                        true)
+                        .Allocate({
+                            .size = new_capacity * k_total_item_size,
+                            .alignment = alignof(Item),
+                            .allow_oversized_result = false,
+                        })
                         .data;
-        ctx.capacity = new_capacity;
-        auto const* past_last = ctx.items + ctx.capacity;
-        ctx.rects = (f32x4*)past_last;
+    } else {
+        ctx.items = (Item*)(void*)a
+                        .Resize({
+                            .allocation = existing_allocation,
+                            .new_size = new_capacity * k_total_item_size,
+                            .allow_oversize_result = false,
+                        })
+                        .data;
     }
+
+    ctx.capacity = new_capacity;
+
+    static_assert(alignof(f32x4) % alignof(Item) == 0);
+    auto const* past_last = ctx.items + ctx.capacity;
+    ctx.rects = (f32x4*)past_last;
 }
 
 void DestroyContext(Context& ctx, Allocator& a) {
-    if (ctx.items != nullptr) {
+    if (ctx.capacity) {
         a.Free(Allocation(ctx));
         ctx.items = nullptr;
         ctx.rects = nullptr;

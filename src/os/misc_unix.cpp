@@ -25,9 +25,14 @@
 #include "time.h"
 
 Memory GlobalAlloc(AllocOptions options) {
+    options.align = Max(options.align, k_max_alignment);
     // "The size parameter must be an integral multiple of alignment."
     options.size = AlignForward(options.size, options.align);
     auto ptr = aligned_alloc(options.align, options.size);
+    if (!ptr) {
+        if (errno == EINVAL) Panic("size/alignment not supported");
+        if (errno == ENOMEM) Panic("out of memory");
+    }
     TracyAlloc(ptr, options.size);
     auto result = Memory {ptr, options.size};
     if (options.zero) FillMemory(result, 0);

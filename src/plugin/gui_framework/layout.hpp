@@ -35,7 +35,6 @@ struct Item {
 };
 
 struct Context {
-    Span<u8> memory {};
     Item* items {};
     f32x4* rects {};
     u32 capacity {};
