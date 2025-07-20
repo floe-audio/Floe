@@ -15,6 +15,22 @@ extern "C" {
 #include "clap/factory/plugin-factory.h"
 #include "plugin.hpp"
 
+#ifdef TRACY_ENABLE
+
+#include "utils/debug/tracy_wrapped.hpp"
+
+void* operator new(std ::size_t count) {
+    auto ptr = malloc(count);
+    TracySecureAlloc(ptr, count, 8);
+    return ptr;
+}
+void operator delete(void* ptr) noexcept {
+    TracySecureFree(ptr, 8);
+    free(ptr);
+}
+
+#endif
+
 static constexpr char const* k_features[] = {CLAP_PLUGIN_FEATURE_INSTRUMENT,
                                              CLAP_PLUGIN_FEATURE_SYNTHESIZER,
                                              CLAP_PLUGIN_FEATURE_STEREO,
