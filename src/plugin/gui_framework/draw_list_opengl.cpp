@@ -8,6 +8,8 @@
 #include "foundation/foundation.hpp"
 #include "utils/logger/logger.hpp"
 
+#define GL_GLEXT_PROTOTYPES // Fix missing prototypes for Tracy.
+
 #if __APPLE__
 #include <OpenGL/gl.h>
 #include <OpenGL/glext.h>
@@ -16,11 +18,11 @@
 #include <GL/gl.h>
 #include <GL/glext.h>
 #endif
-
 #include "os/undef_windows_macros.h"
 #include "utils/debug/tracy_wrapped.hpp"
 
 #include "draw_list.hpp"
+#include "tracy/TracyOpenGL.hpp"
 
 namespace graphics {
 
@@ -76,6 +78,7 @@ struct OpenGLDrawContext : public DrawContext {
 
     void DestroyDeviceObjects() override {
         ZoneScoped;
+        TracyGpuZone("DestroyDeviceObjects");
         Trace(ModuleName::Gui);
         DestroyAllTextures();
         DestroyFontTexture();
@@ -83,6 +86,7 @@ struct OpenGLDrawContext : public DrawContext {
 
     ErrorCodeOr<void> CreateFontTexture() override {
         ZoneScoped;
+        TracyGpuZone("CreateFontTexture");
         ASSERT(font_texture == 0);
         ASSERT(fonts.fonts.size > 0);
         Trace(ModuleName::Gui);
@@ -114,6 +118,7 @@ struct OpenGLDrawContext : public DrawContext {
 
     void DestroyFontTexture() override {
         ZoneScoped;
+        TracyGpuZone("DestroyFontTexture");
         Trace(ModuleName::Gui);
         if (font_texture) {
             glDeleteTextures(1, &font_texture);
@@ -131,6 +136,7 @@ struct OpenGLDrawContext : public DrawContext {
 
     ErrorCodeOr<void> Render(DrawData draw_data, UiSize window_size) override {
         ZoneScoped;
+        TracyGpuZone("Render");
         if (draw_data.draw_lists.size == 0) return k_success;
 
         GLint last_texture;
@@ -220,11 +226,14 @@ struct OpenGLDrawContext : public DrawContext {
 
         TRY(CheckGLError("Render"));
 
+        TracyGpuCollect;
+
         return k_success;
     }
 
     ErrorCodeOr<TextureHandle> CreateTexture(u8 const* data, UiSize size, u16 bytes_per_pixel) override {
         ZoneScoped;
+        TracyGpuZone("CreateTexture");
         Trace(ModuleName::Gui);
         ASSERT(bytes_per_pixel == 3 || bytes_per_pixel == 4);
         ASSERT(size.width && size.height);
@@ -251,6 +260,7 @@ struct OpenGLDrawContext : public DrawContext {
 
     void DestroyTexture(TextureHandle& texture) override {
         ZoneScoped;
+        TracyGpuZone("DestroyTexture");
         if (texture) {
             auto gluint_tex = (GLuint)(uintptr_t)texture;
             glDeleteTextures(1, &gluint_tex);
@@ -267,6 +277,9 @@ struct OpenGLDrawContext : public DrawContext {
     GLuint font_texture = 0;
 };
 
-DrawContext* CreateNewDrawContext() { return new OpenGLDrawContext(); }
+DrawContext* CreateNewDrawContext() {
+    TracyGpuContext;
+    return new OpenGLDrawContext();
+}
 
 } // namespace graphics
