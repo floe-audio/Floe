@@ -65,8 +65,8 @@ void* AllocatePages(usize bytes) {
     }
 
     auto p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
-    TracyAlloc(p, bytes);
     if (p == MAP_FAILED) return nullptr;
+    TracyAlloc(p, bytes);
     return p;
 }
 
@@ -82,7 +82,29 @@ void FreePages(void* ptr, usize bytes) {
     munmap(ptr, bytes);
 }
 
-// IMPROVE: safer ways of getting environment variables. It seems to be frought with danger on Unix, but
+void TryShrinkPages(void* ptr, usize old_size, usize new_size) {
+    if constexpr (!PRODUCTION_BUILD) {
+        if (RUNNING_ON_VALGRIND) return;
+    }
+
+    auto const page_size = CachedSystemStats().page_size;
+    auto const current_num_pages = old_size / page_size;
+    auto const new_num_pages = (new_size == 0) ? 0 : ((new_size / page_size) + 1);
+    if (current_num_pages != new_num_pages) {
+        auto const num_pages = current_num_pages - new_num_pages;
+        Span<u8> const unused_pages {(u8*)ptr + (new_num_pages * page_size), page_size * num_pages};
+        ASSERT(ContainsPointer(unused_pages, unused_pages.data));
+        ASSERT(ContainsPointer(unused_pages, &Last(unused_pages)));
+
+        TracyFree(ptr);
+        auto result = munmap(unused_pages.data, unused_pages.size);
+        ASSERT(result == 0, "munmap failed");
+
+        TracyAlloc(ptr, new_num_pages * page_size);
+    }
+}
+
+// IMPROVE: safer ways of getting environment variables. It seems to be fraught with danger on Unix, but
 // possible options:
 // - macOS: NSProcessInfo environment property
 // - Linux: read /proc/self/environ
@@ -235,27 +257,6 @@ ErrorCodeOr<void*> SymbolFromLibrary(LibraryHandle library, String symbol_name) 
 void UnloadLibrary(LibraryHandle library) { dlclose((void*)library); }
 
 int CurrentProcessId() { return getpid(); }
-
-void TryShrinkPages(void* ptr, usize old_size, usize new_size) {
-    if constexpr (!PRODUCTION_BUILD) {
-        if (RUNNING_ON_VALGRIND) return;
-    }
-
-    TracyFree(ptr);
-    auto const page_size = CachedSystemStats().page_size;
-    auto const current_num_pages = old_size / page_size;
-    auto const new_num_pages = (new_size == 0) ? 0 : ((new_size / page_size) + 1);
-    if (current_num_pages != new_num_pages) {
-        auto const num_pages = current_num_pages - new_num_pages;
-        Span<u8> const unused_pages {(u8*)ptr + (new_num_pages * page_size), page_size * num_pages};
-        ASSERT(ContainsPointer(unused_pages, unused_pages.data));
-        ASSERT(ContainsPointer(unused_pages, &Last(unused_pages)));
-
-        auto result = munmap(unused_pages.data, unused_pages.size);
-        ASSERT(result == 0, "munmap failed");
-    }
-    TracyAlloc(ptr, new_size);
-}
 
 ErrorCodeOr<void> StdPrint(StdStream stream, String str) {
     auto const num_written = write(({
