@@ -53,7 +53,7 @@ Optional<graphics::ImageID> LogoImage(Gui* g) {
     if (!g->imgui.graphics->context->ImageIdIsValid(g->floe_logo_image)) {
         auto const data = EmbeddedLogoImage();
         if (data.size) {
-            auto outcome = DecodeImage({data.data, data.size});
+            auto outcome = DecodeImage({data.data, data.size}, g->scratch_arena);
             ASSERT(!outcome.HasError());
             auto const pixels = outcome.ReleaseValue();
             g->floe_logo_image = CreateImageIdChecked(*g->imgui.graphics->context, pixels);
@@ -66,7 +66,7 @@ Optional<graphics::ImageID>& UnknownLibraryIcon(Gui* g) {
     if (!g->imgui.graphics->context->ImageIdIsValid(g->unknown_library_icon)) {
         auto const data = EmbeddedUnknownLibraryIcon();
         if (data.size) {
-            auto outcome = DecodeImage({data.data, data.size});
+            auto outcome = DecodeImage({data.data, data.size}, g->scratch_arena);
             ASSERT(!outcome.HasError());
             auto const pixels = outcome.ReleaseValue();
             g->unknown_library_icon = CreateImageIdChecked(*g->imgui.graphics->context, pixels);

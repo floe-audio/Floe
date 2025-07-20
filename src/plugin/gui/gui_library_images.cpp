@@ -78,15 +78,15 @@ static CheckLibraryImagesResult CheckLibraryImages(graphics::DrawContext& ctx, L
 }
 
 static LibraryImages LoadDefaultLibraryImagesIfNeeded(LibraryImagesArray& library_images,
-                                                      imgui::Context& imgui) {
+                                                      imgui::Context& imgui,
+                                                      ArenaAllocator& scratch_arena) {
     auto& images = FindOrCreateLibraryImages(library_images, k_default_background_lib_id);
     auto const reloads = CheckLibraryImages(*imgui.frame_input.graphics_ctx, images);
 
     if (reloads.reload_background || reloads.reload_blurred_background) {
         auto image_data = EmbeddedDefaultBackground();
         // Decoding should work because our embedded image should be a valid image.
-        auto const bg_pixels = DecodeImage({image_data.data, image_data.size}).Value();
-        DEFER { FreeDecodedImage(bg_pixels); };
+        auto const bg_pixels = DecodeImage({image_data.data, image_data.size}, scratch_arena).Value();
         CreateLibraryBackgroundImageTextures(imgui,
                                              images,
                                              bg_pixels,
@@ -156,7 +156,7 @@ Optional<ImageBytes> ImagePixelsFromLibrary(sample_lib::Library const& lib,
     ArenaAllocator arena {PageAllocator::Instance()};
     auto const file_data = TRY_OR(reader.ReadOrFetchAll(arena), return err("error reading", error));
 
-    auto pixels = TRY_OR(DecodeImage(file_data), return err("error decoding", error));
+    auto pixels = TRY_OR(DecodeImage(file_data, scratch_arena), return err("error decoding", error));
 
     ASSERT(pixels.size.width && pixels.size.height, "ImageBytes cannot be empty");
 
@@ -175,7 +175,6 @@ static LibraryImages LoadLibraryImagesIfNeeded(LibraryImagesArray& array,
     if (reloads.reload_icon) {
         if (auto const icon_pixels =
                 ImagePixelsFromLibrary(lib, LibraryImageType::Icon, server, scratch_arena)) {
-            DEFER { FreeDecodedImage(*icon_pixels); };
             // Twice the desired size seems to produce the nicest looking results.
             auto const desired_icon_size =
                 CheckedCast<u16>(Ceil(imgui.VwToPixels(style::k_library_icon_standard_size)) * 2);
@@ -192,7 +191,6 @@ static LibraryImages LoadLibraryImagesIfNeeded(LibraryImagesArray& array,
                 images.background_missing = true;
                 return images;
             });
-        DEFER { FreeDecodedImage(bg_pixels); };
 
         CreateLibraryBackgroundImageTextures(imgui,
                                              images,
@@ -211,7 +209,7 @@ Optional<LibraryImages> LibraryImagesFromLibraryId(LibraryImagesArray& array,
                                                    ArenaAllocator& scratch_arena,
                                                    bool only_icon_needed) {
     if (!only_icon_needed && library_id == k_default_background_lib_id)
-        return LoadDefaultLibraryImagesIfNeeded(array, imgui);
+        return LoadDefaultLibraryImagesIfNeeded(array, imgui, scratch_arena);
 
     auto lib = sample_lib_server::FindLibraryRetained(server, library_id);
     DEFER { lib.Release(); };

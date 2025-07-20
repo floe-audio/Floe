@@ -33,7 +33,7 @@ struct ImageF32 {
 // NOTE: sadly we can't use an arena allocator with stb_image. So we have to free the image data using
 // FreeDecodedImage.
 
-static ErrorCodeOr<ImageBytes> DecodeJpgOrPng(Span<u8 const> image_data) {
+static ErrorCodeOr<ImageBytes> DecodeJpgOrPng(Span<u8 const> image_data, ArenaAllocator& arena) {
     if (!image_data.size) return ErrorCode(CommonError::InvalidFileFormat);
 
     // always returns rgba because we specify k_rgba_channels as the output channels
@@ -54,23 +54,26 @@ static ErrorCodeOr<ImageBytes> DecodeJpgOrPng(Span<u8 const> image_data) {
         return ErrorCode(CommonError::InvalidFileFormat);
     }
 
+    // It's a bit silly, but stb_image doesn't let us allocate the image data in an arena allocator, so we
+    // just copy it here.
+    auto const num_bytes = CheckedCast<usize>(width) * CheckedCast<usize>(height) * k_rgba_channels;
+    auto rgba_arena = arena.AllocateExactSizeUninitialised<u8>(num_bytes);
+    CopyMemory(rgba_arena.data, rgba, num_bytes);
+    stbi_image_free(rgba);
+
     return ImageBytes {
-        .rgba = rgba,
+        .rgba = rgba_arena.data,
         .size = {CheckedCast<u16>(width), CheckedCast<u16>(height)},
     };
 }
 
-PUBLIC ErrorCodeOr<ImageBytes> DecodeImage(Span<u8 const> image_data) { return DecodeJpgOrPng(image_data); }
-
-PUBLIC ErrorCodeOr<ImageBytes> DecodeImageFromFile(String filename, ArenaAllocator& scratch_arena) {
-    auto const cursor = scratch_arena.TotalUsed();
-    DEFER { scratch_arena.TryShrinkTotalUsed(cursor); };
-    auto const file_data = TRY(ReadEntireFile(filename, scratch_arena));
-    return DecodeImage(file_data.ToByteSpan());
+PUBLIC ErrorCodeOr<ImageBytes> DecodeImage(Span<u8 const> image_data, ArenaAllocator& arena) {
+    return DecodeJpgOrPng(image_data, arena);
 }
 
-PUBLIC void FreeDecodedImage(ImageBytes image) {
-    if (image.size.width && image.size.height) stbi_image_free(image.rgba);
+PUBLIC ErrorCodeOr<ImageBytes> DecodeImageFromFile(String filename, ArenaAllocator& scratch_arena) {
+    auto const file_data = TRY(ReadEntireFile(filename, scratch_arena));
+    return DecodeImage(file_data.ToByteSpan(), scratch_arena);
 }
 
 PUBLIC ImageBytes ShrinkImageIfNeeded(ImageBytes image,
