@@ -22,7 +22,7 @@ void ReserveItemsCapacity(Context& ctx, Allocator& a, u32 new_capacity) {
         ctx.items = (Item*)(void*)a
                         .Allocate({
                             .size = new_capacity * k_total_item_size,
-                            .alignment = alignof(Item),
+                            .alignment = k_max_alignment,
                             .allow_oversized_result = false,
                         })
                         .data;
@@ -32,6 +32,13 @@ void ReserveItemsCapacity(Context& ctx, Allocator& a, u32 new_capacity) {
                             .allocation = existing_allocation,
                             .new_size = new_capacity * k_total_item_size,
                             .allow_oversize_result = false,
+                            .move_memory_handler =
+                                {
+                                    .function =
+                                        [](ResizeCommand::MoveMemoryHandler::Args args) {
+                                            CopyMemory(args.destination, args.source, args.num_bytes);
+                                        },
+                                },
                         })
                         .data;
     }
@@ -48,6 +55,7 @@ void DestroyContext(Context& ctx, Allocator& a) {
         a.Free(Allocation(ctx));
         ctx.items = nullptr;
         ctx.rects = nullptr;
+        ctx.capacity = 0;
     }
 }
 

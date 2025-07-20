@@ -70,9 +70,6 @@ class FloeWaveformImages {
             }
         }
 
-        auto const cursor = scratch_arena.TotalUsed();
-        DEFER { scratch_arena.TryShrinkTotalUsed(cursor); };
-
         Waveform waveform {};
         auto pixels = CreateWaveformImage(source, size, scratch_arena, scratch_arena);
         waveform.source_hash = source_hash;
@@ -117,7 +114,7 @@ struct Gui {
     ~Gui();
 
     PageAllocator page_allocator;
-    ArenaAllocator scratch_arena {page_allocator};
+    ArenaAllocator scratch_arena {page_allocator, Kb(512)};
 
     PreferencesPanelState preferences_panel_state {};
     InfoPanelState info_panel_state {};

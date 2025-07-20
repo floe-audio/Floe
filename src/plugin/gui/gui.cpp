@@ -285,7 +285,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
     ASSERT(g_is_logical_main_thread);
     g->imgui.SetPixelsPerVw(PixelsPerVw(g));
 
-    g->box_system.show_tooltips = prefs::GetBool(g->prefs, SettingDescriptor(GuiSetting::ShowTooltips));
+    BeginFrame(g->box_system, prefs::GetBool(g->prefs, SettingDescriptor(GuiSetting::ShowTooltips)));
 
     g->frame_output = {};
 

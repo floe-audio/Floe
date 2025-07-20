@@ -4,6 +4,7 @@
 #pragma once
 #include "foundation/foundation.hpp"
 #include "utils/debug/tracy_wrapped.hpp"
+#include "utils/logger/logger.hpp"
 
 #include "fonts.hpp"
 #include "gui/gui_drawing_helpers.hpp"
@@ -127,11 +128,10 @@ struct BoxSystemCurrentPanelState {
     imgui::TextInputResult last_text_input_result {};
 
     // TODO: this is a hack. The issue is this: in our 2-pass system, if we change state partway through the
-    // second pass that causes a different GUI to be rendered, it crashses because it will be using
-    // layout/box data from the first pass, but the GUI is different from the first pass. This is a hack to
-    // prevent that. We should fix this by perhaps turning the boxes field into a hashmap and requiring each
-    // box to have a unique ID. This way, we lookup the box by ID and can know when something is missing and
-    // skip it.
+    // second pass that causes a different GUI to be rendered, it crashes because it will be using
+    // layout/box data from the first pass, but the GUI has changed. This is a hack to prevent that. We should
+    // fix this by perhaps turning the boxes field into a hashmap and requiring each box to have a unique ID.
+    // This way, we lookup the box by ID and can know when something is missing and skip it.
     DynamicArray<TrivialFixedSizeFunction<40, void()>> deferred_actions;
 };
 
@@ -346,6 +346,13 @@ PUBLIC void Run(GuiBoxSystem& builder, Panel* panel) {
         Run(builder, p);
 
     builder.imgui.EndWindow();
+}
+
+PUBLIC void BeginFrame(GuiBoxSystem& builder, bool show_tooltips) {
+    // The layout uses the scratch arena, so we need to make sure we're not using any memory from the previous
+    // frame.
+    builder.layout = {};
+    builder.show_tooltips = show_tooltips;
 }
 
 PUBLIC void RunPanel(GuiBoxSystem& builder, Panel initial_panel) {
