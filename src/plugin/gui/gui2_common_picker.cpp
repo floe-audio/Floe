@@ -41,15 +41,16 @@ Box DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemO
                   .background_fill = options.is_current ? style::Colour::Highlight : style::Colour::None,
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
-                  .activate_on_click_button = MouseButton::Left,
-                  .activation_click_event = ActivationClickEvent::Up,
-                  .ignore_double_click = true,
                   .layout =
                       {
                           .size = {layout::k_fill_parent, layout::k_hug_contents},
                           .contents_direction = layout::Direction::Row,
                       },
                   .tooltip = options.tooltip,
+                  .behaviour =
+                      BoxConfig::Button {
+                          .ignore_double_click = true,
+                      },
               });
 
     for (auto tex : options.icons) {
@@ -141,8 +142,6 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                   .background_fill_active = style::Colour::Highlight,
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
-                  .activate_on_click_button = MouseButton::Left,
-                  .activation_click_event = ActivationClickEvent::Up,
                   .layout {
                       .size = {options.full_width ? layout::k_fill_parent : layout::k_hug_contents,
                                k_picker_item_height},
@@ -167,6 +166,7 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                   },
                   .tooltip = options.tooltip,
+                  .behaviour = BoxConfig::Button {},
               });
 
     bool grey_out = false;
@@ -239,8 +239,8 @@ Box DoFilterButton(GuiBoxSystem& box_system,
             .text_fill_hot = style::Colour::Text,
             .text_fill_active = style::Colour::Text,
             .size_from_text = options.full_width,
-            .round_background_corners = 0b1111,
             .parent_dictates_hot_and_active = true,
+            .round_background_corners = 0b1111,
             .layout =
                 {
                     .size = number_size,
@@ -303,8 +303,6 @@ Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
                                          {
                                              .parent = container,
                                              .background_fill_auto_hot_active_overlay = true,
-                                             .activate_on_click_button = MouseButton::Left,
-                                             .activation_click_event = ActivationClickEvent::Up,
                                              .layout {
                                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
                                                  .contents_gap = k_picker_spacing / 2,
@@ -312,6 +310,7 @@ Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
                                                  .contents_align = layout::Alignment::Start,
                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                              },
+                                             .behaviour = BoxConfig::Button {},
                                          });
 
     if (heading_container.button_fired) {
@@ -827,9 +826,10 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                          .size_from_text = true,
                                          .background_fill_auto_hot_active_overlay = true,
                                          .round_background_corners = 0b1111,
-                                         .activate_on_click_button = MouseButton::Left,
-                                         .activation_click_event = ActivationClickEvent::Up,
-                                         .extra_margin_for_mouse_events = 8,
+                                         .behaviour =
+                                             BoxConfig::Button {
+                                                 .extra_margin_for_mouse_events = 8,
+                                             },
                                      });
             close.button_fired) {
             context.state.open = false;
@@ -1128,12 +1128,15 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                               {
                                   .parent = search_box,
                                   .text = context.state.search,
-                                  .text_input_box = TextInputBox::SingleLine,
-                                  .text_input_cursor = style::Colour::Text,
-                                  .text_input_selection = style::Colour::Highlight,
                                   .layout {
                                       .size = {layout::k_fill_parent, k_picker_item_height},
                                   },
+                                  .behaviour =
+                                      BoxConfig::TextInput {
+                                          .text_input_box = TextInputBox::SingleLine,
+                                          .text_input_cursor = style::Colour::Text,
+                                          .text_input_selection = style::Colour::Highlight,
+                                      },
                               });
                     text_input.text_input_result && text_input.text_input_result->buffer_changed) {
                     dyn::Append(box_system.state->deferred_actions,
@@ -1152,8 +1155,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                   .text_fill = style::Colour::Subtext0,
                                   .size_from_text = true,
                                   .background_fill_auto_hot_active_overlay = true,
-                                  .activate_on_click_button = MouseButton::Left,
-                                  .activation_click_event = ActivationClickEvent::Up,
+                                  .behaviour = BoxConfig::Button {},
                               })
                             .button_fired) {
                         dyn::Append(box_system.state->deferred_actions,

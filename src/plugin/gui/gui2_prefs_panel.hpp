@@ -135,10 +135,11 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
                                           .size_from_text = true,
                                           .background_fill_auto_hot_active_overlay = true,
                                           .round_background_corners = 0b1111,
-                                          .activate_on_click_button = MouseButton::Left,
-                                          .activation_click_event = ActivationClickEvent::Up,
-                                          .extra_margin_for_mouse_events = 2,
                                           .tooltip = "Stop scanning this folder"_s,
+                                          .behaviour =
+                                              BoxConfig::Button {
+                                                  .extra_margin_for_mouse_events = 2,
+                                              },
                                       })
                                     .button_fired;
     }
@@ -154,10 +155,11 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
                   .size_from_text = true,
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
-                  .activate_on_click_button = MouseButton::Left,
-                  .activation_click_event = ActivationClickEvent::Up,
-                  .extra_margin_for_mouse_events = 2,
                   .tooltip = (String)fmt::FormatInline<64>("Open folder in {}"_s, GetFileBrowserAppName()),
+                  .behaviour =
+                      BoxConfig::Button {
+                          .extra_margin_for_mouse_events = 2,
+                      },
               })
             .button_fired;
 
@@ -396,8 +398,6 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
                                   {
                                       .parent = root,
                                       .background_fill_auto_hot_active_overlay = true,
-                                      .activate_on_click_button = MouseButton::Left,
-                                      .activation_click_event = ActivationClickEvent::Up,
                                       .layout {
                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
                                           .contents_padding = {.l = (style::k_menu_item_padding_x * 2) +
@@ -408,6 +408,7 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
                                           .contents_align = layout::Alignment::Start,
                                       },
                                       .tooltip = "Select a new folder"_s,
+                                      .behaviour = BoxConfig::Button {},
                                   });
     DoBox(box_system,
           {

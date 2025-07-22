@@ -134,9 +134,8 @@ bool DoTagsGui(GuiBoxSystem& box_system,
                     .background_fill = is_selected ? style::Colour::Highlight : style::Colour::Background1,
                     .background_fill_auto_hot_active_overlay = true,
                     .round_background_corners = 0b1100,
-                    .activate_on_click_button = MouseButton::Left,
-                    .activation_click_event = ActivationClickEvent::Up,
                     .tooltip = tag_info.description,
+                    .behaviour = BoxConfig::Button {},
                 });
 
             if (button.button_fired) {

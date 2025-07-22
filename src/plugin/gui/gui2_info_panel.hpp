@@ -144,7 +144,7 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
                 OpenFolderInFileBrowser(*dir);
     }
 
-    // make sure there's a gap at the end of the scroll region
+    // Make sure there's a gap at the end of the scroll region.
     DoBox(box_system,
           {
               .parent = root,
@@ -338,14 +338,13 @@ static void LegalInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&) {
         auto const button = DoBox(box_system,
                                   {
                                       .parent = root,
-                                      .activate_on_click_button = MouseButton::Left,
-                                      .activation_click_event = ActivationClickEvent::Up,
                                       .layout {
                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
                                           .contents_gap = 4,
                                           .contents_direction = layout::Direction::Row,
                                           .contents_align = layout::Alignment::Start,
                                       },
+                                      .behaviour = BoxConfig::Button {},
                                   });
         DoBox(box_system,
               {

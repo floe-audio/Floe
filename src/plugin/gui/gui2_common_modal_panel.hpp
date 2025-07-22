@@ -56,9 +56,10 @@ PUBLIC Box DoModalHeader(GuiBoxSystem& box_system, ModalHeaderConfig const& conf
                       .size_from_text = true,
                       .background_fill_auto_hot_active_overlay = true,
                       .round_background_corners = 0b1111,
-                      .activate_on_click_button = MouseButton::Left,
-                      .activation_click_event = ActivationClickEvent::Up,
-                      .extra_margin_for_mouse_events = 8,
+                      .behaviour =
+                          BoxConfig::Button {
+                              .extra_margin_for_mouse_events = 8,
+                          },
                   })
                 .button_fired) {
             *config.modeless = !*config.modeless;
@@ -73,9 +74,10 @@ PUBLIC Box DoModalHeader(GuiBoxSystem& box_system, ModalHeaderConfig const& conf
                                      .size_from_text = true,
                                      .background_fill_auto_hot_active_overlay = true,
                                      .round_background_corners = 0b1111,
-                                     .activate_on_click_button = MouseButton::Left,
-                                     .activation_click_event = ActivationClickEvent::Up,
-                                     .extra_margin_for_mouse_events = 8,
+                                     .behaviour =
+                                         BoxConfig::Button {
+                                             .extra_margin_for_mouse_events = 8,
+                                         },
                                  });
         close.button_fired) {
         config.on_close();
@@ -129,22 +131,25 @@ PUBLIC Box DoModalTabBar(GuiBoxSystem& box_system, ModalTabBarConfig const& conf
     for (auto const tab : config.tabs) {
         bool const is_current = tab.index == config.current_tab_index;
 
-        auto const tab_box = DoBox(
-            box_system,
-            {
-                .parent = tab_container,
-                .background_fill = is_current ? style::Colour::Background0 : style::Colour::None,
-                .background_fill_auto_hot_active_overlay = true,
-                .round_background_corners = 0b1100,
-                .activate_on_click_button = MouseButton::Left,
-                .activation_click_event = !is_current ? ActivationClickEvent::Up : ActivationClickEvent::None,
-                .layout {
-                    .size = layout::k_hug_contents,
-                    .contents_padding = {.lr = style::k_spacing, .tb = 4},
-                    .contents_gap = 5,
-                    .contents_direction = layout::Direction::Row,
-                },
-            });
+        auto const tab_box =
+            DoBox(box_system,
+                  {
+                      .parent = tab_container,
+                      .background_fill = is_current ? style::Colour::Background0 : style::Colour::None,
+                      .background_fill_auto_hot_active_overlay = true,
+                      .round_background_corners = 0b1100,
+                      .layout {
+                          .size = layout::k_hug_contents,
+                          .contents_padding = {.lr = style::k_spacing, .tb = 4},
+                          .contents_gap = 5,
+                          .contents_direction = layout::Direction::Row,
+                      },
+                      .behaviour = ({
+                          BoxConfig::Behaviour behaviour = k_nullopt;
+                          if (!is_current) behaviour = BoxConfig::Button {};
+                          behaviour;
+                      }),
+                  });
 
         if (tab_box.button_fired)
             dyn::Append(
@@ -209,8 +214,6 @@ CheckboxButton(GuiBoxSystem& box_system, Box parent, String text, bool state, St
     auto const button = DoBox(box_system,
                               {
                                   .parent = parent,
-                                  .activate_on_click_button = MouseButton::Left,
-                                  .activation_click_event = ActivationClickEvent::Up,
                                   .layout {
                                       .size = {layout::k_hug_contents, layout::k_hug_contents},
                                       .contents_gap = style::k_prefs_medium_gap,
@@ -218,6 +221,7 @@ CheckboxButton(GuiBoxSystem& box_system, Box parent, String text, bool state, St
                                       .contents_align = layout::Alignment::Start,
                                   },
                                   .tooltip = tooltip,
+                                  .behaviour = BoxConfig::Button {},
                               });
 
     DoBox(box_system,
@@ -235,8 +239,8 @@ CheckboxButton(GuiBoxSystem& box_system, Box parent, String text, bool state, St
               .background_fill_auto_hot_active_overlay = true,
               .border = style::Colour::Overlay0,
               .border_auto_hot_active_overlay = true,
-              .round_background_corners = 0b1111,
               .parent_dictates_hot_and_active = true,
+              .round_background_corners = 0b1111,
               .layout {
                   .size = style::k_prefs_icon_button_size,
               },
@@ -268,15 +272,17 @@ PUBLIC bool TextButton(GuiBoxSystem& builder, Box parent, TextButtonOptions cons
                   .background_fill_active = style::Colour::Background2,
                   .background_fill_auto_hot_active_overlay = !options.disabled,
                   .round_background_corners = 0b1111,
-                  .activate_on_click_button = MouseButton::Left,
-                  .activation_click_event =
-                      !options.disabled ? ActivationClickEvent::Up : ActivationClickEvent::None,
                   .layout {
                       .size = {options.fill_x ? layout::k_fill_parent : layout::k_hug_contents,
                                layout::k_hug_contents},
                       .contents_padding = {.lr = style::k_button_padding_x, .tb = style::k_button_padding_y},
                   },
                   .tooltip = options.disabled ? k_nullopt : options.tooltip,
+                  .behaviour = ({
+                      BoxConfig::Behaviour behaviour = k_nullopt;
+                      if (!options.disabled) behaviour = BoxConfig::Button {};
+                      behaviour;
+                  }),
               });
 
     auto const text_col = options.disabled ? style::Colour::Surface1 : style::Colour::Text;
@@ -307,14 +313,13 @@ IconButton(GuiBoxSystem& builder, Box parent, String icon, String tooltip, f32 f
                                   .parent = parent,
                                   .background_fill_auto_hot_active_overlay = true,
                                   .round_background_corners = 0b1111,
-                                  .activate_on_click_button = MouseButton::Left,
-                                  .activation_click_event = ActivationClickEvent::Up,
                                   .layout {
                                       .size = size,
                                       .contents_align = layout::Alignment::Middle,
                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                   },
                                   .tooltip = tooltip,
+                                  .behaviour = BoxConfig::Button {},
                               });
 
     DoBox(builder,
@@ -356,11 +361,14 @@ PUBLIC Box TextInput(GuiBoxSystem& builder, Box parent, TextInputOptions const& 
             .border_hot = options.border ? style::Colour::Overlay1 : style::Colour::None,
             .border_active = options.border ? style::Colour::Blue : style::Colour::None,
             .round_background_corners = 0b1111,
-            .text_input_box = options.type,
-            .text_input_cursor = style::Colour::Text,
-            .text_input_selection = style::Colour::Highlight,
             .layout {.size = options.size},
             .tooltip = options.tooltip,
+            .behaviour =
+                BoxConfig::TextInput {
+                    .text_input_box = options.type,
+                    .text_input_cursor = style::Colour::Text,
+                    .text_input_selection = style::Colour::Highlight,
+                },
         });
 }
 
@@ -426,12 +434,11 @@ PUBLIC Optional<s64> IntField(GuiBoxSystem& builder, Box parent, IntFieldOptions
                   .text_align_y = TextAlignY::Centre,
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1001,
-                  .activate_on_click_button = MouseButton::Left,
-                  .activation_click_event = ActivationClickEvent::Up,
                   .layout {
                       .size = {k_button_width, layout::k_fill_parent},
                   },
                   .tooltip = "Decrease value"_s,
+                  .behaviour = BoxConfig::Button {},
               })
             .button_fired) {
         value = options.constrainer(value - 1);
@@ -446,12 +453,11 @@ PUBLIC Optional<s64> IntField(GuiBoxSystem& builder, Box parent, IntFieldOptions
                   .text_align_y = TextAlignY::Centre,
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b0110,
-                  .activate_on_click_button = MouseButton::Left,
-                  .activation_click_event = ActivationClickEvent::Up,
                   .layout {
                       .size = {k_button_width, layout::k_fill_parent},
                   },
                   .tooltip = "Increase value"_s,
+                  .behaviour = BoxConfig::Button {},
               })
             .button_fired) {
         value = options.constrainer(value + 1);
@@ -484,8 +490,6 @@ PUBLIC Box MenuButton(GuiBoxSystem& box_system, Box parent, MenuButtonOptions co
                   .background_fill = style::Colour::Background2,
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
-                  .activate_on_click_button = MouseButton::Left,
-                  .activation_click_event = ActivationClickEvent::Up,
                   .layout {
                       .size = {options.width, layout::k_hug_contents},
                       .contents_padding = {.lr = style::k_button_padding_x, .tb = style::k_button_padding_y},
@@ -493,6 +497,7 @@ PUBLIC Box MenuButton(GuiBoxSystem& box_system, Box parent, MenuButtonOptions co
                       .contents_align = layout::Alignment::Justify,
                   },
                   .tooltip = options.tooltip,
+                  .behaviour = BoxConfig::Button {},
               });
 
     DoBox(box_system,
@@ -526,12 +531,11 @@ PUBLIC bool MenuItem(GuiBoxSystem& box_system, Box parent, MenuItemOptions const
                             {
                                 .parent = parent,
                                 .background_fill_auto_hot_active_overlay = true,
-                                .activate_on_click_button = MouseButton::Left,
-                                .activation_click_event = ActivationClickEvent::Up,
                                 .layout {
                                     .size = {layout::k_fill_parent, layout::k_hug_contents},
                                     .contents_direction = layout::Direction::Row,
                                 },
+                                .behaviour = BoxConfig::Button {},
                             });
 
     if (item.button_fired) box_system.imgui.CloseTopPopupOnly();

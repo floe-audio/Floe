@@ -4,7 +4,6 @@
 #pragma once
 #include "foundation/foundation.hpp"
 #include "utils/debug/tracy_wrapped.hpp"
-#include "utils/logger/logger.hpp"
 
 #include "fonts.hpp"
 #include "gui/gui_drawing_helpers.hpp"
@@ -360,7 +359,7 @@ PUBLIC void RunPanel(GuiBoxSystem& builder, Panel initial_panel) {
     Run(builder, panel);
 }
 
-enum class ActivationClickEvent : u32 { None, Down, Up, Count };
+enum class ActivationClickEvent : u32 { Up, Down, Count };
 
 enum class TextAlignX : u32 { Left, Centre, Right, Count };
 enum class TextAlignY : u32 { Top, Centre, Bottom, Count };
@@ -394,7 +393,35 @@ using TooltipString = TaggedUnion<TooltipStringType,
                                   TypeAndTag<FunctionRef<String()>, TooltipStringType::Function>,
                                   TypeAndTag<String, TooltipStringType::String>>;
 
+enum class BehaviourType : u8 {
+    None,
+    TextInput,
+    Button,
+    Count,
+};
+
 struct BoxConfig {
+    struct TextInput {
+        TextInputBox text_input_box : NumBitsNeededToStore(ToInt(TextInputBox::Count)) = TextInputBox::None;
+        style::Colour text_input_cursor : style::k_colour_bits = style::Colour::Text;
+        style::Colour text_input_selection : style::k_colour_bits = style::Colour::Highlight;
+    };
+
+    struct Button {
+        MouseButton activate_on_click_button
+            : NumBitsNeededToStore(ToInt(MouseButton::Count)) = MouseButton::Left;
+        bool32 activate_on_click_use_double_click : 1 = false;
+        ActivationClickEvent activation_click_event
+            : NumBitsNeededToStore(ToInt(ActivationClickEvent::Count)) = ActivationClickEvent::Up;
+        bool32 ignore_double_click : 1 = false;
+        u8 extra_margin_for_mouse_events = 0;
+    };
+
+    using Behaviour = TaggedUnion<BehaviourType,
+                                  TypeAndTag<NulloptType, BehaviourType::None>,
+                                  TypeAndTag<TextInput, BehaviourType::TextInput>,
+                                  TypeAndTag<Button, BehaviourType::Button>>;
+
     Optional<Box> parent {};
 
     String text {};
@@ -425,25 +452,16 @@ struct BoxConfig {
     style::Colour border_active : style::k_colour_bits = style::Colour::None;
     bool32 border_auto_hot_active_overlay : 1 = false;
 
+    bool32 parent_dictates_hot_and_active : 1 = false;
+
     // 4 bits, clockwise from top-left: top-left, top-right, bottom-right, bottom-left, set using 0b0001 etc.
     u32 round_background_corners : 4 = 0;
-
-    TextInputBox text_input_box : NumBitsNeededToStore(ToInt(TextInputBox::Count)) = TextInputBox::None;
-    style::Colour text_input_cursor : style::k_colour_bits = style::Colour::Text;
-    style::Colour text_input_selection : style::k_colour_bits = style::Colour::Highlight;
-
-    MouseButton activate_on_click_button
-        : NumBitsNeededToStore(ToInt(MouseButton::Count)) = MouseButton::Left;
-    bool32 activate_on_click_use_double_click : 1 = false;
-    ActivationClickEvent activation_click_event
-        : NumBitsNeededToStore(ToInt(ActivationClickEvent::Count)) = ActivationClickEvent::None;
-    bool32 ignore_double_click : 1 = false;
-    bool32 parent_dictates_hot_and_active : 1 = false;
-    u8 extra_margin_for_mouse_events = 0;
 
     layout::ItemOptions layout {};
 
     TooltipString tooltip = k_nullopt;
+
+    Behaviour behaviour = k_nullopt;
 };
 
 PUBLIC auto ScopedEnableTooltips(GuiBoxSystem& builder, bool enable) {
@@ -612,40 +630,59 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
 
             if (!builder.imgui.IsRectVisible(rect)) return box;
 
-            auto const mouse_rect =
-                rect.Expanded(builder.imgui.VwToPixels(config.extra_margin_for_mouse_events));
+            auto mouse_rect = rect;
 
-            if (config.activation_click_event != ActivationClickEvent::None ||
-                (config.tooltip.tag != TooltipStringType::None && !config.parent_dictates_hot_and_active)) {
-                imgui::ButtonFlags button_flags {
-                    .left_mouse = !config.activate_on_click_use_double_click &&
-                                  config.activate_on_click_button == MouseButton::Left,
-                    .right_mouse = config.activate_on_click_button == MouseButton::Right,
-                    .middle_mouse = config.activate_on_click_button == MouseButton::Middle,
-                    .double_click = config.activate_on_click_use_double_click,
-                    .ignore_double_click = config.ignore_double_click,
-                    .triggers_on_mouse_down = config.activation_click_event == ActivationClickEvent::Down,
-                    .triggers_on_mouse_up = config.activation_click_event == ActivationClickEvent::Up,
-                };
-                box.imgui_id = builder.imgui.GetID((usize)box_index);
-                box.button_fired = builder.imgui.ButtonBehavior(mouse_rect, box.imgui_id, button_flags);
-                box.is_active = builder.imgui.IsActive(box.imgui_id);
-                box.is_hot = builder.imgui.IsHot(box.imgui_id);
-            }
-            if (config.text_input_box != TextInputBox::None) {
-                box.imgui_id = builder.imgui.GetID((usize)box_index);
-                builder.state->last_text_input_result = builder.imgui.TextInput(
-                    mouse_rect,
-                    box.imgui_id,
-                    config.text,
-                    config.text_input_box == TextInputBox::MultiLine
-                        ? imgui::TextInputFlags {.multiline = true, .multiline_wordwrap_hack = true}
-                        : imgui::TextInputFlags {},
-                    {.left_mouse = true, .triggers_on_mouse_down = true},
-                    false);
-                box.is_active = builder.imgui.TextInputHasFocus(box.imgui_id);
-                box.is_hot = builder.imgui.IsHot(box.imgui_id);
-                box.text_input_result = &builder.state->last_text_input_result;
+            switch (config.behaviour.tag) {
+                case BehaviourType::None: {
+                    if (config.tooltip.tag != TooltipStringType::None) {
+                        box.imgui_id = builder.imgui.GetID((usize)box_index);
+                        builder.imgui.SetHot(rect, box.imgui_id);
+                        box.is_hot = builder.imgui.IsHot(box.imgui_id);
+                    }
+                    break;
+                }
+
+                case BehaviourType::TextInput: {
+                    auto const& text_input = config.behaviour.Get<BoxConfig::TextInput>();
+                    box.imgui_id = builder.imgui.GetID((usize)box_index);
+                    builder.state->last_text_input_result = builder.imgui.TextInput(
+                        rect,
+                        box.imgui_id,
+                        config.text,
+                        text_input.text_input_box == TextInputBox::MultiLine
+                            ? imgui::TextInputFlags {.multiline = true, .multiline_wordwrap_hack = true}
+                            : imgui::TextInputFlags {},
+                        {.left_mouse = true, .triggers_on_mouse_down = true},
+                        false);
+                    box.is_active = builder.imgui.TextInputHasFocus(box.imgui_id);
+                    box.is_hot = builder.imgui.IsHot(box.imgui_id);
+                    box.text_input_result = &builder.state->last_text_input_result;
+                    break;
+                }
+
+                case BehaviourType::Button: {
+                    auto const& button_config = config.behaviour.Get<BoxConfig::Button>();
+                    imgui::ButtonFlags button_flags {
+                        .left_mouse = !button_config.activate_on_click_use_double_click &&
+                                      button_config.activate_on_click_button == MouseButton::Left,
+                        .right_mouse = button_config.activate_on_click_button == MouseButton::Right,
+                        .middle_mouse = button_config.activate_on_click_button == MouseButton::Middle,
+                        .double_click = button_config.activate_on_click_use_double_click,
+                        .ignore_double_click = button_config.ignore_double_click,
+                        .triggers_on_mouse_down =
+                            button_config.activation_click_event == ActivationClickEvent::Down,
+                        .triggers_on_mouse_up =
+                            button_config.activation_click_event == ActivationClickEvent::Up,
+                    };
+                    box.imgui_id = builder.imgui.GetID((usize)box_index);
+                    box.button_fired = builder.imgui.ButtonBehavior(mouse_rect, box.imgui_id, button_flags);
+                    box.is_active = builder.imgui.IsActive(box.imgui_id);
+                    box.is_hot = builder.imgui.IsHot(box.imgui_id);
+                    mouse_rect = rect.Expanded(button_config.extra_margin_for_mouse_events);
+                    break;
+                }
+
+                case BehaviourType::Count: PanicIfReached();
             }
 
             //
@@ -744,7 +781,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
                 builder.imgui.graphics->AddRect(r, col_u32, rounding, config.round_background_corners);
             }
 
-            if (config.text.size && config.text_input_box == TextInputBox::None) {
+            if (config.text.size && config.behaviour.tag != BehaviourType::TextInput) {
                 auto text_pos = rect.pos;
                 Optional<f32x2> text_size;
                 if (config.text_align_x != TextAlignX::Left || config.text_align_y != TextAlignY::Top) {
@@ -777,21 +814,24 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
                                                 wrap_width == k_wrap_to_parent ? rect.w : wrap_width);
             }
 
-            if (config.text_input_box != TextInputBox::None) {
+            if (config.behaviour.tag == BehaviourType::TextInput) {
+                auto const& text_input_config = config.behaviour.Get<BoxConfig::TextInput>();
                 auto input_result = box.text_input_result;
                 ASSERT(input_result);
 
                 if (input_result->HasSelection()) {
                     imgui::TextInputResult::SelectionIterator it {*builder.imgui.graphics->context};
                     while (auto const r = input_result->NextSelectionRect(it))
-                        builder.imgui.graphics->AddRectFilled(*r, style::Col(config.text_input_selection));
+                        builder.imgui.graphics->AddRectFilled(
+                            *r,
+                            style::Col(text_input_config.text_input_selection));
                 }
 
                 if (input_result->show_cursor) {
                     auto cursor_r = input_result->GetCursorRect();
                     builder.imgui.graphics->AddRectFilled(cursor_r.Min(),
                                                           cursor_r.Max(),
-                                                          style::Col(config.text_input_cursor));
+                                                          style::Col(text_input_config.text_input_cursor));
                 }
 
                 builder.imgui.graphics->AddText(input_result->GetTextPos(),
