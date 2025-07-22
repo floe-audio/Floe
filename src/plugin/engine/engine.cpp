@@ -117,7 +117,7 @@ static void LoadNewState(Engine& engine, StateSnapshotWithName const& state, Sta
 
         ASSERT(!state.state.ir_id.HasValue());
         engine.processor.convo.ir_id = k_nullopt;
-        SetConvolutionIrAudioData(engine.processor, nullptr);
+        SetConvolutionIrAudioData(engine.processor, nullptr, {});
 
         engine.state_metadata = state.state.metadata;
         ApplyNewState(engine.processor, state.state, source);
@@ -184,14 +184,15 @@ static Instrument InstrumentFromPendingState(Engine::PendingStateChange const& p
     return instrument;
 }
 
-static AudioData const* IrAudioDataFromPendingState(Engine::PendingStateChange const& pending_state_change) {
+static sample_lib_server::RefCounted<sample_lib::LoadedIr>
+IrFromPendingState(Engine::PendingStateChange const& pending_state_change) {
     auto const ir_id = pending_state_change.snapshot.state.ir_id;
-    if (!ir_id) return nullptr;
+    if (!ir_id) return {};
     for (auto const& r : pending_state_change.retained_results) {
         auto const loaded_ir = r.TryExtract<sample_lib_server::RefCounted<sample_lib::LoadedIr>>();
-        if (loaded_ir && *ir_id == **loaded_ir) return (*loaded_ir)->audio_data;
+        if (loaded_ir && *ir_id == **loaded_ir) return *loaded_ir;
     }
-    return nullptr;
+    return {};
 }
 
 static void ApplyNewStateFromPending(Engine& engine) {
@@ -204,7 +205,12 @@ static void ApplyNewStateFromPending(Engine& engine) {
         SetInstrument(engine.processor,
                       layer_index,
                       InstrumentFromPendingState(pending_state_change, layer_index));
-    SetConvolutionIrAudioData(engine.processor, IrAudioDataFromPendingState(pending_state_change));
+    {
+        auto const ir = IrFromPendingState(pending_state_change);
+        SetConvolutionIrAudioData(engine.processor,
+                                  ir ? ir->audio_data : nullptr,
+                                  ir ? ir->ir.audio_props : sample_lib::ImpulseResponse::AudioProperties {});
+    }
     engine.state_metadata = pending_state_change.snapshot.state.metadata;
     ApplyNewState(engine.processor, pending_state_change.snapshot.state, pending_state_change.source);
 
@@ -275,7 +281,9 @@ static void SampleLibraryResourceLoaded(Engine& engine, sample_lib_server::LoadR
                     auto const current_ir_id = engine.processor.convo.ir_id;
                     if (current_ir_id.HasValue()) {
                         if (*current_ir_id == *loaded_ir)
-                            SetConvolutionIrAudioData(engine.processor, loaded_ir->audio_data);
+                            SetConvolutionIrAudioData(engine.processor,
+                                                      loaded_ir->audio_data,
+                                                      loaded_ir->ir.audio_props);
                     }
                     break;
                 }
@@ -343,7 +351,7 @@ void LoadConvolutionIr(Engine& engine, Optional<sample_lib::IrId> ir_id) {
     else {
         MarkNeedsAttributionTextUpdate(engine.attribution_requirements);
         engine.host.request_callback(&engine.host);
-        SetConvolutionIrAudioData(engine.processor, nullptr);
+        SetConvolutionIrAudioData(engine.processor, nullptr, {});
     }
 }
 

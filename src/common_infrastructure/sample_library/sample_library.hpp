@@ -167,6 +167,10 @@ struct ImpulseResponse {
     FolderNode* folder {};
     Set<String> tags {};
     Optional<String> description {};
+
+    struct AudioProperties {
+        f32 gain_db {0};
+    } audio_props;
 };
 
 // An impulse response that has its audio data loaded into memory.

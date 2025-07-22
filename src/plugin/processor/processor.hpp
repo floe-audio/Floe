@@ -272,7 +272,9 @@ enum class ProcessorSetting {
 prefs::Descriptor SettingDescriptor(ProcessorSetting);
 
 void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const& instrument);
-void SetConvolutionIrAudioData(AudioProcessor& processor, AudioData const* audio_data);
+void SetConvolutionIrAudioData(AudioProcessor& processor,
+                               AudioData const* audio_data,
+                               sample_lib::ImpulseResponse::AudioProperties const& audio_props);
 
 // doesn't set instruments or convolution because they require loaded audio data which is often available at a
 // later time

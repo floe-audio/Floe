@@ -8,7 +8,7 @@ struct StereoConvolver;
 StereoConvolver* CreateStereoConvolver();
 void DestroyStereoConvolver(StereoConvolver* convolver);
 
-void Init(StereoConvolver& convolver, float const* samples, int num_frames, int num_channels);
+void Init(StereoConvolver& convolver, float const* samples, float gain_db, int num_frames, int num_channels);
 int NumFrames(StereoConvolver& convolver);
 void Process(StereoConvolver& convolver,
              float const* input_l,

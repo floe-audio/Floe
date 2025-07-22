@@ -116,10 +116,11 @@ class ConvolutionReverb final : public Effect {
     }
 
     // [main-thread]
-    void ConvolutionIrDataLoaded(AudioData const* audio_data) {
+    void ConvolutionIrDataLoaded(AudioData const* audio_data,
+                                 sample_lib::ImpulseResponse::AudioProperties const& audio_props) {
         DeletedUnusedConvolvers();
         if (audio_data)
-            m_desired_convolver.Store(CreateConvolver(*audio_data), StoreMemoryOrder::Relaxed);
+            m_desired_convolver.Store(CreateConvolver(*audio_data, audio_props), StoreMemoryOrder::Relaxed);
         else
             m_desired_convolver.Store(nullptr, StoreMemoryOrder::Relaxed);
     }
@@ -134,14 +135,19 @@ class ConvolutionReverb final : public Effect {
     Optional<sample_lib::IrId> ir_id = k_nullopt; // May temporarily differ to what is actually loaded
 
   private:
-    static StereoConvolver* CreateConvolver(AudioData const& audio_data) {
+    static StereoConvolver* CreateConvolver(AudioData const& audio_data,
+                                            sample_lib::ImpulseResponse::AudioProperties const& audio_props) {
         auto num_channels = audio_data.channels;
         auto num_frames = audio_data.num_frames;
 
         ASSERT(num_frames);
 
         auto result = CreateStereoConvolver();
-        Init(*result, audio_data.interleaved_samples.data, (int)num_frames, (int)num_channels);
+        Init(*result,
+             audio_data.interleaved_samples.data,
+             audio_props.gain_db,
+             (int)num_frames,
+             (int)num_channels);
 
         return result;
     }

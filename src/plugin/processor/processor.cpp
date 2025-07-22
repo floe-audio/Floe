@@ -710,9 +710,11 @@ void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const&
     processor.host.request_process(&processor.host);
 }
 
-void SetConvolutionIrAudioData(AudioProcessor& processor, AudioData const* audio_data) {
+void SetConvolutionIrAudioData(AudioProcessor& processor,
+                               AudioData const* audio_data,
+                               sample_lib::ImpulseResponse::AudioProperties const& audio_props) {
     ASSERT(g_is_logical_main_thread);
-    processor.convo.ConvolutionIrDataLoaded(audio_data);
+    processor.convo.ConvolutionIrDataLoaded(audio_data, audio_props);
     processor.events_for_audio_thread.Push(EventForAudioThreadType::ConvolutionIRChanged);
     processor.host.request_process(&processor.host);
 }

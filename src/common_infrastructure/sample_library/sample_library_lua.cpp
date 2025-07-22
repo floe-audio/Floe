@@ -172,6 +172,7 @@ enum class InterpretedTypes : u32 {
     Library,
     Instrument,
     ImpulseResponse,
+    ImpulseResponseAudioProps,
     Region,
     BuiltinLoop,
     RegionLoop,
@@ -404,6 +405,33 @@ static Span<String> SetArrayOfStrings(LuaState& ctx, FieldInfo field_info, bool 
 
     return list.ToOwnedSpan();
 }
+
+template <>
+struct TableFields<ImpulseResponse::AudioProperties> {
+    using Type = ImpulseResponse::AudioProperties;
+
+    enum class Field : u32 {
+        GainDb,
+        Count,
+    };
+    static constexpr FieldInfo FieldInfo(Field f) {
+        switch (f) {
+            case Field::GainDb:
+                return {
+                    .name = "gain_db",
+                    .description_sentence = "Apply a gain to the audio data in decibels.",
+                    .example = "-3",
+                    .default_value = "0",
+                    .lua_type = LUA_TNUMBER,
+                    .required = false,
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.gain_db = (f32)luaL_checknumber(ctx.lua, -1); },
+                };
+            case Field::Count: break;
+        }
+        return {};
+    }
+};
 
 template <>
 struct TableFields<Region::AudioProperties> {
@@ -1069,6 +1097,7 @@ struct TableFields<ImpulseResponse> {
         Folder,
         Tags,
         Description,
+        AudioProperties,
         Count,
     };
 
@@ -1153,6 +1182,16 @@ struct TableFields<ImpulseResponse> {
                     .lua_type = LUA_TSTRING,
                     .required = false,
                     .set = [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.description = StringFromTop(ctx); },
+                };
+            case Field::AudioProperties:
+                return {
+                    .name = "audio_properties",
+                    .description_sentence = "Audio properties.",
+                    .default_value = "defaults",
+                    .lua_type = LUA_TTABLE,
+                    .subtype = InterpretedTypes::ImpulseResponseAudioProps,
+                    .required = false,
+                    .set = [](SET_FIELD_VALUE_ARGS) { InterpretTable(ctx, -1, FIELD_OBJ.audio_props); },
                 };
             case Field::Count: break;
         }
@@ -2196,6 +2235,9 @@ struct LuaCodePrinter {
                 case InterpretedTypes::Instrument: struct_fields[i] = FieldInfosSpan<Instrument>(); break;
                 case InterpretedTypes::ImpulseResponse:
                     struct_fields[i] = FieldInfosSpan<ImpulseResponse>();
+                    break;
+                case InterpretedTypes::ImpulseResponseAudioProps:
+                    struct_fields[i] = FieldInfosSpan<ImpulseResponse::AudioProperties>();
                     break;
                 case InterpretedTypes::BuiltinLoop: struct_fields[i] = FieldInfosSpan<BuiltinLoop>(); break;
                 case InterpretedTypes::RegionLoop: struct_fields[i] = FieldInfosSpan<Region::Loop>(); break;
