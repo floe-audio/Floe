@@ -367,11 +367,6 @@ PUBLIC UiSize GetSize(GuiPlatform& platform) {
 PUBLIC ErrorCodeOr<void> SetVisible(GuiPlatform& platform, bool visible, Engine& engine) {
     ASSERT(platform.view);
 
-    if (puglGetVisible(platform.view) == visible) {
-        LogInfo(ModuleName::Gui, "SetVisible called with same visibility state, ignoring");
-        return k_success;
-    }
-
     if (visible) {
         // Realize if not already done.
         if (!puglGetNativeView(platform.view)) {
@@ -386,13 +381,21 @@ PUBLIC ErrorCodeOr<void> SetVisible(GuiPlatform& platform, bool visible, Engine&
         // Create GUI if not already done.
         if (!platform.gui) platform.gui.Emplace(platform.frame_state, engine);
 
-        TRY(Required(puglShow(platform.view, PUGL_SHOW_PASSIVE)));
     } else {
         platform.frame_state.Reset();
         detail::CloseNativeFilePicker(platform);
         detail::SetTimers(platform, detail::SetTimerType::Stop);
-        TRY(Required(puglHide(platform.view)));
     }
+
+    if (puglGetVisible(platform.view) == visible) {
+        LogInfo(ModuleName::Gui, "SetVisible called with same visibility state, ignoring");
+        return k_success;
+    }
+
+    if (visible)
+        TRY(Required(puglShow(platform.view, PUGL_SHOW_PASSIVE)));
+    else
+        TRY(Required(puglHide(platform.view)));
 
     return k_success;
 }
