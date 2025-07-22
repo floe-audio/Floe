@@ -634,7 +634,7 @@ static bool ClapGuiShow(clap_plugin_t const* plugin) {
         bool const result = ReportIfError(SetVisible(*floe.gui_platform, true, *floe.engine), "SetVisible");
         if (result) {
             static bool shown_graphics_info = false;
-            if (!shown_graphics_info) {
+            if (!shown_graphics_info && floe.gui_platform->graphics_ctx) {
                 shown_graphics_info = true;
                 LogInfo(ModuleName::Gui,
                         "\n{}",

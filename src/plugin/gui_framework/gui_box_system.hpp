@@ -122,7 +122,7 @@ struct BoxSystemCurrentPanelState {
 
     Pass pass {Pass::LayoutBoxes};
     DynamicArray<Box> boxes;
-    DynamicArray<WordWrappedText> word_wrapped_texts;
+    HashTable<layout::Id, WordWrappedText> word_wrapped_texts;
     bool mouse_down_on_modal_background = false;
     imgui::TextInputResult last_text_input_result {};
 
@@ -145,8 +145,10 @@ struct GuiBoxSystem {
 };
 
 PUBLIC f32 HeightOfWrappedText(GuiBoxSystem& box_system, layout::Id id, f32 width) {
-    for (auto& t : box_system.state->word_wrapped_texts)
-        if (id == t.id) return t.font->CalcTextSizeA(t.font_size, FLT_MAX, width, t.text)[1];
+    if (auto const t_ptr = box_system.state->word_wrapped_texts.Find(id)) {
+        auto const& t = *t_ptr;
+        return t.font->CalcTextSizeA(t.font_size, FLT_MAX, width, t.text)[1];
+    }
     return 0;
 }
 
@@ -276,7 +278,6 @@ PUBLIC void Run(GuiBoxSystem& builder, Panel* panel) {
         BoxSystemCurrentPanelState state {
             .current_panel = panel,
             .boxes = {builder.arena},
-            .word_wrapped_texts = {builder.arena},
             .deferred_actions = {builder.arena},
         };
         builder.state = &state;
@@ -457,7 +458,7 @@ struct BoxConfig {
     // 4 bits, clockwise from top-left: top-left, top-right, bottom-right, bottom-left, set using 0b0001 etc.
     u32 round_background_corners : 4 = 0;
 
-    layout::ItemOptions layout {};
+    layout::ItemOptions layout {}; // Don't set parent here, use BoxConfig::parent instead.
 
     TooltipString tooltip = k_nullopt;
 
@@ -607,13 +608,15 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
             };
 
             if (config.size_from_text && wrap_width == k_wrap_to_parent) {
-                dyn::Append(builder.state->word_wrapped_texts,
-                            {
-                                .id = box.layout_id,
-                                .text = builder.arena.Clone(config.text),
-                                .font = font,
-                                .font_size = font_size,
-                            });
+                builder.state->word_wrapped_texts.InsertGrowIfNeeded(
+                    builder.arena,
+                    box.layout_id,
+                    {
+                        .id = box.layout_id,
+                        .text = builder.arena.Clone(config.text),
+                        .font = font,
+                        .font_size = font_size,
+                    });
             }
 
             dyn::Append(builder.state->boxes, box);
