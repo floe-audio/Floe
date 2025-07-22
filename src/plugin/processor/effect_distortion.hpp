@@ -70,7 +70,7 @@ struct DistortionProcessor {
                 break;
             }
             case DistFunctionAtan: {
-                auto const amount = (amount_fraction * 199 + 1) / 4;
+                auto const amount = (amount_fraction * 59 + 1) / 4;
                 output = (1.0f / Atan(amount)) * Atan(input * amount);
                 break;
             }

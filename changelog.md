@@ -8,6 +8,8 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 0.11.3-beta
+- Revert unintended change in intensity of Atan distortion in version 0.11-0 - unfortunately this will make presets/DAW projects (created using Floe 0.11.0-0.11.2) sound different if they used Atan distortion.
 ## 0.11.2-beta
 - Fix rare crash when resizing the GUI to a very small size
 - Improve UI size control on the preferences panel so that incrementing/decrementing feels more significant
