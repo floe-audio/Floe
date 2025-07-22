@@ -486,6 +486,10 @@ enum class StateVersion : u16 {
     // velocity-to-volume control.
     AddedLayerVelocityCurves,
 
+    // Add Floe version to the state so that we can adapt the state if a bug was introduced in a specific
+    // version.
+    AddedFloeVersion,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -1154,6 +1158,10 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         // Forwards compatibility is not supported.
         if (coder.version > StateVersion::Latest) return ErrorCode(CommonError::CurrentFloeVersionTooOld);
     }
+
+    // =======================================================================================================
+    u32 floe_version_in_state = k_floe_version.Packed();
+    TRY(coder.CodeNumber(floe_version_in_state, StateVersion::AddedFloeVersion));
 
     // =======================================================================================================
     {
