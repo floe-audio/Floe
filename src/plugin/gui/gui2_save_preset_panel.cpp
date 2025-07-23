@@ -85,16 +85,16 @@ bool DoTagsGui(GuiBoxSystem& box_system,
                   {
                       .parent = heading_box,
                       .text = info.font_awesome_icon,
-                      .font = FontType::Icons,
                       .size_from_text = true,
+                      .font = FontType::Icons,
                   });
 
             DoBox(box_system,
                   {
                       .parent = heading_box,
                       .text = fmt::FormatInline<k_max_tag_size + 3>("{}:", info.name),
-                      .font = FontType::Body,
                       .size_from_text = true,
+                      .font = FontType::Body,
                       .layout {
                           .line_break = true,
                       },
@@ -123,20 +123,21 @@ bool DoTagsGui(GuiBoxSystem& box_system,
             bool grey_out = category_disallow_more_selection;
             if (is_selected) grey_out = false;
 
-            auto const button = DoBox(
-                box_system,
-                BoxConfig {
-                    .parent = tags_list,
-                    .text = tag_info.name,
-                    .font = FontType::Body,
-                    .text_fill = grey_out ? style::Colour::Overlay2 : style::Colour::Text,
-                    .size_from_text = true,
-                    .background_fill = is_selected ? style::Colour::Highlight : style::Colour::Background1,
-                    .background_fill_auto_hot_active_overlay = true,
-                    .round_background_corners = 0b1100,
-                    .tooltip = tag_info.description,
-                    .behaviour = BoxConfig::Button {},
-                });
+            auto const button =
+                DoBox(box_system,
+                      BoxConfig {
+                          .parent = tags_list,
+                          .text = tag_info.name,
+                          .size_from_text = true,
+                          .font = FontType::Body,
+                          .text_colours = {grey_out ? style::Colour::Overlay2 : style::Colour::Text},
+                          .background_fill_colours = {is_selected ? style::Colour::Highlight
+                                                                  : style::Colour::Background1},
+                          .background_fill_auto_hot_active_overlay = true,
+                          .round_background_corners = 0b1100,
+                          .tooltip = tag_info.description,
+                          .behaviour = BoxConfig::Button {},
+                      });
 
             if (button.button_fired) {
                 result = true;
@@ -172,8 +173,8 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
             .text =
                 "Save the current state of Floe to a preset file. Its name is determined by its file name."_s,
             .wrap_width = k_wrap_to_parent,
-            .font = FontType::Body,
             .size_from_text = true,
+            .font = FontType::Body,
         });
 
     {
@@ -192,8 +193,8 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
               {
                   .parent = author_box,
                   .text = "Author:"_s,
-                  .font = FontType::Body,
                   .size_from_text = true,
+                  .font = FontType::Body,
               });
 
         if (auto const input = TextInput(box_system,
@@ -253,8 +254,8 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
               {
                   .parent = container,
                   .text = "Description:"_s,
-                  .font = FontType::Body,
                   .size_from_text = true,
+                  .font = FontType::Body,
               });
 
         if (auto const description_field = TextInput(box_system,

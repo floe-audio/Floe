@@ -394,12 +394,19 @@ using TooltipString = TaggedUnion<TooltipStringType,
                                   TypeAndTag<FunctionRef<String()>, TooltipStringType::Function>,
                                   TypeAndTag<String, TooltipStringType::String>>;
 
-enum class BehaviourType : u8 {
-    None,
-    TextInput,
-    Button,
-    Count,
+struct Colours {
+    style::Colour base = style::Colour::None;
+    style::Colour hot = style::Colour::None;
+    style::Colour active = style::Colour::None;
 };
+
+PUBLIC Colours Splat(style::Colour colour) {
+    return Colours {
+        .base = colour,
+        .hot = colour,
+        .active = colour,
+    };
+}
 
 struct BoxConfig {
     struct TextInput {
@@ -418,39 +425,42 @@ struct BoxConfig {
         u8 extra_margin_for_mouse_events = 0;
     };
 
+    enum class BehaviourType : u8 {
+        None,
+        TextInput,
+        Button,
+        Count,
+    };
+
     using Behaviour = TaggedUnion<BehaviourType,
                                   TypeAndTag<NulloptType, BehaviourType::None>,
                                   TypeAndTag<TextInput, BehaviourType::TextInput>,
                                   TypeAndTag<Button, BehaviourType::Button>>;
 
+    // Specifies the parent box for this box. This is used for layout. Use this instead of layout.parent.
     Optional<Box> parent {};
 
     String text {};
-    f32 font_size = k_default_font_size; // see k_default_font_size
-    f32 wrap_width = k_no_wrap; // see k_no_wrap and k_wrap_to_parent
+    f32 wrap_width = k_no_wrap; // See k_no_wrap and k_wrap_to_parent.
+    bool32 size_from_text : 1 = false; // Sets layout.size for you.
+
     FontType font : NumBitsNeededToStore(ToInt(FontType::Count)) {FontType::Body};
-    style::Colour text_fill : style::k_colour_bits = style::Colour::Text;
-    style::Colour text_fill_hot : style::k_colour_bits = style::Colour::Text;
-    style::Colour text_fill_active : style::k_colour_bits = style::Colour::Text;
-    bool32 size_from_text : 1 = false; // sets layout.size for you
+    f32 font_size = k_default_font_size;
+    Colours text_colours = Splat(style::Colour::Text);
     TextAlignX text_align_x : NumBitsNeededToStore(ToInt(TextAlignX::Count)) = TextAlignX::Left;
     TextAlignY text_align_y : NumBitsNeededToStore(ToInt(TextAlignY::Count)) = TextAlignY::Top;
     TextOverflowType text_overflow
         : NumBitsNeededToStore(ToInt(TextOverflowType::Count)) = TextOverflowType::AllowOverflow;
     bool32 capitalize_text : 1 = false;
 
+    Colours background_fill_colours = Splat(style::Colour::None);
     BackgroundShape background_shape
         : NumBitsNeededToStore(ToInt(BackgroundShape::Count)) = BackgroundShape::Rectangle;
-    style::Colour background_fill : style::k_colour_bits = style::Colour::None;
-    style::Colour background_fill_hot : style::k_colour_bits = style::Colour::None;
-    style::Colour background_fill_active : style::k_colour_bits = style::Colour::None;
     bool32 background_fill_auto_hot_active_overlay : 1 = false;
     bool32 drop_shadow : 1 = false;
     Optional<graphics::TextureHandle> background_tex {};
 
-    style::Colour border : style::k_colour_bits = style::Colour::None;
-    style::Colour border_hot : style::k_colour_bits = style::Colour::None;
-    style::Colour border_active : style::k_colour_bits = style::Colour::None;
+    Colours border_colours = Splat(style::Colour::None);
     bool32 border_auto_hot_active_overlay : 1 = false;
 
     bool32 parent_dictates_hot_and_active : 1 = false;
@@ -636,7 +646,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
             auto mouse_rect = rect;
 
             switch (config.behaviour.tag) {
-                case BehaviourType::None: {
+                case BoxConfig::BehaviourType::None: {
                     if (config.tooltip.tag != TooltipStringType::None) {
                         box.imgui_id = builder.imgui.GetID((usize)box_index);
                         builder.imgui.SetHot(rect, box.imgui_id);
@@ -645,7 +655,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
                     break;
                 }
 
-                case BehaviourType::TextInput: {
+                case BoxConfig::BehaviourType::TextInput: {
                     auto const& text_input = config.behaviour.Get<BoxConfig::TextInput>();
                     box.imgui_id = builder.imgui.GetID((usize)box_index);
                     builder.state->last_text_input_result = builder.imgui.TextInput(
@@ -663,7 +673,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
                     break;
                 }
 
-                case BehaviourType::Button: {
+                case BoxConfig::BehaviourType::Button: {
                     auto const& button_config = config.behaviour.Get<BoxConfig::Button>();
                     imgui::ButtonFlags button_flags {
                         .left_mouse = !button_config.activate_on_click_use_double_click &&
@@ -685,7 +695,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
                     break;
                 }
 
-                case BehaviourType::Count: PanicIfReached();
+                case BoxConfig::BehaviourType::Count: PanicIfReached();
             }
 
             //
@@ -699,13 +709,13 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
             if (auto const background_fill = ({
                     style::Colour c {};
                     if (config.background_fill_auto_hot_active_overlay)
-                        c = config.background_fill;
+                        c = config.background_fill_colours.base;
                     else if (is_active)
-                        c = config.background_fill_active;
+                        c = config.background_fill_colours.active;
                     else if (is_hot)
-                        c = config.background_fill_hot;
+                        c = config.background_fill_colours.hot;
                     else
-                        c = config.background_fill;
+                        c = config.background_fill_colours.base;
                     c;
                 });
                 background_fill != style::Colour::None || config.background_fill_auto_hot_active_overlay) {
@@ -713,7 +723,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
                 auto r = rect;
                 // If we normally don't show a background, then we can assume that hot/active colours are
                 // exclusively for the mouse so we should use the mouse rectangle.
-                if (config.background_fill == style::Colour::None) r = mouse_rect;
+                if (config.background_fill_colours.base == style::Colour::None) r = mouse_rect;
 
                 auto const rounding =
                     config.round_background_corners ? builder.imgui.VwToPixels(style::k_button_rounding) : 0;
@@ -754,19 +764,19 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
             if (auto const border = ({
                     style::Colour c {};
                     if (config.border_auto_hot_active_overlay)
-                        c = config.border;
+                        c = config.border_colours.base;
                     else if (is_active)
-                        c = config.border_active;
+                        c = config.border_colours.active;
                     else if (is_hot)
-                        c = config.border_hot;
+                        c = config.border_colours.hot;
                     else
-                        c = config.border;
+                        c = config.border_colours.base;
                     c;
                 });
                 border != style::Colour::None || config.border_auto_hot_active_overlay) {
 
                 auto r = rect;
-                if (config.border == style::Colour::None) r = mouse_rect;
+                if (config.border_colours.base == style::Colour::None) r = mouse_rect;
 
                 auto const rounding =
                     config.round_background_corners ? builder.imgui.VwToPixels(style::k_button_rounding) : 0;
@@ -784,7 +794,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
                 builder.imgui.graphics->AddRect(r, col_u32, rounding, config.round_background_corners);
             }
 
-            if (config.text.size && config.behaviour.tag != BehaviourType::TextInput) {
+            if (config.text.size && config.behaviour.tag != BoxConfig::BehaviourType::TextInput) {
                 auto text_pos = rect.pos;
                 Optional<f32x2> text_size;
                 if (config.text_align_x != TextAlignX::Left || config.text_align_y != TextAlignY::Top) {
@@ -810,14 +820,14 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
                 builder.imgui.graphics->AddText(font,
                                                 font_size,
                                                 text_pos,
-                                                style::Col(is_hot      ? config.text_fill_hot
-                                                           : is_active ? config.text_fill_active
-                                                                       : config.text_fill),
+                                                style::Col(is_hot      ? config.text_colours.hot
+                                                           : is_active ? config.text_colours.active
+                                                                       : config.text_colours.base),
                                                 text,
                                                 wrap_width == k_wrap_to_parent ? rect.w : wrap_width);
             }
 
-            if (config.behaviour.tag == BehaviourType::TextInput) {
+            if (config.behaviour.tag == BoxConfig::BehaviourType::TextInput) {
                 auto const& text_input_config = config.behaviour.Get<BoxConfig::TextInput>();
                 auto input_result = box.text_input_result;
                 ASSERT(input_result);
@@ -838,7 +848,7 @@ PUBLIC Box DoBox(GuiBoxSystem& builder,
                 }
 
                 builder.imgui.graphics->AddText(input_result->GetTextPos(),
-                                                style::Col(config.text_fill),
+                                                style::Col(config.text_colours.base),
                                                 input_result->text);
             }
 

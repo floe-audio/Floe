@@ -69,7 +69,7 @@ PUBLIC void NotificationsPanel(GuiBoxSystem& box_system, Notifications& notifica
         auto const notification = DoBox(box_system,
                                         {
                                             .parent = root,
-                                            .background_fill = style::Colour::Background0,
+                                            .background_fill_colours = {style::Colour::Background0},
                                             .drop_shadow = true,
                                             .round_background_corners = 0b1111,
                                             .layout {
@@ -118,8 +118,9 @@ PUBLIC void NotificationsPanel(GuiBoxSystem& box_system, Notifications& notifica
                           }
                           str;
                       }),
+                      .size_from_text = true,
                       .font = FontType::Icons,
-                      .text_fill = ({
+                      .text_colours = {({
                           style::Colour c {};
                           switch (config.icon) {
                               case NotificationDisplayInfo::IconType::None: PanicIfReached();
@@ -132,8 +133,7 @@ PUBLIC void NotificationsPanel(GuiBoxSystem& box_system, Notifications& notifica
                               case NotificationDisplayInfo::IconType::Error: c = style::Colour::Red; break;
                           }
                           c;
-                      }),
-                      .size_from_text = true,
+                      })},
                   });
         }
 
@@ -141,8 +141,8 @@ PUBLIC void NotificationsPanel(GuiBoxSystem& box_system, Notifications& notifica
               {
                   .parent = lhs_container,
                   .text = config.title,
-                  .font = FontType::Body,
                   .size_from_text = true,
+                  .font = FontType::Body,
               });
 
         if (config.dismissable) {
@@ -150,8 +150,8 @@ PUBLIC void NotificationsPanel(GuiBoxSystem& box_system, Notifications& notifica
                       {
                           .parent = title_container,
                           .text = ICON_FA_XMARK,
-                          .font = FontType::Icons,
                           .size_from_text = true,
+                          .font = FontType::Icons,
                           .background_fill_auto_hot_active_overlay = true,
                           .round_background_corners = 0b1111,
                           .behaviour =
@@ -170,8 +170,8 @@ PUBLIC void NotificationsPanel(GuiBoxSystem& box_system, Notifications& notifica
                       .parent = notification,
                       .text = config.message,
                       .wrap_width = k_wrap_to_parent,
-                      .font = FontType::Body,
                       .size_from_text = true,
+                      .font = FontType::Body,
                   });
         }
     }

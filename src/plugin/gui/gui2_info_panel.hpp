@@ -41,8 +41,8 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
           {
               .parent = root,
               .text = fmt::Assign(buffer, "Installed Libraries ({})", context.libraries.size - 1),
-              .font = FontType::Heading1,
               .size_from_text = true,
+              .font = FontType::Heading1,
           });
 
     for (auto lib : context.libraries) {
@@ -52,7 +52,7 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
         auto const card = DoBox(box_system,
                                 {
                                     .parent = root,
-                                    .border = style::Colour::Background2,
+                                    .border_colours = {style::Colour::Background2},
                                     .round_background_corners = 0b1111,
                                     .layout {
                                         .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -67,15 +67,15 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
               {
                   .parent = card,
                   .text = fmt::JoinInline<128>(Array {lib->name, lib->author}, " - "),
-                  .font = FontType::Heading2,
                   .size_from_text = true,
+                  .font = FontType::Heading2,
               });
         DoBox(box_system,
               {
                   .parent = card,
                   .text = lib->tagline,
-                  .font = FontType::Body,
                   .size_from_text = true,
+                  .font = FontType::Body,
               });
         if (lib->description) {
             DoBox(box_system,
@@ -217,8 +217,8 @@ static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context) 
                 DoBox(box_system,
                       {
                           .parent = text_row,
+                          .background_fill_colours = {style::Colour::Red},
                           .background_shape = BackgroundShape::Circle,
-                          .background_fill = style::Colour::Red,
                           .layout {
                               .size = 5,
                           },
@@ -350,9 +350,13 @@ static void LegalInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&) {
               {
                   .parent = button,
                   .text = open[i] ? ICON_FA_CARET_DOWN : ICON_FA_CARET_RIGHT,
-                  .font = FontType::Icons,
-                  .text_fill_hot = style::Colour::Subtext0,
                   .size_from_text = true,
+                  .font = FontType::Icons,
+                  .text_colours {
+                      .base = style::Colour::Text,
+                      .hot = style::Colour::Subtext0,
+                      .active = style::Colour::Text,
+                  },
                   .parent_dictates_hot_and_active = true,
               });
         DoBox(box_system,

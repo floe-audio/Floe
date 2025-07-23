@@ -45,16 +45,16 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
             .text =
                 "Help us improve - share bug reports, feature requests, or any other feedback to make Floe better."_s,
             .wrap_width = k_wrap_to_parent,
-            .font = FontType::Body,
             .size_from_text = true,
+            .font = FontType::Body,
         });
 
     DoBox(box_system,
           {
               .parent = panel,
               .text = "Description:"_s,
-              .font = FontType::Body,
               .size_from_text = true,
+              .font = FontType::Body,
           });
 
     auto const description_field = TextInput(box_system,
@@ -72,8 +72,8 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
           {
               .parent = panel,
               .text = "Email (optional):"_s,
-              .font = FontType::Body,
               .size_from_text = true,
+              .font = FontType::Body,
           });
 
     auto const email_field = TextInput(box_system,

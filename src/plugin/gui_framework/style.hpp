@@ -81,7 +81,7 @@ constexpr f32 Contrast(u32 abgr1, u32 abgr2) {
     return (Max(l1, l2) + 0.05f) / (Min(l1, l2) + 0.05f);
 }
 
-enum class Colour : u32 {
+enum class Colour : u8 {
     None,
     Green,
     Red,
@@ -111,7 +111,7 @@ constexpr auto k_colours = [] {
     Array<u32, ToInt(Colour::Count)> result {};
 
     // automatically generate tints from dark to light
-    for (auto const col_index : Range(ToInt(Colour::Background0), ToInt(Colour::Text) + 1)) {
+    for (auto const col_index : Range<u32>(ToInt(Colour::Background0), ToInt(Colour::Text) + 1)) {
         constexpr auto k_size = ToInt(Colour::Text) - ToInt(Colour::Background0) + 1;
         auto const pos = (f32)(col_index - ToInt(Colour::Background0)) / (f32)(k_size - 1);
 

@@ -95,8 +95,8 @@ PUBLIC void PackageInstallAlertsPanel(GuiBoxSystem& box_system, package::Install
                       .parent = container,
                       .text = text,
                       .wrap_width = -1,
-                      .font = FontType::Body,
                       .size_from_text = true,
+                      .font = FontType::Body,
                   });
 
             auto const button_row = DoBox(box_system,

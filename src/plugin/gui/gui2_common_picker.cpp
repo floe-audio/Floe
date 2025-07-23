@@ -34,24 +34,23 @@ void DoRightClickForBox(GuiBoxSystem& box_system,
 Box DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptions const& options) {
     auto const scoped_tooltips = ScopedEnableTooltips(box_system, true);
 
-    auto item =
-        DoBox(box_system,
-              {
-                  .parent = options.parent,
-                  .background_fill = options.is_current ? style::Colour::Highlight : style::Colour::None,
-                  .background_fill_auto_hot_active_overlay = true,
-                  .round_background_corners = 0b1111,
-                  .layout =
-                      {
-                          .size = {layout::k_fill_parent, layout::k_hug_contents},
-                          .contents_direction = layout::Direction::Row,
-                      },
-                  .tooltip = options.tooltip,
-                  .behaviour =
-                      BoxConfig::Button {
-                          .ignore_double_click = true,
-                      },
-              });
+    auto item = DoBox(
+        box_system,
+        {
+            .parent = options.parent,
+            .background_fill_colours = {options.is_current ? style::Colour::Highlight : style::Colour::None},
+            .background_fill_auto_hot_active_overlay = true,
+            .round_background_corners = 0b1111,
+            .layout {
+                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                .contents_direction = layout::Direction::Row,
+            },
+            .tooltip = options.tooltip,
+            .behaviour =
+                BoxConfig::Button {
+                    .ignore_double_click = true,
+                },
+        });
 
     for (auto tex : options.icons) {
         if (!tex) continue;
@@ -71,8 +70,8 @@ Box DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemO
               .parent = item,
               .text = options.text,
               .wrap_width = k_wrap_to_parent,
-              .font = FontType::Body,
               .size_from_text = true,
+              .font = FontType::Body,
           });
 
     if (AdditionalClickBehaviour(box_system,
@@ -134,40 +133,39 @@ Box DoFilterButton(GuiBoxSystem& box_system,
     constexpr f32 k_font_icons_font_size = style::k_font_icons_size * k_font_icon_scale;
     constexpr f32 k_font_icon_gap = 5;
 
-    auto const button =
-        DoBox(box_system,
-              {
-                  .parent = options.parent,
-                  .background_fill = options.is_selected ? style::Colour::Highlight : style::Colour::None,
-                  .background_fill_active = style::Colour::Highlight,
-                  .background_fill_auto_hot_active_overlay = true,
-                  .round_background_corners = 0b1111,
-                  .layout {
-                      .size = {options.full_width ? layout::k_fill_parent : layout::k_hug_contents,
-                               k_picker_item_height},
-                      .contents_padding =
-                          {
-                              .l = (options.indent * k_indent_size) + ({
-                                       f32 extra = 0;
-                                       switch (options.font_icon.tag) {
-                                           case FilterButtonOptions::FontIconMode::NeverHasIcon:
-                                               extra = 0;
-                                               break;
-                                           case FilterButtonOptions::FontIconMode::HasIcon: extra = 0; break;
-                                           case FilterButtonOptions::FontIconMode::SometimesHasIcon:
-                                               extra = font_icon_width + k_font_icon_gap * 2;
-                                               break;
-                                       }
-                                       extra;
-                                   }),
-                              .r = options.full_width ? 0 : style::k_spacing / 2,
-                          },
-                      .contents_align = layout::Alignment::Start,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-                  .tooltip = options.tooltip,
-                  .behaviour = BoxConfig::Button {},
-              });
+    auto const button = DoBox(
+        box_system,
+        {
+            .parent = options.parent,
+            .background_fill_colours = {options.is_selected ? style::Colour::Highlight : style::Colour::None},
+            // .background_fill_active = style::Colour::Highlight,
+            .background_fill_auto_hot_active_overlay = true,
+            .round_background_corners = 0b1111,
+            .layout {
+                .size {
+                    options.full_width ? layout::k_fill_parent : layout::k_hug_contents,
+                    k_picker_item_height,
+                },
+                .contents_padding {
+                    .l = (options.indent * k_indent_size) + ({
+                             f32 extra = 0;
+                             switch (options.font_icon.tag) {
+                                 case FilterButtonOptions::FontIconMode::NeverHasIcon: extra = 0; break;
+                                 case FilterButtonOptions::FontIconMode::HasIcon: extra = 0; break;
+                                 case FilterButtonOptions::FontIconMode::SometimesHasIcon:
+                                     extra = font_icon_width + k_font_icon_gap * 2;
+                                     break;
+                             }
+                             extra;
+                         }),
+                    .r = options.full_width ? 0 : style::k_spacing / 2,
+                },
+                .contents_align = layout::Alignment::Start,
+                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+            },
+            .tooltip = options.tooltip,
+            .behaviour = BoxConfig::Button {},
+        });
 
     bool grey_out = false;
     if (options.filter_mode == FilterMode::ProgressiveNarrowing) grey_out = num_used == 0;
@@ -177,9 +175,9 @@ Box DoFilterButton(GuiBoxSystem& box_system,
               {
                   .parent = button,
                   .text = *icon,
-                  .font_size = k_font_icons_font_size,
                   .font = FontType::Icons,
-                  .text_fill = grey_out ? style::Colour::Overlay1 : style::Colour::Subtext0,
+                  .font_size = k_font_icons_font_size,
+                  .text_colours = {grey_out ? style::Colour::Overlay1 : style::Colour::Subtext0},
                   .layout {
                       .size = {font_icon_width, k_font_icons_font_size},
                       .margins = {.lr = k_font_icon_gap},
@@ -203,11 +201,13 @@ Box DoFilterButton(GuiBoxSystem& box_system,
           {
               .parent = button,
               .text = options.text,
-              .font = FontType::Body,
-              .text_fill = grey_out ? style::Colour::Surface1 : style::Colour::Text,
-              .text_fill_hot = style::Colour::Text,
-              .text_fill_active = style::Colour::Text,
               .size_from_text = !options.full_width,
+              .font = FontType::Body,
+              .text_colours {
+                  .base = grey_out ? style::Colour::Surface1 : style::Colour::Text,
+                  .hot = style::Colour::Text,
+                  .active = style::Colour::Text,
+              },
               .text_overflow = TextOverflowType::ShowDotsOnRight,
               .parent_dictates_hot_and_active = true,
               .layout =
@@ -234,18 +234,19 @@ Box DoFilterButton(GuiBoxSystem& box_system,
         {
             .parent = button,
             .text = num_used == info.total_available ? total_text : fmt::FormatInline<32>("({})"_s, num_used),
-            .font = FontType::Body,
-            .text_fill = grey_out ? style::Colour::Surface1 : style::Colour::Text,
-            .text_fill_hot = style::Colour::Text,
-            .text_fill_active = style::Colour::Text,
             .size_from_text = options.full_width,
+            .font = FontType::Body,
+            .text_colours {
+                .base = grey_out ? style::Colour::Surface1 : style::Colour::Text,
+                .hot = style::Colour::Text,
+                .active = style::Colour::Text,
+            },
             .parent_dictates_hot_and_active = true,
             .round_background_corners = 0b1111,
-            .layout =
-                {
-                    .size = number_size,
-                    .margins = {.l = options.full_width ? 0.0f : 3},
-                },
+            .layout {
+                .size = number_size,
+                .margins = {.l = options.full_width ? 0.0f : 3},
+            },
         });
 
     if (button.button_fired) {
@@ -331,13 +332,12 @@ Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
           {
               .parent = heading_container,
               .text = is_hidden ? ICON_FA_CARET_RIGHT : ICON_FA_CARET_DOWN,
-              .font_size = style::k_font_icons_size * 0.6f,
               .font = FontType::Icons,
-              .text_fill = style::Colour::Subtext0,
-              .layout =
-                  {
-                      .size = style::k_font_icons_size * 0.4f,
-                  },
+              .font_size = style::k_font_icons_size * 0.6f,
+              .text_colours = {style::Colour::Subtext0},
+              .layout {
+                  .size = style::k_font_icons_size * 0.4f,
+              },
           });
 
     if (options.icon) {
@@ -345,9 +345,9 @@ Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
               {
                   .parent = heading_container,
                   .text = *options.icon,
-                  .font_size = style::k_font_icons_size * 0.7f,
-                  .font = FontType::Icons,
                   .size_from_text = true,
+                  .font = FontType::Icons,
+                  .font_size = style::k_font_icons_size * 0.7f,
               });
     }
 
@@ -395,8 +395,8 @@ Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
                       .parent = heading_container,
                       .text = text,
                       .wrap_width = k_wrap_to_parent,
-                      .font = FontType::Heading3,
                       .size_from_text = true,
+                      .font = FontType::Heading3,
                       .parent_dictates_hot_and_active = true,
                       .layout {
                           .margins = {.b = k_picker_spacing / 2},
@@ -822,8 +822,8 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                      {
                                          .parent = title_container,
                                          .text = ICON_FA_XMARK,
-                                         .font = FontType::Icons,
                                          .size_from_text = true,
+                                         .font = FontType::Icons,
                                          .background_fill_auto_hot_active_overlay = true,
                                          .round_background_corners = 0b1111,
                                          .behaviour =
@@ -1102,7 +1102,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                     DoBox(box_system,
                           {
                               .parent = rhs,
-                              .background_fill = style::Colour::Background2,
+                              .background_fill_colours = {style::Colour::Background2},
                               .round_background_corners = 0b1111,
                               .layout {
                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -1117,10 +1117,10 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                       {
                           .parent = search_box,
                           .text = ICON_FA_MAGNIFYING_GLASS,
-                          .font_size = k_picker_item_height * 0.9f,
-                          .font = FontType::Icons,
-                          .text_fill = style::Colour::Subtext0,
                           .size_from_text = true,
+                          .font = FontType::Icons,
+                          .font_size = k_picker_item_height * 0.9f,
+                          .text_colours = {style::Colour::Subtext0},
                       });
 
                 if (auto const text_input =
@@ -1150,10 +1150,10 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                               {
                                   .parent = search_box,
                                   .text = ICON_FA_XMARK,
-                                  .font_size = k_picker_item_height * 0.9f,
-                                  .font = FontType::Icons,
-                                  .text_fill = style::Colour::Subtext0,
                                   .size_from_text = true,
+                                  .font = FontType::Icons,
+                                  .font_size = k_picker_item_height * 0.9f,
+                                  .text_colours = {style::Colour::Subtext0},
                                   .background_fill_auto_hot_active_overlay = true,
                                   .behaviour = BoxConfig::Button {},
                               })

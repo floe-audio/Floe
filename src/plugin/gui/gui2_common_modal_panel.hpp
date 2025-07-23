@@ -52,8 +52,8 @@ PUBLIC Box DoModalHeader(GuiBoxSystem& box_system, ModalHeaderConfig const& conf
                   {
                       .parent = title_container,
                       .text = *config.modeless ? ICON_FA_UNLOCK : ICON_FA_LOCK,
-                      .font = FontType::Icons,
                       .size_from_text = true,
+                      .font = FontType::Icons,
                       .background_fill_auto_hot_active_overlay = true,
                       .round_background_corners = 0b1111,
                       .behaviour =
@@ -70,8 +70,8 @@ PUBLIC Box DoModalHeader(GuiBoxSystem& box_system, ModalHeaderConfig const& conf
                                  {
                                      .parent = title_container,
                                      .text = ICON_FA_XMARK,
-                                     .font = FontType::Icons,
                                      .size_from_text = true,
+                                     .font = FontType::Icons,
                                      .background_fill_auto_hot_active_overlay = true,
                                      .round_background_corners = 0b1111,
                                      .behaviour =
@@ -92,7 +92,7 @@ PUBLIC Box DoModalDivider(GuiBoxSystem& box_system, Box parent, DividerType type
     return DoBox(box_system,
                  {
                      .parent = parent,
-                     .background_fill = style::Colour::Surface2,
+                     .background_fill_colours = {style::Colour::Surface2},
                      .layout {
                          .size = type == DividerType::Horizontal ? f32x2 {layout::k_fill_parent, one_pixel}
                                                                  : f32x2 {one_pixel, layout::k_fill_parent},
@@ -118,7 +118,7 @@ PUBLIC Box DoModalTabBar(GuiBoxSystem& box_system, ModalTabBarConfig const& conf
     auto const tab_container = DoBox(box_system,
                                      {
                                          .parent = config.parent,
-                                         .background_fill = style::Colour::Background1,
+                                         .background_fill_colours = {style::Colour::Background1},
                                          .layout {
                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
                                              .contents_padding = {.lr = k_tab_border, .t = k_tab_border},
@@ -131,25 +131,25 @@ PUBLIC Box DoModalTabBar(GuiBoxSystem& box_system, ModalTabBarConfig const& conf
     for (auto const tab : config.tabs) {
         bool const is_current = tab.index == config.current_tab_index;
 
-        auto const tab_box =
-            DoBox(box_system,
-                  {
-                      .parent = tab_container,
-                      .background_fill = is_current ? style::Colour::Background0 : style::Colour::None,
-                      .background_fill_auto_hot_active_overlay = true,
-                      .round_background_corners = 0b1100,
-                      .layout {
-                          .size = layout::k_hug_contents,
-                          .contents_padding = {.lr = style::k_spacing, .tb = 4},
-                          .contents_gap = 5,
-                          .contents_direction = layout::Direction::Row,
-                      },
-                      .behaviour = ({
-                          BoxConfig::Behaviour behaviour = k_nullopt;
-                          if (!is_current) behaviour = BoxConfig::Button {};
-                          behaviour;
-                      }),
-                  });
+        auto const tab_box = DoBox(
+            box_system,
+            {
+                .parent = tab_container,
+                .background_fill_colours = {is_current ? style::Colour::Background0 : style::Colour::None},
+                .background_fill_auto_hot_active_overlay = true,
+                .round_background_corners = 0b1100,
+                .layout {
+                    .size = layout::k_hug_contents,
+                    .contents_padding = {.lr = style::k_spacing, .tb = 4},
+                    .contents_gap = 5,
+                    .contents_direction = layout::Direction::Row,
+                },
+                .behaviour = ({
+                    BoxConfig::Behaviour behaviour = k_nullopt;
+                    if (!is_current) behaviour = BoxConfig::Button {};
+                    behaviour;
+                }),
+            });
 
         if (tab_box.button_fired)
             dyn::Append(
@@ -158,12 +158,12 @@ PUBLIC Box DoModalTabBar(GuiBoxSystem& box_system, ModalTabBarConfig const& conf
 
         if (tab.icon) {
             DoBox(box_system,
-                  {
+                  BoxConfig {
                       .parent = tab_box,
                       .text = *tab.icon,
-                      .font = FontType::Icons,
-                      .text_fill = is_current ? style::Colour::Subtext0 : style::Colour::Surface2,
                       .size_from_text = true,
+                      .font = FontType::Icons,
+                      .text_colours = Splat(is_current ? style::Colour::Subtext0 : style::Colour::Surface2),
                   });
         }
 
@@ -171,8 +171,8 @@ PUBLIC Box DoModalTabBar(GuiBoxSystem& box_system, ModalTabBarConfig const& conf
               {
                   .parent = tab_box,
                   .text = tab.text,
-                  .text_fill = is_current ? style::Colour::Text : style::Colour::Subtext0,
                   .size_from_text = true,
+                  .text_colours = Splat(is_current ? style::Colour::Text : style::Colour::Subtext0),
               });
     }
 
@@ -228,16 +228,14 @@ CheckboxButton(GuiBoxSystem& box_system, Box parent, String text, bool state, St
           {
               .parent = button,
               .text = state ? ICON_FA_CHECK : ""_s,
-              .font_size = style::k_font_icons_size * 0.7f,
               .font = FontType::Icons,
-              .text_fill = style::Colour::Text,
-              .text_fill_hot = style::Colour::Text,
-              .text_fill_active = style::Colour::Text,
+              .font_size = style::k_font_icons_size * 0.7f,
+              .text_colours = Splat(style::Colour::Text),
               .text_align_x = TextAlignX::Centre,
               .text_align_y = TextAlignY::Centre,
-              .background_fill = style::Colour::Background2,
+              .background_fill_colours = {style::Colour::Background2},
               .background_fill_auto_hot_active_overlay = true,
-              .border = style::Colour::Overlay0,
+              .border_colours = {style::Colour::Overlay0},
               .border_auto_hot_active_overlay = true,
               .parent_dictates_hot_and_active = true,
               .round_background_corners = 0b1111,
@@ -267,9 +265,7 @@ PUBLIC bool TextButton(GuiBoxSystem& builder, Box parent, TextButtonOptions cons
         DoBox(builder,
               {
                   .parent = parent,
-                  .background_fill = style::Colour::Background2,
-                  .background_fill_hot = style::Colour::Background2,
-                  .background_fill_active = style::Colour::Background2,
+                  .background_fill_colours = Splat(style::Colour::Background2),
                   .background_fill_auto_hot_active_overlay = !options.disabled,
                   .round_background_corners = 0b1111,
                   .layout {
@@ -278,11 +274,7 @@ PUBLIC bool TextButton(GuiBoxSystem& builder, Box parent, TextButtonOptions cons
                       .contents_padding = {.lr = style::k_button_padding_x, .tb = style::k_button_padding_y},
                   },
                   .tooltip = options.disabled ? k_nullopt : options.tooltip,
-                  .behaviour = ({
-                      BoxConfig::Behaviour behaviour = k_nullopt;
-                      if (!options.disabled) behaviour = BoxConfig::Button {};
-                      behaviour;
-                  }),
+                  .behaviour = options.disabled ? BoxConfig::Behaviour(k_nullopt) : BoxConfig::Button {},
               });
 
     auto const text_col = options.disabled ? style::Colour::Surface1 : style::Colour::Text;
@@ -290,11 +282,9 @@ PUBLIC bool TextButton(GuiBoxSystem& builder, Box parent, TextButtonOptions cons
           {
               .parent = button,
               .text = options.text,
-              .font = FontType::Body,
-              .text_fill = text_col,
-              .text_fill_hot = text_col,
-              .text_fill_active = text_col,
               .size_from_text = !options.fill_x,
+              .font = FontType::Body,
+              .text_colours = Splat(text_col),
               .text_align_x = TextAlignX::Centre,
               .text_align_y = TextAlignY::Centre,
               .text_overflow = TextOverflowType::ShowDotsOnRight,
@@ -326,10 +316,10 @@ IconButton(GuiBoxSystem& builder, Box parent, String icon, String tooltip, f32 f
           {
               .parent = button,
               .text = icon,
-              .font_size = font_size,
-              .font = FontType::Icons,
-              .text_fill = style::Colour::Subtext0,
               .size_from_text = true,
+              .font = FontType::Icons,
+              .font_size = font_size,
+              .text_colours = Splat(style::Colour::Subtext0),
           });
 
     return button;
@@ -345,31 +335,29 @@ struct TextInputOptions {
 };
 
 PUBLIC Box TextInput(GuiBoxSystem& builder, Box parent, TextInputOptions const& options) {
-    return DoBox(
-        builder,
-        {
-            .parent = parent,
-            .text = options.text,
-            .font = FontType::Body,
-            .text_fill = style::Colour::Text,
-            .text_fill_hot = style::Colour::Text,
-            .text_fill_active = style::Colour::Text,
-            .background_fill = options.background ? style::Colour::Background2 : style::Colour::None,
-            .background_fill_hot = options.background ? style::Colour::Background2 : style::Colour::None,
-            .background_fill_active = options.background ? style::Colour::Background2 : style::Colour::None,
-            .border = options.border ? style::Colour::Overlay0 : style::Colour::None,
-            .border_hot = options.border ? style::Colour::Overlay1 : style::Colour::None,
-            .border_active = options.border ? style::Colour::Blue : style::Colour::None,
-            .round_background_corners = 0b1111,
-            .layout {.size = options.size},
-            .tooltip = options.tooltip,
-            .behaviour =
-                BoxConfig::TextInput {
-                    .text_input_box = options.type,
-                    .text_input_cursor = style::Colour::Text,
-                    .text_input_selection = style::Colour::Highlight,
-                },
-        });
+    return DoBox(builder,
+                 {
+                     .parent = parent,
+                     .text = options.text,
+                     .font = FontType::Body,
+                     .text_colours = Splat(style::Colour::Text),
+                     .background_fill_colours =
+                         Splat(options.background ? style::Colour::Background2 : style::Colour::None),
+                     .border_colours {
+                         .base = options.border ? style::Colour::Overlay0 : style::Colour::None,
+                         .hot = options.border ? style::Colour::Overlay1 : style::Colour::None,
+                         .active = options.border ? style::Colour::Blue : style::Colour::None,
+                     },
+                     .round_background_corners = 0b1111,
+                     .layout {.size = options.size},
+                     .tooltip = options.tooltip,
+                     .behaviour =
+                         BoxConfig::TextInput {
+                             .text_input_box = options.type,
+                             .text_input_cursor = style::Colour::Text,
+                             .text_input_selection = style::Colour::Highlight,
+                         },
+                 });
 }
 
 struct IntFieldOptions {
@@ -397,8 +385,8 @@ PUBLIC Optional<s64> IntField(GuiBoxSystem& builder, Box parent, IntFieldOptions
     auto const item_container = DoBox(builder,
                                       {
                                           .parent = container,
-                                          .background_fill = style::Colour::Background2,
-                                          .border = style::Colour::Overlay0,
+                                          .background_fill_colours = {style::Colour::Background2},
+                                          .border_colours = {style::Colour::Overlay0},
                                           .round_background_corners = 0b1111,
                                           .layout {
                                               .size = layout::k_hug_contents,
@@ -487,7 +475,7 @@ PUBLIC Box MenuButton(GuiBoxSystem& box_system, Box parent, MenuButtonOptions co
         DoBox(box_system,
               {
                   .parent = parent,
-                  .background_fill = style::Colour::Background2,
+                  .background_fill_colours = {style::Colour::Background2},
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
                   .layout {
@@ -504,16 +492,16 @@ PUBLIC Box MenuButton(GuiBoxSystem& box_system, Box parent, MenuButtonOptions co
           {
               .parent = button,
               .text = options.text,
-              .font = FontType::Body,
               .size_from_text = true,
+              .font = FontType::Body,
           });
 
     DoBox(box_system,
           {
               .parent = button,
               .text = ICON_FA_CARET_DOWN,
-              .font = FontType::Icons,
               .size_from_text = true,
+              .font = FontType::Icons,
           });
 
     return button;
@@ -545,7 +533,7 @@ PUBLIC bool MenuItem(GuiBoxSystem& box_system, Box parent, MenuItemOptions const
               .parent = item,
               .text = options.is_selected ? String(ICON_FA_CHECK) : "",
               .font = FontType::Icons,
-              .text_fill = style::Colour::Subtext0,
+              .text_colours = Splat(style::Colour::Subtext0),
               .layout {
                   .size = style::k_prefs_icon_button_size,
                   .margins {.l = style::k_menu_item_padding_x},
@@ -569,16 +557,16 @@ PUBLIC bool MenuItem(GuiBoxSystem& box_system, Box parent, MenuItemOptions const
           {
               .parent = text_container,
               .text = options.text,
-              .font = FontType::Body,
               .size_from_text = true,
+              .font = FontType::Body,
           });
     if (options.subtext && options.subtext->size) {
         DoBox(box_system,
               {
                   .parent = text_container,
                   .text = *options.subtext,
-                  .text_fill = style::Colour::Subtext0,
                   .size_from_text = true,
+                  .text_colours = Splat(style::Colour::Subtext0),
               });
     }
 

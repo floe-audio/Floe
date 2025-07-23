@@ -37,9 +37,9 @@ static void PreferencesRhsText(GuiBoxSystem& box_system, Box parent, String text
           {
               .parent = parent,
               .text = text,
-              .font = FontType::Body,
-              .text_fill = style::Colour::Subtext0,
               .size_from_text = true,
+              .font = FontType::Body,
+              .text_colours = {style::Colour::Subtext0},
           });
 }
 
@@ -92,7 +92,7 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
         DoBox(box_system,
               {
                   .parent = container,
-                  .background_fill = style::Colour::Background1,
+                  .background_fill_colours = {style::Colour::Background1},
                   .round_background_corners = 0b1111,
                   .layout {
                       .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -108,8 +108,8 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
           {
               .parent = path_container,
               .text = display_path,
-              .font = FontType::Body,
               .size_from_text = true,
+              .font = FontType::Body,
               .tooltip = display_path.data == path.data ? TooltipString(k_nullopt) : path,
           });
     auto const icon_button_container = DoBox(box_system,
@@ -128,11 +128,9 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
                                       {
                                           .parent = icon_button_container,
                                           .text = ICON_FA_TRASH,
-                                          .font = FontType::Icons,
-                                          .text_fill = style::Colour::Subtext0,
-                                          .text_fill_hot = style::Colour::Subtext0,
-                                          .text_fill_active = style::Colour::Subtext0,
                                           .size_from_text = true,
+                                          .font = FontType::Icons,
+                                          .text_colours = Splat(style::Colour::Subtext0),
                                           .background_fill_auto_hot_active_overlay = true,
                                           .round_background_corners = 0b1111,
                                           .tooltip = "Stop scanning this folder"_s,
@@ -148,11 +146,9 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
               {
                   .parent = icon_button_container,
                   .text = ICON_FA_UP_RIGHT_FROM_SQUARE,
-                  .font = FontType::Icons,
-                  .text_fill = style::Colour::Subtext0,
-                  .text_fill_hot = style::Colour::Subtext0,
-                  .text_fill_active = style::Colour::Subtext0,
                   .size_from_text = true,
+                  .font = FontType::Icons,
+                  .text_colours = Splat(style::Colour::Subtext0),
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
                   .tooltip = (String)fmt::FormatInline<64>("Open folder in {}"_s, GetFileBrowserAppName()),
@@ -387,7 +383,7 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
     DoBox(box_system,
           {
               .parent = root,
-              .background_fill = style::Colour::Overlay0,
+              .background_fill_colours = {style::Colour::Overlay0},
               .layout {
                   .size = {layout::k_fill_parent, box_system.imgui.PixelsToVw(1)},
                   .margins {.tb = style::k_menu_item_padding_y},
