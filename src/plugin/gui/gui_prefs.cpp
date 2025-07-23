@@ -44,7 +44,7 @@ prefs::Descriptor SettingDescriptor(GuiSetting setting) {
                                 return true;
                             },
                     },
-                .default_value = (s64)1000,
+                .default_value = (s64)0,
                 .gui_label = "Window width",
                 .long_description = "The size and scaling of Floe's window.",
             };
