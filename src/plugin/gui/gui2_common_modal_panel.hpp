@@ -56,10 +56,8 @@ PUBLIC Box DoModalHeader(GuiBoxSystem& box_system, ModalHeaderConfig const& conf
                       .font = FontType::Icons,
                       .background_fill_auto_hot_active_overlay = true,
                       .round_background_corners = 0b1111,
-                      .behaviour =
-                          BoxConfig::Button {
-                              .extra_margin_for_mouse_events = 8,
-                          },
+                      .button_behaviour = true,
+                      .extra_margin_for_mouse_events = 8,
                   })
                 .button_fired) {
             *config.modeless = !*config.modeless;
@@ -74,10 +72,8 @@ PUBLIC Box DoModalHeader(GuiBoxSystem& box_system, ModalHeaderConfig const& conf
                                      .font = FontType::Icons,
                                      .background_fill_auto_hot_active_overlay = true,
                                      .round_background_corners = 0b1111,
-                                     .behaviour =
-                                         BoxConfig::Button {
-                                             .extra_margin_for_mouse_events = 8,
-                                         },
+                                     .button_behaviour = true,
+                                     .extra_margin_for_mouse_events = 8,
                                  });
         close.button_fired) {
         config.on_close();
@@ -144,11 +140,7 @@ PUBLIC Box DoModalTabBar(GuiBoxSystem& box_system, ModalTabBarConfig const& conf
                     .contents_gap = 5,
                     .contents_direction = layout::Direction::Row,
                 },
-                .behaviour = ({
-                    BoxConfig::Behaviour behaviour = k_nullopt;
-                    if (!is_current) behaviour = BoxConfig::Button {};
-                    behaviour;
-                }),
+                .button_behaviour = !is_current,
             });
 
         if (tab_box.button_fired)
@@ -221,7 +213,7 @@ CheckboxButton(GuiBoxSystem& box_system, Box parent, String text, bool state, St
                                       .contents_align = layout::Alignment::Start,
                                   },
                                   .tooltip = tooltip,
-                                  .behaviour = BoxConfig::Button {},
+                                  .button_behaviour = true,
                               });
 
     DoBox(box_system,
@@ -274,7 +266,7 @@ PUBLIC bool TextButton(GuiBoxSystem& builder, Box parent, TextButtonOptions cons
                       .contents_padding = {.lr = style::k_button_padding_x, .tb = style::k_button_padding_y},
                   },
                   .tooltip = options.disabled ? k_nullopt : options.tooltip,
-                  .behaviour = options.disabled ? BoxConfig::Behaviour(k_nullopt) : BoxConfig::Button {},
+                  .button_behaviour = !options.disabled,
               });
 
     auto const text_col = options.disabled ? style::Colour::Surface1 : style::Colour::Text;
@@ -309,7 +301,7 @@ IconButton(GuiBoxSystem& builder, Box parent, String icon, String tooltip, f32 f
                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                   },
                                   .tooltip = tooltip,
-                                  .behaviour = BoxConfig::Button {},
+                                  .button_behaviour = true,
                               });
 
     DoBox(builder,
@@ -351,12 +343,7 @@ PUBLIC Box TextInput(GuiBoxSystem& builder, Box parent, TextInputOptions const& 
                      .round_background_corners = 0b1111,
                      .layout {.size = options.size},
                      .tooltip = options.tooltip,
-                     .behaviour =
-                         BoxConfig::TextInput {
-                             .text_input_box = options.type,
-                             .text_input_cursor = style::Colour::Text,
-                             .text_input_selection = style::Colour::Highlight,
-                         },
+                     .text_input_behaviour = options.type,
                  });
 }
 
@@ -426,7 +413,7 @@ PUBLIC Optional<s64> IntField(GuiBoxSystem& builder, Box parent, IntFieldOptions
                       .size = {k_button_width, layout::k_fill_parent},
                   },
                   .tooltip = "Decrease value"_s,
-                  .behaviour = BoxConfig::Button {},
+                  .button_behaviour = true,
               })
             .button_fired) {
         value = options.constrainer(value - 1);
@@ -445,7 +432,7 @@ PUBLIC Optional<s64> IntField(GuiBoxSystem& builder, Box parent, IntFieldOptions
                       .size = {k_button_width, layout::k_fill_parent},
                   },
                   .tooltip = "Increase value"_s,
-                  .behaviour = BoxConfig::Button {},
+                  .button_behaviour = true,
               })
             .button_fired) {
         value = options.constrainer(value + 1);
@@ -485,7 +472,7 @@ PUBLIC Box MenuButton(GuiBoxSystem& box_system, Box parent, MenuButtonOptions co
                       .contents_align = layout::Alignment::Justify,
                   },
                   .tooltip = options.tooltip,
-                  .behaviour = BoxConfig::Button {},
+                  .button_behaviour = true,
               });
 
     DoBox(box_system,
@@ -523,7 +510,7 @@ PUBLIC bool MenuItem(GuiBoxSystem& box_system, Box parent, MenuItemOptions const
                                     .size = {layout::k_fill_parent, layout::k_hug_contents},
                                     .contents_direction = layout::Direction::Row,
                                 },
-                                .behaviour = BoxConfig::Button {},
+                                .button_behaviour = true,
                             });
 
     if (item.button_fired) box_system.imgui.CloseTopPopupOnly();

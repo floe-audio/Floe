@@ -136,7 +136,7 @@ bool DoTagsGui(GuiBoxSystem& box_system,
                           .background_fill_auto_hot_active_overlay = true,
                           .round_background_corners = 0b1100,
                           .tooltip = tag_info.description,
-                          .behaviour = BoxConfig::Button {},
+                          .button_behaviour = true,
                       });
 
             if (button.button_fired) {

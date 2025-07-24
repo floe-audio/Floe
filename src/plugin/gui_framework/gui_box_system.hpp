@@ -184,34 +184,6 @@ inline Colours Splat(style::Colour colour) {
 }
 
 struct BoxConfig {
-    struct TextInput {
-        TextInputBox text_input_box : NumBitsNeededToStore(ToInt(TextInputBox::Count)) = TextInputBox::None;
-        style::Colour text_input_cursor : style::k_colour_bits = style::Colour::Text;
-        style::Colour text_input_selection : style::k_colour_bits = style::Colour::Highlight;
-    };
-
-    struct Button {
-        MouseButton activate_on_click_button
-            : NumBitsNeededToStore(ToInt(MouseButton::Count)) = MouseButton::Left;
-        bool32 activate_on_click_use_double_click : 1 = false;
-        ActivationClickEvent activation_click_event
-            : NumBitsNeededToStore(ToInt(ActivationClickEvent::Count)) = ActivationClickEvent::Up;
-        bool32 ignore_double_click : 1 = false;
-        u8 extra_margin_for_mouse_events = 0;
-    };
-
-    enum class BehaviourType : u8 {
-        None,
-        TextInput,
-        Button,
-        Count,
-    };
-
-    using Behaviour = TaggedUnion<BehaviourType,
-                                  TypeAndTag<NulloptType, BehaviourType::None>,
-                                  TypeAndTag<TextInput, BehaviourType::TextInput>,
-                                  TypeAndTag<Button, BehaviourType::Button>>;
-
     // Specifies the parent box for this box. This is used for layout. Use this instead of layout.parent.
     Optional<Box> parent {};
 
@@ -247,7 +219,18 @@ struct BoxConfig {
 
     TooltipString tooltip = k_nullopt;
 
-    Behaviour behaviour = k_nullopt;
+    // Text input behaviour.
+    TextInputBox text_input_behaviour : NumBitsNeededToStore(ToInt(TextInputBox::Count)) = TextInputBox::None;
+
+    // Button behaviour.
+    bool32 button_behaviour : 1 = false;
+    MouseButton activate_on_click_button
+        : NumBitsNeededToStore(ToInt(MouseButton::Count)) = MouseButton::Left;
+    bool32 activate_on_click_use_double_click : 1 = false;
+    ActivationClickEvent activation_click_event
+        : NumBitsNeededToStore(ToInt(ActivationClickEvent::Count)) = ActivationClickEvent::Up;
+    bool32 ignore_double_click : 1 = false;
+    u8 extra_margin_for_mouse_events = 0;
 };
 
 PUBLIC auto ScopedEnableTooltips(GuiBoxSystem& builder, bool enable) {

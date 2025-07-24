@@ -154,10 +154,8 @@ PUBLIC void NotificationsPanel(GuiBoxSystem& box_system, Notifications& notifica
                           .font = FontType::Icons,
                           .background_fill_auto_hot_active_overlay = true,
                           .round_background_corners = 0b1111,
-                          .behaviour =
-                              BoxConfig::Button {
-                                  .extra_margin_for_mouse_events = 8,
-                              },
+                          .button_behaviour = true,
+                          .extra_margin_for_mouse_events = 8,
                       })
                     .button_fired) {
                 next = notifications.Remove(it);
