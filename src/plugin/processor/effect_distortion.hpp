@@ -6,7 +6,6 @@
 
 #include "effect.hpp"
 #include "processing_utils/audio_processing_context.hpp"
-#include "processing_utils/smoothed_value_system.hpp"
 
 enum DistFunction {
     DistFunctionTubeLog,
@@ -139,7 +138,7 @@ struct DistortionProcessor {
 };
 
 struct Distortion final : public Effect {
-    Distortion(FloeSmoothedValueSystem& s) : Effect(s, EffectType::Distortion) {}
+    Distortion() : Effect(EffectType::Distortion) {}
 
     StereoAudioFrame ProcessFrame(AudioProcessingContext const& context, StereoAudioFrame in, u32) override {
         return StereoAudioFrame::FromF32x2(

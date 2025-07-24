@@ -8,7 +8,7 @@
 
 class Phaser final : public Effect {
   public:
-    Phaser(FloeSmoothedValueSystem& s) : Effect(s, EffectType::Phaser), phaser(vitfx::phaser::Create()) {}
+    Phaser() : Effect(EffectType::Phaser), phaser(vitfx::phaser::Create()) {}
     ~Phaser() override { vitfx::phaser::Destroy(phaser); }
 
     void ResetInternal() override {

@@ -8,7 +8,7 @@
 
 #include "param.hpp"
 #include "processing_utils/audio_processing_context.hpp"
-#include "processing_utils/smoothed_value_system.hpp"
+#include "processing_utils/filters.hpp"
 #include "processing_utils/stereo_audio_frame.hpp"
 
 inline void UpdateSilentSeconds(f32& silent_seconds, Span<StereoAudioFrame const> frames, f32 sample_rate) {
@@ -25,29 +25,29 @@ inline void UpdateSilentSeconds(f32& silent_seconds, Span<StereoAudioFrame const
 }
 
 struct EffectWetDryHelper {
-    EffectWetDryHelper(FloeSmoothedValueSystem& s)
-        : m_wet_smoother_id(s.CreateSmoother())
-        , m_dry_smoother_id(s.CreateSmoother()) {}
+    void SetWet(f32 amp) { wet = amp; }
+    void SetDry(f32 amp) { dry = amp; }
 
-    static void SetValue(FloeSmoothedValueSystem& s, FloeSmoothedValueSystem::FloatId smoother, f32 amp) {
-        s.Set(smoother, amp, 10);
-    }
-
-    void SetWet(FloeSmoothedValueSystem& s, f32 amp) { SetValue(s, m_wet_smoother_id, amp); }
-    void SetDry(FloeSmoothedValueSystem& s, f32 amp) { SetValue(s, m_dry_smoother_id, amp); }
-
-    f32 Mix(FloeSmoothedValueSystem& s, u32 frame_index, f32 w, f32 d) {
-        return (w * s.Value(m_wet_smoother_id, frame_index)) + (d * s.Value(m_dry_smoother_id, frame_index));
+    f32 Mix(AudioProcessingContext const& context, f32 w, f32 d) {
+        return (w * wet_smoother.LowPass(wet, context.one_pole_smoothing_cutoff_1ms)) +
+               (d * dry_smoother.LowPass(dry, context.one_pole_smoothing_cutoff_1ms));
     }
 
     StereoAudioFrame
-    MixStereo(FloeSmoothedValueSystem& s, u32 frame_index, StereoAudioFrame wet, StereoAudioFrame dry) {
-        return wet * s.Value(m_wet_smoother_id, frame_index) + dry * s.Value(m_dry_smoother_id, frame_index);
+    MixStereo(AudioProcessingContext const& context, StereoAudioFrame w, StereoAudioFrame d) {
+        return w * wet_smoother.LowPass(wet, context.one_pole_smoothing_cutoff_1ms) +
+               d * dry_smoother.LowPass(dry, context.one_pole_smoothing_cutoff_1ms);
     }
 
-  private:
-    FloeSmoothedValueSystem::FloatId const m_wet_smoother_id;
-    FloeSmoothedValueSystem::FloatId const m_dry_smoother_id;
+    void Reset() {
+        wet_smoother.Reset();
+        dry_smoother.Reset();
+    }
+
+    f32 wet;
+    OnePoleLowPassFilter<f32> wet_smoother {};
+    f32 dry;
+    OnePoleLowPassFilter<f32> dry_smoother {};
 };
 
 struct ScratchBuffers {
@@ -77,7 +77,7 @@ enum class EffectProcessResult {
 // The subclass can either override ProcessFrame or ProcessBlock
 class Effect {
   public:
-    Effect(FloeSmoothedValueSystem& s, EffectType type) : smoothed_value_system(s), type(type) {}
+    Effect(EffectType type) : type(type) {}
 
     virtual ~Effect() {}
 
@@ -138,7 +138,6 @@ class Effect {
 
     virtual void ResetInternal() {}
 
-    FloeSmoothedValueSystem& smoothed_value_system;
     EffectType const type;
     f32 mix = 0;
     OnePoleLowPassFilter<f32> mix_smoother {};

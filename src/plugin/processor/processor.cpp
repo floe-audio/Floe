@@ -488,13 +488,8 @@ static void ProcessorOnParamChange(AudioProcessor& processor, ChangedParams chan
     ZoneScoped;
     ZoneValue(changed_params.m_changed.NumSet());
 
-    if (auto param = changed_params.Param(ParamIndex::MasterVolume)) {
-        processor.smoothed_value_system.SetVariableLength(processor.master_vol_smoother_id,
-                                                          param->ProjectedValue(),
-                                                          2,
-                                                          25,
-                                                          1);
-    }
+    if (auto param = changed_params.Param(ParamIndex::MasterVolume))
+        processor.master_vol = param->ProjectedValue();
 
     if (auto param = changed_params.Param(ParamIndex::MasterTimbre)) {
         processor.timbre_value_01 = param->ProjectedValue();
@@ -768,8 +763,7 @@ StateSnapshot MakeStateSnapshot(AudioProcessor const& processor) {
     return result;
 }
 
-inline void
-ResetProcessor(AudioProcessor& processor, Bitset<k_num_parameters> processing_change, u32 num_frames) {
+inline void ResetProcessor(AudioProcessor& processor, Bitset<k_num_parameters> processing_change) {
     ZoneScoped;
     processor.whole_engine_volume_fade.ForceSetFullVolume();
 
@@ -779,8 +773,7 @@ ResetProcessor(AudioProcessor& processor, Bitset<k_num_parameters> processing_ch
         ProcessorOnParamChange(processor, {processor.params.data, processing_change});
 
     // Discard any smoothing
-    processor.smoothed_value_system.ResetAll();
-    if (num_frames) processor.smoothed_value_system.ProcessBlock(num_frames);
+    processor.master_vol_smoother.Reset();
 
     // Set the convolution IR
     processor.convo.SwapConvolversIfNeeded();
@@ -832,16 +825,11 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
 
         processor.peak_meter.PrepareToPlay(processor.audio_processing_context.sample_rate,
                                            processor.audio_data_allocator);
-
-        processor.smoothed_value_system.PrepareToPlay(
-            processor.audio_processing_context.process_block_size_max,
-            processor.audio_processing_context.sample_rate,
-            processor.audio_data_allocator);
     }
 
     Bitset<k_num_parameters> changed_params;
     changed_params.SetAll();
-    ResetProcessor(processor, changed_params, 0);
+    ResetProcessor(processor, changed_params);
 
     processor.activated = true;
     return true;
@@ -1248,13 +1236,13 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     }
 
     if (processor.peak_meter.Silent() && !processor.fx_need_another_frame_of_processing) {
-        ResetProcessor(processor, params_changed, num_sample_frames);
+        ResetProcessor(processor, params_changed);
         params_changed = {};
     }
 
     switch (processor.whole_engine_volume_fade.GetCurrentState()) {
         case VolumeFade::State::Silent: {
-            ResetProcessor(processor, params_changed, num_sample_frames);
+            ResetProcessor(processor, params_changed);
 
             // We have just done a hard reset on everything, any other state change is no longer
             // valid.
@@ -1285,8 +1273,6 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         ProcessorOnParamChange(processor, {processor.params.data, params_changed});
         change_flags |= ProcessorListener::ParamChanged;
     }
-
-    processor.smoothed_value_system.ProcessBlock(num_sample_frames);
 
     // Create new voices for layer if requested. We want to do this after parameters have been updated
     // so that the voices start with the most recent parameter values.
@@ -1446,7 +1432,9 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         // ==================================================================================================
 
         for (auto [frame_index, frame] : Enumerate<u32>(interleaved_stereo_samples)) {
-            frame *= processor.smoothed_value_system.Value(processor.master_vol_smoother_id, frame_index);
+            frame *= processor.master_vol_smoother.LowPass(
+                processor.master_vol,
+                processor.audio_processing_context.one_pole_smoothing_cutoff_1ms);
 
             // frame = Clamp(frame, {-1, -1}, {1, 1}); // hard limit
             frame *= processor.whole_engine_volume_fade.GetFade();
@@ -1482,7 +1470,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 static void Reset(AudioProcessor& processor) {
     FlushEventsForAudioThread(processor);
     processor.voice_pool.EndAllVoicesInstantly();
-    ResetProcessor(processor, {}, 0);
+    ResetProcessor(processor, {});
 }
 
 static void OnMainThread(AudioProcessor& processor) {
@@ -1517,16 +1505,6 @@ AudioProcessor::AudioProcessor(clap_host const& host,
     : host(host)
     , audio_processing_context {.host = host}
     , listener(listener)
-    , distortion(smoothed_value_system)
-    , bit_crush(smoothed_value_system)
-    , compressor(smoothed_value_system)
-    , filter_effect(smoothed_value_system)
-    , stereo_widen(smoothed_value_system)
-    , chorus(smoothed_value_system)
-    , reverb(smoothed_value_system)
-    , delay(smoothed_value_system)
-    , phaser(smoothed_value_system)
-    , convo(smoothed_value_system)
     , effects_ordered_by_type(OrderEffectsToEnum(EffectsArray {
           &distortion,
           &bit_crush,
@@ -1551,7 +1529,6 @@ AudioProcessor::AudioProcessor(clap_host const& host,
     Bitset<k_num_parameters> changed;
     changed.SetAll();
     ProcessorOnParamChange(*this, {params.data, changed});
-    smoothed_value_system.ResetAll();
 
     if (prefs::GetBool(prefs, SettingDescriptor(ProcessorSetting::DefaultCcParamMappings)))
         for (auto const mapping : k_default_cc_to_param_mapping)

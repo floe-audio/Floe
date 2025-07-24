@@ -7,13 +7,13 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "gui_fwd.hpp"
-#include "processing_utils/smoothed_value.hpp"
 #include "processor/layer_processor.hpp"
 
 enum class GuiEnvelopeType { Volume, Filter, Count };
 
 struct GuiEnvelopeCursor {
-    SmoothedValueFilter smoother {};
+    f32 cursor {};
+    OnePoleLowPassFilter<f32> cursor_smoother {};
     u64 marker_id {(u64)-1};
 };
 

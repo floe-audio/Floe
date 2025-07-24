@@ -11,7 +11,7 @@
 
 class Reverb final : public Effect {
   public:
-    Reverb(FloeSmoothedValueSystem& s) : Effect(s, EffectType::Reverb), reverb(vitfx::reverb::Create()) {}
+    Reverb() : Effect(EffectType::Reverb), reverb(vitfx::reverb::Create()) {}
     ~Reverb() override { vitfx::reverb::Destroy(reverb); }
 
     void ResetInternal() override {

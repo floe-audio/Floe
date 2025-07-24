@@ -3,7 +3,6 @@
 
 #pragma once
 #include "effect.hpp"
-#include "processing_utils/smoothed_value_system.hpp"
 #include "processing_utils/stereo_audio_frame.hpp"
 
 // http://www.musicdsp.org/show_archive_comment.php?ArchiveID=256
@@ -27,15 +26,11 @@ inline StereoAudioFrame DoStereoWiden(f32 width, StereoAudioFrame in) {
     return result;
 }
 
-class StereoWiden final : public Effect {
-  public:
-    StereoWiden(FloeSmoothedValueSystem& s)
-        : Effect(s, EffectType::StereoWiden)
-        , m_width_smoother_id(s.CreateSmoother()) {}
+struct StereoWiden final : public Effect {
+    StereoWiden() : Effect(EffectType::StereoWiden) {}
 
-    StereoAudioFrame
-    ProcessFrame(AudioProcessingContext const&, StereoAudioFrame in, u32 frame_index) override {
-        return DoStereoWiden(smoothed_value_system.Value(m_width_smoother_id, frame_index), in);
+    StereoAudioFrame ProcessFrame(AudioProcessingContext const& context, StereoAudioFrame in, u32) override {
+        return DoStereoWiden(width_smoother.LowPass(width, context.one_pole_smoothing_cutoff_1ms), in);
     }
     void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const&) override {
         if (auto p = changed_params.Param(ParamIndex::StereoWidenWidth)) {
@@ -46,10 +41,12 @@ class StereoWiden final : public Effect {
             else
                 v = MapFrom01(val, 1, 4);
 
-            smoothed_value_system.Set(m_width_smoother_id, v, 4);
+            width = v;
         }
     }
 
-  private:
-    FloeSmoothedValueSystem::FloatId const m_width_smoother_id;
+    void ResetInternal() override { width_smoother.Reset(); }
+
+    f32 width {};
+    OnePoleLowPassFilter<f32> width_smoother {};
 };

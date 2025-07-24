@@ -9,7 +9,7 @@
 
 class Delay final : public Effect {
   public:
-    Delay(FloeSmoothedValueSystem& s) : Effect(s, EffectType::Delay), delay(vitfx::delay::Create()) {}
+    Delay() : Effect(EffectType::Delay), delay(vitfx::delay::Create()) {}
     ~Delay() override { vitfx::delay::Destroy(delay); }
 
     void ResetInternal() override {

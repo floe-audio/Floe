@@ -357,11 +357,14 @@ void GUIDoEnvelope(Gui* g,
                     }
 
                     auto& cursor = g->envelope_voice_cursors[(int)type][voice_index];
-                    if (cursor.marker_id != envelope_marker.id) cursor.smoother.ResetWithValue(bottom_left.x);
+                    if (cursor.marker_id != envelope_marker.id) {
+                        cursor.cursor = bottom_left.x;
+                        cursor.cursor_smoother.Reset();
+                    }
                     cursor.marker_id = envelope_marker.id;
 
-                    cursor.smoother.SetValue(target_pos);
-                    f32 const cursor_x = cursor.smoother.GetValue(0.5f);
+                    cursor.cursor = target_pos;
+                    f32 const cursor_x = cursor.cursor_smoother.LowPass(cursor.cursor, 0.5f);
 
                     Line line {};
                     if (cursor_x > sustain_point_screen.x)

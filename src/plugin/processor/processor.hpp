@@ -27,7 +27,6 @@
 #include "param.hpp"
 #include "plugin/plugin.hpp"
 #include "processing_utils/audio_processing_context.hpp"
-#include "processing_utils/smoothed_value_system.hpp"
 #include "processing_utils/volume_fade.hpp"
 #include "voices.hpp"
 
@@ -191,7 +190,6 @@ struct AudioProcessor {
 
     clap_host const& host;
 
-    FloeSmoothedValueSystem smoothed_value_system;
     ArenaAllocator audio_data_allocator {PageAllocator::Instance()};
     AudioProcessingContext audio_processing_context;
 
@@ -234,14 +232,15 @@ struct AudioProcessor {
     Parameters params;
 
     Array<LayerProcessor, k_num_layers> layer_processors {
-        LayerProcessor {smoothed_value_system, 0, params.data + k_num_layer_parameters * 0, host},
-        LayerProcessor {smoothed_value_system, 1, params.data + k_num_layer_parameters * 1, host},
-        LayerProcessor {smoothed_value_system, 2, params.data + k_num_layer_parameters * 2, host},
+        LayerProcessor {0, params.data + k_num_layer_parameters * 0, host},
+        LayerProcessor {1, params.data + k_num_layer_parameters * 1, host},
+        LayerProcessor {2, params.data + k_num_layer_parameters * 2, host},
     };
     DynamicArray<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>> lifetime_extended_insts {
         Malloc::Instance()};
 
-    FloeSmoothedValueSystem::FloatId const master_vol_smoother_id {smoothed_value_system.CreateSmoother()};
+    f32 master_vol;
+    OnePoleLowPassFilter<f32> master_vol_smoother;
 
     Distortion distortion;
     BitCrush bit_crush;

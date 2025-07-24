@@ -7,13 +7,10 @@
 #include "effect.hpp"
 #include "processing_utils/audio_processing_context.hpp"
 #include "processing_utils/filters.hpp"
-#include "processing_utils/smoothed_value_system.hpp"
 
 class FilterEffect final : public Effect {
   public:
-    FilterEffect(FloeSmoothedValueSystem& s)
-        : Effect(s, EffectType::FilterEffect)
-        , m_filter_coeff_smoother_id(s.CreateFilterSmoother()) {}
+    FilterEffect() : Effect(EffectType::FilterEffect) {}
 
     static bool IsUsingGainParam(StaticSpan<Parameter, k_num_parameters> params) {
         auto filter_type = params[ToInt(ParamIndex::FilterType)].ValueAsInt<param_values::EffectFilterType>();
@@ -25,7 +22,7 @@ class FilterEffect final : public Effect {
   private:
     void PrepareToPlay(AudioProcessingContext const& context) override {
         m_filter_params.fs = context.sample_rate;
-        smoothed_value_system.Set(m_filter_coeff_smoother_id, m_filter_params);
+        m_smoothed_coeffs.Set(m_filter_params);
     }
 
     void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const&) override {
@@ -66,21 +63,21 @@ class FilterEffect final : public Effect {
             set_params = true;
         }
 
-        if (set_params) smoothed_value_system.Set(m_filter_coeff_smoother_id, m_filter_params);
+        if (set_params) m_smoothed_coeffs.Set(m_filter_params);
     }
 
-    StereoAudioFrame
-    ProcessFrame(AudioProcessingContext const&, StereoAudioFrame in, u32 frame_index) override {
-        auto [coeffs, filter_mix] = smoothed_value_system.Value(m_filter_coeff_smoother_id, frame_index);
+    StereoAudioFrame ProcessFrame(AudioProcessingContext const&, StereoAudioFrame in, u32) override {
+        auto const [coeffs, filter_mix] = m_smoothed_coeffs.Value();
         return Process(m_filter2, coeffs, Process(m_filter1, coeffs, in * filter_mix));
     }
 
     void ResetInternal() override {
         m_filter1 = {};
         m_filter2 = {};
+        m_smoothed_coeffs.ResetSmoothing();
     }
 
-    FloeSmoothedValueSystem::FilterId const m_filter_coeff_smoother_id;
+    rbj_filter::SmoothedCoefficients m_smoothed_coeffs {};
     rbj_filter::StereoData m_filter1 {};
     rbj_filter::StereoData m_filter2 {};
     rbj_filter::Params m_filter_params = {};

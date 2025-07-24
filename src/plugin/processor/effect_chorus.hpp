@@ -13,7 +13,6 @@
 #include "effect.hpp"
 #include "processing_utils/filters.hpp"
 #include "processing_utils/lfo.hpp"
-#include "processing_utils/smoothed_value_system.hpp"
 
 struct ChorusProcessor {
     ChorusProcessor() { chorus_lfo.SetWaveform(LFO::Waveform::Sine); }
@@ -106,11 +105,7 @@ struct ChorusProcessor {
 
 class Chorus final : public Effect {
   public:
-    Chorus(FloeSmoothedValueSystem& s)
-        : Effect(s, EffectType::Chorus)
-        , m_highpass_filter_coeffs_smoother_id(s.CreateFilterSmoother())
-        , m_depth_01_smoother_id(s.CreateSmoother())
-        , m_wet_dry(s) {}
+    Chorus() : Effect(EffectType::Chorus) {}
 
   private:
     void PrepareToPlay(AudioProcessingContext const& context) override {
@@ -135,26 +130,16 @@ class Chorus final : public Effect {
         }
         if (auto p = changed_params.Param(ParamIndex::ChorusHighpass)) {
             auto const val = p->ProjectedValue();
-            smoothed_value_system.Set(m_highpass_filter_coeffs_smoother_id,
-                                      rbj_filter::Type::HighPass,
-                                      context.sample_rate,
-                                      val,
-                                      1,
-                                      0);
+            m_highpass_filter_coeffs.Set(rbj_filter::Type::HighPass, context.sample_rate, val, 1, 0);
         }
-        if (auto p = changed_params.Param(ParamIndex::ChorusDepth))
-            smoothed_value_system.SetVariableLength(m_depth_01_smoother_id, p->ProjectedValue(), 3, 25, 1);
-        if (auto p = changed_params.Param(ParamIndex::ChorusWet))
-            m_wet_dry.SetWet(smoothed_value_system, p->ProjectedValue());
-        if (auto p = changed_params.Param(ParamIndex::ChorusDry))
-            m_wet_dry.SetDry(smoothed_value_system, p->ProjectedValue());
+        if (auto p = changed_params.Param(ParamIndex::ChorusDepth)) m_depth_01 = p->ProjectedValue();
+        if (auto p = changed_params.Param(ParamIndex::ChorusWet)) m_wet_dry.SetWet(p->ProjectedValue());
+        if (auto p = changed_params.Param(ParamIndex::ChorusDry)) m_wet_dry.SetDry(p->ProjectedValue());
     }
 
-    StereoAudioFrame
-    ProcessFrame(AudioProcessingContext const&, StereoAudioFrame in, u32 frame_index) override {
-        auto const depth = smoothed_value_system.Value(m_depth_01_smoother_id, frame_index);
-        auto [highpass_coeffs, filter_mix] =
-            smoothed_value_system.Value(m_highpass_filter_coeffs_smoother_id, frame_index);
+    StereoAudioFrame ProcessFrame(AudioProcessingContext const& context, StereoAudioFrame in, u32) override {
+        auto const depth = m_depth_01_smoother.LowPass(m_depth_01, context.one_pole_smoothing_cutoff_1ms);
+        auto const [highpass_coeffs, filter_mix] = m_highpass_filter_coeffs.Value();
         auto chorus_in = in * filter_mix;
 
         auto out = chorus_in;
@@ -167,20 +152,24 @@ class Chorus final : public Effect {
                                                          m_lowpass_filter_coeffs,
                                                          highpass_coeffs) /
                2;
-        return m_wet_dry.MixStereo(smoothed_value_system, frame_index, out, in);
+        return m_wet_dry.MixStereo(context, out, in);
     }
 
     void ResetInternal() override {
         for (auto const i : Range(ToInt(ChorusIndexes::Count)))
             m_c[i].Reset();
+        m_highpass_filter_coeffs.ResetSmoothing();
+        m_depth_01_smoother.Reset();
+        m_wet_dry.Reset();
     }
 
     enum class ChorusIndexes : u32 { First, Second, Count };
 
     rbj_filter::Coeffs m_lowpass_filter_coeffs {};
-    FloeSmoothedValueSystem::FilterId const m_highpass_filter_coeffs_smoother_id;
+    rbj_filter::SmoothedCoefficients m_highpass_filter_coeffs {};
 
-    FloeSmoothedValueSystem::FloatId const m_depth_01_smoother_id;
+    f32 m_depth_01 {};
+    OnePoleLowPassFilter<f32> m_depth_01_smoother {};
     EffectWetDryHelper m_wet_dry;
     Array<ChorusProcessor, ToInt(ChorusIndexes::Count)> m_c;
 };

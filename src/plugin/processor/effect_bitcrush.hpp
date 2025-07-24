@@ -5,7 +5,6 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "effect.hpp"
-#include "processing_utils/smoothed_value_system.hpp"
 
 struct BitCrushProcessor {
     static s64 IntegerPowerBase2(s64 exponent) {
@@ -39,25 +38,24 @@ struct BitCrushProcessor {
 
 class BitCrush final : public Effect {
   public:
-    BitCrush(FloeSmoothedValueSystem& s) : Effect(s, EffectType::BitCrush), m_wet_dry(s) {}
+    BitCrush() : Effect(EffectType::BitCrush) {}
 
   private:
-    StereoAudioFrame
-    ProcessFrame(AudioProcessingContext const& context, StereoAudioFrame in, u32 frame_index) override {
+    StereoAudioFrame ProcessFrame(AudioProcessingContext const& context, StereoAudioFrame in, u32) override {
         auto const v = m_bit_crusher.BitCrush({in.l, in.r}, context.sample_rate, m_bit_depth, m_bit_rate);
         StereoAudioFrame const wet {v[0], v[1]};
-        return m_wet_dry.MixStereo(smoothed_value_system, frame_index, wet, in);
+        return m_wet_dry.MixStereo(context, wet, in);
     }
 
     void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const&) override {
         if (auto p = changed_params.Param(ParamIndex::BitCrushBits)) m_bit_depth = p->ValueAsInt<int>();
         if (auto p = changed_params.Param(ParamIndex::BitCrushBitRate))
             m_bit_rate = (int)(p->ProjectedValue() + 0.5f);
-        if (auto p = changed_params.Param(ParamIndex::BitCrushWet))
-            m_wet_dry.SetWet(smoothed_value_system, p->ProjectedValue());
-        if (auto p = changed_params.Param(ParamIndex::BitCrushDry))
-            m_wet_dry.SetDry(smoothed_value_system, p->ProjectedValue());
+        if (auto p = changed_params.Param(ParamIndex::BitCrushWet)) m_wet_dry.SetWet(p->ProjectedValue());
+        if (auto p = changed_params.Param(ParamIndex::BitCrushDry)) m_wet_dry.SetDry(p->ProjectedValue());
     }
+
+    void ResetInternal() override { m_wet_dry.Reset(); }
 
     int m_bit_depth, m_bit_rate;
     BitCrushProcessor m_bit_crusher;

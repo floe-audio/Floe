@@ -7,11 +7,10 @@
 
 #include "dsp_stillwell_majortom.hpp"
 #include "effect.hpp"
-#include "processing_utils/smoothed_value_system.hpp"
 
 class Compressor final : public Effect {
   public:
-    Compressor(FloeSmoothedValueSystem& s) : Effect(s, EffectType::Compressor) {}
+    Compressor() : Effect(EffectType::Compressor) {}
 
   private:
     StereoAudioFrame

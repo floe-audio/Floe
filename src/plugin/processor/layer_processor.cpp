@@ -373,11 +373,10 @@ void OnParamChange(LayerProcessor& layer,
 
     // EQ
     // =======================================================================================================
-    if (auto p = changed_params.Param(LayerParamIndex::EqOn))
-        layer.eq_bands.SetOn(layer.smoothed_value_system, p->ValueAsBool());
+    if (auto p = changed_params.Param(LayerParamIndex::EqOn)) layer.eq_bands.SetOn(p->ValueAsBool());
 
     for (auto const eq_band_index : Range(k_num_layer_eq_bands))
-        layer.eq_bands.OnParamChange(eq_band_index, changed_params, layer.smoothed_value_system, sample_rate);
+        layer.eq_bands.OnParamChange(eq_band_index, changed_params, sample_rate);
 }
 
 //
@@ -607,7 +606,7 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
 
     for (auto const i : Range(num_frames)) {
         StereoAudioFrame frame(buffer.data, i);
-        frame = layer.eq_bands.Process(layer.smoothed_value_system, frame, i);
+        frame = layer.eq_bands.Process(context, frame);
 
         frame *= layer.gain_smoother.LowPass(layer.gain, context.one_pole_smoothing_cutoff_1ms);
 
@@ -637,4 +636,5 @@ void ResetLayerAudioProcessing(LayerProcessor& layer) {
     for (auto& b : layer.eq_bands.eq_bands)
         b.eq_data = {};
     layer.inst_change_fade.ForceSetFullVolume();
+    layer.eq_bands.Reset();
 }

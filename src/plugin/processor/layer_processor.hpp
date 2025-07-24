@@ -15,24 +15,18 @@
 #include "processing_utils/filters.hpp"
 #include "processing_utils/midi.hpp"
 #include "processing_utils/peak_meter.hpp"
-#include "processing_utils/smoothed_value_system.hpp"
 #include "processing_utils/volume_fade.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 
 constexpr u32 k_num_layer_eq_bands = 2;
 
 struct EqBand {
-    EqBand(FloeSmoothedValueSystem& s) : eq_coeffs_smoother_id(s.CreateFilterSmoother()) {}
-
-    StereoAudioFrame Process(FloeSmoothedValueSystem& s, StereoAudioFrame in, u32 frame_index) {
-        auto [coeffs, mix] = s.Value(eq_coeffs_smoother_id, frame_index);
+    StereoAudioFrame Process(StereoAudioFrame in) {
+        auto const [coeffs, mix] = eq_coeffs.Value();
         return rbj_filter::Process(eq_data, coeffs, in * mix);
     }
 
-    void OnParamChange(ChangedLayerParams changed_params,
-                       f32 sample_rate,
-                       FloeSmoothedValueSystem& s,
-                       u32 band_num) {
+    void OnParamChange(ChangedLayerParams changed_params, f32 sample_rate, u32 band_num) {
         auto freq_param = LayerParamIndex::EqFreq1;
         auto reso_param = LayerParamIndex::EqResonance1;
         auto gain_param = LayerParamIndex::EqGain1;
@@ -75,44 +69,46 @@ struct EqBand {
             changed = true;
         }
 
-        if (changed) s.Set(eq_coeffs_smoother_id, eq_params);
+        if (changed) eq_coeffs.Set(eq_params);
     }
 
-    FloeSmoothedValueSystem::FilterId const eq_coeffs_smoother_id;
+    void Reset() { eq_coeffs.ResetSmoothing(); }
+
     rbj_filter::StereoData eq_data {};
     rbj_filter::Params eq_params {};
+    rbj_filter::SmoothedCoefficients eq_coeffs {};
 };
 
 struct EqBands {
-    EqBands(FloeSmoothedValueSystem& s) : eq_bands(s), eq_mix_smoother_id(s.CreateSmoother()) {}
-
-    void OnParamChange(u32 band_num,
-                       ChangedLayerParams changed_params,
-                       FloeSmoothedValueSystem& s,
-                       f32 sample_rate) {
-        eq_bands[band_num].OnParamChange(changed_params, sample_rate, s, band_num);
+    void OnParamChange(u32 band_num, ChangedLayerParams changed_params, f32 sample_rate) {
+        eq_bands[band_num].OnParamChange(changed_params, sample_rate, band_num);
     }
 
-    void SetOn(FloeSmoothedValueSystem& s, bool on) { s.Set(eq_mix_smoother_id, on ? 1.0f : 0.0f, 4); }
+    void SetOn(bool on) { eq_mix = on ? 1.0f : 0.0f; }
 
-    StereoAudioFrame Process(FloeSmoothedValueSystem& s, StereoAudioFrame in, u32 frame_index) {
+    StereoAudioFrame Process(AudioProcessingContext const& context, StereoAudioFrame in) {
         StereoAudioFrame result = in;
-        if (auto mix = s.Value(eq_mix_smoother_id, frame_index); mix != 0) {
+        if (auto mix = eq_mix_smoother.LowPass(eq_mix, context.one_pole_smoothing_cutoff_1ms); mix != 0) {
             for (auto& eq_band : eq_bands)
-                result = eq_band.Process(s, result, frame_index);
+                result = eq_band.Process(result);
             if (mix != 1) result = LinearInterpolate(mix, in, result);
         }
         return result;
     }
 
-    InitialisedArray<EqBand, k_num_layer_eq_bands> eq_bands;
-    FloeSmoothedValueSystem::FloatId const eq_mix_smoother_id;
+    void Reset() {
+        for (auto& eq_band : eq_bands)
+            eq_band.Reset();
+        eq_mix_smoother.Reset();
+    }
+
+    Array<EqBand, k_num_layer_eq_bands> eq_bands;
+    f32 eq_mix {};
+    OnePoleLowPassFilter<f32> eq_mix_smoother {};
 };
 
 // Audio-thread data that voices use to control their sound.
 struct VoiceProcessingController {
-    FloeSmoothedValueSystem& smoothing_system;
-
     f32 velocity_volume_modifier = 0.5f;
     u8 const layer_index;
 
@@ -159,19 +155,14 @@ constexpr auto k_default_velocity_curve_points = Array {
 };
 
 struct LayerProcessor {
-    LayerProcessor(FloeSmoothedValueSystem& system,
-                   u8 index,
-                   StaticSpan<Parameter, k_num_layer_parameters> params,
-                   clap_host const& host)
+    LayerProcessor(u8 index, StaticSpan<Parameter, k_num_layer_parameters> params, clap_host const& host)
         : params(params)
-        , smoothed_value_system(system)
         , host(host)
         , index(index)
         , voice_controller({
-              .smoothing_system = system,
               .layer_index = index,
           })
-        , eq_bands(smoothed_value_system) {
+        , eq_bands() {
         velocity_curve_map.SetNewPoints(k_default_velocity_curve_points);
     }
 
@@ -239,7 +230,6 @@ struct LayerProcessor {
 
     StaticSpan<Parameter, k_num_layer_parameters> params {nullptr};
 
-    FloeSmoothedValueSystem& smoothed_value_system;
     clap_host const& host;
 
     u8 const index;
