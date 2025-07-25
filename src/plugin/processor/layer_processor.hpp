@@ -28,7 +28,7 @@ struct SharedLayerParams {
 constexpr u32 k_num_layer_eq_bands = 2;
 
 struct EqBand {
-    StereoAudioFrame Process(StereoAudioFrame in) {
+    f32x2 Process(f32x2 in) {
         auto const [coeffs, mix] = eq_coeffs.Value();
         return rbj_filter::Process(eq_data, coeffs, in * mix);
     }
@@ -93,8 +93,8 @@ struct EqBands {
 
     void SetOn(bool on) { eq_mix = on ? 1.0f : 0.0f; }
 
-    StereoAudioFrame Process(AudioProcessingContext const& context, StereoAudioFrame in) {
-        StereoAudioFrame result = in;
+    f32x2 Process(AudioProcessingContext const& context, f32x2 in) {
+        f32x2 result = in;
         if (auto mix = eq_mix_smoother.LowPass(eq_mix, context.one_pole_smoothing_cutoff_10ms); mix != 0) {
             for (auto& eq_band : eq_bands)
                 result = eq_band.Process(result);

@@ -52,7 +52,7 @@ class Reverb final : public Effect {
             args.params[ToInt(Params::Mix)] = p->ProjectedValue();
     }
 
-    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> io_frames,
+    EffectProcessResult ProcessBlock(Span<f32x2> io_frames,
                                      AudioProcessingContext const& context,
                                      ExtraProcessingContext extra_context) override {
         ZoneNamedN(process_block, "Reverb ProcessBlock", true);
@@ -63,7 +63,7 @@ class Reverb final : public Effect {
 
         auto wet = extra_context.scratch_buffers.buf1.Interleaved();
         wet.size = io_frames.size;
-        CopyMemory(wet.data, io_frames.data, io_frames.size * sizeof(StereoAudioFrame));
+        CopyMemory(wet.data, io_frames.data, io_frames.size * sizeof(f32x2));
 
         auto num_frames = (u32)io_frames.size;
         u32 pos = 0;

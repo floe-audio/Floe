@@ -35,10 +35,10 @@ struct ChorusProcessor {
         Reset();
     }
 
-    StereoAudioFrame Process(StereoAudioFrame in,
-                             f32 depth01,
-                             rbj_filter::Coeffs const& lowpass_coeffs,
-                             rbj_filter::Coeffs const& highpass_coeffs) {
+    f32x2 Process(f32x2 in,
+                  f32 depth01,
+                  rbj_filter::Coeffs const& lowpass_coeffs,
+                  rbj_filter::Coeffs const& highpass_coeffs) {
         ASSERT_HOT(depth01 >= 0.0f && depth01 <= 1.0f);
 
         constexpr auto k_min_time_multiplier = 0.04f;
@@ -70,12 +70,12 @@ struct ChorusProcessor {
         auto out = LinearInterpolate(frac, *ptr1, *ptr2) - (z1 * 0.1f);
         z1 = out;
 
-        StereoAudioFrame out_frame {out[0], out[1]};
+        f32x2 out_frame {out[0], out[1]};
 
         out_frame = rbj_filter::Process(lowpass, lowpass_coeffs, out_frame);
         out_frame = rbj_filter::Process(highpass, highpass_coeffs, out_frame);
 
-        *delay_line.current = {in.l, in.r};
+        *delay_line.current = in;
         if (++delay_line.current >= End(delay_line.buffer)) delay_line.current = delay_line.buffer.data;
 
         return out_frame;
@@ -140,12 +140,11 @@ class Chorus final : public Effect {
             m_wet_dry.SetDry(p->ProjectedValue());
     }
 
-    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
-                                     AudioProcessingContext const& context,
-                                     ExtraProcessingContext) override {
+    EffectProcessResult
+    ProcessBlock(Span<f32x2> frames, AudioProcessingContext const& context, ExtraProcessingContext) override {
         return ProcessBlockByFrame(
             frames,
-            [&](StereoAudioFrame in) {
+            [&](f32x2 in) {
                 auto const depth =
                     m_depth_01_smoother.LowPass(m_depth_01, context.one_pole_smoothing_cutoff_10ms);
                 auto const [highpass_coeffs, filter_mix] = m_highpass_filter_coeffs.Value();

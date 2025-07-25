@@ -52,15 +52,13 @@ class BitCrush final : public Effect {
             m_wet_dry.SetDry(p->ProjectedValue());
     }
 
-    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
-                                     AudioProcessingContext const& context,
-                                     ExtraProcessingContext) override {
+    EffectProcessResult
+    ProcessBlock(Span<f32x2> frames, AudioProcessingContext const& context, ExtraProcessingContext) override {
         return ProcessBlockByFrame(
             frames,
-            [&](StereoAudioFrame in) {
-                auto const v =
-                    m_bit_crusher.BitCrush({in.l, in.r}, context.sample_rate, m_bit_depth, m_bit_rate);
-                StereoAudioFrame const wet {v[0], v[1]};
+            [&](f32x2 in) {
+                auto const v = m_bit_crusher.BitCrush(in, context.sample_rate, m_bit_depth, m_bit_rate);
+                f32x2 const wet {v[0], v[1]};
                 return m_wet_dry.MixStereo(context, wet, in);
             },
             context);

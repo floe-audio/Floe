@@ -70,7 +70,7 @@ struct Data {
 };
 
 struct StereoData {
-    StereoAudioFrame out1 = {}, out2 = {}, in1 = {}, in2 = {};
+    f32x2 out1 = {}, out2 = {}, in1 = {}, in2 = {};
 };
 
 struct Coeffs {
@@ -115,7 +115,7 @@ inline f32 Process(Data& d, Coeffs const& c, f32 in) {
     return out;
 }
 
-inline StereoAudioFrame Process(StereoData& d, Coeffs const& c, StereoAudioFrame in) {
+inline f32x2 Process(StereoData& d, Coeffs const& c, f32x2 in) {
     auto out = c.b0 * in + c.b1 * d.in1 + c.b2 * d.in2 - c.a1 * d.out1 - c.a2 * d.out2;
 
     d.in2 = d.in1;

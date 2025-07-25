@@ -9,12 +9,11 @@
 #include "param.hpp"
 #include "processing_utils/audio_processing_context.hpp"
 #include "processing_utils/filters.hpp"
-#include "processing_utils/stereo_audio_frame.hpp"
 
-inline void UpdateSilentSeconds(f32& silent_seconds, Span<StereoAudioFrame const> frames, f32 sample_rate) {
+inline void UpdateSilentSeconds(f32& silent_seconds, Span<f32x2 const> frames, f32 sample_rate) {
     bool all_silent = true;
     for (auto const& f : frames)
-        if (!f.IsSilent()) {
+        if (!IsSilent(f)) {
             all_silent = false;
             break;
         }
@@ -33,10 +32,9 @@ struct EffectWetDryHelper {
                (d * dry_smoother.LowPass(dry, context.one_pole_smoothing_cutoff_10ms));
     }
 
-    StereoAudioFrame
-    MixStereo(AudioProcessingContext const& context, StereoAudioFrame w, StereoAudioFrame d) {
-        return w * wet_smoother.LowPass(wet, context.one_pole_smoothing_cutoff_10ms) +
-               d * dry_smoother.LowPass(dry, context.one_pole_smoothing_cutoff_10ms);
+    f32x2 MixStereo(AudioProcessingContext const& context, f32x2 w, f32x2 d) {
+        return (w * wet_smoother.LowPass(wet, context.one_pole_smoothing_cutoff_10ms)) +
+               (d * dry_smoother.LowPass(dry, context.one_pole_smoothing_cutoff_10ms));
     }
 
     void Reset() {
@@ -55,7 +53,7 @@ struct ScratchBuffers {
       public:
         Buffer(f32* b, u32 size) : m_buffer(b), m_block_size(size) { ASSERT_EQ((usize)b % 16, 0u); }
 
-        Span<StereoAudioFrame> Interleaved() { return ToStereoFramesSpan(m_buffer, m_block_size); }
+        Span<f32x2> Interleaved() { return ToStereoFramesSpan(m_buffer, m_block_size); }
 
         Array<f32*, 2> Channels() { return {m_buffer, m_buffer + m_block_size}; }
 
@@ -97,11 +95,11 @@ struct Effect {
 
     // audio-thread
     virtual EffectProcessResult
-    ProcessBlock(Span<StereoAudioFrame>, AudioProcessingContext const&, ExtraProcessingContext) = 0;
+    ProcessBlock(Span<f32x2>, AudioProcessingContext const&, ExtraProcessingContext) = 0;
 
     // Helper function for simple effects that only need to process one frame at a time. Wraps the individual
     // frame processing in the necessary block processing machinery.
-    ALWAYS_INLINE EffectProcessResult ProcessBlockByFrame(Span<StereoAudioFrame> frames,
+    ALWAYS_INLINE EffectProcessResult ProcessBlockByFrame(Span<f32x2> frames,
                                                           auto process_frame_function,
                                                           AudioProcessingContext const& context) {
         if (!ShouldProcessBlock()) return EffectProcessResult::Done;
@@ -126,8 +124,7 @@ struct Effect {
     }
 
     // audio-thread
-    StereoAudioFrame
-    MixOnOffSmoothing(AudioProcessingContext const& context, StereoAudioFrame wet, StereoAudioFrame dry) {
+    f32x2 MixOnOffSmoothing(AudioProcessingContext const& context, f32x2 wet, f32x2 dry) {
         return LinearInterpolate(mix_smoother.LowPass(mix, context.one_pole_smoothing_cutoff_10ms), dry, wet);
     }
 

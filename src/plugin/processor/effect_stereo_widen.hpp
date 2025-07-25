@@ -20,10 +20,10 @@ inline void DoStereoWiden(f32 width, f32 in_left, f32 in_right, f32& out_left, f
     out_right = m + s;
 }
 
-inline StereoAudioFrame DoStereoWiden(f32 width, StereoAudioFrame in) {
-    StereoAudioFrame result;
-    DoStereoWiden(width, in.l, in.r, result.l, result.r);
-    return result;
+inline f32x2 DoStereoWiden(f32 width, f32x2 in) {
+    alignas(f32x2) f32 result[2];
+    DoStereoWiden(width, in.x, in.y, result[0], result[1]);
+    return LoadAlignedToType<f32x2>(result);
 }
 
 struct StereoWiden final : public Effect {
@@ -42,12 +42,11 @@ struct StereoWiden final : public Effect {
         }
     }
 
-    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
-                                     AudioProcessingContext const& context,
-                                     ExtraProcessingContext) override {
+    EffectProcessResult
+    ProcessBlock(Span<f32x2> frames, AudioProcessingContext const& context, ExtraProcessingContext) override {
         return ProcessBlockByFrame(
             frames,
-            [&](StereoAudioFrame frame) {
+            [&](f32x2 frame) {
                 return DoStereoWiden(width_smoother.LowPass(width, context.one_pole_smoothing_cutoff_10ms),
                                      frame);
             },

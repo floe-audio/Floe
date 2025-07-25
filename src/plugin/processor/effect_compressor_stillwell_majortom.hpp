@@ -37,15 +37,14 @@ class Compressor final : public Effect {
         if (params_changed) m_compressor.Update(context.sample_rate);
     }
 
-    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
-                                     AudioProcessingContext const& context,
-                                     ExtraProcessingContext) override {
+    EffectProcessResult
+    ProcessBlock(Span<f32x2> frames, AudioProcessingContext const& context, ExtraProcessingContext) override {
         return ProcessBlockByFrame(
             frames,
-            [&](StereoAudioFrame in) {
-                StereoAudioFrame out;
-                m_compressor.Process(context.sample_rate, in.l, in.r, out.l, out.r);
-                return out;
+            [&](f32x2 in) {
+                alignas(f32x2) f32 out[2];
+                m_compressor.Process(context.sample_rate, in.x, in.y, out[0], out[1]);
+                return LoadAlignedToType<f32x2>(out);
             },
             context);
     }

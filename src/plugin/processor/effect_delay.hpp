@@ -85,7 +85,7 @@ class Delay final : public Effect {
         }
     }
 
-    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
+    EffectProcessResult ProcessBlock(Span<f32x2> frames,
                                      AudioProcessingContext const& context,
                                      ExtraProcessingContext extra_context) override {
         ZoneNamedN(process_block, "Delay ProcessBlock", true);
@@ -94,7 +94,7 @@ class Delay final : public Effect {
 
         auto wet = extra_context.scratch_buffers.buf1.Interleaved();
         wet.size = frames.size;
-        CopyMemory(wet.data, frames.data, frames.size * sizeof(StereoAudioFrame));
+        CopyMemory(wet.data, frames.data, frames.size * sizeof(f32x2));
 
         auto num_frames = (u32)frames.size;
         u32 pos = 0;

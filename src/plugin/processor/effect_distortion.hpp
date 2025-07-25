@@ -162,16 +162,15 @@ struct Distortion final : public Effect {
         if (auto p = changes.changed_params.Param(ParamIndex::DistortionDrive)) amount = p->ProjectedValue();
     }
 
-    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
-                                     AudioProcessingContext const& context,
-                                     ExtraProcessingContext) override {
+    EffectProcessResult
+    ProcessBlock(Span<f32x2> frames, AudioProcessingContext const& context, ExtraProcessingContext) override {
         return ProcessBlockByFrame(
             frames,
-            [&](StereoAudioFrame in) {
-                return StereoAudioFrame::FromF32x2(processor.Saturate(
-                    in.ToF32x2(),
+            [&](f32x2 in) {
+                return processor.Saturate(
+                    in,
                     type,
-                    amount_smoother.LowPass(amount, context.one_pole_smoothing_cutoff_10ms)));
+                    amount_smoother.LowPass(amount, context.one_pole_smoothing_cutoff_10ms));
             },
             context);
     }

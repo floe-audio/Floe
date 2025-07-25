@@ -34,9 +34,9 @@ struct StereoPeakMeter {
     }
 
     // not thread-safe
-    void AddBuffer(Span<StereoAudioFrame> frames) {
+    void AddBuffer(Span<f32x2> frames) {
         for (auto const i : Range(frames.size)) {
-            auto const frame = LoadUnalignedToType<f32x2>(&frames[i].l);
+            auto const frame = frames[i];
             auto const abs_f = Abs(frame);
 
             auto const is_new_peak = abs_f > m_levels;

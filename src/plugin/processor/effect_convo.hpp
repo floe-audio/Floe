@@ -39,7 +39,7 @@ class ConvolutionReverb final : public Effect {
             m_wet_dry.SetDry(p->ProjectedValue());
     }
 
-    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
+    EffectProcessResult ProcessBlock(Span<f32x2> frames,
                                      AudioProcessingContext const& context,
                                      ExtraProcessingContext extra_context) override {
         ZoneScoped;
@@ -71,7 +71,7 @@ class ConvolutionReverb final : public Effect {
         }
 
         for (auto [frame_index, frame] : Enumerate<u32>(frames)) {
-            StereoAudioFrame wet(wet_channels, frame_index);
+            f32x2 wet = {wet_channels[0][frame_index], wet_channels[1][frame_index]};
             auto const [filter_coeffs, mix] = m_filter_coeffs.Value();
             wet = Process(m_filter, filter_coeffs, wet * mix);
             wet = m_wet_dry.MixStereo(context, wet, frame);
@@ -157,8 +157,8 @@ class ConvolutionReverb final : public Effect {
         return result;
     }
 
-    void UpdateRemainingTailLength(StereoAudioFrame frame) {
-        if (!frame.IsSilent())
+    void UpdateRemainingTailLength(f32x2 frame) {
+        if (!::IsSilent(frame))
             m_remaining_tail_length = m_max_tail_length;
         else if (m_remaining_tail_length)
             --m_remaining_tail_length;

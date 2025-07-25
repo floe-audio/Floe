@@ -127,7 +127,7 @@ static f32 AmplitudeScalingFromVelocity(LayerProcessor& layer, f32 velocity, f32
     auto const& curve = layer.velocity_curve_map.lookup_table.Consume().data;
     auto value = curve[(usize)Round(velocity * (curve.size - 1))];
 
-    // since we're using this as an amplitude, we want to scale by a more pleasing value
+    // Since we're using this as an amplitude, we want to scale by a more pleasing value.
     value = value * value;
 
     mod *= value;
@@ -230,7 +230,7 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
             VoiceStartParams::SamplerParams::Region* feather_region_2 = nullptr;
             for (auto& r : sampler_params.voice_sample_params) {
                 if (r.region.trigger.feather_overlapping_velocity_layers) {
-                    // NOTE, if there are more than 2 feather regions, then we only crossfade 2 of them.
+                    // NOTE, if there are more than 2 feather regions, then we only cross-fade 2 of them.
                     // Any others will play at normal volume.
                     if (!feather_region_1)
                         feather_region_1 = &r;
@@ -613,7 +613,8 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
     }
 
     for (auto const i : Range(num_frames)) {
-        StereoAudioFrame frame(buffer.data, i);
+        auto buffer_frame = buffer.data + (i * 2);
+        auto frame = LoadUnalignedToType<f32x2>(buffer_frame);
         frame = layer.eq_bands.Process(context, frame);
 
         frame *= layer.gain_smoother.LowPass(layer.gain, context.one_pole_smoothing_cutoff_10ms);
@@ -629,7 +630,7 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
             frame = {};
         }
 
-        frame.Store(buffer.data, i);
+        StoreToUnaligned(buffer_frame, frame);
     }
 
     ASSERT_HOT(!layer.inst_change_fade.IsSilent());
