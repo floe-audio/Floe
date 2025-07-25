@@ -52,5 +52,6 @@ struct AudioProcessingContext {
     MidiNoteState midi_note_state;
     f32 one_pole_smoothing_cutoff_0_2ms = 1;
     f32 one_pole_smoothing_cutoff_1ms = 1;
+    f32 one_pole_smoothing_cutoff_10ms = 1;
     clap_host const& host;
 };

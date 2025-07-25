@@ -29,14 +29,14 @@ struct EffectWetDryHelper {
     void SetDry(f32 amp) { dry = amp; }
 
     f32 Mix(AudioProcessingContext const& context, f32 w, f32 d) {
-        return (w * wet_smoother.LowPass(wet, context.one_pole_smoothing_cutoff_1ms)) +
-               (d * dry_smoother.LowPass(dry, context.one_pole_smoothing_cutoff_1ms));
+        return (w * wet_smoother.LowPass(wet, context.one_pole_smoothing_cutoff_10ms)) +
+               (d * dry_smoother.LowPass(dry, context.one_pole_smoothing_cutoff_10ms));
     }
 
     StereoAudioFrame
     MixStereo(AudioProcessingContext const& context, StereoAudioFrame w, StereoAudioFrame d) {
-        return w * wet_smoother.LowPass(wet, context.one_pole_smoothing_cutoff_1ms) +
-               d * dry_smoother.LowPass(dry, context.one_pole_smoothing_cutoff_1ms);
+        return w * wet_smoother.LowPass(wet, context.one_pole_smoothing_cutoff_10ms) +
+               d * dry_smoother.LowPass(dry, context.one_pole_smoothing_cutoff_10ms);
     }
 
     void Reset() {
@@ -122,7 +122,7 @@ class Effect {
     // audio-thread
     StereoAudioFrame
     MixOnOffSmoothing(AudioProcessingContext const& context, StereoAudioFrame wet, StereoAudioFrame dry) {
-        return LinearInterpolate(mix_smoother.LowPass(mix, context.one_pole_smoothing_cutoff_1ms), dry, wet);
+        return LinearInterpolate(mix_smoother.LowPass(mix, context.one_pole_smoothing_cutoff_10ms), dry, wet);
     }
 
     // Internals

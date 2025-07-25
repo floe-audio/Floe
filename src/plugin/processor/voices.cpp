@@ -637,7 +637,7 @@ class ChunkwiseVoiceProcessor {
         if (sampler.region->timbre_layering.layer_range) {
             if (auto const v =
                     sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol,
-                                                       m_audio_context.one_pole_smoothing_cutoff_1ms);
+                                                       m_audio_context.one_pole_smoothing_cutoff_10ms);
                 v > 0.0001f) {
                 sample_still_going = SampleGetAndInc(w, frame, out);
                 out *= v;
@@ -901,7 +901,7 @@ class ChunkwiseVoiceProcessor {
             auto env = fil_env.Process(fil_env_params);
             if (auto const filter_mix =
                     m_voice.filter_mix_smoother.LowPass((f32)m_voice.controller->filter_on,
-                                                        m_audio_context.one_pole_smoothing_cutoff_1ms);
+                                                        m_audio_context.one_pole_smoothing_cutoff_10ms);
                 filter_mix > 0.00001f) {
 
                 auto cut = m_voice.controller->sv_filter_cutoff_linear +

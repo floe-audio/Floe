@@ -88,7 +88,7 @@ struct EqBands {
 
     StereoAudioFrame Process(AudioProcessingContext const& context, StereoAudioFrame in) {
         StereoAudioFrame result = in;
-        if (auto mix = eq_mix_smoother.LowPass(eq_mix, context.one_pole_smoothing_cutoff_1ms); mix != 0) {
+        if (auto mix = eq_mix_smoother.LowPass(eq_mix, context.one_pole_smoothing_cutoff_10ms); mix != 0) {
             for (auto& eq_band : eq_bands)
                 result = eq_band.Process(result);
             if (mix != 1) result = LinearInterpolate(mix, in, result);

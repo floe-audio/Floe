@@ -144,7 +144,7 @@ struct Distortion final : public Effect {
         return StereoAudioFrame::FromF32x2(
             processor.Saturate(in.ToF32x2(),
                                type,
-                               amount_smoother.LowPass(amount, context.one_pole_smoothing_cutoff_1ms)));
+                               amount_smoother.LowPass(amount, context.one_pole_smoothing_cutoff_10ms)));
     }
 
     void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const&) override {

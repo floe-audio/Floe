@@ -30,7 +30,7 @@ struct StereoWiden final : public Effect {
     StereoWiden() : Effect(EffectType::StereoWiden) {}
 
     StereoAudioFrame ProcessFrame(AudioProcessingContext const& context, StereoAudioFrame in, u32) override {
-        return DoStereoWiden(width_smoother.LowPass(width, context.one_pole_smoothing_cutoff_1ms), in);
+        return DoStereoWiden(width_smoother.LowPass(width, context.one_pole_smoothing_cutoff_10ms), in);
     }
     void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const&) override {
         if (auto p = changed_params.Param(ParamIndex::StereoWidenWidth)) {

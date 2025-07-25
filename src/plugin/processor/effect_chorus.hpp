@@ -138,7 +138,7 @@ class Chorus final : public Effect {
     }
 
     StereoAudioFrame ProcessFrame(AudioProcessingContext const& context, StereoAudioFrame in, u32) override {
-        auto const depth = m_depth_01_smoother.LowPass(m_depth_01, context.one_pole_smoothing_cutoff_1ms);
+        auto const depth = m_depth_01_smoother.LowPass(m_depth_01, context.one_pole_smoothing_cutoff_10ms);
         auto const [highpass_coeffs, filter_mix] = m_highpass_filter_coeffs.Value();
         auto chorus_in = in * filter_mix;
 

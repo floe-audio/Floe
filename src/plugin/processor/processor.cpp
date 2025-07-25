@@ -805,6 +805,8 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
         OnePoleLowPassFilter<f32>::MsToCutoff(0.2f, (f32)args.sample_rate);
     processor.audio_processing_context.one_pole_smoothing_cutoff_1ms =
         OnePoleLowPassFilter<f32>::MsToCutoff(1, (f32)args.sample_rate);
+    processor.audio_processing_context.one_pole_smoothing_cutoff_10ms =
+        OnePoleLowPassFilter<f32>::MsToCutoff(10, (f32)args.sample_rate);
 
     for (auto& fx : processor.effects_ordered_by_type)
         fx->PrepareToPlay(processor.audio_processing_context);
@@ -1434,7 +1436,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         for (auto [frame_index, frame] : Enumerate<u32>(interleaved_stereo_samples)) {
             frame *= processor.master_vol_smoother.LowPass(
                 processor.master_vol,
-                processor.audio_processing_context.one_pole_smoothing_cutoff_1ms);
+                processor.audio_processing_context.one_pole_smoothing_cutoff_10ms);
 
             // frame = Clamp(frame, {-1, -1}, {1, 1}); // hard limit
             frame *= processor.whole_engine_volume_fade.GetFade();
