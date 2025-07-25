@@ -23,44 +23,44 @@ class ConvolutionReverb final : public Effect {
         if (m_convolver) DestroyStereoConvolver(m_convolver);
     }
 
-    struct ConvoProcessResult {
-        EffectProcessResult effect_process_state;
-        bool changed_ir;
+    // This effect's ExtraProcessingContext::effect_context.
+    struct ConvoExtraProcessingContext {
+        bool start_fade_out; // In parameter.
+        bool changed_ir; // Out parameter.
     };
 
-    // audio-thread, instead of the virtual function
-    ConvoProcessResult ProcessBlockConvolution(AudioProcessingContext const& context,
-                                               Span<StereoAudioFrame> io_frames,
-                                               ScratchBuffers scratch_buffers,
-                                               bool start_fade_out) {
+    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
+                                     AudioProcessingContext const& context,
+                                     ExtraProcessingContext extra_context) override {
         ZoneScoped;
-        ConvoProcessResult result {
-            .effect_process_state = EffectProcessResult::Done,
-            .changed_ir = false,
-        };
+        auto result = EffectProcessResult::Done;
+
+        ASSERT_HOT(extra_context.effect_context);
+        auto& conv_context = *(ConvoExtraProcessingContext*)extra_context.effect_context;
+
         if (!ShouldProcessBlock()) {
-            result.changed_ir = SwapConvolversIfNeeded();
+            conv_context.changed_ir = SwapConvolversIfNeeded();
             return result;
         }
 
-        auto input_channels = scratch_buffers.buf1.Channels();
-        CopyFramesToSeparateChannels(input_channels, io_frames);
+        auto input_channels = extra_context.scratch_buffers.buf1.Channels();
+        CopyFramesToSeparateChannels(input_channels, frames);
 
-        if (start_fade_out) m_fade.SetAsFadeOut(context.sample_rate, 20);
+        if (conv_context.start_fade_out) m_fade.SetAsFadeOut(context.sample_rate, 20);
 
-        auto wet_channels = scratch_buffers.buf2.Channels();
+        auto wet_channels = extra_context.scratch_buffers.buf2.Channels();
         if (m_convolver) {
             Process(*m_convolver,
                     input_channels[0],
                     input_channels[1],
                     wet_channels[0],
                     wet_channels[1],
-                    (int)io_frames.size);
+                    (int)frames.size);
         } else {
-            SimdZeroAlignedBuffer(wet_channels[0], io_frames.size * 2);
+            SimdZeroAlignedBuffer(wet_channels[0], frames.size * 2);
         }
 
-        for (auto [frame_index, frame] : Enumerate<u32>(io_frames)) {
+        for (auto [frame_index, frame] : Enumerate<u32>(frames)) {
             StereoAudioFrame wet(wet_channels, frame_index);
             auto const [filter_coeffs, mix] = m_filter_coeffs.Value();
             wet = Process(m_filter, filter_coeffs, wet * mix);
@@ -70,7 +70,7 @@ class ConvolutionReverb final : public Effect {
 
             if (m_fade.IsSilent()) {
                 m_remaining_tail_length = 0;
-                result.changed_ir = SwapConvolversIfNeeded();
+                conv_context.changed_ir = SwapConvolversIfNeeded();
                 break;
             } else {
                 UpdateRemainingTailLength(wet);
@@ -80,8 +80,7 @@ class ConvolutionReverb final : public Effect {
             frame = wet;
         }
 
-        result.effect_process_state =
-            IsSilent() ? EffectProcessResult::Done : EffectProcessResult::ProcessingTail;
+        result = IsSilent() ? EffectProcessResult::Done : EffectProcessResult::ProcessingTail;
         return result;
     }
 

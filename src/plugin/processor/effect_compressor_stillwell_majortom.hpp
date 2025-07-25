@@ -13,12 +13,17 @@ class Compressor final : public Effect {
     Compressor() : Effect(EffectType::Compressor) {}
 
   private:
-    StereoAudioFrame
-    ProcessFrame(AudioProcessingContext const& context, StereoAudioFrame in, u32 frame_index) override {
-        (void)frame_index;
-        StereoAudioFrame out;
-        m_compressor.Process(context.sample_rate, in.l, in.r, out.l, out.r);
-        return out;
+    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
+                                     AudioProcessingContext const& context,
+                                     ExtraProcessingContext) override {
+        return ProcessBlockByFrame(
+            frames,
+            [&](StereoAudioFrame in) {
+                StereoAudioFrame out;
+                m_compressor.Process(context.sample_rate, in.l, in.r, out.l, out.r);
+                return out;
+            },
+            context);
     }
 
     void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const& context) override {

@@ -94,13 +94,27 @@ class Effect {
     // audio-thread
     virtual void SetTempo(AudioProcessingContext const&) {}
 
+    struct ExtraProcessingContext {
+        // The effect may use these buffers for temporary storage.
+        ScratchBuffers scratch_buffers;
+
+        // Effect-specific context.
+        void* effect_context = nullptr;
+    };
+
     // audio-thread
     virtual EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
-                                             [[maybe_unused]] ScratchBuffers scratch_buffers,
-                                             AudioProcessingContext const& context) {
+                                             AudioProcessingContext const& context,
+                                             ExtraProcessingContext extra_context) = 0;
+
+    // Helper function for simple effects that only need to process one frame at a time. Wraps the individual
+    // frame processing in the necessary block processing machinery.
+    ALWAYS_INLINE EffectProcessResult ProcessBlockByFrame(Span<StereoAudioFrame> frames,
+                                                          auto process_frame_function,
+                                                          AudioProcessingContext const& context) {
         if (!ShouldProcessBlock()) return EffectProcessResult::Done;
-        for (auto [i, frame] : Enumerate<u32>(frames))
-            frame = MixOnOffSmoothing(context, ProcessFrame(context, frame, i), frame);
+        for (auto& frame : frames)
+            frame = MixOnOffSmoothing(context, process_frame_function(frame), frame);
         return EffectProcessResult::Done;
     }
 
@@ -123,14 +137,6 @@ class Effect {
     StereoAudioFrame
     MixOnOffSmoothing(AudioProcessingContext const& context, StereoAudioFrame wet, StereoAudioFrame dry) {
         return LinearInterpolate(mix_smoother.LowPass(mix, context.one_pole_smoothing_cutoff_10ms), dry, wet);
-    }
-
-    // Internals
-    virtual StereoAudioFrame
-    ProcessFrame(AudioProcessingContext const&, StereoAudioFrame in, u32 frame_index) {
-        PanicIfReached();
-        (void)frame_index;
-        return in;
     }
 
     virtual void OnParamChangeInternal(ChangedParams changed_params,

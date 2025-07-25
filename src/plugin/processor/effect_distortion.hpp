@@ -140,11 +140,18 @@ struct DistortionProcessor {
 struct Distortion final : public Effect {
     Distortion() : Effect(EffectType::Distortion) {}
 
-    StereoAudioFrame ProcessFrame(AudioProcessingContext const& context, StereoAudioFrame in, u32) override {
-        return StereoAudioFrame::FromF32x2(
-            processor.Saturate(in.ToF32x2(),
-                               type,
-                               amount_smoother.LowPass(amount, context.one_pole_smoothing_cutoff_10ms)));
+    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
+                                     AudioProcessingContext const& context,
+                                     ExtraProcessingContext) override {
+        return ProcessBlockByFrame(
+            frames,
+            [&](StereoAudioFrame in) {
+                return StereoAudioFrame::FromF32x2(processor.Saturate(
+                    in.ToF32x2(),
+                    type,
+                    amount_smoother.LowPass(amount, context.one_pole_smoothing_cutoff_10ms)));
+            },
+            context);
     }
 
     void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const&) override {

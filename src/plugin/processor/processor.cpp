@@ -1412,20 +1412,22 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 
         bool fx_need_another_frame_of_processing = false;
         for (auto fx : processor.actual_fx_order) {
+            Effect::ExtraProcessingContext extra_context {
+                .scratch_buffers = scratch_buffers,
+            };
+            ConvolutionReverb::ConvoExtraProcessingContext convo_extra_context {
+                .start_fade_out = mark_convolution_for_fade_out,
+            };
+            if (fx->type == EffectType::ConvolutionReverb)
+                extra_context.effect_context = &convo_extra_context;
+
+            auto const r = fx->ProcessBlock(interleaved_stereo_samples,
+                                            processor.audio_processing_context,
+                                            extra_context);
+            if (r == EffectProcessResult::ProcessingTail) fx_need_another_frame_of_processing = true;
+
             if (fx->type == EffectType::ConvolutionReverb) {
-                auto const r = ((ConvolutionReverb*)fx)
-                                   ->ProcessBlockConvolution(processor.audio_processing_context,
-                                                             interleaved_stereo_samples,
-                                                             scratch_buffers,
-                                                             mark_convolution_for_fade_out);
-                if (r.effect_process_state == EffectProcessResult::ProcessingTail)
-                    fx_need_another_frame_of_processing = true;
-                if (r.changed_ir) change_flags |= ProcessorListener::IrChanged;
-            } else {
-                auto const r = fx->ProcessBlock(interleaved_stereo_samples,
-                                                scratch_buffers,
-                                                processor.audio_processing_context);
-                if (r == EffectProcessResult::ProcessingTail) fx_need_another_frame_of_processing = true;
+                if (convo_extra_context.changed_ir) change_flags |= ProcessorListener::IrChanged;
             }
         }
         processor.fx_need_another_frame_of_processing = fx_need_another_frame_of_processing;
@@ -1458,7 +1460,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         CopyInterleavedToSeparateChannels(outputs[0], outputs[1], interleaved_outputs, num_sample_frames);
     }
 
-    // Mark gui dirty
+    // Mark GUI dirty.
     {
         if (!processor.peak_meter.Silent()) change_flags |= ProcessorListener::PeakMeterChanged;
         for (auto& layer : processor.layer_processors)

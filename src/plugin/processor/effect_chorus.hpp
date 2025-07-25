@@ -137,22 +137,30 @@ class Chorus final : public Effect {
         if (auto p = changed_params.Param(ParamIndex::ChorusDry)) m_wet_dry.SetDry(p->ProjectedValue());
     }
 
-    StereoAudioFrame ProcessFrame(AudioProcessingContext const& context, StereoAudioFrame in, u32) override {
-        auto const depth = m_depth_01_smoother.LowPass(m_depth_01, context.one_pole_smoothing_cutoff_10ms);
-        auto const [highpass_coeffs, filter_mix] = m_highpass_filter_coeffs.Value();
-        auto chorus_in = in * filter_mix;
+    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
+                                     AudioProcessingContext const& context,
+                                     ExtraProcessingContext) override {
+        return ProcessBlockByFrame(
+            frames,
+            [&](StereoAudioFrame in) {
+                auto const depth =
+                    m_depth_01_smoother.LowPass(m_depth_01, context.one_pole_smoothing_cutoff_10ms);
+                auto const [highpass_coeffs, filter_mix] = m_highpass_filter_coeffs.Value();
+                auto chorus_in = in * filter_mix;
 
-        auto out = chorus_in;
-        out = m_c[ToInt(ChorusIndexes::First)].Process(chorus_in,
-                                                       depth,
-                                                       m_lowpass_filter_coeffs,
-                                                       highpass_coeffs);
-        out += m_c[ToInt(ChorusIndexes::Second)].Process(chorus_in,
-                                                         depth,
-                                                         m_lowpass_filter_coeffs,
-                                                         highpass_coeffs) /
-               2;
-        return m_wet_dry.MixStereo(context, out, in);
+                auto out = chorus_in;
+                out = m_c[ToInt(ChorusIndexes::First)].Process(chorus_in,
+                                                               depth,
+                                                               m_lowpass_filter_coeffs,
+                                                               highpass_coeffs);
+                out += m_c[ToInt(ChorusIndexes::Second)].Process(chorus_in,
+                                                                 depth,
+                                                                 m_lowpass_filter_coeffs,
+                                                                 highpass_coeffs) /
+                       2;
+                return m_wet_dry.MixStereo(context, out, in);
+            },
+            context);
     }
 
     void ResetInternal() override {

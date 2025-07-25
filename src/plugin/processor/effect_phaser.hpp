@@ -4,6 +4,8 @@
 #pragma once
 #include <vitfx/wrapper.hpp>
 
+#include "utils/debug/tracy_wrapped.hpp"
+
 #include "effect.hpp"
 
 class Phaser final : public Effect {
@@ -21,12 +23,12 @@ class Phaser final : public Effect {
     }
 
     EffectProcessResult ProcessBlock(Span<StereoAudioFrame> io_frames,
-                                     ScratchBuffers scratch_buffers,
-                                     AudioProcessingContext const& context) override {
+                                     AudioProcessingContext const& context,
+                                     ExtraProcessingContext extra_context) override {
         ZoneNamedN(process_block, "Phaser ProcessBlock", true);
         if (!ShouldProcessBlock()) return EffectProcessResult::Done;
 
-        auto wet = scratch_buffers.buf1.Interleaved();
+        auto wet = extra_context.scratch_buffers.buf1.Interleaved();
         wet.size = io_frames.size;
         CopyMemory(wet.data, io_frames.data, io_frames.size * sizeof(StereoAudioFrame));
 

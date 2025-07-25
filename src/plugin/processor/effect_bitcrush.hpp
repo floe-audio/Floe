@@ -41,10 +41,18 @@ class BitCrush final : public Effect {
     BitCrush() : Effect(EffectType::BitCrush) {}
 
   private:
-    StereoAudioFrame ProcessFrame(AudioProcessingContext const& context, StereoAudioFrame in, u32) override {
-        auto const v = m_bit_crusher.BitCrush({in.l, in.r}, context.sample_rate, m_bit_depth, m_bit_rate);
-        StereoAudioFrame const wet {v[0], v[1]};
-        return m_wet_dry.MixStereo(context, wet, in);
+    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
+                                     AudioProcessingContext const& context,
+                                     ExtraProcessingContext) override {
+        return ProcessBlockByFrame(
+            frames,
+            [&](StereoAudioFrame in) {
+                auto const v =
+                    m_bit_crusher.BitCrush({in.l, in.r}, context.sample_rate, m_bit_depth, m_bit_rate);
+                StereoAudioFrame const wet {v[0], v[1]};
+                return m_wet_dry.MixStereo(context, wet, in);
+            },
+            context);
     }
 
     void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const&) override {
