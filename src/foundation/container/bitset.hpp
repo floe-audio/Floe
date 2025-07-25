@@ -69,7 +69,7 @@ struct Bitset {
     constexpr void ClearAll() { elements = {}; }
     constexpr void SetAll() {
         for (auto& element : elements)
-            element = ~(ElementType)0;
+            element = LargestRepresentableValue<ElementType>();
         ClearTrailingBits();
     }
 

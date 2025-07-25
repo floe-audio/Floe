@@ -195,7 +195,7 @@ struct AudioProcessor {
 
     ProcessorListener& listener;
 
-    int restart_voices_for_layer_bitset {};
+    Bitset<k_num_layers> restart_voices_for_layer_bitset {};
     bool fx_need_another_frame_of_processing = {};
 
     // IMPROVE: rather than have atomics here for the ccs, would FIFO communication be better?

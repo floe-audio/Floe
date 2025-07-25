@@ -1264,7 +1264,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 
             if (processor.whole_engine_volume_fade_type == AudioProcessor::FadeType::OutAndRestartVoices) {
                 processor.voice_pool.EndAllVoicesInstantly();
-                processor.restart_voices_for_layer_bitset = ~0; // restart all voices
+                processor.restart_voices_for_layer_bitset.SetAll(); // restart all voices
             } else {
                 processor.whole_engine_volume_fade.SetAsFadeIn(processor.audio_processing_context.sample_rate,
                                                                k_fade_in_ms);
@@ -1327,13 +1327,14 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 
     // Create new voices for layer if requested. We want to do this after parameters have been updated
     // so that the voices start with the most recent parameter values.
-    if (auto restart_layer_bitset = Exchange(processor.restart_voices_for_layer_bitset, 0)) {
+    if (auto restart_layer_bitset = Exchange(processor.restart_voices_for_layer_bitset, {});
+        restart_layer_bitset.AnyValuesSet()) {
         for (u32 chan = 0; chan <= 15; ++chan) {
             auto const keys_to_start =
                 processor.audio_processing_context.midi_note_state.NotesHeldIncludingSustained((u4)chan);
             if (keys_to_start.AnyValuesSet()) {
                 for (auto [layer_index, layer] : Enumerate(processor.layer_processors)) {
-                    if (restart_layer_bitset & (1 << layer_index)) {
+                    if (restart_layer_bitset.Get(layer_index)) {
                         for (u8 note_num = 0; note_num <= 127; ++note_num) {
                             if (keys_to_start.Get(note_num)) {
                                 dyn::Append(changes.note_events,
@@ -1386,7 +1387,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 
             // Start new voices. We don't want to do that here because we want all parameter changes
             // to be applied beforehand.
-            processor.restart_voices_for_layer_bitset |= 1 << i;
+            processor.restart_voices_for_layer_bitset.Set(i);
         }
     }
 
