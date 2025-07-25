@@ -151,232 +151,9 @@ UpdateVoiceLfoTimes(LayerProcessor& layer, VoicePool& voice_pool, AudioProcessin
         UpdateLFOTime(v, context.sample_rate);
 }
 
-void SetTempo(LayerProcessor& layer, VoicePool& voice_pool, AudioProcessingContext const& context) {
-    Bitset<k_num_layer_parameters> bitset {};
-    bitset.Set(ToInt(LayerParamIndex::LfoRateTempoSynced));
-    ChangedLayerParams changed_params(layer.params, bitset);
-    OnParamChange(layer, context, voice_pool, changed_params);
-}
-
 void PrepareToPlay(LayerProcessor& layer, ArenaAllocator& allocator, AudioProcessingContext const& context) {
     ResetLayerAudioProcessing(layer);
     layer.peak_meter.PrepareToPlay(context.sample_rate, allocator);
-}
-
-void OnParamChange(LayerProcessor& layer,
-                   AudioProcessingContext const& context,
-                   VoicePool& voice_pool,
-                   ChangedLayerParams changed_params) {
-    f32 const sample_rate = context.sample_rate;
-    auto& vmst = layer.voice_controller;
-
-    // Main controls
-    // =======================================================================================================
-    if (auto p = changed_params.Param(LayerParamIndex::VelocityMapping))
-        SetVelocityMapping(layer, p->ValueAsInt<param_values::VelocityMappingMode>());
-
-    if (auto p = changed_params.Param(LayerParamIndex::Volume)) layer.gain = p->ProjectedValue();
-
-    if (auto p = changed_params.Param(LayerParamIndex::Pan)) vmst.pan_pos = p->ProjectedValue();
-
-    {
-        bool set_tune = false;
-        if (auto p = changed_params.Param(LayerParamIndex::TuneSemitone)) {
-            layer.tune_semitone = (f32)p->ValueAsInt<int>();
-            set_tune = true;
-        }
-        if (auto p = changed_params.Param(LayerParamIndex::TuneCents)) {
-            layer.tune_cents = p->ProjectedValue();
-            set_tune = true;
-        }
-        if (set_tune) {
-            auto const tune = layer.tune_semitone + (layer.tune_cents / 100.0f);
-            layer.voice_controller.tune_semitones = tune;
-            for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
-                SetVoicePitch(v, vmst.tune_semitones, sample_rate);
-        }
-    }
-
-    constexpr f32 k_min_envelope_ms = 0.2f;
-    // Volume envelope
-    // =======================================================================================================
-    if (changed_params.Param(LayerParamIndex::VolEnvOn)) UpdateVolumeEnvelopeOn(layer, voice_pool);
-    if (auto p = changed_params.Param(LayerParamIndex::VolumeAttack))
-        layer.voice_controller.vol_env.SetAttackSamples(Max(k_min_envelope_ms, p->ProjectedValue()) /
-                                                            1000.0f * sample_rate,
-                                                        2.0f);
-    if (auto p = changed_params.Param(LayerParamIndex::VolumeDecay))
-        layer.voice_controller.vol_env.SetDecaySamples(Max(k_min_envelope_ms, p->ProjectedValue()) / 1000.0f *
-                                                           sample_rate,
-                                                       0.1f);
-    if (auto p = changed_params.Param(LayerParamIndex::VolumeSustain))
-        layer.voice_controller.vol_env.SetSustainAmp(p->ProjectedValue());
-
-    if (auto p = changed_params.Param(LayerParamIndex::VolumeRelease))
-        layer.voice_controller.vol_env.SetReleaseSamples(Max(k_min_envelope_ms, p->ProjectedValue()) /
-                                                             1000.0f * sample_rate,
-                                                         0.1f);
-
-    // Filter
-    // =======================================================================================================
-    if (auto p = changed_params.Param(LayerParamIndex::FilterEnvAmount))
-        vmst.fil_env_amount = p->ProjectedValue();
-    if (auto p = changed_params.Param(LayerParamIndex::FilterAttack))
-        layer.voice_controller.fil_env.SetAttackSamples(Max(k_min_envelope_ms, p->ProjectedValue()) /
-                                                            1000.0f * sample_rate,
-                                                        2.0f);
-    if (auto p = changed_params.Param(LayerParamIndex::FilterDecay))
-        layer.voice_controller.fil_env.SetDecaySamples(Max(k_min_envelope_ms, p->ProjectedValue()) / 1000.0f *
-                                                           sample_rate,
-                                                       0.1f);
-    if (auto p = changed_params.Param(LayerParamIndex::FilterSustain))
-        layer.voice_controller.fil_env.SetSustainAmp(p->ProjectedValue());
-    if (auto p = changed_params.Param(LayerParamIndex::FilterRelease))
-        layer.voice_controller.fil_env.SetReleaseSamples(Max(k_min_envelope_ms, p->ProjectedValue()) /
-                                                             1000.0f * sample_rate,
-                                                         0.1f);
-    if (auto p = changed_params.Param(LayerParamIndex::FilterCutoff))
-        vmst.sv_filter_cutoff_linear = sv_filter::HzToLinear(p->ProjectedValue());
-    if (auto p = changed_params.Param(LayerParamIndex::FilterResonance))
-        vmst.sv_filter_resonance = sv_filter::SkewResonance(p->ProjectedValue());
-    if (auto p = changed_params.Param(LayerParamIndex::FilterOn)) vmst.filter_on = p->ValueAsBool();
-    if (auto p = changed_params.Param(LayerParamIndex::FilterType)) {
-        sv_filter::Type sv_type {};
-        // Remapping enum values like this allows us to separate values that cannot change (the parameter
-        // value), with values that we have more control over (DSP code)
-        switch (p->ValueAsInt<param_values::LayerFilterType>()) {
-            case param_values::LayerFilterType::Lowpass: sv_type = sv_filter::Type::Lowpass; break;
-            case param_values::LayerFilterType::Bandpass: sv_type = sv_filter::Type::Bandpass; break;
-            case param_values::LayerFilterType::Highpass: sv_type = sv_filter::Type::Highpass; break;
-            case param_values::LayerFilterType::UnitGainBandpass:
-                sv_type = sv_filter::Type::UnitGainBandpass;
-                break;
-            case param_values::LayerFilterType::BandShelving: sv_type = sv_filter::Type::BandShelving; break;
-            case param_values::LayerFilterType::Notch: sv_type = sv_filter::Type::Notch; break;
-            case param_values::LayerFilterType::Allpass: sv_type = sv_filter::Type::Allpass; break;
-            case param_values::LayerFilterType::Peak: sv_type = sv_filter::Type::Peak; break;
-            case param_values::LayerFilterType::Count: PanicIfReached(); break;
-        }
-        vmst.filter_type = sv_type;
-    }
-
-    // Midi
-    // =======================================================================================================
-    if (auto p = changed_params.Param(LayerParamIndex::MidiTranspose))
-        layer.midi_transpose = p->ValueAsInt<int>();
-    if (auto p = changed_params.Param(LayerParamIndex::Keytrack)) vmst.no_key_tracking = !p->ValueAsBool();
-
-    // LFO
-    // =======================================================================================================
-    if (auto p = changed_params.Param(LayerParamIndex::LfoShape)) {
-        vmst.lfo.shape = p->ValueAsInt<param_values::LfoShape>();
-        for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
-            UpdateLFOWaveform(v);
-    }
-    if (auto p = changed_params.Param(LayerParamIndex::LfoAmount)) vmst.lfo.amount = p->ProjectedValue();
-    if (auto p = changed_params.Param(LayerParamIndex::LfoDestination))
-        layer.voice_controller.lfo.dest = p->ValueAsInt<param_values::LfoDestination>();
-    if (auto p = changed_params.Param(LayerParamIndex::LfoOn))
-        layer.voice_controller.lfo.on = p->ValueAsBool();
-
-    {
-        bool update_voice_controller_times = false;
-        if (auto p = changed_params.Param(LayerParamIndex::LfoRateTempoSynced)) {
-            layer.lfo_synced_time = p->ValueAsInt<param_values::LfoSyncedRate>();
-            update_voice_controller_times = true;
-        }
-        if (auto p = changed_params.Param(LayerParamIndex::LfoRateHz)) {
-            layer.lfo_unsynced_hz = p->ProjectedValue();
-            update_voice_controller_times = true;
-        }
-        if (auto p = changed_params.Param(LayerParamIndex::LfoSyncSwitch)) {
-            layer.lfo_is_synced = p->ValueAsBool();
-            update_voice_controller_times = true;
-        }
-        if (update_voice_controller_times) {
-            if (layer.lfo_is_synced) {
-                SyncedTimes synced_time {};
-                // Remapping enum values like this allows us to separate values that cannot change (the
-                // parameter value), with values that we have more control over (DSP code)
-                switch (layer.lfo_synced_time) {
-                    case param_values::LfoSyncedRate::_1_64T: synced_time = SyncedTimes::_1_64T; break;
-                    case param_values::LfoSyncedRate::_1_64: synced_time = SyncedTimes::_1_64; break;
-                    case param_values::LfoSyncedRate::_1_64D: synced_time = SyncedTimes::_1_64D; break;
-                    case param_values::LfoSyncedRate::_1_32T: synced_time = SyncedTimes::_1_32T; break;
-                    case param_values::LfoSyncedRate::_1_32: synced_time = SyncedTimes::_1_32; break;
-                    case param_values::LfoSyncedRate::_1_32D: synced_time = SyncedTimes::_1_32D; break;
-                    case param_values::LfoSyncedRate::_1_16T: synced_time = SyncedTimes::_1_16T; break;
-                    case param_values::LfoSyncedRate::_1_16: synced_time = SyncedTimes::_1_16; break;
-                    case param_values::LfoSyncedRate::_1_16D: synced_time = SyncedTimes::_1_16D; break;
-                    case param_values::LfoSyncedRate::_1_8T: synced_time = SyncedTimes::_1_8T; break;
-                    case param_values::LfoSyncedRate::_1_8: synced_time = SyncedTimes::_1_8; break;
-                    case param_values::LfoSyncedRate::_1_8D: synced_time = SyncedTimes::_1_8D; break;
-                    case param_values::LfoSyncedRate::_1_4T: synced_time = SyncedTimes::_1_4T; break;
-                    case param_values::LfoSyncedRate::_1_4: synced_time = SyncedTimes::_1_4; break;
-                    case param_values::LfoSyncedRate::_1_4D: synced_time = SyncedTimes::_1_4D; break;
-                    case param_values::LfoSyncedRate::_1_2T: synced_time = SyncedTimes::_1_2T; break;
-                    case param_values::LfoSyncedRate::_1_2: synced_time = SyncedTimes::_1_2; break;
-                    case param_values::LfoSyncedRate::_1_2D: synced_time = SyncedTimes::_1_2D; break;
-                    case param_values::LfoSyncedRate::_1_1T: synced_time = SyncedTimes::_1_1T; break;
-                    case param_values::LfoSyncedRate::_1_1: synced_time = SyncedTimes::_1_1; break;
-                    case param_values::LfoSyncedRate::_1_1D: synced_time = SyncedTimes::_1_1D; break;
-                    case param_values::LfoSyncedRate::_2_1T: synced_time = SyncedTimes::_2_1T; break;
-                    case param_values::LfoSyncedRate::_2_1: synced_time = SyncedTimes::_2_1; break;
-                    case param_values::LfoSyncedRate::_2_1D: synced_time = SyncedTimes::_2_1D; break;
-                    case param_values::LfoSyncedRate::_4_1T: synced_time = SyncedTimes::_4_1T; break;
-                    case param_values::LfoSyncedRate::_4_1: synced_time = SyncedTimes::_4_1; break;
-                    case param_values::LfoSyncedRate::_4_1D: synced_time = SyncedTimes::_4_1D; break;
-                    case param_values::LfoSyncedRate::Count: PanicIfReached(); break;
-                }
-                vmst.lfo.time_hz = (f32)(1.0 / (SyncedTimeToMs(context.tempo, synced_time) / 1000.0));
-            } else {
-                vmst.lfo.time_hz = layer.lfo_unsynced_hz;
-            }
-            UpdateVoiceLfoTimes(layer, voice_pool, context);
-        }
-    }
-
-    if (auto p = changed_params.Param(LayerParamIndex::LfoRestart))
-        layer.lfo_restart_mode = p->ValueAsInt<param_values::LfoRestartMode>();
-
-    if (auto p = changed_params.Param(LayerParamIndex::Monophonic)) layer.monophonic = p->ValueAsBool();
-
-    // Loop
-    // =======================================================================================================
-    {
-        bool update_loop_info = false;
-        if (auto p = changed_params.Param(LayerParamIndex::LoopStart)) {
-            vmst.loop.start = p->ProjectedValue();
-            update_loop_info = true;
-        }
-        if (auto p = changed_params.Param(LayerParamIndex::LoopEnd)) {
-            vmst.loop.end = p->ProjectedValue();
-            update_loop_info = true;
-        }
-        if (auto p = changed_params.Param(LayerParamIndex::LoopCrossfade)) {
-            vmst.loop.crossfade_size = p->ProjectedValue();
-            update_loop_info = true;
-        }
-        if (auto p = changed_params.Param(LayerParamIndex::Reverse)) {
-            update_loop_info = true;
-            vmst.reverse = p->ValueAsBool();
-        }
-        if (auto p = changed_params.Param(LayerParamIndex::LoopMode)) {
-            update_loop_info = true;
-            vmst.loop_mode = p->ValueAsInt<param_values::LoopMode>();
-        }
-        if (auto p = changed_params.Param(LayerParamIndex::SampleOffset))
-            layer.sample_offset_01 = p->ProjectedValue();
-
-        if (update_loop_info) UpdateLoopPointsForVoices(layer, voice_pool);
-    }
-
-    // EQ
-    // =======================================================================================================
-    if (auto p = changed_params.Param(LayerParamIndex::EqOn)) layer.eq_bands.SetOn(p->ValueAsBool());
-
-    for (auto const eq_band_index : Range(k_num_layer_eq_bands))
-        layer.eq_bands.OnParamChange(eq_band_index, changed_params, sample_rate);
 }
 
 //
@@ -392,9 +169,7 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
                                   sample_lib::TriggerEvent trigger_event,
                                   MidiChannelNote note,
                                   f32 note_vel_float,
-                                  u32 offset,
-                                  f32 timbre_param_value_01,
-                                  f32 velocity_to_volume_01) {
+                                  u32 offset) {
     ZoneScoped;
     if (layer.inst.tag == InstrumentType::None) return;
 
@@ -405,14 +180,14 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
     if (note_for_samples_unchecked < 0 || note_for_samples_unchecked > 127) return;
     auto const note_for_samples = (u7)note_for_samples_unchecked;
     auto const velocity_volume_modifier =
-        AmplitudeScalingFromVelocity(layer, note_vel_float, velocity_to_volume_01);
+        AmplitudeScalingFromVelocity(layer, note_vel_float, layer.shared_params.velocity_to_volume_01);
 
     VoiceStartParams p {.params = VoiceStartParams::SamplerParams {}};
     if (auto i_ptr = layer.inst.TryGet<sample_lib::LoadedInstrument const*>()) {
         auto const& inst = **i_ptr;
         p.params = VoiceStartParams::SamplerParams {
             .initial_sample_offset_01 = layer.sample_offset_01,
-            .initial_timbre_param_value_01 = timbre_param_value_01,
+            .initial_timbre_param_value_01 = layer.shared_params.timbre_value_01,
             .voice_sample_params = {},
         };
         auto& sampler_params = p.params.Get<VoiceStartParams::SamplerParams>();
@@ -512,14 +287,12 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
     StartVoice(voice_pool, layer.voice_controller, p, context);
 }
 
-void LayerHandleNoteOff(LayerProcessor& layer,
-                        AudioProcessingContext const& context,
-                        VoicePool& voice_pool,
-                        MidiChannelNote note,
-                        f32 velocity,
-                        bool triggered_by_cc64,
-                        f32 timbre_param_value_01,
-                        f32 velocity_to_volume_01) {
+static void LayerHandleNoteOff(LayerProcessor& layer,
+                               AudioProcessingContext const& context,
+                               VoicePool& voice_pool,
+                               MidiChannelNote note,
+                               f32 velocity,
+                               bool triggered_by_cc64) {
     if (!context.midi_note_state.sustain_pedal_on.Get(note.channel) && layer.voice_controller.vol_env_on &&
         !context.midi_note_state.keys_held[note.channel].Get(note.note))
         NoteOff(voice_pool, layer.voice_controller, note);
@@ -531,28 +304,22 @@ void LayerHandleNoteOff(LayerProcessor& layer,
                               sample_lib::TriggerEvent::NoteOff,
                               note,
                               velocity,
-                              0,
-                              timbre_param_value_01,
-                              velocity_to_volume_01);
+                              0);
 }
 
-void LayerHandleNoteOn(LayerProcessor& layer,
-                       AudioProcessingContext const& context,
-                       VoicePool& voice_pool,
-                       MidiChannelNote note_num,
-                       f32 note_vel,
-                       u32 offset,
-                       f32 timbre_param_value_01,
-                       f32 velocity_to_volume_01) {
+static void LayerHandleNoteOn(LayerProcessor& layer,
+                              AudioProcessingContext const& context,
+                              VoicePool& voice_pool,
+                              MidiChannelNote note_num,
+                              f32 note_vel,
+                              u32 offset) {
     TriggerVoicesIfNeeded(layer,
                           context,
                           voice_pool,
                           sample_lib::TriggerEvent::NoteOn,
                           note_num,
                           note_vel,
-                          offset,
-                          timbre_param_value_01,
-                          velocity_to_volume_01);
+                          offset);
 }
 
 bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer, VoicePool& voice_pool) {
@@ -576,6 +343,247 @@ bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer, VoicePool& voice_po
     UpdateVolumeEnvelopeOn(layer, voice_pool);
 
     return true;
+}
+
+void ProcessLayerChanges(LayerProcessor& layer,
+                         AudioProcessingContext const& context,
+                         ProcessBlockChangesLayer changes,
+                         VoicePool& voice_pool) {
+    f32 const sample_rate = context.sample_rate;
+    auto& vmst = layer.voice_controller;
+
+    // Main controls
+    // =======================================================================================================
+    if (auto p = changes.changed_params.Param(LayerParamIndex::VelocityMapping))
+        SetVelocityMapping(layer, p->ValueAsInt<param_values::VelocityMappingMode>());
+
+    if (auto p = changes.changed_params.Param(LayerParamIndex::Volume)) layer.gain = p->ProjectedValue();
+
+    if (auto p = changes.changed_params.Param(LayerParamIndex::Pan)) vmst.pan_pos = p->ProjectedValue();
+
+    {
+        bool set_tune = false;
+        if (auto p = changes.changed_params.Param(LayerParamIndex::TuneSemitone)) {
+            layer.tune_semitone = (f32)p->ValueAsInt<int>();
+            set_tune = true;
+        }
+        if (auto p = changes.changed_params.Param(LayerParamIndex::TuneCents)) {
+            layer.tune_cents = p->ProjectedValue();
+            set_tune = true;
+        }
+        if (set_tune) {
+            auto const tune = layer.tune_semitone + (layer.tune_cents / 100.0f);
+            layer.voice_controller.tune_semitones = tune;
+            for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
+                SetVoicePitch(v, vmst.tune_semitones, sample_rate);
+        }
+    }
+
+    constexpr f32 k_min_envelope_ms = 0.2f;
+    // Volume envelope
+    // =======================================================================================================
+    if (changes.changed_params.Param(LayerParamIndex::VolEnvOn)) UpdateVolumeEnvelopeOn(layer, voice_pool);
+    if (auto p = changes.changed_params.Param(LayerParamIndex::VolumeAttack))
+        layer.voice_controller.vol_env.SetAttackSamples(Max(k_min_envelope_ms, p->ProjectedValue()) /
+                                                            1000.0f * sample_rate,
+                                                        2.0f);
+    if (auto p = changes.changed_params.Param(LayerParamIndex::VolumeDecay))
+        layer.voice_controller.vol_env.SetDecaySamples(Max(k_min_envelope_ms, p->ProjectedValue()) / 1000.0f *
+                                                           sample_rate,
+                                                       0.1f);
+    if (auto p = changes.changed_params.Param(LayerParamIndex::VolumeSustain))
+        layer.voice_controller.vol_env.SetSustainAmp(p->ProjectedValue());
+
+    if (auto p = changes.changed_params.Param(LayerParamIndex::VolumeRelease))
+        layer.voice_controller.vol_env.SetReleaseSamples(Max(k_min_envelope_ms, p->ProjectedValue()) /
+                                                             1000.0f * sample_rate,
+                                                         0.1f);
+
+    // Filter
+    // =======================================================================================================
+    if (auto p = changes.changed_params.Param(LayerParamIndex::FilterEnvAmount))
+        vmst.fil_env_amount = p->ProjectedValue();
+    if (auto p = changes.changed_params.Param(LayerParamIndex::FilterAttack))
+        layer.voice_controller.fil_env.SetAttackSamples(Max(k_min_envelope_ms, p->ProjectedValue()) /
+                                                            1000.0f * sample_rate,
+                                                        2.0f);
+    if (auto p = changes.changed_params.Param(LayerParamIndex::FilterDecay))
+        layer.voice_controller.fil_env.SetDecaySamples(Max(k_min_envelope_ms, p->ProjectedValue()) / 1000.0f *
+                                                           sample_rate,
+                                                       0.1f);
+    if (auto p = changes.changed_params.Param(LayerParamIndex::FilterSustain))
+        layer.voice_controller.fil_env.SetSustainAmp(p->ProjectedValue());
+    if (auto p = changes.changed_params.Param(LayerParamIndex::FilterRelease))
+        layer.voice_controller.fil_env.SetReleaseSamples(Max(k_min_envelope_ms, p->ProjectedValue()) /
+                                                             1000.0f * sample_rate,
+                                                         0.1f);
+    if (auto p = changes.changed_params.Param(LayerParamIndex::FilterCutoff))
+        vmst.sv_filter_cutoff_linear = sv_filter::HzToLinear(p->ProjectedValue());
+    if (auto p = changes.changed_params.Param(LayerParamIndex::FilterResonance))
+        vmst.sv_filter_resonance = sv_filter::SkewResonance(p->ProjectedValue());
+    if (auto p = changes.changed_params.Param(LayerParamIndex::FilterOn)) vmst.filter_on = p->ValueAsBool();
+    if (auto p = changes.changed_params.Param(LayerParamIndex::FilterType)) {
+        sv_filter::Type sv_type {};
+        // Remapping enum values like this allows us to separate values that cannot change (the parameter
+        // value), with values that we have more control over (DSP code)
+        switch (p->ValueAsInt<param_values::LayerFilterType>()) {
+            case param_values::LayerFilterType::Lowpass: sv_type = sv_filter::Type::Lowpass; break;
+            case param_values::LayerFilterType::Bandpass: sv_type = sv_filter::Type::Bandpass; break;
+            case param_values::LayerFilterType::Highpass: sv_type = sv_filter::Type::Highpass; break;
+            case param_values::LayerFilterType::UnitGainBandpass:
+                sv_type = sv_filter::Type::UnitGainBandpass;
+                break;
+            case param_values::LayerFilterType::BandShelving: sv_type = sv_filter::Type::BandShelving; break;
+            case param_values::LayerFilterType::Notch: sv_type = sv_filter::Type::Notch; break;
+            case param_values::LayerFilterType::Allpass: sv_type = sv_filter::Type::Allpass; break;
+            case param_values::LayerFilterType::Peak: sv_type = sv_filter::Type::Peak; break;
+            case param_values::LayerFilterType::Count: PanicIfReached(); break;
+        }
+        vmst.filter_type = sv_type;
+    }
+
+    // Midi
+    // =======================================================================================================
+    if (auto p = changes.changed_params.Param(LayerParamIndex::MidiTranspose))
+        layer.midi_transpose = p->ValueAsInt<int>();
+    if (auto p = changes.changed_params.Param(LayerParamIndex::Keytrack))
+        vmst.no_key_tracking = !p->ValueAsBool();
+
+    // LFO
+    // =======================================================================================================
+    if (auto p = changes.changed_params.Param(LayerParamIndex::LfoShape)) {
+        vmst.lfo.shape = p->ValueAsInt<param_values::LfoShape>();
+        for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
+            UpdateLFOWaveform(v);
+    }
+    if (auto p = changes.changed_params.Param(LayerParamIndex::LfoAmount))
+        vmst.lfo.amount = p->ProjectedValue();
+    if (auto p = changes.changed_params.Param(LayerParamIndex::LfoDestination))
+        layer.voice_controller.lfo.dest = p->ValueAsInt<param_values::LfoDestination>();
+    if (auto p = changes.changed_params.Param(LayerParamIndex::LfoOn))
+        layer.voice_controller.lfo.on = p->ValueAsBool();
+
+    {
+        bool update_voice_controller_times = false;
+        if (changes.tempo_changed) update_voice_controller_times = true;
+
+        if (auto p = changes.changed_params.Param(LayerParamIndex::LfoRateTempoSynced)) {
+            layer.lfo_synced_time = p->ValueAsInt<param_values::LfoSyncedRate>();
+            update_voice_controller_times = true;
+        }
+        if (auto p = changes.changed_params.Param(LayerParamIndex::LfoRateHz)) {
+            layer.lfo_unsynced_hz = p->ProjectedValue();
+            update_voice_controller_times = true;
+        }
+        if (auto p = changes.changed_params.Param(LayerParamIndex::LfoSyncSwitch)) {
+            layer.lfo_is_synced = p->ValueAsBool();
+            update_voice_controller_times = true;
+        }
+        if (update_voice_controller_times) {
+            if (layer.lfo_is_synced) {
+                SyncedTimes synced_time {};
+                // Remapping enum values like this allows us to separate values that cannot change (the
+                // parameter value), with values that we have more control over (DSP code)
+                switch (layer.lfo_synced_time) {
+                    case param_values::LfoSyncedRate::_1_64T: synced_time = SyncedTimes::_1_64T; break;
+                    case param_values::LfoSyncedRate::_1_64: synced_time = SyncedTimes::_1_64; break;
+                    case param_values::LfoSyncedRate::_1_64D: synced_time = SyncedTimes::_1_64D; break;
+                    case param_values::LfoSyncedRate::_1_32T: synced_time = SyncedTimes::_1_32T; break;
+                    case param_values::LfoSyncedRate::_1_32: synced_time = SyncedTimes::_1_32; break;
+                    case param_values::LfoSyncedRate::_1_32D: synced_time = SyncedTimes::_1_32D; break;
+                    case param_values::LfoSyncedRate::_1_16T: synced_time = SyncedTimes::_1_16T; break;
+                    case param_values::LfoSyncedRate::_1_16: synced_time = SyncedTimes::_1_16; break;
+                    case param_values::LfoSyncedRate::_1_16D: synced_time = SyncedTimes::_1_16D; break;
+                    case param_values::LfoSyncedRate::_1_8T: synced_time = SyncedTimes::_1_8T; break;
+                    case param_values::LfoSyncedRate::_1_8: synced_time = SyncedTimes::_1_8; break;
+                    case param_values::LfoSyncedRate::_1_8D: synced_time = SyncedTimes::_1_8D; break;
+                    case param_values::LfoSyncedRate::_1_4T: synced_time = SyncedTimes::_1_4T; break;
+                    case param_values::LfoSyncedRate::_1_4: synced_time = SyncedTimes::_1_4; break;
+                    case param_values::LfoSyncedRate::_1_4D: synced_time = SyncedTimes::_1_4D; break;
+                    case param_values::LfoSyncedRate::_1_2T: synced_time = SyncedTimes::_1_2T; break;
+                    case param_values::LfoSyncedRate::_1_2: synced_time = SyncedTimes::_1_2; break;
+                    case param_values::LfoSyncedRate::_1_2D: synced_time = SyncedTimes::_1_2D; break;
+                    case param_values::LfoSyncedRate::_1_1T: synced_time = SyncedTimes::_1_1T; break;
+                    case param_values::LfoSyncedRate::_1_1: synced_time = SyncedTimes::_1_1; break;
+                    case param_values::LfoSyncedRate::_1_1D: synced_time = SyncedTimes::_1_1D; break;
+                    case param_values::LfoSyncedRate::_2_1T: synced_time = SyncedTimes::_2_1T; break;
+                    case param_values::LfoSyncedRate::_2_1: synced_time = SyncedTimes::_2_1; break;
+                    case param_values::LfoSyncedRate::_2_1D: synced_time = SyncedTimes::_2_1D; break;
+                    case param_values::LfoSyncedRate::_4_1T: synced_time = SyncedTimes::_4_1T; break;
+                    case param_values::LfoSyncedRate::_4_1: synced_time = SyncedTimes::_4_1; break;
+                    case param_values::LfoSyncedRate::_4_1D: synced_time = SyncedTimes::_4_1D; break;
+                    case param_values::LfoSyncedRate::Count: PanicIfReached(); break;
+                }
+                vmst.lfo.time_hz = (f32)(1.0 / (SyncedTimeToMs(context.tempo, synced_time) / 1000.0));
+            } else {
+                vmst.lfo.time_hz = layer.lfo_unsynced_hz;
+            }
+            UpdateVoiceLfoTimes(layer, voice_pool, context);
+        }
+    }
+
+    if (auto p = changes.changed_params.Param(LayerParamIndex::LfoRestart))
+        layer.lfo_restart_mode = p->ValueAsInt<param_values::LfoRestartMode>();
+
+    if (auto p = changes.changed_params.Param(LayerParamIndex::Monophonic))
+        layer.monophonic = p->ValueAsBool();
+
+    // Loop
+    // =======================================================================================================
+    {
+        bool update_loop_info = false;
+        if (auto p = changes.changed_params.Param(LayerParamIndex::LoopStart)) {
+            vmst.loop.start = p->ProjectedValue();
+            update_loop_info = true;
+        }
+        if (auto p = changes.changed_params.Param(LayerParamIndex::LoopEnd)) {
+            vmst.loop.end = p->ProjectedValue();
+            update_loop_info = true;
+        }
+        if (auto p = changes.changed_params.Param(LayerParamIndex::LoopCrossfade)) {
+            vmst.loop.crossfade_size = p->ProjectedValue();
+            update_loop_info = true;
+        }
+        if (auto p = changes.changed_params.Param(LayerParamIndex::Reverse)) {
+            update_loop_info = true;
+            vmst.reverse = p->ValueAsBool();
+        }
+        if (auto p = changes.changed_params.Param(LayerParamIndex::LoopMode)) {
+            update_loop_info = true;
+            vmst.loop_mode = p->ValueAsInt<param_values::LoopMode>();
+        }
+        if (auto p = changes.changed_params.Param(LayerParamIndex::SampleOffset))
+            layer.sample_offset_01 = p->ProjectedValue();
+
+        if (update_loop_info) UpdateLoopPointsForVoices(layer, voice_pool);
+    }
+
+    // EQ
+    // =======================================================================================================
+    if (auto p = changes.changed_params.Param(LayerParamIndex::EqOn)) layer.eq_bands.SetOn(p->ValueAsBool());
+
+    for (auto const eq_band_index : Range(k_num_layer_eq_bands))
+        layer.eq_bands.OnParamChange(eq_band_index, changes.changed_params, sample_rate);
+
+    // Start/end notes.
+    // =======================================================================================================
+    for (auto const& note : changes.note_events) {
+        switch (note.type) {
+            case NoteEvent::Type::On: {
+                LayerHandleNoteOn(layer, context, voice_pool, note.note, note.velocity, note.offset);
+                break;
+            }
+            case NoteEvent::Type::Off: {
+                LayerHandleNoteOff(layer,
+                                   context,
+                                   voice_pool,
+                                   note.note,
+                                   note.velocity,
+                                   note.created_by_cc64);
+                break;
+            }
+        }
+    }
 }
 
 LayerProcessResult ProcessLayer(LayerProcessor& layer,

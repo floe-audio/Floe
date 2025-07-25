@@ -140,22 +140,8 @@ struct DistortionProcessor {
 struct Distortion final : public Effect {
     Distortion() : Effect(EffectType::Distortion) {}
 
-    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
-                                     AudioProcessingContext const& context,
-                                     ExtraProcessingContext) override {
-        return ProcessBlockByFrame(
-            frames,
-            [&](StereoAudioFrame in) {
-                return StereoAudioFrame::FromF32x2(processor.Saturate(
-                    in.ToF32x2(),
-                    type,
-                    amount_smoother.LowPass(amount, context.one_pole_smoothing_cutoff_10ms)));
-            },
-            context);
-    }
-
-    void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const&) override {
-        if (auto p = changed_params.Param(ParamIndex::DistortionType)) {
+    void ProcessChangesInternal(ProcessBlockChanges const& changes, AudioProcessingContext const&) override {
+        if (auto p = changes.changed_params.Param(ParamIndex::DistortionType)) {
             // Remapping enum values like this allows us to separate values that cannot change (the
             // parameter value), with values that we have more control over (DSP code)
             switch (p->ValueAsInt<param_values::DistortionType>()) {
@@ -173,7 +159,21 @@ struct Distortion final : public Effect {
             }
         }
 
-        if (auto p = changed_params.Param(ParamIndex::DistortionDrive)) amount = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::DistortionDrive)) amount = p->ProjectedValue();
+    }
+
+    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
+                                     AudioProcessingContext const& context,
+                                     ExtraProcessingContext) override {
+        return ProcessBlockByFrame(
+            frames,
+            [&](StereoAudioFrame in) {
+                return StereoAudioFrame::FromF32x2(processor.Saturate(
+                    in.ToF32x2(),
+                    type,
+                    amount_smoother.LowPass(amount, context.one_pole_smoothing_cutoff_10ms)));
+            },
+            context);
     }
 
     void ResetInternal() override {

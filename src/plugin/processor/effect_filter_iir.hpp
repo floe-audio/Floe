@@ -25,21 +25,21 @@ class FilterEffect final : public Effect {
         m_smoothed_coeffs.Set(m_filter_params);
     }
 
-    void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const&) override {
+    void ProcessChangesInternal(ProcessBlockChanges const& changes, AudioProcessingContext const&) override {
         bool set_params = false;
-        if (auto p = changed_params.Param(ParamIndex::FilterCutoff)) {
+        if (auto p = changes.changed_params.Param(ParamIndex::FilterCutoff)) {
             m_filter_params.fc = p->ProjectedValue();
             set_params = true;
         }
-        if (auto p = changed_params.Param(ParamIndex::FilterResonance)) {
+        if (auto p = changes.changed_params.Param(ParamIndex::FilterResonance)) {
             m_filter_params.q = MapFrom01Skew(p->ProjectedValue(), 0.5f, 2, 5);
             set_params = true;
         }
-        if (auto p = changed_params.Param(ParamIndex::FilterGain)) {
+        if (auto p = changes.changed_params.Param(ParamIndex::FilterGain)) {
             m_filter_params.peak_gain = p->ProjectedValue();
             set_params = true;
         }
-        if (auto p = changed_params.Param(ParamIndex::FilterType)) {
+        if (auto p = changes.changed_params.Param(ParamIndex::FilterType)) {
             rbj_filter::Type filter_type {};
             switch (p->ValueAsInt<param_values::EffectFilterType>()) {
                 case param_values::EffectFilterType::LowPass: filter_type = rbj_filter::Type::LowPass; break;

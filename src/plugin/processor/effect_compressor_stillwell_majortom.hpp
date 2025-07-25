@@ -13,6 +13,30 @@ class Compressor final : public Effect {
     Compressor() : Effect(EffectType::Compressor) {}
 
   private:
+    void ProcessChangesInternal(ProcessBlockChanges const& changes,
+                                AudioProcessingContext const& context) override {
+        bool params_changed = false;
+
+        if (auto p = changes.changed_params.Param(ParamIndex::CompressorThreshold)) {
+            m_compressor.slider_threshold = AmpToDb(p->ProjectedValue());
+            params_changed = true;
+        }
+        if (auto p = changes.changed_params.Param(ParamIndex::CompressorRatio)) {
+            m_compressor.slider_ratio = p->ProjectedValue();
+            params_changed = true;
+        }
+        if (auto p = changes.changed_params.Param(ParamIndex::CompressorGain)) {
+            m_compressor.slider_gain = p->ProjectedValue();
+            params_changed = true;
+        }
+        if (auto p = changes.changed_params.Param(ParamIndex::CompressorAutoGain)) {
+            m_compressor.slider_auto_gain = p->ValueAsBool();
+            params_changed = true;
+        }
+
+        if (params_changed) m_compressor.Update(context.sample_rate);
+    }
+
     EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
                                      AudioProcessingContext const& context,
                                      ExtraProcessingContext) override {
@@ -24,19 +48,6 @@ class Compressor final : public Effect {
                 return out;
             },
             context);
-    }
-
-    void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const& context) override {
-        if (auto p = changed_params.Param(ParamIndex::CompressorThreshold))
-            m_compressor.slider_threshold = AmpToDb(p->ProjectedValue());
-        if (auto p = changed_params.Param(ParamIndex::CompressorRatio))
-            m_compressor.slider_ratio = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::CompressorGain))
-            m_compressor.slider_gain = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::CompressorAutoGain))
-            m_compressor.slider_auto_gain = p->ValueAsBool();
-
-        m_compressor.Update(context.sample_rate);
     }
 
     void ResetInternal() override { m_compressor.Reset(); }

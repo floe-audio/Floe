@@ -122,19 +122,22 @@ class Chorus final : public Effect {
                                                             .peak_gain = 0});
     }
 
-    void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const& context) override {
-        if (auto p = changed_params.Param(ParamIndex::ChorusRate)) {
+    void ProcessChangesInternal(ProcessBlockChanges const& changes,
+                                AudioProcessingContext const& context) override {
+        if (auto p = changes.changed_params.Param(ParamIndex::ChorusRate)) {
             auto const val = p->ProjectedValue();
             for (auto const i : Range(ToInt(ChorusIndexes::Count)))
                 m_c[i].SetRate(context.sample_rate, val);
         }
-        if (auto p = changed_params.Param(ParamIndex::ChorusHighpass)) {
+        if (auto p = changes.changed_params.Param(ParamIndex::ChorusHighpass)) {
             auto const val = p->ProjectedValue();
             m_highpass_filter_coeffs.Set(rbj_filter::Type::HighPass, context.sample_rate, val, 1, 0);
         }
-        if (auto p = changed_params.Param(ParamIndex::ChorusDepth)) m_depth_01 = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::ChorusWet)) m_wet_dry.SetWet(p->ProjectedValue());
-        if (auto p = changed_params.Param(ParamIndex::ChorusDry)) m_wet_dry.SetDry(p->ProjectedValue());
+        if (auto p = changes.changed_params.Param(ParamIndex::ChorusDepth)) m_depth_01 = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::ChorusWet))
+            m_wet_dry.SetWet(p->ProjectedValue());
+        if (auto p = changes.changed_params.Param(ParamIndex::ChorusDry))
+            m_wet_dry.SetDry(p->ProjectedValue());
     }
 
     EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,

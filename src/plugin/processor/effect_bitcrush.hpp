@@ -41,6 +41,17 @@ class BitCrush final : public Effect {
     BitCrush() : Effect(EffectType::BitCrush) {}
 
   private:
+    void ProcessChangesInternal(ProcessBlockChanges const& changes, AudioProcessingContext const&) override {
+        if (auto p = changes.changed_params.Param(ParamIndex::BitCrushBits))
+            m_bit_depth = p->ValueAsInt<int>();
+        if (auto p = changes.changed_params.Param(ParamIndex::BitCrushBitRate))
+            m_bit_rate = (int)(p->ProjectedValue() + 0.5f);
+        if (auto p = changes.changed_params.Param(ParamIndex::BitCrushWet))
+            m_wet_dry.SetWet(p->ProjectedValue());
+        if (auto p = changes.changed_params.Param(ParamIndex::BitCrushDry))
+            m_wet_dry.SetDry(p->ProjectedValue());
+    }
+
     EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
                                      AudioProcessingContext const& context,
                                      ExtraProcessingContext) override {
@@ -53,14 +64,6 @@ class BitCrush final : public Effect {
                 return m_wet_dry.MixStereo(context, wet, in);
             },
             context);
-    }
-
-    void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const&) override {
-        if (auto p = changed_params.Param(ParamIndex::BitCrushBits)) m_bit_depth = p->ValueAsInt<int>();
-        if (auto p = changed_params.Param(ParamIndex::BitCrushBitRate))
-            m_bit_rate = (int)(p->ProjectedValue() + 0.5f);
-        if (auto p = changed_params.Param(ParamIndex::BitCrushWet)) m_wet_dry.SetWet(p->ProjectedValue());
-        if (auto p = changed_params.Param(ParamIndex::BitCrushDry)) m_wet_dry.SetDry(p->ProjectedValue());
     }
 
     void ResetInternal() override { m_wet_dry.Reset(); }

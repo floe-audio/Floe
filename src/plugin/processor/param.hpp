@@ -30,30 +30,29 @@ struct Parameter {
 };
 
 template <usize k_num_params>
-class ChangedParamsTemplate {
-  public:
+struct ChangedParamsTemplate {
     using IndexType = Conditional<k_num_params == k_num_parameters, ParamIndex, LayerParamIndex>;
 
     ChangedParamsTemplate(StaticSpan<Parameter const, k_num_params> params, Bitset<k_num_params> changed)
-        : m_params(params)
-        , m_changed(changed) {}
+        : params(params)
+        , changed(changed) {}
 
     Parameter const* Param(IndexType index) const {
         auto const i = ToInt(index);
-        return m_changed.Get(i) ? &m_params[i] : nullptr;
+        return changed.Get(i) ? &params[i] : nullptr;
     }
 
     template <usize k_result_size>
     ChangedParamsTemplate<k_result_size> Subsection(usize offset) {
-        return {m_params.data + offset, m_changed.template Subsection<k_result_size>(offset)};
+        return {params.data + offset, changed.template Subsection<k_result_size>(offset)};
     }
 
-    bool Changed(IndexType index) const { return m_changed.Get((int)index); }
+    bool Changed(IndexType index) const { return changed.Get((int)index); }
 
-    auto Params() { return m_params; }
+    auto Params() { return params; }
 
-    StaticSpan<Parameter const, k_num_params> m_params;
-    Bitset<k_num_params> m_changed;
+    StaticSpan<Parameter const, k_num_params> params;
+    Bitset<k_num_params> changed;
 };
 
 using ChangedParams = ChangedParamsTemplate<k_num_parameters>;

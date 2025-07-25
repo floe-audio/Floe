@@ -73,26 +73,19 @@ enum class EffectProcessResult {
     ProcessingTail, // processing needed
 };
 
-// Base class for effects.
-// The subclass can either override ProcessFrame or ProcessBlock
-class Effect {
-  public:
+struct Effect {
     Effect(EffectType type) : type(type) {}
 
     virtual ~Effect() {}
 
-    // audio-thread
-    void OnParamChange(ChangedParams changed_params, AudioProcessingContext const& context) {
-        if (auto p = changed_params.Param(k_effect_info[(u32)type].on_param_index))
-            mix = p->ValueAsBool() ? 1.0f : 0.0f;
-        OnParamChangeInternal(changed_params, context);
-    }
-
     // main-thread but never while any audio-thread function is being called
     virtual void PrepareToPlay(AudioProcessingContext const&) {}
 
-    // audio-thread
-    virtual void SetTempo(AudioProcessingContext const&) {}
+    void ProcessChanges(ProcessBlockChanges const& changes, AudioProcessingContext const& context) {
+        if (auto p = changes.changed_params.Param(k_effect_info[(u32)type].on_param_index))
+            mix = p->ValueAsBool() ? 1.0f : 0.0f;
+        ProcessChangesInternal(changes, context);
+    }
 
     struct ExtraProcessingContext {
         // The effect may use these buffers for temporary storage.
@@ -103,9 +96,8 @@ class Effect {
     };
 
     // audio-thread
-    virtual EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
-                                             AudioProcessingContext const& context,
-                                             ExtraProcessingContext extra_context) = 0;
+    virtual EffectProcessResult
+    ProcessBlock(Span<StereoAudioFrame>, AudioProcessingContext const&, ExtraProcessingContext) = 0;
 
     // Helper function for simple effects that only need to process one frame at a time. Wraps the individual
     // frame processing in the necessary block processing machinery.
@@ -139,10 +131,9 @@ class Effect {
         return LinearInterpolate(mix_smoother.LowPass(mix, context.one_pole_smoothing_cutoff_10ms), dry, wet);
     }
 
-    virtual void OnParamChangeInternal(ChangedParams changed_params,
-                                       AudioProcessingContext const& context) = 0;
-
     virtual void ResetInternal() {}
+    virtual void ProcessChangesInternal(ProcessBlockChanges const& changes,
+                                        AudioProcessingContext const& context) = 0;
 
     EffectType const type;
     f32 mix = 0;

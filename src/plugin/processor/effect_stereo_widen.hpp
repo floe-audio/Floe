@@ -29,6 +29,19 @@ inline StereoAudioFrame DoStereoWiden(f32 width, StereoAudioFrame in) {
 struct StereoWiden final : public Effect {
     StereoWiden() : Effect(EffectType::StereoWiden) {}
 
+    void ProcessChangesInternal(ProcessBlockChanges const& changes, AudioProcessingContext const&) override {
+        if (auto p = changes.changed_params.Param(ParamIndex::StereoWidenWidth)) {
+            auto const val = p->ProjectedValue();
+            f32 v = 0;
+            if (val < 0)
+                v = 1 - (-(val));
+            else
+                v = MapFrom01(val, 1, 4);
+
+            width = v;
+        }
+    }
+
     EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
                                      AudioProcessingContext const& context,
                                      ExtraProcessingContext) override {
@@ -39,19 +52,6 @@ struct StereoWiden final : public Effect {
                                      frame);
             },
             context);
-    }
-
-    void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const&) override {
-        if (auto p = changed_params.Param(ParamIndex::StereoWidenWidth)) {
-            auto const val = p->ProjectedValue();
-            f32 v = 0;
-            if (val < 0)
-                v = 1 - (-(val));
-            else
-                v = MapFrom01(val, 1, 4);
-
-            width = v;
-        }
     }
 
     void ResetInternal() override { width_smoother.Reset(); }

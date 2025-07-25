@@ -22,10 +22,30 @@ class Phaser final : public Effect {
         vitfx::phaser::SetSampleRate(*phaser, (int)context.sample_rate);
     }
 
+    void ProcessChangesInternal(ProcessBlockChanges const& changes, AudioProcessingContext const&) override {
+        using namespace vitfx::phaser;
+
+        if (auto p = changes.changed_params.Param(ParamIndex::PhaserFeedback))
+            args.params[ToInt(Params::FeedbackAmount)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::PhaserModFreqHz))
+            args.params[ToInt(Params::FrequencyHz)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::PhaserCenterSemitones))
+            args.params[ToInt(Params::CenterSemitones)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::PhaserShape))
+            args.params[ToInt(Params::Blend)] = p->ProjectedValue() * 2;
+        if (auto p = changes.changed_params.Param(ParamIndex::PhaserModDepth))
+            args.params[ToInt(Params::ModDepthSemitones)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::PhaserStereoAmount))
+            args.params[ToInt(Params::PhaseOffset)] = p->ProjectedValue() / 2;
+        if (auto p = changes.changed_params.Param(ParamIndex::PhaserMix))
+            args.params[ToInt(Params::Mix)] = p->ProjectedValue();
+    }
+
     EffectProcessResult ProcessBlock(Span<StereoAudioFrame> io_frames,
                                      AudioProcessingContext const& context,
                                      ExtraProcessingContext extra_context) override {
         ZoneNamedN(process_block, "Phaser ProcessBlock", true);
+
         if (!ShouldProcessBlock()) return EffectProcessResult::Done;
 
         auto wet = extra_context.scratch_buffers.buf1.Interleaved();
@@ -52,25 +72,6 @@ class Phaser final : public Effect {
             io_frames[frame_index] = MixOnOffSmoothing(context, wet[frame_index], io_frames[frame_index]);
 
         return EffectProcessResult::Done;
-    }
-
-    void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const&) override {
-        using namespace vitfx::phaser;
-
-        if (auto p = changed_params.Param(ParamIndex::PhaserFeedback))
-            args.params[ToInt(Params::FeedbackAmount)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::PhaserModFreqHz))
-            args.params[ToInt(Params::FrequencyHz)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::PhaserCenterSemitones))
-            args.params[ToInt(Params::CenterSemitones)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::PhaserShape))
-            args.params[ToInt(Params::Blend)] = p->ProjectedValue() * 2;
-        if (auto p = changed_params.Param(ParamIndex::PhaserModDepth))
-            args.params[ToInt(Params::ModDepthSemitones)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::PhaserStereoAmount))
-            args.params[ToInt(Params::PhaseOffset)] = p->ProjectedValue() / 2;
-        if (auto p = changed_params.Param(ParamIndex::PhaserMix))
-            args.params[ToInt(Params::Mix)] = p->ProjectedValue();
     }
 
     vitfx::phaser::Phaser* phaser {};

@@ -24,23 +24,85 @@ class Delay final : public Effect {
         vitfx::delay::SetSampleRate(*delay, (int)context.sample_rate);
     }
 
-    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> io_frames,
+    void ProcessChangesInternal(ProcessBlockChanges const& changes,
+                                AudioProcessingContext const& context) override {
+        using namespace vitfx::delay;
+        bool update_time_l = false;
+        bool update_time_r = false;
+
+        if (auto p = changes.changed_params.Param(ParamIndex::DelayTimeSyncSwitch))
+            is_synced = p->ValueAsBool();
+
+        if (auto p = changes.changed_params.Param(ParamIndex::DelayFeedback))
+            args.params[ToInt(Params::Feedback)] = p->ProjectedValue();
+
+        if (auto p = changes.changed_params.Param(ParamIndex::DelayTimeSyncedL)) {
+            synced_time_l = ToSyncedTime(p->ValueAsInt<param_values::DelaySyncedTime>());
+            update_time_l = true;
+        }
+
+        if (auto p = changes.changed_params.Param(ParamIndex::DelayTimeSyncedR)) {
+            synced_time_r = ToSyncedTime(p->ValueAsInt<param_values::DelaySyncedTime>());
+            update_time_r = true;
+        }
+
+        if (auto p = changes.changed_params.Param(ParamIndex::DelayTimeLMs)) {
+            free_time_hz_l = MsToHz(p->ProjectedValue());
+            update_time_l = true;
+        }
+
+        if (auto p = changes.changed_params.Param(ParamIndex::DelayTimeRMs)) {
+            free_time_hz_r = MsToHz(p->ProjectedValue());
+            update_time_r = true;
+        }
+
+        if (auto p = changes.changed_params.Param(ParamIndex::DelayMode)) {
+            auto mode = p->ValueAsInt<param_values::DelayMode>();
+            args.params[ToInt(Params::Mode)] = (f32)mode;
+        }
+
+        if (auto p = changes.changed_params.Param(ParamIndex::DelayFilterCutoffSemitones))
+            args.params[ToInt(Params::FilterCutoffSemitones)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::DelayFilterSpread))
+            args.params[ToInt(Params::FilterSpread)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::DelayMix))
+            args.params[ToInt(Params::Mix)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::DelayFeedback))
+            args.params[ToInt(Params::Feedback)] = p->ProjectedValue();
+
+        if (is_synced && changes.tempo_changed) {
+            update_time_l = true;
+            update_time_r = true;
+        }
+
+        if (update_time_l) {
+            args.params[ToInt(Params::TimeLeftHz)] =
+                is_synced ? SyncedTimeToHz(context.tempo, synced_time_l) : free_time_hz_l;
+        }
+        if (update_time_r) {
+            args.params[ToInt(Params::TimeRightHz)] =
+                is_synced ? SyncedTimeToHz(context.tempo, synced_time_r) : free_time_hz_r;
+        }
+    }
+
+    EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
                                      AudioProcessingContext const& context,
                                      ExtraProcessingContext extra_context) override {
         ZoneNamedN(process_block, "Delay ProcessBlock", true);
+
         if (!ShouldProcessBlock()) return EffectProcessResult::Done;
 
         auto wet = extra_context.scratch_buffers.buf1.Interleaved();
-        wet.size = io_frames.size;
-        CopyMemory(wet.data, io_frames.data, io_frames.size * sizeof(StereoAudioFrame));
+        wet.size = frames.size;
+        CopyMemory(wet.data, frames.data, frames.size * sizeof(StereoAudioFrame));
 
-        auto num_frames = (u32)io_frames.size;
+        auto num_frames = (u32)frames.size;
         u32 pos = 0;
         while (num_frames) {
             u32 const chunk_size = Min(num_frames, 64u);
 
             args.num_frames = (int)chunk_size;
-            args.in_interleaved = (f32*)(io_frames.data + pos);
+            args.in_interleaved = (f32*)(frames.data + pos);
             args.out_interleaved = (f32*)(wet.data + pos);
 
             vitfx::delay::Process(*delay, args);
@@ -49,11 +111,11 @@ class Delay final : public Effect {
             pos += chunk_size;
         }
 
-        for (auto const frame_index : Range((u32)io_frames.size))
-            io_frames[frame_index] = MixOnOffSmoothing(context, wet[frame_index], io_frames[frame_index]);
+        for (auto const frame_index : Range((u32)frames.size))
+            frames[frame_index] = MixOnOffSmoothing(context, wet[frame_index], frames[frame_index]);
 
         // check for silence on the output
-        UpdateSilentSeconds(silent_seconds, io_frames, context.sample_rate);
+        UpdateSilentSeconds(silent_seconds, frames, context.sample_rate);
 
         return IsSilent() ? EffectProcessResult::Done : EffectProcessResult::ProcessingTail;
     }
@@ -87,66 +149,6 @@ class Delay final : public Effect {
         }
         PanicIfReached();
         return {};
-    }
-
-    void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const& context) override {
-        using namespace vitfx::delay;
-        bool update_time_l = false;
-        bool update_time_r = false;
-
-        if (auto p = changed_params.Param(ParamIndex::DelayTimeSyncSwitch)) is_synced = p->ValueAsBool();
-
-        if (auto p = changed_params.Param(ParamIndex::DelayFeedback))
-            args.params[ToInt(Params::Feedback)] = p->ProjectedValue();
-
-        if (auto p = changed_params.Param(ParamIndex::DelayTimeSyncedL)) {
-            synced_time_l = ToSyncedTime(p->ValueAsInt<param_values::DelaySyncedTime>());
-            update_time_l = true;
-        }
-
-        if (auto p = changed_params.Param(ParamIndex::DelayTimeSyncedR)) {
-            synced_time_r = ToSyncedTime(p->ValueAsInt<param_values::DelaySyncedTime>());
-            update_time_r = true;
-        }
-
-        if (auto p = changed_params.Param(ParamIndex::DelayTimeLMs)) {
-            free_time_hz_l = MsToHz(p->ProjectedValue());
-            update_time_l = true;
-        }
-
-        if (auto p = changed_params.Param(ParamIndex::DelayTimeRMs)) {
-            free_time_hz_r = MsToHz(p->ProjectedValue());
-            update_time_r = true;
-        }
-
-        if (auto p = changed_params.Param(ParamIndex::DelayMode)) {
-            auto mode = p->ValueAsInt<param_values::DelayMode>();
-            args.params[ToInt(Params::Mode)] = (f32)mode;
-        }
-
-        if (auto p = changed_params.Param(ParamIndex::DelayFilterCutoffSemitones))
-            args.params[ToInt(Params::FilterCutoffSemitones)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::DelayFilterSpread))
-            args.params[ToInt(Params::FilterSpread)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::DelayMix))
-            args.params[ToInt(Params::Mix)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::DelayFeedback))
-            args.params[ToInt(Params::Feedback)] = p->ProjectedValue();
-
-        if (update_time_l) {
-            args.params[ToInt(Params::TimeLeftHz)] =
-                is_synced ? SyncedTimeToHz(context.tempo, synced_time_l) : free_time_hz_l;
-        }
-        if (update_time_r) {
-            args.params[ToInt(Params::TimeRightHz)] =
-                is_synced ? SyncedTimeToHz(context.tempo, synced_time_r) : free_time_hz_r;
-        }
-    }
-
-    void SetTempo(AudioProcessingContext const& context) override {
-        if (!is_synced) return;
-        args.params[ToInt(vitfx::delay::Params::TimeLeftHz)] = SyncedTimeToHz(context.tempo, synced_time_l);
-        args.params[ToInt(vitfx::delay::Params::TimeRightHz)] = SyncedTimeToHz(context.tempo, synced_time_r);
     }
 
     bool IsSilent() const {

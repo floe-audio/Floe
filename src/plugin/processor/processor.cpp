@@ -122,6 +122,7 @@ bool CcControllerMovedParamRecently(AudioProcessor const& processor, ParamIndex 
 }
 
 void AddPersistentCcToParamMapping(prefs::Preferences& prefs, u8 cc_num, u32 param_id) {
+    ASSERT(g_is_logical_main_thread);
     ASSERT(cc_num > 0 && cc_num <= 127);
     ASSERT(ParamIdToIndex(param_id));
     prefs::AddValue(prefs,
@@ -130,12 +131,16 @@ void AddPersistentCcToParamMapping(prefs::Preferences& prefs, u8 cc_num, u32 par
 }
 
 void RemovePersistentCcToParamMapping(prefs::Preferences& prefs, u8 cc_num, u32 param_id) {
+    ASSERT(g_is_logical_main_thread);
+
     prefs::RemoveValue(prefs,
                        prefs::SectionedKey {prefs::key::section::k_cc_to_param_id_map_section, (s64)cc_num},
                        (s64)param_id);
 }
 
 Bitset<128> PersistentCcsForParam(prefs::PreferencesTable const& prefs, u32 param_id) {
+    ASSERT(g_is_logical_main_thread);
+
     Bitset<128> result {};
 
     for (auto const [key_union, value_list, _] : prefs) {
@@ -484,32 +489,35 @@ void RandomiseAllParameterValues(AudioProcessor& processor) {
     ProcessorRandomiseAllParamsInternal(processor, false);
 }
 
-static void ProcessorOnParamChange(AudioProcessor& processor, ChangedParams changed_params) {
+static void ProcessorHandleChanges(AudioProcessor& processor, ProcessBlockChanges changes) {
+    if (changes.changed_params.changed.NumSet() == 0 && !changes.tempo_changed && !changes.note_events.size)
+        return;
+
     ZoneScoped;
     ZoneValue(changed_params.m_changed.NumSet());
 
-    if (auto param = changed_params.Param(ParamIndex::MasterVolume))
+    if (auto param = changes.changed_params.Param(ParamIndex::MasterVolume))
         processor.master_vol = param->ProjectedValue();
 
-    if (auto param = changed_params.Param(ParamIndex::MasterTimbre)) {
-        processor.timbre_value_01 = param->ProjectedValue();
+    if (auto param = changes.changed_params.Param(ParamIndex::MasterTimbre)) {
+        processor.shared_layer_params.timbre_value_01 = param->ProjectedValue();
         for (auto& voice : processor.voice_pool.EnumerateActiveVoices())
-            UpdateXfade(voice, processor.timbre_value_01, false);
+            UpdateXfade(voice, processor.shared_layer_params.timbre_value_01, false);
     }
 
-    if (auto param = changed_params.Param(ParamIndex::MasterVelocity))
-        processor.velocity_to_volume_01 = param->ProjectedValue();
+    if (auto param = changes.changed_params.Param(ParamIndex::MasterVelocity))
+        processor.shared_layer_params.velocity_to_volume_01 = param->ProjectedValue();
 
     {
         bool mute_or_solo_changed = false;
         for (auto const layer_index : Range(k_num_layers)) {
-            if (auto param =
-                    changed_params.Param(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::Mute))) {
+            if (auto param = changes.changed_params.Param(
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::Mute))) {
                 processor.mute.SetToValue(layer_index, param->ValueAsBool());
                 mute_or_solo_changed = true;
             }
-            if (auto param =
-                    changed_params.Param(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::Solo))) {
+            if (auto param = changes.changed_params.Param(
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::Solo))) {
                 processor.solo.SetToValue(layer_index, param->ValueAsBool());
                 mute_or_solo_changed = true;
             }
@@ -518,15 +526,19 @@ static void ProcessorOnParamChange(AudioProcessor& processor, ChangedParams chan
     }
 
     for (auto [index, l] : Enumerate(processor.layer_processors)) {
-        OnParamChange(
-            l,
-            processor.audio_processing_context,
-            processor.voice_pool,
-            changed_params.Subsection<k_num_layer_parameters>(0 + (index * k_num_layer_parameters)));
+        ProcessLayerChanges(l,
+                            processor.audio_processing_context,
+                            {
+                                .changed_params = changes.changed_params.Subsection<k_num_layer_parameters>(
+                                    0 + (index * k_num_layer_parameters)),
+                                .tempo_changed = changes.tempo_changed,
+                                .note_events = changes.note_events,
+                            },
+                            processor.voice_pool);
     }
 
     for (auto effect : processor.effects_ordered_by_type)
-        effect->OnParamChange(changed_params, processor.audio_processing_context);
+        effect->ProcessChanges(changes, processor.audio_processing_context);
 }
 
 void ParameterJustStartedMoving(AudioProcessor& processor, ParamIndex index) {
@@ -625,33 +637,6 @@ static EffectsArray OrderEffectsToEnum(EffectsArray e) {
             ASSERT(effect != nullptr);
     Sort(e, [](Effect const* a, Effect const* b) { return a->type < b->type; });
     return e;
-}
-
-static void HandleNoteOn(AudioProcessor& processor, MidiChannelNote note, f32 note_vel, u32 offset) {
-    for (auto& layer : processor.layer_processors) {
-        LayerHandleNoteOn(layer,
-                          processor.audio_processing_context,
-                          processor.voice_pool,
-                          note,
-                          note_vel,
-                          offset,
-                          processor.timbre_value_01,
-                          processor.velocity_to_volume_01);
-    }
-}
-
-static void
-HandleNoteOff(AudioProcessor& processor, MidiChannelNote note, f32 velocity, bool triggered_by_cc64) {
-    for (auto& layer : processor.layer_processors) {
-        LayerHandleNoteOff(layer,
-                           processor.audio_processing_context,
-                           processor.voice_pool,
-                           note,
-                           velocity,
-                           triggered_by_cc64,
-                           processor.timbre_value_01,
-                           processor.velocity_to_volume_01);
-    }
 }
 
 static void FlushEventsForAudioThread(AudioProcessor& processor) {
@@ -763,14 +748,13 @@ StateSnapshot MakeStateSnapshot(AudioProcessor const& processor) {
     return result;
 }
 
-inline void ResetProcessor(AudioProcessor& processor, Bitset<k_num_parameters> processing_change) {
+inline void ResetProcessor(AudioProcessor& processor, ProcessBlockChanges& changes) {
     ZoneScoped;
     processor.whole_engine_volume_fade.ForceSetFullVolume();
 
     // Set pending parameter changes
-    processing_change |= Exchange(processor.pending_param_changes, {});
-    if (processing_change.AnyValuesSet())
-        ProcessorOnParamChange(processor, {processor.params.data, processing_change});
+    changes.changed_params.changed |= Exchange(processor.pending_param_changes, {});
+    ProcessorHandleChanges(processor, changes);
 
     // Discard any smoothing
     processor.master_vol_smoother.Reset();
@@ -829,9 +813,11 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
                                            processor.audio_data_allocator);
     }
 
-    Bitset<k_num_parameters> changed_params;
-    changed_params.SetAll();
-    ResetProcessor(processor, changed_params);
+    ProcessBlockChanges changes {
+        .changed_params = {processor.params, {}},
+    };
+    changes.changed_params.changed.SetAll();
+    ResetProcessor(processor, changes);
 
     processor.activated = true;
     return true;
@@ -840,7 +826,8 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
 static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                                   clap_event_header const& event,
                                   clap_output_events const& out,
-                                  ProcessorListener::ChangeFlags& change_flags) {
+                                  ProcessorListener::ChangeFlags& change_flags,
+                                  ProcessBlockChanges& changes) {
     // IMPROVE: support per-param modulation and automation - each param can opt in to it individually
 
     Bitset<k_num_parameters> changed_params {};
@@ -854,7 +841,13 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             MidiChannelNote const chan_note {.note = (u7)note.key, .channel = (u4)note.channel};
 
             processor.audio_processing_context.midi_note_state.NoteOn(chan_note, (f32)note.velocity);
-            HandleNoteOn(processor, chan_note, (f32)note.velocity, note.header.time);
+            dyn::Append(changes.note_events,
+                        {
+                            .velocity = (f32)note.velocity,
+                            .offset = event.time,
+                            .note = chan_note,
+                            .type = NoteEvent::Type::On,
+                        });
             break;
         }
         case CLAP_EVENT_NOTE_OFF: {
@@ -865,7 +858,13 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             MidiChannelNote const chan_note {.note = (u7)note.key, .channel = (u4)note.channel};
 
             processor.audio_processing_context.midi_note_state.NoteOff(chan_note);
-            HandleNoteOff(processor, chan_note, (f32)note.velocity, false);
+            dyn::Append(changes.note_events,
+                        {
+                            .velocity = (f32)note.velocity,
+                            .offset = event.time,
+                            .note = chan_note,
+                            .type = NoteEvent::Type::Off,
+                        });
             break;
         }
         case CLAP_EVENT_NOTE_CHOKE: {
@@ -930,12 +929,24 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                 case MidiMessageType::NoteOn: {
                     processor.audio_processing_context.midi_note_state.NoteOn(message.ChannelNote(),
                                                                               message.Velocity() / 127.0f);
-                    HandleNoteOn(processor, message.ChannelNote(), message.Velocity() / 127.0f, event.time);
+                    dyn::Append(changes.note_events,
+                                {
+                                    .velocity = message.Velocity() / 127.0f,
+                                    .offset = event.time,
+                                    .note = message.ChannelNote(),
+                                    .type = NoteEvent::Type::On,
+                                });
                     break;
                 }
                 case MidiMessageType::NoteOff: {
                     processor.audio_processing_context.midi_note_state.NoteOff(message.ChannelNote());
-                    HandleNoteOff(processor, message.ChannelNote(), message.Velocity() / 127.0f, false);
+                    dyn::Append(changes.note_events,
+                                {
+                                    .velocity = message.Velocity() / 127.0f,
+                                    .offset = event.time,
+                                    .note = message.ChannelNote(),
+                                    .type = NoteEvent::Type::Off,
+                                });
                     break;
                 }
                 case MidiMessageType::PitchWheel: {
@@ -963,8 +974,15 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                             auto const notes_to_end =
                                 processor.audio_processing_context.midi_note_state.HandleSustainPedalOff(
                                     channel);
-                            notes_to_end.ForEachSetBit([&processor, channel](usize note) {
-                                HandleNoteOff(processor, {CheckedCast<u7>(note), channel}, 1, true);
+                            notes_to_end.ForEachSetBit([&](usize note) {
+                                dyn::Append(changes.note_events,
+                                            NoteEvent {
+                                                .velocity = 0.0f,
+                                                .offset = event.time,
+                                                .note = {CheckedCast<u7>(note), channel},
+                                                .created_by_cc64 = true,
+                                                .type = NoteEvent::Type::Off,
+                                            });
                             });
                         } else {
                             processor.audio_processing_context.midi_note_state.HandleSustainPedalOn(channel);
@@ -1040,13 +1058,11 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             break;
         }
     }
-
-    if (changed_params.AnyValuesSet()) ProcessorOnParamChange(processor, {processor.params, changed_params});
 }
 
 static void ConsumeParamEventsFromHost(Parameters& params,
                                        clap_input_events const& events,
-                                       Bitset<k_num_parameters>& params_changed) {
+                                       ProcessBlockChanges& changes) {
     ZoneScoped;
     // IMPROVE: support sample-accurate value changes
     for (auto const event_index : Range(events.size(&events))) {
@@ -1063,7 +1079,7 @@ static void ConsumeParamEventsFromHost(Parameters& params,
 
             if (auto index = ParamIdToIndex(value->param_id)) {
                 params[ToInt(*index)].SetLinearValue((f32)value->value);
-                params_changed.Set(ToInt(*index));
+                changes.changed_params.changed.Set(ToInt(*index));
             }
         }
     }
@@ -1071,7 +1087,7 @@ static void ConsumeParamEventsFromHost(Parameters& params,
 
 static void ConsumeParamEventsFromGui(AudioProcessor& processor,
                                       clap_output_events const& out,
-                                      Bitset<k_num_parameters>& params_changed) {
+                                      ProcessBlockChanges& changes) {
     ZoneScoped;
     for (auto const& e : processor.param_events_for_audio_thread.PopAll()) {
         switch (e.tag) {
@@ -1088,9 +1104,9 @@ static void ConsumeParamEventsFromGui(AudioProcessor& processor,
                 event.key = -1;
                 event.value = (f64)value.value;
                 event.param_id = ParamIndexToId(value.param);
-                if (!value.host_should_not_record) event.header.flags |= CLAP_EVENT_DONT_RECORD;
+                if (value.host_should_not_record) event.header.flags |= CLAP_EVENT_DONT_RECORD;
                 out.try_push(&out, (clap_event_header const*)&event);
-                params_changed.Set(ToInt(value.param));
+                changes.changed_params.changed.Set(ToInt(value.param));
                 break;
             }
             case EventForAudioThreadType::ParamGestureBegin: {
@@ -1127,15 +1143,16 @@ static void ConsumeParamEventsFromGui(AudioProcessor& processor,
 
 static void
 FlushParameterEvents(AudioProcessor& processor, clap_input_events const& in, clap_output_events const& out) {
-    Bitset<k_num_parameters> params_changed {};
-    ConsumeParamEventsFromHost(processor.params, in, params_changed);
-    ConsumeParamEventsFromGui(processor, out, params_changed);
+    ProcessBlockChanges changes {
+        .changed_params = {processor.params.data, Bitset<k_num_parameters>()},
+    };
+    ConsumeParamEventsFromHost(processor.params, in, changes);
+    ConsumeParamEventsFromGui(processor, out, changes);
 
     if (processor.activated) {
-        if (params_changed.AnyValuesSet()) {
-            ProcessorOnParamChange(processor, {processor.params, params_changed});
+        ProcessorHandleChanges(processor, changes);
+        if (changes.changed_params.changed.AnyValuesSet())
             processor.listener.OnProcessorChange(ProcessorListener::ParamChanged);
-        }
     } else {
         // If we are not activated, then we don't need to call processor param change because the
         // state of the processing plugin will be reset activate()
@@ -1152,27 +1169,23 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     clap_process_status result = CLAP_PROCESS_CONTINUE;
     auto const num_sample_frames = process.frames_count;
 
+    ProcessBlockChanges changes {
+        .changed_params = {processor.params.data, Bitset<k_num_parameters>()},
+    };
+
     // Handle transport changes
     {
         // IMPROVE: support per-sample tempo changes by processing CLAP_EVENT_TRANSPORT events
 
-        bool tempo_changed = false;
         if (process.transport && (process.transport->flags & CLAP_TRANSPORT_HAS_TEMPO) &&
             process.transport->tempo != processor.audio_processing_context.tempo &&
             process.transport->tempo > 0) {
             processor.audio_processing_context.tempo = process.transport->tempo;
-            tempo_changed = true;
+            changes.tempo_changed = true;
         }
         if (processor.audio_processing_context.tempo <= 0) {
             processor.audio_processing_context.tempo = 120;
-            tempo_changed = true;
-        }
-
-        if (tempo_changed) {
-            for (auto fx : processor.effects_ordered_by_type)
-                fx->SetTempo(processor.audio_processing_context);
-            for (auto& layer : processor.layer_processors)
-                SetTempo(layer, processor.voice_pool, processor.audio_processing_context);
+            changes.tempo_changed = true;
         }
     }
 
@@ -1180,7 +1193,6 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     constexpr f32 k_fade_in_ms = 10;
 
     auto internal_events = processor.events_for_audio_thread.PopAll();
-    Bitset<k_num_parameters> params_changed {};
     Array<bool, k_num_layers> layers_changed {};
     bool mark_convolution_for_fade_out = false;
     ProcessorListener::ChangeFlags change_flags = {};
@@ -1193,8 +1205,8 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         if (change_flags) processor.listener.OnProcessorChange(change_flags);
     };
 
-    ConsumeParamEventsFromGui(processor, *process.out_events, params_changed);
-    ConsumeParamEventsFromHost(processor.params, *process.in_events, params_changed);
+    ConsumeParamEventsFromGui(processor, *process.out_events, changes);
+    ConsumeParamEventsFromHost(processor.params, *process.in_events, changes);
 
     Optional<AudioProcessor::FadeType> new_fade_type {};
     for (auto const& e : internal_events) {
@@ -1209,7 +1221,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
                 break;
             }
             case EventForAudioThreadType::ReloadAllAudioState: {
-                params_changed.SetAll();
+                changes.changed_params.changed.SetAll();
                 new_fade_type = AudioProcessor::FadeType::OutAndRestartVoices;
                 for (auto& l : layers_changed)
                     l = true;
@@ -1227,7 +1239,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         }
     }
 
-    if (params_changed.Get(ToInt(ParamIndex::ConvolutionReverbOn)))
+    if (changes.changed_params.changed.Get(ToInt(ParamIndex::ConvolutionReverbOn)))
         change_flags |= ProcessorListener::IrChanged;
 
     if (new_fade_type) {
@@ -1238,17 +1250,17 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     }
 
     if (processor.peak_meter.Silent() && !processor.fx_need_another_frame_of_processing) {
-        ResetProcessor(processor, params_changed);
-        params_changed = {};
+        ResetProcessor(processor, changes);
+        changes.changed_params.changed.ClearAll();
     }
 
     switch (processor.whole_engine_volume_fade.GetCurrentState()) {
         case VolumeFade::State::Silent: {
-            ResetProcessor(processor, params_changed);
+            ResetProcessor(processor, changes);
 
             // We have just done a hard reset on everything, any other state change is no longer
             // valid.
-            params_changed = {};
+            changes.changed_params.changed.ClearAll();
 
             if (processor.whole_engine_volume_fade_type == AudioProcessor::FadeType::OutAndRestartVoices) {
                 processor.voice_pool.EndAllVoicesInstantly();
@@ -1264,16 +1276,53 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         case VolumeFade::State::FadeOut: {
             // If we are going to be fading out anyways, let's apply param changes at that time too to
             // avoid any pops
-            processor.pending_param_changes |= params_changed;
-            params_changed = {};
+            processor.pending_param_changes |= changes.changed_params.changed;
+            changes.changed_params.changed.ClearAll();
             break;
         }
         default: break;
     }
 
-    if (params_changed.AnyValuesSet()) {
-        ProcessorOnParamChange(processor, {processor.params.data, params_changed});
-        change_flags |= ProcessorListener::ParamChanged;
+    {
+        for (auto const i : Range(process.in_events->size(process.in_events))) {
+            auto e = process.in_events->get(process.in_events, i);
+            ProcessClapNoteOrMidi(processor, *e, *process.out_events, change_flags, changes);
+        }
+        for (auto& e : internal_events) {
+            switch (e.tag) {
+                case EventForAudioThreadType::StartNote: {
+                    auto const start = e.Get<GuiNoteClicked>();
+                    clap_event_note const note {
+                        .header =
+                            {
+                                .size = sizeof(clap_event_note),
+                                .type = CLAP_EVENT_NOTE_ON,
+                            },
+                        .note_id = -1,
+                        .key = start.key,
+                        .velocity = (f64)start.velocity,
+                    };
+                    ProcessClapNoteOrMidi(processor, note.header, *process.out_events, change_flags, changes);
+                    break;
+                }
+                case EventForAudioThreadType::EndNote: {
+                    auto const end = e.Get<GuiNoteClickReleased>();
+                    clap_event_note const note {
+                        .header =
+                            {
+                                .size = sizeof(clap_event_note),
+                                .type = CLAP_EVENT_NOTE_OFF,
+                            },
+                        .note_id = -1,
+                        .key = end.key,
+                        .velocity = 0.0,
+                    };
+                    ProcessClapNoteOrMidi(processor, note.header, *process.out_events, change_flags, changes);
+                    break;
+                }
+                default: break;
+            }
+        }
     }
 
     // Create new voices for layer if requested. We want to do this after parameters have been updated
@@ -1287,15 +1336,14 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
                     if (restart_layer_bitset & (1 << layer_index)) {
                         for (u8 note_num = 0; note_num <= 127; ++note_num) {
                             if (keys_to_start.Get(note_num)) {
-                                LayerHandleNoteOn(layer,
-                                                  processor.audio_processing_context,
-                                                  processor.voice_pool,
-                                                  {.note = (u7)note_num, .channel = (u4)chan},
-                                                  processor.audio_processing_context.midi_note_state
-                                                      .velocities[chan][note_num],
-                                                  0,
-                                                  processor.timbre_value_01,
-                                                  processor.velocity_to_volume_01);
+                                dyn::Append(changes.note_events,
+                                            NoteEvent {
+                                                .velocity = processor.audio_processing_context.midi_note_state
+                                                                .velocities[chan][note_num],
+                                                .offset = 0,
+                                                .note = {.note = (u7)note_num, .channel = (u4)chan},
+                                                .type = NoteEvent::Type::On,
+                                            });
                             }
                         }
                     }
@@ -1304,38 +1352,8 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         }
     }
 
-    {
-        for (auto const i : Range(process.in_events->size(process.in_events))) {
-            auto e = process.in_events->get(process.in_events, i);
-            ProcessClapNoteOrMidi(processor, *e, *process.out_events, change_flags);
-        }
-        for (auto& e : internal_events) {
-            switch (e.tag) {
-                case EventForAudioThreadType::StartNote: {
-                    auto const start = e.Get<GuiNoteClicked>();
-                    clap_event_note note {};
-                    note.header.type = CLAP_EVENT_NOTE_ON;
-                    note.header.size = sizeof(note);
-                    note.key = start.key;
-                    note.velocity = (f64)start.velocity;
-                    note.note_id = -1;
-                    ProcessClapNoteOrMidi(processor, note.header, *process.out_events, change_flags);
-                    break;
-                }
-                case EventForAudioThreadType::EndNote: {
-                    auto const end = e.Get<GuiNoteClickReleased>();
-                    clap_event_note note {};
-                    note.header.type = CLAP_EVENT_NOTE_OFF;
-                    note.header.size = sizeof(note);
-                    note.key = end.key;
-                    note.note_id = -1;
-                    ProcessClapNoteOrMidi(processor, note.header, *process.out_events, change_flags);
-                    break;
-                }
-                default: break;
-            }
-        }
-    }
+    if (changes.changed_params.changed.AnyValuesSet()) change_flags |= ProcessorListener::ParamChanged;
+    ProcessorHandleChanges(processor, changes);
 
     // Voices and layers
     // ======================================================================================================
@@ -1474,7 +1492,10 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 static void Reset(AudioProcessor& processor) {
     FlushEventsForAudioThread(processor);
     processor.voice_pool.EndAllVoicesInstantly();
-    ResetProcessor(processor, {});
+    ProcessBlockChanges changes {
+        .changed_params = {processor.params.data, Bitset<k_num_parameters>()},
+    };
+    ResetProcessor(processor, changes);
 }
 
 static void OnMainThread(AudioProcessor& processor) {
@@ -1530,9 +1551,11 @@ AudioProcessor::AudioProcessor(clap_host const& host,
         };
     }
 
-    Bitset<k_num_parameters> changed;
-    changed.SetAll();
-    ProcessorOnParamChange(*this, {params.data, changed});
+    ProcessBlockChanges changes {
+        .changed_params = {params.data, Bitset<k_num_parameters>()},
+    };
+    changes.changed_params.changed.SetAll();
+    ProcessorHandleChanges(*this, changes);
 
     if (prefs::GetBool(prefs, SettingDescriptor(ProcessorSetting::DefaultCcParamMappings)))
         for (auto const mapping : k_default_cc_to_param_mapping)

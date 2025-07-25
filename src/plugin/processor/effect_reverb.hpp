@@ -24,10 +24,39 @@ class Reverb final : public Effect {
         vitfx::reverb::SetSampleRate(*reverb, (int)context.sample_rate);
     }
 
+    void ProcessChangesInternal(ProcessBlockChanges const& changes, AudioProcessingContext const&) override {
+        using namespace vitfx::reverb;
+        if (auto p = changes.changed_params.Param(ParamIndex::ReverbDecayTimeMs))
+            args.params[ToInt(Params::DecayTimeSeconds)] = p->ProjectedValue() / 1000.0f;
+        if (auto p = changes.changed_params.Param(ParamIndex::ReverbPreLowPassCutoff))
+            args.params[ToInt(Params::PreLowPassCutoffSemitones)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::ReverbPreHighPassCutoff))
+            args.params[ToInt(Params::PreHighPassCutoffSemitones)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::ReverbLowShelfCutoff))
+            args.params[ToInt(Params::LowShelfCutoffSemitones)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::ReverbLowShelfGain))
+            args.params[ToInt(Params::LowShelfGainDb)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::ReverbHighShelfCutoff))
+            args.params[ToInt(Params::HighShelfCutoffSemitones)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::ReverbHighShelfGain))
+            args.params[ToInt(Params::HighShelfGainDb)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::ReverbChorusAmount))
+            args.params[ToInt(Params::ChorusAmount)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::ReverbChorusFrequency))
+            args.params[ToInt(Params::ChorusFrequency)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::ReverbSize))
+            args.params[ToInt(Params::Size)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.Param(ParamIndex::ReverbDelay))
+            args.params[ToInt(Params::DelaySeconds)] = p->ProjectedValue() / 1000.0f;
+        if (auto p = changes.changed_params.Param(ParamIndex::ReverbMix))
+            args.params[ToInt(Params::Mix)] = p->ProjectedValue();
+    }
+
     EffectProcessResult ProcessBlock(Span<StereoAudioFrame> io_frames,
                                      AudioProcessingContext const& context,
                                      ExtraProcessingContext extra_context) override {
         ZoneNamedN(process_block, "Reverb ProcessBlock", true);
+
         if (!ShouldProcessBlock()) return EffectProcessResult::Done;
 
         UpdateSilentSeconds(silent_seconds, io_frames, context.sample_rate);
@@ -57,34 +86,6 @@ class Reverb final : public Effect {
             io_frames[frame_index] = MixOnOffSmoothing(context, wet[frame_index], io_frames[frame_index]);
 
         return IsSilent() ? EffectProcessResult::Done : EffectProcessResult::ProcessingTail;
-    }
-
-    void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const&) override {
-        using namespace vitfx::reverb;
-        if (auto p = changed_params.Param(ParamIndex::ReverbDecayTimeMs))
-            args.params[ToInt(Params::DecayTimeSeconds)] = p->ProjectedValue() / 1000.0f;
-        if (auto p = changed_params.Param(ParamIndex::ReverbPreLowPassCutoff))
-            args.params[ToInt(Params::PreLowPassCutoffSemitones)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::ReverbPreHighPassCutoff))
-            args.params[ToInt(Params::PreHighPassCutoffSemitones)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::ReverbLowShelfCutoff))
-            args.params[ToInt(Params::LowShelfCutoffSemitones)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::ReverbLowShelfGain))
-            args.params[ToInt(Params::LowShelfGainDb)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::ReverbHighShelfCutoff))
-            args.params[ToInt(Params::HighShelfCutoffSemitones)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::ReverbHighShelfGain))
-            args.params[ToInt(Params::HighShelfGainDb)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::ReverbChorusAmount))
-            args.params[ToInt(Params::ChorusAmount)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::ReverbChorusFrequency))
-            args.params[ToInt(Params::ChorusFrequency)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::ReverbSize))
-            args.params[ToInt(Params::Size)] = p->ProjectedValue();
-        if (auto p = changed_params.Param(ParamIndex::ReverbDelay))
-            args.params[ToInt(Params::DelaySeconds)] = p->ProjectedValue() / 1000.0f;
-        if (auto p = changed_params.Param(ParamIndex::ReverbMix))
-            args.params[ToInt(Params::Mix)] = p->ProjectedValue();
     }
 
     bool IsSilent() const {

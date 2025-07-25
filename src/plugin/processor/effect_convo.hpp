@@ -29,6 +29,16 @@ class ConvolutionReverb final : public Effect {
         bool changed_ir; // Out parameter.
     };
 
+    void ProcessChangesInternal(ProcessBlockChanges const& changes,
+                                AudioProcessingContext const& context) override {
+        if (auto p = changes.changed_params.Param(ParamIndex::ConvolutionReverbHighpass))
+            m_filter_coeffs.Set(rbj_filter::Type::HighPass, context.sample_rate, p->ProjectedValue(), 1, 0);
+        if (auto p = changes.changed_params.Param(ParamIndex::ConvolutionReverbWet))
+            m_wet_dry.SetWet(p->ProjectedValue());
+        if (auto p = changes.changed_params.Param(ParamIndex::ConvolutionReverbDry))
+            m_wet_dry.SetDry(p->ProjectedValue());
+    }
+
     EffectProcessResult ProcessBlock(Span<StereoAudioFrame> frames,
                                      AudioProcessingContext const& context,
                                      ExtraProcessingContext extra_context) override {
@@ -152,15 +162,6 @@ class ConvolutionReverb final : public Effect {
             m_remaining_tail_length = m_max_tail_length;
         else if (m_remaining_tail_length)
             --m_remaining_tail_length;
-    }
-
-    void OnParamChangeInternal(ChangedParams changed_params, AudioProcessingContext const& context) override {
-        if (auto p = changed_params.Param(ParamIndex::ConvolutionReverbHighpass))
-            m_filter_coeffs.Set(rbj_filter::Type::HighPass, context.sample_rate, p->ProjectedValue(), 1, 0);
-        if (auto p = changed_params.Param(ParamIndex::ConvolutionReverbWet))
-            m_wet_dry.SetWet(p->ProjectedValue());
-        if (auto p = changed_params.Param(ParamIndex::ConvolutionReverbDry))
-            m_wet_dry.SetDry(p->ProjectedValue());
     }
 
     void ResetInternal() override {

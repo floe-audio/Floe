@@ -6,6 +6,7 @@
 
 #include "clap/host.h"
 #include "processing_utils/midi.hpp"
+#include "processor/param.hpp"
 
 struct MidiNoteState {
     void NoteOn(MidiChannelNote note, f32 velocity) {
@@ -55,3 +56,21 @@ struct AudioProcessingContext {
     f32 one_pole_smoothing_cutoff_10ms = 1;
     clap_host const& host;
 };
+
+struct NoteEvent {
+    f32 velocity;
+    u32 offset;
+    MidiChannelNote note;
+    bool created_by_cc64;
+    enum class Type : u8 { On, Off } type;
+};
+
+template <usize k_num_params>
+struct ProcessBlockChangesTemplate {
+    ChangedParamsTemplate<k_num_params> changed_params;
+    bool tempo_changed;
+    DynamicArrayBounded<NoteEvent, 100> note_events;
+};
+
+using ProcessBlockChanges = ProcessBlockChangesTemplate<k_num_parameters>;
+using ProcessBlockChangesLayer = ProcessBlockChangesTemplate<k_num_layer_parameters>;

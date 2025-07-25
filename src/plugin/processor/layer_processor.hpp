@@ -18,6 +18,13 @@
 #include "processing_utils/volume_fade.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 
+// These are controlled at the master level, but they are used by the layer processor. We let the master
+// processor manage them but each layer gets a reference.
+struct SharedLayerParams {
+    f32 timbre_value_01 {};
+    f32 velocity_to_volume_01 {};
+};
+
 constexpr u32 k_num_layer_eq_bands = 2;
 
 struct EqBand {
@@ -155,9 +162,13 @@ constexpr auto k_default_velocity_curve_points = Array {
 };
 
 struct LayerProcessor {
-    LayerProcessor(u8 index, StaticSpan<Parameter, k_num_layer_parameters> params, clap_host const& host)
+    LayerProcessor(u8 index,
+                   StaticSpan<Parameter, k_num_layer_parameters> params,
+                   clap_host const& host,
+                   SharedLayerParams& shared_params)
         : params(params)
         , host(host)
+        , shared_params(shared_params)
         , index(index)
         , voice_controller({
               .layer_index = index,
@@ -231,6 +242,7 @@ struct LayerProcessor {
     StaticSpan<Parameter, k_num_layer_parameters> params {nullptr};
 
     clap_host const& host;
+    SharedLayerParams& shared_params;
 
     u8 const index;
     VoiceProcessingController voice_controller;
@@ -301,35 +313,18 @@ struct LayerProcessor {
 };
 
 void SetSilent(LayerProcessor& layer, bool state);
-void SetTempo(LayerProcessor& layer, VoicePool& voice_pool, AudioProcessingContext const& context);
-void OnParamChange(LayerProcessor& layer,
-                   AudioProcessingContext const& context,
-                   VoicePool& voice_pool,
-                   ChangedLayerParams changed_params);
 bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer, VoicePool& voice_pool);
 void PrepareToPlay(LayerProcessor& layer, ArenaAllocator& allocator, AudioProcessingContext const& context);
-
-void LayerHandleNoteOn(LayerProcessor& layer,
-                       AudioProcessingContext const& context,
-                       VoicePool& voice_pool,
-                       MidiChannelNote note,
-                       f32 velocity,
-                       u32 offset,
-                       f32 timbre_param_value_01,
-                       f32 velocity_to_volume_01);
-void LayerHandleNoteOff(LayerProcessor& layer,
-                        AudioProcessingContext const& context,
-                        VoicePool& voice_pool,
-                        MidiChannelNote note,
-                        f32 velocity,
-                        bool triggered_by_cc64,
-                        f32 timbre_param_value_01,
-                        f32 velocity_to_volume_01);
 
 struct LayerProcessResult {
     bool instrument_swapped;
     bool did_any_processing;
 };
+
+void ProcessLayerChanges(LayerProcessor& layer,
+                         AudioProcessingContext const& context,
+                         ProcessBlockChangesLayer changes,
+                         VoicePool& voice_pool);
 
 LayerProcessResult ProcessLayer(LayerProcessor& layer,
                                 AudioProcessingContext const& context,
@@ -337,4 +332,5 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
                                 u32 num_frames,
                                 bool start_fade_out,
                                 Span<f32> buffer);
+
 void ResetLayerAudioProcessing(LayerProcessor& layer);

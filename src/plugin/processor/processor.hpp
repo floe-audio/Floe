@@ -212,8 +212,7 @@ struct AudioProcessor {
 
     StereoPeakMeter peak_meter = {};
 
-    f32 timbre_value_01 {};
-    f32 velocity_to_volume_01 {};
+    SharedLayerParams shared_layer_params {};
     Bitset<k_num_layers> solo {};
     Bitset<k_num_layers> mute {};
 
@@ -232,9 +231,9 @@ struct AudioProcessor {
     Parameters params;
 
     Array<LayerProcessor, k_num_layers> layer_processors {
-        LayerProcessor {0, params.data + k_num_layer_parameters * 0, host},
-        LayerProcessor {1, params.data + k_num_layer_parameters * 1, host},
-        LayerProcessor {2, params.data + k_num_layer_parameters * 2, host},
+        LayerProcessor {0, params.data + k_num_layer_parameters * 0, host, shared_layer_params},
+        LayerProcessor {1, params.data + k_num_layer_parameters * 1, host, shared_layer_params},
+        LayerProcessor {2, params.data + k_num_layer_parameters * 2, host, shared_layer_params},
     };
     DynamicArray<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>> lifetime_extended_insts {
         Malloc::Instance()};
