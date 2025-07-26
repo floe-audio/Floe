@@ -52,9 +52,8 @@ class Reverb final : public Effect {
             args.params[ToInt(Params::Mix)] = p->ProjectedValue();
     }
 
-    EffectProcessResult ProcessBlock(Span<f32x2> io_frames,
-                                     AudioProcessingContext const& context,
-                                     void *) override {
+    EffectProcessResult
+    ProcessBlock(Span<f32x2> io_frames, AudioProcessingContext const& context, void*) override {
         ZoneNamedN(process_block, "Reverb ProcessBlock", true);
 
         if (!ShouldProcessBlock()) return EffectProcessResult::Done;

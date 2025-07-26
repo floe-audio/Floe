@@ -66,9 +66,8 @@ class FilterEffect final : public Effect {
         if (set_params) m_smoothed_coeffs.Set(m_filter_params);
     }
 
-    EffectProcessResult ProcessBlock(Span<f32x2> frames,
-                                     AudioProcessingContext const& context,
-                                     void *) override {
+    EffectProcessResult
+    ProcessBlock(Span<f32x2> frames, AudioProcessingContext const& context, void*) override {
         return ProcessBlockByFrame(
             frames,
             [&](f32x2 in) {

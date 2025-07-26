@@ -53,7 +53,7 @@ class BitCrush final : public Effect {
     }
 
     EffectProcessResult
-    ProcessBlock(Span<f32x2> frames, AudioProcessingContext const& context, void *) override {
+    ProcessBlock(Span<f32x2> frames, AudioProcessingContext const& context, void*) override {
         return ProcessBlockByFrame(
             frames,
             [&](f32x2 in) {

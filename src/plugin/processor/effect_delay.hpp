@@ -86,7 +86,7 @@ class Delay final : public Effect {
     }
 
     EffectProcessResult
-    ProcessBlock(Span<f32x2> frames, AudioProcessingContext const& context, void *) override {
+    ProcessBlock(Span<f32x2> frames, AudioProcessingContext const& context, void*) override {
         ZoneNamedN(process_block, "Delay ProcessBlock", true);
 
         if (!ShouldProcessBlock()) return EffectProcessResult::Done;
