@@ -288,6 +288,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
     BeginFrame(g->box_system, prefs::GetBool(g->prefs, SettingDescriptor(GuiSetting::ShowTooltips)));
 
     g->frame_output = {};
+    g->show_new_version_indicator =
+        check_for_update::ShowNewVersionIndicator(g->shared_engine_systems.check_for_update_state, g->prefs);
 
     live_edit::g_high_contrast_gui =
         prefs::GetBool(g->prefs,
@@ -330,16 +332,10 @@ GuiFrameResult GuiUpdate(Gui* g) {
     g->frame_input.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Body)]);
     DEFER { g->frame_input.graphics_ctx->PopFont(); };
 
-    auto const top_h = LiveSize(imgui, UiSizeId::Top2Height);
-    auto const bot_h = LiveSize(imgui, UiSizeId::BotPanelHeight);
+    auto const top_h = Round(LiveSize(imgui, UiSizeId::Top2Height));
+    auto const bot_h = Round(LiveSize(imgui, UiSizeId::BotPanelHeight));
     auto const mid_h = g->frame_input.window_size.height - top_h - bot_h;
 
-    auto draw_top_window = [](IMGUI_DRAW_WINDOW_BG_ARGS) {
-        auto r = window->unpadded_bounds;
-        auto const top = LiveCol(imgui, UiColMap::TopPanelBackTop);
-        auto const bot = LiveCol(imgui, UiColMap::TopPanelBackBot);
-        imgui.graphics->AddRectFilledMultiColor(r.Min(), r.Max(), top, top, bot, bot);
-    };
     auto draw_mid_window = [&](IMGUI_DRAW_WINDOW_BG_ARGS) {
         auto r = window->unpadded_bounds;
 
@@ -382,15 +378,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
         imgui.EndWindow();
     }
 
-    {
-        auto sets = imgui::DefWindow();
-        sets.draw_routine_window_background = draw_top_window;
-        sets.pad_top_left = {LiveSize(imgui, UiSizeId::Top2PadLR), LiveSize(imgui, UiSizeId::Top2PadT)};
-        sets.pad_bottom_right = {LiveSize(imgui, UiSizeId::Top2PadLR), LiveSize(imgui, UiSizeId::Top2PadB)};
-        imgui.BeginWindow(sets, {.xywh {0, 0, imgui.Width(), top_h}}, "TopPanel");
-        TopPanel(g);
-        imgui.EndWindow();
-    }
+    TopPanel(g, top_h);
 
     auto bot_settings = imgui::DefWindow();
     bot_settings.pad_top_left = {8, 8};

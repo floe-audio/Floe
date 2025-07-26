@@ -1119,17 +1119,23 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                           .text_colours = {style::Colour::Subtext0},
                       });
 
-                if (auto const text_input =
-                        DoBox(box_system,
+                auto const text_input = DoBox(box_system,
+                                              {
+                                                  .parent = search_box,
+                                                  .text = context.state.search,
+                                                  .layout {
+                                                      .size = {layout::k_fill_parent, k_picker_item_height},
+                                                  },
+                                                  .text_input_behaviour = TextInputBox::SingleLine,
+                                              });
+                DrawTextInput(box_system,
+                              text_input,
                               {
-                                  .parent = search_box,
-                                  .text = context.state.search,
-                                  .layout {
-                                      .size = {layout::k_fill_parent, k_picker_item_height},
-                                  },
-                                  .text_input_behaviour = TextInputBox::SingleLine,
+                                  .text_col = style::Colour::Text,
+                                  .cursor_col = style::Colour::Text,
+                                  .selection_col = style::Colour::Highlight,
                               });
-                    text_input.text_input_result && text_input.text_input_result->buffer_changed) {
+                if (text_input.text_input_result && text_input.text_input_result->buffer_changed) {
                     dyn::Append(box_system.state->deferred_actions,
                                 [&s = context.state.search, new_text = text_input.text_input_result->text]() {
                                     dyn::AssignFitInCapacity(s, new_text);

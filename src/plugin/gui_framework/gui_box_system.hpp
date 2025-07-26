@@ -52,6 +52,7 @@ enum class PanelType {
 
 struct Subpanel {
     layout::Id id;
+    Optional<Rect> rect; // Instead of id. Relative to the parent panel.
     imgui::Id imgui_id;
     imgui::WindowFlags flags;
     String debug_name;
@@ -101,6 +102,7 @@ struct Box {
     bool32 button_fired : 1 = false;
     imgui::TextInputResult const* text_input_result {};
     SourceLocation source_location;
+    f32 knob_percent = k_nan<f32>; // NaN if not used.
 };
 
 // Ephemeral
@@ -187,6 +189,7 @@ struct BoxConfig {
     // Specifies the parent box for this box. This is used for layout. Use this instead of layout.parent.
     Optional<Box> parent {};
 
+    // Draws this text in the box. Also uses it for size if size_from_text is true.
     String text {};
     f32 wrap_width = k_no_wrap; // See k_no_wrap and k_wrap_to_parent.
     bool32 size_from_text : 1 = false; // Sets layout.size for you.
@@ -219,10 +222,9 @@ struct BoxConfig {
 
     TooltipString tooltip = k_nullopt;
 
-    // Text input behaviour.
-    TextInputBox text_input_behaviour : NumBitsNeededToStore(ToInt(TextInputBox::Count)) = TextInputBox::None;
-
-    // Button behaviour.
+    // Button behaviour. Handle Box::button_fired.
+    // Buttons can be fully configured using Boxes; their whole style and behaviour. We don't offer this level
+    // of control for other widgets.
     bool32 button_behaviour : 1 = false;
     MouseButton activate_on_click_button
         : NumBitsNeededToStore(ToInt(MouseButton::Count)) = MouseButton::Left;
@@ -231,6 +233,21 @@ struct BoxConfig {
         : NumBitsNeededToStore(ToInt(ActivationClickEvent::Count)) = ActivationClickEvent::Up;
     bool32 ignore_double_click : 1 = false;
     u8 extra_margin_for_mouse_events = 0;
+
+    // Text input behaviour. You should supply BoxConfig::text, and handle Box::text_input_result.
+    // IMPORTANT: while the background/border is drawn by this system, you must do the drawing of the text,
+    // selection, and cursor yourself. There are helper functions for this.
+    TextInputBox text_input_behaviour : NumBitsNeededToStore(ToInt(TextInputBox::Count)) = TextInputBox::None;
+
+    // Knob behaviour.
+    // IMPORTANT: you must do the drawing of the knob yourself. There are helper functions for this. The
+    // background, border, and text is drawn by this system but nothing else.
+    bool32 knob_behaviour : 1 = false;
+    f32 knob_percent {};
+    f32 knob_default_percent {};
+    f32 knob_sensitivity = 500;
+    bool32 slower_with_shift : 1;
+    bool32 default_on_modifer : 1;
 };
 
 PUBLIC auto ScopedEnableTooltips(GuiBoxSystem& builder, bool enable) {
@@ -254,6 +271,17 @@ bool AdditionalClickBehaviour(GuiBoxSystem& box_system,
                               Box const& box,
                               imgui::ButtonFlags const& config,
                               Rect* out_item_rect = nullptr);
+
+// Returns k_nullopt if we're in the layout pass.
+Optional<Rect> BoxRect(GuiBoxSystem& box_system, Box const& box);
+
+struct DrawTextInputConfig {
+    style::Colour text_col = style::Colour::Text;
+    style::Colour cursor_col = style::Colour::Text;
+    style::Colour selection_col = style::Colour::Highlight;
+};
+
+void DrawTextInput(GuiBoxSystem& box_system, Box const& box, DrawTextInputConfig const& config = {});
 
 // =================================================================================================================
 // Helpers

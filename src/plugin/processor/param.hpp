@@ -9,6 +9,9 @@
 
 struct Parameter {
     f32 LinearValue() const { return value.Load(LoadMemoryOrder::Relaxed); }
+    f32 NormalisedLinearValue() const {
+        return MapTo01(LinearValue(), info.linear_range.min, info.linear_range.max);
+    }
     f32 ProjectedValue() const { return info.ProjectValue(value.Load(LoadMemoryOrder::Relaxed)); }
     template <typename Type>
     Type ValueAsInt() const {

@@ -78,10 +78,16 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
     switch (panel->data.tag) {
         case PanelType::Subpanel: {
             auto const& subpanel = panel->data.Get<Subpanel>();
-            auto const size = panel->rect->size;
+            auto rect = panel->rect;
+            if (!rect) {
+                // If the Subpanel is the first panel of this current box system, we need can just use the
+                // given rect if there is one.
+                rect = subpanel.rect;
+            }
+            auto const size = rect->size;
             ASSERT(All(size > 0));
             regular_window_settings.flags = subpanel.flags;
-            builder.imgui.BeginWindow(regular_window_settings, subpanel.imgui_id, *panel->rect);
+            builder.imgui.BeginWindow(regular_window_settings, subpanel.imgui_id, *rect);
             break;
         }
         case PanelType::Modal: {
@@ -175,9 +181,13 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
         switch (p->data.tag) {
             case PanelType::Subpanel: {
                 auto const data = p->data.Get<Subpanel>();
-                auto const subpanel_rect = layout::GetRect(builder.layout, data.id);
-                ASSERT(All(subpanel_rect.size > 0));
-                p->rect = subpanel_rect;
+                if (data.rect) {
+                    p->rect = *data.rect;
+                } else {
+                    auto const subpanel_rect = layout::GetRect(builder.layout, data.id);
+                    p->rect = subpanel_rect;
+                }
+                ASSERT(All(p->rect->size > 0));
                 break;
             }
             case PanelType::Modal: {
@@ -303,6 +313,11 @@ static bool Tooltip(GuiBoxSystem& builder, imgui::Id id, Rect r, TooltipString t
     return false;
 }
 
+Optional<Rect> BoxRect(GuiBoxSystem& box_system, Box const& box) {
+    if (box_system.state->pass != BoxSystemCurrentPanelState::Pass::HandleInputAndRender) return {};
+    return layout::GetRect(box_system.layout, box.layout_id);
+}
+
 Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_location) {
     ZoneScoped;
     auto const box_index = builder.state->box_counter++;
@@ -420,6 +435,23 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                 box.is_active = builder.imgui.TextInputHasFocus(box.imgui_id);
                 box.is_hot = builder.imgui.IsHot(box.imgui_id);
                 box.text_input_result = &builder.state->last_text_input_result;
+            }
+
+            if (config.knob_behaviour) {
+                box.imgui_id = builder.imgui.GetID((usize)box_index);
+                box.knob_percent = config.knob_percent;
+                if (!builder.imgui.SliderBehavior(
+                        rect,
+                        box.imgui_id,
+                        box.knob_percent,
+                        config.knob_default_percent,
+                        config.knob_sensitivity,
+                        imgui::SliderFlags {.slower_with_shift = config.slower_with_shift,
+                                            .default_on_modifer = config.default_on_modifer})) {
+                    box.knob_percent = k_nan<f32>;
+                }
+                box.is_active = builder.imgui.IsActive(box.imgui_id);
+                box.is_hot = builder.imgui.IsHot(box.imgui_id);
             }
 
             if (config.tooltip.tag != TooltipStringType::None) {
@@ -559,28 +591,6 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                                                 wrap_width == k_wrap_to_parent ? rect.w : wrap_width);
             }
 
-            if (config.text_input_behaviour != TextInputBox::None) {
-                auto input_result = box.text_input_result;
-                ASSERT(input_result);
-
-                if (input_result->HasSelection()) {
-                    imgui::TextInputResult::SelectionIterator it {*builder.imgui.graphics->context};
-                    while (auto const r = input_result->NextSelectionRect(it))
-                        builder.imgui.graphics->AddRectFilled(*r, style::Col(style::Colour::Highlight));
-                }
-
-                if (input_result->show_cursor) {
-                    auto cursor_r = input_result->GetCursorRect();
-                    builder.imgui.graphics->AddRectFilled(cursor_r.Min(),
-                                                          cursor_r.Max(),
-                                                          style::Col(style::Colour::Text));
-                }
-
-                builder.imgui.graphics->AddText(input_result->GetTextPos(),
-                                                style::Col(config.text_colours.base),
-                                                input_result->text);
-            }
-
             if (config.tooltip.tag != TooltipStringType::None)
                 Tooltip(builder,
                         config.parent_dictates_hot_and_active ? config.parent->imgui_id : box.imgui_id,
@@ -592,6 +602,31 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
     }
 
     return {};
+}
+
+void DrawTextInput(GuiBoxSystem& builder, Box const& box, DrawTextInputConfig const& config) {
+    if (builder.state->pass != BoxSystemCurrentPanelState::Pass::HandleInputAndRender) return;
+
+    auto input_result = box.text_input_result;
+
+    // This shouldn't be null, but it can happen due to something with DoBox's early return when the box is
+    // not visible.
+    if (!input_result) return;
+
+    if (input_result->HasSelection()) {
+        imgui::TextInputResult::SelectionIterator it {*builder.imgui.graphics->context};
+        while (auto const r = input_result->NextSelectionRect(it))
+            builder.imgui.graphics->AddRectFilled(*r, style::Col(config.selection_col));
+    }
+
+    if (input_result->show_cursor) {
+        auto cursor_r = input_result->GetCursorRect();
+        builder.imgui.graphics->AddRectFilled(cursor_r.Min(), cursor_r.Max(), style::Col(config.cursor_col));
+    }
+
+    builder.imgui.graphics->AddText(input_result->GetTextPos(),
+                                    style::Col(config.text_col),
+                                    input_result->text);
 }
 
 bool AdditionalClickBehaviour(GuiBoxSystem& box_system,

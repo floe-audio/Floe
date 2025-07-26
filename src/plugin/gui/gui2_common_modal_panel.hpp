@@ -327,24 +327,33 @@ struct TextInputOptions {
 };
 
 PUBLIC Box TextInput(GuiBoxSystem& builder, Box parent, TextInputOptions const& options) {
-    return DoBox(builder,
-                 {
-                     .parent = parent,
-                     .text = options.text,
-                     .font = FontType::Body,
-                     .text_colours = Splat(style::Colour::Text),
-                     .background_fill_colours =
-                         Splat(options.background ? style::Colour::Background2 : style::Colour::None),
-                     .border_colours {
-                         .base = options.border ? style::Colour::Overlay0 : style::Colour::None,
-                         .hot = options.border ? style::Colour::Overlay1 : style::Colour::None,
-                         .active = options.border ? style::Colour::Blue : style::Colour::None,
-                     },
-                     .round_background_corners = 0b1111,
-                     .layout {.size = options.size},
-                     .tooltip = options.tooltip,
-                     .text_input_behaviour = options.type,
-                 });
+    auto const box = DoBox(builder,
+                           {
+                               .parent = parent,
+                               .text = options.text,
+                               .font = FontType::Body,
+                               .text_colours = Splat(style::Colour::Text),
+                               .background_fill_colours = Splat(
+                                   options.background ? style::Colour::Background2 : style::Colour::None),
+                               .border_colours {
+                                   .base = options.border ? style::Colour::Overlay0 : style::Colour::None,
+                                   .hot = options.border ? style::Colour::Overlay1 : style::Colour::None,
+                                   .active = options.border ? style::Colour::Blue : style::Colour::None,
+                               },
+                               .round_background_corners = 0b1111,
+                               .layout {.size = options.size},
+                               .tooltip = options.tooltip,
+                               .text_input_behaviour = options.type,
+                           });
+    DrawTextInput(builder,
+                  box,
+                  {
+                      .text_col = style::Colour::Text,
+                      .cursor_col = style::Colour::Text,
+                      .selection_col = style::Colour::Highlight,
+                  });
+
+    return box;
 }
 
 struct IntFieldOptions {

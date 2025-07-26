@@ -127,6 +127,7 @@ struct Gui {
     SavePresetPanelState save_preset_panel_state {};
     PresetPickerState preset_picker_state {};
     LibraryDevPanelState library_dev_panel_state {};
+    bool show_new_version_indicator {};
 
     bool legacy_params_window_open {};
 
@@ -184,7 +185,7 @@ Optional<graphics::ImageID>& UnknownLibraryIcon(Gui* g);
 
 void GUIPresetLoaded(Gui* g, Engine* a, bool is_first_preset);
 GuiFrameResult GuiUpdate(Gui* g);
-void TopPanel(Gui* g);
+void TopPanel(Gui* g, f32 height);
 void MidPanel(Gui* g);
 void BotPanel(Gui* g);
 

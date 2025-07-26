@@ -101,6 +101,19 @@ enum class Colour : u8 {
     Subtext1,
     Text,
 
+    DarkModeBackground0,
+    DarkModeBackground1,
+    DarkModeBackground2,
+    DarkModeSurface0,
+    DarkModeSurface1,
+    DarkModeSurface2,
+    DarkModeOverlay0,
+    DarkModeOverlay1,
+    DarkModeOverlay2,
+    DarkModeSubtext0,
+    DarkModeSubtext1,
+    DarkModeText,
+
     Count,
 };
 
@@ -110,7 +123,7 @@ constexpr u32 k_highlight_hue = 47;
 constexpr auto k_colours = [] {
     Array<u32, ToInt(Colour::Count)> result {};
 
-    // automatically generate tints from dark to light
+    // Automatically generate light-mode tints from dark to light.
     for (auto const col_index : Range<u32>(ToInt(Colour::Background0), ToInt(Colour::Text) + 1)) {
         constexpr auto k_size = ToInt(Colour::Text) - ToInt(Colour::Background0) + 1;
         auto const pos = (f32)(col_index - ToInt(Colour::Background0)) / (f32)(k_size - 1);
@@ -122,7 +135,20 @@ constexpr auto k_colours = [] {
         result[col_index] = Hsla(h, s, l, a);
     }
 
-    // check that text is readable on all backgrounds
+    // Automatically generate dark-mode tints from light to dark.
+    for (auto const col_index :
+         Range<u32>(ToInt(Colour::DarkModeBackground0), ToInt(Colour::DarkModeText) + 1)) {
+        constexpr auto k_size = ToInt(Colour::DarkModeText) - ToInt(Colour::DarkModeBackground0) + 1;
+        auto const pos = (f32)(col_index - ToInt(Colour::DarkModeBackground0)) / (f32)(k_size - 1);
+
+        auto const h = (u32)LinearInterpolate(pos, 200.0f, 210.0f);
+        auto const s = (u32)LinearInterpolate(constexpr_math::Powf(pos, 0.4f), 3.0f, 6.0f);
+        auto const l = (u32)LinearInterpolate(constexpr_math::Powf(pos, 1.2f), 9.0f, 86.0f);
+        auto const a = 100u;
+        result[col_index] = Hsla(h, s, l, a);
+    }
+
+    // Check that text is readable on all backgrounds.
     for (auto const bg : Array {Colour::Background0, Colour::Background1, Colour::Background2}) {
         for (auto const fg : Array {Colour::Text, Colour::Subtext1})
             if (Contrast(result[ToInt(bg)], result[ToInt(fg)]) < 4.5f) throw "";
@@ -149,6 +175,20 @@ constexpr auto k_colours = [] {
             case Colour::Subtext0:
             case Colour::Subtext1:
             case Colour::Text: break;
+
+            case Colour::DarkModeBackground0:
+            case Colour::DarkModeBackground1:
+            case Colour::DarkModeBackground2:
+            case Colour::DarkModeSurface0:
+            case Colour::DarkModeSurface1:
+            case Colour::DarkModeSurface2:
+            case Colour::DarkModeOverlay0:
+            case Colour::DarkModeOverlay1:
+            case Colour::DarkModeOverlay2:
+            case Colour::DarkModeSubtext0:
+            case Colour::DarkModeSubtext1:
+            case Colour::DarkModeText: break;
+
             case Colour::Count: break;
         }
     }
