@@ -61,7 +61,6 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
                                              panel,
                                              {
                                                  .text = state.description,
-                                                 .tooltip = "",
                                                  .size = f32x2 {layout::k_fill_parent, 90},
                                                  .type = TextInputBox::MultiLine,
                                              });

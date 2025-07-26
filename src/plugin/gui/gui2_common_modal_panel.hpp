@@ -201,8 +201,11 @@ PUBLIC Box DoModal(GuiBoxSystem& box_system, ModalConfig const& config) {
     return root;
 }
 
-PUBLIC bool
-CheckboxButton(GuiBoxSystem& box_system, Box parent, String text, bool state, String tooltip = {}) {
+PUBLIC bool CheckboxButton(GuiBoxSystem& box_system,
+                           Box parent,
+                           String text,
+                           bool state,
+                           TooltipString tooltip = k_nullopt) {
     auto const button = DoBox(box_system,
                               {
                                   .parent = parent,
@@ -319,7 +322,7 @@ IconButton(GuiBoxSystem& builder, Box parent, String icon, String tooltip, f32 f
 
 struct TextInputOptions {
     String text;
-    String tooltip;
+    TooltipString tooltip = k_nullopt;
     f32x2 size;
     bool border = true;
     bool background = true;
@@ -358,7 +361,7 @@ PUBLIC Box TextInput(GuiBoxSystem& builder, Box parent, TextInputOptions const& 
 
 struct IntFieldOptions {
     String label;
-    String tooltip;
+    TooltipString tooltip = k_nullopt;
     f32 width;
     s64 value;
     FunctionRef<s64(s64 value)> constrainer;
@@ -462,7 +465,7 @@ PUBLIC Optional<s64> IntField(GuiBoxSystem& builder, Box parent, IntFieldOptions
 
 struct MenuButtonOptions {
     String text;
-    String tooltip;
+    TooltipString tooltip = k_nullopt;
     f32 width = layout::k_hug_contents;
 };
 
@@ -505,7 +508,7 @@ PUBLIC Box MenuButton(GuiBoxSystem& box_system, Box parent, MenuButtonOptions co
 
 struct MenuItemOptions {
     String text;
-    String tooltip;
+    TooltipString tooltip = k_nullopt;
     Optional<String> subtext;
     bool is_selected;
 };

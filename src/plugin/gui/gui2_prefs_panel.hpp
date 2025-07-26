@@ -461,7 +461,7 @@ static void PackagesPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelC
                                     row,
                                     {
                                         .text = menu_text,
-                                        .tooltip = "Select install location",
+                                        .tooltip = "Select install location"_s,
                                         .width = layout::k_fill_parent,
                                     });
         if (btn.button_fired) box_system.imgui.OpenPopup(popup_id, btn.imgui_id);
