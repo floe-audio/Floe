@@ -883,7 +883,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                                   lhs_top,
                                                   {
                                                       .text = FilterModeText(context.state.filter_mode),
-                                                      .tooltip = "Select filtering mode",
+                                                      .tooltip = "Select filtering mode"_s,
                                                   });
                 if (popup_btn.button_fired) box_system.imgui.OpenPopup(popup_id, popup_btn.imgui_id);
 
