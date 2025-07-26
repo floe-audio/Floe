@@ -1070,25 +1070,29 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
 
 static void ConsumeParamEventsFromHost(Parameters& params,
                                        clap_input_events const& events,
+                                       u32 frame_index,
+                                       u32 block_size,
                                        ProcessBlockChanges& changes) {
     ZoneScoped;
     // IMPROVE: support sample-accurate value changes
+    // IMPROVE: support CLAP_EVENT_PARAM_MOD
+    // IMPROVE: support polyphonic
+
     for (auto const event_index : Range(events.size(&events))) {
         auto e = events.get(&events, event_index);
+
         if (e->space_id != CLAP_CORE_EVENT_SPACE_ID) continue;
+        if (e->type != CLAP_EVENT_PARAM_VALUE) continue;
 
-        // IMPROVE: support CLAP_EVENT_PARAM_MOD
+        if (e->time < frame_index || e->time >= (frame_index + block_size)) continue;
 
-        if (e->type == CLAP_EVENT_PARAM_VALUE) {
-            auto value = CheckedPointerCast<clap_event_param_value const*>(e);
+        auto value = CheckedPointerCast<clap_event_param_value const*>(e);
 
-            // IMRPOVE: support polyphonic
-            if (value->note_id != -1 || value->channel > 0 || value->key > 0) continue;
+        if (value->note_id != -1 || value->channel > 0 || value->key > 0) continue;
 
-            if (auto const index = ParamIdToIndex(value->param_id)) {
-                params[ToInt(*index)].SetLinearValue((f32)value->value);
-                changes.changed_params.changed.Set(ToInt(*index));
-            }
+        if (auto const index = ParamIdToIndex(value->param_id)) {
+            params[ToInt(*index)].SetLinearValue((f32)value->value);
+            changes.changed_params.changed.Set(ToInt(*index));
         }
     }
 }
@@ -1105,6 +1109,7 @@ static void ConsumeParamEventsFromGui(AudioProcessor& processor,
                 clap_event_param_value const event {
                     .header {
                         .size = sizeof(event),
+                        .time = 0,
                         .type = CLAP_EVENT_PARAM_VALUE,
                         .flags = CLAP_EVENT_IS_LIVE |
                                  (value.host_should_not_record ? (u32)CLAP_EVENT_DONT_RECORD : 0),
@@ -1127,6 +1132,7 @@ static void ConsumeParamEventsFromGui(AudioProcessor& processor,
                 clap_event_param_gesture const event {
                     .header {
                         .size = sizeof(event),
+                        .time = 0,
                         .type = CLAP_EVENT_PARAM_GESTURE_BEGIN,
                         .flags = CLAP_EVENT_IS_LIVE,
                     },
@@ -1142,6 +1148,7 @@ static void ConsumeParamEventsFromGui(AudioProcessor& processor,
                 clap_event_param_gesture const event {
                     .header {
                         .size = sizeof(event),
+                        .time = 0,
                         .type = CLAP_EVENT_PARAM_GESTURE_END,
                         .flags = CLAP_EVENT_IS_LIVE,
                     },
@@ -1166,7 +1173,7 @@ FlushParameterEvents(AudioProcessor& processor, clap_input_events const& in, cla
     ProcessBlockChanges changes {
         .changed_params = {processor.params.data, Bitset<k_num_parameters>()},
     };
-    ConsumeParamEventsFromHost(processor.params, in, changes);
+    ConsumeParamEventsFromHost(processor.params, in, 0, LargestRepresentableValue<u32>(), changes);
     ConsumeParamEventsFromGui(processor, out, changes);
 
     if (processor.activated) {
@@ -1179,29 +1186,33 @@ FlushParameterEvents(AudioProcessor& processor, clap_input_events const& in, cla
     }
 }
 
-clap_process_status Process(AudioProcessor& processor, clap_process const& process) {
-    ZoneScoped;
-    ASSERT_EQ(process.audio_outputs_count, 1u);
-    ASSERT_HOT(processor.activated);
-
-    if (process.frames_count == 0) return CLAP_PROCESS_CONTINUE;
-
+static clap_process_status
+ProcessSubBlock(AudioProcessor& processor,
+                clap_process const& process,
+                u32 frame_index,
+                u32 sub_block_size, // normally k_block_size_max, but can be smaller.
+                ProcessorListener::ChangeFlags& change_flags) {
     clap_process_status result = CLAP_PROCESS_CONTINUE;
-    auto const num_sample_frames = process.frames_count;
 
     ProcessBlockChanges changes {
         .changed_params = {processor.params.data, Bitset<k_num_parameters>()},
     };
 
-    // Handle transport changes
+    // Check for tempo changes.
     {
-        // IMPROVE: support per-sample tempo changes by processing CLAP_EVENT_TRANSPORT events
+        for (auto const event_index : Range(process.in_events->size(process.in_events))) {
+            auto e = process.in_events->get(process.in_events, event_index);
+            if (!e) continue;
 
-        if (process.transport && (process.transport->flags & CLAP_TRANSPORT_HAS_TEMPO) &&
-            process.transport->tempo != processor.audio_processing_context.tempo &&
-            process.transport->tempo > 0) {
-            processor.audio_processing_context.tempo = process.transport->tempo;
-            changes.tempo_changed = true;
+            if (e->space_id != CLAP_CORE_EVENT_SPACE_ID) continue;
+            if (e->type != CLAP_EVENT_TRANSPORT) continue;
+            if (e->time < frame_index || e->time >= (frame_index + sub_block_size)) continue;
+
+            auto const transport = CheckedPointerCast<clap_event_transport const*>(e);
+            if (transport->tempo != processor.audio_processing_context.tempo) {
+                processor.audio_processing_context.tempo = transport->tempo;
+                changes.tempo_changed = true;
+            }
         }
         if (processor.audio_processing_context.tempo <= 0) {
             processor.audio_processing_context.tempo = 120;
@@ -1215,18 +1226,9 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     auto internal_events = processor.events_for_audio_thread.PopAll();
     Array<bool, k_num_layers> layers_changed {};
     bool mark_convolution_for_fade_out = false;
-    ProcessorListener::ChangeFlags change_flags = {};
-
-    DEFER {
-        if (processor.previous_process_status != result) change_flags |= ProcessorListener::StatusChanged;
-        processor.previous_process_status = result;
-        processor.notes_currently_held.AssignBlockwise(
-            processor.audio_processing_context.midi_note_state.NotesCurrentlyHeldAllChannels());
-        if (change_flags) processor.listener.OnProcessorChange(change_flags);
-    };
 
     ConsumeParamEventsFromGui(processor, *process.out_events, changes);
-    ConsumeParamEventsFromHost(processor.params, *process.in_events, changes);
+    ConsumeParamEventsFromHost(processor.params, *process.in_events, frame_index, sub_block_size, changes);
 
     Optional<AudioProcessor::FadeType> new_fade_type {};
     for (auto const& e : internal_events) {
@@ -1306,9 +1308,13 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     {
         for (auto const i : Range(process.in_events->size(process.in_events))) {
             auto e = process.in_events->get(process.in_events, i);
+            if (!e) continue;
+            if (e->space_id != CLAP_CORE_EVENT_SPACE_ID) continue;
+            if (e->time < frame_index || e->time >= (frame_index + sub_block_size)) continue;
             ProcessClapNoteOrMidi(processor, *e, *process.out_events, change_flags, changes);
         }
-        for (auto& e : internal_events) {
+
+        for (auto const& e : internal_events) {
             switch (e.tag) {
                 case EventForAudioThreadType::StartNote: {
                     auto const start = e.Get<GuiNoteClicked>();
@@ -1380,7 +1386,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     // ======================================================================================================
     // IMPROVE: support sending the host CLAP_EVENT_NOTE_END events when voices end
     auto const layer_buffers =
-        ProcessVoices(processor.voice_pool, num_sample_frames, processor.audio_processing_context);
+        ProcessVoices(processor.voice_pool, sub_block_size, processor.audio_processing_context);
 
     Span<f32> interleaved_outputs {};
     bool audio_was_generated_by_voices = false;
@@ -1388,7 +1394,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         auto const process_result = ProcessLayer(processor.layer_processors[i],
                                                  processor.audio_processing_context,
                                                  processor.voice_pool,
-                                                 num_sample_frames,
+                                                 sub_block_size,
                                                  layers_changed[i],
                                                  layer_buffers[i]);
 
@@ -1399,7 +1405,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
             else
                 SimdAddAlignedBuffer(interleaved_outputs.data,
                                      layer_buffers[i].data,
-                                     (usize)num_sample_frames * 2);
+                                     (usize)sub_block_size * 2);
         }
 
         if (process_result.instrument_swapped) {
@@ -1413,9 +1419,9 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 
     if (interleaved_outputs.size == 0) {
         interleaved_outputs = processor.voice_pool.buffer_pool[0];
-        SimdZeroAlignedBuffer(interleaved_outputs.data, num_sample_frames * 2);
+        SimdZeroAlignedBuffer(interleaved_outputs.data, sub_block_size * 2);
     } else if constexpr (RUNTIME_SAFETY_CHECKS_ON && !PRODUCTION_BUILD) {
-        for (auto const frame : Range(num_sample_frames)) {
+        for (auto const frame : Range(sub_block_size)) {
             auto const& l = interleaved_outputs[(frame * 2) + 0];
             auto const& r = interleaved_outputs[(frame * 2) + 1];
             ASSERT(l >= -k_erroneous_sample_value && l <= k_erroneous_sample_value);
@@ -1423,7 +1429,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         }
     }
 
-    auto interleaved_stereo_samples = ToStereoFramesSpan(interleaved_outputs.data, num_sample_frames);
+    auto interleaved_stereo_samples = ToStereoFramesSpan(interleaved_outputs.data, sub_block_size);
 
     if (audio_was_generated_by_voices || processor.fx_need_another_frame_of_processing) {
         // Effects
@@ -1445,7 +1451,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         ASSERT_HOT(unused_buffer_indexes[1] != UINT32_MAX);
 
         ScratchBuffers const scratch_buffers(
-            num_sample_frames,
+            sub_block_size,
             processor.voice_pool.buffer_pool[(usize)unused_buffer_indexes[0]].data,
             processor.voice_pool.buffer_pool[(usize)unused_buffer_indexes[1]].data);
 
@@ -1474,7 +1480,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         // Master
         // ==================================================================================================
 
-        for (auto [frame_index, frame] : Enumerate<u32>(interleaved_stereo_samples)) {
+        for (auto& frame : interleaved_stereo_samples) {
             frame *= processor.master_vol_smoother.LowPass(
                 processor.master_vol,
                 processor.audio_processing_context.one_pole_smoothing_cutoff_10ms);
@@ -1496,7 +1502,40 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         (((uintptr)process.audio_outputs->data32 % alignof(f32*)) == 0) && process.audio_outputs->data32[0] &&
         process.audio_outputs->data32[1]) {
         auto outputs = process.audio_outputs->data32;
-        CopyInterleavedToSeparateChannels(outputs[0], outputs[1], interleaved_outputs, num_sample_frames);
+        CopyInterleavedToSeparateChannels(outputs[0] + frame_index,
+                                          outputs[1] + frame_index,
+                                          interleaved_outputs,
+                                          sub_block_size);
+    }
+
+    return result;
+}
+
+clap_process_status Process(AudioProcessor& processor, clap_process const& process) {
+    ZoneScoped;
+    ASSERT_EQ(process.audio_outputs_count, 1u);
+    ASSERT_HOT(processor.activated);
+
+    if (process.frames_count == 0) return CLAP_PROCESS_CONTINUE;
+
+    ProcessorListener::ChangeFlags change_flags = {};
+    clap_process_status result = CLAP_PROCESS_CONTINUE;
+
+    DEFER {
+        if (processor.previous_process_status != result) change_flags |= ProcessorListener::StatusChanged;
+        processor.previous_process_status = result;
+        processor.notes_currently_held.AssignBlockwise(
+            processor.audio_processing_context.midi_note_state.NotesCurrentlyHeldAllChannels());
+        if (change_flags) processor.listener.OnProcessorChange(change_flags);
+    };
+
+    for (u32 frame_index = 0; frame_index < process.frames_count; frame_index += k_block_size_max) {
+        auto const sub_block_size = Min(k_block_size_max, process.frames_count - frame_index);
+        result = ProcessSubBlock(processor, process, frame_index, sub_block_size, change_flags);
+        if (result != CLAP_PROCESS_CONTINUE) {
+            // If we are sleeping, we don't need to do any more processing.
+            break;
+        }
     }
 
     // Mark GUI dirty.

@@ -4,6 +4,7 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
+constexpr u32 k_block_size_max = 32;
 constexpr u32 k_num_layers = 3;
 constexpr u16 k_max_num_floe_instances = 256;
 constexpr u8 k_max_tag_size = 30;
