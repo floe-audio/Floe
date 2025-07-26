@@ -15,17 +15,17 @@ extern "C" {
 #include "clap/factory/plugin-factory.h"
 #include "plugin.hpp"
 
-#ifdef TRACY_ENABLE
+#if defined TRACY_ENABLE
 
 #include "utils/debug/tracy_wrapped.hpp"
 
 void* operator new(std ::size_t count) {
     auto ptr = malloc(count);
-    TracySecureAlloc(ptr, count, 8);
+    TracySecureAlloc(ptr, count);
     return ptr;
 }
 void operator delete(void* ptr) noexcept {
-    TracySecureFree(ptr, 8);
+    TracySecureFree(ptr);
     free(ptr);
 }
 
