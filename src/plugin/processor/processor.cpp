@@ -834,7 +834,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
 
     switch (event.type) {
         case CLAP_EVENT_NOTE_ON: {
-            auto note = (clap_event_note const&)event;
+            auto const note = (clap_event_note const&)event;
 
             if (note.key > MidiMessage::k_u7_max) break;
             if (note.channel > MidiMessage::k_u4_max) break;
@@ -850,8 +850,9 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                         });
             break;
         }
+
         case CLAP_EVENT_NOTE_OFF: {
-            auto note = (clap_event_note const&)event;
+            auto const note = (clap_event_note const&)event;
 
             if (note.key > MidiMessage::k_u7_max) break;
             if (note.channel > MidiMessage::k_u4_max) break;
@@ -867,8 +868,9 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                         });
             break;
         }
+
         case CLAP_EVENT_NOTE_CHOKE: {
-            auto note = (clap_event_note const&)event;
+            auto const note = (clap_event_note const&)event;
 
             if (note.key == -1) {
                 if (note.channel == -1) {
@@ -908,18 +910,21 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
 
             break;
         }
+
         case CLAP_EVENT_NOTE_EXPRESSION: {
             // IMPROVE: support expression
             break;
         }
-        case CLAP_EVENT_MIDI: {
-            auto midi = (clap_event_midi const&)event;
-            MidiMessage message {};
-            message.status = midi.data[0];
-            message.data1 = midi.data[1];
-            message.data2 = midi.data[2];
 
-            auto type = message.Type();
+        case CLAP_EVENT_MIDI: {
+            auto const midi = (clap_event_midi const&)event;
+            MidiMessage const message {
+                .status = midi.data[0],
+                .data1 = midi.data[1],
+                .data2 = midi.data[2],
+            };
+
+            auto const type = message.Type();
             if (type == MidiMessageType::NoteOn || type == MidiMessageType::NoteOff ||
                 type == MidiMessageType::ControlChange) {
                 change_flags |= ProcessorListener::NotesChanged;
@@ -1009,23 +1014,26 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                             processor.params[param_index].SetLinearValue(val);
                             changed_params.Set(param_index);
 
-                            clap_event_param_value value_event {};
-                            value_event.header.type = CLAP_EVENT_PARAM_VALUE;
-                            value_event.header.size = sizeof(value_event);
-                            value_event.header.flags = CLAP_EVENT_IS_LIVE | CLAP_EVENT_DONT_RECORD;
-                            value_event.note_id = -1;
-                            value_event.port_index = -1;
-                            value_event.channel = -1;
-                            value_event.key = -1;
-                            value_event.value = (f64)val;
-                            value_event.param_id = ParamIndexToId(ParamIndex {param_index});
-                            out.try_push(&out, (clap_event_header const*)&value_event);
+                            clap_event_param_value const value_event {
+                                .header {
+                                    .size = sizeof(value_event),
+                                    .type = CLAP_EVENT_PARAM_VALUE,
+                                    .flags = CLAP_EVENT_IS_LIVE | CLAP_EVENT_DONT_RECORD,
+                                },
+                                .param_id = ParamIndexToId(ParamIndex {param_index}),
+                                .note_id = -1,
+                                .port_index = -1,
+                                .channel = -1,
+                                .key = -1,
+                                .value = (f64)val,
+                            };
+                            out.try_push(&out, &value_event.header);
                         }
                     }
                     break;
                 }
                 case MidiMessageType::PolyAftertouch: {
-                    break;
+                    break; // NOTE: not supported at the moment
                     auto const note = message.NoteNum();
                     auto const channel = message.ChannelNum();
                     auto const value = message.PolyAftertouch();
@@ -1038,7 +1046,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                     break;
                 }
                 case MidiMessageType::ChannelAftertouch: {
-                    break;
+                    break; // NOTE: not supported at the moment
                     auto const channel = message.ChannelNum();
                     auto const value = message.ChannelPressure();
                     for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
@@ -1077,7 +1085,7 @@ static void ConsumeParamEventsFromHost(Parameters& params,
             // IMRPOVE: support polyphonic
             if (value->note_id != -1 || value->channel > 0 || value->key > 0) continue;
 
-            if (auto index = ParamIdToIndex(value->param_id)) {
+            if (auto const index = ParamIdToIndex(value->param_id)) {
                 params[ToInt(*index)].SetLinearValue((f32)value->value);
                 changes.changed_params.changed.Set(ToInt(*index));
             }
@@ -1094,41 +1102,53 @@ static void ConsumeParamEventsFromGui(AudioProcessor& processor,
             case EventForAudioThreadType::ParamChanged: {
                 auto const& value = e.Get<GuiChangedParam>();
 
-                clap_event_param_value event {};
-                event.header.type = CLAP_EVENT_PARAM_VALUE;
-                event.header.size = sizeof(event);
-                event.header.flags = CLAP_EVENT_IS_LIVE;
-                event.note_id = -1;
-                event.port_index = -1;
-                event.channel = -1;
-                event.key = -1;
-                event.value = (f64)value.value;
-                event.param_id = ParamIndexToId(value.param);
-                if (value.host_should_not_record) event.header.flags |= CLAP_EVENT_DONT_RECORD;
-                out.try_push(&out, (clap_event_header const*)&event);
+                clap_event_param_value const event {
+                    .header {
+                        .size = sizeof(event),
+                        .type = CLAP_EVENT_PARAM_VALUE,
+                        .flags = CLAP_EVENT_IS_LIVE |
+                                 (value.host_should_not_record ? (u32)CLAP_EVENT_DONT_RECORD : 0),
+                    },
+                    .param_id = ParamIndexToId(value.param),
+                    .note_id = -1,
+                    .port_index = -1,
+                    .channel = -1,
+                    .key = -1,
+                    .value = (f64)value.value,
+                };
+
+                out.try_push(&out, &event.header);
                 changes.changed_params.changed.Set(ToInt(value.param));
                 break;
             }
             case EventForAudioThreadType::ParamGestureBegin: {
                 auto const& gesture = e.Get<GuiStartedChangingParam>();
 
-                clap_event_param_gesture event {};
-                event.header.type = CLAP_EVENT_PARAM_GESTURE_BEGIN;
-                event.header.size = sizeof(event);
-                event.header.flags = CLAP_EVENT_IS_LIVE;
-                event.param_id = ParamIndexToId(gesture.param);
-                out.try_push(&out, (clap_event_header const*)&event);
+                clap_event_param_gesture const event {
+                    .header {
+                        .size = sizeof(event),
+                        .type = CLAP_EVENT_PARAM_GESTURE_BEGIN,
+                        .flags = CLAP_EVENT_IS_LIVE,
+                    },
+                    .param_id = ParamIndexToId(gesture.param),
+                };
+
+                out.try_push(&out, &event.header);
                 break;
             }
             case EventForAudioThreadType::ParamGestureEnd: {
                 auto const& gesture = e.Get<GuiEndedChangingParam>();
 
-                clap_event_param_gesture event {};
-                event.header.type = CLAP_EVENT_PARAM_GESTURE_END;
-                event.header.size = sizeof(event);
-                event.header.flags = CLAP_EVENT_IS_LIVE;
-                event.param_id = ParamIndexToId(gesture.param);
-                out.try_push(&out, (clap_event_header const*)&event);
+                clap_event_param_gesture const event {
+                    .header {
+                        .size = sizeof(event),
+                        .type = CLAP_EVENT_PARAM_GESTURE_END,
+                        .flags = CLAP_EVENT_IS_LIVE,
+                    },
+                    .param_id = ParamIndexToId(gesture.param),
+                };
+
+                out.try_push(&out, &event.header);
                 break;
             }
             case EventForAudioThreadType::FxOrderChanged:
