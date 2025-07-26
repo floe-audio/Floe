@@ -404,22 +404,15 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
 
             auto const mouse_rect = rect.Expanded(config.extra_margin_for_mouse_events);
 
-            if (config.button_behaviour) {
-                imgui::ButtonFlags button_flags {
-                    .left_mouse = !config.activate_on_click_use_double_click &&
-                                  config.activate_on_click_button == MouseButton::Left,
-                    .right_mouse = config.activate_on_click_button == MouseButton::Right,
-                    .middle_mouse = config.activate_on_click_button == MouseButton::Middle,
-                    .double_click = config.activate_on_click_use_double_click,
-                    .ignore_double_click = config.ignore_double_click,
-                    .triggers_on_mouse_down = config.activation_click_event == ActivationClickEvent::Down,
-                    .triggers_on_mouse_up = config.activation_click_event == ActivationClickEvent::Up,
-                };
-                box.imgui_id = builder.imgui.GetID((usize)box_index);
-                box.button_fired = builder.imgui.ButtonBehavior(mouse_rect, box.imgui_id, button_flags);
-                box.is_active = builder.imgui.IsActive(box.imgui_id);
-                box.is_hot = builder.imgui.IsHot(box.imgui_id);
-            }
+            imgui::ButtonFlags const button_flags {
+                .left_mouse = config.activate_on_click_button == MouseButton::Left,
+                .right_mouse = config.activate_on_click_button == MouseButton::Right,
+                .middle_mouse = config.activate_on_click_button == MouseButton::Middle,
+                .double_click = config.activate_on_double_click,
+                .ignore_double_click = config.ignore_double_click,
+                .triggers_on_mouse_down = config.activation_click_event == ActivationClickEvent::Down,
+                .triggers_on_mouse_up = config.activation_click_event == ActivationClickEvent::Up,
+            };
 
             if (config.text_input_behaviour != TextInputBox::None) {
                 box.imgui_id = builder.imgui.GetID((usize)box_index);
@@ -428,16 +421,24 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                     box.imgui_id,
                     config.text,
                     config.text_input_behaviour == TextInputBox::MultiLine
-                        ? imgui::TextInputFlags {.multiline = true, .multiline_wordwrap_hack = true}
-                        : imgui::TextInputFlags {},
-                    {.left_mouse = true, .triggers_on_mouse_down = true},
+                        ? imgui::TextInputFlags {
+                            .centre_align = (config.text_align_x == TextAlignX::Centre),
+                            .multiline = true,
+                            .multiline_wordwrap_hack = true,
+                        }
+                        : imgui::TextInputFlags {
+                            .centre_align = (config.text_align_x == TextAlignX::Centre),
+                        },
+                    button_flags,
                     false);
                 box.is_active = builder.imgui.TextInputHasFocus(box.imgui_id);
                 box.is_hot = builder.imgui.IsHot(box.imgui_id);
                 box.text_input_result = &builder.state->last_text_input_result;
             }
 
-            if (config.knob_behaviour) {
+            if (config.knob_behaviour && (config.text_input_behaviour == TextInputBox::None ||
+                                          (config.text_input_behaviour != TextInputBox::None &&
+                                           !builder.imgui.TextInputHasFocus(box.imgui_id)))) {
                 box.imgui_id = builder.imgui.GetID((usize)box_index);
                 box.knob_percent = config.knob_percent;
                 if (!builder.imgui.SliderBehavior(
@@ -450,6 +451,14 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                                             .default_on_modifer = config.default_on_modifer})) {
                     box.knob_percent = k_nan<f32>;
                 }
+                box.is_active = builder.imgui.IsActive(box.imgui_id);
+                box.is_hot = builder.imgui.IsHot(box.imgui_id);
+            }
+
+            if (config.button_behaviour && !config.knob_behaviour &&
+                config.text_input_behaviour == TextInputBox::None) {
+                box.imgui_id = builder.imgui.GetID((usize)box_index);
+                box.button_fired = builder.imgui.ButtonBehavior(mouse_rect, box.imgui_id, button_flags);
                 box.is_active = builder.imgui.IsActive(box.imgui_id);
                 box.is_hot = builder.imgui.IsHot(box.imgui_id);
             }

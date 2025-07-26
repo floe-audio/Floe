@@ -10,9 +10,6 @@
 struct AudioProcessor;
 
 struct ParameterComponentOptions {
-    Optional<UiSizeId> size_index_for_gapx = {};
-    bool set_gapx_independent_of_size = false;
-    bool set_bottom_gap_independent_of_size = false;
     style::Colour knob_highlight_col = style::Colour::Highlight;
     style::Colour knob_line_col = style::Colour::Background0;
     bool greyed_out = false;
@@ -20,8 +17,7 @@ struct ParameterComponentOptions {
     String override_tooltip = {};
 };
 
-Box DoParameterComponent(GuiBoxSystem& builder,
+Box DoParameterComponent(Gui* g,
                          Box parent,
                          Parameter const& param,
-                         AudioProcessor& processor,
                          ParameterComponentOptions const& options = {});

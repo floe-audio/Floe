@@ -226,9 +226,10 @@ struct BoxConfig {
     // Buttons can be fully configured using Boxes; their whole style and behaviour. We don't offer this level
     // of control for other widgets.
     bool32 button_behaviour : 1 = false;
+
     MouseButton activate_on_click_button
         : NumBitsNeededToStore(ToInt(MouseButton::Count)) = MouseButton::Left;
-    bool32 activate_on_click_use_double_click : 1 = false;
+    bool32 activate_on_double_click : 1 = false;
     ActivationClickEvent activation_click_event
         : NumBitsNeededToStore(ToInt(ActivationClickEvent::Count)) = ActivationClickEvent::Up;
     bool32 ignore_double_click : 1 = false;
@@ -236,12 +237,14 @@ struct BoxConfig {
 
     // Text input behaviour. You should supply BoxConfig::text, and handle Box::text_input_result.
     // IMPORTANT: while the background/border is drawn by this system, you must do the drawing of the text,
-    // selection, and cursor yourself. There are helper functions for this.
+    // selection, and cursor yourself. There are helper functions for this. You can use
+    // BoxConfig::activate_on_click_button and the others for configuring when the text input is activated.
     TextInputBox text_input_behaviour : NumBitsNeededToStore(ToInt(TextInputBox::Count)) = TextInputBox::None;
 
     // Knob behaviour.
     // IMPORTANT: you must do the drawing of the knob yourself. There are helper functions for this. The
     // background, border, and text is drawn by this system but nothing else.
+    // Knobs always trigger on left mouse down.
     bool32 knob_behaviour : 1 = false;
     f32 knob_percent {};
     f32 knob_default_percent {};
