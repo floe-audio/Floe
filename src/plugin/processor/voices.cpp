@@ -14,8 +14,6 @@
 #include "processing_utils/audio_processing_context.hpp"
 #include "processor/effect_stereo_widen.hpp"
 
-static constexpr u32 k_num_frames_in_voice_processing_chunk = 64;
-
 static void FadeOutVoicesToEnsureMaxActive(VoicePool& pool, AudioProcessingContext const& context) {
     if (pool.num_active_voices.Load(LoadMemoryOrder::Relaxed) <= k_max_num_active_voices) return;
 
@@ -434,17 +432,7 @@ void VoicePool::EndAllVoicesInstantly() {
         EndVoiceInstantly(v);
 }
 
-void VoicePool::PrepareToPlay(ArenaAllocator& arena, AudioProcessingContext const& context) {
-    auto const buffer_size_bytes = AlignForward((usize)context.process_block_size_max * 2, 4) * sizeof(f32);
-    for (auto [index, buf] : Enumerate(buffer_pool)) {
-        auto const alloc = arena.Allocate({
-            .size = buffer_size_bytes,
-            .alignment = 16,
-            .allow_oversized_result = false,
-        });
-        buf = Span<f32> {CheckedPointerCast<f32*>(alloc.data), alloc.size / sizeof(f32)};
-    }
-
+void VoicePool::PrepareToPlay() {
     decltype(Voice::index) index = 0;
     for (auto& v : voices)
         v.index = index++;
@@ -455,15 +443,16 @@ void NoteOff(VoicePool& pool, VoiceProcessingController& controller, MidiChannel
         if (v.is_active && v.midi_key_trigger == note && &controller == v.controller) EndVoice(v);
 }
 
-class ChunkwiseVoiceProcessor {
+class VoiceProcessor {
   public:
-    ChunkwiseVoiceProcessor(Voice& voice, AudioProcessingContext const& audio_context)
+    VoiceProcessor(Voice& voice, AudioProcessingContext const& audio_context)
         : m_filter_coeffs(voice.filter_coeffs)
         , m_filters(voice.filters)
         , m_audio_context(audio_context)
-        , m_voice(voice) {}
+        , m_voice(voice)
+        , m_buffer(m_voice.pool.buffer_pool[m_voice.index]) {}
 
-    ~ChunkwiseVoiceProcessor() {
+    ~VoiceProcessor() {
         m_voice.filter_coeffs = m_filter_coeffs;
         m_voice.filters = m_filters;
     }
@@ -471,7 +460,7 @@ class ChunkwiseVoiceProcessor {
     bool Process(u32 num_frames) {
         ZoneNamedN(process, "Voice Process", true);
         u32 samples_written = 0;
-        Span<f32> write_buffer = m_voice.pool.buffer_pool[m_voice.index];
+        Span<f32> write_buffer = m_buffer;
 
         if (m_voice.frames_before_starting != 0) {
             auto const num_frames_to_remove = Min(num_frames, m_voice.frames_before_starting);
@@ -485,58 +474,53 @@ class ChunkwiseVoiceProcessor {
 
         m_frame_index = samples_written / 2;
 
-        while (num_frames) {
-            u32 const chunk_size = Min(num_frames, k_num_frames_in_voice_processing_chunk);
-            ZoneNamedN(chunk, "Voice Chunk", true);
-            ZoneValueV(chunk, chunk_size);
+        ZoneNamedN(chunk, "Voice Chunk", true);
+        ZoneValueV(chunk, num_frames);
 
-            FillLFOBuffer(chunk_size);
-            FillBufferWithSampleData(chunk_size);
+        FillLFOBuffer(num_frames);
+        FillBufferWithSampleData(num_frames);
 
-            auto num_valid_frames = ApplyGain(chunk_size);
-            ApplyFilter(num_valid_frames);
+        auto num_valid_frames = ApplyGain(num_frames);
+        ApplyFilter(num_valid_frames);
 
-            auto const samples_to_write = num_valid_frames * 2;
-            CheckSamplesAreValid(0, samples_to_write);
-            // We can't do aligned copy because of frames_before_starting
-            CopyMemory(write_buffer.data, m_buffer.data, (usize)samples_to_write * sizeof(f32));
-            samples_written += samples_to_write;
+        auto const samples_to_write = num_valid_frames * 2;
+        CheckSamplesAreValid(0, samples_to_write);
+        samples_written += samples_to_write;
+
+        if (num_valid_frames != num_frames || !m_voice.num_active_voice_samples) {
             write_buffer = write_buffer.SubSpan((usize)samples_to_write);
-
-            if (num_valid_frames != chunk_size || !m_voice.num_active_voice_samples) {
-                // We can't do aligned zero because of frames_before_starting
-                ZeroMemory(write_buffer.ToByteSpan());
-                EndVoiceInstantly(m_voice);
-                break;
-            }
-
-            num_frames -= chunk_size;
-            m_frame_index += chunk_size;
-
-            m_voice.pool.voice_waveform_markers_for_gui.Write()[m_voice.index] = {
-                .layer_index = (u8)m_voice.controller->layer_index,
-                .position = (u16)(Clamp01(m_position_for_gui) * (f32)UINT16_MAX),
-                .intensity = (u16)(Clamp01(m_voice.current_gain) * (f32)UINT16_MAX),
-            };
-            m_voice.pool.voice_vol_env_markers_for_gui.Write()[m_voice.index] = {
-                .on = m_voice.controller->vol_env_on && !m_voice.disable_vol_env && !m_voice.vol_env.IsIdle(),
-                .layer_index = (u8)m_voice.controller->layer_index,
-                .state = m_voice.vol_env.state,
-                .pos = (u16)(Clamp01(m_voice.vol_env.output) * (f32)UINT16_MAX),
-                .sustain_level = (u16)(Clamp01(m_voice.controller->vol_env.sustain_amount) * (f32)UINT16_MAX),
-                .id = m_voice.id,
-            };
-            m_voice.pool.voice_fil_env_markers_for_gui.Write()[m_voice.index] = {
-                .on = m_voice.controller->fil_env_amount != 0 && !m_voice.fil_env.IsIdle(),
-                .layer_index = (u8)m_voice.controller->layer_index,
-                .state = m_voice.fil_env.state,
-                .pos = (u16)(Clamp01(m_voice.fil_env.output) * (f32)UINT16_MAX),
-                .sustain_level = (u16)(Clamp01(m_voice.controller->fil_env.sustain_amount) * (f32)UINT16_MAX),
-                .id = m_voice.id,
-            };
-
-            m_voice.current_gain = 1;
+            // We can't do aligned zero because of frames_before_starting
+            ZeroMemory(write_buffer.ToByteSpan());
+            EndVoiceInstantly(m_voice);
+            return samples_written != 0;
         }
+
+        num_frames -= num_frames;
+        m_frame_index += num_frames;
+
+        m_voice.pool.voice_waveform_markers_for_gui.Write()[m_voice.index] = {
+            .layer_index = (u8)m_voice.controller->layer_index,
+            .position = (u16)(Clamp01(m_position_for_gui) * (f32)UINT16_MAX),
+            .intensity = (u16)(Clamp01(m_voice.current_gain) * (f32)UINT16_MAX),
+        };
+        m_voice.pool.voice_vol_env_markers_for_gui.Write()[m_voice.index] = {
+            .on = m_voice.controller->vol_env_on && !m_voice.disable_vol_env && !m_voice.vol_env.IsIdle(),
+            .layer_index = (u8)m_voice.controller->layer_index,
+            .state = m_voice.vol_env.state,
+            .pos = (u16)(Clamp01(m_voice.vol_env.output) * (f32)UINT16_MAX),
+            .sustain_level = (u16)(Clamp01(m_voice.controller->vol_env.sustain_amount) * (f32)UINT16_MAX),
+            .id = m_voice.id,
+        };
+        m_voice.pool.voice_fil_env_markers_for_gui.Write()[m_voice.index] = {
+            .on = m_voice.controller->fil_env_amount != 0 && !m_voice.fil_env.IsIdle(),
+            .layer_index = (u8)m_voice.controller->layer_index,
+            .state = m_voice.fil_env.state,
+            .pos = (u16)(Clamp01(m_voice.fil_env.output) * (f32)UINT16_MAX),
+            .sustain_level = (u16)(Clamp01(m_voice.controller->fil_env.sustain_amount) * (f32)UINT16_MAX),
+            .id = m_voice.id,
+        };
+
+        m_voice.current_gain = 1;
 
         return samples_written != 0;
     }
@@ -974,18 +958,18 @@ class ChunkwiseVoiceProcessor {
 
     AudioProcessingContext const& m_audio_context;
     Voice& m_voice;
+    StaticSpan<f32, k_block_size_max * 2> m_buffer;
 
     u32 m_frame_index = 0;
     f32 m_position_for_gui = 0;
 
-    alignas(16) Array<f32, k_num_frames_in_voice_processing_chunk + 1> m_lfo_amounts;
-    alignas(16) Array<f32, (k_num_frames_in_voice_processing_chunk * 2) + 2> m_buffer;
+    alignas(16) Array<f32, k_block_size_max + 1> m_lfo_amounts;
 };
 
 inline void ProcessBuffer(Voice& voice, u32 num_frames, AudioProcessingContext const& context) {
     if (!voice.is_active) return;
 
-    ChunkwiseVoiceProcessor processor(voice, context);
+    VoiceProcessor processor(voice, context);
     voice.written_to_buffer_this_block = processor.Process(num_frames);
 }
 

@@ -260,12 +260,7 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
         }
     }
 
-    CopySeparateChannelsToInterleaved(Span<f32> {(f32*)output_buffer, num_buffer_frames * 2},
-                                      channels[0],
-                                      channels[1],
-                                      num_buffer_frames);
-
-    return;
+    CopySeparateChannelsToInterleaved((f32*)output_buffer, channels[0], channels[1], num_buffer_frames);
 }
 
 static bool OpenMidi(Standalone& standalone) {

@@ -13,7 +13,7 @@ struct StereoPeakMeter {
     };
 
     // not thread-safe
-    void PrepareToPlay(f32 sample_rate, ArenaAllocator&) {
+    void PrepareToPlay(f32 sample_rate) {
         constexpr f32 k_falldown_rate_ms = 500.0f;
         m_falldown_divisor = sample_rate * (k_falldown_rate_ms / 1000.0f);
 

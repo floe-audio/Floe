@@ -151,9 +151,9 @@ UpdateVoiceLfoTimes(LayerProcessor& layer, VoicePool& voice_pool, AudioProcessin
         UpdateLFOTime(v, context.sample_rate);
 }
 
-void PrepareToPlay(LayerProcessor& layer, ArenaAllocator& allocator, AudioProcessingContext const& context) {
+void PrepareToPlay(LayerProcessor& layer, AudioProcessingContext const& context) {
     ResetLayerAudioProcessing(layer);
-    layer.peak_meter.PrepareToPlay(context.sample_rate, allocator);
+    layer.peak_meter.PrepareToPlay(context.sample_rate);
 }
 
 //

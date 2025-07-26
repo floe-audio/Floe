@@ -85,16 +85,15 @@ class Delay final : public Effect {
         }
     }
 
-    EffectProcessResult ProcessBlock(Span<f32x2> frames,
-                                     AudioProcessingContext const& context,
-                                     ExtraProcessingContext extra_context) override {
+    EffectProcessResult
+    ProcessBlock(Span<f32x2> frames, AudioProcessingContext const& context, void *) override {
         ZoneNamedN(process_block, "Delay ProcessBlock", true);
 
         if (!ShouldProcessBlock()) return EffectProcessResult::Done;
 
-        auto wet = extra_context.scratch_buffers.buf1.Interleaved();
-        wet.size = frames.size;
-        CopyMemory(wet.data, frames.data, frames.size * sizeof(f32x2));
+        f32x2 wet[k_block_size_max];
+
+        CopyMemory(wet, frames.data, frames.size * sizeof(f32x2));
 
         auto num_frames = (u32)frames.size;
         u32 pos = 0;
@@ -103,7 +102,7 @@ class Delay final : public Effect {
 
             args.num_frames = (int)chunk_size;
             args.in_interleaved = (f32*)(frames.data + pos);
-            args.out_interleaved = (f32*)(wet.data + pos);
+            args.out_interleaved = (f32*)(wet + pos);
 
             vitfx::delay::Process(*delay, args);
 

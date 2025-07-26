@@ -314,7 +314,7 @@ struct LayerProcessor {
 
 void SetSilent(LayerProcessor& layer, bool state);
 bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer, VoicePool& voice_pool);
-void PrepareToPlay(LayerProcessor& layer, ArenaAllocator& allocator, AudioProcessingContext const& context);
+void PrepareToPlay(LayerProcessor& layer, AudioProcessingContext const& context);
 
 struct LayerProcessResult {
     bool instrument_swapped;

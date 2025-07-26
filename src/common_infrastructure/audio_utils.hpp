@@ -53,10 +53,10 @@ constexpr f64 DbToAmpApprox(f64 x) {
 // res in range (0, 1) outputs to a curve in range (0.5, infinity)
 static inline f32 ResonanceToQ(f32 res) { return 1.0f / (2.0f * (1.0f - res)); }
 
-template <typename SpanType>
-inline void
-CopyInterleavedToSeparateChannels(f32* dest_l, f32* dest_r, SpanType interleaved_source, usize num_frames) {
-    ASSERT(interleaved_source.size >= num_frames * 2);
+inline void CopyInterleavedToSeparateChannels(f32* __restrict dest_l,
+                                              f32* __restrict dest_r,
+                                              f32* __restrict interleaved_source,
+                                              usize num_frames) {
     usize pos = 0;
     for (auto const i : Range(num_frames)) {
         dest_l[i] = interleaved_source[pos];
@@ -69,9 +69,10 @@ CopyInterleavedToSeparateChannels(f32* dest_l, f32* dest_r, SpanType interleaved
     }
 }
 
-template <typename SpanType>
-inline void
-CopySeparateChannelsToInterleaved(SpanType interleaved_dest, f32* src_l, f32* src_r, usize num_frames) {
+inline void CopySeparateChannelsToInterleaved(f32* __restrict interleaved_dest,
+                                              f32* __restrict src_l,
+                                              f32* __restrict src_r,
+                                              usize num_frames) {
     for (auto const i : Range(num_frames))
         interleaved_dest[i * 2] = src_l[i];
     for (auto const i : Range(num_frames))

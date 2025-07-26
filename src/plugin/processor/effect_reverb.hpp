@@ -54,16 +54,15 @@ class Reverb final : public Effect {
 
     EffectProcessResult ProcessBlock(Span<f32x2> io_frames,
                                      AudioProcessingContext const& context,
-                                     ExtraProcessingContext extra_context) override {
+                                     void *) override {
         ZoneNamedN(process_block, "Reverb ProcessBlock", true);
 
         if (!ShouldProcessBlock()) return EffectProcessResult::Done;
 
         UpdateSilentSeconds(silent_seconds, io_frames, context.sample_rate);
 
-        auto wet = extra_context.scratch_buffers.buf1.Interleaved();
-        wet.size = io_frames.size;
-        CopyMemory(wet.data, io_frames.data, io_frames.size * sizeof(f32x2));
+        f32x2 wet[k_block_size_max];
+        CopyMemory(wet, io_frames.data, io_frames.size * sizeof(f32x2));
 
         auto num_frames = (u32)io_frames.size;
         u32 pos = 0;
@@ -74,7 +73,7 @@ class Reverb final : public Effect {
 
             args.num_frames = (int)chunk_size;
             args.in_interleaved = (f32*)(io_frames.data + pos);
-            args.out_interleaved = (f32*)(wet.data + pos);
+            args.out_interleaved = (f32*)(wet + pos);
 
             vitfx::reverb::Process(*reverb, args);
 

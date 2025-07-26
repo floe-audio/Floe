@@ -23,8 +23,8 @@ class ConvolutionReverb final : public Effect {
         if (m_convolver) DestroyStereoConvolver(m_convolver);
     }
 
-    // This effect's ExtraProcessingContext::effect_context.
-    struct ConvoExtraProcessingContext {
+    // This effect's void *::effect_context.
+    struct ConvoExtraContext {
         bool start_fade_out; // In parameter.
         bool changed_ir; // Out parameter.
     };
@@ -39,26 +39,31 @@ class ConvolutionReverb final : public Effect {
             m_wet_dry.SetDry(p->ProjectedValue());
     }
 
-    EffectProcessResult ProcessBlock(Span<f32x2> frames,
-                                     AudioProcessingContext const& context,
-                                     ExtraProcessingContext extra_context) override {
+    EffectProcessResult
+    ProcessBlock(Span<f32x2> frames, AudioProcessingContext const& context, void* extra_context) override {
         ZoneScoped;
         auto result = EffectProcessResult::Done;
 
-        ASSERT_HOT(extra_context.effect_context);
-        auto& conv_context = *(ConvoExtraProcessingContext*)extra_context.effect_context;
+        ASSERT_HOT(extra_context);
+        auto& conv_context = *(ConvoExtraContext*)extra_context;
 
         if (!ShouldProcessBlock()) {
             conv_context.changed_ir = SwapConvolversIfNeeded();
             return result;
         }
 
-        auto input_channels = extra_context.scratch_buffers.buf1.Channels();
+        alignas(16) f32 input_left[k_block_size_max];
+        alignas(16) f32 input_right[k_block_size_max];
+        Array<f32*, 2> input_channels = {input_left, input_right};
+
         CopyFramesToSeparateChannels(input_channels, frames);
 
         if (conv_context.start_fade_out) m_fade.SetAsFadeOut(context.sample_rate, 20);
 
-        auto wet_channels = extra_context.scratch_buffers.buf2.Channels();
+        alignas(16) f32 wet_left[k_block_size_max] = {};
+        alignas(16) f32 wet_right[k_block_size_max] = {};
+        Array<f32*, 2> wet_channels = {wet_left, wet_right};
+
         if (m_convolver) {
             Process(*m_convolver,
                     input_channels[0],

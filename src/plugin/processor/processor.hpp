@@ -190,7 +190,6 @@ struct AudioProcessor {
 
     clap_host const& host;
 
-    ArenaAllocator audio_data_allocator {PageAllocator::Instance()};
     AudioProcessingContext audio_processing_context;
 
     ProcessorListener& listener;

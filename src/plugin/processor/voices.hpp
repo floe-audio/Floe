@@ -174,14 +174,15 @@ struct VoicePool {
         }
     }
 
-    void PrepareToPlay(ArenaAllocator& arena, AudioProcessingContext const& context);
+    void PrepareToPlay();
     void EndAllVoicesInstantly();
 
     u64 voice_start_counter = 0;
     u16 voice_id_counter = 0;
     Atomic<u32> num_active_voices = 0;
     Array<Voice, k_num_voices> voices {MakeInitialisedArray<Voice, k_num_voices>(*this)};
-    Array<Span<f32>, k_num_voices> buffer_pool {};
+    static_assert(k_block_size_max % 16 == 0, "k_block_size_max must be a multiple of 16");
+    alignas(16) Array<Array<f32, k_block_size_max * 2>, k_num_voices> buffer_pool {};
 
     AtomicSwapBuffer<Array<VoiceWaveformMarkerForGui, k_num_voices>, true> voice_waveform_markers_for_gui {};
     AtomicSwapBuffer<Array<VoiceEnvelopeMarkerForGui, k_num_voices>, true> voice_vol_env_markers_for_gui {};

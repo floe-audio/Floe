@@ -494,7 +494,8 @@ static void ProcessorHandleChanges(AudioProcessor& processor, ProcessBlockChange
         return;
 
     ZoneScoped;
-    ZoneValue(changed_params.m_changed.NumSet());
+    ZoneTextF("Num changed params: %d", (int)changes.changed_params.changed.NumSet());
+    ZoneTextF("Num note events: %d", (int)changes.note_events.size);
 
     if (auto param = changes.changed_params.Param(ParamIndex::MasterVolume))
         processor.master_vol = param->ProjectedValue();
@@ -798,26 +799,22 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
     if (Exchange(processor.previous_block_size, processor.audio_processing_context.process_block_size_max) <
         processor.audio_processing_context.process_block_size_max) {
 
-        // We reserve up-front a large allocation so that it's less likely we have to do multiple
-        // calls to the OS. Roughly 1.2MB for a block size of 512.
-        auto const alloc_size = (usize)processor.audio_processing_context.process_block_size_max * 2544;
-        processor.audio_data_allocator = ArenaAllocator(PageAllocator::Instance(), alloc_size);
-
-        processor.voice_pool.PrepareToPlay(processor.audio_data_allocator,
-                                           processor.audio_processing_context);
+        processor.voice_pool.PrepareToPlay();
 
         for (auto [index, l] : Enumerate(processor.layer_processors))
-            PrepareToPlay(l, processor.audio_data_allocator, processor.audio_processing_context);
+            PrepareToPlay(l, processor.audio_processing_context);
 
-        processor.peak_meter.PrepareToPlay(processor.audio_processing_context.sample_rate,
-                                           processor.audio_data_allocator);
+        processor.peak_meter.PrepareToPlay(processor.audio_processing_context.sample_rate);
     }
 
-    ProcessBlockChanges changes {
-        .changed_params = {processor.params, {}},
-    };
-    changes.changed_params.changed.SetAll();
-    ResetProcessor(processor, changes);
+    // Update the audio-thread representations of the parameters.
+    {
+        ProcessBlockChanges changes {
+            .changed_params = {processor.params, {}},
+        };
+        changes.changed_params.changed.SetAll();
+        ResetProcessor(processor, changes);
+    }
 
     processor.activated = true;
     return true;
@@ -828,7 +825,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                                   clap_output_events const& out,
                                   ProcessorListener::ChangeFlags& change_flags,
                                   ProcessBlockChanges& changes) {
-    // IMPROVE: support per-param modulation and automation - each param can opt in to it individually
+    // IMPROVE: support per-param modulation and automation - each param can opt-in individually.
 
     Bitset<k_num_parameters> changed_params {};
 
@@ -841,6 +838,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             MidiChannelNote const chan_note {.note = (u7)note.key, .channel = (u4)note.channel};
 
             processor.audio_processing_context.midi_note_state.NoteOn(chan_note, (f32)note.velocity);
+
             dyn::Append(changes.note_events,
                         {
                             .velocity = (f32)note.velocity,
@@ -859,6 +857,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             MidiChannelNote const chan_note {.note = (u7)note.key, .channel = (u4)note.channel};
 
             processor.audio_processing_context.midi_note_state.NoteOff(chan_note);
+
             dyn::Append(changes.note_events,
                         {
                             .velocity = (f32)note.velocity,
@@ -912,7 +911,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
         }
 
         case CLAP_EVENT_NOTE_EXPRESSION: {
-            // IMPROVE: support expression
+            // IMPROVE: support expression.
             break;
         }
 
@@ -932,13 +931,15 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
 
             switch (message.Type()) {
                 case MidiMessageType::NoteOn: {
-                    processor.audio_processing_context.midi_note_state.NoteOn(message.ChannelNote(),
+                    auto const chan_note = message.ChannelNote();
+                    processor.audio_processing_context.midi_note_state.NoteOn(chan_note,
                                                                               message.Velocity() / 127.0f);
+
                     dyn::Append(changes.note_events,
                                 {
                                     .velocity = message.Velocity() / 127.0f,
                                     .offset = event.time,
-                                    .note = message.ChannelNote(),
+                                    .note = chan_note,
                                     .type = NoteEvent::Type::On,
                                 });
                     break;
@@ -955,16 +956,19 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                     break;
                 }
                 case MidiMessageType::PitchWheel: {
-                    break;
-                    constexpr f32 k_pitch_bend_semitones = 48;
-                    auto const channel = message.ChannelNum();
-                    auto const pitch_pos = (message.PitchBend() / 16383.0f - 0.5f) * 2.0f;
+                    // NOTE: not supported at the moment
+                    if constexpr (false) {
+                        constexpr f32 k_pitch_bend_semitones = 48;
+                        auto const channel = message.ChannelNum();
+                        auto const pitch_pos = (message.PitchBend() / 16383.0f - 0.5f) * 2.0f;
 
-                    for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
-                        if (v.midi_key_trigger.channel == channel) {
-                            SetVoicePitch(v,
-                                          v.controller->tune_semitones + (pitch_pos * k_pitch_bend_semitones),
-                                          processor.audio_processing_context.sample_rate);
+                        for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
+                            if (v.midi_key_trigger.channel == channel) {
+                                SetVoicePitch(v,
+                                              v.controller->tune_semitones +
+                                                  (pitch_pos * k_pitch_bend_semitones),
+                                              processor.audio_processing_context.sample_rate);
+                            }
                         }
                     }
                     break;
@@ -1033,26 +1037,30 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                     break;
                 }
                 case MidiMessageType::PolyAftertouch: {
-                    break; // NOTE: not supported at the moment
-                    auto const note = message.NoteNum();
-                    auto const channel = message.ChannelNum();
-                    auto const value = message.PolyAftertouch();
-                    for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
-                        if (v.midi_key_trigger.channel == channel && v.midi_key_trigger.note == note) {
-                            v.aftertouch_multiplier =
-                                1 + trig_table_lookup::SinTurns(value / 127.0f / 4.0f) * 2;
+                    // NOTE: not supported at the moment
+                    if constexpr (false) {
+                        auto const note = message.NoteNum();
+                        auto const channel = message.ChannelNum();
+                        auto const value = message.PolyAftertouch();
+                        for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
+                            if (v.midi_key_trigger.channel == channel && v.midi_key_trigger.note == note) {
+                                v.aftertouch_multiplier =
+                                    1 + trig_table_lookup::SinTurns(value / 127.0f / 4.0f) * 2;
+                            }
                         }
                     }
                     break;
                 }
                 case MidiMessageType::ChannelAftertouch: {
-                    break; // NOTE: not supported at the moment
-                    auto const channel = message.ChannelNum();
-                    auto const value = message.ChannelPressure();
-                    for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
-                        if (v.midi_key_trigger.channel == channel) {
-                            v.aftertouch_multiplier =
-                                1 + trig_table_lookup::SinTurns(value / 127.0f / 4.0f) * 2;
+                    // NOTE: not supported at the moment
+                    if constexpr (false) {
+                        auto const channel = message.ChannelNum();
+                        auto const value = message.ChannelPressure();
+                        for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
+                            if (v.midi_key_trigger.channel == channel) {
+                                v.aftertouch_multiplier =
+                                    1 + trig_table_lookup::SinTurns(value / 127.0f / 4.0f) * 2;
+                            }
                         }
                     }
 
@@ -1190,7 +1198,7 @@ static clap_process_status
 ProcessSubBlock(AudioProcessor& processor,
                 clap_process const& process,
                 u32 frame_index,
-                u32 sub_block_size, // normally k_block_size_max, but can be smaller.
+                u32 sub_block_size, // Normally k_block_size_max, but can be smaller.
                 ProcessorListener::ChangeFlags& change_flags) {
     clap_process_status result = CLAP_PROCESS_CONTINUE;
 
@@ -1280,8 +1288,7 @@ ProcessSubBlock(AudioProcessor& processor,
         case VolumeFade::State::Silent: {
             ResetProcessor(processor, changes);
 
-            // We have just done a hard reset on everything, any other state change is no longer
-            // valid.
+            // We have just done a hard reset on everything, any other state change are no longer valid.
             changes.changed_params.changed.ClearAll();
 
             if (processor.whole_engine_volume_fade_type == AudioProcessor::FadeType::OutAndRestartVoices) {
@@ -1297,7 +1304,7 @@ ProcessSubBlock(AudioProcessor& processor,
         }
         case VolumeFade::State::FadeOut: {
             // If we are going to be fading out anyways, let's apply param changes at that time too to
-            // avoid any pops
+            // avoid any pops.
             processor.pending_param_changes |= changes.changed_params.changed;
             changes.changed_params.changed.ClearAll();
             break;
@@ -1388,7 +1395,8 @@ ProcessSubBlock(AudioProcessor& processor,
     auto const layer_buffers =
         ProcessVoices(processor.voice_pool, sub_block_size, processor.audio_processing_context);
 
-    Span<f32> interleaved_outputs {};
+    alignas(16) f32 interleaved_outputs[k_block_size_max * 2] = {};
+
     bool audio_was_generated_by_voices = false;
     for (auto const i : Range(k_num_layers)) {
         auto const process_result = ProcessLayer(processor.layer_processors[i],
@@ -1400,12 +1408,7 @@ ProcessSubBlock(AudioProcessor& processor,
 
         if (process_result.did_any_processing) {
             audio_was_generated_by_voices = true;
-            if (interleaved_outputs.size == 0)
-                interleaved_outputs = layer_buffers[i];
-            else
-                SimdAddAlignedBuffer(interleaved_outputs.data,
-                                     layer_buffers[i].data,
-                                     (usize)sub_block_size * 2);
+            SimdAddAlignedBuffer(interleaved_outputs, layer_buffers[i].data, (usize)sub_block_size * 2);
         }
 
         if (process_result.instrument_swapped) {
@@ -1417,10 +1420,7 @@ ProcessSubBlock(AudioProcessor& processor,
         }
     }
 
-    if (interleaved_outputs.size == 0) {
-        interleaved_outputs = processor.voice_pool.buffer_pool[0];
-        SimdZeroAlignedBuffer(interleaved_outputs.data, sub_block_size * 2);
-    } else if constexpr (RUNTIME_SAFETY_CHECKS_ON && !PRODUCTION_BUILD) {
+    if constexpr (RUNTIME_SAFETY_CHECKS_ON && !PRODUCTION_BUILD) {
         for (auto const frame : Range(sub_block_size)) {
             auto const& l = interleaved_outputs[(frame * 2) + 0];
             auto const& r = interleaved_outputs[(frame * 2) + 1];
@@ -1429,42 +1429,19 @@ ProcessSubBlock(AudioProcessor& processor,
         }
     }
 
-    auto interleaved_stereo_samples = ToStereoFramesSpan(interleaved_outputs.data, sub_block_size);
+    auto interleaved_stereo_samples = ToStereoFramesSpan(interleaved_outputs, sub_block_size);
 
     if (audio_was_generated_by_voices || processor.fx_need_another_frame_of_processing) {
         // Effects
         // ==================================================================================================
 
-        // interleaved_outputs is one of the voice buffers, we want to find 2 more to pass to the
-        // effects rack
-        u32 unused_buffer_indexes[2] = {UINT32_MAX, UINT32_MAX};
-        {
-            u32 unused_buffer_indexes_index = 0;
-            for (auto const i : Range(k_num_voices)) {
-                if (interleaved_outputs.data != processor.voice_pool.buffer_pool[i].data) {
-                    unused_buffer_indexes[unused_buffer_indexes_index++] = i;
-                    if (unused_buffer_indexes_index == 2) break;
-                }
-            }
-        }
-        ASSERT_HOT(unused_buffer_indexes[0] != UINT32_MAX);
-        ASSERT_HOT(unused_buffer_indexes[1] != UINT32_MAX);
-
-        ScratchBuffers const scratch_buffers(
-            sub_block_size,
-            processor.voice_pool.buffer_pool[(usize)unused_buffer_indexes[0]].data,
-            processor.voice_pool.buffer_pool[(usize)unused_buffer_indexes[1]].data);
-
         bool fx_need_another_frame_of_processing = false;
         for (auto fx : processor.actual_fx_order) {
-            Effect::ExtraProcessingContext extra_context {
-                .scratch_buffers = scratch_buffers,
-            };
-            ConvolutionReverb::ConvoExtraProcessingContext convo_extra_context {
+            void* extra_context {};
+            ConvolutionReverb::ConvoExtraContext convo_extra_context {
                 .start_fade_out = mark_convolution_for_fade_out,
             };
-            if (fx->type == EffectType::ConvolutionReverb)
-                extra_context.effect_context = &convo_extra_context;
+            if (fx->type == EffectType::ConvolutionReverb) extra_context = &convo_extra_context;
 
             auto const r = fx->ProcessBlock(interleaved_stereo_samples,
                                             processor.audio_processing_context,
@@ -1532,10 +1509,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     for (u32 frame_index = 0; frame_index < process.frames_count; frame_index += k_block_size_max) {
         auto const sub_block_size = Min(k_block_size_max, process.frames_count - frame_index);
         result = ProcessSubBlock(processor, process, frame_index, sub_block_size, change_flags);
-        if (result != CLAP_PROCESS_CONTINUE) {
-            // If we are sleeping, we don't need to do any more processing.
-            break;
-        }
+        if (result == CLAP_PROCESS_ERROR) break;
     }
 
     // Mark GUI dirty.

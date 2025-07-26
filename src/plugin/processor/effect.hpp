@@ -48,24 +48,6 @@ struct EffectWetDryHelper {
     OnePoleLowPassFilter<f32> dry_smoother {};
 };
 
-struct ScratchBuffers {
-    class Buffer {
-      public:
-        Buffer(f32* b, u32 size) : m_buffer(b), m_block_size(size) { ASSERT_EQ((usize)b % 16, 0u); }
-
-        Span<f32x2> Interleaved() { return ToStereoFramesSpan(m_buffer, m_block_size); }
-
-        Array<f32*, 2> Channels() { return {m_buffer, m_buffer + m_block_size}; }
-
-      private:
-        f32* m_buffer;
-        u32 m_block_size;
-    };
-
-    ScratchBuffers(u32 block_size, f32* b1, f32* b2) : buf1(b1, block_size), buf2(b2, block_size) {}
-    Buffer buf1, buf2;
-};
-
 enum class EffectProcessResult {
     Done, // no more processing needed
     ProcessingTail, // processing needed
@@ -85,17 +67,9 @@ struct Effect {
         ProcessChangesInternal(changes, context);
     }
 
-    struct ExtraProcessingContext {
-        // The effect may use these buffers for temporary storage.
-        ScratchBuffers scratch_buffers;
-
-        // Effect-specific context.
-        void* effect_context = nullptr;
-    };
-
     // audio-thread
     virtual EffectProcessResult
-    ProcessBlock(Span<f32x2>, AudioProcessingContext const&, ExtraProcessingContext) = 0;
+    ProcessBlock(Span<f32x2>, AudioProcessingContext const&, void* extra_context) = 0;
 
     // Helper function for simple effects that only need to process one frame at a time. Wraps the individual
     // frame processing in the necessary block processing machinery.

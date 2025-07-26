@@ -68,7 +68,7 @@ class FilterEffect final : public Effect {
 
     EffectProcessResult ProcessBlock(Span<f32x2> frames,
                                      AudioProcessingContext const& context,
-                                     ExtraProcessingContext) override {
+                                     void *) override {
         return ProcessBlockByFrame(
             frames,
             [&](f32x2 in) {
