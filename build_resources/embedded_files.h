@@ -36,6 +36,7 @@ typedef struct {
 
 BinaryData EmbeddedFontAwesome();
 BinaryData EmbeddedRoboto();
+BinaryData EmbeddedRobotoItalic();
 BinaryData EmbeddedDefaultBackground();
 BinaryData EmbeddedLogoImage();
 BinaryData EmbeddedIconImage();

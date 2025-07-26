@@ -28,6 +28,9 @@ export fn EmbeddedFontAwesome() c.BinaryData {
 export fn EmbeddedRoboto() c.BinaryData {
     return embeddedFile("fonts/Roboto-Regular.ttf");
 }
+export fn EmbeddedRobotoItalic() c.BinaryData {
+    return embeddedFile("fonts/Roboto-Italic.ttf");
+}
 
 export fn EmbeddedDefaultBackground() c.BinaryData {
     return embeddedFile("images/default-background.jpg");

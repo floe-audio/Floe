@@ -202,6 +202,7 @@ constexpr u32 k_auto_active_white_overlay = Hsla(k_highlight_hue, 35, 70, 38);
 constexpr f32 FontPoint(f32 font_pts) { return font_pts * (16.0f / 13.0f); }
 
 constexpr f32 k_font_body_size = FontPoint(13);
+constexpr f32 k_font_body_italic_size = FontPoint(12);
 constexpr f32 k_font_heading1_size = FontPoint(18);
 constexpr f32 k_font_heading2_size = FontPoint(14);
 constexpr f32 k_font_heading3_size = FontPoint(10);

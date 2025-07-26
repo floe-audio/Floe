@@ -38,7 +38,7 @@ static void PreferencesRhsText(GuiBoxSystem& box_system, Box parent, String text
               .parent = parent,
               .text = text,
               .size_from_text = true,
-              .font = FontType::Body,
+              .font = FontType::BodyItalic,
               .text_colours = {style::Colour::Subtext0},
           });
 }

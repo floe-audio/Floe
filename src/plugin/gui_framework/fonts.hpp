@@ -10,6 +10,7 @@
 
 enum class FontType : u32 {
     Body,
+    BodyItalic,
     Heading1,
     Heading2,
     Heading3,
@@ -29,8 +30,11 @@ PUBLIC void LoadFonts(graphics::DrawContext& graphics, Fonts& fonts, f32 pixels_
 
     auto const def_ranges = graphics.fonts.GetGlyphRangesDefaultAudioPlugin();
     auto const roboto_ttf = EmbeddedRoboto();
+    auto const roboto_italic_ttf = EmbeddedRobotoItalic();
 
     fonts[ToInt(FontType::Body)] = load_font(roboto_ttf, style::k_font_body_size, def_ranges);
+    fonts[ToInt(FontType::BodyItalic)] =
+        load_font(roboto_italic_ttf, style::k_font_body_italic_size, def_ranges);
     // IMPROVE: bold fonts
     fonts[ToInt(FontType::Heading1)] = load_font(roboto_ttf, style::k_font_heading1_size, def_ranges);
     fonts[ToInt(FontType::Heading2)] = load_font(roboto_ttf, style::k_font_heading2_size, def_ranges);
