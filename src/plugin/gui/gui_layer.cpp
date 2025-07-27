@@ -197,7 +197,7 @@ static void DoLoopModeSelectorGui(Gui* g, Rect r, LayerProcessor& layer) {
         if (g->imgui.SliderRange(
                 {
                     .flags = imgui::DefSlider().flags,
-                    .sensitivity = 100 + (5000 * 1.0f / param.info.linear_range.Delta()),
+                    .sensitivity = 20,
                     .draw = [](IMGUI_DRAW_SLIDER_ARGS) {},
                 },
                 r,

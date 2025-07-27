@@ -3,6 +3,8 @@
 
 #include "gui_box_system.hpp"
 
+#include "utils/logger/logger.hpp"
+
 static f32 HeightOfWrappedText(GuiBoxSystem& box_system, layout::Id id, f32 width) {
     if (auto const t_ptr = box_system.state->word_wrapped_texts.Find(id)) {
         auto const& t = *t_ptr;
@@ -397,6 +399,7 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
             auto& box = builder.state->boxes[box_index];
             ASSERT(box.source_location == source_location,
                    "GUI has changed between layout and render, see deffered_actions");
+
             auto const rect =
                 builder.imgui.GetRegisteredAndConvertedRect(layout::GetRect(builder.layout, box.layout_id));
 
@@ -414,13 +417,15 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                 .triggers_on_mouse_up = config.activation_click_event == ActivationClickEvent::Up,
             };
 
-            if (config.text_input_behaviour != TextInputBox::None) {
+            if (ToInt(config.behaviour) || config.tooltip.tag != TooltipStringType::None)
                 box.imgui_id = builder.imgui.GetID((usize)box_index);
+
+            if (ToInt(config.behaviour & Behaviour::TextInput)) {
                 builder.state->last_text_input_result = builder.imgui.TextInput(
                     rect,
                     box.imgui_id,
                     config.text,
-                    config.text_input_behaviour == TextInputBox::MultiLine
+                    config.multiline_text_input
                         ? imgui::TextInputFlags {
                             .centre_align = (config.text_align_x == TextAlignX::Centre),
                             .multiline = true,
@@ -431,15 +436,23 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                         },
                     button_flags,
                     false);
+                LogDebug(ModuleName::Gui,
+                         "Text input at {} has id {}, imgui hot item is {}",
+                         source_location,
+                         box.imgui_id,
+                         builder.imgui.hot_item);
                 box.is_active = builder.imgui.TextInputHasFocus(box.imgui_id);
                 box.is_hot = builder.imgui.IsHot(box.imgui_id);
+                if (box.is_hot) {
+                    int b = 0;
+                    (void)b;
+                }
                 box.text_input_result = &builder.state->last_text_input_result;
             }
 
-            if (config.knob_behaviour && (config.text_input_behaviour == TextInputBox::None ||
-                                          (config.text_input_behaviour != TextInputBox::None &&
-                                           !builder.imgui.TextInputHasFocus(box.imgui_id)))) {
-                box.imgui_id = builder.imgui.GetID((usize)box_index);
+            if (ToInt(config.behaviour & Behaviour::Knob) &&
+                (!ToInt(config.behaviour & Behaviour::TextInput) ||
+                 (ToInt(config.behaviour & Behaviour::TextInput) && !box.is_active))) {
                 box.knob_percent = config.knob_percent;
                 if (!builder.imgui.SliderBehavior(
                         rect,
@@ -453,22 +466,21 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                 }
                 box.is_active = builder.imgui.IsActive(box.imgui_id);
                 box.is_hot = builder.imgui.IsHot(box.imgui_id);
+                if (box.is_hot) {
+                    int b = 0;
+                    (void)b;
+                }
             }
 
-            if (config.button_behaviour && !config.knob_behaviour &&
-                config.text_input_behaviour == TextInputBox::None) {
-                box.imgui_id = builder.imgui.GetID((usize)box_index);
+            if ((config.behaviour & Behaviour::Button) == Behaviour::Button) {
                 box.button_fired = builder.imgui.ButtonBehavior(mouse_rect, box.imgui_id, button_flags);
                 box.is_active = builder.imgui.IsActive(box.imgui_id);
                 box.is_hot = builder.imgui.IsHot(box.imgui_id);
             }
 
-            if (config.tooltip.tag != TooltipStringType::None) {
-                if (!config.button_behaviour && config.text_input_behaviour == TextInputBox::None) {
-                    box.imgui_id = builder.imgui.GetID((usize)box_index);
-                    builder.imgui.SetHot(rect, box.imgui_id);
-                    box.is_hot = builder.imgui.IsHot(box.imgui_id);
-                }
+            if (config.tooltip.tag != TooltipStringType::None && !ToInt(config.behaviour)) {
+                builder.imgui.SetHot(rect, box.imgui_id);
+                box.is_hot = builder.imgui.IsHot(box.imgui_id);
             }
 
             //
@@ -567,7 +579,7 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                 builder.imgui.graphics->AddRect(r, col_u32, rounding, config.round_background_corners);
             }
 
-            if (config.text.size && config.text_input_behaviour == TextInputBox::None) {
+            if (config.text.size && !ToInt(config.behaviour & Behaviour::TextInput)) {
                 auto text_pos = rect.pos;
                 Optional<f32x2> text_size;
                 if (config.text_align_x != TextAlignX::Left || config.text_align_y != TextAlignY::Top) {
@@ -643,6 +655,8 @@ bool AdditionalClickBehaviour(GuiBoxSystem& box_system,
                               imgui::ButtonFlags const& config,
                               Rect* out_item_rect) {
     if (box_system.state->pass == BoxSystemCurrentPanelState::Pass::LayoutBoxes) return false;
+
+    if (!box.is_hot) return false;
 
     auto const item_r =
         box_system.imgui.WindowRectToScreenRect(layout::GetRect(box_system.layout, box.layout_id));

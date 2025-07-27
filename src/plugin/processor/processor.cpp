@@ -1591,11 +1591,12 @@ AudioProcessor::AudioProcessor(clap_host const& host,
     changes.changed_params.changed.SetAll();
     ProcessorHandleChanges(*this, changes);
 
+    for (u32 i = 0; i < k_num_parameters; ++i)
+        param_learned_ccs[i].AssignBlockwise(PersistentCcsForParam(prefs, ParamIndexToId((ParamIndex)i)));
+
     if (prefs::GetBool(prefs, SettingDescriptor(ProcessorSetting::DefaultCcParamMappings)))
         for (auto const mapping : k_default_cc_to_param_mapping)
             param_learned_ccs[ToInt(mapping.param)].Set(mapping.cc);
-    for (u32 i = 0; i < k_num_parameters; ++i)
-        param_learned_ccs[i].AssignBlockwise(PersistentCcsForParam(prefs, ParamIndexToId((ParamIndex)i)));
 }
 
 AudioProcessor::~AudioProcessor() {

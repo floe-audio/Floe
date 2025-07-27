@@ -942,6 +942,10 @@ bool Context::SliderRangeBehavior(Rect r,
     f32 percent = Map(value, min, max, 0.0f, 1.0f);
     f32 const default_percent = Map(default_value, min, max, 0.0f, 1.0f);
 
+    // We are now working in the percent space, so we need to scale the sensitivity too so that it still
+    // relates to pixels per step of 1.0.
+    sensitivity *= Abs(max - min);
+
     bool const slider_changed = SliderBehavior(r, id, percent, default_percent, sensitivity, flags);
 
     if (slider_changed) value = Map(percent, 0.0f, 1.0f, min, max);
@@ -992,13 +996,7 @@ bool Context::SliderUnboundedBehavior(Rect r,
     static f32x2 start_location = {};
     f32 const starting_val = val;
 
-    // NOTE: this slider always responds both vertically and horizontally
-    //
-    // Used to have this based off of r.w or r.h, the thinking being that size would
-    // play into how sensitive the control responds to mouse movement. But I think that
-    // a static size is just better. It means we can set the sensitivity value with more
-    // surety.
-    constexpr f32 k_size = 64;
+    // NOTE: this slider always responds both vertically and horizontally.
 
     if (ButtonBehavior(r, id, {.left_mouse = true, .triggers_on_mouse_down = true})) {
         if ((flags.default_on_modifer) && frame_input.modifiers.Get(ModifierKey::Modifier)) val = default_val;
@@ -1013,18 +1011,15 @@ bool Context::SliderUnboundedBehavior(Rect r,
                 val_at_click = val;
                 start_location = frame_input.cursor_pos;
             }
-            if (frame_input.modifiers.Get(ModifierKey::Shift)) sensitivity /= 6;
+            if (frame_input.modifiers.Get(ModifierKey::Shift)) sensitivity *= 4;
         }
-        if (frame_input.cursor_pos.x != -1 && frame_input.cursor_pos.y != -1) {
+        if (All(frame_input.cursor_pos != -1)) {
             auto d = frame_input.cursor_pos - start_location;
             d.x = -d.x;
             auto distance_from_drag_start = d.x + d.y;
-            // I'm pretty sure it would make sense to do sqrt of the sum of the squares
-            // for all case, rather than just these 2, just need to make sure we never sqrt a
-            // negative number
             if (d.x > 0 && d.y > 0) distance_from_drag_start = Sqrt(Pow(d.x, 2.0f) + Pow(d.y, 2.0f));
             if (d.x < 0 && d.y < 0) distance_from_drag_start = -Sqrt(Pow(-d.x, 2.0f) + Pow(-d.y, 2.0f));
-            val = val_at_click - (f32)(distance_from_drag_start / k_size) * (sensitivity / 2000.0f);
+            val = val_at_click - distance_from_drag_start / sensitivity;
         }
     }
 
@@ -1091,7 +1086,7 @@ void Context::RegisterAndConvertRect(Rect* r) {
     RegisterToWindow(*r);
     r->pos = WindowPosToScreenPos(r->pos);
 
-    // debug: show boxes around registered rects
+    // Debug: show boxes around registered rectangles.
     // overlay_graphics.AddRect(r->Min(), r->Max(), 0xff0000ff);
 }
 
@@ -1099,7 +1094,7 @@ bool Context::RegisterRegionForMouseTracking(Rect r, bool check_intersection) {
     auto this_window_is_apopup =
         (curr_window->flags & WindowFlags_Popup) | (curr_window->flags & WindowFlags_NestedInsidePopup);
     if (focused_popup_window != nullptr && !this_window_is_apopup) return false;
-    if (check_intersection && !Rect::Intersection(r, GetCurrentClipRect())) return false;
+    if (check_intersection && !Rect::DoRectsIntersect(r, GetCurrentClipRect())) return false;
 
     MouseTrackedRect widget = {};
     widget.rect = r;

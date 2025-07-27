@@ -49,6 +49,10 @@ bool Knob(Gui* g, imgui::Id id, Parameter const& param, Rect r, Style const& sty
     settings.slider_settings = KnobSettings(g, style);
     settings.text_input_settings = GetParameterTextInputSettings();
 
+    // Sensitivity is based on the pixels needed to change the value by 1. For parameter knobs we want the
+    // just have a sensitivity based on the full range of the knob.
+    settings.slider_settings.sensitivity /= param.info.linear_range.Delta();
+
     auto const display_string = param.info.LinearValueToString(val).ReleaseValueOr({});
 
     if (g->param_text_editor_to_open && *g->param_text_editor_to_open == param.info.index) {

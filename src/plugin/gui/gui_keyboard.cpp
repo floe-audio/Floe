@@ -100,6 +100,7 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(Gui* g, Rect r, int starting_octave)
     }
     imgui.PopID();
 
+    imgui.PushID("black");
     for (auto const i : Range(num_octaves * 5)) {
         int const this_black_note = i % 5;
         int const this_octave = i / 5;
@@ -139,6 +140,7 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(Gui* g, Rect r, int starting_octave)
         imgui.graphics->AddRectFilled(key_r.Min(), key_r.Max(), col);
         overlay_key(this_abs_note, key_r, UiColMap::KeyboardBlackVoiceOverlay);
     }
+    imgui.PopID();
 
     if (!imgui.frame_input.mouse_buttons[0].is_down && g->midi_keyboard_note_held_with_mouse) {
         result =

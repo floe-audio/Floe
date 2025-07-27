@@ -6,13 +6,13 @@
 
 #include "gui_fwd.hpp"
 
-static constexpr int k_highect_oct_on_keyboard = 10;
-static constexpr int k_num_octaves_shown = 8;
-static constexpr int k_lowest_starting_oct = 0;
-static constexpr int k_highest_starting_oct = ((k_highect_oct_on_keyboard + 1) - k_num_octaves_shown);
-static constexpr int k_octave_default_offset = 2;
-static constexpr int k_octave_lowest = (k_lowest_starting_oct - k_octave_default_offset);
-static constexpr int k_octave_highest = (k_highest_starting_oct - k_octave_default_offset);
+constexpr s8 k_highect_oct_on_keyboard = 10;
+constexpr s8 k_num_octaves_shown = 8;
+constexpr s8 k_lowest_starting_oct = 0;
+constexpr s8 k_highest_starting_oct = ((k_highect_oct_on_keyboard + 1) - k_num_octaves_shown);
+constexpr s8 k_octave_default_offset = 2;
+constexpr s8 k_octave_lowest = (k_lowest_starting_oct - k_octave_default_offset);
+constexpr s8 k_octave_highest = (k_highest_starting_oct - k_octave_default_offset);
 
 struct KeyboardGuiKeyPressed {
     bool is_down;

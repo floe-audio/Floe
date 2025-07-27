@@ -5,120 +5,163 @@
 
 #include "engine/engine.hpp"
 #include "gui.hpp"
-#include "gui_button_widgets.hpp"
-#include "gui_dragger_widgets.hpp"
-#include "gui_framework/gui_live_edit.hpp"
 #include "gui_keyboard.hpp"
 #include "gui_widget_helpers.hpp"
 
-void BotPanel(Gui* g) {
-    auto& imgui = g->imgui;
-    auto& lay = g->layout;
-    auto& engine = g->engine;
+static bool IconButton(GuiBoxSystem& box_system,
+                       Box const parent,
+                       String icon,
+                       TooltipString tooltip,
+                       f32 font_scale = 1.0f) {
+    auto const button = DoBox(box_system,
+                              {
+                                  .parent = parent,
+                                  .layout {
+                                      .size = layout::k_hug_contents,
+                                      .contents_padding = {.lr = 3, .tb = 2},
+                                  },
+                                  .tooltip = tooltip,
+                                  .behaviour = Behaviour::Button,
+                              });
 
-    auto const button_h = LiveSize(imgui, UiSizeId::MidiKeyboardButtonSize);
-    auto const button_ygap = LiveSize(imgui, UiSizeId::MidiKeyboardButtonYGap);
+    DoBox(box_system,
+          {
+              .parent = button,
+              .text = icon,
+              .size_from_text = true,
+              .font = FontType::Icons,
+              .font_size = style::k_font_icons_size * font_scale,
+              .text_colours {
+                  .base = style::Colour::DarkModeSubtext1,
+                  .hot = style::Colour::Highlight,
+                  .active = style::Colour::Highlight,
+              },
+              .parent_dictates_hot_and_active = true,
+          });
+    return button.button_fired;
+}
 
-    if (imgui.Width() <= 0 || imgui.Height() <= 0) return;
+static Optional<s64> OctaveDragger(GuiBoxSystem& box_system, Box const parent, s64 value) {
+    auto percent = MapTo01((f32)value, k_octave_lowest, k_octave_highest);
+    auto const box = DoBox(box_system,
+                           {
+                               .parent = parent,
+                               .text = fmt::Format(box_system.arena, "{+}", value),
+                               .text_align_x = TextAlignX::Centre,
+                               .text_align_y = TextAlignY::Centre,
+                               .layout {
+                                   .size = {28, style::k_font_body_size},
+                                   .contents_direction = layout::Direction::Row,
+                                   .contents_align = layout::Alignment::Middle,
+                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                               },
+                               .behaviour = Behaviour::TextInput | Behaviour::Knob,
+                               .activate_on_click_button = MouseButton::Left,
+                               .activate_on_double_click = true,
+                               .activation_click_event = ActivationClickEvent::Down,
+                               .knob_percent = percent,
+                               .knob_sensitivity = 20,
+                           });
 
-    auto root = layout::CreateItem(lay,
-                                   g->scratch_arena,
-                                   {
-                                       .size = imgui.Size(),
-                                       .contents_direction = layout::Direction::Row,
-                                       .contents_align = layout::Alignment::Start,
-                                   });
-    auto controls = layout::CreateItem(
-        lay,
-        g->scratch_arena,
-        {
-            .parent = root,
-            .size = {LiveSize(imgui, UiSizeId::MidiKeyboardControlWidth), imgui.Height() * 0.9f},
-            .contents_direction = layout::Direction::Row,
-            .contents_align = layout::Alignment::Start,
-        });
+    Optional<s64> new_value {};
 
-    auto oct_container = layout::CreateItem(
-        lay,
-        g->scratch_arena,
-        {
-            .parent = controls,
-            .size = {LiveSize(imgui, UiSizeId::MidiKeyboardSlider) * 1.5f, layout::k_fill_parent},
-            .contents_direction = layout::Direction::Column,
-            .contents_align = layout::Alignment::Middle,
-        });
+    if (box.text_input_result &&
+        (box.text_input_result->buffer_changed || box.text_input_result->enter_pressed)) {
+        new_value = ParseInt(box.text_input_result->text, ParseIntBase::Decimal);
+    }
 
-    auto oct_up = layout::CreateItem(lay,
-                                     g->scratch_arena,
-                                     {
-                                         .parent = oct_container,
-                                         .size = {layout::k_fill_parent, button_h},
-                                     });
-    auto oct_text = layout::CreateItem(lay,
-                                       g->scratch_arena,
-                                       {
-                                           .parent = oct_container,
-                                           .size = {layout::k_fill_parent, button_h},
-                                           .margins = {.tb = button_ygap},
-                                       });
-    auto oct_dn = layout::CreateItem(lay,
-                                     g->scratch_arena,
-                                     {
-                                         .parent = oct_container,
-                                         .size = {layout::k_fill_parent, button_h},
-                                     });
-    auto keyboard = layout::CreateItem(lay,
-                                       g->scratch_arena,
-                                       {
-                                           .parent = root,
-                                           .size = layout::k_fill_parent,
-                                       });
+    if (!__builtin_isnan(box.knob_percent))
+        new_value = (s64)MapFrom01(box.knob_percent, k_octave_lowest, k_octave_highest);
 
-    layout::RunContext(lay);
-    DEFER { layout::ResetContext(lay); };
+    DrawTextInput(box_system,
+                  box,
+                  {
+                      .text_col = style::Colour::DarkModeText,
+                      .cursor_col = style::Colour::DarkModeText,
+                      .selection_col = style::Colour::Highlight,
+                  });
 
-    Rect const keyboard_r = layout::GetRect(lay, keyboard);
-    Rect const oct_up_r = layout::GetRect(lay, oct_up);
-    Rect const oct_dn_r = layout::GetRect(lay, oct_dn);
-    Rect const oct_text_r = layout::GetRect(lay, oct_text);
+    return new_value;
+}
 
-    auto up_id = imgui.GetID("Up");
-    auto dn_id = imgui.GetID("Dn");
+static void DoBotPanel(Gui* g) {
+    auto& box_system = g->box_system;
+    auto const root_size = box_system.imgui.PixelsToVw(box_system.imgui.Size());
+    auto const root = DoBox(box_system,
+                            {
+                                .background_fill_colours = {style::Colour::DarkModeBackground0},
+                                .layout {
+                                    .size = root_size,
+                                    .contents_padding = {.l = 0, .r = 4, .tb = 4},
+                                    .contents_gap = 0,
+                                    .contents_direction = layout::Direction::Row,
+                                    .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                },
+                            });
+
     auto& preferences = g->prefs;
-    auto keyboard_octave = (int)Clamp<s64>(
+    auto const keyboard_octave = Clamp<s64>(
         prefs::LookupInt(preferences, prefs::key::k_gui_keyboard_octave).ValueOr(k_octave_default_offset),
         k_octave_lowest,
         k_octave_highest);
-    if (buttons::Button(g, up_id, oct_up_r, ICON_FA_CARET_UP, buttons::IconButton(imgui))) {
-        keyboard_octave = Min(keyboard_octave + 1, k_octave_highest);
-        prefs::SetValue(preferences, prefs::key::k_gui_keyboard_octave, (s64)keyboard_octave);
-    }
-    if (buttons::Button(g, dn_id, oct_dn_r, ICON_FA_CARET_DOWN, buttons::IconButton(imgui))) {
-        keyboard_octave = Max(keyboard_octave - 1, k_octave_lowest);
-        prefs::SetValue(preferences, prefs::key::k_gui_keyboard_octave, (s64)keyboard_octave);
-    }
-    Tooltip(g, up_id, oct_up_r, "GUI Keyboard Octave Up"_s);
-    Tooltip(g, dn_id, oct_dn_r, "GUI Keyboard Octave Down"_s);
 
-    auto oct_text_id = imgui.GetID("Oct");
-    if (draggers::Dragger(g,
-                          oct_text_id,
-                          oct_text_r,
-                          k_octave_lowest,
-                          k_octave_highest,
-                          keyboard_octave,
-                          draggers::DefaultStyle(imgui).WithNoBackground().WithSensitivity(500))) {
-        ASSERT(keyboard_octave >= k_octave_lowest && keyboard_octave <= k_octave_highest);
-        prefs::SetValue(preferences, prefs::key::k_gui_keyboard_octave, (s64)keyboard_octave);
-    }
-    Tooltip(g, oct_text_id, oct_text_r, "GUI Keyboard Octave - Double Click To Edit"_s);
+    {
+        auto const octave_box = DoBox(box_system,
+                                      {
+                                          .parent = root,
+                                          .layout {
+                                              .size = {layout::k_hug_contents, layout::k_fill_parent},
+                                              .contents_direction = layout::Direction::Column,
+                                              .contents_align = layout::Alignment::Middle,
+                                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                          },
+                                      });
 
-    if (auto key = KeyboardGui(g, keyboard_r, keyboard_octave)) {
-        if (key->is_down)
-            engine.processor.events_for_audio_thread.Push(
-                GuiNoteClicked {.key = key->note, .velocity = key->velocity});
-        else
-            engine.processor.events_for_audio_thread.Push(GuiNoteClickReleased {.key = key->note});
-        engine.host.request_process(&engine.host);
+        Optional<s64> new_octave {};
+
+        if (IconButton(box_system, octave_box, ICON_FA_CARET_UP, "GUI Keyboard Octave Up"_s))
+            new_octave = Min<s64>(keyboard_octave + 1, k_octave_highest);
+
+        if (auto const v = OctaveDragger(box_system, octave_box, keyboard_octave)) new_octave = *v;
+
+        if (IconButton(box_system, octave_box, ICON_FA_CARET_DOWN, "GUI Keyboard Octave Down"_s))
+            new_octave = Max<s64>(keyboard_octave - 1, k_octave_lowest);
+
+        if (new_octave) prefs::SetValue(preferences, prefs::key::k_gui_keyboard_octave, *new_octave);
     }
+
+    {
+        auto const keyboard = DoBox(box_system,
+                                    {
+                                        .parent = root,
+                                        .layout {
+                                            .size = layout::k_fill_parent,
+                                            .margins = {.l = 0, .r = 3, .tb = 3},
+                                        },
+                                    });
+        if (auto const r = BoxRect(box_system, keyboard)) {
+            if (auto key = KeyboardGui(g, *r, (int)keyboard_octave)) {
+                if (key->is_down)
+                    g->engine.processor.events_for_audio_thread.Push(
+                        GuiNoteClicked {.key = key->note, .velocity = key->velocity});
+                else
+                    g->engine.processor.events_for_audio_thread.Push(GuiNoteClickReleased {.key = key->note});
+                g->engine.host.request_process(&g->engine.host);
+            }
+        }
+    }
+}
+
+void BotPanel(Gui* g, Rect const r) {
+    RunPanel(g->box_system,
+             {
+                 .run = [g](GuiBoxSystem&) { DoBotPanel(g); },
+                 .data =
+                     Subpanel {
+                         .rect = r,
+                         .imgui_id = g->imgui.GetID("BotPanel"),
+                         .flags = imgui::WindowFlags_NoScrollbarX | imgui::WindowFlags_NoScrollbarY,
+                     },
+             });
 }

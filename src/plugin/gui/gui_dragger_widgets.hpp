@@ -23,7 +23,7 @@ struct Style {
         return r;
     }
 
-    f32 sensitivity {250};
+    f32 sensitivity {512};
     bool always_show_plus {};
     u32 background {};
     u32 text {};

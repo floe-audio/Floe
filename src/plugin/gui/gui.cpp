@@ -360,10 +360,6 @@ GuiFrameResult GuiUpdate(Gui* g) {
 
         imgui.graphics->AddLine(r.TopLeft(), r.TopRight(), LiveCol(imgui, UiColMap::MidPanelTopLine));
     };
-    auto draw_bot_window = [](IMGUI_DRAW_WINDOW_BG_ARGS) {
-        auto r = window->unpadded_bounds;
-        imgui.graphics->AddRectFilled(r.Min(), r.Max(), LiveCol(imgui, UiColMap::BotPanelBack));
-    };
 
     {
         auto mid_settings = imgui::DefWindow();
@@ -380,13 +376,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
 
     TopPanel(g, top_h);
 
-    auto bot_settings = imgui::DefWindow();
-    bot_settings.pad_top_left = {8, 8};
-    bot_settings.pad_bottom_right = {8, 8};
-    bot_settings.draw_routine_window_background = draw_bot_window;
-    imgui.BeginWindow(bot_settings, {.xywh {0, top_h + mid_h, imgui.Width(), bot_h}}, "BotPanel");
-    BotPanel(g);
-    imgui.EndWindow();
+    BotPanel(g, {.xywh {0, top_h + mid_h, imgui.Width(), bot_h}});
 
     DoResizeCorner(g);
 

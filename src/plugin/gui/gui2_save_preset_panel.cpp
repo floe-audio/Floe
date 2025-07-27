@@ -136,7 +136,7 @@ bool DoTagsGui(GuiBoxSystem& box_system,
                           .background_fill_auto_hot_active_overlay = true,
                           .round_background_corners = 0b1100,
                           .tooltip = tag_info.description,
-                          .button_behaviour = true,
+                          .behaviour = Behaviour::Button,
                       });
 
             if (button.button_fired) {
@@ -203,7 +203,6 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
                                              .text = state.metadata.author,
                                              .tooltip = "Creator of this preset"_s,
                                              .size = f32x2 {200, style::k_font_body_size * 1.3f},
-                                             .type = TextInputBox::SingleLine,
                                          });
             input.text_input_result && input.text_input_result->buffer_changed) {
             ASSERT(input.text_input_result->text.size < 10000);
@@ -263,7 +262,7 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
                                                      {
                                                          .text = state.metadata.description,
                                                          .size = f32x2 {layout::k_fill_parent, 60},
-                                                         .type = TextInputBox::MultiLine,
+                                                         .multiline = true,
                                                      });
             description_field.text_input_result && description_field.text_input_result->buffer_changed)
             dyn::AssignFitInCapacity(state.metadata.description, description_field.text_input_result->text);

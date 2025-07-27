@@ -134,7 +134,7 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
                                           .background_fill_auto_hot_active_overlay = true,
                                           .round_background_corners = 0b1111,
                                           .tooltip = "Stop scanning this folder"_s,
-                                          .button_behaviour = true,
+                                          .behaviour = Behaviour::Button,
                                           .extra_margin_for_mouse_events = 2,
                                       })
                                     .button_fired;
@@ -150,7 +150,7 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
                   .tooltip = (String)fmt::FormatInline<64>("Open folder in {}"_s, GetFileBrowserAppName()),
-                  .button_behaviour = true,
+                  .behaviour = Behaviour::Button,
                   .extra_margin_for_mouse_events = 2,
               })
             .button_fired;
@@ -400,7 +400,7 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
                                           .contents_align = layout::Alignment::Start,
                                       },
                                       .tooltip = "Select a new folder"_s,
-                                      .button_behaviour = true,
+                                      .behaviour = Behaviour::Button,
                                   });
     DoBox(box_system,
           {

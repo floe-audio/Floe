@@ -179,7 +179,9 @@ struct TextSettings {
 
 struct SliderSettings {
     SliderFlags flags;
-    f32 sensitivity; // lower is slower
+    // Pixels for a value change of 1.0. Lots of sliders use the range 0-1 anyways to this represents the
+    // pixels for a full turn.
+    f32 sensitivity;
     TrivialFixedSizeFunction<24, void(IMGUI_DRAW_SLIDER_ARGS)> draw;
 };
 
@@ -462,9 +464,9 @@ struct Context {
 
     bool IsHotOrActive(Id id) const { return IsHot(id) || IsActive(id); }
 
-    // is the cursor over the given ID, often the same as IsHot(), but unlike the hot item,
+    // 'Is the cursor over the given ID' is often the same as IsHot(). But unlike the hot item,
     // there can be both an active item and a hovered item at the same time, you most likely
-    // want to check IsHot for when you are drawing
+    // want to check IsHot for when you are drawing.
     bool IsHovered(Id id);
     bool WasJustHovered(Id id);
     bool WasJustUnhovered(Id id);
@@ -512,6 +514,9 @@ struct Context {
         pixels_per_vw = v;
     }
 
+    // FIXME: 'Screen' coordinates is not the right term. It's actually coordinates relative to the top-left
+    // of the GUI window, as opposed to 'Window' coordinates which are relative to the top-left of the current
+    // imgui::Context window.
     f32x2 WindowPosToScreenPos(f32x2 rel_pos);
     f32x2 ScreenPosToWindowPos(f32x2 screen_pos);
     Rect WindowRectToScreenRect(Rect rel_rect) {
@@ -523,9 +528,9 @@ struct Context {
 
     void RegisterToWindow(Rect window_bounds);
 
-    // this should be called by every widget that is made in order to let  know
-    // what is going on the rect you pass into it will be turn from relative coordinates
-    // to absolute (your coords should initially be relative to the current window)
+    // Every widget should use these before doing *Behaviour calls or drawing. It does 2 things:
+    // - Converts coordinates.
+    // - Registers the rectangle with the current window (so the window knows scrollbars, clipping, etc).
     Rect GetRegisteredAndConvertedRect(Rect r);
     void RegisterAndConvertRect(Rect* r);
 
@@ -899,7 +904,7 @@ PUBLIC ButtonSettings DefButtonPopup() {
 PUBLIC SliderSettings DefSlider() {
     SliderSettings s = {};
     s.flags = {.slower_with_shift = true, .default_on_modifer = true};
-    s.sensitivity = 500;
+    s.sensitivity = 256;
     s.draw = DefaultDrawSlider;
     return s;
 }
@@ -917,7 +922,7 @@ PUBLIC TextInputDraggerSettings DefTextInputDraggerInt() {
     TextInputDraggerSettings s;
     s.slider_settings.flags = {.slower_with_shift = true, .default_on_modifer = true};
     s.slider_settings.draw = [](IMGUI_DRAW_SLIDER_ARGS) {};
-    s.slider_settings.sensitivity = 500;
+    s.slider_settings.sensitivity = 256;
     s.text_input_settings.button_flags = {.left_mouse = true,
                                           .double_click = true,
                                           .triggers_on_mouse_down = true};

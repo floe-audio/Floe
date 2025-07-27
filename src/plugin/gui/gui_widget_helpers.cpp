@@ -129,6 +129,7 @@ void ParameterValuePopup(Gui* g, Span<Parameter const*> params, imgui::Id id, Re
 
 void MidiLearnMenu(Gui* g, ParamIndex param, Rect r) { MidiLearnMenu(g, {&param, 1}, r); }
 
+// TODO: replace this with the much nicer version in gui2_parameter_component.cpp.
 void MidiLearnMenu(Gui* g, Span<ParamIndex> params, Rect r) {
     auto& imgui = g->imgui;
     auto& engine = g->engine;

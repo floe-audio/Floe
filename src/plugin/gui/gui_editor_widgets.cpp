@@ -113,7 +113,7 @@ bool EditorDragger(EditorGUI* g, String label, int min, int max, int& val) {
     EditorLabel(g, fmt::Format(allocator, "{} ({})", label, val));
     auto id = g->imgui->GetID(label);
     auto sets = imgui::DefTextInputDraggerInt();
-    sets.slider_settings.sensitivity /= 6;
+    sets.slider_settings.sensitivity *= 3;
     bool const res = g->imgui->TextInputDraggerInt(sets, EditorGetRightR(g), id, min, max, val);
     EditorIncrementPos(g);
     return res;
@@ -538,7 +538,7 @@ void ColoursGUISliders(EditorGUI* gui, String search) {
 
                 auto dragger_set = imgui::DefTextInputDraggerFloat();
                 dragger_set.format = "{.4}";
-                dragger_set.slider_settings.sensitivity = 100;
+                dragger_set.slider_settings.sensitivity = 1000;
 
                 imgui->Text(imgui::DefText(), {.xywh {0, pop_pos, text_size, h}}, "Alpha");
                 hsv_changed |=
@@ -606,7 +606,7 @@ void ColoursGUISliders(EditorGUI* gui, String search) {
         auto float_dragger = [&](Rect slider_r, imgui::Id id, f32 min, f32 max, f32& value) {
             auto settings = imgui::DefTextInputDraggerFloat();
             settings.format = "{.3}";
-            settings.slider_settings.sensitivity = 100;
+            settings.slider_settings.sensitivity = 1000;
             return gui->imgui->TextInputDraggerFloat(settings, slider_r, id, min, max, value);
         };
 

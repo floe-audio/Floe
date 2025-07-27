@@ -46,7 +46,7 @@ Box DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemO
                 .contents_direction = layout::Direction::Row,
             },
             .tooltip = options.tooltip,
-            .button_behaviour = true,
+            .behaviour = Behaviour::Button,
             .ignore_double_click = true,
         });
 
@@ -162,7 +162,7 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                 .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
             },
             .tooltip = options.tooltip,
-            .button_behaviour = true,
+            .behaviour = Behaviour::Button,
         });
 
     bool grey_out = false;
@@ -298,19 +298,21 @@ Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
                 },
         });
 
-    auto const heading_container = DoBox(box_system,
-                                         {
-                                             .parent = container,
-                                             .background_fill_auto_hot_active_overlay = true,
-                                             .layout {
-                                                 .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                 .contents_gap = k_picker_spacing / 2,
-                                                 .contents_direction = layout::Direction::Row,
-                                                 .contents_align = layout::Alignment::Start,
-                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                             },
-                                             .button_behaviour = true,
-                                         });
+    auto const heading_container =
+        DoBox(box_system,
+              {
+                  .parent = container,
+                  .background_fill_auto_hot_active_overlay = true,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .contents_gap = k_picker_spacing / 2,
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Start,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                  },
+                  .tooltip = options.folder ? TooltipString {"Folder"_s} : k_nullopt,
+                  .behaviour = Behaviour::Button,
+              });
 
     if (heading_container.button_fired) {
         dyn::Append(box_system.state->deferred_actions, [&state, id]() {
@@ -399,7 +401,6 @@ Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
                       .layout {
                           .margins = {.b = k_picker_spacing / 2},
                       },
-                      .tooltip = options.folder ? TooltipString {"Folder"_s} : k_nullopt,
                   });
         }
     }
@@ -824,7 +825,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                          .font = FontType::Icons,
                                          .background_fill_auto_hot_active_overlay = true,
                                          .round_background_corners = 0b1111,
-                                         .button_behaviour = true,
+                                         .behaviour = Behaviour::Button,
                                          .extra_margin_for_mouse_events = 8,
                                      });
             close.button_fired) {
@@ -1126,7 +1127,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                                   .layout {
                                                       .size = {layout::k_fill_parent, k_picker_item_height},
                                                   },
-                                                  .text_input_behaviour = TextInputBox::SingleLine,
+                                                  .behaviour = Behaviour::TextInput,
                                               });
                 DrawTextInput(box_system,
                               text_input,
@@ -1152,7 +1153,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                   .font_size = k_picker_item_height * 0.9f,
                                   .text_colours = {style::Colour::Subtext0},
                                   .background_fill_auto_hot_active_overlay = true,
-                                  .button_behaviour = true,
+                                  .behaviour = Behaviour::Button,
                               })
                             .button_fired) {
                         dyn::Append(box_system.state->deferred_actions,

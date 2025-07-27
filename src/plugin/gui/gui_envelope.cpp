@@ -26,7 +26,7 @@ void GUIDoEnvelope(Gui* g,
                                        (1 - (max_attack_percent + max_decay_percent + max_release_percent));
 
     auto const handle_size = r.w * 0.15f;
-    auto const att_rel_slider_sensitivity = 750.0f;
+    auto const att_rel_slider_sensitivity = 170.0f;
 
     auto settings = imgui::DefWindow();
     settings.pad_bottom_right = {};

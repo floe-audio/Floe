@@ -56,7 +56,7 @@ PUBLIC Box DoModalHeader(GuiBoxSystem& box_system, ModalHeaderConfig const& conf
                       .font = FontType::Icons,
                       .background_fill_auto_hot_active_overlay = true,
                       .round_background_corners = 0b1111,
-                      .button_behaviour = true,
+                      .behaviour = Behaviour::Button,
                       .extra_margin_for_mouse_events = 8,
                   })
                 .button_fired) {
@@ -72,7 +72,7 @@ PUBLIC Box DoModalHeader(GuiBoxSystem& box_system, ModalHeaderConfig const& conf
                                      .font = FontType::Icons,
                                      .background_fill_auto_hot_active_overlay = true,
                                      .round_background_corners = 0b1111,
-                                     .button_behaviour = true,
+                                     .behaviour = Behaviour::Button,
                                      .extra_margin_for_mouse_events = 8,
                                  });
         close.button_fired) {
@@ -140,7 +140,7 @@ PUBLIC Box DoModalTabBar(GuiBoxSystem& box_system, ModalTabBarConfig const& conf
                     .contents_gap = 5,
                     .contents_direction = layout::Direction::Row,
                 },
-                .button_behaviour = !is_current,
+                .behaviour = is_current ? Behaviour::None : Behaviour::Button,
             });
 
         if (tab_box.button_fired)
@@ -216,7 +216,7 @@ PUBLIC bool CheckboxButton(GuiBoxSystem& box_system,
                                       .contents_align = layout::Alignment::Start,
                                   },
                                   .tooltip = tooltip,
-                                  .button_behaviour = true,
+                                  .behaviour = Behaviour::Button,
                               });
 
     DoBox(box_system,
@@ -269,7 +269,7 @@ PUBLIC bool TextButton(GuiBoxSystem& builder, Box parent, TextButtonOptions cons
                       .contents_padding = {.lr = style::k_button_padding_x, .tb = style::k_button_padding_y},
                   },
                   .tooltip = options.disabled ? k_nullopt : options.tooltip,
-                  .button_behaviour = !options.disabled,
+                  .behaviour = options.disabled ? Behaviour::None : Behaviour::Button,
               });
 
     auto const text_col = options.disabled ? style::Colour::Surface1 : style::Colour::Text;
@@ -304,7 +304,7 @@ IconButton(GuiBoxSystem& builder, Box parent, String icon, String tooltip, f32 f
                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                   },
                                   .tooltip = tooltip,
-                                  .button_behaviour = true,
+                                  .behaviour = Behaviour::Button,
                               });
 
     DoBox(builder,
@@ -326,7 +326,7 @@ struct TextInputOptions {
     f32x2 size;
     bool border = true;
     bool background = true;
-    TextInputBox type = TextInputBox::SingleLine;
+    bool multiline = false;
 };
 
 PUBLIC Box TextInput(GuiBoxSystem& builder, Box parent, TextInputOptions const& options) {
@@ -346,7 +346,8 @@ PUBLIC Box TextInput(GuiBoxSystem& builder, Box parent, TextInputOptions const& 
                                .round_background_corners = 0b1111,
                                .layout {.size = options.size},
                                .tooltip = options.tooltip,
-                               .text_input_behaviour = options.type,
+                               .behaviour = Behaviour::TextInput,
+                               .multiline_text_input = options.multiline,
                            });
     DrawTextInput(builder,
                   box,
@@ -402,7 +403,6 @@ PUBLIC Optional<s64> IntField(GuiBoxSystem& builder, Box parent, IntFieldOptions
                                               .size = f32x2 {options.width, 20},
                                               .border = false,
                                               .background = false,
-                                              .type = TextInputBox::SingleLine,
                                           });
         if (text_input.text_input_result && text_input.text_input_result->buffer_changed) {
             auto const new_value = ParseInt(text_input.text_input_result->text, ParseIntBase::Decimal);
@@ -425,7 +425,7 @@ PUBLIC Optional<s64> IntField(GuiBoxSystem& builder, Box parent, IntFieldOptions
                       .size = {k_button_width, layout::k_fill_parent},
                   },
                   .tooltip = "Decrease value"_s,
-                  .button_behaviour = true,
+                  .behaviour = Behaviour::Button,
               })
             .button_fired) {
         value = options.constrainer(value - 1);
@@ -444,7 +444,7 @@ PUBLIC Optional<s64> IntField(GuiBoxSystem& builder, Box parent, IntFieldOptions
                       .size = {k_button_width, layout::k_fill_parent},
                   },
                   .tooltip = "Increase value"_s,
-                  .button_behaviour = true,
+                  .behaviour = Behaviour::Button,
               })
             .button_fired) {
         value = options.constrainer(value + 1);
@@ -484,7 +484,7 @@ PUBLIC Box MenuButton(GuiBoxSystem& box_system, Box parent, MenuButtonOptions co
                       .contents_align = layout::Alignment::Justify,
                   },
                   .tooltip = options.tooltip,
-                  .button_behaviour = true,
+                  .behaviour = Behaviour::Button,
               });
 
     DoBox(box_system,
@@ -511,6 +511,7 @@ struct MenuItemOptions {
     TooltipString tooltip = k_nullopt;
     Optional<String> subtext;
     bool is_selected;
+    bool close_on_click = true;
 };
 
 PUBLIC bool MenuItem(GuiBoxSystem& box_system, Box parent, MenuItemOptions const& options) {
@@ -522,10 +523,11 @@ PUBLIC bool MenuItem(GuiBoxSystem& box_system, Box parent, MenuItemOptions const
                                     .size = {layout::k_fill_parent, layout::k_hug_contents},
                                     .contents_direction = layout::Direction::Row,
                                 },
-                                .button_behaviour = true,
+                                .tooltip = options.tooltip,
+                                .behaviour = Behaviour::Button,
                             });
 
-    if (item.button_fired) box_system.imgui.CloseTopPopupOnly();
+    if (item.button_fired && options.close_on_click) box_system.imgui.CloseTopPopupOnly();
 
     DoBox(box_system,
           {
@@ -537,7 +539,6 @@ PUBLIC bool MenuItem(GuiBoxSystem& box_system, Box parent, MenuItemOptions const
                   .size = style::k_prefs_icon_button_size,
                   .margins {.l = style::k_menu_item_padding_x},
               },
-              .tooltip = options.tooltip,
           });
 
     auto const text_container = DoBox(

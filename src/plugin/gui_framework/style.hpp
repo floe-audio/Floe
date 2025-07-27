@@ -143,7 +143,7 @@ constexpr auto k_colours = [] {
 
         auto const h = (u32)LinearInterpolate(pos, 200.0f, 210.0f);
         auto const s = (u32)LinearInterpolate(constexpr_math::Powf(pos, 0.4f), 3.0f, 6.0f);
-        auto const l = (u32)LinearInterpolate(constexpr_math::Powf(pos, 1.2f), 9.0f, 86.0f);
+        auto const l = (u32)LinearInterpolate(constexpr_math::Powf(pos, 1.2f), 12.0f, 86.0f);
         auto const a = 100u;
         result[col_index] = Hsla(h, s, l, a);
     }

@@ -25,7 +25,7 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
     auto const handle_height = LiveSize(imgui, UiSizeId::Main_WaveformHandleHeight);
     auto const handle_width = LiveSize(imgui, UiSizeId::Main_WaveformHandleWidth);
     auto const epsilon = 0.001f;
-    auto const slider_sensitivity = 400.0f;
+    auto const slider_sensitivity = 320.0f;
 
     using namespace loop_and_reverse_flags;
 

@@ -344,7 +344,7 @@ static void LegalInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&) {
                                           .contents_direction = layout::Direction::Row,
                                           .contents_align = layout::Alignment::Start,
                                       },
-                                      .button_behaviour = true,
+                                      .behaviour = Behaviour::Button,
                                   });
         DoBox(box_system,
               {

@@ -27,6 +27,9 @@ struct Parameter {
     }
 
     f32 DefaultLinearValue() const { return info.default_linear_value; }
+    f32 NormalisedDefaultLinearValue() const {
+        return MapTo01(DefaultLinearValue(), info.linear_range.min, info.linear_range.max);
+    }
 
     ParamDescriptor const& info;
     Atomic<f32> value;

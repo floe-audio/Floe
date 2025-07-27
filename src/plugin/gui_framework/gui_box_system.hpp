@@ -161,8 +161,6 @@ constexpr f32 k_no_wrap = 0;
 constexpr f32 k_wrap_to_parent = -1; // set size_from_text = true
 constexpr f32 k_default_font_size = 0;
 
-enum class TextInputBox : u32 { None, SingleLine, MultiLine, Count };
-
 enum class BackgroundShape : u32 { Rectangle, Circle, Count };
 
 enum class TooltipStringType { None, Function, String };
@@ -183,6 +181,33 @@ inline Colours Splat(style::Colour colour) {
         .hot = colour,
         .active = colour,
     };
+}
+
+enum class Behaviour : u8 {
+    None = 0,
+
+    // Button behaviour. Handle Box::button_fired.
+    // Buttons can be fully configured using Boxes; their whole style and behaviour. We don't offer this level
+    // of control for other widgets.
+    Button = 1 << 0,
+
+    // Text input behaviour. You should supply BoxConfig::text, and handle Box::text_input_result. You can use
+    // BoxConfig::activate_on_click_button and the others for configuring when the text input is activated.
+    // IMPORTANT: while the background/border is drawn by this system, you must do the drawing of the text,
+    // selection, and cursor yourself. There are helper functions for this.
+    TextInput = 1 << 1,
+
+    // Knob behaviour.
+    // Knobs always trigger on left mouse down.
+    // IMPORTANT: you must do the drawing of the knob yourself. There are helper functions for this. The
+    // background, border, and text is drawn by this system but nothing else.
+    Knob = 1 << 2,
+};
+ALWAYS_INLINE constexpr Behaviour operator|(Behaviour a, Behaviour b) {
+    return (Behaviour)(ToInt(a) | ToInt(b));
+}
+ALWAYS_INLINE constexpr Behaviour operator&(Behaviour a, Behaviour b) {
+    return (Behaviour)(ToInt(a) & ToInt(b));
 }
 
 struct BoxConfig {
@@ -222,10 +247,9 @@ struct BoxConfig {
 
     TooltipString tooltip = k_nullopt;
 
-    // Button behaviour. Handle Box::button_fired.
-    // Buttons can be fully configured using Boxes; their whole style and behaviour. We don't offer this level
-    // of control for other widgets.
-    bool32 button_behaviour : 1 = false;
+    Behaviour behaviour = Behaviour::None;
+
+    bool32 multiline_text_input : 1 = false;
 
     MouseButton activate_on_click_button
         : NumBitsNeededToStore(ToInt(MouseButton::Count)) = MouseButton::Left;
@@ -235,20 +259,10 @@ struct BoxConfig {
     bool32 ignore_double_click : 1 = false;
     u8 extra_margin_for_mouse_events = 0;
 
-    // Text input behaviour. You should supply BoxConfig::text, and handle Box::text_input_result.
-    // IMPORTANT: while the background/border is drawn by this system, you must do the drawing of the text,
-    // selection, and cursor yourself. There are helper functions for this. You can use
-    // BoxConfig::activate_on_click_button and the others for configuring when the text input is activated.
-    TextInputBox text_input_behaviour : NumBitsNeededToStore(ToInt(TextInputBox::Count)) = TextInputBox::None;
-
-    // Knob behaviour.
-    // IMPORTANT: you must do the drawing of the knob yourself. There are helper functions for this. The
-    // background, border, and text is drawn by this system but nothing else.
-    // Knobs always trigger on left mouse down.
-    bool32 knob_behaviour : 1 = false;
+    // Configuration for knob behaviour.
     f32 knob_percent {};
     f32 knob_default_percent {};
-    f32 knob_sensitivity = 500;
+    f32 knob_sensitivity = 256; // Pixels for a value change of 1.0.
     bool32 slower_with_shift : 1;
     bool32 default_on_modifer : 1;
 };

@@ -169,7 +169,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                                          .contents_direction = layout::Direction::Column,
                                      },
                                      .tooltip = "Open presets window"_s,
-                                     .button_behaviour = true,
+                                     .behaviour = Behaviour::Button,
                                  });
 
     if (preset_box_left.button_fired) {
@@ -218,7 +218,12 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
               },
           });
 
-    auto const do_icon_button = [&](Box parent, String icon, String tooltip, f32 font_scale, f32 padding_x) {
+    auto const do_icon_button = [&](Box parent,
+                                    String icon,
+                                    String tooltip,
+                                    f32 font_scale,
+                                    f32 padding_x,
+                                    style::Colour colour = style::Colour::DarkModeSubtext1) {
         // We use a wrapper so that the interactable area is larger and touches the adjacent buttons.
         auto const button = DoBox(box_system,
                                   {
@@ -228,7 +233,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                                           .contents_padding = {.lr = padding_x, .tb = 3},
                                       },
                                       .tooltip = tooltip,
-                                      .button_behaviour = true,
+                                      .behaviour = Behaviour::Button,
                                   });
         DoBox(box_system,
               {
@@ -238,7 +243,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                   .font = FontType::Icons,
                   .font_size = style::k_font_icons_size * font_scale,
                   .text_colours {
-                      .base = style::Colour::DarkModeSubtext1,
+                      .base = colour,
                       .hot = style::Colour::Highlight,
                       .active = style::Colour::Highlight,
                   },
@@ -361,7 +366,8 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                                                        ICON_FA_FILE_SIGNATURE,
                                                        "Open attribution requirements"_s,
                                                        0.9f,
-                                                       5);
+                                                       5,
+                                                       style::Colour::Red);
         if (attribution_button.button_fired) g->attribution_panel_open = true;
     }
 

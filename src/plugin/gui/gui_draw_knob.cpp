@@ -20,7 +20,7 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
         inner_arc_col = LiveCol(imgui, UiColMap::KnobInnerArcGreyedOut);
     }
     auto line_col = options.line_col;
-    if (imgui.IsHot(id) || imgui.IsActive(id)) {
+    if (!options.is_fake && (imgui.IsHot(id) || imgui.IsActive(id))) {
         inner_arc_col = LiveCol(imgui, UiColMap::KnobInnerArcHover);
         line_col = LiveCol(imgui, UiColMap::KnobLineHover);
     }

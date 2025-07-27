@@ -13,7 +13,7 @@ namespace draggers {
 
 Style DefaultStyle(imgui::Context const& imgui) {
     Style s {};
-    s.sensitivity = 500;
+    s.sensitivity = 20;
     s.background = LiveCol(imgui, UiColMap::Dragger1Back);
     s.text = LiveCol(imgui, UiColMap::TextInputText);
     s.selection_back = LiveCol(imgui, UiColMap::TextInputSelection);
@@ -25,7 +25,7 @@ Style DefaultStyle(imgui::Context const& imgui) {
 bool Dragger(Gui* g, imgui::Id id, Rect r, int min, int max, int& value, Style const& style) {
     auto settings = imgui::DefTextInputDraggerInt();
     settings.slider_settings.flags = {.slower_with_shift = true, .default_on_modifer = true};
-    settings.slider_settings.sensitivity = (style.sensitivity / 2) + (5000 * (1.0f / f32(max - min)));
+    settings.slider_settings.sensitivity = 15;
     settings.format = style.always_show_plus ? "{+}"_s : "{}"_s;
     settings.slider_settings.draw = [](IMGUI_DRAW_SLIDER_ARGS) {};
     settings.text_input_settings.draw = [&style](IMGUI_DRAW_TEXT_INPUT_ARGS) {
