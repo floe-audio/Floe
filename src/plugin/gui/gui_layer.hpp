@@ -25,7 +25,7 @@ enum class PageType {
     Filter,
     Lfo,
     Eq,
-    Keyboard,
+    Play,
     Count,
 };
 

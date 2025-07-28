@@ -12,8 +12,8 @@ class FilterEffect final : public Effect {
   public:
     FilterEffect() : Effect(EffectType::FilterEffect) {}
 
-    static bool IsUsingGainParam(StaticSpan<Parameter, k_num_parameters> params) {
-        auto filter_type = params[ToInt(ParamIndex::FilterType)].ValueAsInt<param_values::EffectFilterType>();
+    static bool IsUsingGainParam(Parameters const& params) {
+        auto const filter_type = params.IntValue<param_values::EffectFilterType>(ParamIndex::FilterType);
         return filter_type == param_values::EffectFilterType::HighShelf ||
                filter_type == param_values::EffectFilterType::LowShelf ||
                filter_type == param_values::EffectFilterType::Peak;
@@ -27,21 +27,22 @@ class FilterEffect final : public Effect {
 
     void ProcessChangesInternal(ProcessBlockChanges const& changes, AudioProcessingContext const&) override {
         bool set_params = false;
-        if (auto p = changes.changed_params.Param(ParamIndex::FilterCutoff)) {
-            m_filter_params.fc = p->ProjectedValue();
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::FilterCutoff)) {
+            m_filter_params.fc = *p;
             set_params = true;
         }
-        if (auto p = changes.changed_params.Param(ParamIndex::FilterResonance)) {
-            m_filter_params.q = MapFrom01Skew(p->ProjectedValue(), 0.5f, 2, 5);
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::FilterResonance)) {
+            m_filter_params.q = MapFrom01Skew(*p, 0.5f, 2, 5);
             set_params = true;
         }
-        if (auto p = changes.changed_params.Param(ParamIndex::FilterGain)) {
-            m_filter_params.peak_gain = p->ProjectedValue();
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::FilterGain)) {
+            m_filter_params.peak_gain = *p;
             set_params = true;
         }
-        if (auto p = changes.changed_params.Param(ParamIndex::FilterType)) {
+        if (auto p =
+                changes.changed_params.IntValue<param_values::EffectFilterType>(ParamIndex::FilterType)) {
             rbj_filter::Type filter_type {};
-            switch (p->ValueAsInt<param_values::EffectFilterType>()) {
+            switch (*p) {
                 case param_values::EffectFilterType::LowPass: filter_type = rbj_filter::Type::LowPass; break;
                 case param_values::EffectFilterType::HighPass:
                     filter_type = rbj_filter::Type::HighPass;

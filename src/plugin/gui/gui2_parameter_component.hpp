@@ -14,10 +14,12 @@ struct ParameterComponentOptions {
     style::Colour knob_line_col = style::Colour::Background0;
     bool greyed_out = false;
     bool is_fake = false;
-    String override_tooltip = {};
+    bool label = true;
+    String override_tooltip {};
+    String override_label {};
 };
 
 Box DoParameterComponent(Gui* g,
                          Box parent,
-                         Parameter const& param,
+                         DescribedParamValue const& param,
                          ParameterComponentOptions const& options = {});

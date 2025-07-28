@@ -490,6 +490,9 @@ enum class StateVersion : u16 {
     // version.
     AddedFloeVersion,
 
+    // Added macro parameters.
+    AddedMacroParameters,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -918,8 +921,7 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
                 fallback_order_of_effects[index++] = fx_type;
 
             if (index != k_num_effect_types) {
-                // Next, add any effects that have been added since adding
-                // reorderability
+                // Next, add any effects that have been added since adding reorderability.
                 for (auto const fx_type : Range(k_num_effect_types))
                     if (!Find(fallback_order_of_effects, (EffectType)fx_type))
                         fallback_order_of_effects[index++] = (EffectType)fx_type;
@@ -975,7 +977,7 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
             for (auto const layer_index : Range(k_num_layers)) {
                 if ((param_values::LoopMode)layer_param_value(layer_index, LayerParamIndex::LoopMode) ==
                     param_values::LoopMode::PingPong) {
-                    // the start can be larger than the end
+                    // The start can be larger than the end.
                     auto const max_loop_pos = Max(layer_param_value(layer_index, LayerParamIndex::LoopStart),
                                                   layer_param_value(layer_index, LayerParamIndex::LoopEnd));
                     if (layer_param_value(layer_index, LayerParamIndex::SampleOffset) > (max_loop_pos * 2))
@@ -1113,7 +1115,7 @@ struct StateCoder {
         return k_success;
     }
 
-    // This is a helper function designed to only be used when debugging an issue. It inserts an ascii string
+    // This is a helper function designed to only be used when debugging an issue. It inserts an ASCII string
     // into the state so that you can identify sections in the state when viewed hexidecimally; for example
     // 'xxd'.
     ErrorCodeOr<void> CodeDebugMarker(char const (&id)[5], StateVersion version_added) {
@@ -1324,14 +1326,65 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
             }
         }
 
-        if (num_params != (u32)k_num_parameters) {
-            static_assert(k_num_parameters == 206,
+        if (coder.IsReading()) {
+            if (coder.version < StateVersion::AddedLayerVelocityCurves) state.velocity_curve_points = {};
+
+            if (coder.version < StateVersion::AddedMacroParameters) {
+                state.param_values[ToInt(ParamIndex::Macro1)] = 0.0f;
+                state.param_values[ToInt(ParamIndex::Macro2)] = 0.0f;
+                state.param_values[ToInt(ParamIndex::Macro3)] = 0.0f;
+                state.param_values[ToInt(ParamIndex::Macro4)] = 0.0f;
+            }
+
+            static_assert(k_num_parameters == 210,
                           "You have changed the number of parameters. You must now bump the "
                           "state version number and handle setting any new parameters to "
                           "backwards-compatible states. In other words, these new parameters "
                           "should be deactivated when loading an old preset so that the old "
                           "preset does not sound different. After that's done, change this "
                           "static_assert to match the new number of parameters.");
+        }
+    }
+
+    // =======================================================================================================
+    {
+        u8 num_macros {};
+        if (coder.IsWriting()) num_macros = k_num_macros;
+        TRY(coder.CodeNumber(num_macros, StateVersion::AddedMacroParameters));
+
+        for (auto const macro_index : Range(num_macros)) {
+            TRY(coder.CodeDynArray(state.macro_names[macro_index], StateVersion::AddedMacroParameters));
+
+            auto& dests = state.macro_destinations[macro_index];
+            u8 num_macro_destinations {};
+            if (coder.IsWriting()) num_macro_destinations = CheckedCast<u8>(dests.size);
+            TRY(coder.CodeNumber(num_macro_destinations, StateVersion::AddedMacroParameters));
+            if (coder.IsReading()) {
+                if (!dyn::Resize(dests, num_macro_destinations))
+                    return ErrorCode(CommonError::InvalidFileFormat);
+            }
+
+            for (auto const dest_index : Range(num_macro_destinations)) {
+                auto& dest = dests[dest_index];
+
+                u32 param_id {};
+                if (coder.IsWriting()) param_id = ParamIndexToId(dest.param_index);
+                TRY(coder.CodeNumber(param_id, StateVersion::AddedMacroParameters));
+                if (coder.IsReading()) {
+                    auto const param_index = ParamIdToIndex(param_id);
+                    if (!param_index) return ErrorCode(CommonError::InvalidFileFormat);
+                    dest.param_index = *param_index;
+                }
+
+                TRY(coder.CodeNumber(dest.value, StateVersion::AddedMacroParameters));
+            }
+        }
+
+        if (coder.IsReading()) {
+            if (coder.version < StateVersion::AddedMacroParameters) {
+                state.macro_names = DefaultMacroNames();
+                state.macro_destinations = {};
+            }
         }
     }
 
@@ -1754,6 +1807,32 @@ TEST_CASE(TestNewSerialisation) {
                             CurveMap::Point {0.0f, 1.0f, 0.0f},
                             CurveMap::Point {0.5f, 0.5f, 0.0f},
                             CurveMap::Point {1.0f, 1.0f, 0.0f},
+                        });
+        }
+
+        {
+            state.macro_names = DefaultMacroNames();
+            dyn::Assign(state.macro_names[0], "First Macro"_s);
+            dyn::Assign(state.macro_names[1], "Second"_s);
+
+            dyn::Assign(state.macro_destinations[0],
+                        Array {
+                            MacroDestination {
+                                .param_index = ParamIndex::ChorusDepth,
+                                .value = 0.4f,
+                            },
+                            MacroDestination {
+                                .param_index = ParamIndex::ReverbSize,
+                                .value = -1.0f,
+                            },
+                        });
+
+            dyn::Assign(state.macro_destinations[3],
+                        Array {
+                            MacroDestination {
+                                .param_index = ParamIndexFromLayerParamIndex(0, LayerParamIndex::EqFreq1),
+                                .value = 0.5f,
+                            },
                         });
         }
 

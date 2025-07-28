@@ -22,6 +22,7 @@ struct Style {
     u32 line_col {};
     bool is_fake {};
     Optional<f32> overload_position {};
+    Optional<f32> outer_arc_percent {};
 };
 
 PUBLIC Style DefaultKnob(imgui::Context const& imgui, Optional<u32> _highlight_col = {}) {
@@ -44,12 +45,12 @@ PUBLIC Style FakeKnobStyle(imgui::Context const& imgui) {
 }
 
 bool Knob(Gui* g, imgui::Id id, Rect r, f32& percent, f32 default_percent, Style const& style);
-bool Knob(Gui* g, imgui::Id id, Parameter const& param, Rect r, Style const& style);
-bool Knob(Gui* g, Parameter const& param, Rect r, Style const& style);
+bool Knob(Gui* g, imgui::Id id, DescribedParamValue const& param, Rect r, Style const& style);
+bool Knob(Gui* g, DescribedParamValue const& param, Rect r, Style const& style);
 
 bool Knob(Gui* g, imgui::Id id, layout::Id r, f32& percent, f32 default_percent, Style const& style);
-bool Knob(Gui* g, imgui::Id id, Parameter const& param, layout::Id r, Style const& style);
-bool Knob(Gui* g, Parameter const& param, layout::Id r, Style const& style);
+bool Knob(Gui* g, imgui::Id id, DescribedParamValue const& param, layout::Id r, Style const& style);
+bool Knob(Gui* g, DescribedParamValue const& param, layout::Id r, Style const& style);
 
 void FakeKnob(Gui* g, Rect r);
 

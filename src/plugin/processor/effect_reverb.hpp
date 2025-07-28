@@ -26,30 +26,30 @@ class Reverb final : public Effect {
 
     void ProcessChangesInternal(ProcessBlockChanges const& changes, AudioProcessingContext const&) override {
         using namespace vitfx::reverb;
-        if (auto p = changes.changed_params.Param(ParamIndex::ReverbDecayTimeMs))
-            args.params[ToInt(Params::DecayTimeSeconds)] = p->ProjectedValue() / 1000.0f;
-        if (auto p = changes.changed_params.Param(ParamIndex::ReverbPreLowPassCutoff))
-            args.params[ToInt(Params::PreLowPassCutoffSemitones)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::ReverbPreHighPassCutoff))
-            args.params[ToInt(Params::PreHighPassCutoffSemitones)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::ReverbLowShelfCutoff))
-            args.params[ToInt(Params::LowShelfCutoffSemitones)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::ReverbLowShelfGain))
-            args.params[ToInt(Params::LowShelfGainDb)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::ReverbHighShelfCutoff))
-            args.params[ToInt(Params::HighShelfCutoffSemitones)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::ReverbHighShelfGain))
-            args.params[ToInt(Params::HighShelfGainDb)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::ReverbChorusAmount))
-            args.params[ToInt(Params::ChorusAmount)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::ReverbChorusFrequency))
-            args.params[ToInt(Params::ChorusFrequency)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::ReverbSize))
-            args.params[ToInt(Params::Size)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::ReverbDelay))
-            args.params[ToInt(Params::DelaySeconds)] = p->ProjectedValue() / 1000.0f;
-        if (auto p = changes.changed_params.Param(ParamIndex::ReverbMix))
-            args.params[ToInt(Params::Mix)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ReverbDecayTimeMs))
+            args.params[ToInt(Params::DecayTimeSeconds)] = *p / 1000.0f;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ReverbPreLowPassCutoff))
+            args.params[ToInt(Params::PreLowPassCutoffSemitones)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ReverbPreHighPassCutoff))
+            args.params[ToInt(Params::PreHighPassCutoffSemitones)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ReverbLowShelfCutoff))
+            args.params[ToInt(Params::LowShelfCutoffSemitones)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ReverbLowShelfGain))
+            args.params[ToInt(Params::LowShelfGainDb)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ReverbHighShelfCutoff))
+            args.params[ToInt(Params::HighShelfCutoffSemitones)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ReverbHighShelfGain))
+            args.params[ToInt(Params::HighShelfGainDb)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ReverbChorusAmount))
+            args.params[ToInt(Params::ChorusAmount)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ReverbChorusFrequency))
+            args.params[ToInt(Params::ChorusFrequency)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ReverbSize))
+            args.params[ToInt(Params::Size)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ReverbDelay))
+            args.params[ToInt(Params::DelaySeconds)] = *p / 1000.0f;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ReverbMix))
+            args.params[ToInt(Params::Mix)] = *p;
     }
 
     EffectProcessResult

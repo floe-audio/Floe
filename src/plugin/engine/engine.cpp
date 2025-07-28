@@ -59,7 +59,7 @@ static void UpdateAttributionText(Engine& engine, ArenaAllocator& scratch_arena)
     sample_lib::ImpulseResponse const* ir = nullptr;
     sample_lib_server::RefCounted<sample_lib::Library> ir_lib {};
     DEFER { ir_lib.Release(); }; // IMPORTANT: release before we return
-    if (engine.processor.params[(usize)ParamIndex::ConvolutionReverbOn].ValueAsBool()) {
+    if (engine.processor.main_params.BoolValue(ParamIndex::ConvolutionReverbOn)) {
         if (auto const ir_id = engine.processor.convo.ir_id) {
             ir_lib =
                 sample_lib_server::FindLibraryRetained(engine.shared_engine_systems.sample_library_server,
@@ -120,6 +120,7 @@ static void LoadNewState(Engine& engine, StateSnapshotWithName const& state, Sta
         SetConvolutionIrAudioData(engine.processor, nullptr, {});
 
         engine.state_metadata = state.state.metadata;
+        engine.macro_names = state.state.macro_names;
         ApplyNewState(engine.processor, state.state, source);
         SetLastSnapshot(engine, state);
         if (engine.stated_changed_callback) engine.stated_changed_callback();
@@ -212,6 +213,7 @@ static void ApplyNewStateFromPending(Engine& engine) {
                                   ir ? ir->ir.audio_props : sample_lib::ImpulseResponse::AudioProperties {});
     }
     engine.state_metadata = pending_state_change.snapshot.state.metadata;
+    engine.macro_names = pending_state_change.snapshot.state.macro_names;
     ApplyNewState(engine.processor, pending_state_change.snapshot.state, pending_state_change.source);
 
     // do it last because it clears pending_state_change
@@ -312,6 +314,7 @@ static StateSnapshot CurrentStateSnapshot(Engine& engine) {
     StateSnapshot snapshot = engine.pending_state_change ? engine.pending_state_change->snapshot.state
                                                          : MakeStateSnapshot(engine.processor);
     snapshot.metadata = engine.state_metadata;
+    snapshot.macro_names = engine.macro_names;
     snapshot.instance_id = InstanceId(engine.autosave_state);
     return snapshot;
 }
@@ -544,9 +547,12 @@ void SetToDefaultState(Engine& engine) {
     LoadConvolutionIr(engine, k_nullopt);
     engine.state_metadata = {};
     SetAllParametersToDefaultValues(engine.processor);
+    auto snapshot = MakeStateSnapshot(engine.processor);
+    engine.macro_names = DefaultMacroNames();
+    snapshot.macro_names = engine.macro_names;
     SetLastSnapshot(engine,
                     {
-                        .state = MakeStateSnapshot(engine.processor),
+                        .state = snapshot,
                         .name = {.name_or_path = "Default"},
                     });
     if (engine.stated_changed_callback) engine.stated_changed_callback();

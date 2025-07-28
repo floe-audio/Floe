@@ -42,6 +42,7 @@ CC
 CC0
 CC64
 CCs
+Catch2
 Celtique
 Changelog
 CodeFactor
@@ -90,6 +91,7 @@ Octaved
 ProgramData
 Q1
 RMS
+RegisterMyTests
 Retrig
 Retrigger
 Roadmap
@@ -102,6 +104,7 @@ Synthwave
 TODO
 TXT
 Telenn
+TestName
 UI
 Utils
 VST2
@@ -141,6 +144,7 @@ codesigning
 color
 config
 copyable
+cpp
 cppcheck
 crossfade
 d1
@@ -169,6 +173,7 @@ github
 globals
 gui
 h1
+hpp
 href
 html
 img

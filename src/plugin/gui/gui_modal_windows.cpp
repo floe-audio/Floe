@@ -249,7 +249,7 @@ static void DoLegacyParamsModal(Gui* g) {
         LayoutParameterComponent(g,
                                  container,
                                  p.pair,
-                                 g->engine.processor.params[ToInt(p.index)],
+                                 g->engine.processor.main_params.DescribedValue(p.index),
                                  UiSizeId::Top2KnobsGapX);
         p.extra_label = layout::CreateItem(g->layout,
                                            g->scratch_arena,
@@ -264,7 +264,7 @@ static void DoLegacyParamsModal(Gui* g) {
 
     for (auto& p : hidden_params) {
         auto const& desc = k_param_descriptors[ToInt(p.index)];
-        auto const& param = g->engine.processor.params[ToInt(p.index)];
+        auto const& param = g->engine.processor.main_params.DescribedValue(p.index);
         switch (desc.value_type) {
             case ParamValueType::Float: KnobAndLabel(g, param, p.pair, knobs::DefaultKnob(g->imgui)); break;
             case ParamValueType::Menu:

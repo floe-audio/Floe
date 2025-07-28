@@ -30,45 +30,46 @@ class Delay final : public Effect {
         bool update_time_l = false;
         bool update_time_r = false;
 
-        if (auto p = changes.changed_params.Param(ParamIndex::DelayTimeSyncSwitch))
-            is_synced = p->ValueAsBool();
+        if (auto p = changes.changed_params.BoolValue(ParamIndex::DelayTimeSyncSwitch)) is_synced = *p;
 
-        if (auto p = changes.changed_params.Param(ParamIndex::DelayFeedback))
-            args.params[ToInt(Params::Feedback)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::DelayFeedback))
+            args.params[ToInt(Params::Feedback)] = *p;
 
-        if (auto p = changes.changed_params.Param(ParamIndex::DelayTimeSyncedL)) {
-            synced_time_l = ToSyncedTime(p->ValueAsInt<param_values::DelaySyncedTime>());
+        if (auto p = changes.changed_params.IntValue<param_values::DelaySyncedTime>(
+                ParamIndex::DelayTimeSyncedL)) {
+            synced_time_l = ToSyncedTime(*p);
             update_time_l = true;
         }
 
-        if (auto p = changes.changed_params.Param(ParamIndex::DelayTimeSyncedR)) {
-            synced_time_r = ToSyncedTime(p->ValueAsInt<param_values::DelaySyncedTime>());
+        if (auto p = changes.changed_params.IntValue<param_values::DelaySyncedTime>(
+                ParamIndex::DelayTimeSyncedR)) {
+            synced_time_r = ToSyncedTime(*p);
             update_time_r = true;
         }
 
-        if (auto p = changes.changed_params.Param(ParamIndex::DelayTimeLMs)) {
-            free_time_hz_l = MsToHz(p->ProjectedValue());
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::DelayTimeLMs)) {
+            free_time_hz_l = MsToHz(*p);
             update_time_l = true;
         }
 
-        if (auto p = changes.changed_params.Param(ParamIndex::DelayTimeRMs)) {
-            free_time_hz_r = MsToHz(p->ProjectedValue());
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::DelayTimeRMs)) {
+            free_time_hz_r = MsToHz(*p);
             update_time_r = true;
         }
 
-        if (auto p = changes.changed_params.Param(ParamIndex::DelayMode)) {
-            auto mode = p->ValueAsInt<param_values::DelayMode>();
+        if (auto p = changes.changed_params.IntValue<param_values::DelayMode>(ParamIndex::DelayMode)) {
+            auto mode = *p;
             args.params[ToInt(Params::Mode)] = (f32)mode;
         }
 
-        if (auto p = changes.changed_params.Param(ParamIndex::DelayFilterCutoffSemitones))
-            args.params[ToInt(Params::FilterCutoffSemitones)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::DelayFilterSpread))
-            args.params[ToInt(Params::FilterSpread)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::DelayMix))
-            args.params[ToInt(Params::Mix)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::DelayFeedback))
-            args.params[ToInt(Params::Feedback)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::DelayFilterCutoffSemitones))
+            args.params[ToInt(Params::FilterCutoffSemitones)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::DelayFilterSpread))
+            args.params[ToInt(Params::FilterSpread)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::DelayMix))
+            args.params[ToInt(Params::Mix)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::DelayFeedback))
+            args.params[ToInt(Params::Feedback)] = *p;
 
         if (is_synced && changes.tempo_changed) {
             update_time_l = true;
@@ -113,7 +114,7 @@ class Delay final : public Effect {
         for (auto const frame_index : Range((u32)frames.size))
             frames[frame_index] = MixOnOffSmoothing(context, wet[frame_index], frames[frame_index]);
 
-        // check for silence on the output
+        // Check for silence on the output.
         UpdateSilentSeconds(silent_seconds, frames, context.sample_rate);
 
         return IsSilent() ? EffectProcessResult::Done : EffectProcessResult::ProcessingTail;

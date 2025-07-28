@@ -35,9 +35,9 @@ struct Style {
 Style DefaultStyle(imgui::Context const& imgui);
 
 bool Dragger(Gui* g, imgui::Id id, Rect r, int min, int max, int& value, Style const& style);
-bool Dragger(Gui* g, Parameter const& param, Rect r, Style const& style);
+bool Dragger(Gui* g, DescribedParamValue const& param, Rect r, Style const& style);
 
 bool Dragger(Gui* g, imgui::Id id, layout::Id lay_id, int min, int max, int& value, Style const& style);
-bool Dragger(Gui* g, Parameter const& param, layout::Id lay_id, Style const& style);
+bool Dragger(Gui* g, DescribedParamValue const& param, layout::Id lay_id, Style const& style);
 
 } // namespace draggers

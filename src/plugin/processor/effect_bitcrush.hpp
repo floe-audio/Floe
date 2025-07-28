@@ -42,14 +42,11 @@ class BitCrush final : public Effect {
 
   private:
     void ProcessChangesInternal(ProcessBlockChanges const& changes, AudioProcessingContext const&) override {
-        if (auto p = changes.changed_params.Param(ParamIndex::BitCrushBits))
-            m_bit_depth = p->ValueAsInt<int>();
-        if (auto p = changes.changed_params.Param(ParamIndex::BitCrushBitRate))
-            m_bit_rate = (int)(p->ProjectedValue() + 0.5f);
-        if (auto p = changes.changed_params.Param(ParamIndex::BitCrushWet))
-            m_wet_dry.SetWet(p->ProjectedValue());
-        if (auto p = changes.changed_params.Param(ParamIndex::BitCrushDry))
-            m_wet_dry.SetDry(p->ProjectedValue());
+        if (auto p = changes.changed_params.IntValue<int>(ParamIndex::BitCrushBits)) m_bit_depth = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::BitCrushBitRate))
+            m_bit_rate = (int)(*p + 0.5f);
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::BitCrushWet)) m_wet_dry.SetWet(*p);
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::BitCrushDry)) m_wet_dry.SetDry(*p);
     }
 
     EffectProcessResult

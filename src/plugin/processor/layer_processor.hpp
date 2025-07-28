@@ -33,7 +33,7 @@ struct EqBand {
         return rbj_filter::Process(eq_data, coeffs, in * mix);
     }
 
-    void OnParamChange(ChangedLayerParams changed_params, f32 sample_rate, u32 band_num) {
+    void OnParamChange(ChangedParams changed_params, u8 layer_index, f32 sample_rate, u32 band_num) {
         auto freq_param = LayerParamIndex::EqFreq1;
         auto reso_param = LayerParamIndex::EqResonance1;
         auto gain_param = LayerParamIndex::EqGain1;
@@ -48,25 +48,25 @@ struct EqBand {
         }
 
         bool changed = false;
-        if (auto p = changed_params.Param(freq_param)) {
+        if (auto p = changed_params.ProjectedValue(layer_index, freq_param)) {
             eq_params.fs = sample_rate;
-            eq_params.fc = p->ProjectedValue();
+            eq_params.fc = *p;
             changed = true;
         }
-        if (auto p = changed_params.Param(reso_param)) {
+        if (auto p = changed_params.ProjectedValue(layer_index, reso_param)) {
             eq_params.fs = sample_rate;
-            eq_params.q = MapFrom01Skew(p->ProjectedValue(), 0.5f, 8, 5);
+            eq_params.q = MapFrom01Skew(*p, 0.5f, 8, 5);
             changed = true;
         }
-        if (auto p = changed_params.Param(gain_param)) {
+        if (auto p = changed_params.ProjectedValue(layer_index, gain_param)) {
             eq_params.fs = sample_rate;
-            eq_params.peak_gain = p->ProjectedValue();
+            eq_params.peak_gain = *p;
             changed = true;
         }
-        if (auto p = changed_params.Param(type_param)) {
+        if (auto p = changed_params.IntValue<param_values::EqType>(layer_index, type_param)) {
             eq_params.fs = sample_rate;
             rbj_filter::Type type {rbj_filter::Type::Peaking};
-            switch (ParamToInt<param_values::EqType>(p->LinearValue())) {
+            switch (*p) {
                 case param_values::EqType::HighShelf: type = rbj_filter::Type::HighShelf; break;
                 case param_values::EqType::LowShelf: type = rbj_filter::Type::LowShelf; break;
                 case param_values::EqType::Peak: type = rbj_filter::Type::Peaking; break;
@@ -87,8 +87,8 @@ struct EqBand {
 };
 
 struct EqBands {
-    void OnParamChange(u32 band_num, ChangedLayerParams changed_params, f32 sample_rate) {
-        eq_bands[band_num].OnParamChange(changed_params, sample_rate, band_num);
+    void OnParamChange(u32 band_num, ChangedParams changed_params, u8 layer_index, f32 sample_rate) {
+        eq_bands[band_num].OnParamChange(changed_params, layer_index, sample_rate, band_num);
     }
 
     void SetOn(bool on) { eq_mix = on ? 1.0f : 0.0f; }
@@ -162,12 +162,8 @@ constexpr auto k_default_velocity_curve_points = Array {
 };
 
 struct LayerProcessor {
-    LayerProcessor(u8 index,
-                   StaticSpan<Parameter, k_num_layer_parameters> params,
-                   clap_host const& host,
-                   SharedLayerParams& shared_params)
-        : params(params)
-        , host(host)
+    LayerProcessor(u8 index, clap_host const& host, SharedLayerParams& shared_params)
+        : host(host)
         , shared_params(shared_params)
         , index(index)
         , voice_controller({
@@ -225,7 +221,10 @@ struct LayerProcessor {
         }
     }
 
-    bool VolumeEnvelopeIsOn(bool is_audio_thread);
+    bool VolumeEnvelopeIsOn(Parameters const& params) {
+        return params.BoolValue(index, LayerParamIndex::VolEnvOn) ||
+               instrument.tag == InstrumentType::WaveformSynth;
+    }
 
     Optional<sample_lib::LibraryIdRef> LibId() const {
         ASSERT(g_is_logical_main_thread);
@@ -234,12 +233,9 @@ struct LayerProcessor {
         return k_nullopt;
     }
 
-    param_values::VelocityMappingMode GetVelocityMode() const {
-        return ParamToInt<param_values::VelocityMappingMode>(
-            params[ToInt(LayerParamIndex::VelocityMapping)].LinearValue());
+    param_values::VelocityMappingMode GetVelocityMode(Parameters const& params) const {
+        return params.IntValue<param_values::VelocityMappingMode>(index, LayerParamIndex::VelocityMapping);
     }
-
-    StaticSpan<Parameter, k_num_layer_parameters> params {nullptr};
 
     clap_host const& host;
     SharedLayerParams& shared_params;
@@ -295,6 +291,7 @@ struct LayerProcessor {
     f32 sample_offset_01 = 0;
 
     bool monophonic {};
+    bool vol_env_on_param = true;
 
     param_values::LfoRestartMode lfo_restart_mode {};
     param_values::LfoSyncedRate lfo_synced_time {};
@@ -323,7 +320,7 @@ struct LayerProcessResult {
 
 void ProcessLayerChanges(LayerProcessor& layer,
                          AudioProcessingContext const& context,
-                         ProcessBlockChangesLayer changes,
+                         ProcessBlockChanges changes,
                          VoicePool& voice_pool);
 
 LayerProcessResult ProcessLayer(LayerProcessor& layer,

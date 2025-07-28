@@ -17,20 +17,20 @@ class Compressor final : public Effect {
                                 AudioProcessingContext const& context) override {
         bool params_changed = false;
 
-        if (auto p = changes.changed_params.Param(ParamIndex::CompressorThreshold)) {
-            m_compressor.slider_threshold = AmpToDb(p->ProjectedValue());
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::CompressorThreshold)) {
+            m_compressor.slider_threshold = AmpToDb(*p);
             params_changed = true;
         }
-        if (auto p = changes.changed_params.Param(ParamIndex::CompressorRatio)) {
-            m_compressor.slider_ratio = p->ProjectedValue();
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::CompressorRatio)) {
+            m_compressor.slider_ratio = *p;
             params_changed = true;
         }
-        if (auto p = changes.changed_params.Param(ParamIndex::CompressorGain)) {
-            m_compressor.slider_gain = p->ProjectedValue();
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::CompressorGain)) {
+            m_compressor.slider_gain = *p;
             params_changed = true;
         }
-        if (auto p = changes.changed_params.Param(ParamIndex::CompressorAutoGain)) {
-            m_compressor.slider_auto_gain = p->ValueAsBool();
+        if (auto p = changes.changed_params.BoolValue(ParamIndex::CompressorAutoGain)) {
+            m_compressor.slider_auto_gain = *p;
             params_changed = true;
         }
 

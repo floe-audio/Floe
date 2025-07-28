@@ -65,12 +65,8 @@ struct NoteEvent {
     enum class Type : u8 { On, Off } type;
 };
 
-template <usize k_num_params>
-struct ProcessBlockChangesTemplate {
-    ChangedParamsTemplate<k_num_params> changed_params;
+struct ProcessBlockChanges {
+    ChangedParams changed_params;
     bool tempo_changed;
     DynamicArrayBounded<NoteEvent, 100> note_events;
 };
-
-using ProcessBlockChanges = ProcessBlockChangesTemplate<k_num_parameters>;
-using ProcessBlockChangesLayer = ProcessBlockChangesTemplate<k_num_layer_parameters>;

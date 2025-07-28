@@ -46,12 +46,12 @@ bool Dragger(Gui* g, imgui::Id id, Rect r, int min, int max, int& value, Style c
     return g->imgui.TextInputDraggerInt(settings, r, id, min, max, value);
 }
 
-bool Dragger(Gui* g, Parameter const& param, Rect r, Style const& style) {
+bool Dragger(Gui* g, DescribedParamValue const& param, Rect r, Style const& style) {
     auto id = BeginParameterGUI(g, param, r);
 
     auto& imgui = g->imgui;
 
-    auto result = param.ValueAsInt<int>();
+    auto result = param.IntValue<int>();
 
     // draw it around the whole thing, not just the dragger
     if (style.background) {
@@ -92,13 +92,15 @@ bool Dragger(Gui* g, Parameter const& param, Rect r, Style const& style) {
                     changed ? Optional<f32>((f32)result) : k_nullopt,
                     ParamDisplayFlagsNoValuePopup);
 
+    MacroAddDestinationRegion(g, r, param.info.index);
+
     return changed;
 }
 
 bool Dragger(Gui* g, imgui::Id id, layout::Id lay_id, int min, int max, int& value, Style const& style) {
     return Dragger(g, id, layout::GetRect(g->layout, lay_id), min, max, value, style);
 }
-bool Dragger(Gui* g, Parameter const& param, layout::Id lay_id, Style const& style) {
+bool Dragger(Gui* g, DescribedParamValue const& param, layout::Id lay_id, Style const& style) {
     return Dragger(g, param, layout::GetRect(g->layout, lay_id), style);
 }
 

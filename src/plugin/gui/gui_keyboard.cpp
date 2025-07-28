@@ -13,13 +13,13 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(Gui* g, Rect r, int starting_octave)
     auto const keyboard = g->engine.processor.notes_currently_held.GetBlockwise();
     auto const& voices_per_midi_note = g->engine.processor.voice_pool.voices_per_midi_note_for_gui;
 
-    auto const col_black_key = LiveCol(imgui, UiColMap::KeyboardBlackKey);
-    auto const col_black_key_outline = LiveCol(imgui, UiColMap::KeyboardBlackKeyOutline);
-    auto const col_black_key_hover = LiveCol(imgui, UiColMap::KeyboardBlackKeyHover);
-    auto const col_black_key_down = LiveCol(imgui, UiColMap::KeyboardBlackKeyDown);
-    auto const col_white_key = LiveCol(imgui, UiColMap::KeyboardWhiteKey);
-    auto const col_white_key_hover = LiveCol(imgui, UiColMap::KeyboardWhiteKeyHover);
-    auto const col_white_key_down = LiveCol(imgui, UiColMap::KeyboardWhiteKeyDown);
+    auto const col_black_key = style::Col(style::Colour::DarkModeBackground0);
+    auto const col_black_key_outline = style::Col(style::Colour::DarkModeBackground0);
+    auto const col_black_key_hover = style::Col(style::Colour::DarkModeBackground1);
+    auto const col_black_key_down = style::Col(style::Colour::Highlight);
+    auto const col_white_key = style::Col(style::Colour::DarkModeText);
+    auto const col_white_key_hover = style::Col(style::Colour::DarkModeSubtext1);
+    auto const col_white_key_down = style::Col(style::Colour::Highlight);
 
     starting_octave += k_octave_default_offset;
     ASSERT(starting_octave >= k_lowest_starting_oct);
@@ -97,6 +97,23 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(Gui* g, Rect r, int starting_octave)
         if (imgui.IsHot(id)) col = col_white_key_hover;
         imgui.graphics->AddRectFilled(key_r.Min(), key_r.Max(), col);
         overlay_key(this_abs_note, key_r, UiColMap::KeyboardWhiteVoiceOverlay);
+
+        // Show the octave number if it's middle-C
+        if (this_abs_note == 60) {
+            auto const font = g->fonts[ToInt(FontType::Body)];
+
+            auto const text_height = font->font_size;
+            // Bottom rect of the key.
+            auto text_r = key_r;
+            text_r.y += key_r.h - text_height;
+            text_r.h = text_height;
+            g->imgui.graphics->AddTextJustified(text_r,
+                                                "C3",
+                                                style::Col(style::Colour::DarkModeBackground2),
+                                                TextJustification::Centred,
+                                                TextOverflowType::AllowOverflow,
+                                                0.8f);
+        }
     }
     imgui.PopID();
 

@@ -31,20 +31,20 @@ layout::Id LayoutParameterComponent(Gui* g,
 layout::Id LayoutParameterComponent(Gui* g,
                                     layout::Id parent,
                                     LayIDPair& ids,
-                                    Parameter const& param,
+                                    DescribedParamValue const& param,
                                     Optional<UiSizeId> size_index_for_gapx = {},
                                     bool set_gapx_independent_of_size = false,
                                     bool set_bottom_gap_independent_of_size = false);
 
 bool KnobAndLabel(Gui* g,
-                  Parameter const& param,
+                  DescribedParamValue const& param,
                   Rect knob_r,
                   Rect label_r,
                   knobs::Style const& style,
                   bool greyed_out = false);
 
 bool KnobAndLabel(Gui* g,
-                  Parameter const& param,
+                  DescribedParamValue const& param,
                   LayIDPair ids,
                   knobs::Style const& style,
                   bool greyed_out = false);

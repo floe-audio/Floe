@@ -141,10 +141,11 @@ struct Distortion final : public Effect {
     Distortion() : Effect(EffectType::Distortion) {}
 
     void ProcessChangesInternal(ProcessBlockChanges const& changes, AudioProcessingContext const&) override {
-        if (auto p = changes.changed_params.Param(ParamIndex::DistortionType)) {
+        if (auto p =
+                changes.changed_params.IntValue<param_values::DistortionType>(ParamIndex::DistortionType)) {
             // Remapping enum values like this allows us to separate values that cannot change (the
             // parameter value), with values that we have more control over (DSP code)
-            switch (p->ValueAsInt<param_values::DistortionType>()) {
+            switch (*p) {
                 case param_values::DistortionType::TubeLog: type = DistFunctionTubeLog; break;
                 case param_values::DistortionType::TubeAsym3: type = DistFunctionTubeAsym3; break;
                 case param_values::DistortionType::Sine: type = DistFunctionSinFunc; break;
@@ -159,7 +160,7 @@ struct Distortion final : public Effect {
             }
         }
 
-        if (auto p = changes.changed_params.Param(ParamIndex::DistortionDrive)) amount = p->ProjectedValue();
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::DistortionDrive)) amount = *p;
     }
 
     EffectProcessResult

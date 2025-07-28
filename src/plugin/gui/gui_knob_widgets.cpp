@@ -6,6 +6,7 @@
 #include "foundation/foundation.hpp"
 
 #include "gui.hpp"
+#include "gui/gui2_macros.hpp"
 #include "gui_draw_knob.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_widget_helpers.hpp"
@@ -21,6 +22,7 @@ static void DrawKnob(Gui* g, imgui::Id id, Rect r, f32 percent, Style const& sty
                  .highlight_col = style.highlight_col,
                  .line_col = style.line_col,
                  .overload_position = style.overload_position,
+                 .outer_arc_percent = style.outer_arc_percent,
                  .greyed_out = style.greyed_out,
                  .is_fake = style.is_fake,
                  .bidirectional = style.bidirectional,
@@ -38,15 +40,25 @@ bool Knob(Gui* g, imgui::Id id, Rect r, f32& percent, f32 default_percent, Style
     return g->imgui.Slider(KnobSettings(g, style), r, id, percent, default_percent);
 }
 
-bool Knob(Gui* g, Parameter const& param, Rect r, Style const& style) { return Knob(g, 0, param, r, style); }
+bool Knob(Gui* g, DescribedParamValue const& param, Rect r, Style const& style) {
+    return Knob(g, 0, param, r, style);
+}
 
-bool Knob(Gui* g, imgui::Id id, Parameter const& param, Rect r, Style const& style) {
+bool Knob(Gui* g, imgui::Id id, DescribedParamValue const& param, Rect r, Style const& style) {
     id = BeginParameterGUI(g, param, r, id ? Optional<imgui::Id>(id) : k_nullopt);
     Optional<f32> new_val {};
     f32 val = param.LinearValue();
 
+    auto style_copy = style;
+    style_copy.outer_arc_percent = MapTo01(AdjustedLinearValue(g->engine.processor.main_params,
+                                                               g->engine.processor.main_macro_destinations,
+                                                               val,
+                                                               param.info.index),
+                                           param.info.linear_range.min,
+                                           param.info.linear_range.max);
+
     auto settings = imgui::DefTextInputDraggerFloat();
-    settings.slider_settings = KnobSettings(g, style);
+    settings.slider_settings = KnobSettings(g, style_copy);
     settings.text_input_settings = GetParameterTextInputSettings();
 
     // Sensitivity is based on the pixels needed to change the value by 1. For parameter knobs we want the
@@ -78,16 +90,19 @@ bool Knob(Gui* g, imgui::Id id, Parameter const& param, Rect r, Style const& sty
     if (result.value_changed) new_val = val;
 
     EndParameterGUI(g, id, param, r, new_val);
+
+    MacroAddDestinationRegion(g, r, param.info.index);
+
     return new_val.HasValue();
 }
 
 bool Knob(Gui* g, imgui::Id id, layout::Id lay_id, f32& percent, f32 default_percent, Style const& style) {
     return Knob(g, id, layout::GetRect(g->layout, lay_id), percent, default_percent, style);
 }
-bool Knob(Gui* g, Parameter const& param, layout::Id lay_id, Style const& style) {
+bool Knob(Gui* g, DescribedParamValue const& param, layout::Id lay_id, Style const& style) {
     return Knob(g, 0, param, layout::GetRect(g->layout, lay_id), style);
 }
-bool Knob(Gui* g, imgui::Id id, Parameter const& param, layout::Id lay_id, Style const& style) {
+bool Knob(Gui* g, imgui::Id id, DescribedParamValue const& param, layout::Id lay_id, Style const& style) {
     return Knob(g, id, param, layout::GetRect(g->layout, lay_id), style);
 }
 

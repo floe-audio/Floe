@@ -88,7 +88,7 @@ layout::Id LayoutParameterComponent(Gui* g,
 layout::Id LayoutParameterComponent(Gui* g,
                                     layout::Id parent,
                                     LayIDPair& ids,
-                                    Parameter const& param,
+                                    DescribedParamValue const& param,
                                     Optional<UiSizeId> size_index_for_gapx,
                                     bool set_gapx_independent_of_size,
                                     bool set_bottom_gap_independent_of_size) {
@@ -119,7 +119,7 @@ layout::Id LayoutParameterComponent(Gui* g,
 }
 
 bool KnobAndLabel(Gui* g,
-                  Parameter const& param,
+                  DescribedParamValue const& param,
                   Rect knob_r,
                   Rect label_r,
                   knobs::Style const& style,
@@ -133,7 +133,11 @@ bool KnobAndLabel(Gui* g,
     return changed;
 }
 
-bool KnobAndLabel(Gui* g, Parameter const& param, LayIDPair ids, knobs::Style const& style, bool greyed_out) {
+bool KnobAndLabel(Gui* g,
+                  DescribedParamValue const& param,
+                  LayIDPair ids,
+                  knobs::Style const& style,
+                  bool greyed_out) {
     return KnobAndLabel(g,
                         param,
                         layout::GetRect(g->layout, ids.control),

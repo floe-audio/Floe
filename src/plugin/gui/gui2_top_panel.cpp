@@ -417,7 +417,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
         auto const box = DoParameterComponent(
             g,
             knob_container,
-            g->engine.processor.params[ToInt(ParamIndex::MasterTimbre)],
+            g->engine.processor.main_params.DescribedValue(ParamIndex::MasterTimbre),
             {
                 .greyed_out = !has_insts_with_timbre_layers,
                 .is_fake = !has_insts_with_timbre_layers,
@@ -434,7 +434,10 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                 GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
     }
 
-    DoParameterComponent(g, knob_container, g->engine.processor.params[ToInt(ParamIndex::MasterVolume)], {});
+    DoParameterComponent(g,
+                         knob_container,
+                         g->engine.processor.main_params.DescribedValue(ParamIndex::MasterVolume),
+                         {});
 
     // peak meter
     {

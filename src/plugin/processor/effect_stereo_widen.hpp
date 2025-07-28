@@ -3,7 +3,6 @@
 
 #pragma once
 #include "effect.hpp"
-#include "processing_utils/stereo_audio_frame.hpp"
 
 // http://www.musicdsp.org/show_archive_comment.php?ArchiveID=256
 // public domain
@@ -30,8 +29,8 @@ struct StereoWiden final : public Effect {
     StereoWiden() : Effect(EffectType::StereoWiden) {}
 
     void ProcessChangesInternal(ProcessBlockChanges const& changes, AudioProcessingContext const&) override {
-        if (auto p = changes.changed_params.Param(ParamIndex::StereoWidenWidth)) {
-            auto const val = p->ProjectedValue();
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::StereoWidenWidth)) {
+            auto const val = *p;
             f32 v = 0;
             if (val < 0)
                 v = 1 - (-(val));

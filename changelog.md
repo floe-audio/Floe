@@ -8,6 +8,12 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 0.12.0-beta
+- Macros parameters:
+  - Bottom GUI panel now has tabs: Play and Macros
+  - Macros parameters allow for controlling multiple other parameters at once with a single knob and with a custom name
+  - On the Macros tab, you can add and remove the parameters that are linked to each macro and control the strength of the link
+
 ## 0.11.4-beta
 - Fix window size jumping if the width was exactly 1000 pixels
 

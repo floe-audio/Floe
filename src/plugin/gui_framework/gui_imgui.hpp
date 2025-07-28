@@ -101,6 +101,7 @@ struct SliderFlags {
 };
 
 struct TextInputFlags {
+    f32 x_padding = 4;
     bool32 chars_decimal : 1; // Allow 0123456789.+-*/
     bool32 chars_hexadecimal : 1; // Allow 0123456789ABCDEFabcdef
     bool32 chars_uppercase : 1; // Turn a..z into A..Z
@@ -116,7 +117,8 @@ struct TextInputFlags {
 //
 
 #define IMGUI_DRAW_WINDOW_SCROLLBAR_ARGS                                                                     \
-    const imgui::Context &imgui, MAYBE_UNUSED Rect bounds, Rect handle_rect, imgui::Id id
+    MAYBE_UNUSED const imgui::Context &imgui, MAYBE_UNUSED Rect bounds, MAYBE_UNUSED Rect handle_rect,       \
+        MAYBE_UNUSED imgui::Id id
 #define IMGUI_DRAW_WINDOW_SCROLLBAR(name) void name(IMGUI_DRAW_WINDOW_SCROLLBAR_ARGS)
 using DrawWindowScrollbar = void(IMGUI_DRAW_WINDOW_SCROLLBAR_ARGS);
 
@@ -638,7 +640,6 @@ struct Context {
     //
     //
     static constexpr f64 k_text_cursor_blink_rate {0.5};
-    static constexpr f32 k_text_xpad_in_input_box = 4; // pixels, x offset for text inside a text input box
     f64 hover_popup_delay {0.10}; // delay before popups close
     f64 button_repeat_rate {0.1}; // rate at which button hold to repeat triggers
     WindowSettings default_window_style = {};

@@ -242,10 +242,10 @@ bool Button(Gui* g, imgui::Id id, Rect r, String str, Style const& style) {
     return Toggle(g, id, r, state, str, style);
 }
 
-ButtonReturnObject Toggle(Gui* g, Parameter const& param, Rect r, String str, Style const& style) {
+ButtonReturnObject Toggle(Gui* g, DescribedParamValue const& param, Rect r, String str, Style const& style) {
     auto const id = BeginParameterGUI(g, param, r);
     Optional<f32> val {};
-    bool state = param.ValueAsBool();
+    bool state = param.BoolValue();
     if (Toggle(g, id, r, state, str, style)) val = state ? 1.0f : 0.0f;
     EndParameterGUI(g,
                     id,
@@ -256,11 +256,11 @@ ButtonReturnObject Toggle(Gui* g, Parameter const& param, Rect r, String str, St
     return {val.HasValue(), id};
 }
 
-ButtonReturnObject Toggle(Gui* g, Parameter const& param, Rect r, Style const& style) {
+ButtonReturnObject Toggle(Gui* g, DescribedParamValue const& param, Rect r, Style const& style) {
     return Toggle(g, param, r, param.info.gui_label, style);
 }
 
-ButtonReturnObject PopupWithItems(Gui* g, Parameter const& param, Rect r, Style const& style) {
+ButtonReturnObject PopupWithItems(Gui* g, DescribedParamValue const& param, Rect r, Style const& style) {
     auto const id = BeginParameterGUI(g, param, r);
 
     // draw it around the whole thing, not just the menu
@@ -282,7 +282,7 @@ ButtonReturnObject PopupWithItems(Gui* g, Parameter const& param, Rect r, Style 
     auto popup_style = style;
     popup_style.back_cols = {};
     if (Popup(g, id, id + 1, r, ParamMenuText(param.info.index, param.LinearValue()), popup_style)) {
-        auto current = param.ValueAsInt<int>();
+        auto current = param.IntValue<int>();
         if (DoMultipleMenuItems(g, ParameterMenuItems(param.info.index), current)) val = (f32)current;
         g->imgui.EndWindow();
     }
@@ -310,12 +310,12 @@ ButtonReturnObject PopupWithItems(Gui* g, Parameter const& param, Rect r, Style 
     auto const left_id = id - 4;
     auto const right_id = id + 4;
     if (buttons::Button(g, left_id, rect_l, ICON_FA_CARET_LEFT, button_style)) {
-        auto new_val = (f32)param.ValueAsInt<int>() - 1;
+        auto new_val = (f32)param.IntValue<int>() - 1;
         if (new_val < param.info.linear_range.min) new_val = param.info.linear_range.max;
         val = new_val;
     }
     if (buttons::Button(g, right_id, rect_r, ICON_FA_CARET_RIGHT, button_style)) {
-        auto new_val = (f32)param.ValueAsInt<int>() + 1;
+        auto new_val = (f32)param.IntValue<int>() + 1;
         if (new_val > param.info.linear_range.max) new_val = param.info.linear_range.min;
         val = new_val;
     }
@@ -374,13 +374,15 @@ bool Popup(Gui* g, imgui::Id popup_id, layout::Id lay_id, String str, Style cons
     return Popup(g, popup_id, layout::GetRect(g->layout, lay_id), str, style);
 }
 
-ButtonReturnObject Toggle(Gui* g, Parameter const& param, layout::Id lay_id, String str, Style const& style) {
+ButtonReturnObject
+Toggle(Gui* g, DescribedParamValue const& param, layout::Id lay_id, String str, Style const& style) {
     return Toggle(g, param, layout::GetRect(g->layout, lay_id), str, style);
 }
-ButtonReturnObject Toggle(Gui* g, Parameter const& param, layout::Id lay_id, Style const& style) {
+ButtonReturnObject Toggle(Gui* g, DescribedParamValue const& param, layout::Id lay_id, Style const& style) {
     return Toggle(g, param, layout::GetRect(g->layout, lay_id), style);
 }
-ButtonReturnObject PopupWithItems(Gui* g, Parameter const& param, layout::Id lay_id, Style const& style) {
+ButtonReturnObject
+PopupWithItems(Gui* g, DescribedParamValue const& param, layout::Id lay_id, Style const& style) {
     return PopupWithItems(g, param, layout::GetRect(g->layout, lay_id), style);
 }
 

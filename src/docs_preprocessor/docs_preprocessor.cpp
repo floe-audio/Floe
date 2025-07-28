@@ -11,6 +11,7 @@
 #include "utils/json/json_writer.hpp"
 #include "utils/logger/logger.hpp"
 
+#include "common_infrastructure/cc_mapping.hpp"
 #include "common_infrastructure/common_errors.hpp"
 #include "common_infrastructure/descriptors/effect_descriptors.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
@@ -296,6 +297,15 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
     }
 
     ExpandIdentifier(result, Identifier("effects-count"), fmt::IntToString(k_num_effect_types), scratch);
+
+    {
+        DynamicArray<char> text {scratch};
+        for (auto const& map : k_default_cc_to_param_mapping) {
+            auto const& desc = k_param_descriptors[ToInt(map.param)];
+            fmt::Append(text, "- CC {}: {} ({})\n", map.cc, desc.name, desc.ModuleString(" › "));
+        }
+        ExpandIdentifier(result, Identifier("default-cc-mappings"), text, scratch);
+    }
 
     {
         DynamicArray<char> tags_md {scratch};

@@ -24,10 +24,16 @@ f32 MenuItemWidth(Gui* g, Span<String const> strs);
 void DoTooltipText(Gui* g, String str, Rect r, bool rect_is_window_pos = false);
 bool Tooltip(Gui* g, imgui::Id id, Rect r, String str, bool rect_is_window_pos = false);
 
-void DoParameterTooltipIfNeeded(Gui* g, Parameter const& param, imgui::Id imgui_id, Rect param_rect);
-void DoParameterTooltipIfNeeded(Gui* g, Span<Parameter const*> param, imgui::Id imgui_id, Rect param_rect);
-void ParameterValuePopup(Gui* g, Parameter const& param, imgui::Id id, Rect r);
-void ParameterValuePopup(Gui* g, Span<Parameter const*> params, imgui::Id id, Rect r);
+void DoParameterTooltipIfNeeded(Gui* g,
+                                DescribedParamValue const& param,
+                                imgui::Id imgui_id,
+                                Rect param_rect);
+void DoParameterTooltipIfNeeded(Gui* g,
+                                Span<DescribedParamValue const*> param,
+                                imgui::Id imgui_id,
+                                Rect param_rect);
+void ParameterValuePopup(Gui* g, DescribedParamValue const& param, imgui::Id id, Rect r);
+void ParameterValuePopup(Gui* g, Span<DescribedParamValue const*> params, imgui::Id id, Rect r);
 
 void MidiLearnMenu(Gui* g, Span<ParamIndex> params, Rect r);
 void MidiLearnMenu(Gui* g, ParamIndex param, Rect r);
@@ -42,7 +48,7 @@ bool DoMultipleMenuItems(Gui* g,
                          String (*GetStr)(void* items, int index));
 bool DoMultipleMenuItems(Gui* g, Span<String const> items, int& current);
 
-imgui::Id BeginParameterGUI(Gui* g, Parameter const& param, Rect r, Optional<imgui::Id> id = {});
+imgui::Id BeginParameterGUI(Gui* g, DescribedParamValue const& param, Rect r, Optional<imgui::Id> id = {});
 enum ParamDisplayFlags {
     ParamDisplayFlagsDefault = 0,
     ParamDisplayFlagsNoTooltip = 1,
@@ -50,7 +56,7 @@ enum ParamDisplayFlags {
 };
 void EndParameterGUI(Gui* g,
                      imgui::Id id,
-                     Parameter const& param,
+                     DescribedParamValue const& param,
                      Rect r,
                      Optional<f32> new_val,
                      ParamDisplayFlags flags = ParamDisplayFlagsDefault);

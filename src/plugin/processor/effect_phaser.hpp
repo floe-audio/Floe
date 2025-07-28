@@ -25,20 +25,20 @@ class Phaser final : public Effect {
     void ProcessChangesInternal(ProcessBlockChanges const& changes, AudioProcessingContext const&) override {
         using namespace vitfx::phaser;
 
-        if (auto p = changes.changed_params.Param(ParamIndex::PhaserFeedback))
-            args.params[ToInt(Params::FeedbackAmount)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::PhaserModFreqHz))
-            args.params[ToInt(Params::FrequencyHz)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::PhaserCenterSemitones))
-            args.params[ToInt(Params::CenterSemitones)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::PhaserShape))
-            args.params[ToInt(Params::Blend)] = p->ProjectedValue() * 2;
-        if (auto p = changes.changed_params.Param(ParamIndex::PhaserModDepth))
-            args.params[ToInt(Params::ModDepthSemitones)] = p->ProjectedValue();
-        if (auto p = changes.changed_params.Param(ParamIndex::PhaserStereoAmount))
-            args.params[ToInt(Params::PhaseOffset)] = p->ProjectedValue() / 2;
-        if (auto p = changes.changed_params.Param(ParamIndex::PhaserMix))
-            args.params[ToInt(Params::Mix)] = p->ProjectedValue();
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::PhaserFeedback))
+            args.params[ToInt(Params::FeedbackAmount)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::PhaserModFreqHz))
+            args.params[ToInt(Params::FrequencyHz)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::PhaserCenterSemitones))
+            args.params[ToInt(Params::CenterSemitones)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::PhaserShape))
+            args.params[ToInt(Params::Blend)] = *p * 2;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::PhaserModDepth))
+            args.params[ToInt(Params::ModDepthSemitones)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::PhaserStereoAmount))
+            args.params[ToInt(Params::PhaseOffset)] = *p / 2;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::PhaserMix))
+            args.params[ToInt(Params::Mix)] = *p;
     }
 
     EffectProcessResult

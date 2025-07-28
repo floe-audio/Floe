@@ -1191,7 +1191,7 @@ TextInputResult Context::TextInput(Rect r,
     }
 
     auto get_offset = [&](String text) {
-        auto x_offset = k_text_xpad_in_input_box;
+        auto x_offset = flags.x_padding;
         if (flags.centre_align) {
             auto font = graphics->context->CurrentFont();
             auto size = font->CalcTextSizeA(font->font_size, FLT_MAX, 0.0f, text).x;
@@ -1443,7 +1443,7 @@ TextInputResult Context::TextInput(Rect r,
             if (flags.multiline_wordwrap_hack && stb_state.cursor == textedit_len &&
                 textedit_len == (initial_textedit_len + 1)) {
 
-                auto const max_width = r.w - (k_text_xpad_in_input_box * 4);
+                auto const max_width = r.w - (flags.x_padding * 4);
                 if (max_width <= 0) break;
 
                 auto const* line_end = textedit_text_utf8.data + textedit_text_utf8.size - 1;

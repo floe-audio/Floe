@@ -243,6 +243,9 @@ struct BoxConfig {
     // 4 bits, clockwise from top-left: top-left, top-right, bottom-right, bottom-left, set using 0b0001 etc.
     u32 round_background_corners : 4 = 0;
 
+    // 4 bits, clockwise from left: left, top, right, bottom, set using 0b0001 etc.
+    u32 border_edges : 4 = 0b1111;
+
     layout::ItemOptions layout {}; // Don't set parent here, use BoxConfig::parent instead.
 
     TooltipString tooltip = k_nullopt;
@@ -258,6 +261,8 @@ struct BoxConfig {
         : NumBitsNeededToStore(ToInt(ActivationClickEvent::Count)) = ActivationClickEvent::Up;
     bool32 ignore_double_click : 1 = false;
     u8 extra_margin_for_mouse_events = 0;
+
+    f32 text_input_x_padding = 4; // Padding for text input, left and right.
 
     // Configuration for knob behaviour.
     f32 knob_percent {};
@@ -296,6 +301,7 @@ struct DrawTextInputConfig {
     style::Colour text_col = style::Colour::Text;
     style::Colour cursor_col = style::Colour::Text;
     style::Colour selection_col = style::Colour::Highlight;
+    f32 selection_colour_alpha = 0.5f;
 };
 
 void DrawTextInput(GuiBoxSystem& box_system, Box const& box, DrawTextInputConfig const& config = {});

@@ -23,20 +23,13 @@ Preset files do not save MIDI CC mappings. So you can load presets and your MIDI
 
 You can make the MIDI CC mapping more permanent by right clicking on a 'MIDI learned' parameter and selecting 'Always set MIDI CC to this when Floe opens'. As the name suggests, when you open Floe, the MIDI CC mapping will be added.
 
-## Sustain Pedal
+## Default MIDI CC mappings
 
-<div class="warning">
-There's some bugs with sustain pedal at the moment.
-</div>
+Floe sets some default MIDI CC mappings for you. You can turn this off in the preferences. The default mappings are:
+==default-cc-mappings==
+
+## Sustain Pedal
 
 Floe can be controlled with a sustain pedal. A sustain pedal is a special kind of MIDI controller that sends MIDI CC-64 messages. These messages represent an on or off state.
 
-When Floe receives a sustain pedal on message, all notes that are currently held will sustain until a corresponding sustain pedal off message is received. The notes will persist even if the notes are released from the keyboard. Only releasing the sustain pedal will trigger them to stop. This is a common behaviour for synths and samplers alike. It roughly simulates the behaviour of a real piano sustain pedal.
-
-## Sustain Pedal Retrigger Mode
-
-Each layer in Floe has a switch that changes the behaviour when pressing the same note multiple times while the sustain pedal is held down. This parameter can be found in the MIDI tab of each layer and is called 'CC64 Retrig'.
-
-When 'CC64 Retrig' is turned off, and you are holding the sustain pedal down, nothing happens if you press the same key multiple times — the new up and down is ignored — the sound continues to sustain just as it did before.
-
-However, when 'CC64 Retrig' is on, the note is retriggered (the sound ends and a new one starts); this behaviour tends to be the more intuitive option. Note that this switch is per-layer, not global. This allows for more powerful customisation of a preset.
+When Floe receives a sustain pedal ON message, all notes that are currently held will sustain until a corresponding sustain pedal OFF message is received. The notes will persist even if the notes are released from the keyboard. Only releasing the sustain pedal will trigger them to stop. This is a common behaviour for synths and samplers alike. It roughly simulates the behaviour of a real piano sustain pedal.

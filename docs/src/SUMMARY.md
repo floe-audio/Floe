@@ -26,6 +26,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
   - [MIDI](./usage/midi.md)
   - [Looping](./usage/looping.md)
   - [Parameters](./usage/parameters.md)
+  - [Macros](./usage/macros.md)
   - [Autosave](./usage/autosave.md)
   - [Attribution](./usage/attribution.md)
   - [Error Reporting](./usage/error-reporting.md)

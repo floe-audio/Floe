@@ -26,7 +26,7 @@ static void DoMidiLearnMenu(Gui* g, ParamIndex param_index) {
                  })) {
         SetParameterValue(g->engine.processor,
                           param_index,
-                          g->engine.processor.params[ToInt(param_index)].DefaultLinearValue(),
+                          k_param_descriptors[ToInt(param_index)].default_linear_value,
                           {});
     }
 
@@ -100,7 +100,7 @@ static void DoMidiLearnMenu(Gui* g, ParamIndex param_index) {
 
 Box DoParameterComponent(Gui* g,
                          Box parent,
-                         Parameter const& param,
+                         DescribedParamValue const& param,
                          ParameterComponentOptions const& options) {
     auto& builder = g->box_system;
 
@@ -116,17 +116,15 @@ Box DoParameterComponent(Gui* g,
                                                    : live_size(UiSizeId::ParamComponentExtraSmallWidth));
     auto height = width - live_size(UiSizeId::ParamComponentHeightOffset);
 
-    auto const index_for_menu_items =
-        param.info.value_type == ParamValueType::Menu ? Optional<ParamIndex> {param.info.index} : k_nullopt;
-
-    auto const param_popup_button_height = live_size(UiSizeId::ParamPopupButtonHeight);
-
-    if (index_for_menu_items) {
+    if (auto const index_for_menu_items = param.info.value_type == ParamValueType::Menu
+                                              ? Optional<ParamIndex> {param.info.index}
+                                              : k_nullopt) {
         auto const menu_items = ParameterMenuItems(*index_for_menu_items);
         auto strings_width =
             MaxStringLength(g, menu_items) + (live_size(UiSizeId::MenuButtonTextMarginL) * 2);
         auto const btn_w = live_size(UiSizeId::NextPrevButtonSize);
         auto const margin_r = live_size(UiSizeId::ParamIntButtonMarginR);
+        auto const param_popup_button_height = live_size(UiSizeId::ParamPopupButtonHeight);
         strings_width += btn_w * 2 + margin_r;
         width = strings_width;
         height = param_popup_button_height;
@@ -236,8 +234,11 @@ Box DoParameterComponent(Gui* g,
         }
     }
 
-    if (auto const r = BoxRect(builder, container))
+    if (auto const r = BoxRect(builder, container)) {
         EndParameterGUI(g, container.imgui_id, param, *r, new_val, ParamDisplayFlagsNoTooltip);
+
+        MacroAddDestinationRegion(g, *r, param.info.index);
+    }
 
     auto const control = DoBox(builder,
                                {
@@ -249,19 +250,26 @@ Box DoParameterComponent(Gui* g,
                                });
 
     if (auto const r = BoxRect(builder, control)) {
-        DrawKnob(builder.imgui,
-                 container.imgui_id,
-                 *r,
-                 val,
-                 {
-                     .highlight_col = style::Col(options.knob_highlight_col),
-                     .line_col = style::Col(options.knob_line_col),
-                     .overload_position = param.info.display_format == ParamDisplayFormat::VolumeAmp
-                                              ? param.info.LineariseValue(1, true)
-                                              : k_nullopt,
-                     .greyed_out = options.greyed_out,
-                     .is_fake = options.is_fake,
-                 });
+        DrawKnob(
+            builder.imgui,
+            container.imgui_id,
+            builder.imgui.WindowRectToScreenRect(*r),
+            val,
+            {
+                .highlight_col = style::Col(options.knob_highlight_col),
+                .line_col = style::Col(options.knob_line_col),
+                .overload_position = param.info.display_format == ParamDisplayFormat::VolumeAmp
+                                         ? param.info.LineariseValue(1, true)
+                                         : k_nullopt,
+                .outer_arc_percent = MapTo01(AdjustedLinearValue(g->engine.processor.main_params,
+                                                                 g->engine.processor.main_macro_destinations,
+                                                                 val,
+                                                                 param.info.index),
+                                             param.info.linear_range.min,
+                                             param.info.linear_range.max),
+                .greyed_out = options.greyed_out,
+                .is_fake = options.is_fake,
+            });
     }
 
     if (builder.imgui.TextInputHasFocus(container.imgui_id)) {
@@ -286,19 +294,19 @@ Box DoParameterComponent(Gui* g,
         }
     }
 
-    // Label.
-    DoBox(builder,
-          {
-              .parent = container,
-              .text = param.info.gui_label,
-              .text_colours = {options.greyed_out ? style::Colour::DarkModeSubtext0
-                                                  : style::Colour::DarkModeText},
-              .text_align_x = TextAlignX::Centre,
-              .text_align_y = TextAlignY::Centre,
-              .layout {
-                  .size = {width, style::k_font_body_size},
-              },
-          });
+    if (options.label)
+        DoBox(builder,
+              {
+                  .parent = container,
+                  .text = options.override_label.size ? options.override_label : param.info.gui_label,
+                  .text_colours = {options.greyed_out ? style::Colour::DarkModeSubtext0
+                                                      : style::Colour::DarkModeText},
+                  .text_align_x = TextAlignX::Centre,
+                  .text_align_y = TextAlignY::Centre,
+                  .layout {
+                      .size = {width, style::k_font_body_size},
+                  },
+              });
 
-    return control;
+    return container;
 }

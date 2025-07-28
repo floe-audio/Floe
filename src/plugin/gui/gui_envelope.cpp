@@ -67,7 +67,7 @@ void GUIDoEnvelope(Gui* g,
 
     {
         auto attack_param_id = ParamIndexFromLayerParamIndex(layer->index, adsr_layer_params[0]);
-        auto& attack_param = engine.processor.params[ToInt(attack_param_id)];
+        auto attack_param = engine.processor.main_params.DescribedValue(attack_param_id);
         auto norm_attack_val = attack_param.LinearValue();
 
         auto const get_x_coord_at_percent = [&](f32 percent) {
@@ -116,15 +116,17 @@ void GUIDoEnvelope(Gui* g,
 
         ParameterValuePopup(g, attack_param, attack_imgui_id, grabber_unregistered);
         DoParameterTooltipIfNeeded(g, attack_param, attack_imgui_id, grabber_unregistered);
+
+        MacroAddDestinationRegion(g, grabber_unregistered, attack_param_id);
     }
 
     {
         auto decay_id = ParamIndexFromLayerParamIndex(layer->index, adsr_layer_params[1]);
         auto sustain_id = ParamIndexFromLayerParamIndex(layer->index, adsr_layer_params[2]);
-        auto& decay_param = engine.processor.params[ToInt(decay_id)];
-        auto& sustain_param = engine.processor.params[ToInt(sustain_id)];
+        auto decay_param = engine.processor.main_params.DescribedValue(decay_id);
+        auto sustain_param = engine.processor.main_params.DescribedValue(sustain_id);
         ParamIndex params[] = {decay_id, sustain_id};
-        Parameter const* param_ptrs[] = {&decay_param, &sustain_param};
+        DescribedParamValue const* param_ptrs[] = {&decay_param, &sustain_param};
         auto const decay_norm_value = decay_param.LinearValue();
         auto const sustain_norm_value = sustain_param.LinearValue();
 
@@ -211,11 +213,18 @@ void GUIDoEnvelope(Gui* g,
 
         ParameterValuePopup(g, param_ptrs, dec_sus_imgui_id, grabber_unregistered);
         DoParameterTooltipIfNeeded(g, param_ptrs, dec_sus_imgui_id, grabber_unregistered);
+
+        {
+            auto const h = grabber_unregistered.h / 2;
+            auto macro_r = grabber_unregistered;
+            MacroAddDestinationRegion(g, rect_cut::CutTop(macro_r, h), decay_id);
+            MacroAddDestinationRegion(g, rect_cut::CutTop(macro_r, h), sustain_id);
+        }
     }
 
     {
         auto release_param_id = ParamIndexFromLayerParamIndex(layer->index, adsr_layer_params[3]);
-        auto& release_param = engine.processor.params[ToInt(release_param_id)];
+        auto release_param = engine.processor.main_params.DescribedValue(release_param_id);
         auto const release_norm_value = release_param.LinearValue();
 
         auto const get_x_coord_at_percent = [&](f32 percent) {
@@ -270,6 +279,8 @@ void GUIDoEnvelope(Gui* g,
 
         ParameterValuePopup(g, release_param, release_imgui_id, grabber_unregistered);
         DoParameterTooltipIfNeeded(g, release_param, release_imgui_id, grabber_unregistered);
+
+        MacroAddDestinationRegion(g, grabber_unregistered, release_param_id);
     }
 
     {

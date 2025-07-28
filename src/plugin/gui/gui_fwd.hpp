@@ -6,7 +6,7 @@
 
 struct Gui;
 struct Engine;
-struct Parameter;
+struct DescribedParamValue;
 
 namespace imgui {
 struct Context;

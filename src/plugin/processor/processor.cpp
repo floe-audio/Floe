@@ -5,6 +5,7 @@
 
 #include "os/threading.hpp"
 
+#include "common_infrastructure/cc_mapping.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/preferences.hpp"
 
@@ -88,7 +89,7 @@ prefs::Descriptor SettingDescriptor(ProcessorSetting s) {
 }
 
 bool EffectIsOn(Parameters const& params, Effect* effect) {
-    return params[ToInt(k_effect_info[ToInt(effect->type)].on_param_index)].ValueAsBool();
+    return params.BoolValue(k_effect_info[ToInt(effect->type)].on_param_index);
 }
 
 bool IsMidiCCLearnActive(AudioProcessor const& processor) {
@@ -164,6 +165,35 @@ Bitset<128> PersistentCcsForParam(prefs::PreferencesTable const& prefs, u32 para
     return result;
 }
 
+void AppendMacroDestination(AudioProcessor& processor, struct AppendMacroDestination config) {
+    ASSERT(g_is_logical_main_thread);
+
+    dyn::Append(processor.main_macro_destinations[config.macro_index],
+                MacroDestination {
+                    .param_index = config.param,
+                    .value = config.value,
+                });
+
+    processor.events_for_audio_thread.Push(config);
+    processor.host.request_process(&processor.host);
+}
+
+void RemoveMacroDestination(AudioProcessor& processor, struct RemoveMacroDestination config) {
+    ASSERT(g_is_logical_main_thread);
+
+    dyn::Remove(processor.main_macro_destinations[config.macro_index], config.destination_index);
+
+    processor.events_for_audio_thread.Push(config);
+    processor.host.request_process(&processor.host);
+}
+
+void MacroDestinationValueChanged(AudioProcessor& processor, struct MacroDestinationValueChanged config) {
+    ASSERT(g_is_logical_main_thread);
+
+    processor.events_for_audio_thread.Push(config);
+    processor.host.request_process(&processor.host);
+}
+
 static Bitset<k_num_layers> LayerSilentState(Bitset<k_num_layers> solo, Bitset<k_num_layers> mute) {
     bool const any_solo = solo.AnyValuesSet();
     Bitset<k_num_layers> result {};
@@ -203,13 +233,9 @@ bool LayerIsSilent(AudioProcessor const& processor, u32 layer_index) {
 
     Bitset<k_num_layers> solo;
     Bitset<k_num_layers> mute;
-    for (auto const i : Range(k_num_layers)) {
-        solo.SetToValue(
-            i,
-            processor.params[ToInt(ParamIndexFromLayerParamIndex(i, LayerParamIndex::Solo))].ValueAsBool());
-        mute.SetToValue(
-            i,
-            processor.params[ToInt(ParamIndexFromLayerParamIndex(i, LayerParamIndex::Mute))].ValueAsBool());
+    for (auto const i : Range<u8>(k_num_layers)) {
+        solo.SetToValue(i, processor.main_params.BoolValue(i, LayerParamIndex::Solo));
+        mute.SetToValue(i, processor.main_params.BoolValue(i, LayerParamIndex::Mute));
     }
 
     return LayerSilentState(solo, mute).Get(layer_index);
@@ -217,19 +243,24 @@ bool LayerIsSilent(AudioProcessor const& processor, u32 layer_index) {
 
 void SetAllParametersToDefaultValues(AudioProcessor& processor) {
     ASSERT(g_is_logical_main_thread);
-    for (auto& param : processor.params)
-        param.SetLinearValue(param.DefaultLinearValue());
-    for (auto& layer : processor.layer_processors)
-        layer.velocity_curve_map.SetNewPoints(k_default_velocity_curve_points);
 
-    processor.events_for_audio_thread.Push(EventForAudioThreadType::ReloadAllAudioState);
-    auto const host = &processor.host;
-    auto const params = (clap_host_params const*)host->get_extension(host, CLAP_EXT_PARAMS);
-    if (params) params->rescan(host, CLAP_PARAM_RESCAN_VALUES);
-    host->request_process(host);
+    StateSnapshot state {};
+
+    for (auto const fx_index : Range<u8>(state.fx_order.size))
+        state.fx_order[fx_index] = (EffectType)fx_index;
+
+    for (auto const param_index : Range(k_num_parameters))
+        state.param_values[param_index] = k_param_descriptors[param_index].default_linear_value;
+
+    for (auto& velo_curve : state.velocity_curve_points)
+        velo_curve = k_default_velocity_curve_points;
+
+    ApplyNewState(processor, state, StateSource::PresetFile);
 }
 
 static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool only_effects) {
+    ASSERT(g_is_logical_main_thread);
+
     RandomIntGenerator<int> int_gen;
     RandomFloatGenerator<f32> float_gen;
     auto seed = (u64)NanosecondsSinceEpoch();
@@ -237,15 +268,14 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
     RandomNormalDistribution normal_dist_strong {0.5, 0.10};
 
     StateSnapshot state {};
-    for (auto const i : Range(k_num_parameters))
-        state.param_values[i] = processor.params[i].LinearValue();
+    state.param_values = processor.main_params.values;
 
-    auto const set_param = [&](Parameter const& p, f32 v) {
+    auto const set_param = [&](DescribedParamValue const& p, f32 v) {
         if (IsAnyOf(p.info.value_type, Array {ParamValueType::Int, ParamValueType::Bool})) v = Round(v);
         ASSERT(v >= p.info.linear_range.min && v <= p.info.linear_range.max);
         state.param_values[ToInt(p.info.index)] = v;
     };
-    auto const set_any_random = [&](Parameter const& p) {
+    auto const set_any_random = [&](DescribedParamValue const& p) {
         set_param(p, float_gen.GetRandomInRange(seed, p.info.linear_range.min, p.info.linear_range.max));
     };
 
@@ -254,30 +284,32 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
         Strong,
     };
 
-    auto const randomise_near_to_linear_value = [&](Parameter const& p, BiasType bias, f32 linear_value) {
-        (void)linear_value;
-        f32 rand_v = 0;
-        switch (bias) {
-            case BiasType::Normal: {
-                rand_v = (f32)normal_dist.Next(seed);
-                break;
+    auto const randomise_near_to_linear_value =
+        [&](DescribedParamValue const& p, BiasType bias, f32 linear_value) {
+            (void)linear_value;
+            f32 rand_v = 0;
+            switch (bias) {
+                case BiasType::Normal: {
+                    rand_v = (f32)normal_dist.Next(seed);
+                    break;
+                }
+                case BiasType::Strong: {
+                    rand_v = (f32)normal_dist_strong.Next(seed);
+                    break;
+                }
+                default: PanicIfReached();
             }
-            case BiasType::Strong: {
-                rand_v = (f32)normal_dist_strong.Next(seed);
-                break;
-            }
-            default: PanicIfReached();
-        }
 
-        auto const v = Clamp(rand_v, 0.0f, 1.0f);
-        set_param(p, MapFrom01(v, p.info.linear_range.min, p.info.linear_range.max));
-    };
+            auto const v = Clamp(rand_v, 0.0f, 1.0f);
+            set_param(p, MapFrom01(v, p.info.linear_range.min, p.info.linear_range.max));
+        };
 
-    auto const randomise_near_to_default = [&](Parameter const& p, BiasType bias = BiasType::Normal) {
+    auto const randomise_near_to_default = [&](DescribedParamValue const& p,
+                                               BiasType bias = BiasType::Normal) {
         randomise_near_to_linear_value(p, bias, p.DefaultLinearValue());
     };
 
-    auto const randomise_button_preffering_default = [&](Parameter const& p,
+    auto const randomise_button_preffering_default = [&](DescribedParamValue const& p,
                                                          BiasType bias = BiasType::Normal) {
         f32 new_param_val = p.DefaultLinearValue();
         auto const v = int_gen.GetRandomInRange(seed, 1, 100, false);
@@ -286,7 +318,7 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
         set_param(p, new_param_val);
     };
 
-    auto const randomise_detune = [&](Parameter const& p) {
+    auto const randomise_detune = [&](DescribedParamValue const& p) {
         bool const should_detune = int_gen.GetRandomInRange(seed, 1, 10) <= 2;
         if (!should_detune) {
             set_param(p, 0);
@@ -295,7 +327,7 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
         randomise_near_to_default(p);
     };
 
-    auto const randomise_pitch = [&](Parameter const& p) {
+    auto const randomise_pitch = [&](DescribedParamValue const& p) {
         auto const r = int_gen.GetRandomInRange(seed, 1, 10);
         switch (r) {
             case 1:
@@ -324,14 +356,15 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
         }
     };
 
-    auto const randomise_pan = [&](Parameter const& p) {
+    auto const randomise_pan = [&](DescribedParamValue const& p) {
         if (int_gen.GetRandomInRange(seed, 1, 10) < 4)
             set_param(p, 0);
         else
             randomise_near_to_default(p, BiasType::Strong);
     };
 
-    auto const randomise_loop_start_and_end = [&](Parameter const& start, Parameter& end) {
+    auto const randomise_loop_start_and_end = [&](DescribedParamValue const& start,
+                                                  DescribedParamValue const& end) {
         auto const mid = float_gen.GetRandomInRange(seed, 0, 1);
         auto const min_half_size = 0.1f;
         auto const max_half_size = Min(mid, 1 - mid);
@@ -345,29 +378,34 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
     //
 
     // Set all params to a random value
-    for (auto& p : processor.params)
+    for (auto const param_index : Range(k_num_parameters)) {
+        auto p = processor.main_params.DescribedValue((ParamIndex)param_index);
         if ((!only_effects || (only_effects && p.info.IsEffectParam())) && !p.info.flags.hidden)
             set_any_random(p);
+    }
 
     // Specialise the randomness of specific params for better results
-    randomise_near_to_default(processor.params[ToInt(ParamIndex::BitCrushWet)]);
-    randomise_near_to_default(processor.params[ToInt(ParamIndex::BitCrushDry)]);
-    randomise_near_to_default(processor.params[ToInt(ParamIndex::CompressorThreshold)], BiasType::Strong);
-    randomise_near_to_default(processor.params[ToInt(ParamIndex::CompressorRatio)]);
-    randomise_near_to_default(processor.params[ToInt(ParamIndex::CompressorGain)], BiasType::Strong);
-    set_param(processor.params[ToInt(ParamIndex::CompressorAutoGain)], 1.0f);
-    randomise_near_to_default(processor.params[ToInt(ParamIndex::FilterCutoff)]);
-    randomise_near_to_default(processor.params[ToInt(ParamIndex::FilterResonance)]);
-    randomise_near_to_default(processor.params[ToInt(ParamIndex::ChorusWet)]);
-    randomise_near_to_default(processor.params[ToInt(ParamIndex::ChorusDry)], BiasType::Strong);
-    randomise_near_to_default(processor.params[ToInt(ParamIndex::ReverbMix)]);
-    randomise_near_to_default(processor.params[ToInt(ParamIndex::PhaserMix)]);
-    randomise_near_to_default(processor.params[ToInt(ParamIndex::DelayMix)]);
-    randomise_near_to_linear_value(processor.params[ToInt(ParamIndex::ConvolutionReverbWet)],
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::BitCrushWet));
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::BitCrushDry));
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::CompressorThreshold),
+                              BiasType::Strong);
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::CompressorRatio));
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::CompressorGain),
+                              BiasType::Strong);
+    set_param(processor.main_params.DescribedValue(ParamIndex::CompressorAutoGain), 1.0f);
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::FilterCutoff));
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::FilterResonance));
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::ChorusWet));
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::ChorusDry), BiasType::Strong);
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::ReverbMix));
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::PhaserMix));
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::DelayMix));
+    randomise_near_to_linear_value(processor.main_params.DescribedValue(ParamIndex::ConvolutionReverbWet),
                                    BiasType::Strong,
                                    0.5f);
-    randomise_near_to_default(processor.params[ToInt(ParamIndex::ConvolutionReverbDry)], BiasType::Strong);
-    randomise_near_to_default(processor.params[ToInt(ParamIndex::ConvolutionReverbHighpass)]);
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::ConvolutionReverbDry),
+                              BiasType::Strong);
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::ConvolutionReverbHighpass));
 
     {
         auto fx = processor.effects_ordered_by_type;
@@ -377,105 +415,76 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
     }
 
     if (!only_effects) {
-        set_param(processor.params[ToInt(ParamIndex::MasterVolume)],
-                  processor.params[ToInt(ParamIndex::MasterVolume)].DefaultLinearValue());
+        set_param(processor.main_params.DescribedValue(ParamIndex::MasterVolume),
+                  processor.main_params.DescribedValue(ParamIndex::MasterVolume).DefaultLinearValue());
         for (auto& l : processor.layer_processors) {
             randomise_near_to_linear_value(
-                processor.params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::Volume))],
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::Volume),
                 BiasType::Strong,
                 0.6f);
             randomise_button_preffering_default(
-                processor.params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::Mute))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::Mute));
             randomise_button_preffering_default(
-                processor.params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::Solo))]);
-            randomise_pan(
-                processor.params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::Pan))]);
-            randomise_detune(
-                processor.params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::TuneCents))]);
-            randomise_pitch(
-                processor
-                    .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::TuneSemitone))]);
-            set_param(
-                processor.params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::VolEnvOn))],
-                1.0f);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::Solo));
+            randomise_pan(processor.main_params.DescribedValue(l.index, LayerParamIndex::Pan));
+            randomise_detune(processor.main_params.DescribedValue(l.index, LayerParamIndex::TuneCents));
+            randomise_pitch(processor.main_params.DescribedValue(l.index, LayerParamIndex::TuneSemitone));
+            set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::VolEnvOn), 1.0f);
 
             randomise_near_to_default(
-                processor
-                    .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::VolumeAttack))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::VolumeAttack));
             randomise_near_to_default(
-                processor
-                    .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::VolumeDecay))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::VolumeDecay));
             randomise_near_to_default(
-                processor
-                    .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::VolumeSustain))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::VolumeSustain));
             randomise_near_to_default(
-                processor
-                    .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::VolumeRelease))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::VolumeRelease));
 
             randomise_near_to_default(
-                processor
-                    .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::FilterEnvAmount))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::FilterEnvAmount));
             randomise_near_to_default(
-                processor
-                    .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::FilterAttack))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::FilterAttack));
             randomise_near_to_default(
-                processor
-                    .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::FilterDecay))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::FilterDecay));
             randomise_near_to_default(
-                processor
-                    .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::FilterSustain))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::FilterSustain));
             randomise_near_to_default(
-                processor
-                    .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::FilterRelease))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::FilterRelease));
 
             randomise_near_to_default(
-                processor
-                    .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::FilterCutoff))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::FilterCutoff));
             randomise_near_to_default(
-                processor
-                    .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::FilterResonance))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::FilterResonance));
 
             randomise_loop_start_and_end(
-                processor.params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::LoopStart))],
-                processor.params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::LoopEnd))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::LoopStart),
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::LoopEnd));
 
             randomise_near_to_default(
-                processor.params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::EqGain1))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::EqGain1));
             randomise_near_to_default(
-                processor.params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::EqGain2))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::EqGain2));
 
             if (int_gen.GetRandomInRange(seed, 1, 10) < 4) {
-                set_param(
-                    processor
-                        .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::SampleOffset))],
-                    0);
+                set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::SampleOffset), 0);
             } else {
                 randomise_near_to_default(
-                    processor
-                        .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::SampleOffset))],
+                    processor.main_params.DescribedValue(l.index, LayerParamIndex::SampleOffset),
                     BiasType::Strong);
             }
             randomise_button_preffering_default(
-                processor.params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::Reverse))]);
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::Reverse));
 
             randomise_button_preffering_default(
-                processor.params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::Keytrack))],
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::Keytrack),
                 BiasType::Strong);
             randomise_button_preffering_default(
-                processor.params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::Monophonic))],
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::Monophonic),
                 BiasType::Strong);
-            set_param(
-                processor
-                    .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::MidiTranspose))],
-                0.0f);
-            set_param(
-                processor
-                    .params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::VelocityMapping))],
-                0.0f);
-            set_param(processor.params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::Mute))],
-                      0.0f);
-            set_param(processor.params[ToInt(ParamIndexFromLayerParamIndex(l.index, LayerParamIndex::Solo))],
-                      0.0f);
+            set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::MidiTranspose), 0.0f);
+            set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::VelocityMapping), 0.0f);
+            set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::Mute), 0.0f);
+            set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::Solo), 0.0f);
         }
     }
 
@@ -489,6 +498,38 @@ void RandomiseAllParameterValues(AudioProcessor& processor) {
     ProcessorRandomiseAllParamsInternal(processor, false);
 }
 
+static ChangedParams UpdateMacroAdjustedValues(Parameters& macro_adjusted_params,
+                                               ChangedParams const& params,
+                                               MacroDestinations const& macros) {
+    Bitset<k_num_parameters> needs_adjustment {};
+    for (auto const [macro_index, macro] : Enumerate(macros)) {
+        auto const macro_param_index = k_macro_params[macro_index];
+        bool const macro_changed = params.Changed(macro_param_index);
+
+        for (auto const& dest : macro)
+            if (params.Changed(dest.param_index) || macro_changed)
+                needs_adjustment.Set(ToInt(dest.param_index));
+    }
+
+    for (auto const param_index : Range(k_num_parameters)) {
+        if (!needs_adjustment.Get(param_index)) {
+            if (params.changed.Get(param_index))
+                macro_adjusted_params.values[param_index] = params.params.values[param_index];
+            continue;
+        }
+
+        macro_adjusted_params.values[param_index] = AdjustedLinearValue(params.params,
+                                                                        macros,
+                                                                        params.params.values[param_index],
+                                                                        (ParamIndex)param_index);
+    }
+
+    return {
+        .params = macro_adjusted_params,
+        .changed = params.changed | needs_adjustment,
+    };
+}
+
 static void ProcessorHandleChanges(AudioProcessor& processor, ProcessBlockChanges changes) {
     if (changes.changed_params.changed.NumSet() == 0 && !changes.tempo_changed && !changes.note_events.size)
         return;
@@ -497,46 +538,44 @@ static void ProcessorHandleChanges(AudioProcessor& processor, ProcessBlockChange
     ZoneTextF("Num changed params: %d", (int)changes.changed_params.changed.NumSet());
     ZoneTextF("Num note events: %d", (int)changes.note_events.size);
 
-    if (auto param = changes.changed_params.Param(ParamIndex::MasterVolume))
-        processor.master_vol = param->ProjectedValue();
+    // Before using any of the changed params, we need to update any macro-adjusted values and apply them so
+    // any further processors use the adjusted values. The placement-new is a bit of a hack because
+    // ChangedParams contains a const reference.
+    PLACEMENT_NEW(&changes.changed_params)
+    ChangedParams {UpdateMacroAdjustedValues(processor.audio_macro_adjusted_params,
+                                             changes.changed_params,
+                                             processor.audio_macro_destinations)};
 
-    if (auto param = changes.changed_params.Param(ParamIndex::MasterTimbre)) {
-        processor.shared_layer_params.timbre_value_01 = param->ProjectedValue();
+    if (auto p = changes.changed_params.ProjectedValue(ParamIndex::MasterVolume)) processor.master_vol = *p;
+
+    if (auto p = changes.changed_params.ProjectedValue(ParamIndex::MasterTimbre)) {
+        processor.shared_layer_params.timbre_value_01 = *p;
         for (auto& voice : processor.voice_pool.EnumerateActiveVoices())
             UpdateXfade(voice, processor.shared_layer_params.timbre_value_01, false);
     }
 
-    if (auto param = changes.changed_params.Param(ParamIndex::MasterVelocity))
-        processor.shared_layer_params.velocity_to_volume_01 = param->ProjectedValue();
+    if (auto p = changes.changed_params.ProjectedValue(ParamIndex::MasterVelocity))
+        processor.shared_layer_params.velocity_to_volume_01 = *p;
 
     {
         bool mute_or_solo_changed = false;
         for (auto const layer_index : Range(k_num_layers)) {
-            if (auto param = changes.changed_params.Param(
+            if (auto p = changes.changed_params.BoolValue(
                     ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::Mute))) {
-                processor.mute.SetToValue(layer_index, param->ValueAsBool());
+                processor.mute.SetToValue(layer_index, *p);
                 mute_or_solo_changed = true;
             }
-            if (auto param = changes.changed_params.Param(
+            if (auto p = changes.changed_params.BoolValue(
                     ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::Solo))) {
-                processor.solo.SetToValue(layer_index, param->ValueAsBool());
+                processor.solo.SetToValue(layer_index, *p);
                 mute_or_solo_changed = true;
             }
         }
         if (mute_or_solo_changed) HandleMuteSolo(processor);
     }
 
-    for (auto [index, l] : Enumerate(processor.layer_processors)) {
-        ProcessLayerChanges(l,
-                            processor.audio_processing_context,
-                            {
-                                .changed_params = changes.changed_params.Subsection<k_num_layer_parameters>(
-                                    0 + (index * k_num_layer_parameters)),
-                                .tempo_changed = changes.tempo_changed,
-                                .note_events = changes.note_events,
-                            },
-                            processor.voice_pool);
-    }
+    for (auto [index, l] : Enumerate(processor.layer_processors))
+        ProcessLayerChanges(l, processor.audio_processing_context, changes, processor.voice_pool);
 
     for (auto effect : processor.effects_ordered_by_type)
         effect->ProcessChanges(changes, processor.audio_processing_context);
@@ -544,32 +583,35 @@ static void ProcessorHandleChanges(AudioProcessor& processor, ProcessBlockChange
 
 void ParameterJustStartedMoving(AudioProcessor& processor, ParamIndex index) {
     ASSERT(g_is_logical_main_thread);
-    auto host_params =
-        (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS);
-    if (!host_params) return;
+
     processor.param_events_for_audio_thread.Push(GuiStartedChangingParam {.param = index});
-    host_params->request_flush(&processor.host);
+
+    if (auto host_params =
+            (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS))
+        host_params->request_flush(&processor.host);
 }
 
 void ParameterJustStoppedMoving(AudioProcessor& processor, ParamIndex index) {
     ASSERT(g_is_logical_main_thread);
-    auto host_params =
-        (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS);
-    if (!host_params) return;
+
     processor.param_events_for_audio_thread.Push(GuiEndedChangingParam {.param = index});
-    host_params->request_flush(&processor.host);
+
+    if (auto host_params =
+            (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS))
+        host_params->request_flush(&processor.host);
 }
 
 bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, ParamChangeFlags flags) {
     ASSERT(g_is_logical_main_thread);
-    auto& param = processor.params[ToInt(index)];
 
-    bool const changed = param.SetLinearValue(value);
+    bool const changed = processor.main_params.values[ToInt(index)] != value;
+    processor.main_params.SetLinearValue(index, value);
 
-    processor.param_events_for_audio_thread.Push(
-        GuiChangedParam {.value = value,
-                         .param = index,
-                         .host_should_not_record = flags.host_should_not_record != 0});
+    processor.param_events_for_audio_thread.Push(MainThreadChangedParam {
+        .value = value,
+        .param = index,
+        .host_should_not_record = flags.host_should_not_record != 0,
+    });
     processor.host.request_process(&processor.host);
 
     return changed;
@@ -588,14 +630,15 @@ void MoveEffectToNewSlot(EffectsArray& effects, Effect* effect_to_move, usize sl
     if (!original_slot) return;
     if (slot == *original_slot) return;
 
-    // remove old location
+    // Remove the old location.
     for (usize i = *original_slot; i < (k_num_effect_types - 1); ++i)
         effects[i] = effects[i + 1];
 
-    // make room at new location
+    // Make room at the new location.
     for (usize i = k_num_effect_types - 1; i > slot; --i)
         effects[i] = effects[i - 1];
-    // fill the slot
+
+    // Fill the slot.
     effects[slot] = effect_to_move;
 }
 
@@ -640,8 +683,29 @@ static EffectsArray OrderEffectsToEnum(EffectsArray e) {
     return e;
 }
 
+f32 AdjustedLinearValue(Parameters const& params,
+                        MacroDestinations const& macros,
+                        f32 linear_value,
+                        ParamIndex param_index) {
+    auto const& descriptor = k_param_descriptors[ToInt(param_index)];
+
+    for (auto const [macro_index, dests] : Enumerate(macros)) {
+        for (auto const& dest : dests)
+            if (dest.param_index == param_index) {
+                auto const& macro_param = params.LinearValue(k_macro_params[macro_index]);
+                linear_value += descriptor.linear_range.Delta() * (dest.ProjectedValue() * macro_param);
+            }
+    }
+
+    // Clamp the value to the range of the parameter.
+    linear_value = Clamp(linear_value, descriptor.linear_range.min, descriptor.linear_range.max);
+
+    return linear_value;
+}
+
 static void FlushEventsForAudioThread(AudioProcessor& processor) {
     auto _ = processor.events_for_audio_thread.PopAll();
+    auto _ = processor.param_events_for_audio_thread.PopAll();
 }
 
 static void Deactivate(AudioProcessor& processor) {
@@ -701,28 +765,65 @@ void SetConvolutionIrAudioData(AudioProcessor& processor,
 }
 
 void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateSource source) {
+    ASSERT(g_is_logical_main_thread);
+
     if (source == StateSource::Daw)
         for (auto [i, cc] : Enumerate(processor.param_learned_ccs))
             cc.AssignBlockwise(state.param_learned_ccs[i]);
 
-    for (auto const i : Range(k_num_parameters))
-        processor.params[i].SetLinearValue(state.param_values[i]);
+    processor.main_params.values = state.param_values;
 
     processor.desired_effects_order.Store(EncodeEffectsArray(state.fx_order), StoreMemoryOrder::Relaxed);
 
+    // Velocity curves.
     for (auto const layer_index : Range(k_num_layers)) {
         processor.layer_processors[layer_index].velocity_curve_map.SetNewPoints(
             state.velocity_curve_points[layer_index]);
     }
 
-    // reload everything
+    // Macro destinations.
+    {
+        processor.main_macro_destinations = state.macro_destinations;
+
+        // We need to tell the audio thread about the changes.
+        //
+        // Start with removing all macro destinations.
+        processor.events_for_audio_thread.Push(EventForAudioThreadType::RemoveAllMacroDestinations);
+
+        // Then add all the new ones.
+        for (auto const [macro_index, macro] : Enumerate<u8>(state.macro_destinations)) {
+            for (auto const& dest : macro) {
+                struct AppendMacroDestination const event = {
+                    .value = dest.value,
+                    .param = dest.param_index,
+                    .macro_index = macro_index,
+                };
+                processor.events_for_audio_thread.Push(event);
+            }
+        }
+    }
+
+    // Reload all parameters.
     {
         if (auto const host_params =
                 (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS))
             host_params->rescan(&processor.host, CLAP_PARAM_RESCAN_VALUES);
-        processor.events_for_audio_thread.Push(EventForAudioThreadType::ReloadAllAudioState);
-        processor.host.request_process(&processor.host);
+
+        UninitialisedArray<EventForAudioThread, k_num_parameters> events;
+        for (auto const param_index : Range(k_num_parameters)) {
+            PLACEMENT_NEW(&events[param_index])
+            EventForAudioThread {MainThreadChangedParam {
+                .value = state.param_values[param_index],
+                .param = (ParamIndex)param_index,
+                .host_should_not_record = true,
+            }};
+        }
+        processor.param_events_for_audio_thread.Push(events);
+        processor.events_for_audio_thread.Push(
+            EventForAudioThread {EventForAudioThreadType::ReloadAllAudioState});
     }
+
+    processor.host.request_process(&processor.host);
 }
 
 StateSnapshot MakeStateSnapshot(AudioProcessor const& processor) {
@@ -740,8 +841,9 @@ StateSnapshot MakeStateSnapshot(AudioProcessor const& processor) {
 
     result.ir_id = processor.convo.ir_id;
 
-    for (auto const i : Range(k_num_parameters))
-        result.param_values[i] = processor.params[i].LinearValue();
+    result.param_values = processor.main_params.values;
+
+    result.macro_destinations = processor.main_macro_destinations;
 
     for (auto [i, cc] : Enumerate(processor.param_learned_ccs))
         result.param_learned_ccs[i] = cc.GetBlockwise();
@@ -781,6 +883,8 @@ inline void ResetProcessor(AudioProcessor& processor, ProcessBlockChanges& chang
 }
 
 static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
+    ASSERT(g_is_logical_main_thread);
+
     ASSERT(args.sample_rate > 0);
 
     processor.audio_processing_context.process_block_size_max = args.max_block_size;
@@ -809,8 +913,11 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
 
     // Update the audio-thread representations of the parameters.
     {
+        processor.events_for_audio_thread.PopAll();
+        processor.audio_params = processor.main_params;
+        processor.audio_macro_destinations = processor.main_macro_destinations;
         ProcessBlockChanges changes {
-            .changed_params = {processor.params, {}},
+            .changed_params = {processor.audio_params, {}},
         };
         changes.changed_params.changed.SetAll();
         ResetProcessor(processor, changes);
@@ -824,7 +931,8 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                                   clap_event_header const& event,
                                   clap_output_events const& out,
                                   ProcessorListener::ChangeFlags& change_flags,
-                                  ProcessBlockChanges& changes) {
+                                  ProcessBlockChanges& changes,
+                                  ChangedParams& changes_for_main_thread) {
     // IMPROVE: support per-param modulation and automation - each param can opt-in individually.
 
     Bitset<k_num_parameters> changed_params {};
@@ -1012,11 +1120,13 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                             processor.time_when_cc_moved_param[param_index].Store(TimePoint::Now(),
                                                                                   StoreMemoryOrder::Relaxed);
 
-                            auto& info = processor.params[param_index].info;
+                            auto& info = k_param_descriptors[param_index];
                             auto const percent = (f32)cc_val / 127.0f;
                             auto const val = info.linear_range.min + (info.linear_range.Delta() * percent);
-                            processor.params[param_index].SetLinearValue(val);
+
+                            processor.audio_params.values[param_index] = val;
                             changed_params.Set(param_index);
+                            changes_for_main_thread.changed.Set(param_index);
 
                             clap_event_param_value const value_event {
                                 .header {
@@ -1080,7 +1190,8 @@ static void ConsumeParamEventsFromHost(Parameters& params,
                                        clap_input_events const& events,
                                        u32 frame_index,
                                        u32 block_size,
-                                       ProcessBlockChanges& changes) {
+                                       ProcessBlockChanges& changes,
+                                       ChangedParams& changes_for_main_thread) {
     ZoneScoped;
     // IMPROVE: support sample-accurate value changes
     // IMPROVE: support CLAP_EVENT_PARAM_MOD
@@ -1099,20 +1210,23 @@ static void ConsumeParamEventsFromHost(Parameters& params,
         if (value->note_id != -1 || value->channel > 0 || value->key > 0) continue;
 
         if (auto const index = ParamIdToIndex(value->param_id)) {
-            params[ToInt(*index)].SetLinearValue((f32)value->value);
+            auto const range = k_param_descriptors[ToInt(*index)].linear_range;
+            auto const clamped_value = Clamp((f32)value->value, range.min, range.max);
+            params.values[ToInt(*index)] = clamped_value;
             changes.changed_params.changed.Set(ToInt(*index));
+            changes_for_main_thread.changed.Set(ToInt(*index));
         }
     }
 }
 
-static void ConsumeParamEventsFromGui(AudioProcessor& processor,
-                                      clap_output_events const& out,
-                                      ProcessBlockChanges& changes) {
+static void ConsumeParamEventsFromMainThread(AudioProcessor& processor,
+                                             clap_output_events const& out,
+                                             ProcessBlockChanges& changes) {
     ZoneScoped;
     for (auto const& e : processor.param_events_for_audio_thread.PopAll()) {
         switch (e.tag) {
             case EventForAudioThreadType::ParamChanged: {
-                auto const& value = e.Get<GuiChangedParam>();
+                auto const& value = e.Get<MainThreadChangedParam>();
 
                 clap_event_param_value const event {
                     .header {
@@ -1131,6 +1245,7 @@ static void ConsumeParamEventsFromGui(AudioProcessor& processor,
                 };
 
                 out.try_push(&out, &event.header);
+                processor.audio_params.values[ToInt(value.param)] = value.value;
                 changes.changed_params.changed.Set(ToInt(value.param));
                 break;
             }
@@ -1171,23 +1286,52 @@ static void ConsumeParamEventsFromGui(AudioProcessor& processor,
             case EventForAudioThreadType::ConvolutionIRChanged:
             case EventForAudioThreadType::LayerInstrumentChanged:
             case EventForAudioThreadType::StartNote:
-            case EventForAudioThreadType::EndNote: PanicIfReached();
+            case EventForAudioThreadType::EndNote:
+            case EventForAudioThreadType::AppendMacroDestination:
+            case EventForAudioThreadType::RemoveMacroDestination:
+            case EventForAudioThreadType::MacroDestinationValueChanged:
+            case EventForAudioThreadType::RemoveAllMacroDestinations: PanicIfReached();
         }
     }
 }
 
+static void SendParamChangesToMainThread(AudioProcessor& processor, ChangedParams& changes_for_main_thread) {
+    // Update the main-thread representation of the parameters if they have changed.
+    if (!changes_for_main_thread.changed.AnyValuesSet()) return;
+    DynamicArrayBounded<AudioProcessor::ChangedParam, k_num_parameters> events {};
+    for (auto const param_index : Range(k_num_parameters)) {
+        if (changes_for_main_thread.changed.Get(param_index)) {
+            dyn::Append(events,
+                        {
+                            .value = processor.audio_params.LinearValue((ParamIndex)param_index),
+                            .index = (ParamIndex)param_index,
+                        });
+        }
+    }
+    processor.param_changes_for_main_thread.Push(events);
+
+    processor.host.request_process(&processor.host);
+}
+
 static void
 FlushParameterEvents(AudioProcessor& processor, clap_input_events const& in, clap_output_events const& out) {
+    auto& params = processor.activated ? processor.audio_params : processor.main_params;
     ProcessBlockChanges changes {
-        .changed_params = {processor.params.data, Bitset<k_num_parameters>()},
+        .changed_params = {params, Bitset<k_num_parameters>()},
     };
-    ConsumeParamEventsFromHost(processor.params, in, 0, LargestRepresentableValue<u32>(), changes);
-    ConsumeParamEventsFromGui(processor, out, changes);
+    ChangedParams changes_for_main_thread {params};
+    ConsumeParamEventsFromMainThread(processor, out, changes);
+    ConsumeParamEventsFromHost(params,
+                               in,
+                               0,
+                               LargestRepresentableValue<u32>(),
+                               changes,
+                               changes_for_main_thread);
 
     if (processor.activated) {
         ProcessorHandleChanges(processor, changes);
-        if (changes.changed_params.changed.AnyValuesSet())
-            processor.listener.OnProcessorChange(ProcessorListener::ParamChanged);
+        SendParamChangesToMainThread(processor, changes_for_main_thread);
+        processor.listener.OnProcessorChange(ProcessorListener::ParametersChanged);
     } else {
         // If we are not activated, then we don't need to call processor param change because the
         // state of the processing plugin will be reset activate()
@@ -1198,12 +1342,18 @@ static clap_process_status
 ProcessSubBlock(AudioProcessor& processor,
                 clap_process const& process,
                 u32 frame_index,
-                u32 sub_block_size, // Normally k_block_size_max, but can be smaller.
-                ProcessorListener::ChangeFlags& change_flags) {
+                u32 sub_block_size,
+                ProcessorListener::ChangeFlags& change_flags,
+                ChangedParams& changes_for_main_thread) { // Normally k_block_size_max
     clap_process_status result = CLAP_PROCESS_CONTINUE;
 
+    DEFER {
+        if (processor.previous_process_status != result) change_flags |= ProcessorListener::StatusChanged;
+        processor.previous_process_status = result;
+    };
+
     ProcessBlockChanges changes {
-        .changed_params = {processor.params.data, Bitset<k_num_parameters>()},
+        .changed_params = {processor.audio_params, Bitset<k_num_parameters>()},
     };
 
     // Check for tempo changes.
@@ -1235,8 +1385,13 @@ ProcessSubBlock(AudioProcessor& processor,
     Array<bool, k_num_layers> layers_changed {};
     bool mark_convolution_for_fade_out = false;
 
-    ConsumeParamEventsFromGui(processor, *process.out_events, changes);
-    ConsumeParamEventsFromHost(processor.params, *process.in_events, frame_index, sub_block_size, changes);
+    ConsumeParamEventsFromMainThread(processor, *process.out_events, changes);
+    ConsumeParamEventsFromHost(processor.audio_params,
+                               *process.in_events,
+                               frame_index,
+                               sub_block_size,
+                               changes,
+                               changes_for_main_thread);
 
     Optional<AudioProcessor::FadeType> new_fade_type {};
     for (auto const& e : internal_events) {
@@ -1259,6 +1414,42 @@ ProcessSubBlock(AudioProcessor& processor,
             }
             case EventForAudioThreadType::ConvolutionIRChanged: {
                 mark_convolution_for_fade_out = true;
+                break;
+            }
+            case EventForAudioThreadType::AppendMacroDestination: {
+                auto const& add_dest = e.Get<struct AppendMacroDestination>();
+                dyn::Append(processor.audio_macro_destinations[add_dest.macro_index],
+                            {
+                                .param_index = add_dest.param,
+                                .value = add_dest.value,
+                            });
+                changes.changed_params.changed.Set(ToInt(add_dest.param));
+                break;
+            }
+            case EventForAudioThreadType::RemoveMacroDestination: {
+                auto const& remove_dest = e.Get<struct RemoveMacroDestination>();
+                auto const dest_param =
+                    processor.audio_macro_destinations[remove_dest.macro_index][remove_dest.destination_index]
+                        .param_index;
+                dyn::Remove(processor.audio_macro_destinations[remove_dest.macro_index],
+                            remove_dest.destination_index);
+                changes.changed_params.changed.Set(ToInt(dest_param));
+                break;
+            }
+            case EventForAudioThreadType::MacroDestinationValueChanged: {
+                auto const& change_dest = e.Get<struct MacroDestinationValueChanged>();
+                auto const dest_param =
+                    processor.audio_macro_destinations[change_dest.macro_index][change_dest.destination_index]
+                        .param_index;
+                auto& dest =
+                    processor
+                        .audio_macro_destinations[change_dest.macro_index][change_dest.destination_index];
+                dest.value = change_dest.value;
+                changes.changed_params.changed.Set(ToInt(dest_param));
+                break;
+            }
+            case EventForAudioThreadType::RemoveAllMacroDestinations: {
+                processor.audio_macro_destinations = {};
                 break;
             }
             case EventForAudioThreadType::ParamChanged:
@@ -1318,7 +1509,12 @@ ProcessSubBlock(AudioProcessor& processor,
             if (!e) continue;
             if (e->space_id != CLAP_CORE_EVENT_SPACE_ID) continue;
             if (e->time < frame_index || e->time >= (frame_index + sub_block_size)) continue;
-            ProcessClapNoteOrMidi(processor, *e, *process.out_events, change_flags, changes);
+            ProcessClapNoteOrMidi(processor,
+                                  *e,
+                                  *process.out_events,
+                                  change_flags,
+                                  changes,
+                                  changes_for_main_thread);
         }
 
         for (auto const& e : internal_events) {
@@ -1335,7 +1531,12 @@ ProcessSubBlock(AudioProcessor& processor,
                         .key = start.key,
                         .velocity = (f64)start.velocity,
                     };
-                    ProcessClapNoteOrMidi(processor, note.header, *process.out_events, change_flags, changes);
+                    ProcessClapNoteOrMidi(processor,
+                                          note.header,
+                                          *process.out_events,
+                                          change_flags,
+                                          changes,
+                                          changes_for_main_thread);
                     break;
                 }
                 case EventForAudioThreadType::EndNote: {
@@ -1350,7 +1551,12 @@ ProcessSubBlock(AudioProcessor& processor,
                         .key = end.key,
                         .velocity = 0.0,
                     };
-                    ProcessClapNoteOrMidi(processor, note.header, *process.out_events, change_flags, changes);
+                    ProcessClapNoteOrMidi(processor,
+                                          note.header,
+                                          *process.out_events,
+                                          change_flags,
+                                          changes,
+                                          changes_for_main_thread);
                     break;
                 }
                 default: break;
@@ -1386,7 +1592,6 @@ ProcessSubBlock(AudioProcessor& processor,
         }
     }
 
-    if (changes.changed_params.changed.AnyValuesSet()) change_flags |= ProcessorListener::ParamChanged;
     ProcessorHandleChanges(processor, changes);
 
     // Voices and layers
@@ -1495,29 +1700,31 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 
     if (process.frames_count == 0) return CLAP_PROCESS_CONTINUE;
 
-    ProcessorListener::ChangeFlags change_flags = {};
     clap_process_status result = CLAP_PROCESS_CONTINUE;
 
-    DEFER {
-        if (processor.previous_process_status != result) change_flags |= ProcessorListener::StatusChanged;
-        processor.previous_process_status = result;
-        processor.notes_currently_held.AssignBlockwise(
-            processor.audio_processing_context.midi_note_state.NotesCurrentlyHeldAllChannels());
-        if (change_flags) processor.listener.OnProcessorChange(change_flags);
-    };
+    ProcessorListener::ChangeFlags change_flags = ProcessorListener::None;
+    ChangedParams changes_for_main_thread {processor.audio_params};
 
     for (u32 frame_index = 0; frame_index < process.frames_count; frame_index += k_block_size_max) {
         auto const sub_block_size = Min(k_block_size_max, process.frames_count - frame_index);
-        result = ProcessSubBlock(processor, process, frame_index, sub_block_size, change_flags);
+        result = ProcessSubBlock(processor,
+                                 process,
+                                 frame_index,
+                                 sub_block_size,
+                                 change_flags,
+                                 changes_for_main_thread);
         if (result == CLAP_PROCESS_ERROR) break;
     }
 
-    // Mark GUI dirty.
-    {
-        if (!processor.peak_meter.Silent()) change_flags |= ProcessorListener::PeakMeterChanged;
-        for (auto& layer : processor.layer_processors)
-            if (!layer.peak_meter.Silent()) change_flags |= ProcessorListener::PeakMeterChanged;
-    }
+    processor.notes_currently_held.AssignBlockwise(
+        processor.audio_processing_context.midi_note_state.NotesCurrentlyHeldAllChannels());
+
+    if (!processor.peak_meter.Silent()) change_flags |= ProcessorListener::PeakMeterChanged;
+    for (auto& layer : processor.layer_processors)
+        if (!layer.peak_meter.Silent()) change_flags |= ProcessorListener::PeakMeterChanged;
+
+    if (change_flags) processor.listener.OnProcessorChange(change_flags);
+    SendParamChangesToMainThread(processor, changes_for_main_thread);
 
     return result;
 }
@@ -1527,7 +1734,7 @@ static void Reset(AudioProcessor& processor) {
     FlushEventsForAudioThread(processor);
     processor.voice_pool.EndAllVoicesInstantly();
     ProcessBlockChanges changes {
-        .changed_params = {processor.params.data, Bitset<k_num_parameters>()},
+        .changed_params = {processor.audio_params, Bitset<k_num_parameters>()},
     };
     ResetProcessor(processor, changes);
 }
@@ -1552,6 +1759,10 @@ static void OnMainThread(AudioProcessor& processor) {
             dyn::Clear(processor.lifetime_extended_insts);
         }
     }
+
+    // Consume any parameter changes that were made from the audio thread.
+    for (auto const p : processor.param_changes_for_main_thread.PopAll())
+        processor.main_params.values[ToInt(p.index)] = p.value;
 }
 
 static void OnThreadPoolExec(AudioProcessor& processor, u32 index) {
@@ -1577,19 +1788,8 @@ AudioProcessor::AudioProcessor(clap_host const& host,
           &convo,
       })) {
 
-    for (auto const i : Range(k_num_parameters)) {
-        PLACEMENT_NEW(&params[i])
-        Parameter {
-            .info = k_param_descriptors[i],
-            .value = k_param_descriptors[i].default_linear_value,
-        };
-    }
-
-    ProcessBlockChanges changes {
-        .changed_params = {params.data, Bitset<k_num_parameters>()},
-    };
-    changes.changed_params.changed.SetAll();
-    ProcessorHandleChanges(*this, changes);
+    for (auto const i : Range(k_num_parameters))
+        main_params.values[i] = k_param_descriptors[i].default_linear_value;
 
     for (u32 i = 0; i < k_num_parameters; ++i)
         param_learned_ccs[i].AssignBlockwise(PersistentCcsForParam(prefs, ParamIndexToId((ParamIndex)i)));

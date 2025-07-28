@@ -3,8 +3,6 @@
 
 #include "gui_box_system.hpp"
 
-#include "utils/logger/logger.hpp"
-
 static f32 HeightOfWrappedText(GuiBoxSystem& box_system, layout::Id id, f32 width) {
     if (auto const t_ptr = box_system.state->word_wrapped_texts.Find(id)) {
         auto const& t = *t_ptr;
@@ -425,22 +423,19 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                     rect,
                     box.imgui_id,
                     config.text,
-                    config.multiline_text_input
-                        ? imgui::TextInputFlags {
+                    ({
+                        imgui::TextInputFlags f {
+                            .x_padding = builder.imgui.VwToPixels(config.text_input_x_padding),
                             .centre_align = (config.text_align_x == TextAlignX::Centre),
-                            .multiline = true,
-                            .multiline_wordwrap_hack = true,
+                        };
+                        if (config.multiline_text_input) {
+                            f.multiline = true;
+                            f.multiline_wordwrap_hack = true;
                         }
-                        : imgui::TextInputFlags {
-                            .centre_align = (config.text_align_x == TextAlignX::Centre),
-                        },
+                        f;
+                    }),
                     button_flags,
                     false);
-                LogDebug(ModuleName::Gui,
-                         "Text input at {} has id {}, imgui hot item is {}",
-                         source_location,
-                         box.imgui_id,
-                         builder.imgui.hot_item);
                 box.is_active = builder.imgui.TextInputHasFocus(box.imgui_id);
                 box.is_hot = builder.imgui.IsHot(box.imgui_id);
                 if (box.is_hot) {
@@ -563,9 +558,6 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                 auto r = rect;
                 if (config.border_colours.base == style::Colour::None) r = mouse_rect;
 
-                auto const rounding =
-                    config.round_background_corners ? builder.imgui.VwToPixels(style::k_button_rounding) : 0;
-
                 u32 col_u32 = style::Col(border);
                 if (config.border_auto_hot_active_overlay) {
                     if (is_hot)
@@ -576,7 +568,34 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                                           : style::k_auto_active_white_overlay;
                 }
 
-                builder.imgui.graphics->AddRect(r, col_u32, rounding, config.round_background_corners);
+                if (config.border_edges == 0b1111) {
+                    // IMPROVE: we shouldn't need to convert this - we should just use the same format
+                    // throughout the system. The issue is that the drawing code works differently to this
+                    // system.
+                    auto const corner_flags = __builtin_bitreverse32(config.round_background_corners) >> 28;
+
+                    auto const rounding = config.round_background_corners
+                                              ? builder.imgui.VwToPixels(style::k_button_rounding)
+                                              : 0;
+                    builder.imgui.graphics->AddRect(r, col_u32, rounding, (int)corner_flags);
+                } else {
+                    if (config.border_edges & 0b1000) {
+                        // Left edge
+                        builder.imgui.graphics->AddLine(r.Min(), {r.x, r.y + r.h}, col_u32);
+                    }
+                    if (config.border_edges & 0b0100) {
+                        // Top edge
+                        builder.imgui.graphics->AddLine(r.Min(), {r.x + r.w, r.y}, col_u32);
+                    }
+                    if (config.border_edges & 0b0010) {
+                        // Right edge
+                        builder.imgui.graphics->AddLine({r.x + r.w, r.y}, {r.x + r.w, r.y + r.h}, col_u32);
+                    }
+                    if (config.border_edges & 0b0001) {
+                        // Bottom edge
+                        builder.imgui.graphics->AddLine({r.x, r.y + r.h}, {r.x + r.w, r.y + r.h}, col_u32);
+                    }
+                }
             }
 
             if (config.text.size && !ToInt(config.behaviour & Behaviour::TextInput)) {
@@ -636,8 +655,10 @@ void DrawTextInput(GuiBoxSystem& builder, Box const& box, DrawTextInputConfig co
 
     if (input_result->HasSelection()) {
         imgui::TextInputResult::SelectionIterator it {*builder.imgui.graphics->context};
+        auto const selection_col =
+            colours::ChangeAlpha(style::Col(config.selection_col), config.selection_colour_alpha);
         while (auto const r = input_result->NextSelectionRect(it))
-            builder.imgui.graphics->AddRectFilled(*r, style::Col(config.selection_col));
+            builder.imgui.graphics->AddRectFilled(*r, selection_col);
     }
 
     if (input_result->show_cursor) {

@@ -13,6 +13,7 @@
 #include "build_resources/embedded_files.h"
 #include "engine/engine.hpp"
 #include "gui/gui2_attribution_panel.hpp"
+#include "gui/gui2_bot_panel.hpp"
 #include "gui/gui2_feedback_panel.hpp"
 #include "gui/gui2_info_panel.hpp"
 #include "gui/gui2_inst_picker.hpp"
@@ -322,6 +323,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
 
     auto& imgui = g->imgui;
 
+    MacroGuiBeginFrame(g);
+
     g->waveforms.StartFrame();
     DEFER { g->waveforms.EndFrame(*g->frame_input.graphics_ctx); };
 
@@ -525,6 +528,9 @@ GuiFrameResult GuiUpdate(Gui* g) {
     }
 
     DoWholeEditor(g);
+
+    MacroGuiEndFrame(g);
+
     imgui.End(g->scratch_arena);
 
     prefs::WriteIfNeeded(g->prefs);

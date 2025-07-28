@@ -90,12 +90,12 @@ bool Tooltip(Gui* g, imgui::Id id, Rect r, String str, bool rect_is_window_pos) 
     return false;
 }
 
-void ParameterValuePopup(Gui* g, Parameter const& param, imgui::Id id, Rect r) {
+void ParameterValuePopup(Gui* g, DescribedParamValue const& param, imgui::Id id, Rect r) {
     auto param_ptr = &param;
     ParameterValuePopup(g, {&param_ptr, 1}, id, r);
 }
 
-void ParameterValuePopup(Gui* g, Span<Parameter const*> params, imgui::Id id, Rect r) {
+void ParameterValuePopup(Gui* g, Span<DescribedParamValue const*> params, imgui::Id id, Rect r) {
     auto& imgui = g->imgui;
 
     bool cc_just_moved_param = false;
@@ -209,12 +209,11 @@ void MidiLearnMenu(Gui* g, Span<ParamIndex> params, Rect r) {
             DEFER { imgui.PopID(); };
 
             if (params.size != 1) {
-                labels::Label(g,
-                              {.xywh {0, pos, item_width, item_height}},
-                              fmt::Format(g->scratch_arena,
-                                          "{}: ",
-                                          g->engine.processor.params[ToInt(param)].info.gui_label),
-                              labels::FakeMenuItem(imgui));
+                labels::Label(
+                    g,
+                    {.xywh {0, pos, item_width, item_height}},
+                    fmt::Format(g->scratch_arena, "{}: ", k_param_descriptors[ToInt(param)].gui_label),
+                    labels::FakeMenuItem(imgui));
                 pos += item_height;
             }
 
@@ -225,7 +224,7 @@ void MidiLearnMenu(Gui* g, Span<ParamIndex> params, Rect r) {
                                     buttons::MenuItem(imgui, false))) {
                     SetParameterValue(engine.processor,
                                       param,
-                                      engine.processor.params[ToInt(param)].DefaultLinearValue(),
+                                      k_param_descriptors[ToInt(param)].default_linear_value,
                                       {});
                     imgui.ClosePopupToLevel(0);
                 }
@@ -366,12 +365,18 @@ bool DoMultipleMenuItems(Gui* g, Span<String const> items, int& current) {
     return DoMultipleMenuItems(g, (void*)&items, (int)items.size, current, str_get);
 }
 
-void DoParameterTooltipIfNeeded(Gui* g, Parameter const& param, imgui::Id imgui_id, Rect param_rect) {
+void DoParameterTooltipIfNeeded(Gui* g,
+                                DescribedParamValue const& param,
+                                imgui::Id imgui_id,
+                                Rect param_rect) {
     auto param_ptr = &param;
     DoParameterTooltipIfNeeded(g, {&param_ptr, 1}, imgui_id, param_rect);
 }
 
-void DoParameterTooltipIfNeeded(Gui* g, Span<Parameter const*> params, imgui::Id imgui_id, Rect param_rect) {
+void DoParameterTooltipIfNeeded(Gui* g,
+                                Span<DescribedParamValue const*> params,
+                                imgui::Id imgui_id,
+                                Rect param_rect) {
     DynamicArray<char> buf {g->scratch_arena};
     for (auto param : params) {
         auto const str = param->info.LinearValueToString(param->LinearValue());
@@ -387,14 +392,14 @@ void DoParameterTooltipIfNeeded(Gui* g, Span<Parameter const*> params, imgui::Id
     Tooltip(g, imgui_id, param_rect, buf);
 }
 
-imgui::Id BeginParameterGUI(Gui* g, Parameter const& param, Rect r, Optional<imgui::Id> id) {
+imgui::Id BeginParameterGUI(Gui* g, DescribedParamValue const& param, Rect r, Optional<imgui::Id> id) {
     if (!(param.info.flags.not_automatable)) MidiLearnMenu(g, (ParamIndex)param.info.index, r);
     return id ? *id : g->imgui.GetID((u64)param.info.id);
 }
 
 void EndParameterGUI(Gui* g,
                      imgui::Id id,
-                     Parameter const& param,
+                     DescribedParamValue const& param,
                      Rect r,
                      Optional<f32> new_val,
                      ParamDisplayFlags flags) {
@@ -469,11 +474,11 @@ imgui::TextInputSettings GetParameterTextInputSettings() {
 
 void HandleShowingTextEditorForParams(Gui* g, Rect r, Span<ParamIndex const> params) {
     if (g->param_text_editor_to_open) {
-        for (auto p : params) {
+        for (auto const p : params) {
             if (p == *g->param_text_editor_to_open) {
                 auto const id = g->imgui.GetID("text input");
 
-                auto const& p_obj = g->engine.processor.params[ToInt(p)];
+                auto const p_obj = g->engine.processor.main_params.DescribedValue(p);
                 auto const str = p_obj.info.LinearValueToString(p_obj.LinearValue());
                 ASSERT(str.HasValue());
 

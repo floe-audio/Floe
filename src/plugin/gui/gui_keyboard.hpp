@@ -7,7 +7,7 @@
 #include "gui_fwd.hpp"
 
 constexpr s8 k_highect_oct_on_keyboard = 10;
-constexpr s8 k_num_octaves_shown = 8;
+constexpr s8 k_num_octaves_shown = 6;
 constexpr s8 k_lowest_starting_oct = 0;
 constexpr s8 k_highest_starting_oct = ((k_highect_oct_on_keyboard + 1) - k_num_octaves_shown);
 constexpr s8 k_octave_default_offset = 2;

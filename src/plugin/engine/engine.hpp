@@ -8,6 +8,7 @@
 #include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/sample_library/attribution_requirements.hpp"
 #include "common_infrastructure/state/instrument.hpp"
+#include "common_infrastructure/state/macros.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "engine/package_installation.hpp"
@@ -84,6 +85,8 @@ struct Engine : ProcessorListener {
     LastSnapshot last_snapshot {};
 
     StateMetadata state_metadata {};
+
+    MacroNames macro_names = DefaultMacroNames();
 
     // GUI can set this to get notified when the state changes.
     TrivialFixedSizeFunction<8, void()> stated_changed_callback {};

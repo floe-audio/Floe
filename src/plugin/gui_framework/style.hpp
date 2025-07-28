@@ -142,8 +142,8 @@ constexpr auto k_colours = [] {
         auto const pos = (f32)(col_index - ToInt(Colour::DarkModeBackground0)) / (f32)(k_size - 1);
 
         auto const h = (u32)LinearInterpolate(pos, 200.0f, 210.0f);
-        auto const s = (u32)LinearInterpolate(constexpr_math::Powf(pos, 0.4f), 3.0f, 6.0f);
-        auto const l = (u32)LinearInterpolate(constexpr_math::Powf(pos, 1.2f), 12.0f, 86.0f);
+        auto const s = (u32)LinearInterpolate(constexpr_math::Powf(pos, 1.2f), 3.0f, 6.0f);
+        auto const l = (u32)LinearInterpolate(constexpr_math::Powf(pos, 1.35f), 12.0f, 86.0f);
         auto const a = 100u;
         result[col_index] = Hsla(h, s, l, a);
     }
@@ -160,7 +160,7 @@ constexpr auto k_colours = [] {
             case Colour::None: result[i] = 0; break;
             case Colour::Green: result[i] = ToAbgr(0x40A02B); break;
             case Colour::Red: result[i] = ToAbgr(0xFF8C71); break;
-            case Colour::Blue: result[i] = ToAbgr(0x1E88E5); break;
+            case Colour::Blue: result[i] = ToAbgr(0x66a9d4); break;
             case Colour::Highlight: result[i] = Hsla(k_highlight_hue, 93, 78, 100); break;
 
             case Colour::Background0:

@@ -6,6 +6,7 @@
 
 #include "common_infrastructure/descriptors/effect_descriptors.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
+#include "common_infrastructure/state/macros.hpp"
 
 #include "instrument.hpp"
 #include "plugin/processing_utils/curve_map.hpp"
@@ -39,6 +40,8 @@ struct StateSnapshot {
     StateMetadata metadata {};
     DynamicArrayBounded<char, k_max_instance_id_size> instance_id;
     Array<CurveMap::Points, k_num_layers> velocity_curve_points {};
+    MacroNames macro_names {};
+    MacroDestinations macro_destinations {};
 };
 
 enum class StateSource { PresetFile, Daw };

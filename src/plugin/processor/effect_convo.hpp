@@ -31,12 +31,12 @@ class ConvolutionReverb final : public Effect {
 
     void ProcessChangesInternal(ProcessBlockChanges const& changes,
                                 AudioProcessingContext const& context) override {
-        if (auto p = changes.changed_params.Param(ParamIndex::ConvolutionReverbHighpass))
-            m_filter_coeffs.Set(rbj_filter::Type::HighPass, context.sample_rate, p->ProjectedValue(), 1, 0);
-        if (auto p = changes.changed_params.Param(ParamIndex::ConvolutionReverbWet))
-            m_wet_dry.SetWet(p->ProjectedValue());
-        if (auto p = changes.changed_params.Param(ParamIndex::ConvolutionReverbDry))
-            m_wet_dry.SetDry(p->ProjectedValue());
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ConvolutionReverbHighpass))
+            m_filter_coeffs.Set(rbj_filter::Type::HighPass, context.sample_rate, *p, 1, 0);
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ConvolutionReverbWet))
+            m_wet_dry.SetWet(*p);
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ConvolutionReverbDry))
+            m_wet_dry.SetDry(*p);
     }
 
     EffectProcessResult

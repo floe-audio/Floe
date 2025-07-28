@@ -11,7 +11,9 @@ These looping features adapt to whichever instrument is loaded (the instrument b
 
 Most instruments allow you to loop the sound in some way - even when the instrument is a multisampled instrument. However, sample library developers can choose to offer built-in loops, only allow certain modes or disable looping altogether.
 
-There are 2 loop modes available in Floe: standard wrap-around looping, and ping-pong looping. In the standard mode, the sound will jump back to the start of the loop when it reaches the end. In ping-pong mode, the sound will alternate playing forwards and backwards through the loop. A crossfade can be applied to smooth the boundary - even in ping-pong mode.
+There are 2 loop modes available in Floe: standard wrap-around looping, and ping-pong looping. In the standard mode, the sound will jump back to the start of the loop when it reaches the end. In ping-pong mode, the sound will alternate playing forwards and backwards through the loop. 
+
+A crossfade can be applied to smooth the boundary - even in ping-pong mode. It's normally a good idea to use a crossfade in order to avoid clicks at the loop boundary.
 
 As well as looping, you can control whether the sounds are reversed or have their start position offset.
 

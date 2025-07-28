@@ -821,7 +821,7 @@ static bool ClapParamsGetInfo(clap_plugin_t const* plugin, u32 param_index, clap
 
         // CLAP hosts do not show the module as well as the name - despite this being part of the spec. We
         // have no option but to also put the module in the name.
-        if (auto const name_prefix = desc.ModuleString(' ');
+        if (auto const name_prefix = desc.ModuleString(" ");
             name_prefix.size + 1 + desc.name.size + 1 > CLAP_NAME_SIZE) {
             CopyStringIntoBufferWithNullTerm(param_info->name, desc.name);
         } else {
@@ -881,11 +881,10 @@ static bool ClapParamsGetValue(clap_plugin_t const* plugin, clap_id param_id, f6
 
         auto const index = (usize)*opt_index;
 
-        // IMPROVE: handle params without atomics (part of larger refactor)
         if (floe.engine->pending_state_change)
             *out_value = (f64)floe.engine->last_snapshot.state.param_values[index];
         else
-            *out_value = (f64)floe.engine->processor.params[index].value.Load(LoadMemoryOrder::Relaxed);
+            *out_value = (f64)floe.engine->processor.main_params.values[index];
 
         ASSERT(*out_value >= (f64)k_param_descriptors[index].linear_range.min);
         ASSERT(*out_value <= (f64)k_param_descriptors[index].linear_range.max);

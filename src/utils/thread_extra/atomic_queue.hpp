@@ -45,7 +45,6 @@ struct AtomicQueue {
         return result;
     }
 
-    template <typename U = Type>
     bool Push(Span<Type const> data) {
         // Step 1: copy into local variables and check for size
         auto const initial_producer_head = producer.head;
@@ -75,7 +74,6 @@ struct AtomicQueue {
     }
 
     // Returns the number of elements that were actually popped
-    template <typename Unused = Type>
     u32 Pop(Span<Type> out_buffer) {
         // Step 1: copy into local variables
         auto const initial_consumer_head = consumer.head;

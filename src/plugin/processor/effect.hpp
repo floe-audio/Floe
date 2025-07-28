@@ -62,8 +62,8 @@ struct Effect {
     virtual void PrepareToPlay(AudioProcessingContext const&) {}
 
     void ProcessChanges(ProcessBlockChanges const& changes, AudioProcessingContext const& context) {
-        if (auto p = changes.changed_params.Param(k_effect_info[(u32)type].on_param_index))
-            mix = p->ValueAsBool() ? 1.0f : 0.0f;
+        if (auto const p = changes.changed_params.BoolValue(k_effect_info[(u32)type].on_param_index))
+            mix = *p ? 1.0f : 0.0f;
         ProcessChangesInternal(changes, context);
     }
 

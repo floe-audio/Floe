@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -7,11 +7,13 @@
 #include "common_infrastructure/preferences.hpp"
 
 #include "engine/engine.hpp"
+#include "gui/gui2_bot_panel.hpp"
 #include "gui/gui2_feedback_panel_state.hpp"
 #include "gui/gui2_info_panel_state.hpp"
 #include "gui/gui2_inst_picker_state.hpp"
 #include "gui/gui2_ir_picker_state.hpp"
 #include "gui/gui2_library_dev_panel.hpp"
+#include "gui/gui2_macros.hpp"
 #include "gui/gui2_notifications.hpp"
 #include "gui/gui2_prefs_panel_state.hpp"
 #include "gui/gui2_preset_picker.hpp"
@@ -128,6 +130,8 @@ struct Gui {
     PresetPickerState preset_picker_state {};
     LibraryDevPanelState library_dev_panel_state {};
     bool show_new_version_indicator {};
+    BottomPanelState bottom_panel_state {};
+    MacrosGuiState macros_gui_state {};
 
     bool legacy_params_window_open {};
 
@@ -187,6 +191,5 @@ void GUIPresetLoaded(Gui* g, Engine* a, bool is_first_preset);
 GuiFrameResult GuiUpdate(Gui* g);
 void TopPanel(Gui* g, f32 height);
 void MidPanel(Gui* g);
-void BotPanel(Gui* g, Rect r);
 
 f32x2 GetMaxUVToMaintainAspectRatio(graphics::ImageID img, f32x2 container_size);

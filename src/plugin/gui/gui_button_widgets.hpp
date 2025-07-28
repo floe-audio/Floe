@@ -457,9 +457,9 @@ bool Toggle(Gui* g, Rect r, bool& state, String str, Style const& style);
 bool Popup(Gui* g, imgui::Id popup_id, Rect r, String str, Style const& style);
 
 // Params
-ButtonReturnObject Toggle(Gui* g, Parameter const& param, Rect r, String str, Style const& style);
-ButtonReturnObject Toggle(Gui* g, Parameter const& param, Rect r, Style const& style);
-ButtonReturnObject PopupWithItems(Gui* g, Parameter const& param, Rect r, Style const& style);
+ButtonReturnObject Toggle(Gui* g, DescribedParamValue const& param, Rect r, String str, Style const& style);
+ButtonReturnObject Toggle(Gui* g, DescribedParamValue const& param, Rect r, Style const& style);
+ButtonReturnObject PopupWithItems(Gui* g, DescribedParamValue const& param, Rect r, Style const& style);
 
 void FakeButton(Gui* g, Rect r, String str, Style const& style);
 
@@ -477,9 +477,11 @@ bool Button(Gui* g, layout::Id lay_id, String str, Style const& style);
 bool Toggle(Gui* g, layout::Id lay_id, bool& state, String str, Style const& style);
 bool Popup(Gui* g, imgui::Id popup_id, layout::Id lay_id, String str, Style const& style);
 
-ButtonReturnObject Toggle(Gui* g, Parameter const& param, layout::Id lay_id, String str, Style const& style);
-ButtonReturnObject Toggle(Gui* g, Parameter const& param, layout::Id lay_id, Style const& style);
-ButtonReturnObject PopupWithItems(Gui* g, Parameter const& param, layout::Id lay_id, Style const& style);
+ButtonReturnObject
+Toggle(Gui* g, DescribedParamValue const& param, layout::Id lay_id, String str, Style const& style);
+ButtonReturnObject Toggle(Gui* g, DescribedParamValue const& param, layout::Id lay_id, Style const& style);
+ButtonReturnObject
+PopupWithItems(Gui* g, DescribedParamValue const& param, layout::Id lay_id, Style const& style);
 
 void FakeButton(Gui* g, layout::Id lay_id, String str, Style const& style);
 void FakeButton(Gui* g, Rect r, String str, Style const& style);

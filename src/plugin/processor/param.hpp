@@ -3,63 +3,126 @@
 
 #pragma once
 #include "foundation/foundation.hpp"
-#include "os/threading.hpp"
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
-struct Parameter {
-    f32 LinearValue() const { return value.Load(LoadMemoryOrder::Relaxed); }
+// It's sometimes very useful to pass around a parameter value with its descriptor.
+struct DescribedParamValue {
+    f32 LinearValue() const { return linear_value; }
     f32 NormalisedLinearValue() const {
         return MapTo01(LinearValue(), info.linear_range.min, info.linear_range.max);
     }
-    f32 ProjectedValue() const { return info.ProjectValue(value.Load(LoadMemoryOrder::Relaxed)); }
+    f32 ProjectedValue() const { return info.ProjectValue(LinearValue()); }
     template <typename Type>
-    Type ValueAsInt() const {
+    Type IntValue() const {
         return ParamToInt<Type>(LinearValue());
     }
-    bool ValueAsBool() const { return ParamToBool(LinearValue()); }
-
-    bool SetLinearValue(f32 new_value) {
-        ASSERT(info.linear_range.Contains(new_value));
-        auto const t = value.Load(LoadMemoryOrder::Relaxed);
-        value.Store(new_value, StoreMemoryOrder::Relaxed);
-        return t != new_value;
-    }
-
+    bool BoolValue() const { return ParamToBool(LinearValue()); }
     f32 DefaultLinearValue() const { return info.default_linear_value; }
     f32 NormalisedDefaultLinearValue() const {
         return MapTo01(DefaultLinearValue(), info.linear_range.min, info.linear_range.max);
     }
 
     ParamDescriptor const& info;
-    Atomic<f32> value;
+    f32 const& linear_value;
 };
 
-template <usize k_num_params>
-struct ChangedParamsTemplate {
-    using IndexType = Conditional<k_num_params == k_num_parameters, ParamIndex, LayerParamIndex>;
-
-    ChangedParamsTemplate(StaticSpan<Parameter const, k_num_params> params, Bitset<k_num_params> changed)
-        : params(params)
-        , changed(changed) {}
-
-    Parameter const* Param(IndexType index) const {
-        auto const i = ToInt(index);
-        return changed.Get(i) ? &params[i] : nullptr;
+// A convenience wrapper around an array of f32 parameter values. We use these in lots of places so it's very
+// helpful to have convenient access to the various forms of parameter values.
+struct Parameters {
+    ALWAYS_INLINE f32 LinearValue(ParamIndex index) const { return values[ToInt(index)]; }
+    ALWAYS_INLINE f32 LinearValue(u8 layer_index, LayerParamIndex index) const {
+        return values[ToInt(ParamIndexFromLayerParamIndex(layer_index, index))];
     }
 
-    template <usize k_result_size>
-    ChangedParamsTemplate<k_result_size> Subsection(usize offset) {
-        return {params.data + offset, changed.template Subsection<k_result_size>(offset)};
+    f32 ProjectedValue(ParamIndex index) const {
+        return k_param_descriptors[ToInt(index)].ProjectValue(LinearValue(index));
+    }
+    f32 ProjectedValue(u8 layer_index, LayerParamIndex index) const {
+        return k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(layer_index, index))].ProjectValue(
+            LinearValue(layer_index, index));
     }
 
-    bool Changed(IndexType index) const { return changed.Get((int)index); }
+    template <typename Type>
+    Type IntValue(ParamIndex index) const {
+        ASSERT_HOT(IsAnyOf(Info(index).value_type,
+                           Array {ParamValueType::Int, ParamValueType::Bool, ParamValueType::Menu}));
+        return ParamToInt<Type>(LinearValue(index));
+    }
+    template <typename Type>
+    Type IntValue(u8 layer_index, LayerParamIndex index) const {
+        ASSERT_HOT(IsAnyOf(Info(layer_index, index).value_type,
+                           Array {ParamValueType::Int, ParamValueType::Bool, ParamValueType::Menu}));
+        return ParamToInt<Type>(LinearValue(layer_index, index));
+    }
 
-    auto Params() { return params; }
+    bool BoolValue(ParamIndex index) const {
+        ASSERT_HOT(Info(index).value_type == ParamValueType::Bool);
+        return ParamToBool(LinearValue(index));
+    }
+    bool BoolValue(u8 layer_index, LayerParamIndex index) const {
+        ASSERT_HOT(Info(layer_index, index).value_type == ParamValueType::Bool);
+        return ParamToBool(LinearValue(layer_index, index));
+    }
 
-    StaticSpan<Parameter const, k_num_params> params;
-    Bitset<k_num_params> changed;
+    static ParamDescriptor const& Info(ParamIndex index) { return k_param_descriptors[ToInt(index)]; }
+    static ParamDescriptor const& Info(u8 layer_index, LayerParamIndex index) {
+        return k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(layer_index, index))];
+    }
+
+    struct DescribedParamValue DescribedValue(ParamIndex index) {
+        return {k_param_descriptors[ToInt(index)], values[ToInt(index)]};
+    }
+    struct DescribedParamValue DescribedValue(u8 layer_index, LayerParamIndex index) {
+        auto const param_index = ParamIndexFromLayerParamIndex(layer_index, index);
+        return {k_param_descriptors[ToInt(param_index)], values[ToInt(param_index)]};
+    }
+
+    void SetLinearValue(ParamIndex index, f32 value) {
+        auto const& range = k_param_descriptors[ToInt(index)].linear_range;
+        ASSERT(value >= range.min && value <= range.max);
+        values[ToInt(index)] = value;
+    }
+
+    Array<f32, k_num_parameters> values; // Linear values.
 };
 
-using ChangedParams = ChangedParamsTemplate<k_num_parameters>;
-using ChangedLayerParams = ChangedParamsTemplate<k_num_layer_parameters>;
+struct ChangedParams {
+    Optional<f32> ProjectedValue(ParamIndex index) const {
+        if (changed.Get(ToInt(index))) return params.ProjectedValue(index);
+        return k_nullopt;
+    }
+
+    Optional<f32> ProjectedValue(u8 layer_index, LayerParamIndex index) const {
+        auto const param_index = ParamIndexFromLayerParamIndex(layer_index, index);
+        if (changed.Get(ToInt(param_index))) return params.ProjectedValue(param_index);
+        return k_nullopt;
+    }
+
+    template <typename Type>
+    Optional<Type> IntValue(ParamIndex index) const {
+        if (changed.Get(ToInt(index))) return params.IntValue<Type>(index);
+        return k_nullopt;
+    }
+    template <typename Type>
+    Optional<Type> IntValue(u8 layer_index, LayerParamIndex index) const {
+        auto const param_index = ParamIndexFromLayerParamIndex(layer_index, index);
+        if (changed.Get(ToInt(param_index))) return params.IntValue<Type>(param_index);
+        return k_nullopt;
+    }
+
+    Optional<bool> BoolValue(ParamIndex index) const {
+        if (changed.Get(ToInt(index))) return params.BoolValue(index);
+        return k_nullopt;
+    }
+    Optional<bool> BoolValue(u8 layer_index, LayerParamIndex index) const {
+        auto const param_index = ParamIndexFromLayerParamIndex(layer_index, index);
+        if (changed.Get(ToInt(param_index))) return params.BoolValue(param_index);
+        return k_nullopt;
+    }
+
+    bool Changed(ParamIndex index) const { return changed.Get(ToInt(index)); }
+
+    Parameters const& params;
+    Bitset<k_num_parameters> changed;
+};

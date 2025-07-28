@@ -34,11 +34,29 @@ union UninitialisedArray {
 
     UninitialisedArray() : raw_storage() {}
 
+    // Assign/construct from an Array<Type, k_size>.
+    UninitialisedArray(Array<Type, k_size> const& other) {
+        for (usize i = 0; i < k_size; ++i)
+            PLACEMENT_NEW(&data[i]) Type(other.data[i]);
+    }
+    UninitialisedArray(Array<Type, k_size>&& other) {
+        for (usize i = 0; i < k_size; ++i)
+            PLACEMENT_NEW(&data[i]) Type(Move(other.data[i]));
+    }
+
     DEFINE_CONTIGUOUS_CONTAINER_METHODS(UninitialisedArray, data, k_size)
 
     constexpr StaticSpan<Type, k_size> StaticItems() const { return data; }
     constexpr operator StaticSpan<Type, k_size>() { return data; }
     constexpr operator StaticSpan<Type const, k_size>() { return data; }
+
+    // Copy assignment to Array<Type, k_size>.
+    constexpr operator Array<Type, k_size>() const {
+        Array<Type, k_size> result;
+        for (usize i = 0; i < k_size; ++i)
+            PLACEMENT_NEW(&result.data[i]) Type(Move(data[i]));
+        return result;
+    }
 
     static constexpr usize size = k_size; // NOLINT(readability-identifier-naming)
     Type data[k_size]; // for easier debugging

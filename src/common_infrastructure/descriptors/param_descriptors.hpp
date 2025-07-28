@@ -67,6 +67,11 @@ enum class ParamIndex : u16 {
     MasterVelocity,
     MasterTimbre,
 
+    Macro1,
+    Macro2,
+    Macro3,
+    Macro4,
+
     DistortionType,
     DistortionDrive,
     DistortionOn,
@@ -180,6 +185,7 @@ enum class ParameterModule : u8 {
 
     Effect,
     Master,
+    Macro,
 
     Lfo,
     Loop,
@@ -209,7 +215,7 @@ constexpr String k_parameter_module_strings[] = {
 
     "Layer 1",    "Layer 2",    "Layer 3",
 
-    "Effect",     "Master",
+    "Effect",     "Master",     "Macro",
 
     "LFO",        "Loop",       "Filter",  "Playback",    "EQ",     "Volume Envelope",
 
@@ -630,11 +636,11 @@ struct ParamDescriptor {
                module_parts[0] == ParameterModule::Layer3;
     }
 
-    DynamicArrayBounded<char, 128> ModuleString(char separator = '/') const {
+    DynamicArrayBounded<char, 128> ModuleString(String separator = "/") const {
         DynamicArrayBounded<char, 128> result {};
         for (auto m : module_parts) {
             if (m == ParameterModule::None) break;
-            if (result.size != 0) dyn::Append(result, separator);
+            if (result.size != 0) dyn::AppendSpan(result, separator);
             dyn::AppendSpan(result, k_parameter_module_strings[int(m)]);
         }
         return result;
@@ -653,8 +659,8 @@ struct ParamDescriptor {
     String gui_label;
     String tooltip;
     MenuType menu_type;
-    // If non-zero, signifies that it might be shown grouped with others with the same group and in ascending
-    // order.
+    // If non-zero, signifies that it might be shown grouped with others with the same module_parts in
+    // ascending order.
     u8 grouping_within_module;
 };
 
@@ -1011,6 +1017,42 @@ consteval auto CreateParams() {
         .gui_label = "Timbre"_s,
         .tooltip =
             "The intstruments timbre. Not every instrument contains timbre information; instruments that do will be highlighted when you click on this knob."_s,
+    };
+
+    constexpr String k_macro_tooltip =
+        "A macro that can be assigned to any parameter in the instrument. The macro will affect all parameters that are assigned to it.";
+
+    mp(Macro1) = Args {
+        .id = id(IdRegion::Master, 101), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 0}),
+        .modules = {ParameterModule::Macro},
+        .name = "Macro 1"_s,
+        .gui_label = "Macro 1"_s,
+        .tooltip = k_macro_tooltip,
+    };
+    mp(Macro2) = Args {
+        .id = id(IdRegion::Master, 102), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 0}),
+        .modules = {ParameterModule::Macro},
+        .name = "Macro 2"_s,
+        .gui_label = "Macro 2"_s,
+        .tooltip = k_macro_tooltip,
+    };
+    mp(Macro3) = Args {
+        .id = id(IdRegion::Master, 103), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 0}),
+        .modules = {ParameterModule::Macro},
+        .name = "Macro 3"_s,
+        .gui_label = "Macro 3"_s,
+        .tooltip = k_macro_tooltip,
+    };
+    mp(Macro4) = Args {
+        .id = id(IdRegion::Master, 104), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 0}),
+        .modules = {ParameterModule::Macro},
+        .name = "Macro 4"_s,
+        .gui_label = "Macro 4"_s,
+        .tooltip = k_macro_tooltip,
     };
 
     // =====================================================================================================

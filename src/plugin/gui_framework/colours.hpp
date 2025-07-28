@@ -30,10 +30,6 @@ PUBLIC constexpr u32 FromWeb(u32 rgba) {
 
 PUBLIC constexpr u32 WithAlpha(u32 abgr, u8 alpha) { return (abgr & 0x00ffffff) | ((u32)alpha << 24); }
 
-PUBLIC constexpr u32 WithAlphaPercent(u32 abgr, u32 alpha_percent) {
-    return WithAlpha(abgr, (u8)(alpha_percent * 255 / 100));
-}
-
 PUBLIC constexpr u32 ChangeBrightness(u32 abgr, f32 brightness_factor) {
     auto col = FromU32(abgr);
     col.r = (u8)Min((f32)col.r * brightness_factor, 255.0f);
