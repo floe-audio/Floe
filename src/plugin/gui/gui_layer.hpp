@@ -81,9 +81,14 @@ struct LayerLayoutTempIDs {
             layout::Id transpose_name;
             layout::Id keytrack;
             layout::Id mono;
-            layout::Id retrig;
             layout::Id velo_name;
             layout::Id velo_graph;
+            layout::Id key_range_text;
+            layout::Id key_range_low;
+            layout::Id key_range_high;
+            layout::Id key_range_fade_text;
+            layout::Id key_range_low_fade;
+            layout::Id key_range_high_fade;
         } play;
 
         struct {

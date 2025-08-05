@@ -122,6 +122,9 @@ struct ChangedParams {
     }
 
     bool Changed(ParamIndex index) const { return changed.Get(ToInt(index)); }
+    bool Changed(u8 layer_index, LayerParamIndex index) const {
+        return changed.Get(ToInt(ParamIndexFromLayerParamIndex(layer_index, index)));
+    }
 
     Parameters const& params;
     Bitset<k_num_parameters> changed;

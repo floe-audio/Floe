@@ -22,7 +22,12 @@ f32 MenuItemWidth(Gui* g, Span<String const> strs);
 //
 
 void DoTooltipText(Gui* g, String str, Rect r, bool rect_is_window_pos = false);
-bool Tooltip(Gui* g, imgui::Id id, Rect r, String str, bool rect_is_window_pos = false);
+bool Tooltip(Gui* g,
+             imgui::Id id,
+             Rect r,
+             String str,
+             bool rect_is_window_pos = false,
+             bool force_show = false);
 
 void DoParameterTooltipIfNeeded(Gui* g,
                                 DescribedParamValue const& param,

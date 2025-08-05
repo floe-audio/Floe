@@ -247,19 +247,6 @@ static void DoResizeCorner(Gui* g) {
 
     auto const r = imgui.GetRegisteredAndConvertedRect({.pos = 0, .size = imgui.Size()});
 
-    imgui.graphics->AddTriangleFilled(r.TopRight(),
-                                      r.BottomRight(),
-                                      r.BottomLeft(),
-                                      LiveCol(imgui, UiColMap::WindowResizeCornerBackground));
-
-    auto const line_gap = LiveSize(imgui, UiSizeId::WindowResizeCornerLineGap);
-    imgui.graphics->AddLine(r.TopRight() + f32x2 {0, line_gap},
-                            r.BottomLeft() + f32x2 {line_gap, 0},
-                            LiveCol(imgui, UiColMap::WindowResizeCornerLine));
-    imgui.graphics->AddLine(r.TopRight() + f32x2 {0, line_gap * 2},
-                            r.BottomLeft() + f32x2 {line_gap * 2, 0},
-                            LiveCol(imgui, UiColMap::WindowResizeCornerLine));
-
     auto const& desc = SettingDescriptor(GuiSetting::WindowWidth);
 
     auto const id = imgui.GetID("resize_corner");
@@ -279,6 +266,21 @@ static void DoResizeCorner(Gui* g) {
         if (auto const new_size = NearestAspectRatioSizeInsideSize32(ui_size, k_gui_aspect_ratio))
             prefs::SetValue(g->prefs, desc, (s64)new_size->width);
     }
+
+    imgui.graphics->AddTriangleFilled(r.TopRight(),
+                                      r.BottomRight(),
+                                      r.BottomLeft(),
+                                      style::Col(style::Colour::DarkModeBackground0));
+
+    auto const line_col =
+        style::Col(imgui.IsHotOrActive(id) ? style::Colour::DarkModeText : style::Colour::DarkModeOverlay2);
+    auto const line_gap = LiveSize(imgui, UiSizeId::WindowResizeCornerLineGap);
+    imgui.graphics->AddLine(r.TopRight() + f32x2 {0, line_gap},
+                            r.BottomLeft() + f32x2 {line_gap, 0},
+                            line_col);
+    imgui.graphics->AddLine(r.TopRight() + f32x2 {0, line_gap * 2},
+                            r.BottomLeft() + f32x2 {line_gap * 2, 0},
+                            line_col);
 }
 
 GuiFrameResult GuiUpdate(Gui* g) {

@@ -202,7 +202,7 @@ struct VoicePool {
 inline void EndVoiceInstantly(Voice& voice) {
     ASSERT(voice.is_active);
     voice.pool.num_active_voices.FetchSub(1, RmwMemoryOrder::Relaxed);
-    voice.pool.voices_per_midi_note_for_gui[voice.note_num].FetchSub(1, RmwMemoryOrder::Relaxed);
+    voice.pool.voices_per_midi_note_for_gui[voice.midi_key_trigger.note].FetchSub(1, RmwMemoryOrder::Relaxed);
     voice.is_active = false;
 }
 void EndVoice(Voice& voice);

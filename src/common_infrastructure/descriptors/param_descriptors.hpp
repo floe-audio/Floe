@@ -50,10 +50,14 @@ enum class LayerParamIndex : u16 {
     EqResonance2,
     EqGain2,
     EqType2,
-    VelocityMapping,
+    VelocityMapping, // Legacy
     Keytrack,
     Monophonic,
     MidiTranspose,
+    KeyRangeLow,
+    KeyRangeHigh,
+    KeyRangeLowFade,
+    KeyRangeHighFade,
 
     Count,
 };
@@ -64,7 +68,7 @@ enum class ParamIndex : u16 {
     FirstNonLayerParam = ToInt(LayerParamIndex::Count) * k_num_layers,
 
     MasterVolume = FirstNonLayerParam,
-    MasterVelocity,
+    MasterVelocity, // Legacy
     MasterTimbre,
 
     Macro1,
@@ -2117,6 +2121,40 @@ consteval auto CreateParams() {
             .gui_label = "Transpose"_s,
             .tooltip =
                 "Transpose the mapping of samples by the given semitone offset, meaning a higher/lower sample may be triggered instead of stretching/shrinking the audio by large amounts (only useful if the instrument is multi-sampled)"_s,
+        };
+        lp(KeyRangeLow) = Args {
+            .id = id(region, 50), // never change
+            .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 0}),
+            .modules = {layer_module, ParameterModule::Playback},
+            .name = "Key Range Low"_s,
+            .gui_label = "Key Range Low"_s,
+            .tooltip =
+                "The lowest key that will trigger this layer; if the key is lower than this, the layer will not play"_s,
+        };
+        lp(KeyRangeHigh) = Args {
+            .id = id(region, 51), // never change
+            .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 127}),
+            .modules = {layer_module, ParameterModule::Playback},
+            .name = "Key Range High"_s,
+            .gui_label = "Key Range High"_s,
+            .tooltip =
+                "The highest key that will trigger this layer; if the key is higher than this, the layer will not play"_s,
+        };
+        lp(KeyRangeLowFade) = Args {
+            .id = id(region, 52), // never change
+            .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 0}),
+            .modules = {layer_module, ParameterModule::Playback},
+            .name = "Key Range Low Fade"_s,
+            .gui_label = "Key Range Low Fade"_s,
+            .tooltip = "The length of the volume fade-in at the low end of the key range"_s,
+        };
+        lp(KeyRangeHighFade) = Args {
+            .id = id(region, 53), // never change
+            .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 0}),
+            .modules = {layer_module, ParameterModule::Playback},
+            .name = "Key Range High Fade"_s,
+            .gui_label = "Key Range High Fade"_s,
+            .tooltip = "The length of the volume fade-out at the high end of the key range"_s,
         };
     }
 

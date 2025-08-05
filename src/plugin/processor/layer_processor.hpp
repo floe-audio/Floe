@@ -148,6 +148,11 @@ struct VoiceProcessingController {
     adsr::Params fil_env = {};
     f32 fil_env_amount = 0;
 
+    u7 key_range_low {};
+    u7 key_range_low_fade {};
+    u7 key_range_high {}; // Inclusive
+    u7 key_range_high_fade {};
+
     param_values::LoopMode loop_mode {};
     bool reverse {};
 
@@ -249,7 +254,7 @@ struct LayerProcessor {
     Instrument instrument {InstrumentType::None};
     InstrumentId instrument_id {InstrumentType::None};
 
-    InstrumentUnwrapped inst = InstrumentType::None;
+    InstrumentUnwrapped audio_thread_inst = InstrumentType::None;
 
     // Encodes possible instruments into a single atomic u64. We use the fact that the pointer's value must be
     // aligned to the type they point to, and therefore we can use unaligned numbers to represent other
@@ -285,7 +290,6 @@ struct LayerProcessor {
     OnePoleLowPassFilter<f32> gain_smoother = {};
 
     int midi_transpose = 0;
-    int multisample_transpose = 0;
     f32 tune_semitone = 0;
     f32 tune_cents = 0;
     f32 sample_offset_01 = 0;

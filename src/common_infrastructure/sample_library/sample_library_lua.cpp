@@ -181,6 +181,7 @@ enum class InterpretedTypes : u32 {
     RegionPlayback,
     TriggerCriteria,
     FileAttribution,
+    NamedKeyRange,
     Count,
 };
 
@@ -1064,6 +1065,62 @@ struct TableFields<FileAttribution> {
     }
 };
 
+template <>
+struct TableFields<NamedKeyRange> {
+    using Type = NamedKeyRange;
+
+    enum class Field : u32 {
+        Name,
+        KeyRange,
+        Count,
+    };
+
+    static constexpr FieldInfo FieldInfo(Field f) {
+        switch (f) {
+            case Field::Name:
+                return {
+                    .name = "name",
+                    .description_sentence = "The name of the key range.",
+                    .example = "Extended Notes",
+                    .lua_type = LUA_TSTRING,
+                    .required = true,
+                    .set = [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.name = StringFromTop(ctx); },
+                };
+            case Field::KeyRange:
+                return {
+                    .name = "key_range",
+                    .description_sentence =
+                        "The range of the keyboard to give a name to. These should be MIDI note numbers, from 0 to 128. The start number is inclusive, the end is exclusive.",
+                    .example = "{ 80, 128 }",
+                    .lua_type = LUA_TTABLE,
+                    .required = true,
+                    .is_array = LUA_TNUMBER,
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            auto const vals = ListOfInts(ctx, 2, info);
+                            if (vals[0] < 0 || vals[1] > 128 || vals[1] < 1 || vals[1] > 129)
+                                luaL_error(
+                                    ctx.lua,
+                                    "'%s' should be in the range [0, 127] the first number and [1, 128] for the second",
+                                    info.name.data);
+
+                            if (vals[0] >= vals[1])
+                                luaL_error(ctx.lua,
+                                           "'%s' should have a start value less than the end value",
+                                           info.name.data);
+
+                            FIELD_OBJ.key_range = {
+                                .start = (u8)vals[0],
+                                .end = (u8)vals[1],
+                            };
+                        },
+                };
+            case Field::Count: break;
+        }
+        return {};
+    }
+};
+
 static FolderNode* SetFolderNode(lua_State* lua,
                                  String folder_str,
                                  Library& library,
@@ -1635,6 +1692,30 @@ static int AddRegion(lua_State* lua) {
     return 0;
 }
 
+static int AddNamedKeyRange(lua_State* lua) {
+    auto& ctx = **(LuaState**)lua_getextraspace(lua);
+
+    // This function takes 2 args, first is the instrument, second is a table of config
+    lua_settop(lua, 2);
+    auto instrument = LuaCheckUserdata<Instrument>(lua, 1, UserdataTypes::Instrument);
+    luaL_checktype(lua, 2, LUA_TTABLE);
+
+    auto dyn_array =
+        DynamicArray<NamedKeyRange>::FromOwnedSpan(instrument->named_key_ranges,
+                                                   instrument->named_key_ranges_allocated_capacity,
+                                                   ctx.result_arena);
+    dyn::Resize(dyn_array, dyn_array.size + 1);
+    instrument->named_key_ranges_allocated_capacity = dyn_array.Capacity();
+    auto [span, cap] = dyn_array.ToOwnedSpanUnchangedCapacity();
+    instrument->named_key_ranges = span;
+    instrument->named_key_ranges_allocated_capacity = cap;
+    auto& named_key_range = Last(instrument->named_key_ranges);
+
+    InterpretTable(ctx, 2, named_key_range);
+
+    return 0;
+}
+
 static VoidOrError<Error> TryRunLuaCode(LuaState& ctx, int r) {
     if (r == LUA_OK) return k_success;
     switch (r) {
@@ -1682,6 +1763,7 @@ static const struct luaL_Reg k_floe_lib[] = {
     {"new_library", NewLibrary},
     {"new_instrument", NewInstrument},
     {"add_region", AddRegion},
+    {"add_named_key_range", AddNamedKeyRange},
     {"add_ir", AddIr},
     {"set_attribution_requirement", SetAttributionRequirement},
     {"set_required_floe_version", SetRequiredFloeVersion},
@@ -2186,6 +2268,22 @@ struct LuaCodePrinter {
                                "all audio files in that folder and its subfolders.",
             },
             {
+                .name = "add_named_key_range",
+                .args = ArrayT<FieldInfo>({
+                    {
+                        .name = "instrument",
+                        .example = "instrument",
+                        .lua_type = LUA_TLIGHTUSERDATA,
+                    },
+                    {
+                        .name = "config",
+                        .subtype = InterpretedTypes::NamedKeyRange,
+                    },
+                }),
+                .description =
+                    "Gives a name to a key range of this instrument. For example, with a multi-sampled keyboard instrument, you might mark the ranges beyond the natural range of the real instrument as \"Extended\" ranges. You can call this multiple times to create multiple named key ranges. Alternatively, if the instrument contains multiple sounds, you can name each sound: \"Kick\", \"Snare\", etc. Don't overlap ranges.",
+            },
+            {
                 .name = "set_required_floe_version",
                 .args = ArrayT<FieldInfo>({
                     {
@@ -2256,6 +2354,9 @@ struct LuaCodePrinter {
                 case InterpretedTypes::Region: struct_fields[i] = FieldInfosSpan<Region>(); break;
                 case InterpretedTypes::FileAttribution:
                     struct_fields[i] = FieldInfosSpan<FileAttribution>();
+                    break;
+                case InterpretedTypes::NamedKeyRange:
+                    struct_fields[i] = FieldInfosSpan<NamedKeyRange>();
                     break;
                 case InterpretedTypes::Count: break;
             }

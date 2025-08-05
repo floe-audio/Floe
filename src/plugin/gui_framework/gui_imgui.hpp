@@ -106,6 +106,7 @@ struct TextInputFlags {
     bool32 chars_hexadecimal : 1; // Allow 0123456789ABCDEFabcdef
     bool32 chars_uppercase : 1; // Turn a..z into A..Z
     bool32 chars_no_blank : 1; // Filter out spaces, tabs
+    bool32 chars_note_names : 1; // Allow 0123456789+-#abcdefgABCDEFG
     bool32 tab_focuses_next_input : 1;
     bool32 centre_align : 1;
     bool32 multiline : 1;

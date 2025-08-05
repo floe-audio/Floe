@@ -491,7 +491,7 @@ enum class StateVersion : u16 {
     AddedFloeVersion,
 
     // Added macro parameters.
-    AddedMacroParameters,
+    AddedMacroAndKeyRangeParameters,
 
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
@@ -1329,14 +1329,25 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         if (coder.IsReading()) {
             if (coder.version < StateVersion::AddedLayerVelocityCurves) state.velocity_curve_points = {};
 
-            if (coder.version < StateVersion::AddedMacroParameters) {
+            if (coder.version < StateVersion::AddedMacroAndKeyRangeParameters) {
                 state.param_values[ToInt(ParamIndex::Macro1)] = 0.0f;
                 state.param_values[ToInt(ParamIndex::Macro2)] = 0.0f;
                 state.param_values[ToInt(ParamIndex::Macro3)] = 0.0f;
                 state.param_values[ToInt(ParamIndex::Macro4)] = 0.0f;
+
+                for (auto const layer_index : Range(k_num_layers)) {
+                    state.param_values[ToInt(
+                        ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::KeyRangeLow))] = 0;
+                    state.param_values[ToInt(
+                        ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::KeyRangeHigh))] = 127;
+                    state.param_values[ToInt(
+                        ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::KeyRangeLowFade))] = 0;
+                    state.param_values[ToInt(
+                        ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::KeyRangeHighFade))] = 0;
+                }
             }
 
-            static_assert(k_num_parameters == 210,
+            static_assert(k_num_parameters == 222,
                           "You have changed the number of parameters. You must now bump the "
                           "state version number and handle setting any new parameters to "
                           "backwards-compatible states. In other words, these new parameters "
@@ -1350,15 +1361,16 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     {
         u8 num_macros {};
         if (coder.IsWriting()) num_macros = k_num_macros;
-        TRY(coder.CodeNumber(num_macros, StateVersion::AddedMacroParameters));
+        TRY(coder.CodeNumber(num_macros, StateVersion::AddedMacroAndKeyRangeParameters));
 
         for (auto const macro_index : Range(num_macros)) {
-            TRY(coder.CodeDynArray(state.macro_names[macro_index], StateVersion::AddedMacroParameters));
+            TRY(coder.CodeDynArray(state.macro_names[macro_index],
+                                   StateVersion::AddedMacroAndKeyRangeParameters));
 
             auto& dests = state.macro_destinations[macro_index];
             u8 num_macro_destinations {};
             if (coder.IsWriting()) num_macro_destinations = CheckedCast<u8>(dests.size);
-            TRY(coder.CodeNumber(num_macro_destinations, StateVersion::AddedMacroParameters));
+            TRY(coder.CodeNumber(num_macro_destinations, StateVersion::AddedMacroAndKeyRangeParameters));
             if (coder.IsReading()) {
                 if (!dyn::Resize(dests, num_macro_destinations))
                     return ErrorCode(CommonError::InvalidFileFormat);
@@ -1369,19 +1381,19 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
                 u32 param_id {};
                 if (coder.IsWriting()) param_id = ParamIndexToId(dest.param_index);
-                TRY(coder.CodeNumber(param_id, StateVersion::AddedMacroParameters));
+                TRY(coder.CodeNumber(param_id, StateVersion::AddedMacroAndKeyRangeParameters));
                 if (coder.IsReading()) {
                     auto const param_index = ParamIdToIndex(param_id);
                     if (!param_index) return ErrorCode(CommonError::InvalidFileFormat);
                     dest.param_index = *param_index;
                 }
 
-                TRY(coder.CodeNumber(dest.value, StateVersion::AddedMacroParameters));
+                TRY(coder.CodeNumber(dest.value, StateVersion::AddedMacroAndKeyRangeParameters));
             }
         }
 
         if (coder.IsReading()) {
-            if (coder.version < StateVersion::AddedMacroParameters) {
+            if (coder.version < StateVersion::AddedMacroAndKeyRangeParameters) {
                 state.macro_names = DefaultMacroNames();
                 state.macro_destinations = {};
             }

@@ -21,6 +21,7 @@
     X(RegisterFolderNodeTests)                                                                               \
     X(RegisterFoundationTests)                                                                               \
     X(RegisterHostingTests)                                                                                  \
+    X(RegisterLayerProcessorTests)                                                                           \
     X(RegisterLayoutTests)                                                                                   \
     X(RegisterLibraryLuaTests)                                                                               \
     X(RegisterLibraryMdataTests)                                                                             \

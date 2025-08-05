@@ -31,6 +31,34 @@ static inline f32 MsToHz(f32 ms) {
     return 1.0f / (ms / 1000.0f);
 }
 
+static constexpr String k_note_names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+
+// There is no standard for what to call middle C, we just know it's MIDI note 60. We choose to call it C3.
+constexpr u8 k_middle_c_octave = 3;
+constexpr s8 k_octave_offset = k_middle_c_octave - (60 / 12);
+
+PUBLIC DynamicArrayBounded<char, 4> NoteName(u7 midi_note) {
+    u8 const note_in_octave = midi_note % 12;
+    u8 const octave = midi_note / 12;
+    return fmt::FormatInline<4>("{}{}", k_note_names[note_in_octave], octave + k_octave_offset);
+}
+
+PUBLIC Optional<u7> MidiNoteFromName(String name) {
+    for (auto const [note_index, note_name] : Enumerate<u8>(k_note_names)) {
+        if (StartsWithCaseInsensitiveAscii(name, note_name)) {
+            auto const octave_str = name.SubSpan(note_name.size);
+            if (auto const octave = ParseInt(octave_str, ParseIntBase::Decimal)) {
+                if (*octave >= (0 + k_octave_offset) && *octave <= (9 + k_octave_offset)) {
+                    auto const midi_octave = *octave - k_octave_offset;
+                    auto const midi_note = (midi_octave * 12) + note_index;
+                    return (u7)Clamp<s64>(midi_note, 0, 127);
+                }
+            }
+        }
+    }
+    return k_nullopt;
+}
+
 // Does seem to be slightly faster than the std::pow version
 // Degree 10 approximation of f(x) = 10^(x/20)
 // on interval [ -80, 30 ]

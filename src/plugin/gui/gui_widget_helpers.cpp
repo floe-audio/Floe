@@ -76,8 +76,8 @@ void DoTooltipText(Gui* g, String str, Rect r, bool rect_is_window_pos) {
         .AddText(font, font->font_size, text_start, LiveCol(imgui, UiColMap::TooltipText), str, size + 1);
 }
 
-bool Tooltip(Gui* g, imgui::Id id, Rect r, String str, bool rect_is_window_pos) {
-    if (!prefs::GetBool(g->prefs, SettingDescriptor(GuiSetting::ShowTooltips))) return false;
+bool Tooltip(Gui* g, imgui::Id id, Rect r, String str, bool rect_is_window_pos, bool force_show) {
+    if (!force_show && !prefs::GetBool(g->prefs, SettingDescriptor(GuiSetting::ShowTooltips))) return false;
 
     auto& imgui = g->imgui;
     f64 const delay {0.5};

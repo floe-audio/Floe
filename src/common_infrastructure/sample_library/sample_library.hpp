@@ -134,6 +134,11 @@ struct RoundRobinGroup {
 
 constexpr auto k_max_round_robin_sequence_groups = 64;
 
+struct NamedKeyRange {
+    String name {};
+    Range key_range {};
+};
+
 struct Instrument {
     Library const& library;
 
@@ -144,6 +149,8 @@ struct Instrument {
     LibraryPath audio_file_path_for_waveform {};
     Span<Region> regions {};
     usize regions_allocated_capacity {}; // private
+    Span<NamedKeyRange> named_key_ranges {};
+    usize named_key_ranges_allocated_capacity {}; // private
 
     // IMPROVE: add options to always or never use Floe's volume envelope
 

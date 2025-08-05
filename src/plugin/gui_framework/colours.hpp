@@ -10,6 +10,8 @@ struct Col {
     u8 a, b, g, r;
 };
 
+PUBLIC constexpr Col Rgba(u8 r, u8 g, u8 b, f32 a) { return Col {(u8)(a * 255.0f), b, g, r}; }
+
 PUBLIC constexpr Col FromU32(u32 abgr) {
     return Col {
         (u8)((abgr >> 24) & 0xFF),

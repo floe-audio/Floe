@@ -53,6 +53,16 @@ A region is a part of an instrument. It defines an audio file and the conditions
 ==sample-library-example-lua:add_region==
 ```
 
+### `floe.add_named_key_range`
+Gives a name to a key range of this instrument. It takes 2 parameters: the instrument object and a table of configuration. Doesn't return anything.
+
+For example, with a multi-sampled keyboard instrument, you might mark the ranges beyond the natural range of the real instrument as \"Extended\" ranges. Alternatively, if the instrument contains multiple sounds, you can name each sound: \"Kick\", \"Snare\", etc.
+
+You can call this multiple times to create multiple named key ranges. 
+```lua
+==sample-library-example-lua:add_named_key_range==
+```
+
 
 ### `floe.add_ir`
 Adds a reverb impulse response to the library. It takes 2 parameters: the library object and a table of configuration. Doesn't return anything. You can call this function multiple times to create multiple impulse responses. 

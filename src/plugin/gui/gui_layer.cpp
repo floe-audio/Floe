@@ -794,7 +794,56 @@ void Layout(Gui* g,
                 };
                 c.play.keytrack = layout::CreateItem(g->layout, g->scratch_arena, button_options);
                 c.play.mono = layout::CreateItem(g->layout, g->scratch_arena, button_options);
-                c.play.retrig = layout::CreateItem(g->layout, g->scratch_arena, button_options);
+
+                {
+                    {
+                        auto const row =
+                            layout::CreateItem(g->layout,
+                                               g->scratch_arena,
+                                               {
+                                                   .parent = page_container,
+                                                   .size = {layout::k_fill_parent, midi_item_height},
+                                                   .margins {
+                                                       .lr = midi_item_margin_lr,
+                                                       .tb = midi_item_gap_y,
+                                                   },
+                                                   .contents_gap = g->imgui.VwToPixels(4),
+                                                   .contents_direction = layout::Direction::Row,
+                                               });
+                        auto const item_options = layout::ItemOptions {
+                            .parent = row,
+                            .size = layout::k_fill_parent,
+                        };
+                        c.play.key_range_text = layout::CreateItem(g->layout, g->scratch_arena, item_options);
+                        c.play.key_range_low = layout::CreateItem(g->layout, g->scratch_arena, item_options);
+                        c.play.key_range_high = layout::CreateItem(g->layout, g->scratch_arena, item_options);
+                    }
+                    {
+                        auto const row =
+                            layout::CreateItem(g->layout,
+                                               g->scratch_arena,
+                                               {
+                                                   .parent = page_container,
+                                                   .size = {layout::k_fill_parent, midi_item_height},
+                                                   .margins {
+                                                       .lr = midi_item_margin_lr,
+                                                       .tb = midi_item_gap_y,
+                                                   },
+                                                   .contents_gap = g->imgui.VwToPixels(4),
+                                                   .contents_direction = layout::Direction::Row,
+                                               });
+                        auto const item_options = layout::ItemOptions {
+                            .parent = row,
+                            .size = layout::k_fill_parent,
+                        };
+                        c.play.key_range_fade_text =
+                            layout::CreateItem(g->layout, g->scratch_arena, item_options);
+                        c.play.key_range_low_fade =
+                            layout::CreateItem(g->layout, g->scratch_arena, item_options);
+                        c.play.key_range_high_fade =
+                            layout::CreateItem(g->layout, g->scratch_arena, item_options);
+                    }
+                }
 
                 c.play.velo_name =
                     layout::CreateItem(g->layout,
@@ -802,7 +851,7 @@ void Layout(Gui* g,
                                        {
                                            .parent = page_container,
                                            .size = {layout::k_fill_parent, midi_item_height},
-                                           .margins = {.lr = midi_item_margin_lr, .b = midi_item_gap_y},
+                                           .margins = {.lr = midi_item_margin_lr, .tb = midi_item_gap_y},
                                        });
                 c.play.velo_graph = layout::CreateItem(
                     g->layout,
@@ -1133,7 +1182,7 @@ void Draw(Gui* g,
                               layer->InstTypeName(),
                               labels::WaveformLabel(g->imgui));
 
-                bool const greyed_out = layer->inst.tag == InstrumentType::WaveformSynth;
+                bool const greyed_out = layer->instrument_id.tag == InstrumentType::WaveformSynth;
                 buttons::Toggle(g,
                                 params.DescribedValue(layer->index, LayerParamIndex::Reverse),
                                 c.main.reverse,
@@ -1288,6 +1337,29 @@ void Draw(Gui* g,
                             params.DescribedValue(layer->index, LayerParamIndex::Monophonic),
                             c.play.mono,
                             buttons::MidiButton(g->imgui));
+
+            labels::Label(g, c.play.key_range_text, "Range", labels::Parameter(g->imgui));
+
+            draggers::Dragger(g,
+                              params.DescribedValue(layer->index, LayerParamIndex::KeyRangeLow),
+                              c.play.key_range_low,
+                              draggers::NoteNameStyle(g->imgui));
+            draggers::Dragger(g,
+                              params.DescribedValue(layer->index, LayerParamIndex::KeyRangeHigh),
+                              c.play.key_range_high,
+                              draggers::NoteNameStyle(g->imgui));
+
+            labels::Label(g, c.play.key_range_fade_text, "Key Fade", labels::Parameter(g->imgui));
+
+            draggers::Dragger(g,
+                              params.DescribedValue(layer->index, LayerParamIndex::KeyRangeLowFade),
+                              c.play.key_range_low_fade,
+                              draggers::DefaultStyle(g->imgui));
+
+            draggers::Dragger(g,
+                              params.DescribedValue(layer->index, LayerParamIndex::KeyRangeHighFade),
+                              c.play.key_range_high_fade,
+                              draggers::DefaultStyle(g->imgui));
 
             {
                 {
@@ -1465,7 +1537,11 @@ void Draw(Gui* g,
                     case LayerParamIndex::VelocityMapping:
                     case LayerParamIndex::Keytrack:
                     case LayerParamIndex::Monophonic:
-                    case LayerParamIndex::MidiTranspose: return PageType::Play;
+                    case LayerParamIndex::MidiTranspose:
+                    case LayerParamIndex::KeyRangeLow:
+                    case LayerParamIndex::KeyRangeHigh:
+                    case LayerParamIndex::KeyRangeLowFade:
+                    case LayerParamIndex::KeyRangeHighFade: return PageType::Play;
 
                     case LayerParamIndex::Count: PanicIfReached();
                 }

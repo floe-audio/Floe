@@ -4,6 +4,7 @@
 #include "layer_processor.hpp"
 
 #include "foundation/foundation.hpp"
+#include "tests/framework.hpp"
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/sample_library/sample_library.hpp"
@@ -11,6 +12,7 @@
 #include "param.hpp"
 #include "processing_utils/audio_processing_context.hpp"
 #include "processing_utils/filters.hpp"
+#include "processing_utils/key_range.hpp"
 #include "processing_utils/midi.hpp"
 #include "processing_utils/peak_meter.hpp"
 #include "processing_utils/stereo_audio_frame.hpp"
@@ -25,7 +27,7 @@ static void UpdateLoopPointsForVoices(LayerProcessor& layer, VoicePool& voice_po
 
 static void UpdateVolumeEnvelopeOn(LayerProcessor& layer, VoicePool& voice_pool) {
     layer.voice_controller.vol_env_on =
-        layer.vol_env_on_param || layer.inst.tag == InstrumentType::WaveformSynth;
+        layer.vol_env_on_param || layer.audio_thread_inst.tag == InstrumentType::WaveformSynth;
     if (layer.voice_controller.vol_env_on)
         for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
             v.vol_env.Gate(false);
@@ -165,19 +167,33 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
                                   f32 note_vel_float,
                                   u32 offset) {
     ZoneScoped;
-    if (layer.inst.tag == InstrumentType::None) return;
+    if (layer.audio_thread_inst.tag == InstrumentType::None) return;
+
+    auto const key_range_low = layer.voice_controller.key_range_low;
+    auto const key_range_high = Max(layer.voice_controller.key_range_high, key_range_low);
+
+    if (note.note < key_range_low || note.note > key_range_high) return;
 
     ASSERT_HOT(note_vel_float >= 0 && note_vel_float <= 1);
     auto const note_vel = (u8)RoundPositiveFloat(note_vel_float * 99);
 
-    auto const note_for_samples_unchecked = note.note + layer.midi_transpose + layer.multisample_transpose;
-    if (note_for_samples_unchecked < 0 || note_for_samples_unchecked > 127) return;
-    auto const note_for_samples = (u7)note_for_samples_unchecked;
-    auto const velocity_volume_modifier =
+    auto const note_for_samples = ({
+        auto const n = note.note + layer.midi_transpose;
+        if (n < 0 || n > 127) return;
+        (u7) n;
+    });
+
+    auto const velocity_amp =
         AmplitudeScalingFromVelocity(layer, note_vel_float, layer.shared_params.velocity_to_volume_01);
 
+    auto const key_range_fade_amp =
+        KeyRangeFadeInAmp(note.note, key_range_low, layer.voice_controller.key_range_low_fade) *
+        KeyRangeFadeOutAmp(note.note, key_range_high, layer.voice_controller.key_range_high_fade);
+
+    auto const amp = velocity_amp * key_range_fade_amp;
+
     VoiceStartParams p {.params = VoiceStartParams::SamplerParams {}};
-    if (auto i_ptr = layer.inst.TryGet<sample_lib::LoadedInstrument const*>()) {
+    if (auto i_ptr = layer.audio_thread_inst.TryGet<sample_lib::LoadedInstrument const*>()) {
         auto const& inst = **i_ptr;
         p.params = VoiceStartParams::SamplerParams {
             .initial_sample_offset_01 = layer.sample_offset_01,
@@ -211,14 +227,14 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
                             VoiceStartParams::SamplerParams::Region {
                                 .region = region,
                                 .audio_data = *audio_data,
-                                .amp = velocity_volume_modifier,
+                                .amp = amp,
                             });
             }
         }
 
         if (!sampler_params.voice_sample_params.size) return;
 
-        // do velocity feathering if needed
+        // Do velocity feathering if needed.
         {
             VoiceStartParams::SamplerParams::Region* feather_region_1 = nullptr;
             VoiceStartParams::SamplerParams::Region* feather_region_2 = nullptr;
@@ -248,18 +264,19 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
                 feather_region_2->amp *= amp2;
             }
         }
-    } else if (auto w = layer.inst.TryGet<WaveformType>();
+
+    } else if (auto w = layer.audio_thread_inst.TryGet<WaveformType>();
                w && trigger_event == sample_lib::TriggerEvent::NoteOn) {
         p.params = VoiceStartParams::WaveformParams {};
         auto& waveform = p.params.Get<VoiceStartParams::WaveformParams>();
-        waveform.amp = velocity_volume_modifier;
+        waveform.amp = amp;
         waveform.type = *w;
     }
 
     p.disable_vol_env = trigger_event == sample_lib::TriggerEvent::NoteOff;
     p.initial_pitch = layer.voice_controller.tune_semitones;
     p.midi_key_trigger = note;
-    p.note_num = (u7)Clamp(note.note + layer.midi_transpose, 0, 127);
+    p.note_num = note_for_samples;
     p.note_vel = note_vel_float;
     p.lfo_start_phase = 0;
     p.num_frames_before_starting = offset;
@@ -323,7 +340,7 @@ bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer, VoicePool& voice_po
     DEFER { ResetLayerAudioProcessing(layer); };
 
     if (!desired_inst) return false;
-    if (*desired_inst == layer.inst) return false;
+    if (*desired_inst == layer.audio_thread_inst) return false;
 
     // End all layer voices
     for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
@@ -332,7 +349,7 @@ bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer, VoicePool& voice_po
     layer.peak_meter.Zero();
 
     // Swap instrument
-    layer.inst = *desired_inst;
+    layer.audio_thread_inst = *desired_inst;
     UpdateLoopPointsForVoices(layer, voice_pool);
     UpdateVolumeEnvelopeOn(layer, voice_pool);
 
@@ -531,6 +548,15 @@ void ProcessLayerChanges(LayerProcessor& layer,
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::Monophonic))
         layer.monophonic = *p;
 
+    if (auto p = changes.changed_params.IntValue<u7>(layer.index, LayerParamIndex::KeyRangeLow))
+        vmst.key_range_low = *p;
+    if (auto p = changes.changed_params.IntValue<u7>(layer.index, LayerParamIndex::KeyRangeHigh))
+        vmst.key_range_high = *p;
+    if (auto p = changes.changed_params.IntValue<u7>(layer.index, LayerParamIndex::KeyRangeLowFade))
+        vmst.key_range_low_fade = *p;
+    if (auto p = changes.changed_params.IntValue<u7>(layer.index, LayerParamIndex::KeyRangeHighFade))
+        vmst.key_range_high_fade = *p;
+
     // Loop
     // =======================================================================================================
     {
@@ -609,7 +635,7 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
     if (start_fade_out)
         layer.inst_change_fade.SetAsFadeOutIfNotAlready(context.sample_rate, k_inst_change_fade_ms);
 
-    if (!buffer.size || layer.inst.tag == InstrumentType::None) {
+    if (!buffer.size || layer.audio_thread_inst.tag == InstrumentType::None) {
         if (layer.inst_change_fade.JumpMultipleSteps(num_frames) == VolumeFade::State::Silent)
             result.instrument_swapped = ChangeInstrumentIfNeededAndReset(layer, voice_pool);
 
@@ -652,3 +678,36 @@ void ResetLayerAudioProcessing(LayerProcessor& layer) {
     layer.inst_change_fade.ForceSetFullVolume();
     layer.eq_bands.Reset();
 }
+
+TEST_CASE(TestKeyRangeFade) {
+    SUBCASE("fade in") {
+        CHECK_EQ(KeyRangeFadeInAmp(0, 0, 0), 1.0f);
+
+        auto const v = KeyRangeFadeInAmp(0, 0, 1);
+        CHECK_GT(v, 0.0f);
+        CHECK_LT(v, 1.0f);
+
+        CHECK_EQ(KeyRangeFadeInAmp(-1, 0, 1), 0.0f);
+        CHECK_EQ(KeyRangeFadeInAmp(1, 0, 1), 1.0f);
+
+        for (auto const note : Range(8, 18))
+            tester.log.Debug("[{}] = {}", note, KeyRangeFadeInAmp(note, 10, 5));
+    }
+
+    SUBCASE("fade out") {
+        CHECK_EQ(KeyRangeFadeOutAmp(0, 0, 0), 1.0f);
+
+        auto const v = KeyRangeFadeOutAmp(0, 0, 1);
+        CHECK_GT(v, 0.0f);
+        CHECK_LT(v, 1.0f);
+
+        CHECK_EQ(KeyRangeFadeOutAmp(-1, 0, 1), 1.0f);
+        CHECK_EQ(KeyRangeFadeOutAmp(1, 0, 1), 0.0f);
+
+        for (auto const note : Range(0, 13))
+            tester.log.Debug("[{}] = {}", note, KeyRangeFadeOutAmp(note, 10, 5));
+    }
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterLayerProcessorTests) { REGISTER_TEST(TestKeyRangeFade); }

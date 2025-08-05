@@ -502,7 +502,8 @@ static bool InputTextFilterCharacter(unsigned int* p_char, TextInputFlags flags)
                      // on OSX seems to send private characters for special keys like arrow keys.
         return false;
 
-    if (flags.chars_decimal || flags.chars_hexadecimal || flags.chars_uppercase || flags.chars_no_blank) {
+    if (flags.chars_decimal || flags.chars_hexadecimal || flags.chars_uppercase || flags.chars_no_blank ||
+        flags.chars_note_names) {
         if (flags.chars_decimal)
             if (!(c >= '0' && c <= '9') && (c != '.') && (c != '-') && (c != '+') && (c != '*') && (c != '/'))
                 return false;
@@ -515,6 +516,12 @@ static bool InputTextFilterCharacter(unsigned int* p_char, TextInputFlags flags)
 
         if (flags.chars_no_blank)
             if (IsSpacing((char)c)) return false;
+
+        // Allow 0123456789+-#abcdefgABCDEFG
+        if (flags.chars_note_names)
+            if (!(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'g') && !(c >= 'A' && c <= 'G') && (c != '-') &&
+                (c != '+') && (c != '#'))
+                return false;
     }
 
     return true;

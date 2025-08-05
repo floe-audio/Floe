@@ -22,6 +22,12 @@ Style DefaultStyle(imgui::Context const& imgui) {
     return s;
 }
 
+Style NoteNameStyle(imgui::Context const& imgui) {
+    auto s = DefaultStyle(imgui);
+    s.midi_note_names = true;
+    return s;
+}
+
 bool Dragger(Gui* g, imgui::Id id, Rect r, int min, int max, int& value, Style const& style) {
     auto settings = imgui::DefTextInputDraggerInt();
     settings.slider_settings.flags = {.slower_with_shift = true, .default_on_modifer = true};
@@ -43,7 +49,31 @@ bool Dragger(Gui* g, imgui::Id id, Rect r, int min, int max, int& value, Style c
         imgui.graphics->AddText(result->GetTextPos(), style.text, text);
     };
     settings.text_input_settings.text_flags.centre_align = true;
-    return g->imgui.TextInputDraggerInt(settings, r, id, min, max, value);
+
+    if (!style.midi_note_names) {
+        return g->imgui.TextInputDraggerInt(settings, r, id, min, max, value);
+    } else {
+        settings.text_input_settings.text_flags.chars_decimal = false;
+        settings.text_input_settings.text_flags.chars_note_names = true;
+        auto val = (f32)value;
+        auto result = g->imgui.TextInputDraggerCustom(settings,
+                                                      r,
+                                                      id,
+                                                      NoteName(CheckedCast<u7>(value)),
+                                                      (f32)min,
+                                                      (f32)max,
+                                                      val,
+                                                      (f32)0);
+        if (result.new_string_value) {
+            if (auto const midi_note = MidiNoteFromName(*result.new_string_value)) {
+                val = (f32)midi_note.Value();
+                result.value_changed = true;
+            }
+        }
+
+        if (result.value_changed) value = (int)val;
+        return result.value_changed;
+    }
 }
 
 bool Dragger(Gui* g, DescribedParamValue const& param, Rect r, Style const& style) {

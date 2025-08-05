@@ -328,8 +328,7 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
     };
 
     auto const randomise_pitch = [&](DescribedParamValue const& p) {
-        auto const r = int_gen.GetRandomInRange(seed, 1, 10);
-        switch (r) {
+        switch (int_gen.GetRandomInRange(seed, 1, 10)) {
             case 1:
             case 2:
             case 3:
@@ -485,6 +484,11 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
             set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::VelocityMapping), 0.0f);
             set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::Mute), 0.0f);
             set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::Solo), 0.0f);
+
+            set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::KeyRangeLow), 0);
+            set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::KeyRangeHigh), 127);
+            set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::KeyRangeLowFade), 0);
+            set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::KeyRangeHighFade), 0);
         }
     }
 
