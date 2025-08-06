@@ -269,6 +269,11 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
 
     StateSnapshot state {};
     state.param_values = processor.main_params.values;
+    state.macro_destinations = processor.main_macro_destinations;
+    for (auto const layer_index : Range(k_num_layers)) {
+        state.velocity_curve_points[layer_index] =
+            processor.layer_processors[layer_index].velocity_curve_map.points;
+    }
 
     auto const set_param = [&](DescribedParamValue const& p, f32 v) {
         if (IsAnyOf(p.info.value_type, Array {ParamValueType::Int, ParamValueType::Bool})) v = Round(v);
