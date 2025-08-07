@@ -36,8 +36,12 @@ static void DrawCurvedSegment(graphics::DrawList& graphics,
     }
 }
 
-static bool
-DoCurveMap(Gui* g, CurveMap& curve_map, f32x2 rect_min, f32x2 rect_max, Optional<f32> velocity_marker) {
+static bool DoCurveMap(Gui* g,
+                       CurveMap& curve_map,
+                       f32x2 rect_min,
+                       f32x2 rect_max,
+                       Optional<f32> velocity_marker,
+                       String additional_tooltip) {
     auto& imgui = g->imgui;
     float width = rect_max.x - rect_min.x;
     float height = rect_max.y - rect_min.y;
@@ -116,7 +120,11 @@ DoCurveMap(Gui* g, CurveMap& curve_map, f32x2 rect_min, f32x2 rect_max, Optional
             auto const imgui_id = imgui.GetID("unused space");
             imgui.SetHot(region_rect, imgui_id);
 
-            if (imgui.IsHot(imgui_id)) Tooltip(g, imgui_id, region_rect, "Double-click to add point.", true);
+            Tooltip(g,
+                    imgui_id,
+                    region_rect,
+                    fmt::Format(g->scratch_arena, "Double-click to add point.\n\n{}", additional_tooltip),
+                    true);
 
             // Double-click to add point
             {
@@ -221,7 +229,9 @@ DoCurveMap(Gui* g, CurveMap& curve_map, f32x2 rect_min, f32x2 rect_max, Optional
                     Tooltip(g,
                             curve_handle_imgui_id,
                             curve_handle_rect,
-                            "Drag to change curve. Double-click to add point.",
+                            fmt::Format(g->scratch_arena,
+                                        "Drag to change curve. Double-click to add point.\n\n{}",
+                                        additional_tooltip),
                             true);
 
                 // Double-click to add point
@@ -332,7 +342,13 @@ DoCurveMap(Gui* g, CurveMap& curve_map, f32x2 rect_min, f32x2 rect_max, Optional
                 }
             }
             if (imgui.IsHot(imgui_id))
-                Tooltip(g, imgui_id, grabber_rect, "Drag to move point. Double-click to remove point.", true);
+                Tooltip(g,
+                        imgui_id,
+                        grabber_rect,
+                        fmt::Format(g->scratch_arena,
+                                    "Drag to move point. Double-click to remove point.\n\n{}",
+                                    additional_tooltip),
+                        true);
 
             // Right-click menu
             {

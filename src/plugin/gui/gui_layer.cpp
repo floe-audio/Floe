@@ -1386,16 +1386,21 @@ void Draw(Gui* g,
                 auto const velograph_r =
                     g->imgui.GetRegisteredAndConvertedRect(layout::GetRect(g->layout, c.play.velo_graph));
 
-                if (DoCurveMap(g, layer->velocity_curve_map, velograph_r.Min(), velograph_r.Max(), ({
-                                   Optional<f32> velocity {};
-                                   if (g->engine.processor.voice_pool.num_active_voices.Load(
-                                           LoadMemoryOrder::Relaxed)) {
-                                       velocity =
-                                           g->engine.processor.voice_pool.last_velocity[layer->index].Load(
-                                               LoadMemoryOrder::Relaxed);
-                                   }
-                                   velocity;
-                               })))
+                if (DoCurveMap(
+                        g,
+                        layer->velocity_curve_map,
+                        velograph_r.Min(),
+                        velograph_r.Max(),
+                        ({
+                            Optional<f32> velocity {};
+                            if (g->engine.processor.voice_pool.num_active_voices.Load(
+                                    LoadMemoryOrder::Relaxed)) {
+                                velocity = g->engine.processor.voice_pool.last_velocity[layer->index].Load(
+                                    LoadMemoryOrder::Relaxed);
+                            }
+                            velocity;
+                        }),
+                        "Configures how MIDI velocity maps to volume. X-axis: velocity, Y-axis: volume. Adjust the curve to customize this relationship."))
                     layer->velocity_curve_map.RenderCurveToLookupTable();
             }
 
