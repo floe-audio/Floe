@@ -50,6 +50,7 @@ struct AudioProcessingContext {
     f32 sample_rate = 44100;
     u32 process_block_size_max = 512;
     f64 tempo = 0;
+    Array<f32, 16> pitchwheel_position = {}; // -1.0 to 1.0
     MidiNoteState midi_note_state;
     f32 one_pole_smoothing_cutoff_0_2ms = 1;
     f32 one_pole_smoothing_cutoff_1ms = 1;
@@ -68,5 +69,6 @@ struct NoteEvent {
 struct ProcessBlockChanges {
     ChangedParams changed_params;
     bool tempo_changed;
+    Bitset<16> pitchwheel_changed;
     DynamicArrayBounded<NoteEvent, 100> note_events;
 };

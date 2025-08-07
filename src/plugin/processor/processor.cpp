@@ -360,6 +360,34 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
         }
     };
 
+    auto const randomise_pitch_bend_range = [&](DescribedParamValue const& p) {
+        switch (int_gen.GetRandomInRange(seed, 1, 10)) {
+            case 1:
+            case 2:
+            case 3:
+            case 4:
+            case 5: {
+                set_param(p, 0);
+                break;
+            }
+            case 6:
+            case 7:
+            case 8:
+            case 9: {
+                f32 const potential_vals[] = {1, 2, 6, 12, 4, 24, 12, 12, 48, 36};
+                set_param(
+                    p,
+                    potential_vals[int_gen.GetRandomInRange(seed, 0, (int)ArraySize(potential_vals) - 1)]);
+                break;
+            }
+            case 10: {
+                randomise_near_to_default(p);
+                break;
+            }
+            default: PanicIfReached();
+        }
+    };
+
     auto const randomise_pan = [&](DescribedParamValue const& p) {
         if (int_gen.GetRandomInRange(seed, 1, 10) < 4)
             set_param(p, 0);
@@ -433,6 +461,8 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
             randomise_pan(processor.main_params.DescribedValue(l.index, LayerParamIndex::Pan));
             randomise_detune(processor.main_params.DescribedValue(l.index, LayerParamIndex::TuneCents));
             randomise_pitch(processor.main_params.DescribedValue(l.index, LayerParamIndex::TuneSemitone));
+            randomise_pitch_bend_range(
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::PitchBendRange));
             set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::VolEnvOn), 1.0f);
 
             randomise_near_to_default(
@@ -540,7 +570,8 @@ static ChangedParams UpdateMacroAdjustedValues(Parameters& macro_adjusted_params
 }
 
 static void ProcessorHandleChanges(AudioProcessor& processor, ProcessBlockChanges changes) {
-    if (changes.changed_params.changed.NumSet() == 0 && !changes.tempo_changed && !changes.note_events.size)
+    if (!changes.changed_params.changed.AnyValuesSet() && !changes.tempo_changed &&
+        !changes.note_events.size && !changes.pitchwheel_changed.AnyValuesSet())
         return;
 
     ZoneScoped;
@@ -898,6 +929,8 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
 
     processor.audio_processing_context.process_block_size_max = args.max_block_size;
     processor.audio_processing_context.sample_rate = (f32)args.sample_rate;
+    processor.audio_processing_context.pitchwheel_position = {};
+    processor.audio_processing_context.midi_note_state = {};
 
     processor.audio_processing_context.one_pole_smoothing_cutoff_0_2ms =
         OnePoleLowPassFilter<f32>::MsToCutoff(0.2f, (f32)args.sample_rate);
@@ -1073,21 +1106,10 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                     break;
                 }
                 case MidiMessageType::PitchWheel: {
-                    // NOTE: not supported at the moment
-                    if constexpr (false) {
-                        constexpr f32 k_pitch_bend_semitones = 48;
-                        auto const channel = message.ChannelNum();
-                        auto const pitch_pos = (message.PitchBend() / 16383.0f - 0.5f) * 2.0f;
-
-                        for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
-                            if (v.midi_key_trigger.channel == channel) {
-                                SetVoicePitch(v,
-                                              v.controller->tune_semitones +
-                                                  (pitch_pos * k_pitch_bend_semitones),
-                                              processor.audio_processing_context.sample_rate);
-                            }
-                        }
-                    }
+                    auto const channel = message.ChannelNum();
+                    auto const pitch_pos = (message.PitchBend() / 16383.0f - 0.5f) * 2.0f;
+                    processor.audio_processing_context.pitchwheel_position[channel] = pitch_pos;
+                    changes.pitchwheel_changed.Set(channel);
                     break;
                 }
                 case MidiMessageType::ControlChange: {
@@ -1742,9 +1764,11 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 static void Reset(AudioProcessor& processor) {
     FlushEventsForAudioThread(processor);
     processor.voice_pool.EndAllVoicesInstantly();
+    processor.audio_processing_context.pitchwheel_position = {};
     ProcessBlockChanges changes {
         .changed_params = {processor.audio_params, Bitset<k_num_parameters>()},
     };
+    changes.pitchwheel_changed.SetAll();
     ResetProcessor(processor, changes);
 }
 

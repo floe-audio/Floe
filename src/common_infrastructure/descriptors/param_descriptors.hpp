@@ -54,6 +54,7 @@ enum class LayerParamIndex : u16 {
     Keytrack,
     Monophonic,
     MidiTranspose,
+    PitchBendRange,
     KeyRangeLow,
     KeyRangeHigh,
     KeyRangeLowFade,
@@ -2155,6 +2156,14 @@ consteval auto CreateParams() {
             .name = "Key Range High Fade"_s,
             .gui_label = "Key Range High Fade"_s,
             .tooltip = "The length of the volume fade-out at the high end of the key range"_s,
+        };
+        lp(PitchBendRange) = Args {
+            .id = id(region, 54), // never change
+            .value_config = val_config_helpers::Int({.range = {0, 60}, .default_val = 2}),
+            .modules = {layer_module, ParameterModule::Playback},
+            .name = "Pitch Bend Range"_s,
+            .gui_label = "Pitch Bend Range"_s,
+            .tooltip = "The pitch range in semitones of the MIDI pitch wheel"_s,
         };
     }
 

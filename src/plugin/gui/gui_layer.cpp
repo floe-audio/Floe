@@ -784,6 +784,8 @@ void Layout(Gui* g,
 
                 layout_item(c.play.transpose, c.play.transpose_name, midi_item_height);
 
+                layout_item(c.play.pitchbend, c.play.pitchbend_name, midi_item_height);
+
                 auto const button_options = layout::ItemOptions {
                     .parent = page_container,
                     .size = {layout::k_fill_parent, midi_item_height},
@@ -1315,6 +1317,16 @@ void Draw(Gui* g,
                           params.DescribedValue(layer->index, LayerParamIndex::MidiTranspose),
                           c.play.transpose_name,
                           labels::Parameter(g->imgui));
+
+            draggers::Dragger(g,
+                              params.DescribedValue(layer->index, LayerParamIndex::PitchBendRange),
+                              c.play.pitchbend,
+                              draggers::DefaultStyle(g->imgui));
+            labels::Label(g,
+                          params.DescribedValue(layer->index, LayerParamIndex::PitchBendRange),
+                          c.play.pitchbend_name,
+                          labels::Parameter(g->imgui));
+
             {
                 auto const label_id = g->imgui.GetID("transp");
                 auto const label_r = layout::GetRect(g->layout, c.play.transpose_name);
@@ -1538,6 +1550,7 @@ void Draw(Gui* g,
                     case LayerParamIndex::Keytrack:
                     case LayerParamIndex::Monophonic:
                     case LayerParamIndex::MidiTranspose:
+                    case LayerParamIndex::PitchBendRange:
                     case LayerParamIndex::KeyRangeLow:
                     case LayerParamIndex::KeyRangeHigh:
                     case LayerParamIndex::KeyRangeLowFade:

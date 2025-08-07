@@ -384,11 +384,27 @@ void ProcessLayerChanges(LayerProcessor& layer,
             layer.tune_cents = *p;
             set_tune = true;
         }
+        if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::PitchBendRange)) {
+            layer.pitch_bend_range_semitone = *p;
+            set_tune = true;
+        }
+
+        if (changes.pitchwheel_changed.AnyValuesSet()) {
+            for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
+                if (changes.pitchwheel_changed.Get(v.midi_key_trigger.channel)) {
+                    set_tune = true;
+                    break;
+                }
+        }
+
         if (set_tune) {
             auto const tune = layer.tune_semitone + (layer.tune_cents / 100.0f);
             layer.voice_controller.tune_semitones = tune;
             for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
-                SetVoicePitch(v, vmst.tune_semitones, sample_rate);
+                SetVoicePitch(v,
+                              vmst.tune_semitones + (context.pitchwheel_position[v.midi_key_trigger.channel] *
+                                                     layer.pitch_bend_range_semitone),
+                              sample_rate);
         }
     }
 

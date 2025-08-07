@@ -79,6 +79,8 @@ struct LayerLayoutTempIDs {
         struct {
             layout::Id transpose;
             layout::Id transpose_name;
+            layout::Id pitchbend;
+            layout::Id pitchbend_name;
             layout::Id keytrack;
             layout::Id mono;
             layout::Id velo_name;

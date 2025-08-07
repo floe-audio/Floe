@@ -292,6 +292,7 @@ struct LayerProcessor {
     int midi_transpose = 0;
     f32 tune_semitone = 0;
     f32 tune_cents = 0;
+    f32 pitch_bend_range_semitone = 0;
     f32 sample_offset_01 = 0;
 
     bool monophonic {};
