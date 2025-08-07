@@ -251,7 +251,9 @@ static void DoResizeCorner(Gui* g) {
 
     auto const id = imgui.GetID("resize_corner");
 
-    g->imgui.ButtonBehavior(r, id, {.left_mouse = true, .triggers_on_mouse_down = true});
+    static f32x2 size_at_start {};
+    if (g->imgui.ButtonBehavior(r, id, {.left_mouse = true, .triggers_on_mouse_down = true}))
+        size_at_start = g->frame_input.window_size.ToFloat2();
 
     if (g->imgui.IsHotOrActive(id)) g->imgui.frame_output.cursor_type = CursorType::UpLeftDownRight;
 
@@ -259,10 +261,14 @@ static void DoResizeCorner(Gui* g) {
         g->imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::Animate);
 
         auto const cursor = g->imgui.frame_input.cursor_pos;
-        UiSize32 const ui_size = {
-            (u32)Max(cursor.x, 0.0f),
-            (u32)Max(cursor.y, 0.0f),
+        auto const delta = cursor - g->frame_input.Mouse(MouseButton::Left).last_press.point;
+        auto const desired_new_size = Max(size_at_start + delta, f32x2(0.0f));
+
+        UiSize32 const ui_size {
+            (u32)desired_new_size.x,
+            (u32)desired_new_size.y,
         };
+
         if (auto const new_size = NearestAspectRatioSizeInsideSize32(ui_size, k_gui_aspect_ratio))
             prefs::SetValue(g->prefs, desc, (s64)new_size->width);
     }
