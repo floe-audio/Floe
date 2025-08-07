@@ -5,9 +5,11 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Presets
 
-Floe can save its current state as a preset file, which can be loaded later. It's the same file type regardless of what sample libraries you're using; a `.floe-preset` file. When you load a preset, Floe will check that you have the required libraries installed, and if not, it will show an error.
+Floe can save its current state as a preset file, which can be loaded later. It's the same file type regardless of what sample libraries you're using (`.floe-preset` file). 
 
-Presets are portable - you can copy them to other computers or operating systems. You can rearrange them into folders and rename them as you like.
+When you load a preset, Floe will check that you have the required libraries installed, and if not, it will show an error.
+
+Presets are portable - you can copy them to other computers or operating systems. Using your file explorer (Finder, File Explorer, etc.), you can rearrange presets into folders and rename them as you like. Floe automatically detects any changes in your preset folders updates its listings accordingly.
 
 ## Preset browser
 

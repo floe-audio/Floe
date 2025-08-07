@@ -30,6 +30,27 @@ Floe sets some default MIDI CC mappings for you. You can turn this off in the pr
 
 ## Sustain Pedal
 
-Floe can be controlled with a sustain pedal. A sustain pedal is a special kind of MIDI controller that sends MIDI CC-64 messages. These messages represent an on or off state.
+Floe supports sustain pedal control via MIDI CC-64. When the sustain pedal is pressed, currently held notes will continue playing even after key release, until the pedal is released. This mimics standard piano sustain pedal behavior.
 
-When Floe receives a sustain pedal ON message, all notes that are currently held will sustain until a corresponding sustain pedal OFF message is received. The notes will persist even if the notes are released from the keyboard. Only releasing the sustain pedal will trigger them to stop. This is a common behaviour for synths and samplers alike. It roughly simulates the behaviour of a real piano sustain pedal.
+## Pitch Wheel
+
+Floe supports the MIDI pitch wheel. The extend of the pitch bend can be configured individually for each layer by using the pitch bend range parameter on the Play tab of each layer. This per-layer configuration allows for interesting sound design possibilities. A pitch bend range of 0 will disable pitch bend for that layer.
+
+## Velocity
+
+Each layer has a customizable velocity-to-volume curve that maps how hard you play (MIDI velocity) to the layer's volume. This serves two main purposes: configuring the volume response that works best for your keyboard, and creating creative sound design opportunities when different curves are used across the 3 layers.
+
+![Velocity curve editor](../images/vel-vol-curve.png)
+
+### Editing velocity curves
+
+Find the velocity curve editor on the **Play tab** for each layer. The curve shows velocity input (horizontal) mapped to volume output (vertical).
+
+- **Double-click** anywhere on the curve to add a control point (up to 6 per layer)
+- **Drag control points** to move them
+- **Drag between points** to adjust curve shape
+- **Double-click a point** to remove it
+- **Right-click** for menu options
+
+![Curve shaping tools](../images/vel-vol-curve-shape.png)
+![Control point editing](../images/vel-vol-curve-points.png)

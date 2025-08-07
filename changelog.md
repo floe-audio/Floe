@@ -13,7 +13,11 @@ For instance: 0.0.1. Don't change the headings.
   - Bottom GUI panel now has tabs: Play and Macros
   - Macros parameters allow for controlling multiple other parameters at once with a single knob and with a custom name
   - On the Macros tab, you can add and remove the parameters that are linked to each macro and control the strength of the link
+- Add pitch wheel support: configure the bend range using the 'Pitch Bend Range' parameter on each layer.
+- Add key range controls for splitting the keyboard into zones for each layer. These ranges are shown above the keyboard. They are controlled using new parameters on the Play tab of each layer.
 - Fix velocity curves being clear when randomising parameters
+- Add more information to the velocity curve tooltips
+- New documentation pages for velocity curves
 
 ## 0.11.4-beta
 - Fix window size jumping if the width was exactly 1000 pixels
