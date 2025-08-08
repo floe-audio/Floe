@@ -977,8 +977,6 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                                   ChangedParams& changes_for_main_thread) {
     // IMPROVE: support per-param modulation and automation - each param can opt-in individually.
 
-    Bitset<k_num_parameters> changed_params {};
-
     switch (event.type) {
         case CLAP_EVENT_NOTE_ON: {
             auto const note = (clap_event_note const&)event;
@@ -1156,7 +1154,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                             auto const val = info.linear_range.min + (info.linear_range.Delta() * percent);
 
                             processor.audio_params.values[param_index] = val;
-                            changed_params.Set(param_index);
+                            changes.changed_params.changed.Set(param_index);
                             changes_for_main_thread.changed.Set(param_index);
 
                             clap_event_param_value const value_event {

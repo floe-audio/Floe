@@ -161,16 +161,26 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                                 },
                             });
 
-    auto preset_box_left = DoBox(box_system,
-                                 {
-                                     .parent = preset_box,
-                                     .layout {
-                                         .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                         .contents_direction = layout::Direction::Column,
-                                     },
-                                     .tooltip = "Open presets window"_s,
-                                     .behaviour = Behaviour::Button,
-                                 });
+    auto preset_box_left = DoBox(
+        box_system,
+        {
+            .parent = preset_box,
+            .layout {
+                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                .contents_direction = layout::Direction::Column,
+            },
+            .tooltip = FunctionRef<String()> {[&arena = box_system.arena, &engine = g->engine]() -> String {
+                DynamicArray<char> buffer {arena};
+                dyn::Assign(buffer, "Open presets window"_s);
+                fmt::Append(buffer, "\nCurrent preset: {}", engine.last_snapshot.name_or_path.Name());
+                if (engine.last_snapshot.state.metadata.description.size) {
+                    dyn::AppendSpan(buffer, "\n\n"_s);
+                    dyn::AppendSpan(buffer, engine.last_snapshot.state.metadata.description);
+                }
+                return buffer.ToOwnedSpan();
+            }},
+            .behaviour = Behaviour::Button,
+        });
 
     if (preset_box_left.button_fired) {
         g->preset_picker_state.common_state.open = true;

@@ -82,28 +82,34 @@ static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
             g->imgui.WindowRectToScreenRect(r);
     }
 
-    Tooltip(g, imgui_id, r, ({
-                String s {};
-                switch (layer_obj->instrument_id.tag) {
-                    case InstrumentType::None: s = "Select the instrument for this layer"_s; break;
-                    case InstrumentType::WaveformSynth:
-                        s = fmt::Format(g->scratch_arena,
-                                        "Instrument: {}\nChange or remove the instrument for this layer",
-                                        inst_name);
-                        break;
-                    case InstrumentType::Sampler: {
-                        auto const& sample = layer_obj->instrument_id.Get<sample_lib::InstrumentId>();
-                        s = fmt::Format(
-                            g->scratch_arena,
-                            "Instrument: {} from {} by {}\nChange or remove the instrument for this layer",
-                            inst_name,
-                            sample.library.name,
-                            sample.library.author);
-                        break;
-                    }
+    Tooltip(
+        g,
+        imgui_id,
+        r,
+        ({
+            String s {};
+            switch (layer_obj->instrument.tag) {
+                case InstrumentType::None: s = "Select the instrument for this layer"_s; break;
+                case InstrumentType::WaveformSynth:
+                    s = fmt::Format(g->scratch_arena,
+                                    "Current instrument: {}\nChange or remove the instrument for this layer",
+                                    inst_name);
+                    break;
+                case InstrumentType::Sampler: {
+                    auto const& sample = layer_obj->instrument.GetFromTag<InstrumentType::Sampler>();
+                    s = fmt::Format(
+                        g->scratch_arena,
+                        "Change or remove the instrument for this layer\n\nCurrent instrument: {} from {} by {}.{}{}",
+                        inst_name,
+                        sample->instrument.library.name,
+                        sample->instrument.library.author,
+                        sample->instrument.description ? "\n\n" : "",
+                        sample->instrument.description ? sample->instrument.description : "");
+                    break;
                 }
-                s;
-            }));
+            }
+            s;
+        }));
 }
 
 static void DoLoopModeSelectorGui(Gui* g, Rect r, LayerProcessor& layer) {
