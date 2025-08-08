@@ -18,7 +18,7 @@ Configure key ranges on each layer's **Play tab** using the low and high key con
 
 ## Key range display
 
-The key range display appears as a bar above the keyboard at the bottom of the interface. It shows which keys trigger each layer, with colors corresponding to each layer. The display is hidden when all layers use the full keyboard range (C-2 to G8).
+The key range display appears as a bar above the keyboard at the bottom of the interface. It shows which keys trigger each layer, with colours corresponding to each layer. The display is hidden when all layers use the full keyboard range (C-2 to G8).
 
 ![Keyboard octave scrolling](../images/keyboard-octave-scroll.png)
 
@@ -48,7 +48,7 @@ The key range display appears as a bar above the keyboard at the bottom of the i
 ![Named key ranges](../images/key-range-named-range.png)
 <div style="margin-top: 60px;"></div>
 
-**Fade visualization**: Gradients show fade-in and fade-out areas, with more transparency indicating lower volume.
+**Fade visualisation**: Gradients show fade-in and fade-out areas, with more transparency indicating lower volume.
 
 ![Key range fades](../images/key-range-fades.png)
 <div style="margin-top: 60px;"></div>

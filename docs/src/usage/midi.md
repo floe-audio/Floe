@@ -30,7 +30,7 @@ Floe sets some default MIDI CC mappings for you. You can turn this off in the pr
 
 ## Sustain Pedal
 
-Floe supports sustain pedal control via MIDI CC-64. When the sustain pedal is pressed, currently held notes will continue playing even after key release, until the pedal is released. This mimics standard piano sustain pedal behavior.
+Floe supports sustain pedal control via MIDI CC-64. When the sustain pedal is pressed, currently held notes will continue playing even after key release, until the pedal is released. This mimics standard piano sustain pedal behaviour.
 
 ## Pitch Wheel
 
@@ -38,7 +38,7 @@ Floe supports the MIDI pitch wheel. The extend of the pitch bend can be configur
 
 ## Velocity
 
-Each layer has a customizable velocity-to-volume curve that maps how hard you play (MIDI velocity) to the layer's volume. This serves two main purposes: configuring the volume response that works best for your keyboard, and creating creative sound design opportunities when different curves are used across the 3 layers.
+Each layer has a customisable velocity-to-volume curve that maps how hard you play (MIDI velocity) to the layer's volume. This serves two main purposes: configuring the volume response that works best for your keyboard, and creating creative sound design opportunities when different curves are used across the 3 layers.
 
 ![Velocity curve editor](../images/vel-vol-curve.png)
 

@@ -47,6 +47,7 @@ Celtique
 Changelog
 CodeFactor
 CrashingWaves
+Crossfades
 Ctrl
 Cubase
 DAW
@@ -60,6 +61,7 @@ FX
 FileCopyrightText
 FreePats
 FrozenPlain
+G8
 GPL
 GPLv3
 GUIs
@@ -147,6 +149,7 @@ copyable
 cpp
 cppcheck
 crossfade
+customisable
 d1
 d4
 decrementing
@@ -227,6 +230,7 @@ roadmap
 runtime
 s3a2
 santur
+scrollable
 shouldn
 signup
 spacebar
@@ -244,6 +248,7 @@ tooltip
 tooltips
 ub
 unchecking
+unlink
 untagged
 utf8
 utils
