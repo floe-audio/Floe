@@ -1034,13 +1034,13 @@ ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& con
                 }
             }
 
-            auto const layer_index = (usize)v.controller->layer_index;
+            auto const layer_index = v.controller->layer_index;
             if (!layer_buffers[layer_index].size) {
                 layer_buffers[layer_index] = pool.buffer_pool[v.index];
             } else {
                 SimdAddAlignedBuffer(layer_buffers[layer_index].data,
                                      pool.buffer_pool[v.index].data,
-                                     (usize)num_frames * 2);
+                                     num_frames * 2);
             }
         } else {
             pool.voice_waveform_markers_for_gui.Write()[v.index] = {};
