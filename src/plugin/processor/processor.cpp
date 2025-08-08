@@ -1477,6 +1477,9 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                 break;
             }
             case EventForAudioThreadType::RemoveAllMacroDestinations: {
+                for (auto const& macro : processor.audio_macro_destinations)
+                    for (auto const& dest : macro)
+                        changes.changed_params.changed.Set(ToInt(dest.param_index));
                 processor.audio_macro_destinations = {};
                 break;
             }
