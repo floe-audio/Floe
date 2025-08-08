@@ -14,11 +14,16 @@ struct BitCrushProcessor {
         return i;
     }
 
-    f32x2 BitCrush(f32x2 input, f32 sample_rate, int bit_depth, int bit_rate) {
-        auto const resolution = IntegerPowerBase2(bit_depth) - 1;
-        auto const step = (int)(sample_rate / (f32)bit_rate);
+    f32x2 BitCrush(f32x2 input, f32 sample_rate, s32 bit_depth, s32 bit_rate) {
+        ASSERT_HOT(sample_rate > 0.0f);
+        ASSERT_HOT(bit_depth >= 1);
+        ASSERT_HOT(bit_depth <= 32);
+        ASSERT_HOT(bit_rate >= 1);
 
-        if (pos % step == 0) {
+        auto const resolution = IntegerPowerBase2(bit_depth) - 1;
+        auto const step = (s32)(sample_rate / (f32)bit_rate);
+
+        if (step > 0 && pos % step == 0) {
             if (bit_depth < 32)
                 held_sample = Round((input + 1.0f) * (f32)resolution) / (f32)resolution - 1.0f;
             else
@@ -32,7 +37,7 @@ struct BitCrushProcessor {
         return held_sample;
     }
 
-    int pos = 0;
+    s32 pos = 0;
     f32x2 held_sample = 0;
 };
 
@@ -42,9 +47,11 @@ class BitCrush final : public Effect {
 
   private:
     void ProcessChangesInternal(ProcessBlockChanges const& changes, AudioProcessingContext const&) override {
-        if (auto p = changes.changed_params.IntValue<int>(ParamIndex::BitCrushBits)) m_bit_depth = *p;
-        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::BitCrushBitRate))
-            m_bit_rate = (int)(*p + 0.5f);
+        if (auto p = changes.changed_params.IntValue<s32>(ParamIndex::BitCrushBits)) m_bit_depth = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::BitCrushBitRate)) {
+            ASSERT_HOT(*p >= 1.0f && *p <= 1000000.0f);
+            m_bit_rate = (s32)(*p + 0.5f);
+        }
         if (auto p = changes.changed_params.ProjectedValue(ParamIndex::BitCrushWet)) m_wet_dry.SetWet(*p);
         if (auto p = changes.changed_params.ProjectedValue(ParamIndex::BitCrushDry)) m_wet_dry.SetDry(*p);
     }
@@ -63,7 +70,7 @@ class BitCrush final : public Effect {
 
     void ResetInternal() override { m_wet_dry.Reset(); }
 
-    int m_bit_depth, m_bit_rate;
+    s32 m_bit_depth {}, m_bit_rate {};
     BitCrushProcessor m_bit_crusher;
     EffectWetDryHelper m_wet_dry;
 };
