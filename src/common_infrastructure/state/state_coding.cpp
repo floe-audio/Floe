@@ -497,101 +497,134 @@ enum class StateVersion : u16 {
     Latest = LatestPlusOne - 1,
 };
 
-static void
-AdaptPreAddedLayerVelocityCurvesParams(StateSnapshot& state, StateVersion version, StateSource source) {
+static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSource source) {
+    static_assert(k_num_parameters == 225,
+                  "You have changed the number of parameters. You must now bump the "
+                  "state version number and handle setting any new parameters to "
+                  "backwards-compatible states. In other words, these new parameters "
+                  "should be deactivated when loading an old preset so that the old "
+                  "preset does not sound different. After that's done, change this "
+                  "static_assert to match the new number of parameters.");
+
     // We don't need to adapt parameters if the state is already aware of the new change.
-    if (version >= StateVersion::AddedLayerVelocityCurves) return;
+    if (version < StateVersion::AddedLayerVelocityCurves) {
+        state.velocity_curve_points = {};
 
-    // We don't want to adapt parameters from the DAW because there might be automation on them.
-    if (source == StateSource::Daw) {
+        // We don't want to adapt parameters from the DAW because there might be automation on them.
+        if (source == StateSource::Daw) {
+            for (auto const layer_index : Range(k_num_layers)) {
+                dyn::AssignAssumingAlreadyEmpty(state.velocity_curve_points[layer_index],
+                                                Array {
+                                                    CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                                    CurveMap::Point {1.0f, 1.0f, 0.0f},
+                                                });
+            }
+            return;
+        }
+
+        // Adapt LayerParamIndex::VelocityMapping.
         for (auto const layer_index : Range(k_num_layers)) {
-            dyn::AssignAssumingAlreadyEmpty(state.velocity_curve_points[layer_index],
-                                            Array {
-                                                CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                            });
+            auto& val = state.LinearParam(
+                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::VelocityMapping));
+            auto const velocity_mapping_mode = (param_values::VelocityMappingMode)Round(val);
+
+            // We don't use this param anymore.
+            val = (f32)param_values::VelocityMappingMode::None;
+
+            auto& points = state.velocity_curve_points[layer_index];
+            switch (velocity_mapping_mode) {
+                case param_values::VelocityMappingMode::None:
+                    // Flat at max volume.
+                    dyn::AssignAssumingAlreadyEmpty(points,
+                                                    Array {
+                                                        CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                                        CurveMap::Point {1.0f, 1.0f, 0.0f},
+                                                    });
+                    break;
+                case param_values::VelocityMappingMode::TopToBottom:
+                    // Linear
+                    dyn::AssignAssumingAlreadyEmpty(points,
+                                                    Array {
+                                                        CurveMap::Point {0.0f, 0.0f, 0.0f},
+                                                        CurveMap::Point {1.0f, 1.0f, 0.0f},
+                                                    });
+                    break;
+                case param_values::VelocityMappingMode::BottomToTop:
+                    // Inverse linear
+                    dyn::AssignAssumingAlreadyEmpty(points,
+                                                    Array {
+                                                        CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                                        CurveMap::Point {1.0f, 0.0f, 0.0f},
+                                                    });
+                    break;
+                case param_values::VelocityMappingMode::TopToMiddle:
+                    // Flat until middle, then linear ramp-up to end
+                    dyn::AssignAssumingAlreadyEmpty(points,
+                                                    Array {
+                                                        CurveMap::Point {0.0f, 0.0f, 0.0f},
+                                                        CurveMap::Point {0.5f, 0.0f, 0.0f},
+                                                        CurveMap::Point {1.0f, 1.0f, 0.0f},
+                                                    });
+                    break;
+                case param_values::VelocityMappingMode::MiddleOutwards:
+                    // Linear ramp-up to middle, then linear ramp-down to end
+                    dyn::AssignAssumingAlreadyEmpty(points,
+                                                    Array {
+                                                        CurveMap::Point {0.0f, 0.0f, 0.0f},
+                                                        CurveMap::Point {0.5f, 1.0f, 0.0f},
+                                                        CurveMap::Point {1.0f, 0.0f, 0.0f},
+                                                    });
+                    break;
+                case param_values::VelocityMappingMode::MiddleToBottom:
+                    // Linear ramp-down to middle, then flat to end
+                    dyn::AssignAssumingAlreadyEmpty(points,
+                                                    Array {
+                                                        CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                                        CurveMap::Point {0.5f, 0.0f, 0.0f},
+                                                        CurveMap::Point {1.0f, 0.0f, 0.0f},
+                                                    });
+                    break;
+                case param_values::VelocityMappingMode::Count: break;
+            }
         }
-        return;
+
+        // Adapt MasterVelocity.
+        {
+            auto& val = state.LinearParam(ParamIndex::MasterVelocity);
+            ASSERT(val >= 0.0f && val <= 1.0f);
+            auto const velocity_volume_strength = val;
+            val = 0.0f; // We don't use this param anymore, so set it to 0.
+
+            for (auto& points : state.velocity_curve_points) {
+                // Now, we must scale y values in a linear fashion. The stronger the velocity-volume value,
+                // the more we should bring down the y values of the points nearer to x=0.
+                for (auto& point : points)
+                    point.y = Max(point.y - (point.y * (1.0f - point.x) * velocity_volume_strength), 0.0f);
+            }
+        }
     }
 
-    // Adapt LayerParamIndex::VelocityMapping.
-    for (auto const layer_index : Range(k_num_layers)) {
-        auto& val =
-            state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::VelocityMapping));
-        auto const velocity_mapping_mode = (param_values::VelocityMappingMode)Round(val);
+    if (version < StateVersion::AddedMacroAndKeyRangeAndPitchBendParameters) {
+        // Macros did not exist.
+        state.param_values[ToInt(ParamIndex::Macro1)] = 0.0f;
+        state.param_values[ToInt(ParamIndex::Macro2)] = 0.0f;
+        state.param_values[ToInt(ParamIndex::Macro3)] = 0.0f;
+        state.param_values[ToInt(ParamIndex::Macro4)] = 0.0f;
 
-        // We don't use this param anymore.
-        val = (f32)param_values::VelocityMappingMode::None;
+        for (auto const layer_index : Range(k_num_layers)) {
+            // There used to be no control over the key range.
+            state.param_values[ToInt(
+                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::KeyRangeLow))] = 0;
+            state.param_values[ToInt(
+                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::KeyRangeHigh))] = 127;
+            state.param_values[ToInt(
+                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::KeyRangeLowFade))] = 0;
+            state.param_values[ToInt(
+                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::KeyRangeHighFade))] = 0;
 
-        auto& points = state.velocity_curve_points[layer_index];
-        switch (velocity_mapping_mode) {
-            case param_values::VelocityMappingMode::None:
-                // Flat at max volume.
-                dyn::AssignAssumingAlreadyEmpty(points,
-                                                Array {
-                                                    CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                    CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                });
-                break;
-            case param_values::VelocityMappingMode::TopToBottom:
-                // Linear
-                dyn::AssignAssumingAlreadyEmpty(points,
-                                                Array {
-                                                    CurveMap::Point {0.0f, 0.0f, 0.0f},
-                                                    CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                });
-                break;
-            case param_values::VelocityMappingMode::BottomToTop:
-                // Inverse linear
-                dyn::AssignAssumingAlreadyEmpty(points,
-                                                Array {
-                                                    CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                    CurveMap::Point {1.0f, 0.0f, 0.0f},
-                                                });
-                break;
-            case param_values::VelocityMappingMode::TopToMiddle:
-                // Flat until middle, then linear ramp-up to end
-                dyn::AssignAssumingAlreadyEmpty(points,
-                                                Array {
-                                                    CurveMap::Point {0.0f, 0.0f, 0.0f},
-                                                    CurveMap::Point {0.5f, 0.0f, 0.0f},
-                                                    CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                });
-                break;
-            case param_values::VelocityMappingMode::MiddleOutwards:
-                // Linear ramp-up to middle, then linear ramp-down to end
-                dyn::AssignAssumingAlreadyEmpty(points,
-                                                Array {
-                                                    CurveMap::Point {0.0f, 0.0f, 0.0f},
-                                                    CurveMap::Point {0.5f, 1.0f, 0.0f},
-                                                    CurveMap::Point {1.0f, 0.0f, 0.0f},
-                                                });
-                break;
-            case param_values::VelocityMappingMode::MiddleToBottom:
-                // Linear ramp-down to middle, then flat to end
-                dyn::AssignAssumingAlreadyEmpty(points,
-                                                Array {
-                                                    CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                    CurveMap::Point {0.5f, 0.0f, 0.0f},
-                                                    CurveMap::Point {1.0f, 0.0f, 0.0f},
-                                                });
-                break;
-            case param_values::VelocityMappingMode::Count: break;
-        }
-    }
-
-    // Adapt MasterVelocity.
-    {
-        auto& val = state.LinearParam(ParamIndex::MasterVelocity);
-        ASSERT(val >= 0.0f && val <= 1.0f);
-        auto const velocity_volume_strength = val;
-        val = 0.0f; // We don't use this param anymore, so set it to 0.
-
-        for (auto& points : state.velocity_curve_points) {
-            // Now, we must scale y values in a linear fashion. The stronger the velocity-volume value, the
-            // more we should bring down the y values of the points nearer to x=0.
-            for (auto& point : points)
-                point.y = Max(point.y - (point.y * (1.0f - point.x) * velocity_volume_strength), 0.0f);
+            // There used to be no pitch bend.
+            state.param_values[ToInt(
+                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::PitchBendRange))] = 0;
         }
     }
 }
@@ -1016,8 +1049,7 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
             }
         }
     }
-    if (adapt_for_latest_version)
-        AdaptPreAddedLayerVelocityCurvesParams(state, StateVersion::Initial, StateSource::PresetFile);
+    if (adapt_for_latest_version) AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
 
     return k_success;
 }
@@ -1328,38 +1360,6 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
         if (coder.IsReading()) {
             if (coder.version < StateVersion::AddedLayerVelocityCurves) state.velocity_curve_points = {};
-
-            if (coder.version < StateVersion::AddedMacroAndKeyRangeAndPitchBendParameters) {
-                // Macros did not exist.
-                state.param_values[ToInt(ParamIndex::Macro1)] = 0.0f;
-                state.param_values[ToInt(ParamIndex::Macro2)] = 0.0f;
-                state.param_values[ToInt(ParamIndex::Macro3)] = 0.0f;
-                state.param_values[ToInt(ParamIndex::Macro4)] = 0.0f;
-
-                for (auto const layer_index : Range(k_num_layers)) {
-                    // There used to be no control over the key range.
-                    state.param_values[ToInt(
-                        ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::KeyRangeLow))] = 0;
-                    state.param_values[ToInt(
-                        ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::KeyRangeHigh))] = 127;
-                    state.param_values[ToInt(
-                        ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::KeyRangeLowFade))] = 0;
-                    state.param_values[ToInt(
-                        ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::KeyRangeHighFade))] = 0;
-
-                    // There used to be no pitch bend.
-                    state.param_values[ToInt(
-                        ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::PitchBendRange))] = 0;
-                }
-            }
-
-            static_assert(k_num_parameters == 225,
-                          "You have changed the number of parameters. You must now bump the "
-                          "state version number and handle setting any new parameters to "
-                          "backwards-compatible states. In other words, these new parameters "
-                          "should be deactivated when loading an old preset so that the old "
-                          "preset does not sound different. After that's done, change this "
-                          "static_assert to match the new number of parameters.");
         }
     }
 
@@ -1499,7 +1499,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     }
 
     // =======================================================================================================
-    AdaptPreAddedLayerVelocityCurvesParams(state, coder.version, args.source);
+    AdaptNewerParams(state, coder.version, args.source);
 
     return k_success;
 }
@@ -1617,7 +1617,7 @@ TEST_CASE(TestAdaptPreAddedLayerVelocityCurvesParams) {
         // No additional mapping should occur.
         state.LinearParam(ParamIndex::MasterVelocity) = 0;
 
-        AdaptPreAddedLayerVelocityCurvesParams(state, StateVersion::Initial, StateSource::PresetFile);
+        AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
 
         // Master velocity should be set to 0.
         CHECK_APPROX_EQ(state.LinearParam(ParamIndex::MasterVelocity), 0.0f, 0.01f);
@@ -1627,7 +1627,7 @@ TEST_CASE(TestAdaptPreAddedLayerVelocityCurvesParams) {
         // No additional mapping should occur.
         state.LinearParam(ParamIndex::MasterVelocity) = 1;
 
-        AdaptPreAddedLayerVelocityCurvesParams(state, StateVersion::Initial, StateSource::PresetFile);
+        AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
 
         // Master velocity should be set to 1.
         CHECK_APPROX_EQ(state.LinearParam(ParamIndex::MasterVelocity), 0.0f, 0.01f);
