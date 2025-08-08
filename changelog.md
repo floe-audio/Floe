@@ -19,9 +19,10 @@ For instance: 0.0.1. Don't change the headings.
 - Add more information to the velocity curve tooltips
 - New documentation pages for velocity curves
 - Include instrument/preset descriptions in tooltips for open-picker buttons
-
-## 0.11.4-beta
 - Fix window size jumping if the width was exactly 1000 pixels
+- Fix jumps when first grabbing the resize corner
+- Improve smoothness of audio processing when using parameter automation; Floe's engine now processes parameter changes at a fixed interval of 32 frames.
+- Slightly improve top and bottom panel layout and colours
 
 ## 0.11.3-beta
 - Revert unintended change in intensity of Atan distortion in version 0.11-0 - unfortunately this will make presets/DAW projects (created using Floe 0.11.0-0.11.2) sound different if they used Atan distortion.
