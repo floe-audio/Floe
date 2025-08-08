@@ -42,12 +42,12 @@ Floe is currently in beta — please give it a try today.
 </p>
 
 ## Find the right sound quickly
-Floe's intuitive browsing system works across all your [Floe sample libraries](./usage/sample-libraries.md), bringing together instruments and presets through extensive **categories**, standardised **tags** (by mood, timbre, type, etc.), and **search**. The sound you need is always a few clicks away.
+Floe's intuitive browsing system works across all your Floe sample libraries, bringing together instruments and presets through extensive **categories**, standardised **tags** (by mood, timbre, type, etc.), and **search**. The sound you need is always a few clicks away.
 
 ![Picker GUI](./images/inst-picker-gui.png)
 
 ## Transform sounds
-With three distinct layers, Floe lets you blend instruments across different libraries. Transform sounds with loop and crossfade controls that bridge the gap between multisampling and synthesis. Process your sounds further with a rack of ==effects-count== built-in effects.
+With three distinct layers, Floe lets you blend instruments across different libraries. Transform sounds with loop and crossfade controls that bridge the gap between multisampling and synthesis. Process the sounds further with a rack of ==effects-count== built-in effects.
 
 ![Transform sounds GUI](./images/transform-sounds.png)
 
@@ -62,12 +62,19 @@ The list of [libraries available](./packages/available-packages.md) for Floe is 
 ## Handmade software
 Handmade and detail-focused, Floe is a professional-grade tool available to everyone. It's made by Sam Windell, who also runs a sample library development company: [FrozenPlain](https://frozenplain.com). 
 
-Anyone can make libraries for Floe and contribute to the open source project. By consolidating our efforts into improving this engine, we improve the capabilities of all of its libraries for everyone.
+Anyone can make [libraries](./usage/sample-libraries.md) for Floe and contribute to the open source project. By consolidating our efforts into improving this engine, we improve the capabilities of all of its libraries for everyone.
 
 ## Built on a solid foundation
 Built on the proven architecture of FrozenPlain's Mirage, used in professional productions for years, Floe is the next evolution, designed with careful attention to reliability and performance. We're committed to further expanding its capabilities while maintaining backwards compatibility.
 
 Already use Mirage? Read more about the [transition to Floe](./about-the-project/mirage.md).
+
+## A platform for sample library instruments
+Floe is a platform for professional sample library products with these 2 key features:
+- Ready-to-use presets (fine-tuned patches using the library's sample-based instruments)
+- Direct access to sample-based instruments with sound-shaping tools for crafting your own variations: layering, looping, envelopes, effects, LFOs, macro-parameters, and more.
+
+This makes Floe like an open **ROMpler** or **sample-based synthesizer** rather than a traditional sampler. For now, importing your own custom samples requires creating a sample library (programming required).
 
 ## About this website
 This website contains everything you need to know about Floe. It's presented in a book-like format, with chapters in the sidebar. 
