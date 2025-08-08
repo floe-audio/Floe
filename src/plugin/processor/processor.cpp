@@ -1327,6 +1327,7 @@ static void ConsumeParamEventsFromMainThread(AudioProcessor& processor,
 static void SendParamChangesToMainThread(AudioProcessor& processor, ChangedParams& changes_for_main_thread) {
     // Update the main-thread representation of the parameters if they have changed.
     if (!changes_for_main_thread.changed.AnyValuesSet()) return;
+
     DynamicArrayBounded<AudioProcessor::ChangedParam, k_num_parameters> events {};
     for (auto const param_index : Range(k_num_parameters)) {
         if (changes_for_main_thread.changed.Get(param_index)) {
@@ -1367,13 +1368,12 @@ FlushParameterEvents(AudioProcessor& processor, clap_input_events const& in, cla
     }
 }
 
-static clap_process_status
-ProcessSubBlock(AudioProcessor& processor,
-                clap_process const& process,
-                u32 frame_index,
-                u32 sub_block_size,
-                ProcessorListener::ChangeFlags& change_flags,
-                ChangedParams& changes_for_main_thread) { // Normally k_block_size_max
+static clap_process_status ProcessSubBlock(AudioProcessor& processor,
+                                           clap_process const& process,
+                                           u32 frame_index,
+                                           u32 sub_block_size,
+                                           ProcessorListener::ChangeFlags& change_flags,
+                                           ChangedParams& changes_for_main_thread) {
     clap_process_status result = CLAP_PROCESS_CONTINUE;
 
     DEFER {
@@ -1410,8 +1410,8 @@ ProcessSubBlock(AudioProcessor& processor,
     constexpr f32 k_fade_out_ms = 30;
     constexpr f32 k_fade_in_ms = 10;
 
-    auto internal_events = processor.events_for_audio_thread.PopAll();
-    Array<bool, k_num_layers> layers_changed {};
+    auto const internal_events = processor.events_for_audio_thread.PopAll();
+    Bitset<k_num_layers> layers_changed {};
     bool mark_convolution_for_fade_out = false;
 
     ConsumeParamEventsFromMainThread(processor, *process.out_events, changes);
@@ -1427,7 +1427,7 @@ ProcessSubBlock(AudioProcessor& processor,
         switch (e.tag) {
             case EventForAudioThreadType::LayerInstrumentChanged: {
                 auto const& layer_changed = e.Get<LayerInstrumentChanged>();
-                layers_changed[layer_changed.layer_index] = true;
+                layers_changed.Set(layer_changed.layer_index);
                 break;
             }
             case EventForAudioThreadType::FxOrderChanged: {
@@ -1437,8 +1437,7 @@ ProcessSubBlock(AudioProcessor& processor,
             case EventForAudioThreadType::ReloadAllAudioState: {
                 changes.changed_params.changed.SetAll();
                 new_fade_type = AudioProcessor::FadeType::OutAndRestartVoices;
-                for (auto& l : layers_changed)
-                    l = true;
+                layers_changed.SetAll();
                 break;
             }
             case EventForAudioThreadType::ConvolutionIRChanged: {
@@ -1508,7 +1507,7 @@ ProcessSubBlock(AudioProcessor& processor,
         case VolumeFade::State::Silent: {
             ResetProcessor(processor, changes);
 
-            // We have just done a hard reset on everything, any other state change are no longer valid.
+            // We have just done a hard reset on everything, any other state changes are no longer valid.
             changes.changed_params.changed.ClearAll();
 
             if (processor.whole_engine_volume_fade_type == AudioProcessor::FadeType::OutAndRestartVoices) {
@@ -1637,7 +1636,7 @@ ProcessSubBlock(AudioProcessor& processor,
                                                  processor.audio_processing_context,
                                                  processor.voice_pool,
                                                  sub_block_size,
-                                                 layers_changed[i],
+                                                 layers_changed.Get(i),
                                                  layer_buffers[i]);
 
         if (process_result.did_any_processing) {
