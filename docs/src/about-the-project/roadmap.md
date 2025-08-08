@@ -11,8 +11,9 @@ Floe is an ongoing project that will have lots of backwards-compatible updates. 
 - [x] Recreate the presets infrastructure and GUI
 - [x] Comprehensive testing of all plugin formats in all DAWs and operating systems
 - [x] Prepare a couple of Floe sample libraries ready for release
-- [ ] Ability to split layers to different ranges on the keyboard
-- [ ] Implement pitchbend
+- [x] Ability to split layers to different ranges on the keyboard
+- [x] Implement pitchbend
+- [x] Macro parameters
 
 Later down the line, we're planning to:
 - [ ] Refresh the GUI: make it more consistent and performant, and refactor the code for easier expansion

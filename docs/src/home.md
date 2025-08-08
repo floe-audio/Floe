@@ -42,7 +42,7 @@ Floe is currently in beta — please give it a try today.
 </p>
 
 ## Find the right sound quickly
-Floe's intuitive browsing system works across all your [Floe sample libraries](./usage/sample-libraries.md), bringing together instruments and presets through categories, tags, and powerful search. The sound you need is always a few clicks away.
+Floe's intuitive browsing system works across all your [Floe sample libraries](./usage/sample-libraries.md), bringing together instruments and presets through extensive **categories**, standardised **tags** (by mood, timbre, type, etc.), and **search**. The sound you need is always a few clicks away.
 
 ![Picker GUI](./images/inst-picker-gui.png)
 

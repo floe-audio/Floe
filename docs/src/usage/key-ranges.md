@@ -15,6 +15,7 @@ Configure key ranges on each layer's **Play tab** using the low and high key con
 
 **Fade controls** let you create smooth transitions at the edges of key ranges. Set the number of notes that fade in at the start or fade out at the end of each range. This is used for creating seamless overlaps between layers.
 
+For multisampled instruments in particular, consider using the **Transpose** parameter to change the pitch of the layer. This works by shifting the underlying mapping of samples so higher/lower samples are triggered as opposed to the standard pitch parameter which algorithmically re-pitches the sound.
 
 ## Key range display
 

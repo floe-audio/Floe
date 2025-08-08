@@ -18,6 +18,7 @@ For instance: 0.0.1. Don't change the headings.
 - Fix velocity curves being clear when randomising parameters
 - Add more information to the velocity curve tooltips
 - New documentation pages for velocity curves
+- Include instrument/preset descriptions in tooltips for open-picker buttons
 
 ## 0.11.4-beta
 - Fix window size jumping if the width was exactly 1000 pixels
