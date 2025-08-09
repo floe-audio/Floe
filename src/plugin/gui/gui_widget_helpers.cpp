@@ -98,16 +98,7 @@ void ParameterValuePopup(Gui* g, DescribedParamValue const& param, imgui::Id id,
 void ParameterValuePopup(Gui* g, Span<DescribedParamValue const*> params, imgui::Id id, Rect r) {
     auto& imgui = g->imgui;
 
-    bool cc_just_moved_param = false;
-    for (auto param : params) {
-        if (CcControllerMovedParamRecently(g->engine.processor, param->info.index)) {
-            cc_just_moved_param = true;
-            break;
-        }
-    }
-    if (cc_just_moved_param) imgui.WakeupAtTimedInterval(g->redraw_counter, 0.04);
-
-    if (imgui.IsActive(id) || cc_just_moved_param) {
+    if (imgui.IsActive(id)) {
         if (params.size == 1) {
             auto const str = params[0]->info.LinearValueToString(params[0]->LinearValue());
             ASSERT(str);
