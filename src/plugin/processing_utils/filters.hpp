@@ -129,9 +129,15 @@ inline f32x2 Process(StereoData& d, Coeffs const& c, f32x2 in) {
 inline f32 Process(Filter& f, f32 in) { return Process(f.data, f.coeffs, in); }
 
 static Coeffs Coefficients(Params const& p) {
+    ASSERT_HOT(p.fs > 0);
+    ASSERT_HOT(p.fc > 0);
+    ASSERT_HOT(p.q > 0);
+
     auto const type = p.type;
     auto const sample_rate = (f64)p.fs;
-    auto const frequency = Min((f64)p.fc, sample_rate / 2);
+    // The floating point operations because unstable when the frequency gets too close to the Nyquist
+    // frequency. So we back off the Nyquist a little using 0.49.
+    auto const frequency = Min((f64)p.fc, sample_rate * 0.49);
     auto const q = (f64)p.q;
     auto const db_gain = (f64)p.peak_gain;
     bool const q_is_bandwidth = p.q_is_bandwidth;
@@ -350,7 +356,7 @@ class SmoothedCoefficients {
         m_remaining_samples = 0;
         m_fade.ForceSetFullVolume();
 
-        RecalculateCoefficientsWithCurrentValues();
+        if (m_remaining_samples) RecalculateCoefficientsWithCurrentValues();
     }
 
     State Value() {
