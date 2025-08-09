@@ -59,7 +59,7 @@ The list of [libraries available](./packages/available-packages.md) for Floe is 
 
 ![Libraries list GUI](./images/expanding-libraries-list.png)
 
-## Handmade software
+## Handmade and open software
 Handmade and detail-focused, Floe is a professional-grade tool available to everyone. It's made by Sam Windell, who also runs a sample library development company: [FrozenPlain](https://frozenplain.com). 
 
 Anyone can make [libraries](./usage/sample-libraries.md) for Floe and contribute to the open source project. By consolidating our efforts into improving this engine, we improve the capabilities of all of its libraries for everyone.
@@ -71,10 +71,12 @@ Already use Mirage? Read more about the [transition to Floe](./about-the-project
 
 ## A platform for sample library instruments
 Floe is a platform for professional sample library products with these 2 key features:
-- Ready-to-use presets (fine-tuned patches using the library's sample-based instruments)
-- Direct access to sample-based instruments with sound-shaping tools for crafting your own variations: layering, looping, envelopes, effects, LFOs, macro-parameters, and more.
+1. Ready-to-use presets (fine-tuned patches made using the library's instruments)
+1. Direct access to sample-based instruments with sound-shaping tools for crafting your own variations: layering, looping, envelopes, effects, LFOs, macro-parameters, and more.
 
-This makes Floe like an open **ROMpler** or **sample-based synthesizer** rather than a traditional sampler. For now, importing your own custom samples requires creating a sample library (programming required).
+This makes Floe like a **sample-based synthesizer** or open **ROMpler** rather than a traditional sampler. For now, importing your own custom samples requires creating a sample library (programming required).
+
+Floe supports both multisampled and single-sample instruments.
 
 ## About this website
 This website contains everything you need to know about Floe. It's presented in a book-like format, with chapters in the sidebar. 

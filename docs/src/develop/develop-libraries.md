@@ -89,6 +89,8 @@ For now, we'll assume that you have a folder of audio samples and know what note
 1. At the end of the file, return the library object you just created: `return library`.
 1. Floe automatically detects whenever any library file changes and will tell you if there's any errors. If a library is correctly configured, it will instantly appear in Floe.
 
+In your Lua file you can start by just simply creating a list of `add_instrument` and `add_region` calls, filling-out the required information as you go. Only if things start getting repetitive (or you want to add more complex logic) should you reach for Lua's features such as: variables, functions, loops, and conditionals.
+
 
 ## Creating high-quality samples
 

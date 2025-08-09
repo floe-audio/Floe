@@ -18,6 +18,8 @@ _Floe also supports the legacy [Mirage](../about-the-project/mirage.md) library 
 
 Floe sample libraries use a custom, open format consisting of a folder of audio files and a file in the [Lua](https://en.wikipedia.org/wiki/Lua_(programming_language)) programming language called `floe.lua`. 
 
+The format supports both multisampled and single-sample instruments, as well as comprehensive tagging and categorisation features.
+
 Access to the audio files gives you the freedom to use a library's sounds in other software too.
 
 > Openness is a key goal of Floe sample libraries. 
