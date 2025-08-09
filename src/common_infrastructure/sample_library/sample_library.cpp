@@ -331,8 +331,34 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
     return k_success;
 }
 
+TEST_CASE(TestConvertVelocityRange) {
+    auto check = [&](s8 low_velo, s8 high_velo, Range<u16> expected_out) {
+        auto const out = MapMidiVelocityRangeToNewRange<u16>(low_velo, high_velo);
+        CHECK_EQ(out.start, expected_out.start);
+        CHECK_EQ(out.end, expected_out.end);
+    };
+
+    check(1, 127, {0, 1000});
+    check(64, 127, {500, 1000});
+    check(1, 10, {0, 79});
+    check(11, 20, {79, 159});
+    check(21, 30, {159, 238});
+    check(31, 40, {238, 317});
+    check(41, 50, {317, 396});
+    check(51, 60, {396, 476});
+    check(61, 70, {476, 555});
+    check(71, 80, {555, 634});
+    check(81, 90, {634, 714});
+    check(91, 100, {714, 793});
+    check(101, 110, {793, 872});
+    check(111, 120, {872, 951});
+    check(121, 127, {951, 1000});
+
+    return k_success;
+}
+
 } // namespace detail
 
 } // namespace sample_lib
 
-TEST_REGISTRATION(RegisterLibraryTests) {}
+TEST_REGISTRATION(RegisterLibraryTests) { REGISTER_TEST(sample_lib::detail::TestConvertVelocityRange); }

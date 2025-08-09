@@ -13,46 +13,6 @@
 
 namespace sample_lib {
 
-// Converts from inclusive MIDI-1 style velocity range, for example 1-127, to the new 0-100 exclusive range
-// (the second number is one past the last).
-static Range MapMidiVelocityRangeToNormalizedRange(s8 low_velo, s8 high_velo) {
-    auto const lo = Max((s8)1, low_velo) - 1;
-    auto const hi = high_velo - 1;
-
-    constexpr auto k_existing_steps = 126.0;
-    constexpr auto k_new_steps = 99.0;
-
-    auto const start = RoundPositiveFloat((lo / k_existing_steps) * k_new_steps);
-    auto const end = RoundPositiveFloat(Min(((hi + 1) / k_existing_steps) * k_new_steps, k_new_steps + 1));
-
-    return {(u8)start, (u8)end};
-}
-
-TEST_CASE(TestConvertVelocityRange) {
-    auto check = [&](s8 low_velo, s8 high_velo, Range expected_out) {
-        auto const out = MapMidiVelocityRangeToNormalizedRange(low_velo, high_velo);
-        REQUIRE_EQ(out.start, expected_out.start);
-        REQUIRE_EQ(out.end, expected_out.end);
-    };
-
-    check(1, 127, {0, 100});
-    check(64, 127, {50, 100});
-    check(1, 10, {0, 8});
-    check(11, 20, {8, 16});
-    check(21, 30, {16, 24});
-    check(31, 40, {24, 31});
-    check(41, 50, {31, 39});
-    check(51, 60, {39, 47});
-    check(61, 70, {47, 55});
-    check(71, 80, {55, 63});
-    check(81, 90, {63, 71});
-    check(91, 100, {71, 79});
-    check(101, 110, {79, 86});
-    check(111, 120, {86, 94});
-    check(121, 127, {94, 100});
-    return k_success;
-}
-
 static String GetString(Library const& library, mdata::StringInPool s) {
     return mdata::StringFromStringPool(library.file_format_specifics.Get<MdataSpecifics>().string_pool.data,
                                        s);
@@ -416,8 +376,9 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
                             .trigger_event = trigger_event,
                             .key_range = {CheckedCast<u8>(region_info.low_note),
                                           CheckedCast<u8>((int)region_info.high_note + 1)},
-                            .velocity_range = MapMidiVelocityRangeToNormalizedRange(region_info.low_velo,
-                                                                                    region_info.high_velo),
+                            .velocity_range =
+                                detail::MapMidiVelocityRangeToNewRange<u16>(region_info.low_velo,
+                                                                            region_info.high_velo),
                             .round_robin_index = ({
                                 Optional<u8> rr {};
                                 if (!groups_are_xfade_layers &&
@@ -439,11 +400,11 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
                     .timbre_layering =
                         {
                             .layer_range = ({
-                                Optional<Range> r {};
+                                Optional<Range<u8>> r {};
                                 if (groups_are_xfade_layers) {
                                     switch (group_info.round_robin_or_xfade_index) {
-                                        case 0: r = Range {0, 90}; break;
-                                        case 1: r = Range {10, 100}; break;
+                                        case 0: r = Range<u8> {0, 90}; break;
+                                        case 1: r = Range<u8> {10, 100}; break;
                                         default: PanicIfReached();
                                     }
                                 }
@@ -553,29 +514,29 @@ ReadMdata(Reader& reader, String filepath, ArenaAllocator& result_arena, ArenaAl
                         }
                     }
 
-                    constexpr f32 k_overlap_percent = 0.35f;
+                    constexpr f32 k_overlap_percent = 0.33f;
                     for (auto& regions : key_range_bins) {
                         if (regions.size == 1) continue;
 
                         // I don't know why this is the case, but some in-development MDATAs have this region
                         // range, let's just skip it for now because library development will transition to
                         // the Lua format anyways.
-                        if (regions[0]->trigger.key_range == Range {1, 2}) continue;
+                        if (regions[0]->trigger.key_range == Range<u8> {1, 2}) continue;
 
-                        DynamicArray<Range> new_ranges {scratch_arena};
+                        DynamicArray<Range<u16>> new_ranges {scratch_arena};
 
                         for (auto const i : ::Range(regions.size)) {
                             auto& region = regions[i];
 
-                            Range new_range {region->trigger.velocity_range.start,
-                                             region->trigger.velocity_range.end};
+                            Range<u16> new_range {region->trigger.velocity_range.start,
+                                                  region->trigger.velocity_range.end};
 
                             if (i != 0) {
                                 auto const& prev_region = regions[i - 1];
                                 if (prev_region->trigger.velocity_range.end ==
                                     region->trigger.velocity_range.start) {
                                     auto const delta =
-                                        (u8)(prev_region->trigger.velocity_range.Size() * k_overlap_percent);
+                                        (s16)(prev_region->trigger.velocity_range.Size() * k_overlap_percent);
                                     ASSERT(new_range.start > delta);
                                     new_range.start -= delta;
                                 }
@@ -586,8 +547,8 @@ ReadMdata(Reader& reader, String filepath, ArenaAllocator& result_arena, ArenaAl
                                 if (next_region->trigger.velocity_range.start ==
                                     region->trigger.velocity_range.end) {
                                     auto const delta =
-                                        (s8)(next_region->trigger.velocity_range.Size() * k_overlap_percent);
-                                    ASSERT(new_range.end < 100);
+                                        (s16)(next_region->trigger.velocity_range.Size() * k_overlap_percent);
+                                    ASSERT(new_range.end < 1000);
                                     new_range.end += delta;
                                 }
                             }
@@ -601,7 +562,7 @@ ReadMdata(Reader& reader, String filepath, ArenaAllocator& result_arena, ArenaAl
                              ++regions_it, ++new_ranges_it)
                             (*regions_it)->trigger.velocity_range = *new_ranges_it;
 
-                        for (auto const vel : ::Range((u8)100)) {
+                        for (auto const vel : ::Range<u16>(1000)) {
                             int num = 0;
                             for (auto region : regions)
                                 if (region->trigger.velocity_range.Contains(vel)) ++num;
@@ -618,4 +579,4 @@ ReadMdata(Reader& reader, String filepath, ArenaAllocator& result_arena, ArenaAl
 
 } // namespace sample_lib
 
-TEST_REGISTRATION(RegisterLibraryMdataTests) { REGISTER_TEST(sample_lib::TestConvertVelocityRange); }
+TEST_REGISTRATION(RegisterLibraryMdataTests) {}

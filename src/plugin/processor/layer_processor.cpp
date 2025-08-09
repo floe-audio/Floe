@@ -175,7 +175,7 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
     if (note.note < key_range_low || note.note > key_range_high) return;
 
     ASSERT_HOT(note_vel_float >= 0 && note_vel_float <= 1);
-    auto const note_vel = (u8)RoundPositiveFloat(note_vel_float * 99);
+    auto const note_vel = (u16)RoundPositiveFloat(note_vel_float * 999);
 
     auto const note_for_samples = ({
         auto const n = note.note + layer.midi_transpose;

@@ -31,16 +31,17 @@ struct LibraryPath {
 
 u64 Hash(LibraryPath const& path);
 
+template <Integral T>
 struct Range {
     constexpr bool operator==(Range const& other) const = default;
-    constexpr u8 Size() const {
+    constexpr T Size() const {
         ASSERT(end >= start);
         return end - start;
     }
-    constexpr bool Contains(u8 v) const { return v >= start && v < end; }
+    constexpr bool Contains(T v) const { return v >= start && v < end; }
     constexpr bool Overlaps(Range const& other) const { return start < other.end && other.start < end; }
-    u8 start;
-    u8 end; // non-inclusive, A.K.A. one-past the last
+    T start;
+    T end; // non-inclusive, A.K.A. one-past the last
 };
 
 enum class TriggerEvent : u8 { NoteOn, NoteOff, Count };
@@ -72,8 +73,8 @@ struct Region {
 
     struct TriggerCriteria {
         TriggerEvent trigger_event {TriggerEvent::NoteOn};
-        Range key_range {0, 128};
-        Range velocity_range {0, 100};
+        Range<u8> key_range {0, 128};
+        Range<u16> velocity_range {0, 1000};
 
         Optional<u8> round_robin_index {};
         u8 round_robin_sequencing_group {}; // Index into Instrument::round_robin_sequence_groups.
@@ -112,7 +113,7 @@ struct Region {
     } playback;
 
     struct TimbreLayering {
-        Optional<Range> layer_range {};
+        Optional<Range<u8>> layer_range {};
         // IMPROVE: add layer_range_curve: enum: equal-power, quarter-sine, linear
     } timbre_layering;
 };
@@ -136,7 +137,7 @@ constexpr auto k_max_round_robin_sequence_groups = 64;
 
 struct NamedKeyRange {
     String name {};
-    Range key_range {};
+    Range<u8> key_range {};
 };
 
 struct Instrument {
@@ -341,6 +342,22 @@ namespace detail {
 VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAllocator& scratch_arena);
 MutableString LibraryNodePath(Library const& lib, Allocator& arena);
 void InitialiseRootFolders(Library& lib, Allocator& arena);
+
+// Converts from inclusive MIDI-1 style velocity range, for example 0-127, to the new 100 or 1000 exclusive
+// range (the second number is one past the last).
+template <typename T>
+PUBLIC Range<T> MapMidiVelocityRangeToNewRange(s8 low_velo, s8 high_velo) {
+    auto const lo = Max((s8)1, low_velo) - 1;
+    auto const hi = high_velo - 1;
+
+    constexpr auto k_existing_steps = 126.0;
+    constexpr auto k_new_steps = Same<T, u8> ? 99.0 : 999.0;
+
+    auto const start = RoundPositiveFloat((lo / k_existing_steps) * k_new_steps);
+    auto const end = RoundPositiveFloat(Min(((hi + 1) / k_existing_steps) * k_new_steps, k_new_steps + 1));
+
+    return {(T)start, (T)end};
+}
 } // namespace detail
 
 LibraryPtrOrError ReadLua(Reader& reader,

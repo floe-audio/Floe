@@ -99,6 +99,15 @@ Floe doesn't have the concept of 'groups' like other formats like SFZ or Kontakt
 ==sample-library-example-lua:extend_table==
 ```
 
+### `floe.midi_range_to_hundred_range` and `floe.midi_range_to_thousand_range`
+Floe prefers to use a range from 0 to 100 or 0 to 1000 (where the end value is exclusive, A.K.A. one-past the last) for velocity rather than MIDI 1.0's typical range of 0 to 127 (where the end value is inclusive). These functions convert from the MIDI range to the Floe range. Useful when converting existing libraries to Floe.
+
+```lua
+==sample-library-example-lua:midi_range_to_hundred_range==
+==sample-library-example-lua:midi_range_to_thousand_range==
+```
+
+
 ## Lua Language Server
 If you are using the [Lua Language Server](https://luals.github.io/), you can get autocompletion and diagnostics for Floe's Lua API by using the following configuration. 
 

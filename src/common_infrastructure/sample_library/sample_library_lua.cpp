@@ -558,7 +558,7 @@ struct TableFields<Region::TimbreLayering> {
                 return {
                     .name = "layer_range",
                     .description_sentence =
-                        "The start and end point, from 0 to 100, of the Timbre knob on Floe's GUI that this region should be heard. You should overlap this range with other timbre layer ranges. Floe will create an even crossfade of all overlapping sounds. The start number is inclusive, end is exclusive. This region's velocity_range should be 0-100.",
+                        "The start and end point, from 0 to 100, of the Timbre knob on Floe's GUI that this region should be heard. You should overlap this range with other timbre layer ranges. Floe will create an even crossfade of all overlapping sounds. The start number is inclusive, end is exclusive. This region's velocity_range should be the full range.",
                     .example = "{ 0, 50 }",
                     .default_value = "no timbre layering",
                     .lua_type = LUA_TTABLE,
@@ -567,7 +567,7 @@ struct TableFields<Region::TimbreLayering> {
                     .set =
                         [](SET_FIELD_VALUE_ARGS) {
                             auto& region = FIELD_OBJ;
-                            region.layer_range = Range {};
+                            region.layer_range = Range<u8> {};
                             auto const vals = ListOfInts(ctx, 2, info);
                             if (vals[0] < 0 || vals[1] > 100 || vals[1] < 1 || vals[1] > 101)
                                 luaL_error(
@@ -593,6 +593,7 @@ struct TableFields<Region::TriggerCriteria> {
         Event,
         KeyRange,
         VelocityRange,
+        VelocityRangeHighResolution,
         RoundRobinIndex,
         RoundRobinGroup,
         FeatherOverlappingVelocityLayers,
@@ -649,7 +650,7 @@ struct TableFields<Region::TriggerCriteria> {
                 return {
                     .name = "velocity_range",
                     .description_sentence =
-                        "The velocity range of the keyboard that this region is mapped to. This should be an array of 2 numbers ranging from 0 to 100. The start number is inclusive, the end is exclusive.",
+                        "The velocity range of the keyboard that this region is mapped to. This should be an array of 2 numbers ranging from 0 to 100. The start number is inclusive, the end is exclusive. Use the velocity_range_high_resolution instead if you need more than 100 velocity layers.",
                     .example = "{ 0, 100 }",
                     .default_value = "{ 0, 100 }",
                     .lua_type = LUA_TTABLE,
@@ -665,11 +666,37 @@ struct TableFields<Region::TriggerCriteria> {
                                     "'%s' should be in the range [0, 99] the first number and [1, 100] for the second",
                                     info.name.data);
                             FIELD_OBJ.velocity_range = {
-                                .start = (u8)vals[0],
-                                .end = (u8)vals[1],
+                                .start = (u16)(vals[0] * 10),
+                                .end = (u16)(vals[1] * 10),
                             };
                         },
                 };
+            case Field::VelocityRangeHighResolution:
+                return {
+                    .name = "velocity_range_high_resolution",
+                    .description_sentence =
+                        "Alternative to velocity_range that allows for 1000 velocity layers instead of 100.",
+                    .example = "{ 0, 1000 }",
+                    .default_value = "{ 0, 1000 }",
+                    .lua_type = LUA_TTABLE,
+                    .required = false,
+                    .is_array = LUA_TNUMBER,
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            // IMPROVE: support floats
+                            auto const vals = ListOfInts(ctx, 2, info);
+                            if (vals[0] < 0 || vals[1] > 1000 || vals[1] < 1 || vals[1] > 1001)
+                                luaL_error(
+                                    ctx.lua,
+                                    "'%s' should be in the range [0, 999] the first number and [1, 1000] for the second",
+                                    info.name.data);
+                            FIELD_OBJ.velocity_range = {
+                                .start = (u16)vals[0],
+                                .end = (u16)vals[1],
+                            };
+                        },
+                };
+
             case Field::RoundRobinIndex:
                 return {
                     .name = "round_robin_index",
@@ -1716,6 +1743,31 @@ static int AddNamedKeyRange(lua_State* lua) {
     return 0;
 }
 
+template <Integral T>
+static int MidiRangeToNewRange(lua_State* lua) {
+    // This function takes 1 arg, a table of 2 MIDI note numbers
+    luaL_checktype(lua, 1, LUA_TTABLE);
+    if (lua_rawlen(lua, 1) != 2)
+        return luaL_error(lua, "MIDI range conversion expects a table with exactly 2 elements");
+    lua_rawgeti(lua, 1, 1);
+    auto const start = luaL_checkinteger(lua, -1);
+    lua_pop(lua, 1);
+    lua_rawgeti(lua, 1, 2);
+    auto const end = luaL_checkinteger(lua, -1);
+    lua_pop(lua, 1);
+    if (start < 0 || start > 127 || end < 0 || end > 127 || start >= end)
+        return luaL_error(lua, "MIDI range conversion expects a valid MIDI range [0, 127]");
+
+    auto const new_range = detail::MapMidiVelocityRangeToNewRange<T>((s8)start, (s8)end);
+    // Returns a table with 2 elements: start and end
+    lua_newtable(lua);
+    lua_pushinteger(lua, new_range.start);
+    lua_rawseti(lua, -2, 1);
+    lua_pushinteger(lua, new_range.end);
+    lua_rawseti(lua, -2, 2);
+    return 1; // Return the new table
+}
+
 static VoidOrError<Error> TryRunLuaCode(LuaState& ctx, int r) {
     if (r == LUA_OK) return k_success;
     switch (r) {
@@ -1767,6 +1819,8 @@ static const struct luaL_Reg k_floe_lib[] = {
     {"add_ir", AddIr},
     {"set_attribution_requirement", SetAttributionRequirement},
     {"set_required_floe_version", SetRequiredFloeVersion},
+    {"midi_range_to_hundred_range", MidiRangeToNewRange<u8>},
+    {"midi_range_to_thousand_range", MidiRangeToNewRange<u16>},
     {nullptr, nullptr},
 };
 
@@ -2319,6 +2373,44 @@ struct LuaCodePrinter {
                     "Extends a table with another table, including all sub-tables. The base table "
                     "is not modified. The extension table is modified and returned with all keys "
                     "from both tables. If a key exists in both, the extension table value is used.",
+            },
+            {
+                .name = "midi_range_to_hundred_range",
+                .args = ArrayT<FieldInfo>({
+                    {
+                        .name = "midi_range",
+                        .example = "{ 0, 127 }",
+                        .lua_type = LUA_TTABLE,
+                    },
+                }),
+                .return_type =
+                    FieldInfo {
+                        .name = "hundred_range",
+                        .example = "{ 0, 100 }",
+                        .lua_type = LUA_TTABLE,
+                    },
+                .description =
+                    "Converts a MIDI note range (where the end value is inclusive) to Floe's 0-100 range (where the end value is exclusive, A.K.A, one-past the last). Takes a table with two integers for start and end. Returns the same format but remapped.",
+            },
+            {
+                .name = "midi_range_to_thousand_range",
+                .args = ArrayT<FieldInfo>({
+                    {
+                        .name = "midi_range",
+                        .example = "{ 0, 127 }",
+                        .lua_type = LUA_TTABLE,
+                    },
+                }),
+                .return_type =
+                    FieldInfo {
+                        .name = "thousand_range",
+                        .example = "{ 0, 1000 }",
+                        .lua_type = LUA_TTABLE,
+                    },
+                .description =
+                    "Converts a MIDI note range (where the end value is inclusive) to Floe's 0-1000 range "
+                    "(where the end value is exclusive, A.K.A, one-past the last). Takes a table with two "
+                    "integers for start and end. Returns the same format but remapped.",
             },
 
         });
@@ -2937,6 +3029,9 @@ TEST_CASE(TestBasicFile) {
                 crossfade = 2, 
                 mode = 'standard',
             },
+        },
+        trigger_criteria = {
+            velocity_range = floe.midi_range_to_hundred_range({ 0, 127 }),
         },
     }))
     floe.add_region(instrument2, floe.extend_table(proto, {
