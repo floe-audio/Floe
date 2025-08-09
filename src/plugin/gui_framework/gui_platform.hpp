@@ -519,12 +519,14 @@ static bool EventMouseButton(GuiPlatform& platform, PuglButtonEvent const& butto
     auto& btn = platform.frame_state.mouse_buttons[ToInt(*button)];
 
     auto const now = TimePoint::Now();
+    auto const point = f32x2 {(f32)button_event.x, (f32)button_event.y};
     GuiFrameInput::MouseButtonState::Event const e {
-        .point = {(f32)button_event.x, (f32)button_event.y},
+        .point = point,
         .time = now,
         .modifiers = platform.frame_state.modifiers,
         .is_double_click = is_down
-                               ? (e.time - btn.last_press.time) <= (platform.double_click_time_ms / 1000.0)
+                               ? (All(btn.last_press.point == point) &&
+                                  (e.time - btn.last_press.time) <= (platform.double_click_time_ms / 1000.0))
                                : btn.last_press.is_double_click,
     };
 
