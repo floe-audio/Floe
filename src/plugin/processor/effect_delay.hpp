@@ -30,7 +30,11 @@ class Delay final : public Effect {
         bool update_time_l = false;
         bool update_time_r = false;
 
-        if (auto p = changes.changed_params.BoolValue(ParamIndex::DelayTimeSyncSwitch)) is_synced = *p;
+        if (auto p = changes.changed_params.BoolValue(ParamIndex::DelayTimeSyncSwitch)) {
+            is_synced = *p;
+            update_time_l = true;
+            update_time_r = true;
+        }
 
         if (auto p = changes.changed_params.ProjectedValue(ParamIndex::DelayFeedback))
             args.params[ToInt(Params::Feedback)] = *p;
