@@ -1385,6 +1385,14 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
 
     // Check for tempo changes.
     {
+        // process.transport is only for frame 0.
+        if (frame_index == 0 && process.transport) {
+            if (process.transport->flags & CLAP_TRANSPORT_HAS_TEMPO &&
+                process.transport->tempo != processor.audio_processing_context.tempo) {
+                processor.audio_processing_context.tempo = process.transport->tempo;
+                changes.tempo_changed = true;
+            }
+        }
         for (auto const event_index : Range(process.in_events->size(process.in_events))) {
             auto e = process.in_events->get(process.in_events, event_index);
             if (!e) continue;
