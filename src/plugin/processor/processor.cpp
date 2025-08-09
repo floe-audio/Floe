@@ -1339,7 +1339,7 @@ static void SendParamChangesToMainThread(AudioProcessor& processor, ChangedParam
     }
     processor.param_changes_for_main_thread.Push(events);
 
-    processor.host.request_process(&processor.host);
+    processor.host.request_callback(&processor.host);
 }
 
 static void
