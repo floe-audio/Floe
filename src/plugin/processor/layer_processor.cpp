@@ -693,6 +693,7 @@ void ResetLayerAudioProcessing(LayerProcessor& layer) {
         b.eq_data = {};
     layer.inst_change_fade.ForceSetFullVolume();
     layer.eq_bands.Reset();
+    layer.gain_smoother.Reset();
 }
 
 TEST_CASE(TestKeyRangeFade) {
