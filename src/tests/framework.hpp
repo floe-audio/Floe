@@ -185,7 +185,7 @@ struct Tester {
 
                 BufferedWriter<Kb(4)> buffered_writer {StdWriter(k_stream)};
                 auto writer = buffered_writer.Writer();
-                DEFER { auto _ = buffered_writer.Flush(); };
+                DEFER { buffered_writer.FlushReset(); };
 
                 StdStreamMutex(k_stream).Lock();
                 DEFER { StdStreamMutex(k_stream).Unlock(); };
@@ -195,7 +195,7 @@ struct Tester {
             if (file) {
                 BufferedWriter<Kb(4)> buffered_writer {file->Writer()};
                 auto writer = buffered_writer.Writer();
-                DEFER { auto _ = buffered_writer.Flush(); };
+                DEFER { buffered_writer.FlushReset(); };
                 write(writer, false);
             }
         }

@@ -505,6 +505,7 @@ WritePreferencesFile(PreferencesTable const& table, String path, Optional<s128> 
     BufferedWriter<Kb(4)> buffered_writer {
         .unbuffered_writer = file.Writer(),
     };
+    DEFER { buffered_writer.Reset(); };
     TRY(WritePreferencesTable(table, buffered_writer.Writer()));
 
     TRY(buffered_writer.Flush());

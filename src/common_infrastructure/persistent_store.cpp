@@ -161,7 +161,7 @@ static void WriteFile(Store& store) {
         .unbuffered_writer = file.Writer(),
     };
     DEFER {
-        auto _ = buffered_writer.Flush();
+        buffered_writer.FlushReset();
         auto _ = file.Flush();
     };
     TRY_OR(Write(store, buffered_writer.Writer()), {
