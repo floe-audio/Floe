@@ -34,6 +34,7 @@ static constexpr Optional<FilesystemError> TranslateWin32Code(DWORD win32_code) 
         case ERROR_ALREADY_EXISTS: return FilesystemError::PathAlreadyExists;
         case ERROR_FILE_EXISTS: return FilesystemError::PathAlreadyExists;
         case ERROR_NOT_SAME_DEVICE: return FilesystemError::DifferentFilesystems;
+        case ERROR_DISK_FULL:
         case ERROR_HANDLE_DISK_FULL: return FilesystemError::DiskFull;
         case ERROR_PATH_BUSY: return FilesystemError::FilesystemBusy;
         case ERROR_DIR_NOT_EMPTY: return FilesystemError::NotEmpty;
