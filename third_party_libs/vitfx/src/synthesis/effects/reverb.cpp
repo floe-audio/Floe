@@ -363,6 +363,7 @@ namespace vital {
     low_pre_filter_.reset(constants::kFullMask);
     high_pre_filter_.reset(constants::kFullMask);
     chorus_amount_ = utils::clamp(input(kChorusAmount)->at(0)[0], 0.0f, 1.0f) * kMaxChorusDrift;
+    memory_->clearAll();
 
     for (int i = 0; i < kNetworkContainers; ++i) {
       low_shelf_filters_[i].reset(constants::kFullMask);
