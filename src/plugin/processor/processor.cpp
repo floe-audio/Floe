@@ -1222,7 +1222,6 @@ static void ConsumeParamEventsFromHost(Parameters& params,
                                        ProcessBlockChanges& changes,
                                        ChangedParams& changes_for_main_thread) {
     ZoneScoped;
-    // IMPROVE: support sample-accurate value changes
     // IMPROVE: support CLAP_EVENT_PARAM_MOD
     // IMPROVE: support polyphonic
 
@@ -1236,7 +1235,7 @@ static void ConsumeParamEventsFromHost(Parameters& params,
 
         auto value = CheckedPointerCast<clap_event_param_value const*>(e);
 
-        if (value->note_id != -1 || value->channel > 0 || value->key > 0) continue;
+        if ((value->note_id != -1 && value->note_id != 0) || value->channel > 0 || value->key > 0) continue;
 
         if (auto const index = ParamIdToIndex(value->param_id)) {
             auto const range = k_param_descriptors[ToInt(*index)].linear_range;
@@ -1363,8 +1362,8 @@ FlushParameterEvents(AudioProcessor& processor, clap_input_events const& in, cla
         SendParamChangesToMainThread(processor, changes_for_main_thread);
         processor.listener.OnProcessorChange(ProcessorListener::ParametersChanged);
     } else {
-        // If we are not activated, then we don't need to call processor param change because the
-        // state of the processing plugin will be reset activate()
+        // It not activated, we have just updated the main-thread parameters. The audio thread parameters will
+        // be updated in the next time we are activated.
     }
 }
 
