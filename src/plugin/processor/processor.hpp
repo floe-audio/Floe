@@ -207,7 +207,7 @@ struct ProcessorListener {
         ParametersChanged = 1 << 6,
     };
     using ChangeFlags = u32;
-    virtual void OnProcessorChange(ChangeFlags) = 0; // called from audio thread
+    virtual void OnProcessorChange(ChangeFlags) = 0; // Called from EITHER audio or main thread.
     virtual ~ProcessorListener() = default;
 };
 

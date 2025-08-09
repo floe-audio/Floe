@@ -455,7 +455,7 @@ static void OnMainThread(Engine& engine) {
 void Engine::OnProcessorChange(ChangeFlags flags) {
     if (flags & ProcessorListener::IrChanged) MarkNeedsAttributionTextUpdate(attribution_requirements);
     update_gui.Store(true, StoreMemoryOrder::Relaxed);
-    host.request_callback(&host);
+    if (!g_is_logical_main_thread) host.request_callback(&host);
 }
 
 Engine::Engine(clap_host const& host,

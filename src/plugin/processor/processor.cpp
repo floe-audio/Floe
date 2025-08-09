@@ -1360,7 +1360,6 @@ FlushParameterEvents(AudioProcessor& processor, clap_input_events const& in, cla
     if (processor.activated) {
         ProcessorHandleChanges(processor, changes);
         SendParamChangesToMainThread(processor, changes_for_main_thread);
-        processor.listener.OnProcessorChange(ProcessorListener::ParametersChanged);
     } else {
         // It not activated, we have just updated the main-thread parameters. The audio thread parameters will
         // be updated in the next time we are activated.
@@ -1793,8 +1792,11 @@ static void OnMainThread(AudioProcessor& processor) {
     }
 
     // Consume any parameter changes that were made from the audio thread.
-    for (auto const p : processor.param_changes_for_main_thread.PopAll())
-        processor.main_params.values[ToInt(p.index)] = p.value;
+    if (auto const param_changes = processor.param_changes_for_main_thread.PopAll(); param_changes.size) {
+        for (auto const p : param_changes)
+            processor.main_params.values[ToInt(p.index)] = p.value;
+        processor.listener.OnProcessorChange(ProcessorListener::ParametersChanged);
+    }
 }
 
 static void OnThreadPoolExec(AudioProcessor& processor, u32 index) {
