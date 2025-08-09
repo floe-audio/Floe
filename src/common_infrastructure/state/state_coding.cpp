@@ -610,6 +610,8 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
         state.param_values[ToInt(ParamIndex::Macro2)] = 0.0f;
         state.param_values[ToInt(ParamIndex::Macro3)] = 0.0f;
         state.param_values[ToInt(ParamIndex::Macro4)] = 0.0f;
+        state.macro_names = DefaultMacroNames();
+        state.macro_destinations = {};
 
         for (auto const layer_index : Range(k_num_layers)) {
             // There used to be no control over the key range.
