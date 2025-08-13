@@ -102,7 +102,7 @@ It's important to ensure your audio samples have the the right levels. This make
 When changing the volume levels of a realistic multi-sampled instrument, you probably don't want to normalise each sample individually because part of the character of the instrument is its volume variation. Instead, you should change the gain of the instrument _as a whole_. Signet has features for this. It also has features for proportionally moving levels towards a target level. This allows you to keep some of the character of an instrument while nudging it towards a more consistent level.
 
 Here are some guidelines for levels:
-- Each samples's peak level should be less than -3 dB.
+- Each sample's peak level should be less than -3 dB.
 - Playing the instrument should barely cause Floe's peak meter to reach its yellow region. Another way to levels could be this: RMS levels for an instrument _as a whole_ should be around -18 dB. Play the instrument polyphonically and watch the RMS level. If the instrument is designed to be monophonic, then adjust for that.
 - The noise floor should be as low as possible: -60 dB is a good target. Use high-quality noise reduction tools to remove noise from your samples if you need to. Noise levels can quickly stack up with a multi-sampled instrument played polyphonically. Being too aggressive with algorithmic noise reduction can make your samples sound unnatural - so it's a balance.
 - Impulse responses should be normalised by their energy (power) levels: `signet my-impulses norm -100 --mode energy --independently && signet my-impulses norm 0`. Or if not using Signet, then adjust their levels so that they feel similar to the volume levels of Floe's built-in IRs.

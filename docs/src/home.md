@@ -81,7 +81,7 @@ Floe supports both multisampled and single-sample instruments.
 ## Your tools, your creativity
 Floe is built as open-source software, meaning its code is freely available for anyone to see, modify, and improve (it's GPL licensed). 
 
-While this might seem like a technical detail, it offers some potentially very valuable benefits. Any developer can pick it up and keep it running on future systems, ensuring longevity. If you need a specific feature, you could hire a developer to create your own customized version. Most importantly, open-source transparency builds trust — you or any community developer can verify that the program genuinely serves meaningful music creation rather than employing dubious business tactics.
+While this might seem like a technical detail, it offers some potentially very valuable benefits. Any developer can pick it up and keep it running on future systems, ensuring longevity. If you need a specific feature, you could hire a developer to create your own customised version. Most importantly, open-source transparency builds trust — you or any community developer can verify that the program genuinely serves meaningful music creation rather than employing dubious business tactics.
 
 ## About this website
 This website contains everything you need to know about Floe. It's presented in a book-like format, with chapters in the sidebar. 
