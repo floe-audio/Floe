@@ -11,6 +11,10 @@ Floe runs your script using Lua v==lua-version==, providing you with access to t
 
 If there are any errors in your script, Floe will show them on the GUI along with a line number and a description of the problem.
 
+<div class="warning">
+We are working on a standalone version of Floe that will allow you to more easily debug your Lua by outputting debug information to the console.
+</div>
+
 ## Multiple files
 `dofile()` is available, so you can split your script into multiple files if you want to. Floe's `dofile` implementation is the same as the standard Lua version except that you can only specify files relative to the library folder — that is, the folder that contains the `floe.lua` file.
 
