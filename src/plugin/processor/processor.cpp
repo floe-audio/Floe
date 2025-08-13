@@ -1805,6 +1805,8 @@ static void OnMainThread(AudioProcessor& processor) {
             processor.main_params.values[ToInt(p.index)] = p.value;
         processor.listener.OnProcessorChange(ProcessorListener::ParametersChanged);
     }
+
+    OnMainThread(processor.voice_pool);
 }
 
 static void OnThreadPoolExec(AudioProcessor& processor, u32 index) {

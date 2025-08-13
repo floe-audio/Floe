@@ -9,6 +9,7 @@
 
 #include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
+#include "common_infrastructure/final_binary_type.hpp"
 
 #include "layer_processor.hpp"
 #include "processing_utils/audio_processing_context.hpp"
@@ -329,17 +330,17 @@ inline f32x4 EqualPanGains2(f32x2 pan_pos) {
 void StartVoice(VoicePool& pool,
                 VoiceProcessingController& voice_controller,
                 VoiceStartParams const& params,
-                AudioProcessingContext const& audio_processing_state) {
-    auto& voice = FindVoice(pool, audio_processing_state);
+                AudioProcessingContext const& audio_processing_context) {
+    auto& voice = FindVoice(pool, audio_processing_context);
 
-    auto const sample_rate = audio_processing_state.sample_rate;
+    auto const sample_rate = audio_processing_context.sample_rate;
     ASSERT(sample_rate != 0);
 
     voice.controller = &voice_controller;
     voice.lfo.phase = params.lfo_start_phase;
 
     UpdateLFOWaveform(voice);
-    UpdateLFOTime(voice, audio_processing_state.sample_rate);
+    UpdateLFOTime(voice, audio_processing_context.sample_rate);
 
     voice.volume_fade.ForceSetAsFadeIn(sample_rate);
     voice.vol_env.Reset();
@@ -395,6 +396,20 @@ void StartVoice(VoicePool& pool,
 
             UpdateLoopInfo(voice);
             UpdateXfade(voice, sampler.initial_timbre_param_value_01, true);
+
+            if (g_final_binary_type == FinalBinaryType::Standalone) {
+                DynamicArrayBounded<SampleLogItem, k_max_num_voice_sound_sources> sample_log_items;
+                for (auto const& s : voice.sound_sources) {
+                    if (!s.is_active) continue;
+                    dyn::Append(sample_log_items,
+                                SampleLogItem {
+                                    .region = s.source_data.Get<VoiceSoundSource::SampleSource>().region,
+                                });
+                }
+                pool.sample_log_queue.Push(sample_log_items);
+                audio_processing_context.host.request_callback(&audio_processing_context.host);
+            }
+
             break;
         }
         case InstrumentType::WaveformSynth: {
@@ -419,6 +434,24 @@ void StartVoice(VoicePool& pool,
     voice.pool.num_active_voices.FetchAdd(1, RmwMemoryOrder::Relaxed);
     voice.pool.voices_per_midi_note_for_gui[voice.midi_key_trigger.note].FetchAdd(1, RmwMemoryOrder::Relaxed);
     voice.pool.last_velocity[voice.controller->layer_index].Store(params.note_vel, StoreMemoryOrder::Relaxed);
+}
+
+void OnMainThread(VoicePool& pool) {
+    if (g_final_binary_type == FinalBinaryType::Standalone) {
+        auto const items = pool.sample_log_queue.PopAll();
+        if (items.size) {
+            auto const time = TimePoint::Now();
+            for (auto const& item : items) {
+                StdPrintF(StdStream::Err,
+                          "Region triggered. Root {} ({}), {}, {}, time {}\n",
+                          item.region->root_key,
+                          NoteName(CheckedCast<u7>(item.region->root_key)),
+                          item.region->path,
+                          item.region->trigger.trigger_event,
+                          time.Raw());
+            }
+        }
+    }
 }
 
 void EndVoice(Voice& voice) {

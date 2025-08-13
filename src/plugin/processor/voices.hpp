@@ -4,6 +4,7 @@
 #pragma once
 #include "foundation/foundation.hpp"
 #include "os/threading.hpp"
+#include "utils/thread_extra/atomic_queue.hpp"
 #include "utils/thread_extra/atomic_swap_buffer.hpp"
 
 #include "common_infrastructure/constants.hpp"
@@ -119,6 +120,10 @@ concept ShouldSkipVoiceFunction = requires(Type function, Voice const& v) {
     { function(v) } -> Same<bool>;
 };
 
+struct SampleLogItem {
+    sample_lib::Region const* region;
+};
+
 struct VoicePool {
     template <bool k_early_out_if_none_active, ShouldSkipVoiceFunction Function>
     auto EnumerateVoices(Function&& should_skip_voice) {
@@ -192,6 +197,8 @@ struct VoicePool {
 
     unsigned int random_seed = (unsigned)NanosecondsSinceEpoch();
 
+    AtomicQueue<SampleLogItem, 32> sample_log_queue {};
+
     AudioProcessingContext const* audio_processing_context = nullptr; // temp for thread pool
 
     struct {
@@ -257,5 +264,7 @@ Array<Span<f32>, k_num_layers>
 ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& context);
 
 void OnThreadPoolExec(VoicePool& pool, u32 task_index);
+
+void OnMainThread(VoicePool& pool);
 
 void Reset(VoicePool& pool);
