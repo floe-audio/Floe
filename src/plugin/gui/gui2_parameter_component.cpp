@@ -299,7 +299,7 @@ Box DoParameterComponent(Gui* g,
               {
                   .parent = container,
                   .text = options.override_label.size ? options.override_label : param.info.gui_label,
-                  .text_colours = {options.greyed_out ? style::Colour::DarkModeSubtext0
+                  .text_colours = {options.greyed_out ? style::Colour::DarkModeOverlay0
                                                       : style::Colour::DarkModeText},
                   .text_align_x = TextAlignX::Centre,
                   .text_align_y = TextAlignY::Centre,
