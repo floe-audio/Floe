@@ -525,7 +525,7 @@ static bool EventMouseButton(GuiPlatform& platform, PuglButtonEvent const& butto
         .time = now,
         .modifiers = platform.frame_state.modifiers,
         .is_double_click = is_down
-                               ? (All(btn.last_press.point == point) &&
+                               ? (All(Abs(btn.last_press.point - point) < f32x2(7)) &&
                                   (e.time - btn.last_press.time) <= (platform.double_click_time_ms / 1000.0))
                                : btn.last_press.is_double_click,
     };
