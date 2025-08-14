@@ -81,6 +81,8 @@ struct Region {
 
         bool feather_overlapping_velocity_layers {};
         // IMPROVE: add feather_overlapping_velocity_layers_curve: enum: equal-power, quarter-sine, linear
+        // IMPROVE: add group_names for feather_overlapping_velocity_layers to allow for multiple overlaps
+        // (e.g. overlap all close-mic regions with each other, and all room-mic regions with each other)
 
         // IMPROVE: add feather_overlapping_key_ranges
         // IMPROVE: add feather_overlapping_key_ranges_curve: enum: equal-power, quarter-sine, linear
