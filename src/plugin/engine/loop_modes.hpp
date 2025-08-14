@@ -39,7 +39,7 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
             return {
                 .id = id,
                 .mode = k_nullopt,
-                .name = "Loop - Built-in Standard",
+                .name = "No Loop",
                 .short_name = "No Loop",
                 .description = "No looping will be applied to this instrument.",
                 .editable = false,
