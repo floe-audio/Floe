@@ -152,6 +152,7 @@ enum class TagType : u16 {
     Reedy,
     ChoirLike,
     OrganLike,
+    Percussive,
 
     Analog,
     Fm,
@@ -384,6 +385,7 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         case TagType::Reedy: return {"reedy"_s, "Characteristic of reed instruments"_s};
         case TagType::ChoirLike: return {"choir-like"_s, "Characteristic of choral voices"_s};
         case TagType::OrganLike: return {"organ-like"_s, "Characteristic of an organ"_s};
+        case TagType::Percussive: return {"percussive"_s, "Short, sharp attack"_s};
 
         // Timbre (synthesis technique)
         case TagType::Analog: return {"analog"_s, "Warm, imprecise, vintage character"_s};
@@ -800,6 +802,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 Reedy,
                 ChoirLike,
                 OrganLike,
+                Percussive,
             };
             static constexpr auto k_exclude_tags = Array {
                 Acoustic,
