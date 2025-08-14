@@ -51,7 +51,8 @@ class FloeWaveformImages {
         u64 source_hash = 0;
         switch (source.tag) {
             case WaveformAudioSourceType::AudioData: {
-                auto const& audio_data = source.Get<AudioData const*>();
+                auto const audio_data = source.Get<AudioData const*>();
+                if (!audio_data) return ErrorCode {CommonError::NotFound};
                 source_hash = audio_data->hash;
                 break;
             }
