@@ -125,7 +125,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
     auto live_size = [&](UiSizeId id) { return box_system.imgui.PixelsToVw(LiveSize(box_system.imgui, id)); };
 
     auto const logo_image = LogoImage(g);
-    DoBox(box_system,
+    if (logo_image && All(logo_image->size.ToFloat2() > f32x2(0)))
           {
               .parent = root,
               .background_tex = box_system.imgui.graphics->context->GetTextureFromImage(logo_image),
