@@ -40,7 +40,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
   - [Tags and Folders](./develop/tags-and-folders.md)
 
 - [About the Project]()
-  - [Previously known as Mirage](./about-the-project/mirage.md)
+  - [Mirage Compatibility](./about-the-project/mirage.md)
   - [Roadmap](./about-the-project/roadmap.md)
 
 -----------
