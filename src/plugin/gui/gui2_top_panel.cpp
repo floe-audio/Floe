@@ -126,13 +126,14 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
 
     auto const logo_image = LogoImage(g);
     if (logo_image && All(logo_image->size.ToFloat2() > f32x2(0)))
-          {
-              .parent = root,
-              .background_tex = box_system.imgui.graphics->context->GetTextureFromImage(logo_image),
-              .layout {
-                  .size = scale_size_to_fit_height(logo_image->size.ToFloat2(), root_size.y * 0.5f),
-              },
-          });
+        DoBox(box_system,
+              {
+                  .parent = root,
+                  .background_tex = box_system.imgui.graphics->context->GetTextureFromImage(logo_image),
+                  .layout {
+                      .size = scale_size_to_fit_height(logo_image->size.ToFloat2(), root_size.y * 0.5f),
+                  },
+              });
 
     DoBox(box_system,
           {
