@@ -166,6 +166,7 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
                                   MidiChannelNote note,
                                   f32 note_vel_float,
                                   u32 offset) {
+    ASSERT_HOT(offset < k_block_size_max);
     ZoneScoped;
     if (layer.audio_thread_inst.tag == InstrumentType::None) return;
 
@@ -637,8 +638,7 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
                                 AudioProcessingContext const& context,
                                 VoicePool& voice_pool,
                                 u32 num_frames,
-                                bool start_fade_out,
-                                Span<f32> buffer) {
+                                bool start_fade_out) {
     ZoneScoped;
     ZoneValue(layer.index);
 
@@ -646,12 +646,25 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
 
     LayerProcessResult result {};
 
+    for (auto& voice : voice_pool.voices) {
+        if (voice.written_to_buffer_this_block && voice.controller == &layer.voice_controller) {
+            if (!result.output) {
+                // We can use the first voice's buffer as the output buffer.
+                result.output = Span<f32x2>(voice.buffer).SubSpan(0, num_frames);
+            } else {
+                // Otherwise we combine the voice buffers.
+                for (auto const i : Range(num_frames))
+                    (*result.output)[i] += voice.buffer[i];
+            }
+        }
+    }
+
     // NOTE: we want to trigger a fade out regardless of whether or not this layer is actually processing
     // audio at the moment because we want the swapping of instruments to be in sync with any other layers
     if (start_fade_out)
         layer.inst_change_fade.SetAsFadeOutIfNotAlready(context.sample_rate, k_inst_change_fade_ms);
 
-    if (!buffer.size || layer.audio_thread_inst.tag == InstrumentType::None) {
+    if (!result.output || layer.audio_thread_inst.tag == InstrumentType::None) {
         if (layer.inst_change_fade.JumpMultipleSteps(num_frames) == VolumeFade::State::Silent)
             result.instrument_swapped = ChangeInstrumentIfNeededAndReset(layer, voice_pool);
 
@@ -659,32 +672,29 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
         return result;
     }
 
-    for (auto const i : Range(num_frames)) {
-        auto buffer_frame = buffer.data + (i * 2);
-        auto frame = LoadUnalignedToType<f32x2>(buffer_frame);
-        frame = layer.eq_bands.Process(context, frame);
+    if (result.output) {
+        for (auto& frame : *result.output) {
+            frame = layer.eq_bands.Process(context, frame);
 
-        frame *= layer.gain_smoother.LowPass(layer.gain, context.one_pole_smoothing_cutoff_10ms);
+            frame *= layer.gain_smoother.LowPass(layer.gain, context.one_pole_smoothing_cutoff_10ms);
 
-        if (!result.instrument_swapped) {
-            auto const fade = layer.inst_change_fade.GetFadeAndStateChange();
-            frame *= fade.value;
-            if (fade.state_changed == VolumeFade::State::Silent)
-                result.instrument_swapped = ChangeInstrumentIfNeededAndReset(layer, voice_pool);
-        } else {
-            // If we have swapped we want to be silent for the remainder of this block - we will use the
-            // new instrument next block
-            frame = {};
+            if (!result.instrument_swapped) {
+                auto const fade = layer.inst_change_fade.GetFadeAndStateChange();
+                frame *= fade.value;
+                if (fade.state_changed == VolumeFade::State::Silent)
+                    result.instrument_swapped = ChangeInstrumentIfNeededAndReset(layer, voice_pool);
+            } else {
+                // If we have swapped we want to be silent for the remainder of this block - we will use the
+                // new instrument next block
+                frame = {};
+            }
         }
 
-        StoreToUnaligned(buffer_frame, frame);
+        ASSERT_HOT(!layer.inst_change_fade.IsSilent());
+
+        layer.peak_meter.AddBuffer(*result.output);
     }
 
-    ASSERT_HOT(!layer.inst_change_fade.IsSilent());
-
-    layer.peak_meter.AddBuffer(ToStereoFramesSpan(buffer.data, num_frames));
-
-    result.did_any_processing = true;
     return result;
 }
 

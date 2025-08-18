@@ -98,6 +98,9 @@ struct Voice {
     adsr::Processor fil_env = {};
     f32 aftertouch_multiplier = 1;
     bool disable_vol_env = false;
+
+    static_assert(k_block_size_max % 16 == 0, "k_block_size_max must be a multiple of 16");
+    Array<f32x2, k_block_size_max> buffer {}; // Stereo frames
 };
 
 struct VoiceEnvelopeMarkerForGui {
@@ -186,8 +189,6 @@ struct VoicePool {
     u16 voice_id_counter = 0;
     Atomic<u32> num_active_voices = 0;
     Array<Voice, k_num_voices> voices {MakeInitialisedArray<Voice, k_num_voices>(*this)};
-    static_assert(k_block_size_max % 16 == 0, "k_block_size_max must be a multiple of 16");
-    alignas(16) Array<Array<f32, k_block_size_max * 2>, k_num_voices> buffer_pool {};
 
     AtomicSwapBuffer<Array<VoiceWaveformMarkerForGui, k_num_voices>, true> voice_waveform_markers_for_gui {};
     AtomicSwapBuffer<Array<VoiceEnvelopeMarkerForGui, k_num_voices>, true> voice_vol_env_markers_for_gui {};
@@ -199,9 +200,8 @@ struct VoicePool {
 
     AtomicQueue<SampleLogItem, 32> sample_log_queue {};
 
-    AudioProcessingContext const* audio_processing_context = nullptr; // temp for thread pool
-
     struct {
+        AudioProcessingContext const* audio_processing_context = nullptr;
         u32 num_frames = 0;
     } multithread_processing;
 };
@@ -260,8 +260,7 @@ void StartVoice(VoicePool& pool,
 
 void NoteOff(VoicePool& pool, VoiceProcessingController& controller, MidiChannelNote note);
 
-Array<Span<f32>, k_num_layers>
-ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& context);
+void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& context);
 
 void OnThreadPoolExec(VoicePool& pool, u32 task_index);
 

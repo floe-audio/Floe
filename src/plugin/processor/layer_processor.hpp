@@ -320,7 +320,7 @@ void PrepareToPlay(LayerProcessor& layer, AudioProcessingContext const& context)
 
 struct LayerProcessResult {
     bool instrument_swapped;
-    bool did_any_processing;
+    Optional<Span<f32x2>> output;
 };
 
 void ProcessLayerChanges(LayerProcessor& layer,
@@ -332,7 +332,6 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
                                 AudioProcessingContext const& context,
                                 VoicePool& voice_pool,
                                 u32 num_frames,
-                                bool start_fade_out,
-                                Span<f32> buffer);
+                                bool start_fade_out);
 
 void ResetLayerAudioProcessing(LayerProcessor& layer);

@@ -972,10 +972,13 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
 static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                                   clap_event_header const& event,
                                   clap_output_events const& out,
+                                  u32 block_start_frame,
                                   ProcessorListener::ChangeFlags& change_flags,
                                   ProcessBlockChanges& changes,
                                   ChangedParams& changes_for_main_thread) {
     // IMPROVE: support per-param modulation and automation - each param can opt-in individually.
+
+    ASSERT_HOT(event.time >= block_start_frame);
 
     switch (event.type) {
         case CLAP_EVENT_NOTE_ON: {
@@ -990,7 +993,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             dyn::Append(changes.note_events,
                         {
                             .velocity = (f32)note.velocity,
-                            .offset = event.time,
+                            .offset = event.time - block_start_frame,
                             .note = chan_note,
                             .type = NoteEvent::Type::On,
                         });
@@ -1009,7 +1012,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             dyn::Append(changes.note_events,
                         {
                             .velocity = (f32)note.velocity,
-                            .offset = event.time,
+                            .offset = event.time - block_start_frame,
                             .note = chan_note,
                             .type = NoteEvent::Type::Off,
                         });
@@ -1086,7 +1089,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                     dyn::Append(changes.note_events,
                                 {
                                     .velocity = message.Velocity() / 127.0f,
-                                    .offset = event.time,
+                                    .offset = event.time - block_start_frame,
                                     .note = chan_note,
                                     .type = NoteEvent::Type::On,
                                 });
@@ -1097,7 +1100,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                     dyn::Append(changes.note_events,
                                 {
                                     .velocity = message.Velocity() / 127.0f,
-                                    .offset = event.time,
+                                    .offset = event.time - block_start_frame,
                                     .note = message.ChannelNote(),
                                     .type = NoteEvent::Type::Off,
                                 });
@@ -1124,7 +1127,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                                 dyn::Append(changes.note_events,
                                             NoteEvent {
                                                 .velocity = 0.0f,
-                                                .offset = event.time,
+                                                .offset = event.time - block_start_frame,
                                                 .note = {CheckedCast<u7>(note), channel},
                                                 .created_by_cc64 = true,
                                                 .type = NoteEvent::Type::Off,
@@ -1160,6 +1163,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                             clap_event_param_value const value_event {
                                 .header {
                                     .size = sizeof(value_event),
+                                    .time = event.time,
                                     .type = CLAP_EVENT_PARAM_VALUE,
                                     .flags = CLAP_EVENT_IS_LIVE | CLAP_EVENT_DONT_RECORD,
                                 },
@@ -1249,6 +1253,7 @@ static void ConsumeParamEventsFromHost(Parameters& params,
 
 static void ConsumeParamEventsFromMainThread(AudioProcessor& processor,
                                              clap_output_events const& out,
+                                             u32 frame_index,
                                              ProcessBlockChanges& changes) {
     ZoneScoped;
     for (auto const& e : processor.param_events_for_audio_thread.PopAll()) {
@@ -1259,7 +1264,7 @@ static void ConsumeParamEventsFromMainThread(AudioProcessor& processor,
                 clap_event_param_value const event {
                     .header {
                         .size = sizeof(event),
-                        .time = 0,
+                        .time = frame_index,
                         .type = CLAP_EVENT_PARAM_VALUE,
                         .flags = CLAP_EVENT_IS_LIVE |
                                  (value.host_should_not_record ? (u32)CLAP_EVENT_DONT_RECORD : 0),
@@ -1283,7 +1288,7 @@ static void ConsumeParamEventsFromMainThread(AudioProcessor& processor,
                 clap_event_param_gesture const event {
                     .header {
                         .size = sizeof(event),
-                        .time = 0,
+                        .time = frame_index,
                         .type = CLAP_EVENT_PARAM_GESTURE_BEGIN,
                         .flags = CLAP_EVENT_IS_LIVE,
                     },
@@ -1299,7 +1304,7 @@ static void ConsumeParamEventsFromMainThread(AudioProcessor& processor,
                 clap_event_param_gesture const event {
                     .header {
                         .size = sizeof(event),
-                        .time = 0,
+                        .time = frame_index,
                         .type = CLAP_EVENT_PARAM_GESTURE_END,
                         .flags = CLAP_EVENT_IS_LIVE,
                     },
@@ -1349,7 +1354,7 @@ FlushParameterEvents(AudioProcessor& processor, clap_input_events const& in, cla
         .changed_params = {params, Bitset<k_num_parameters>()},
     };
     ChangedParams changes_for_main_thread {params};
-    ConsumeParamEventsFromMainThread(processor, out, changes);
+    ConsumeParamEventsFromMainThread(processor, out, 0, changes);
     ConsumeParamEventsFromHost(params,
                                in,
                                0,
@@ -1420,7 +1425,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     Bitset<k_num_layers> layers_changed {};
     bool mark_convolution_for_fade_out = false;
 
-    ConsumeParamEventsFromMainThread(processor, *process.out_events, changes);
+    ConsumeParamEventsFromMainThread(processor, *process.out_events, frame_index, changes);
     ConsumeParamEventsFromHost(processor.audio_params,
                                *process.in_events,
                                frame_index,
@@ -1549,6 +1554,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
             ProcessClapNoteOrMidi(processor,
                                   *e,
                                   *process.out_events,
+                                  frame_index,
                                   change_flags,
                                   changes,
                                   changes_for_main_thread);
@@ -1559,11 +1565,11 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                 case EventForAudioThreadType::StartNote: {
                     auto const start = e.Get<GuiNoteClicked>();
                     clap_event_note const note {
-                        .header =
-                            {
-                                .size = sizeof(clap_event_note),
-                                .type = CLAP_EVENT_NOTE_ON,
-                            },
+                        .header {
+                            .size = sizeof(clap_event_note),
+                            .time = frame_index,
+                            .type = CLAP_EVENT_NOTE_ON,
+                        },
                         .note_id = -1,
                         .key = start.key,
                         .velocity = (f64)start.velocity,
@@ -1571,6 +1577,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                     ProcessClapNoteOrMidi(processor,
                                           note.header,
                                           *process.out_events,
+                                          frame_index,
                                           change_flags,
                                           changes,
                                           changes_for_main_thread);
@@ -1579,11 +1586,11 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                 case EventForAudioThreadType::EndNote: {
                     auto const end = e.Get<GuiNoteClickReleased>();
                     clap_event_note const note {
-                        .header =
-                            {
-                                .size = sizeof(clap_event_note),
-                                .type = CLAP_EVENT_NOTE_OFF,
-                            },
+                        .header {
+                            .size = sizeof(clap_event_note),
+                            .time = frame_index,
+                            .type = CLAP_EVENT_NOTE_OFF,
+                        },
                         .note_id = -1,
                         .key = end.key,
                         .velocity = 0.0,
@@ -1591,6 +1598,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                     ProcessClapNoteOrMidi(processor,
                                           note.header,
                                           *process.out_events,
+                                          frame_index,
                                           change_flags,
                                           changes,
                                           changes_for_main_thread);
@@ -1634,23 +1642,22 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     // Voices and layers
     // ======================================================================================================
     // IMPROVE: support sending the host CLAP_EVENT_NOTE_END events when voices end
-    auto const layer_buffers =
-        ProcessVoices(processor.voice_pool, sub_block_size, processor.audio_processing_context);
+    ProcessVoices(processor.voice_pool, sub_block_size, processor.audio_processing_context);
 
-    alignas(16) f32 interleaved_outputs[k_block_size_max * 2] = {};
+    Array<f32x2, k_block_size_max> outputs = {};
 
-    bool audio_was_generated_by_voices = false;
-    for (auto const i : Range(k_num_layers)) {
-        auto const process_result = ProcessLayer(processor.layer_processors[i],
+    bool audio_was_generated_by_layers = false;
+    for (auto const layer_index : Range(k_num_layers)) {
+        auto const process_result = ProcessLayer(processor.layer_processors[layer_index],
                                                  processor.audio_processing_context,
                                                  processor.voice_pool,
                                                  sub_block_size,
-                                                 layers_changed.Get(i),
-                                                 layer_buffers[i]);
+                                                 layers_changed.Get(layer_index));
 
-        if (process_result.did_any_processing) {
-            audio_was_generated_by_voices = true;
-            SimdAddAlignedBuffer(interleaved_outputs, layer_buffers[i].data, (usize)sub_block_size * 2);
+        if (process_result.output) {
+            audio_was_generated_by_layers = true;
+            for (auto const frame : Range(sub_block_size))
+                outputs[frame] += (*process_result.output)[frame];
         }
 
         if (process_result.instrument_swapped) {
@@ -1658,22 +1665,18 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
 
             // Start new voices. We don't want to do that here because we want all parameter changes
             // to be applied beforehand.
-            processor.restart_voices_for_layer_bitset.Set(i);
+            processor.restart_voices_for_layer_bitset.Set(layer_index);
         }
     }
 
     if constexpr (RUNTIME_SAFETY_CHECKS_ON && !PRODUCTION_BUILD) {
         for (auto const frame : Range(sub_block_size)) {
-            auto const& l = interleaved_outputs[(frame * 2) + 0];
-            auto const& r = interleaved_outputs[(frame * 2) + 1];
-            ASSERT(l >= -k_erroneous_sample_value && l <= k_erroneous_sample_value);
-            ASSERT(r >= -k_erroneous_sample_value && r <= k_erroneous_sample_value);
+            auto const& val = outputs[frame];
+            ASSERT(All(val >= -k_erroneous_sample_value && val <= k_erroneous_sample_value));
         }
     }
 
-    auto interleaved_stereo_samples = ToStereoFramesSpan(interleaved_outputs, sub_block_size);
-
-    if (audio_was_generated_by_voices || processor.fx_need_another_frame_of_processing) {
+    if (audio_was_generated_by_layers || processor.fx_need_another_frame_of_processing) {
         // Effects
         // ==================================================================================================
 
@@ -1685,9 +1688,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
             };
             if (fx->type == EffectType::ConvolutionReverb) extra_context = &convo_extra_context;
 
-            auto const r = fx->ProcessBlock(interleaved_stereo_samples,
-                                            processor.audio_processing_context,
-                                            extra_context);
+            auto const r = fx->ProcessBlock(outputs, processor.audio_processing_context, extra_context);
             if (r == EffectProcessResult::ProcessingTail) fx_need_another_frame_of_processing = true;
 
             if (fx->type == EffectType::ConvolutionReverb) {
@@ -1699,7 +1700,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
         // Master
         // ==================================================================================================
 
-        for (auto& frame : interleaved_stereo_samples) {
+        for (auto& frame : outputs) {
             frame *= processor.master_vol_smoother.LowPass(
                 processor.master_vol,
                 processor.audio_processing_context.one_pole_smoothing_cutoff_10ms);
@@ -1707,7 +1708,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
             // frame = Clamp(frame, {-1, -1}, {1, 1}); // hard limit
             frame *= processor.whole_engine_volume_fade.GetFade();
         }
-        processor.peak_meter.AddBuffer(interleaved_stereo_samples);
+        processor.peak_meter.AddBuffer(outputs);
     } else {
         processor.peak_meter.Zero();
         for (auto& l : processor.layer_processors)
@@ -1720,9 +1721,9 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     if (process.audio_outputs->channel_count == 2 && process.audio_outputs->data32 &&
         (((uintptr)process.audio_outputs->data32 % alignof(f32*)) == 0) && process.audio_outputs->data32[0] &&
         process.audio_outputs->data32[1]) {
-        auto outputs = process.audio_outputs->data32;
-        CopyInterleavedToSeparateChannels(outputs[0] + frame_index,
-                                          outputs[1] + frame_index,
+        auto interleaved_outputs = (f32 const*)outputs.data;
+        CopyInterleavedToSeparateChannels(process.audio_outputs->data32[0] + frame_index,
+                                          process.audio_outputs->data32[1] + frame_index,
                                           interleaved_outputs,
                                           sub_block_size);
     }

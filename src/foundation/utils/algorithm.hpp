@@ -246,6 +246,11 @@ PUBLIC constexpr void Sort(Type (&array)[N]) {
     QSort(array, 0, (int)N - 1, DefaultLessThanFunction<Type>);
 }
 
+PUBLIC constexpr void Fill(ContiguousContainer auto& data, auto&& value) {
+    for (auto& v : data)
+        v = value;
+}
+
 // compare_to_target follows the same requirements as stdlib bsearch():
 // [target](const Type &item) {
 //     if (item == target) return 0;

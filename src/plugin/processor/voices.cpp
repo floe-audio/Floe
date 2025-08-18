@@ -313,7 +313,7 @@ inline auto FastCos(ScalarOrVectorFloat auto x) {
 }
 
 // SIMD version where 2 pan positions are processed at once.
-// The result is a vector of 4 floats: {left1, right1, left2, right2}.
+// The result is a vector of 4 floats: {left 1, right 1, left 2, right 2}.
 inline f32x4 EqualPanGains2(f32x2 pan_pos) {
     auto const angle = pan_pos * (k_pi<f32> * 0.25f);
     auto const sinx = FastSin(angle);
@@ -476,163 +476,123 @@ void NoteOff(VoicePool& pool, VoiceProcessingController& controller, MidiChannel
         if (v.is_active && v.midi_key_trigger == note && &controller == v.controller) EndVoice(v);
 }
 
-class VoiceProcessor {
-  public:
-    VoiceProcessor(Voice& voice, AudioProcessingContext const& audio_context)
-        : m_filter_coeffs(voice.filter_coeffs)
-        , m_filters(voice.filters)
-        , m_audio_context(audio_context)
-        , m_voice(voice)
-        , m_buffer(m_voice.pool.buffer_pool[m_voice.index]) {}
+struct VoiceProcessor {
+    enum class VoiceBlockResult {
+        Continue,
+        End,
+    };
 
-    ~VoiceProcessor() {
-        m_voice.filter_coeffs = m_filter_coeffs;
-        m_voice.filters = m_filters;
-    }
-
-    bool Process(u32 num_frames) {
+    static void Process(Voice& voice, AudioProcessingContext const& audio_context, u32 num_frames) {
         ZoneNamedN(process, "Voice Process", true);
-        u32 samples_written = 0;
-        Span<f32> write_buffer = m_buffer;
+        ASSERT_HOT(voice.is_active);
 
-        if (m_voice.frames_before_starting != 0) {
-            auto const num_frames_to_remove = Min(num_frames, m_voice.frames_before_starting);
-            auto const num_samples_to_remove = num_frames_to_remove * 2;
-            ZeroMemory(write_buffer.SubSpan(0, num_samples_to_remove).ToByteSpan());
-            write_buffer = write_buffer.SubSpan(num_samples_to_remove);
-            samples_written = num_samples_to_remove;
-            num_frames -= num_frames_to_remove;
-            m_voice.frames_before_starting -= num_frames_to_remove;
+        auto buffer = Span<f32x2> {voice.buffer.data, num_frames};
+
+        for (auto& f : voice.buffer)
+            f = 0.0f;
+
+        if (voice.frames_before_starting != 0) {
+            auto const silent_frames = Min(num_frames, voice.frames_before_starting);
+            voice.frames_before_starting -= silent_frames;
+            buffer.RemovePrefix(silent_frames);
+            if (buffer.size == 0) return;
         }
 
-        m_frame_index = samples_written / 2;
+        Array<f32, k_block_size_max> lfo_amounts_buffer;
+        auto lfo_amounts = Span<f32> {lfo_amounts_buffer}.SubSpan(0, num_frames);
+        FillLfoBuffer(voice, lfo_amounts);
 
-        ZoneNamedN(chunk, "Voice Chunk", true);
-        ZoneValueV(chunk, num_frames);
+        FillBufferWithSampleData(voice, buffer, lfo_amounts, audio_context);
 
-        FillLFOBuffer(num_frames);
-        FillBufferWithSampleData(num_frames);
+        auto const block_result = ApplyGain(voice, buffer, lfo_amounts, audio_context);
+        ApplyFilter(voice, buffer, lfo_amounts, audio_context);
 
-        auto num_valid_frames = ApplyGain(num_frames);
-        ApplyFilter(num_valid_frames);
+        {
+            f32 position_for_gui = {};
+            for (auto const& s : voice.sound_sources) {
+                if (!s.is_active) continue;
+                if (s.source_data.tag != InstrumentType::Sampler) continue;
+                auto const& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
+                if (sampler.region->trigger.trigger_event == sample_lib::TriggerEvent::NoteOff) continue;
+                position_for_gui = (f32)(s.pos / sampler.data->num_frames);
+            }
 
-        auto const samples_to_write = num_valid_frames * 2;
-        CheckSamplesAreValid(0, samples_to_write);
-        samples_written += samples_to_write;
-
-        if (num_valid_frames != num_frames || !m_voice.num_active_voice_samples) {
-            write_buffer = write_buffer.SubSpan((usize)samples_to_write);
-            // We can't do aligned zero because of frames_before_starting
-            ZeroMemory(write_buffer.ToByteSpan());
-            EndVoiceInstantly(m_voice);
-            return samples_written != 0;
+            constexpr f32 k_max_u16 = LargestRepresentableValue<u16>();
+            voice.pool.voice_waveform_markers_for_gui.Write()[voice.index] = {
+                .layer_index = (u8)voice.controller->layer_index,
+                .position = (u16)(Clamp01(position_for_gui) * k_max_u16),
+                .intensity = (u16)(Clamp01(voice.current_gain) * k_max_u16),
+            };
+            voice.pool.voice_vol_env_markers_for_gui.Write()[voice.index] = {
+                .on = voice.controller->vol_env_on && !voice.disable_vol_env && !voice.vol_env.IsIdle(),
+                .layer_index = (u8)voice.controller->layer_index,
+                .state = voice.vol_env.state,
+                .pos = (u16)(Clamp01(voice.vol_env.output) * k_max_u16),
+                .sustain_level = (u16)(Clamp01(voice.controller->vol_env.sustain_amount) * k_max_u16),
+                .id = voice.id,
+            };
+            voice.pool.voice_fil_env_markers_for_gui.Write()[voice.index] = {
+                .on = voice.controller->fil_env_amount != 0 && !voice.fil_env.IsIdle(),
+                .layer_index = (u8)voice.controller->layer_index,
+                .state = voice.fil_env.state,
+                .pos = (u16)(Clamp01(voice.fil_env.output) * k_max_u16),
+                .sustain_level = (u16)(Clamp01(voice.controller->fil_env.sustain_amount) * k_max_u16),
+                .id = voice.id,
+            };
         }
 
-        num_frames -= num_frames;
-        m_frame_index += num_frames;
+        if (block_result == VoiceBlockResult::End || !voice.num_active_voice_samples)
+            EndVoiceInstantly(voice);
 
-        m_voice.pool.voice_waveform_markers_for_gui.Write()[m_voice.index] = {
-            .layer_index = (u8)m_voice.controller->layer_index,
-            .position = (u16)(Clamp01(m_position_for_gui) * (f32)UINT16_MAX),
-            .intensity = (u16)(Clamp01(m_voice.current_gain) * (f32)UINT16_MAX),
-        };
-        m_voice.pool.voice_vol_env_markers_for_gui.Write()[m_voice.index] = {
-            .on = m_voice.controller->vol_env_on && !m_voice.disable_vol_env && !m_voice.vol_env.IsIdle(),
-            .layer_index = (u8)m_voice.controller->layer_index,
-            .state = m_voice.vol_env.state,
-            .pos = (u16)(Clamp01(m_voice.vol_env.output) * (f32)UINT16_MAX),
-            .sustain_level = (u16)(Clamp01(m_voice.controller->vol_env.sustain_amount) * (f32)UINT16_MAX),
-            .id = m_voice.id,
-        };
-        m_voice.pool.voice_fil_env_markers_for_gui.Write()[m_voice.index] = {
-            .on = m_voice.controller->fil_env_amount != 0 && !m_voice.fil_env.IsIdle(),
-            .layer_index = (u8)m_voice.controller->layer_index,
-            .state = m_voice.fil_env.state,
-            .pos = (u16)(Clamp01(m_voice.fil_env.output) * (f32)UINT16_MAX),
-            .sustain_level = (u16)(Clamp01(m_voice.controller->fil_env.sustain_amount) * (f32)UINT16_MAX),
-            .id = m_voice.id,
-        };
-
-        m_voice.current_gain = 1;
-
-        return samples_written != 0;
+        voice.written_to_buffer_this_block = true;
     }
 
-  private:
-    void CheckSamplesAreValid(usize buffer_pos, usize num) {
-        ASSERT_HOT(buffer_pos + num <= m_buffer.size);
-        for (usize i = buffer_pos; i < (buffer_pos + num); ++i)
-            ASSERT_HOT(m_buffer[i] >= -k_erroneous_sample_value && m_buffer[i] <= k_erroneous_sample_value);
-    }
-    static void CheckSamplesAreValid(f32x4 samples) {
-        ASSERT_HOT(All(samples >= -k_erroneous_sample_value && samples <= k_erroneous_sample_value));
+    static bool HasPitchLfo(Voice const& v) {
+        return v.controller->lfo.on && v.controller->lfo.dest == param_values::LfoDestination::Pitch;
     }
 
-    bool HasPitchLfo() const {
-        return m_voice.controller->lfo.on &&
-               m_voice.controller->lfo.dest == param_values::LfoDestination::Pitch;
+    static bool HasPanLfo(Voice const& v) {
+        return v.controller->lfo.on && v.controller->lfo.dest == param_values::LfoDestination::Pan;
     }
 
-    bool HasPanLfo() const {
-        return m_voice.controller->lfo.on &&
-               m_voice.controller->lfo.dest == param_values::LfoDestination::Pan;
+    static bool HasFilterLfo(Voice const& v) {
+        return v.controller->lfo.on && v.controller->lfo.dest == param_values::LfoDestination::Filter;
     }
 
-    bool HasFilterLfo() const {
-        return m_voice.controller->lfo.on &&
-               m_voice.controller->lfo.dest == param_values::LfoDestination::Filter;
+    static bool HasVolumeLfo(Voice const& v) {
+        return v.controller->lfo.on && v.controller->lfo.dest == param_values::LfoDestination::Volume;
     }
 
-    bool HasVolumeLfo() const {
-        return m_voice.controller->lfo.on &&
-               m_voice.controller->lfo.dest == param_values::LfoDestination::Volume;
-    }
+    static f64 PitchRatio(Voice const& voice,
+                          VoiceSoundSource& s,
+                          f32 current_lfo_value,
+                          AudioProcessingContext const& context) {
+        static constexpr f64 k_lfo_range_semitones = 1;
 
-    static u32 GetLastFrameInOddNumFrames(u32 const num_frames) {
-        return ((num_frames % 2) != 0) ? (num_frames - 1) : UINT32_MAX;
-    }
-
-    void MultiplyVectorToBufferAtPos(usize const pos, f32x4 const& gain) {
-        ASSERT_HOT(pos + 4 <= m_buffer.size);
-        auto p = LoadUnalignedToType<f32x4>(&m_buffer[pos]);
-        p *= gain;
-        CheckSamplesAreValid(p);
-        StoreToUnaligned(&m_buffer[pos], p);
-    }
-
-    void AddVectorToBufferAtPos(usize const pos, f32x4 const& addition) {
-        ASSERT_HOT(pos + 4 <= m_buffer.size);
-        auto p = LoadUnalignedToType<f32x4>(&m_buffer[pos]);
-        p += addition;
-        CheckSamplesAreValid(p);
-        StoreToUnaligned(&m_buffer[pos], p);
-    }
-
-    void CopyVectorToBufferAtPos(usize const pos, f32x4 const& data) {
-        ASSERT_HOT(pos + 4 <= m_buffer.size);
-        CheckSamplesAreValid(data);
-        StoreToUnaligned(&m_buffer[pos], data);
-    }
-
-    f64 GetPitchRatio(VoiceSoundSource& s, u32 frame) {
         auto pitch_ratio = s.pitch_ratio;
-        if (HasPitchLfo()) {
-            static constexpr f64 k_max_semitones = 1;
-            auto const lfo_amp = (f64)m_voice.controller->lfo.amount;
+        if (HasPitchLfo(voice)) {
             auto const pitch_addition_in_semitones =
-                ((f64)m_lfo_amounts[(usize)frame] * lfo_amp * k_max_semitones);
+                (f64)current_lfo_value * (f64)voice.controller->lfo.amount * k_lfo_range_semitones;
             pitch_ratio *= Exp2(pitch_addition_in_semitones / 12.0);
         }
-        return s.pitch_ratio_smoother.LowPass(pitch_ratio,
-                                              (f64)m_audio_context.one_pole_smoothing_cutoff_0_2ms);
+        return s.pitch_ratio_smoother.LowPass(pitch_ratio, (f64)context.one_pole_smoothing_cutoff_0_2ms);
     }
 
-    bool SampleGetAndInc(VoiceSoundSource& w, u32 frame, f32x2& out) {
-        auto& sampler = w.source_data.Get<VoiceSoundSource::SampleSource>();
-        out = SampleGetData(*sampler.data, sampler.loop, sampler.loop_and_reverse_flags, w.pos);
+    struct SampleSourceReturnValue {
+        f32x2 frame;
+        SampleState state;
+    };
+
+    static SampleSourceReturnValue NextSampleFrame(Voice const& voice,
+                                                   VoiceSoundSource& s,
+                                                   f32 current_lfo_value,
+                                                   AudioProcessingContext const& context) {
+        auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
+
+        auto out = GetSampleFrame(*sampler.data, sampler.loop, sampler.loop_and_reverse_flags, s.pos);
         if (!(sampler.loop_and_reverse_flags &
               (loop_and_reverse_flags::LoopedManyTimes | loop_and_reverse_flags::CurrentlyReversed))) {
-            auto const pos = w.pos - sampler.region->audio_props.start_offset_frames;
+            auto const pos = s.pos - sampler.region->audio_props.start_offset_frames;
             if (pos < sampler.region->audio_props.fade_in_frames) {
                 auto const percent = pos / (f64)sampler.region->audio_props.fade_in_frames;
                 // Quarter-sine fade in.
@@ -640,222 +600,188 @@ class VoiceProcessor {
                 out *= amount;
             }
         }
-        auto const pitch_ratio = GetPitchRatio(w, frame);
-        return IncrementSamplePlaybackPos(sampler.loop,
-                                          sampler.loop_and_reverse_flags,
-                                          w.pos,
-                                          pitch_ratio,
-                                          (f64)sampler.data->num_frames);
+
+        return {
+            .frame = out,
+            .state = IncrementSamplePlaybackPos(sampler.loop,
+                                                sampler.loop_and_reverse_flags,
+                                                s.pos,
+                                                PitchRatio(voice, s, current_lfo_value, context),
+                                                (f64)sampler.data->num_frames),
+        };
     }
 
-    bool SampleGetAndIncWithXFade(VoiceSoundSource& w, u32 frame, f32x2& out) {
-        auto& sampler = w.source_data.Get<VoiceSoundSource::SampleSource>();
-        bool sample_still_going = false;
-        if (sampler.region->timbre_layering.layer_range) {
-            if (auto const v =
-                    sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol,
-                                                       m_audio_context.one_pole_smoothing_cutoff_10ms);
-                v > 0.0001f) {
-                sample_still_going = SampleGetAndInc(w, frame, out);
-                out *= v;
-            } else {
-                auto const pitch_ratio1 = GetPitchRatio(w, frame);
-                sample_still_going = IncrementSamplePlaybackPos(sampler.loop,
-                                                                sampler.loop_and_reverse_flags,
-                                                                w.pos,
-                                                                pitch_ratio1,
-                                                                (f64)sampler.data->num_frames);
+    static SampleState AddSampleDataOntoBuffer(Voice const& voice,
+                                               VoiceSoundSource& s,
+                                               Span<f32x2> buffer,
+                                               Span<f32 const> lfo_amounts,
+                                               AudioProcessingContext const& context) {
+        if (auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
+            sampler.region->timbre_layering.layer_range) {
+            for (auto [frame_index, val] : Enumerate(buffer)) {
+                auto const sample_frame = ({
+                    SampleSourceReturnValue f;
+                    if (auto const v =
+                            sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol,
+                                                               context.one_pole_smoothing_cutoff_10ms);
+                        v > 0.0001f) {
+                        f = NextSampleFrame(voice, s, lfo_amounts[frame_index], context);
+                        f.frame *= v;
+                    } else {
+                        auto const pitch_ratio1 = PitchRatio(voice, s, lfo_amounts[frame_index], context);
+                        f.frame = 0.0f;
+                        f.state = IncrementSamplePlaybackPos(sampler.loop,
+                                                             sampler.loop_and_reverse_flags,
+                                                             s.pos,
+                                                             pitch_ratio1,
+                                                             (f64)sampler.data->num_frames);
+                    }
+                    f;
+                });
+
+                val += sample_frame.frame * s.amp;
+
+                if (sample_frame.state == SampleState::Ended) return sample_frame.state;
             }
         } else {
-            sample_still_going = SampleGetAndInc(w, frame, out);
-        }
-        return sample_still_going;
-    }
+            for (auto [frame_index, val] : Enumerate(buffer)) {
+                auto const sample_frame = NextSampleFrame(voice, s, lfo_amounts[frame_index], context);
 
-    bool AddSampleDataOntoBuffer(VoiceSoundSource& w, u32 num_frames) {
-        usize sample_pos = 0;
-        for (u32 frame = 0; frame < num_frames; frame += 2) {
-            f32x2 s1 {};
-            f32x2 s2 {};
+                val += sample_frame.frame * s.amp;
 
-            bool sample_still_going = SampleGetAndIncWithXFade(w, frame, s1);
-
-            auto const frame_p1 = frame + 1;
-            if (sample_still_going && frame_p1 != num_frames)
-                sample_still_going = SampleGetAndIncWithXFade(w, frame_p1, s2);
-
-            // 's2' will be 0 if the second sample was not fetched so there is no harm in adding that too.
-            auto v = __builtin_shufflevector(s1, s2, 0, 1, 2, 3);
-            v *= w.amp;
-            AddVectorToBufferAtPos(sample_pos, v);
-            sample_pos += 4;
-
-            if (!sample_still_going) return false;
-        }
-        return true;
-    }
-
-    void ConvertRandomNumsToWhiteNoiseInBuffer(u32 num_frames) {
-        usize sample_pos = 0;
-        f32x4 const randon_num_to_01_scale = 1.0f / (f32)0x7FFF;
-        f32x4 const scale = 0.5f * 0.2f;
-        for (u32 frame = 0; frame < num_frames; frame += 2) {
-            auto buf = LoadAlignedToType<f32x4>(&m_buffer[sample_pos]);
-            buf = ((buf * randon_num_to_01_scale) * 2 - 1) * scale;
-            CheckSamplesAreValid(buf);
-            StoreToAligned(&m_buffer[sample_pos], buf);
-            sample_pos += 4;
-        }
-    }
-
-    void FillBufferWithMonoWhiteNoise(u32 num_frames) {
-        usize sample_pos = 0;
-        for (u32 frame = 0; frame < num_frames; frame++) {
-            auto const rand = (f32)FastRand(m_voice.pool.random_seed);
-            m_buffer[sample_pos++] = rand;
-            m_buffer[sample_pos++] = rand;
+                if (sample_frame.state == SampleState::Ended) return sample_frame.state;
+            }
         }
 
-        ConvertRandomNumsToWhiteNoiseInBuffer(num_frames);
+        return SampleState::Alive;
     }
 
-    void FillBufferWithStereoWhiteNoise(u32 num_frames) {
-        auto const num_samples = num_frames * 2;
-        for (auto const sample_pos : Range(num_samples))
-            m_buffer[sample_pos] = (f32)FastRand(m_voice.pool.random_seed);
+    static constexpr unsigned int k_max_fast_rand = 0x7FFF;
 
-        ConvertRandomNumsToWhiteNoiseInBuffer(num_frames);
-
-        for (usize sample = 0; sample < num_samples; sample += 2) {
-            DoStereoWiden(0.7f,
-                          m_buffer[sample],
-                          m_buffer[sample + 1],
-                          m_buffer[sample],
-                          m_buffer[sample + 1]);
-        }
+    static void ScaleDownRandom(f32x2& val) {
+        f32x2 constexpr k_random_num_to_01_scale = 1.0f / (f32)k_max_fast_rand;
+        f32x2 constexpr k_scale = 0.5f * 0.2f;
+        val = ((val * k_random_num_to_01_scale) * 2 - 1) * k_scale;
     }
 
-    void FillBufferWithSampleData(u32 num_frames) {
+    static int FastRand(unsigned int& seed) {
+        seed = (214013 * seed + 2531011);
+        return (seed >> 16) & k_max_fast_rand;
+    }
+
+    static void FillBufferWithSampleData(Voice& voice,
+                                         Span<f32x2> buffer,
+                                         Span<f32 const> lfo_amounts,
+                                         AudioProcessingContext const& context) {
         ZoneScoped;
-        ZeroChunkBuffer(num_frames);
-        for (auto& s : m_voice.sound_sources) {
+        for (auto& s : voice.sound_sources) {
             if (!s.is_active) continue;
             switch (s.source_data.tag) {
-                case InstrumentType::None: {
-                    PanicIfReached();
-                    break;
-                }
                 case InstrumentType::Sampler: {
-                    auto const& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
-                    if (!AddSampleDataOntoBuffer(s, num_frames)) {
+                    if (AddSampleDataOntoBuffer(voice, s, buffer, lfo_amounts, context) ==
+                        SampleState::Ended) {
                         s.is_active = false;
-                        m_voice.num_active_voice_samples--;
+                        voice.num_active_voice_samples--;
                     }
-                    if (sampler.region->trigger.trigger_event == sample_lib::TriggerEvent::NoteOn)
-                        m_position_for_gui = (f32)s.pos / (f32)sampler.data->num_frames;
                     break;
                 }
                 case InstrumentType::WaveformSynth: {
+                    ASSERT_HOT(voice.num_active_voice_samples == 1);
                     switch (s.source_data.Get<WaveformType>()) {
                         case WaveformType::Sine: {
-                            usize sample_pos = 0;
-                            for (u32 frame = 0; frame < num_frames; frame += 2) {
-                                alignas(16) f32 samples[4];
-
-                                samples[0] = trig_table_lookup::SinTurnsPositive((f32)s.pos);
-                                samples[1] = samples[0];
-                                s.pos += GetPitchRatio(s, frame);
-                                if ((frame + 1) != num_frames) {
-                                    samples[2] = trig_table_lookup::SinTurnsPositive((f32)s.pos);
-                                    samples[3] = samples[2];
-                                    s.pos += GetPitchRatio(s, frame + 1);
-                                } else {
-                                    samples[2] = 0;
-                                    samples[3] = 0;
-                                }
-
-                                // prevent overflow
-                                if (s.pos > (1 << 24)) [[unlikely]]
-                                    s.pos -= (1 << 24);
-
+                            for (auto [frame_index, val] : Enumerate(buffer)) {
                                 // This is an arbitrary scale factor to make the sine more in-line with other
                                 // waveform levels. It's important to keep this the same for backwards
                                 // compatibility.
-                                constexpr f32 k_sine_scale = 0.2f;
+                                constexpr f32x2 k_sine_scale = 0.2f;
 
-                                auto v = LoadAlignedToType<f32x4>(samples);
-                                v *= s.amp * k_sine_scale;
-                                CopyVectorToBufferAtPos(sample_pos, v);
-                                sample_pos += 4;
+                                val = f32x2(trig_table_lookup::SinTurnsPositive((f32)s.pos)) * k_sine_scale;
+
+                                s.pos += PitchRatio(voice, s, lfo_amounts[frame_index], context);
+                                if (s.pos > (1 << 24)) [[unlikely]] // prevent overflow
+                                    s.pos -= (1 << 24);
                             }
 
                             break;
                         }
                         case WaveformType::WhiteNoiseMono: {
-                            FillBufferWithMonoWhiteNoise(num_frames);
+                            for (auto& val : buffer) {
+                                val = (f32)FastRand(voice.pool.random_seed);
+                                ScaleDownRandom(val);
+                            }
                             break;
                         }
                         case WaveformType::WhiteNoiseStereo: {
-                            FillBufferWithStereoWhiteNoise(num_frames);
+                            for (auto& val : buffer) {
+                                val = {(f32)FastRand(voice.pool.random_seed),
+                                       (f32)FastRand(voice.pool.random_seed)};
+                                ScaleDownRandom(val);
+                            }
+
+                            for (auto& val : buffer) {
+                                alignas(16) f32 samples[2];
+                                StoreToAligned(samples, val);
+                                DoStereoWiden(0.7f, samples[0], samples[1], samples[0], samples[1]);
+                                val = LoadAlignedToType<f32x2>(samples);
+                            }
                             break;
                         }
                         case WaveformType::Count: PanicIfReached(); break;
                     }
                     break;
                 }
+                case InstrumentType::None: PanicIfReached(); break;
             }
         }
     }
 
-    u32 ApplyGain(u32 num_frames) {
+    [[nodiscard]] static VoiceBlockResult ApplyGain(Voice& voice,
+                                                    Span<f32x2>& buffer,
+                                                    Span<f32 const> lfo_amounts,
+                                                    AudioProcessingContext const& context) {
         ZoneScoped;
 
-        // Save envelope state for restoration
-        auto vol_env = m_voice.vol_env;
-        auto env_on = m_voice.controller->vol_env_on && !m_voice.disable_vol_env;
-        auto vol_env_params = m_voice.controller->vol_env;
-        DEFER { m_voice.vol_env = vol_env; };
+        auto const env_on = voice.controller->vol_env_on && !voice.disable_vol_env;
 
         // LFO parameters
-        auto const has_volume_lfo = HasVolumeLfo();
-        auto const has_pan_lfo = HasPanLfo();
-        auto const lfo_amp = (has_volume_lfo || has_pan_lfo) ? m_voice.controller->lfo.amount : 0.0f;
+        auto const has_volume_lfo = HasVolumeLfo(voice);
+        auto const has_pan_lfo = HasPanLfo(voice);
+        auto const lfo_amp = (has_volume_lfo || has_pan_lfo) ? voice.controller->lfo.amount : 0.0f;
         auto const lfo_base = has_volume_lfo ? (1.0f - (Fabs(lfo_amp) / 2.0f)) : 1.0f;
         auto const lfo_half_amp = lfo_amp / 2.0f;
 
-        usize sample_pos = 0;
         f32 final_gain1 = 1.0f;
 
-        for (u32 frame = 0; frame < num_frames; frame += 2) {
+        for (u32 frame = 0; frame < buffer.size; frame += 2) {
             // Calculate envelope gain
-            f32 env1 = env_on ? vol_env.Process(vol_env_params) : 1.0f;
+            f32 env1 = env_on ? voice.vol_env.Process(voice.controller->vol_env) : 1.0f;
             f32 env2 = 1.0f;
             auto const frame_p1 = frame + 1;
-            auto const frame_p1_is_not_last = frame_p1 != num_frames;
-            if (frame_p1_is_not_last) env2 = env_on ? vol_env.Process(vol_env_params) : 1.0f;
+            auto const frame_p1_is_not_last = frame_p1 != buffer.size;
+            if (frame_p1_is_not_last) env2 = env_on ? voice.vol_env.Process(voice.controller->vol_env) : 1.0f;
 
             // Calculate volume LFO gain
             f32 vol_lfo1 = 1.0f;
             f32 vol_lfo2 = 1.0f;
             if (has_volume_lfo) {
-                vol_lfo1 = lfo_base + m_lfo_amounts[frame] * lfo_half_amp;
+                vol_lfo1 = lfo_base + lfo_amounts[frame] * lfo_half_amp;
                 vol_lfo2 =
-                    (frame_p1_is_not_last) ? lfo_base + (m_lfo_amounts[frame_p1] * lfo_half_amp) : vol_lfo1;
+                    (frame_p1_is_not_last) ? lfo_base + (lfo_amounts[frame_p1] * lfo_half_amp) : vol_lfo1;
             }
 
             // Calculate fade gain
-            f32 fade1 = m_voice.volume_fade.GetFade() * m_voice.aftertouch_multiplier;
+            f32 fade1 = voice.volume_fade.GetFade() * voice.aftertouch_multiplier;
             f32 fade2 = 1.0f;
-            if (frame_p1_is_not_last) fade2 = m_voice.volume_fade.GetFade() * m_voice.aftertouch_multiplier;
+            if (frame_p1_is_not_last) fade2 = voice.volume_fade.GetFade() * voice.aftertouch_multiplier;
 
             // Calculate pan positions
-            auto pan_pos1 = m_voice.controller->pan_pos;
+            auto pan_pos1 = voice.controller->pan_pos;
             auto pan_pos2 = pan_pos1;
             if (has_pan_lfo) {
-                pan_pos1 += (m_lfo_amounts[frame] * lfo_amp);
+                pan_pos1 += (lfo_amounts[frame] * lfo_amp);
                 pan_pos1 = Clamp(pan_pos1, -1.0f, 1.0f);
                 if (frame_p1_is_not_last) {
-                    pan_pos2 += (m_lfo_amounts[frame_p1] * lfo_amp);
+                    pan_pos2 += (lfo_amounts[frame_p1] * lfo_amp);
                     pan_pos2 = Clamp(pan_pos2, -1.0f, 1.0f);
                 }
             }
@@ -879,137 +805,91 @@ class VoiceProcessor {
 
             // Apply smoothing to final gains
             auto const smooth_gain_1 =
-                m_voice.gain_smoother.LowPass(gain_1, m_audio_context.one_pole_smoothing_cutoff_1ms);
+                voice.gain_smoother.LowPass(gain_1, context.one_pole_smoothing_cutoff_1ms);
             auto const smooth_gain_2 =
-                m_voice.gain_smoother.LowPass(gain_2, m_audio_context.one_pole_smoothing_cutoff_1ms);
+                voice.gain_smoother.LowPass(gain_2, context.one_pole_smoothing_cutoff_1ms);
 
-            // Apply smoothed gains to stereo sample pairs
-            auto const gain = __builtin_shufflevector(smooth_gain_1, smooth_gain_2, 0, 1, 2, 3);
-            MultiplyVectorToBufferAtPos(sample_pos, gain);
-            sample_pos += 4;
-
-            CheckSamplesAreValid(sample_pos - 4, 4);
+            // Apply gains to the buffer
+            buffer[frame + 0] *= smooth_gain_1;
+            buffer[frame + 1] *= smooth_gain_2;
 
             // Check for early termination conditions
-            if (env_on && vol_env.IsIdle()) {
-                m_voice.current_gain *= final_gain1;
-                return frame;
-            }
-            if (m_voice.volume_fade.IsSilent()) {
-                m_voice.current_gain *= final_gain1;
-                return frame;
+            if ((env_on && voice.vol_env.IsIdle()) || voice.volume_fade.IsSilent()) {
+                for (auto i = frame_p1 + 1; i < buffer.size; ++i)
+                    buffer[i] = 0.0f;
+                voice.current_gain = final_gain2;
+                buffer = buffer.SubSpan(0, frame_p1);
+                return VoiceBlockResult::End;
             }
         }
 
-        m_voice.current_gain *= final_gain1;
-        return num_frames;
+        voice.current_gain = final_gain1;
+        return VoiceBlockResult::Continue;
     }
 
-    void ApplyFilter(u32 num_frames) {
+    static void ApplyFilter(Voice& voice,
+                            Span<f32x2>& buffer,
+                            Span<f32 const> lfo_amounts,
+                            AudioProcessingContext const& context) {
         ZoneScoped;
-        auto const filter_type = m_voice.controller->filter_type;
+        auto const filter_type = voice.controller->filter_type;
+        auto const has_filter_lfo = HasFilterLfo(voice);
 
-        auto fil_env = m_voice.fil_env;
-        auto fil_env_params = m_voice.controller->fil_env;
-        DEFER { m_voice.fil_env = fil_env; };
-
-        usize sample_pos = 0;
-        for (u32 frame = 0; frame < num_frames; frame++) {
-            auto env = fil_env.Process(fil_env_params);
+        for (auto const [frame_index, val] : Enumerate(buffer)) {
+            auto env = voice.fil_env.Process(voice.controller->fil_env);
             if (auto const filter_mix =
-                    m_voice.filter_mix_smoother.LowPass((f32)m_voice.controller->filter_on,
-                                                        m_audio_context.one_pole_smoothing_cutoff_10ms);
+                    voice.filter_mix_smoother.LowPass((f32)voice.controller->filter_on,
+                                                      context.one_pole_smoothing_cutoff_10ms);
                 filter_mix > 0.00001f) {
 
-                auto cut = m_voice.controller->sv_filter_cutoff_linear +
-                           ((env - 0.5f) * m_voice.controller->fil_env_amount);
-                auto res = m_voice.controller->sv_filter_resonance;
+                auto cut = voice.controller->sv_filter_cutoff_linear +
+                           ((env - 0.5f) * voice.controller->fil_env_amount);
+                auto res = voice.controller->sv_filter_resonance;
 
-                auto const has_filter_lfo = HasFilterLfo();
-                if (has_filter_lfo) {
-                    auto const& lfo_amp = m_voice.controller->lfo.amount;
-                    cut += (m_lfo_amounts[(usize)frame] * lfo_amp) / 2;
-                }
+                if (has_filter_lfo) cut += (lfo_amounts[frame_index] * voice.controller->lfo.amount) / 2;
 
                 f32 res_change {};
-                res = m_voice.filter_resonance_smoother.LowPass(res,
-                                                                m_audio_context.one_pole_smoothing_cutoff_1ms,
-                                                                &res_change);
+                res = voice.filter_resonance_smoother.LowPass(res,
+                                                              context.one_pole_smoothing_cutoff_1ms,
+                                                              &res_change);
                 f32 cut_change {};
-                cut = m_voice.filter_linear_cutoff_smoother.LowPass(
-                    cut,
-                    m_audio_context.one_pole_smoothing_cutoff_1ms,
-                    &cut_change);
+                cut = voice.filter_linear_cutoff_smoother.LowPass(cut,
+                                                                  context.one_pole_smoothing_cutoff_1ms,
+                                                                  &cut_change);
 
                 if (has_filter_lfo || cut_change > 0.00001f || res_change > 0.00001f) {
                     cut = sv_filter::LinearToHz(Clamp(cut, 0.0f, 1.0f));
-                    m_filter_coeffs.Update(m_audio_context.sample_rate, cut, res);
+                    voice.filter_coeffs.Update(context.sample_rate, cut, res);
                 }
 
-                if (filter_mix < 0.999f) {
-                    auto const in = LoadUnalignedToType<f32x2>(&m_buffer[sample_pos]);
-                    f32x2 wet_buf;
-                    sv_filter::Process(in, wet_buf, m_filters, filter_type, m_filter_coeffs);
+                f32x2 wet_buf;
+                sv_filter::Process(val, wet_buf, voice.filters, filter_type, voice.filter_coeffs);
 
-                    for (auto const i : Range(2u)) {
-                        auto& samp = m_buffer[sample_pos + i];
-                        samp = samp + filter_mix * (wet_buf[i] - samp);
-                    }
-                } else {
-                    auto const in = LoadUnalignedToType<f32x2>(&m_buffer[sample_pos]);
-                    f32x2 out;
-                    sv_filter::Process(in, out, m_filters, filter_type, m_filter_coeffs);
-                    StoreToUnaligned(&m_buffer[sample_pos], out);
-                }
-
-                CheckSamplesAreValid(sample_pos, 2);
-                sample_pos += 2;
+                if (filter_mix < 0.999f)
+                    val = val + filter_mix * (wet_buf - val);
+                else
+                    val = wet_buf;
             } else {
-                m_voice.filters = {};
-                m_voice.filter_resonance_smoother.Reset();
-                m_voice.filter_linear_cutoff_smoother.Reset();
+                voice.filters = {};
+                voice.filter_resonance_smoother.Reset();
+                voice.filter_linear_cutoff_smoother.Reset();
             }
         }
     }
 
-    void FillLFOBuffer(u32 num_frames) {
+    static void FillLfoBuffer(Voice& voice, Span<f32> lfo_amounts) {
         ZoneScoped;
-        for (auto const i : Range(num_frames)) {
-            auto v = m_voice.lfo.Tick();
-            m_lfo_amounts[i] = -v;
-        }
+        for (auto& amount : lfo_amounts)
+            amount = voice.lfo.Tick();
     }
-
-    void ZeroChunkBuffer(u32 num_frames) {
-        auto num_samples = num_frames * 2;
-        num_samples += num_samples % 2;
-        SimdZeroAlignedBuffer(m_buffer.data, (usize)num_samples);
-    }
-
-    sv_filter::CachedHelpers m_filter_coeffs = {};
-    decltype(Voice::filters) m_filters = {};
-
-    AudioProcessingContext const& m_audio_context;
-    Voice& m_voice;
-    StaticSpan<f32, k_block_size_max * 2> m_buffer;
-
-    u32 m_frame_index = 0;
-    f32 m_position_for_gui = 0;
-
-    alignas(16) Array<f32, k_block_size_max + 1> m_lfo_amounts;
 };
-
-inline void ProcessBuffer(Voice& voice, u32 num_frames, AudioProcessingContext const& context) {
-    if (!voice.is_active) return;
-
-    VoiceProcessor processor(voice, context);
-    voice.written_to_buffer_this_block = processor.Process(num_frames);
-}
 
 void OnThreadPoolExec(VoicePool& pool, u32 task_index) {
     auto& voice = pool.voices[task_index];
-    if (voice.is_active)
-        ProcessBuffer(voice, voice.pool.multithread_processing.num_frames, *pool.audio_processing_context);
+    if (!voice.is_active) return;
+    VoiceProcessor::Process(voice,
+                            *pool.multithread_processing.audio_processing_context,
+                            pool.multithread_processing.num_frames);
 }
 
 void Reset(VoicePool& pool) {
@@ -1026,54 +906,35 @@ void Reset(VoicePool& pool) {
     pool.voice_fil_env_markers_for_gui.Publish();
 }
 
-Array<Span<f32>, k_num_layers>
-ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& context) {
+void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& context) {
     ZoneScoped;
-    if (pool.num_active_voices.Load(LoadMemoryOrder::Relaxed) == 0) return {};
+    for (auto& v : pool.voices)
+        v.written_to_buffer_this_block = false;
+
+    if (pool.num_active_voices.Load(LoadMemoryOrder::Relaxed) == 0) return;
 
     auto const thread_pool =
         (clap_host_thread_pool const*)context.host.get_extension(&context.host, CLAP_EXT_THREAD_POOL);
 
-    {
-
-        bool failed_multithreaded_process = false;
-        if (thread_pool && thread_pool->request_exec) {
-            pool.multithread_processing.num_frames = num_frames;
-            for (auto& v : pool.voices)
-                v.written_to_buffer_this_block = false;
-
-            pool.audio_processing_context = &context;
-            failed_multithreaded_process = !thread_pool->request_exec(&context.host, k_num_voices);
-        }
-
-        if (!thread_pool || failed_multithreaded_process) {
-            for (auto& v : pool.voices) {
-                v.written_to_buffer_this_block = false;
-                if (v.is_active) ProcessBuffer(v, num_frames, context);
-            }
-        }
+    bool failed_multithreaded_process = false;
+    if (thread_pool && thread_pool->request_exec) {
+        pool.multithread_processing.num_frames = num_frames;
+        pool.multithread_processing.audio_processing_context = &context;
+        failed_multithreaded_process = !thread_pool->request_exec(&context.host, k_num_voices);
     }
 
-    Array<Span<f32>, k_num_layers> layer_buffers {};
+    if (!thread_pool || failed_multithreaded_process) {
+        for (auto& v : pool.voices)
+            if (v.is_active) VoiceProcessor::Process(v, context, num_frames);
+    }
 
     for (auto& v : pool.voices) {
         if (v.written_to_buffer_this_block) {
             if constexpr (RUNTIME_SAFETY_CHECKS_ON && PRODUCTION_BUILD) {
                 for (auto const frame : Range(num_frames)) {
-                    auto const& l = pool.buffer_pool[v.index][(frame * 2) + 0];
-                    auto const& r = pool.buffer_pool[v.index][(frame * 2) + 1];
-                    ASSERT(l >= -k_erroneous_sample_value && l <= k_erroneous_sample_value);
-                    ASSERT(r >= -k_erroneous_sample_value && r <= k_erroneous_sample_value);
+                    auto const& val = v.buffer[frame];
+                    ASSERT(All(val >= -k_erroneous_sample_value && val <= k_erroneous_sample_value));
                 }
-            }
-
-            auto const layer_index = v.controller->layer_index;
-            if (!layer_buffers[layer_index].size) {
-                layer_buffers[layer_index] = pool.buffer_pool[v.index];
-            } else {
-                SimdAddAlignedBuffer(layer_buffers[layer_index].data,
-                                     pool.buffer_pool[v.index].data,
-                                     num_frames * 2);
             }
         } else {
             pool.voice_waveform_markers_for_gui.Write()[v.index] = {};
@@ -1085,6 +946,4 @@ ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& con
     pool.voice_waveform_markers_for_gui.Publish();
     pool.voice_vol_env_markers_for_gui.Publish();
     pool.voice_fil_env_markers_for_gui.Publish();
-
-    return layer_buffers;
 }

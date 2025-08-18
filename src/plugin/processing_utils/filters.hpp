@@ -116,7 +116,7 @@ inline f32 Process(Data& d, Coeffs const& c, f32 in) {
 }
 
 inline f32x2 Process(StereoData& d, Coeffs const& c, f32x2 in) {
-    auto out = c.b0 * in + c.b1 * d.in1 + c.b2 * d.in2 - c.a1 * d.out1 - c.a2 * d.out2;
+    auto out = (c.b0 * in) + (c.b1 * d.in1) + (c.b2 * d.in2) - (c.a1 * d.out1) - (c.a2 * d.out2);
 
     d.in2 = d.in1;
     d.in1 = in;
@@ -503,8 +503,8 @@ template <ScalarOrVector<f32> FloatType>
 inline void Process(FloatType in, FloatType& out, Data<FloatType>& d, Type type, CachedHelpers const& c) {
     auto hp = (in - c.h_2rag * d.z1_a - d.z2_a) / c.divisor;
     auto g = c.g_coeff;
-    auto bp = hp * g + d.z1_a;
-    auto lp = bp * g + d.z2_a;
+    auto bp = (hp * g) + d.z1_a;
+    auto lp = (bp * g) + d.z2_a;
 
     d.z1_a = g * hp + bp;
     d.z2_a = g * bp + lp;
@@ -528,7 +528,7 @@ inline void Process(FloatType in, FloatType& out, Data<FloatType>& d, Type type,
         }
         case Type::BandShelving: {
             auto ubp = c.h_2r * bp;
-            auto bshelf = in + ubp * c.k_coeff;
+            auto bshelf = in + (ubp * c.k_coeff);
             out = bshelf;
             break;
         }

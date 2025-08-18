@@ -139,11 +139,16 @@ enum Bits : u32 {
 
 } // namespace loop_and_reverse_flags
 
-inline bool IncrementSamplePlaybackPos(Optional<BoundsCheckedLoop> const& loop,
-                                       u32& playback_mode,
-                                       f64& frame_pos,
-                                       f64 pitch_ratio,
-                                       f64 num_frames) {
+enum class SampleState : u8 {
+    Alive,
+    Ended,
+};
+
+inline SampleState IncrementSamplePlaybackPos(Optional<BoundsCheckedLoop> const& loop,
+                                              u32& playback_mode,
+                                              f64& frame_pos,
+                                              f64 pitch_ratio,
+                                              f64 num_frames) {
     using namespace loop_and_reverse_flags;
 
     bool const going_forward = !(playback_mode & CurrentlyReversed);
@@ -198,15 +203,15 @@ inline bool IncrementSamplePlaybackPos(Optional<BoundsCheckedLoop> const& loop,
         }
     }
 
-    if (frame_pos < 0 || frame_pos >= num_frames) return false;
-    return true;
+    if (frame_pos < 0 || frame_pos >= num_frames) return SampleState::Ended;
+    return SampleState::Alive;
 }
 
-inline f32x2 SampleGetData(AudioData const& s,
-                           Optional<BoundsCheckedLoop> const opt_loop,
-                           u32 loop_and_reverse_flags,
-                           f64 frame_pos,
-                           bool recurse = false) {
+inline f32x2 GetSampleFrame(AudioData const& s,
+                            Optional<BoundsCheckedLoop> const opt_loop,
+                            u32 loop_and_reverse_flags,
+                            f64 frame_pos,
+                            bool recurse = false) {
     using namespace loop_and_reverse_flags;
     auto const loop = opt_loop.NullableValue();
 
@@ -310,11 +315,11 @@ inline f32x2 SampleGetData(AudioData const& s,
                 if (forward || (!forward && (loop_and_reverse_flags & LoopedManyTimes))) {
                     auto frames_info_fade = frame_pos - xfade_fade_out_start;
 
-                    xfade_result = SampleGetData(s,
-                                                 opt_loop,
-                                                 loop_and_reverse_flags & CurrentlyReversed,
-                                                 xfade_fade_in_start + frames_info_fade,
-                                                 true);
+                    xfade_result = GetSampleFrame(s,
+                                                  opt_loop,
+                                                  loop_and_reverse_flags & CurrentlyReversed,
+                                                  xfade_fade_in_start + frames_info_fade,
+                                                  true);
                     crossfade_pos = (f32)frames_info_fade / (f32)loop->crossfade;
                     ASSERT(crossfade_pos >= 0 && crossfade_pos <= 1);
 
@@ -328,7 +333,7 @@ inline f32x2 SampleGetData(AudioData const& s,
             if (forward && (frame_pos <= (loop->start + loop->crossfade)) && frame_pos >= loop->start) {
                 auto frames_into_fade = frame_pos - loop->start;
                 auto fade_pos = (f64)loop->start - frames_into_fade;
-                xfade_result = SampleGetData(s, opt_loop, CurrentlyReversed, fade_pos, true);
+                xfade_result = GetSampleFrame(s, opt_loop, CurrentlyReversed, fade_pos, true);
                 crossfade_pos = 1.0f - ((f32)frames_into_fade / (f32)loop->crossfade);
                 ASSERT(crossfade_pos >= 0 && crossfade_pos <= 1);
 
@@ -336,7 +341,7 @@ inline f32x2 SampleGetData(AudioData const& s,
             } else if (!forward && frame_pos >= (loop->end - loop->crossfade) && frame_pos < loop->end) {
                 auto frames_into_fade = loop->end - frame_pos;
                 auto fade_pos = loop->end + frames_into_fade;
-                xfade_result = SampleGetData(s, opt_loop, 0, fade_pos, true);
+                xfade_result = GetSampleFrame(s, opt_loop, 0, fade_pos, true);
                 crossfade_pos = 1.0f - ((f32)frames_into_fade / (f32)loop->crossfade);
                 ASSERT(crossfade_pos >= 0 && crossfade_pos <= 1);
 

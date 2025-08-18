@@ -83,7 +83,7 @@ static inline f32 ResonanceToQ(f32 res) { return 1.0f / (2.0f * (1.0f - res)); }
 
 inline void CopyInterleavedToSeparateChannels(f32* __restrict dest_l,
                                               f32* __restrict dest_r,
-                                              f32* __restrict interleaved_source,
+                                              f32 const* __restrict interleaved_source,
                                               usize num_frames) {
     usize pos = 0;
     for (auto const i : Range(num_frames)) {
@@ -98,8 +98,8 @@ inline void CopyInterleavedToSeparateChannels(f32* __restrict dest_l,
 }
 
 inline void CopySeparateChannelsToInterleaved(f32* __restrict interleaved_dest,
-                                              f32* __restrict src_l,
-                                              f32* __restrict src_r,
+                                              f32 const* __restrict src_l,
+                                              f32 const* __restrict src_r,
                                               usize num_frames) {
     for (auto const i : Range(num_frames))
         interleaved_dest[i * 2] = src_l[i];

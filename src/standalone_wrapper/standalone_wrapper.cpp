@@ -177,8 +177,10 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
     channels[0] = standalone->audio_buffers[0].data;
     channels[1] = standalone->audio_buffers[1].data;
 
-    ZeroMemory(channels[0], sizeof(f32) * num_buffer_frames);
-    ZeroMemory(channels[1], sizeof(f32) * num_buffer_frames);
+    // Fill memory with garbage.
+    for (auto& chan : channels)
+        for (auto const i : Range(num_buffer_frames))
+            chan[i] = -1000.0f;
 
     clap_process_t process {};
     process.frames_count = num_buffer_frames;
@@ -207,7 +209,7 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
                     .header =
                         {
                             .size = sizeof(clap_event_midi),
-                            .time = 0,
+                            .time = 20,
                             .type = CLAP_EVENT_MIDI,
                             .flags = CLAP_EVENT_IS_LIVE,
                         },
@@ -250,15 +252,9 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
 
     standalone->plugin.process(&standalone->plugin, &process);
 
-    {
-        for (auto const chan : Range(2)) {
-            for (auto const i : Range(num_buffer_frames))
-                if (channels[chan][i] > 1)
-                    channels[chan][i] = 1;
-                else if (channels[chan][i] < -1)
-                    channels[chan][i] = -1;
-        }
-    }
+    for (auto const chan : Range(2))
+        for (auto const i : Range(num_buffer_frames))
+            ASSERT(channels[chan][i] >= -2 && channels[chan][i] <= 2);
 
     CopySeparateChannelsToInterleaved((f32*)output_buffer, channels[0], channels[1], num_buffer_frames);
 }
