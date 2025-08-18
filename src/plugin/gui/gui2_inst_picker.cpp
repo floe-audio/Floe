@@ -357,6 +357,8 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
             auto const inst_id = sample_lib::InstrumentId {lib.Id(), inst.name};
             auto const is_current = context.layer.instrument_id == inst_id;
 
+            // TODO: a Panic was hit here where the GUI changed between layout and render passes while
+            // updating a floe.lua file. It's rare though.
             auto const item = DoPickerItem(
                 box_system,
                 common_state,
