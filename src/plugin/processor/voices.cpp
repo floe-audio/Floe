@@ -757,22 +757,21 @@ struct VoiceProcessor {
             f32 env1 = env_on ? voice.vol_env.Process(voice.controller->vol_env) : 1.0f;
             f32 env2 = 1.0f;
             auto const frame_p1 = frame + 1;
-            auto const frame_p1_is_not_last = frame_p1 != buffer.size;
-            if (frame_p1_is_not_last) env2 = env_on ? voice.vol_env.Process(voice.controller->vol_env) : 1.0f;
+            auto const frame_p1_is_valid = frame_p1 != buffer.size;
+            if (frame_p1_is_valid) env2 = env_on ? voice.vol_env.Process(voice.controller->vol_env) : 1.0f;
 
             // Calculate volume LFO gain
             f32 vol_lfo1 = 1.0f;
             f32 vol_lfo2 = 1.0f;
             if (has_volume_lfo) {
                 vol_lfo1 = lfo_base + lfo_amounts[frame] * lfo_half_amp;
-                vol_lfo2 =
-                    (frame_p1_is_not_last) ? lfo_base + (lfo_amounts[frame_p1] * lfo_half_amp) : vol_lfo1;
+                vol_lfo2 = (frame_p1_is_valid) ? lfo_base + (lfo_amounts[frame_p1] * lfo_half_amp) : vol_lfo1;
             }
 
             // Calculate fade gain
             f32 fade1 = voice.volume_fade.GetFade() * voice.aftertouch_multiplier;
             f32 fade2 = 1.0f;
-            if (frame_p1_is_not_last) fade2 = voice.volume_fade.GetFade() * voice.aftertouch_multiplier;
+            if (frame_p1_is_valid) fade2 = voice.volume_fade.GetFade() * voice.aftertouch_multiplier;
 
             // Calculate pan positions
             auto pan_pos1 = voice.controller->pan_pos;
@@ -780,7 +779,7 @@ struct VoiceProcessor {
             if (has_pan_lfo) {
                 pan_pos1 += (lfo_amounts[frame] * lfo_amp);
                 pan_pos1 = Clamp(pan_pos1, -1.0f, 1.0f);
-                if (frame_p1_is_not_last) {
+                if (frame_p1_is_valid) {
                     pan_pos2 += (lfo_amounts[frame_p1] * lfo_amp);
                     pan_pos2 = Clamp(pan_pos2, -1.0f, 1.0f);
                 }
@@ -811,11 +810,11 @@ struct VoiceProcessor {
 
             // Apply gains to the buffer
             buffer[frame + 0] *= smooth_gain_1;
-            buffer[frame + 1] *= smooth_gain_2;
+            if (frame_p1_is_valid) buffer[frame + 1] *= smooth_gain_2;
 
             // Check for early termination conditions
             if ((env_on && voice.vol_env.IsIdle()) || voice.volume_fade.IsSilent()) {
-                for (auto i = frame_p1 + 1; i < buffer.size; ++i)
+                for (auto const i : Range<usize>(frame + 2, buffer.size))
                     buffer[i] = 0.0f;
                 voice.current_gain = final_gain2;
                 buffer = buffer.SubSpan(0, frame_p1);
