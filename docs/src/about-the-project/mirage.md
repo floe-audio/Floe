@@ -13,4 +13,4 @@ Mirage libraries use a custom `.mdata` binary format for storing samples and met
 
 Floe automatically detects existing Mirage installations and loads libraries without requiring conversion or reinstallation. Both Mirage and Floe can coexist on the same system without conflicts.
 
-For information about FrozenPlain's transition from Mirage to Floe, including product catalog details and customer migration guidance, see [FrozenPlain's transition page](https://www.frozenplain.com/support/mirage/mirage-floe-transition).
+For information about FrozenPlain's transition from Mirage to Floe, including product catalogue details and customer migration guidance, see [FrozenPlain's transition page](https://www.frozenplain.com/support/mirage/mirage-floe-transition).
