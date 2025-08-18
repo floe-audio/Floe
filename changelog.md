@@ -8,6 +8,9 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 0.12.1-beta
+- Fix pops and clicks related to note-starting: a regression introduced in 0.12.0-beta
+
 ## 0.12.0-beta
 - Macros parameters:
   - Bottom GUI panel now has tabs: Play and Macros
