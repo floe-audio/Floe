@@ -200,9 +200,12 @@ static void AddPresetToFolder(PresetFolder& folder,
 
     if (state.ir_id) {
         auto const lib_id = FindOrCloneLibraryIdRef(folder, (sample_lib::LibraryIdRef)state.ir_id->library);
-        used_libraries.InsertWithoutGrowing(lib_id);
-        auto found_author = folder.used_library_authors.FindOrInsertGrowIfNeeded(folder.arena, lib_id.author);
-        used_library_authors.InsertWithoutGrowing(found_author.element.key, found_author.element.hash);
+        if (lib_id != sample_lib::k_builtin_library_id) {
+            used_libraries.InsertWithoutGrowing(lib_id);
+            auto found_author =
+                folder.used_library_authors.FindOrInsertGrowIfNeeded(folder.arena, lib_id.author);
+            used_library_authors.InsertWithoutGrowing(found_author.element.key, found_author.element.hash);
+        }
     }
 
     dyn::Append(presets,

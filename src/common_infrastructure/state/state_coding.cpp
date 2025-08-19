@@ -1318,12 +1318,6 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     }
 
     // =======================================================================================================
-    if (args.abbreviated_read) {
-        ASSERT(coder.IsReading());
-        return k_success;
-    }
-
-    // =======================================================================================================
     {
         String instance_id {};
         if (coder.IsWriting()) instance_id = state.instance_id;
@@ -1424,6 +1418,13 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     }
 
     TRY(coder.CodeIntegrityCheckNumber(StateVersion::Initial));
+
+    // =======================================================================================================
+    // It's actually not that abbreviated...
+    if (args.abbreviated_read) {
+        ASSERT(coder.IsReading());
+        return k_success;
+    }
 
     // =======================================================================================================
     {
