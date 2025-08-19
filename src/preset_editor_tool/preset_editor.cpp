@@ -211,6 +211,140 @@ ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset
     }
     lua_pop(lua, 1);
 
+    // Extract ir_id
+    lua_getfield(lua, table_index, "ir_id");
+    if (lua_istable(lua, -1)) {
+        sample_lib::IrId ir_id;
+
+        // Extract library author
+        lua_getfield(lua, -1, "library_author");
+        if (lua_isstring(lua, -1)) {
+            size_t len;
+            auto str = lua_tolstring(lua, -1, &len);
+            auto copy_len = Min(len, ir_id.library.author.Capacity());
+            dyn::Assign(ir_id.library.author, {str, copy_len});
+        }
+        lua_pop(lua, 1);
+
+        // Extract library name
+        lua_getfield(lua, -1, "library_name");
+        if (lua_isstring(lua, -1)) {
+            size_t len;
+            auto str = lua_tolstring(lua, -1, &len);
+            auto copy_len = Min(len, ir_id.library.name.Capacity());
+            dyn::Assign(ir_id.library.name, {str, copy_len});
+        }
+        lua_pop(lua, 1);
+
+        // Extract ir name
+        lua_getfield(lua, -1, "ir_name");
+        if (lua_isstring(lua, -1)) {
+            size_t len;
+            auto str = lua_tolstring(lua, -1, &len);
+            auto copy_len = Min(len, ir_id.ir_name.Capacity());
+            dyn::Assign(ir_id.ir_name, {str, copy_len});
+        }
+        lua_pop(lua, 1);
+
+        preset_state.ir_id = Move(ir_id);
+    } else {
+        preset_state.ir_id = k_nullopt;
+    }
+    lua_pop(lua, 1);
+
+    // Extract velocity_curve_points
+    lua_getfield(lua, table_index, "velocity_curve_points");
+    if (lua_istable(lua, -1)) {
+        lua_pushnil(lua);
+        while (lua_next(lua, -2) != 0) {
+            if (lua_isinteger(lua, -2) && lua_istable(lua, -1)) {
+                auto layer_index = (u32)lua_tointeger(lua, -2) - 1; // Convert from 1-indexed
+                if (layer_index < k_num_layers) {
+                    dyn::Clear(preset_state.velocity_curve_points[layer_index]);
+                    lua_pushnil(lua);
+                    while (lua_next(lua, -2) != 0) {
+                        if (lua_istable(lua, -1)) {
+                            CurveMap::Point point {};
+                            lua_getfield(lua, -1, "x");
+                            if (lua_isnumber(lua, -1)) point.x = (f32)lua_tonumber(lua, -1);
+                            lua_pop(lua, 1);
+                            lua_getfield(lua, -1, "y");
+                            if (lua_isnumber(lua, -1)) point.y = (f32)lua_tonumber(lua, -1);
+                            lua_pop(lua, 1);
+                            lua_getfield(lua, -1, "curve");
+                            if (lua_isnumber(lua, -1)) point.curve = (f32)lua_tonumber(lua, -1);
+                            lua_pop(lua, 1);
+                            if (preset_state.velocity_curve_points[layer_index].size <
+                                preset_state.velocity_curve_points[layer_index].Capacity()) {
+                                dyn::AppendAssumeCapacity(preset_state.velocity_curve_points[layer_index],
+                                                          point);
+                            }
+                        }
+                        lua_pop(lua, 1);
+                    }
+                }
+            }
+            lua_pop(lua, 1);
+        }
+    }
+    lua_pop(lua, 1);
+
+    // Extract macro_names
+    lua_getfield(lua, table_index, "macro_names");
+    if (lua_istable(lua, -1)) {
+        lua_pushnil(lua);
+        while (lua_next(lua, -2) != 0) {
+            if (lua_isinteger(lua, -2) && lua_isstring(lua, -1)) {
+                auto macro_index = (u32)lua_tointeger(lua, -2) - 1; // Convert from 1-indexed
+                if (macro_index < k_num_macros) {
+                    size_t len;
+                    auto str = lua_tolstring(lua, -1, &len);
+                    auto copy_len = Min(len, preset_state.macro_names[macro_index].Capacity());
+                    dyn::Assign(preset_state.macro_names[macro_index], {str, copy_len});
+                }
+            }
+            lua_pop(lua, 1);
+        }
+    }
+    lua_pop(lua, 1);
+
+    // Extract macro_destinations
+    lua_getfield(lua, table_index, "macro_destinations");
+    if (lua_istable(lua, -1)) {
+        lua_pushnil(lua);
+        while (lua_next(lua, -2) != 0) {
+            if (lua_isinteger(lua, -2) && lua_istable(lua, -1)) {
+                auto macro_index = (u32)lua_tointeger(lua, -2) - 1; // Convert from 1-indexed
+                if (macro_index < k_num_macros) {
+                    dyn::Clear(preset_state.macro_destinations[macro_index]);
+                    lua_pushnil(lua);
+                    while (lua_next(lua, -2) != 0) {
+                        if (lua_istable(lua, -1)) {
+                            MacroDestination dest {};
+                            lua_getfield(lua, -1, "param_index");
+                            if (lua_isinteger(lua, -1)) {
+                                auto param_id = (u32)lua_tointeger(lua, -1);
+                                if (auto const param_index = ParamIdToIndex(param_id))
+                                    dest.param_index = *param_index;
+                            }
+                            lua_pop(lua, 1);
+                            lua_getfield(lua, -1, "value");
+                            if (lua_isnumber(lua, -1)) dest.value = (f32)lua_tonumber(lua, -1);
+                            lua_pop(lua, 1);
+                            if (preset_state.macro_destinations[macro_index].size <
+                                preset_state.macro_destinations[macro_index].Capacity()) {
+                                dyn::AppendAssumeCapacity(preset_state.macro_destinations[macro_index], dest);
+                            }
+                        }
+                        lua_pop(lua, 1);
+                    }
+                }
+            }
+            lua_pop(lua, 1);
+        }
+    }
+    lua_pop(lua, 1);
+
     return k_success;
 }
 
@@ -300,6 +434,68 @@ static void BuildPresetLuaTable(lua_State* lua, StateSnapshot const& preset_stat
     // instance_id
     lua_pushlstring(lua, preset_state.instance_id.data, preset_state.instance_id.size);
     lua_setfield(lua, -2, "instance_id");
+
+    // ir_id
+    if (preset_state.ir_id.HasValue()) {
+        lua_newtable(lua);
+        auto const& ir_id = preset_state.ir_id.Value();
+        lua_pushlstring(lua, ir_id.library.author.data, ir_id.library.author.size);
+        lua_setfield(lua, -2, "library_author");
+        lua_pushlstring(lua, ir_id.library.name.data, ir_id.library.name.size);
+        lua_setfield(lua, -2, "library_name");
+        lua_pushlstring(lua, ir_id.ir_name.data, ir_id.ir_name.size);
+        lua_setfield(lua, -2, "ir_name");
+        lua_setfield(lua, -2, "ir_id");
+    }
+
+    // velocity_curve_points - array of layer arrays of curve points
+    lua_newtable(lua);
+    for (u16 i = 0u; i < k_num_layers; ++i) {
+        lua_pushinteger(lua, i + 1); // Lua is 1-indexed
+        lua_newtable(lua);
+        for (u16 j = 0u; j < preset_state.velocity_curve_points[i].size; ++j) {
+            lua_pushinteger(lua, j + 1); // Lua is 1-indexed
+            lua_newtable(lua);
+            auto const& point = preset_state.velocity_curve_points[i][j];
+            lua_pushnumber(lua, (f64)point.x);
+            lua_setfield(lua, -2, "x");
+            lua_pushnumber(lua, (f64)point.y);
+            lua_setfield(lua, -2, "y");
+            lua_pushnumber(lua, (f64)point.curve);
+            lua_setfield(lua, -2, "curve");
+            lua_settable(lua, -3);
+        }
+        lua_settable(lua, -3);
+    }
+    lua_setfield(lua, -2, "velocity_curve_points");
+
+    // macro_names - array of strings
+    lua_newtable(lua);
+    for (u16 i = 0u; i < k_num_macros; ++i) {
+        lua_pushinteger(lua, i + 1); // Lua is 1-indexed
+        lua_pushlstring(lua, preset_state.macro_names[i].data, preset_state.macro_names[i].size);
+        lua_settable(lua, -3);
+    }
+    lua_setfield(lua, -2, "macro_names");
+
+    // macro_destinations - array of arrays of destination objects
+    lua_newtable(lua);
+    for (u16 i = 0u; i < k_num_macros; ++i) {
+        lua_pushinteger(lua, i + 1); // Lua is 1-indexed
+        lua_newtable(lua);
+        for (u16 j = 0u; j < preset_state.macro_destinations[i].size; ++j) {
+            lua_pushinteger(lua, j + 1); // Lua is 1-indexed
+            lua_newtable(lua);
+            auto const& dest = preset_state.macro_destinations[i][j];
+            lua_pushinteger(lua, ParamIndexToId(dest.param_index));
+            lua_setfield(lua, -2, "param_index");
+            lua_pushnumber(lua, (f64)dest.value);
+            lua_setfield(lua, -2, "value");
+            lua_settable(lua, -3);
+        }
+        lua_settable(lua, -3);
+    }
+    lua_setfield(lua, -2, "macro_destinations");
 
     lua_setglobal(lua, "preset"); // Set as global variable
 }
@@ -459,7 +655,14 @@ print("return preset")
                 return r.Error();
             }
 
-            if (auto const r = Rename(out_path, preset_path); !r.Succeeded()) {
+            auto new_preset_path = preset_path;
+            if (auto const ext = path::Extension(preset_path); ext != FLOE_PRESET_FILE_EXTENSION) {
+                new_preset_path.RemoveSuffix(ext.size);
+                new_preset_path =
+                    fmt::Join(arena, Array {(String)new_preset_path, FLOE_PRESET_FILE_EXTENSION});
+            }
+
+            if (auto const r = Rename(out_path, new_preset_path); !r.Succeeded()) {
                 StdPrintF(StdStream::Err, "Error: failed to rename modified preset file: {}\n", r.Error());
                 return r.Error();
             }
