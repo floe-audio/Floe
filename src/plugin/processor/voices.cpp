@@ -385,11 +385,12 @@ void StartVoice(VoicePool& pool,
                 s.pitch_ratio = CalculatePitchRatio(RootKey(voice, s), s, params.initial_pitch, sample_rate);
                 s.pitch_ratio_smoother.Reset();
 
+                auto const num_frames = (f64)s_sampler.data->num_frames;
                 auto const offs =
-                    (f64)(sampler.initial_sample_offset_01 * ((f32)s_sampler.data->num_frames - 1)) +
-                    s_params.region.audio_props.start_offset_frames;
+                    Max<f64>((f64)sampler.initial_sample_offset_01 * (num_frames - 1),
+                             Min<f64>(num_frames - 1, s_params.region.audio_props.start_offset_frames));
                 s.pos = offs;
-                if (voice.controller->reverse) s.pos = (f64)(s_sampler.data->num_frames - Max(offs, 1.0));
+                if (voice.controller->reverse) s.pos = num_frames - Max(offs, 1.0);
             }
             for (u32 i = voice.num_active_voice_samples; i < k_max_num_voice_sound_sources; ++i)
                 voice.sound_sources[i].is_active = false;
@@ -590,10 +591,12 @@ struct VoiceProcessor {
         auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
 
         auto out = GetSampleFrame(*sampler.data, sampler.loop, sampler.loop_and_reverse_flags, s.pos);
+
+        // Do the sample fade-in if it's the first time the sample is played.
         if (!(sampler.loop_and_reverse_flags &
               (loop_and_reverse_flags::LoopedManyTimes | loop_and_reverse_flags::CurrentlyReversed))) {
-            auto const pos = s.pos - sampler.region->audio_props.start_offset_frames;
-            if (pos < sampler.region->audio_props.fade_in_frames) {
+            if (auto const pos = s.pos - sampler.region->audio_props.start_offset_frames;
+                pos >= 0 && pos < sampler.region->audio_props.fade_in_frames) {
                 auto const percent = pos / (f64)sampler.region->audio_props.fade_in_frames;
                 // Quarter-sine fade in.
                 auto const amount = trig_table_lookup::SinTurnsPositive((f32)percent * 0.25f);
