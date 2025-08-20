@@ -3,13 +3,7 @@ SPDX-FileCopyrightText: 2024 Sam Windell
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-
 # Download & Install Floe
-
-<div class="warning">
-Floe is feature-complete, but we're still in the beta phase - there may be bugs.</br>
-See the <a href="https://github.com/floe-audio/Floe/issues?q=is%3Aissue%20state%3Aopen%20type%3ABug%20milestone%3Av1.0.0">bug tracker</a>.
-</div>
 
 There's two ways to install Floe: use the installer, or manually move files. 
 

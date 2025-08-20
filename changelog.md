@@ -8,6 +8,9 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 1.0.0
+- Ready for widespread use.
+
 ## 0.12.2-beta
 - Fix sample offset start being too large and triggering an assertion failure
 

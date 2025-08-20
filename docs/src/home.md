@@ -3,10 +3,6 @@ SPDX-FileCopyrightText: 2024 Sam Windell
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-<div class="warning">
-Floe is currently in beta — please give it a try today.
-</div>
-
 <div style="padding-bottom: 30px;"></div>
 
 <p align="left">
