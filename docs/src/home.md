@@ -21,9 +21,11 @@ Floe is currently in beta — please give it a try today.
 <h1 style="font-size: 3.1rem">Streamlined sample-based instrument platform</h1>
 <p style="font-size: 2rem; margin-bottom: 4px;">Floe lets you find, perform and transform sounds from sample libraries — from realistic instruments to synthesised tones. Handmade with care, Floe is no-hassle, open-source and <strong>always free</strong>.</p>
 
-<div style="padding-bottom: 10px;"></div>
+![Floe default UI](./images/floe-basic-gui.png)
 
-<p style="text-align: center; margin-top: 40px;">
+<!-- <div style="padding-bottom: 10px;"></div> -->
+
+<p style="text-align: center; margin-top: 20px;">
 <a href="https://floe.audio/installation/download-and-install-floe.html" style="
   background-color: #555e85; 
   border: none; 
@@ -44,7 +46,7 @@ Floe is currently in beta — please give it a try today.
 ## Find the right sound quickly
 Floe's intuitive browsing system works across all your Floe sample libraries, bringing together instruments and presets through extensive **categories**, standardised **tags** (by mood, timbre, type, etc.), and **search**. The sound you need is always a few clicks away.
 
-![Picker GUI](./images/inst-picker-gui.png)
+![Picker GUI](./images/find-right-sound.png)
 
 ## Transform sounds
 With three distinct layers, Floe lets you blend instruments across different libraries. Transform sounds with loop and crossfade controls that bridge the gap between multisampling and synthesis. Process the sounds further with a rack of ==effects-count== built-in effects.
@@ -57,7 +59,7 @@ Available as a plugin for your DAW (CLAP, VST3, and AU) on Windows and macOS. No
 ## Expanding library selection
 The list of [libraries available](./packages/available-packages.md) for Floe is growing. And they're installable in a few clicks. If you're a developer, you can make your own libraries for Floe and request adding them to the list.
 
-![Libraries list GUI](./images/expanding-libraries-list.png)
+![Libraries list GUI](./images/expanding-library-pool.png)
 
 ## Handmade and open software
 Handmade and detail-focused, Floe is a professional-grade tool available to everyone. It's made by Sam Windell, who also runs a sample library development company: [FrozenPlain](https://frozenplain.com). 
