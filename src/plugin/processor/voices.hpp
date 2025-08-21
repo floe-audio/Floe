@@ -70,7 +70,8 @@ struct Voice {
     f32 current_gain {};
 
     bool is_active {false};
-    bool written_to_buffer_this_block = false;
+    bool produced_audio_this_block = false;
+    bool processed_this_block = false;
 
     u8 num_active_voice_samples = 0;
     Array<VoiceSoundSource, k_max_num_voice_sound_sources> sound_sources {};
@@ -101,8 +102,8 @@ struct Voice {
     f32 aftertouch_multiplier = 1;
     bool disable_vol_env = false;
 
-    static_assert(k_block_size_max % 16 == 0, "k_block_size_max must be a multiple of 16");
-    Array<f32x2, k_block_size_max> buffer {}; // Stereo frames
+    // Each voice has it's own buffer, allowing us to process voices in parallel.
+    Array<f32x2, k_block_size_max> buffer {};
 };
 
 struct VoiceEnvelopeMarkerForGui {
@@ -203,6 +204,9 @@ struct VoicePool {
     struct {
         AudioProcessingContext const* audio_processing_context = nullptr;
         u32 num_frames = 0;
+        Array<u16, k_num_voices> task_index_to_voice_index;
+        u16 num_tasks {};
+        Atomic<u8> fence;
     } multithread_processing;
 };
 

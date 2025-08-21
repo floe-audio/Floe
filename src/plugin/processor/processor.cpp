@@ -1658,8 +1658,9 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
 
         if (process_result.output) {
             audio_was_generated_by_layers = true;
+            auto const& layer_audio = *process_result.output;
             for (auto const frame : Range(sub_block_size))
-                output[frame] += (*process_result.output)[frame];
+                output[frame] += layer_audio[frame];
         }
 
         if (process_result.instrument_swapped) {

@@ -647,7 +647,7 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
     LayerProcessResult result {};
 
     for (auto& voice : voice_pool.voices) {
-        if (voice.written_to_buffer_this_block && voice.controller == &layer.voice_controller) {
+        if (voice.produced_audio_this_block && voice.controller == &layer.voice_controller) {
             if (!result.output) {
                 // We can use the first voice's buffer as the output buffer.
                 result.output = Span<f32x2>(voice.buffer.data, num_frames);

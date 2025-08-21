@@ -6,6 +6,7 @@
 #include <clap/ext/thread-pool.h>
 
 #include "foundation/foundation.hpp"
+#include "utils/debug/tracy_wrapped.hpp"
 
 #include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
@@ -485,7 +486,11 @@ struct VoiceProcessor {
 
     static void Process(Voice& voice, AudioProcessingContext const& audio_context, u32 num_frames) {
         ZoneNamedN(process, "Voice Process", true);
+        ZoneTextVF(process, "Voice %u", voice.index);
         ASSERT_HOT(voice.is_active);
+        ASSERT_HOT(!voice.processed_this_block);
+
+        voice.processed_this_block = true;
 
         auto output = Span<f32x2> {voice.buffer.data, num_frames};
         Fill(output, 0.0f);
@@ -494,7 +499,6 @@ struct VoiceProcessor {
             auto const silent_frames = Min(num_frames, voice.frames_before_starting);
             voice.frames_before_starting -= silent_frames;
             output.RemovePrefix(silent_frames);
-            if (output.size == 0) return;
         }
 
         Array<f32, k_block_size_max> lfo_amounts_buffer;
@@ -543,7 +547,7 @@ struct VoiceProcessor {
         if (block_result == VoiceBlockResult::End || !voice.num_active_voice_samples)
             EndVoiceInstantly(voice);
 
-        voice.written_to_buffer_this_block = true;
+        voice.produced_audio_this_block = true;
     }
 
     static bool HasPitchLfo(Voice const& v) {
@@ -884,8 +888,14 @@ struct VoiceProcessor {
 };
 
 void OnThreadPoolExec(VoicePool& pool, u32 task_index) {
-    auto& voice = pool.voices[task_index];
-    if (!voice.is_active) return;
+    pool.multithread_processing.fence.Load(LoadMemoryOrder::Acquire);
+
+    if (task_index >= pool.multithread_processing.num_tasks)
+        // If this happens the host is seriously misbehaving and there will be incorrect audio, but at least
+        // we won't crash.
+        return;
+
+    auto& voice = pool.voices[pool.multithread_processing.task_index_to_voice_index[task_index]];
     VoiceProcessor::Process(voice,
                             *pool.multithread_processing.audio_processing_context,
                             pool.multithread_processing.num_frames);
@@ -907,28 +917,36 @@ void Reset(VoicePool& pool) {
 
 void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& context) {
     ZoneScoped;
-    for (auto& v : pool.voices)
-        v.written_to_buffer_this_block = false;
+    for (auto& v : pool.voices) {
+        v.processed_this_block = false;
+        v.produced_audio_this_block = false;
+    }
 
     if (pool.num_active_voices.Load(LoadMemoryOrder::Relaxed) == 0) return;
 
-    auto const thread_pool =
-        (clap_host_thread_pool const*)context.host.get_extension(&context.host, CLAP_EXT_THREAD_POOL);
-
-    bool failed_multithreaded_process = false;
-    if (thread_pool && thread_pool->request_exec) {
+    if (auto const thread_pool =
+            (clap_host_thread_pool const*)context.host.get_extension(&context.host, CLAP_EXT_THREAD_POOL);
+        thread_pool && thread_pool->request_exec) {
         pool.multithread_processing.num_frames = num_frames;
         pool.multithread_processing.audio_processing_context = &context;
-        failed_multithreaded_process = !thread_pool->request_exec(&context.host, k_num_voices);
+        pool.multithread_processing.num_tasks = 0;
+        for (auto const& v : pool.voices)
+            if (v.is_active)
+                pool.multithread_processing
+                    .task_index_to_voice_index[pool.multithread_processing.num_tasks++] = v.index;
+        pool.multithread_processing.fence.Store(0, StoreMemoryOrder::Release);
+
+        // NOTE: Bitwig 5.2 misbehaves with this: it doesn't call the on_thread_exec function for as many
+        // tasks as we requested. It's fine though because we handle this by checking processed_this_block.
+        thread_pool->request_exec(&context.host, pool.multithread_processing.num_tasks);
     }
 
-    if (!thread_pool || failed_multithreaded_process) {
-        for (auto& v : pool.voices)
-            if (v.is_active) VoiceProcessor::Process(v, context, num_frames);
-    }
+    // Process all voices that haven't already been processed (possibly by the thread pool).
+    for (auto& v : pool.voices)
+        if (v.is_active && !v.processed_this_block) VoiceProcessor::Process(v, context, num_frames);
 
     for (auto& v : pool.voices) {
-        if (v.written_to_buffer_this_block) {
+        if (v.produced_audio_this_block) {
             if constexpr (RUNTIME_SAFETY_CHECKS_ON && PRODUCTION_BUILD) {
                 for (auto const frame : Range(num_frames)) {
                     auto const& val = v.buffer[frame];

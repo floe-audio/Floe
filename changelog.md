@@ -10,6 +10,7 @@ For instance: 0.0.1. Don't change the headings.
 # Changelog
 ## 1.0.1
 - Fix crackle in audio when the hosts use audio buffers that are not a multiple of 32 frames.
+- Fix crackle in Bitwig Studio due to the host not correctly using the thread_pool extension.
 
 ## 1.0.0
 - Ready for widespread use.
