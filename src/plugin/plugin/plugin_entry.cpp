@@ -15,7 +15,8 @@ extern "C" {
 #include "clap/factory/plugin-factory.h"
 #include "plugin.hpp"
 
-#if defined TRACY_ENABLE
+// TODO: why does this cause double-free errors on macOS?
+#if defined TRACY_ENABLE && !IS_MACOS
 
 #include "utils/debug/tracy_wrapped.hpp"
 
