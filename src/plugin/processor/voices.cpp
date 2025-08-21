@@ -487,26 +487,24 @@ struct VoiceProcessor {
         ZoneNamedN(process, "Voice Process", true);
         ASSERT_HOT(voice.is_active);
 
-        auto buffer = Span<f32x2> {voice.buffer.data, num_frames};
-
-        for (auto& f : voice.buffer)
-            f = 0.0f;
+        auto output = Span<f32x2> {voice.buffer.data, num_frames};
+        Fill(output, 0.0f);
 
         if (voice.frames_before_starting != 0) {
             auto const silent_frames = Min(num_frames, voice.frames_before_starting);
             voice.frames_before_starting -= silent_frames;
-            buffer.RemovePrefix(silent_frames);
-            if (buffer.size == 0) return;
+            output.RemovePrefix(silent_frames);
+            if (output.size == 0) return;
         }
 
         Array<f32, k_block_size_max> lfo_amounts_buffer;
         auto lfo_amounts = Span<f32> {lfo_amounts_buffer}.SubSpan(0, num_frames);
         FillLfoBuffer(voice, lfo_amounts);
 
-        FillBufferWithSampleData(voice, buffer, lfo_amounts, audio_context);
+        FillBufferWithSampleData(voice, output, lfo_amounts, audio_context);
 
-        auto const block_result = ApplyGain(voice, buffer, lfo_amounts, audio_context);
-        ApplyFilter(voice, buffer, lfo_amounts, audio_context);
+        auto const block_result = ApplyGain(voice, output, lfo_amounts, audio_context);
+        ApplyFilter(voice, output, lfo_amounts, audio_context);
 
         {
             f32 position_for_gui = {};

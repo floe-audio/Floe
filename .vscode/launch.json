@@ -18,7 +18,7 @@
             "program": "tests",
             "args": [
                 "--log-level=debug",
-                "--filter=*",
+                "--filter=*Stacktrace*",
                 "--repeats=1"
             ]
         },
@@ -32,6 +32,14 @@
                 "--validate",
                 "zig-out/x86_64-aarch64/Floe.component"
             ]
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "fl-studio",
+            "runInTerminal": true,
+            "program": "/Applications/FL Studio 2024.app/Contents/MacOS/OsxFL",
+            "args": []
         },
         {
             "type": "lldb",

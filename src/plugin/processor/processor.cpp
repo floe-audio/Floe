@@ -1644,7 +1644,9 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     // IMPROVE: support sending the host CLAP_EVENT_NOTE_END events when voices end
     ProcessVoices(processor.voice_pool, sub_block_size, processor.audio_processing_context);
 
-    Array<f32x2, k_block_size_max> outputs = {};
+    Array<f32x2, k_block_size_max> output_buffer;
+    auto const output = Span<f32x2>(output_buffer.data, sub_block_size);
+    Fill(output, 0.0f);
 
     bool audio_was_generated_by_layers = false;
     for (auto const layer_index : Range(k_num_layers)) {
@@ -1657,7 +1659,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
         if (process_result.output) {
             audio_was_generated_by_layers = true;
             for (auto const frame : Range(sub_block_size))
-                outputs[frame] += (*process_result.output)[frame];
+                output[frame] += (*process_result.output)[frame];
         }
 
         if (process_result.instrument_swapped) {
@@ -1671,7 +1673,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
 
     if constexpr (RUNTIME_SAFETY_CHECKS_ON && !PRODUCTION_BUILD) {
         for (auto const frame : Range(sub_block_size)) {
-            auto const& val = outputs[frame];
+            auto const& val = output[frame];
             ASSERT(All(val >= -k_erroneous_sample_value && val <= k_erroneous_sample_value));
         }
     }
@@ -1688,7 +1690,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
             };
             if (fx->type == EffectType::ConvolutionReverb) extra_context = &convo_extra_context;
 
-            auto const r = fx->ProcessBlock(outputs, processor.audio_processing_context, extra_context);
+            auto const r = fx->ProcessBlock(output, processor.audio_processing_context, extra_context);
             if (r == EffectProcessResult::ProcessingTail) fx_need_another_frame_of_processing = true;
 
             if (fx->type == EffectType::ConvolutionReverb) {
@@ -1700,7 +1702,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
         // Master
         // ==================================================================================================
 
-        for (auto& frame : outputs) {
+        for (auto& frame : output) {
             frame *= processor.master_vol_smoother.LowPass(
                 processor.master_vol,
                 processor.audio_processing_context.one_pole_smoothing_cutoff_10ms);
@@ -1708,7 +1710,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
             // frame = Clamp(frame, {-1, -1}, {1, 1}); // hard limit
             frame *= processor.whole_engine_volume_fade.GetFade();
         }
-        processor.peak_meter.AddBuffer(outputs);
+        processor.peak_meter.AddBuffer(output);
     } else {
         processor.peak_meter.Zero();
         for (auto& l : processor.layer_processors)
@@ -1722,7 +1724,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
         (((uintptr)process.audio_outputs->data32 % alignof(f32*)) == 0) && process.audio_outputs->data32[0] &&
         process.audio_outputs->data32[1]) {
         static_assert(sizeof(f32x2) == (sizeof(f32) * 2));
-        auto interleaved_outputs = (f32 const*)outputs.data;
+        auto interleaved_outputs = (f32 const*)output.data;
         CopyInterleavedToSeparateChannels(process.audio_outputs->data32[0] + frame_index,
                                           process.audio_outputs->data32[1] + frame_index,
                                           interleaved_outputs,

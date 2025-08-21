@@ -8,6 +8,9 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 1.0.1
+- Fix crackle in audio when the hosts use audio buffers that are not a multiple of 32 frames.
+
 ## 1.0.0
 - Ready for widespread use.
 
