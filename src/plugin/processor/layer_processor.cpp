@@ -650,11 +650,12 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
         if (voice.written_to_buffer_this_block && voice.controller == &layer.voice_controller) {
             if (!result.output) {
                 // We can use the first voice's buffer as the output buffer.
-                result.output = Span<f32x2>(voice.buffer).SubSpan(0, num_frames);
+                result.output = Span<f32x2>(voice.buffer.data, num_frames);
             } else {
                 // Otherwise we combine the voice buffers.
+                auto& out = *result.output;
                 for (auto const i : Range(num_frames))
-                    (*result.output)[i] += voice.buffer[i];
+                    out[i] += voice.buffer[i];
             }
         }
     }
