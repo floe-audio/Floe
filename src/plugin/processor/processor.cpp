@@ -1721,6 +1721,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     if (process.audio_outputs->channel_count == 2 && process.audio_outputs->data32 &&
         (((uintptr)process.audio_outputs->data32 % alignof(f32*)) == 0) && process.audio_outputs->data32[0] &&
         process.audio_outputs->data32[1]) {
+        static_assert(sizeof(f32x2) == (sizeof(f32) * 2));
         auto interleaved_outputs = (f32 const*)outputs.data;
         CopyInterleavedToSeparateChannels(process.audio_outputs->data32[0] + frame_index,
                                           process.audio_outputs->data32[1] + frame_index,
