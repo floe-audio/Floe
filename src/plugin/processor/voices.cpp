@@ -709,15 +709,14 @@ struct VoiceProcessor {
                         }
                         case WaveformType::WhiteNoiseMono: {
                             for (auto& val : buffer) {
-                                val = (f32)FastRand(voice.pool.random_seed);
+                                val = (f32)FastRand(voice.random_seed);
                                 ScaleDownRandom(val);
                             }
                             break;
                         }
                         case WaveformType::WhiteNoiseStereo: {
                             for (auto& val : buffer) {
-                                val = {(f32)FastRand(voice.pool.random_seed),
-                                       (f32)FastRand(voice.pool.random_seed)};
+                                val = {(f32)FastRand(voice.random_seed), (f32)FastRand(voice.random_seed)};
                                 ScaleDownRandom(val);
                             }
 
