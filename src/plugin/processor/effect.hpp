@@ -3,6 +3,7 @@
 
 #pragma once
 #include "foundation/foundation.hpp"
+#include "utils/debug/tracy_wrapped.hpp"
 
 #include "common_infrastructure/descriptors/effect_descriptors.hpp"
 
@@ -84,6 +85,7 @@ struct Effect {
 
     // audio-thread
     void Reset() {
+        ZoneScoped;
         if (is_reset) return;
         ResetInternal();
         is_reset = true;
