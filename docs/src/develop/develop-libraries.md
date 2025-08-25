@@ -5,7 +5,16 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Developing Libraries for Floe
 
-This page explains how to develop sample libraries for Floe. Some basic programming knowledge is required.
+This page explains how to develop sample libraries for Floe.
+
+Creating sample libraries for Floe **requires programming knowledge**. While Floe itself is designed for all musicians, developing libraries involves writing Lua scripts to configure and map audio files. This programming-first approach enables workflows and features that are rare to achieve with traditional GUI-based tools.
+
+In the future, we're looking at tools that convert/generate Floe Lua scripts to allow non-programmers to create libraries.
+
+### What you'll need
+- Basic programming concepts (variables, functions, loops) or willingness to learn
+- Familiarity with text editors (Sublime Text, VS Code, etc.)
+- Understanding of sample mapping concepts (key ranges, velocity layers)
 
 ## Floe's sample library format
 
@@ -20,6 +29,8 @@ Floe's sample library format currently supports the following features:
 - Velocity layer feathering
 - Trigger samples on note-off
 
+As someone in the community put it, our format is essentially _'[SFZ](https://sfzformat.com/) in Lua so you don't lose your mind'_ - which captures the gist pretty well. 
+
 ### Why a new format?
 No existing format met our requirements for Floe, which are:
 - Libraries should be plain folders of audio files.
@@ -27,6 +38,8 @@ No existing format met our requirements for Floe, which are:
 - Libraries should be configured using a proper programming language to enable creating complex libraries in a maintainable way.
 - The format should be extensible - allowing us to innovate in the field of sampling.
 - The solution should easily integrate into Floe's codebase.
+
+We're not trying to replace existing formats or create a new standard. Instead, our custom format is specifically designed to align with Floe's architecture and philosophy, enabling us to rapidly develop and deliver the high-quality sample libraries our users deserve.
 
 ### Developer friendly
 Floe's format is designed to be developer-friendly. It plays well into the tooling and experience of people who are used to dealing with code:
@@ -76,18 +89,26 @@ Here's a made-up example of a `floe.lua` file:
 `floe.new_library()` must be called and returned it at the end of the script. All other features are optional. When Floe runs your Lua file, it will show you any errors that occur along with a line number and a description.
 
 ## How to get started
-For now, we'll assume that you have a folder of audio samples and know what notes they correspond to.
 
 1. Create a new folder in one of Floe's [sample library folders](../usage/sample-libraries.md). We recommend naming it 'Author Name - Library Name'.
 1. Create a file in that folder called `my-library.floe.lua`.
 1. Create a subfolder called `Samples` and put your audio files in there.
-1. Open the Lua file in your text editor. If you're not already familiar with a editor, then Sublime Text or Visual Studio Code are reasonable choices.
+1. Open the Lua file in your text editor. If you're not already familiar with an editor, then Sublime Text or Visual Studio Code are reasonable choices.
 1. Use the `floe.new_library()` function to create your library, filling in all the fields marked `[required]` in the [Floe's Lua reference](library-lua-scripts.md).
 1. Use `floe.new_instrument()` to create an instrument, and then add regions to it using `floe.add_region()`, again, filling in the fields that are documented.
 1. At the end of the file, return the library object you just created: `return library`.
 1. Floe automatically detects whenever any library file changes and will tell you if there's any errors. If a library is correctly configured, it will instantly appear in Floe.
 
-In your Lua file you can start by just simply creating a list of `add_instrument` and `add_region` calls, filling-out the required information as you go. Only if things start getting repetitive (or you want to add more complex logic) should you reach for Lua's features such as: variables, functions, loops, and conditionals.
+### Approach to sample mapping
+You can start by manually writing individual `add_region` calls for each sample, filling out the required information as you go. When things start getting repetitive or you need to apply consistent logic across many samples, you'll want to leverage Lua's programming features:
+
+- **[Signet](https://github.com/SamWindell/Signet)** to analyse your samples and generate metadata files
+- **Variables and tables** to store information about your samples
+- **Loops** to process multiple samples with the same logic
+- **Functions** to calculate parameters like tuning, velocity ranges, and key ranges
+- **Pattern matching** to extract information from filenames
+
+This programming approach can make it much more practical to work with larger sample sets - you write the mapping logic once and let the code apply it to all your samples.
 
 
 ## Using Signet
