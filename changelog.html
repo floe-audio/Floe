@@ -1,0 +1,630 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Changelog - Floe</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- Copyright 2025 Sam Windell -->
+        <!-- SPDX-License-Identifier: CC0-1.0  -->
+        <script defer src="https://cloud.umami.is/script.js" data-website-id="af8ccfdd-e91d-4e14-aba2-bb8fe04f935a"></script>
+
+        <meta name="description" content="Floe is a free, open-source sample library engine. Available as an audio plugin for Windows and macOS.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/floe-theme.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Floe</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/floe-audio/Floe" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <!--
+SPDX-FileCopyrightText: 2018-2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<!--
+SPDX-FileCopyrightText: 2018-2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+
+IMPORTANT: Our release process expects this file to contain heading that exactly match the released version numbers. 
+For instance: 0.0.1. Don't change the headings.
+
+-->
+<h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
+<h2 id="101"><a class="header" href="#101">1.0.1</a></h2>
+<ul>
+<li>Fix crackle in audio when the hosts use audio buffers that are not a multiple of 32 frames.</li>
+<li>Fix crackle in Bitwig Studio due to the host not correctly using the thread_pool extension.</li>
+</ul>
+<h2 id="100"><a class="header" href="#100">1.0.0</a></h2>
+<ul>
+<li>Ready for widespread use.</li>
+</ul>
+<h2 id="0122-beta"><a class="header" href="#0122-beta">0.12.2-beta</a></h2>
+<ul>
+<li>Fix sample offset start being too large and triggering an assertion failure</li>
+</ul>
+<h2 id="0121-beta"><a class="header" href="#0121-beta">0.12.1-beta</a></h2>
+<ul>
+<li>Fix pops and clicks related to note-starting: a regression introduced in 0.12.0-beta</li>
+</ul>
+<h2 id="0120-beta"><a class="header" href="#0120-beta">0.12.0-beta</a></h2>
+<ul>
+<li>Macros parameters:
+<ul>
+<li>Bottom GUI panel now has tabs: Play and Macros</li>
+<li>Macros parameters allow for controlling multiple other parameters at once with a single knob and with a custom name</li>
+<li>On the Macros tab, you can add and remove the parameters that are linked to each macro and control the strength of the link</li>
+</ul>
+</li>
+<li>Add pitch wheel support: configure the bend range using the ‘Pitch Bend Range’ parameter on each layer.</li>
+<li>Add key range controls for splitting the keyboard into zones for each layer. These ranges are shown above the keyboard. They are controlled using new parameters on the Play tab of each layer.</li>
+<li>Fix velocity curves being clear when randomising parameters</li>
+<li>Add more information to the velocity curve tooltips</li>
+<li>New documentation pages for velocity curves</li>
+<li>Include instrument/preset descriptions in tooltips for open-picker buttons</li>
+<li>Fix window size jumping if the width was exactly 1000 pixels</li>
+<li>Fix jumps when first grabbing the resize corner</li>
+<li>Improve smoothness of audio processing when using parameter automation; Floe’s engine now processes parameter changes at a fixed interval of 32 frames.</li>
+<li>Slightly improve top and bottom panel layout and colours</li>
+<li>Fix noise caused by reverb history not being cleared when loading a preset</li>
+<li>Library creation: support more than 100 velocity layers and add helper functions <code>midi_range_to_hundred_range</code> and <code>midi_range_to_thousand_range</code></li>
+</ul>
+<h2 id="0113-beta"><a class="header" href="#0113-beta">0.11.3-beta</a></h2>
+<ul>
+<li>Revert unintended change in intensity of Atan distortion in version 0.11-0 - unfortunately this will make presets/DAW projects (created using Floe 0.11.0-0.11.2) sound different if they used Atan distortion.</li>
+<li>Fix regression where GUI might not update when sound is playing</li>
+<li>Library creation: add audio_properties for impulse response for setting gain_db for IRs</li>
+</ul>
+<h2 id="0112-beta"><a class="header" href="#0112-beta">0.11.2-beta</a></h2>
+<ul>
+<li>Fix rare crash when resizing the GUI to a very small size</li>
+<li>Improve UI size control on the preferences panel so that incrementing/decrementing feels more significant</li>
+<li>Fix memory leak</li>
+</ul>
+<h2 id="0111-beta"><a class="header" href="#0111-beta">0.11.1-beta</a></h2>
+<ul>
+<li>Add sitemap.xml for the website</li>
+<li>Improve the website homepage, installation, mirage, packages, roadmap pages.</li>
+<li>Packager tool:
+<ul>
+<li>Add ability to merge multiple packages into one</li>
+<li>Add ability to output a JSON file with comprehensive information about the package</li>
+</ul>
+</li>
+<li>Improve error reporting: show RAM, let Sentry decide on fingerprint, fix getting reports of crashes from outside of the plugin</li>
+<li>Fix a whole bunch of rare crashes</li>
+<li>Windows: fix uninstaller not uninstalling some small files</li>
+</ul>
+<h2 id="0110-beta"><a class="header" href="#0110-beta">0.11.0-beta</a></h2>
+<ul>
+<li>Add new velocity -&gt; volume curve for each layer. This replaces the old mapping buttons and the master ‘Velo’ button. There’s now much more control. The old parameters are available in a new ‘legacy’ parameters section but are no longer used unless loading a DAW preset that uses them.</li>
+<li>Add new algorithms to distortion: foldback, rectifier and ring-modulator</li>
+<li>Fix LFO and delay time not updating with the tempo</li>
+<li>Reduce pops and clicks with high-frequency LFOs, sharp changes in ADSR and some parameter changes</li>
+<li>GUI: improve picker panels behaviour:
+<ul>
+<li>Background darkens when panel is open</li>
+<li>New close button on the top right</li>
+<li>Remove unnecessary padding around the picker content</li>
+<li>Single-click loads an item, double-click loads and closes the picker panel</li>
+<li>Add right-click menu on libraries with option to open the library folder</li>
+<li>Add right-click menu to presets and preset folders with option to open the folder, or delete the preset</li>
+</ul>
+</li>
+<li>Improve menus:
+<ul>
+<li>Add left/right buttons to all menus on the GUI</li>
+<li>Allow most menus to be dragged like a slider to change the value</li>
+<li>Add randomise button to convolution IR menu as well as left/right buttons</li>
+<li>Make all left/right buttons on the UI the same style</li>
+<li>Move the left/right buttons to the right of the menu so it’s consistent and easy to click forward and back without having to move the mouse long distances</li>
+<li>Make the UI window size buttons consistent with the left/right buttons</li>
+</ul>
+</li>
+<li>GUI: show loop points if an instrument has a single sample with built-in loop</li>
+<li>GUI: add resize corner to the bottom right of the GUI window</li>
+<li>Add missing tooltips for some preferences</li>
+<li>Work-around CLAP Studio One not using the correct threads</li>
+<li>GUI: right-click menu for the IR picker with ‘unload IR’ option</li>
+<li>GUI: don’t show markers on ADSR when it’s inactive</li>
+<li>GUI: Instrument pickers now have their own stat for filters (libraries, tags, etc.) allowing for more flexibility particularly with the randomise buttons</li>
+<li>GUI: remove option to show/hide the keyboard. It’s not often used, and coming soon are new features that only make sense with the keyboard shown.</li>
+<li>Fix crash when changing tabs on the ‘Legal’ tab of the Info panel</li>
+<li>Fix presets picker not showing nesting of folder on Windows</li>
+<li>Fix rare crash when loading a library on Windows</li>
+</ul>
+<h2 id="0103-beta"><a class="header" href="#0103-beta">0.10.3-beta</a></h2>
+<ul>
+<li>Sample library creation: add ‘fade_in_frames’ to add_region</li>
+<li>GUI: remove the status panel from the picker panels, instead, items show a tooltip when hovered for a moment. This make the picker panels less cluttered and fixes the issue where the text would be too long to fit in the status panel.</li>
+<li>GUI: make sections in the picker panel collapsible</li>
+<li>GUI: improve the layout of the picker panel filters</li>
+</ul>
+<h2 id="0102-beta"><a class="header" href="#0102-beta">0.10.2-beta</a></h2>
+<ul>
+<li>Fix issue where layer volume would be automatically MIDI learned</li>
+<li>Fix some persistent MIDI CCs not being applied</li>
+</ul>
+<h2 id="0101-beta"><a class="header" href="#0101-beta">0.10.1-beta</a></h2>
+<ul>
+<li>Replace ‘Reset all parameters’ option with ‘Reset State’ which also clears things such as instruments.</li>
+<li>Fix crash with floe-package when using relative paths</li>
+<li>Fix possible error with installing/opening preset-picker</li>
+<li>Fix a set of possible rare errors</li>
+</ul>
+<h2 id="0100-beta"><a class="header" href="#0100-beta">0.10.0-beta</a></h2>
+<ul>
+<li>Picker panels:
+<ul>
+<li>Add filters for folders (tree view)</li>
+<li>Put tags into categories and add icons</li>
+<li>Add 2 filter modes: match-all and match-any, allowing for more powerful filtering. Every filter button has a label showing the number of matching items that dynamically updates as you change the filters.</li>
+<li>Fix instrument picker not showing waveform instruments when no Mirage libraries installed</li>
+<li>Show library icons for each library used by a preset</li>
+<li>Show (?) icon for missing libraries</li>
+<li>Add <code>&lt;untagged&gt;</code> filter for items that don’t have any tags</li>
+</ul>
+</li>
+<li>Add “Library Developer Panel” on the GUI with tag-builder tool for generating instrument tags in Lua.</li>
+<li>Add right-click menu to the instrument picker button with ‘unload instrument’ option.</li>
+<li>Add lock/unlock mode for Save Preset panel for allowing changing presets with it still open</li>
+<li>Sample library creation: add support for multiple Lua files by using <code>dofile()</code></li>
+<li>Sample library creation: add set_required_floe_version function</li>
+<li>Sample library creation: add generated Floe API definition file for Lua Language Server allowing for code completion and documentation as you type - available on the Library Developer Panel</li>
+<li>GUI: slightly improved icons</li>
+<li>GUI: use same toggle icon for all toggle buttons</li>
+<li>GUI: make mute/solo buttons more obvious when they’re on</li>
+<li>Fix mute/solo buttons not greying out layers</li>
+<li>Fix cases where mute/solo button would get stuck on</li>
+<li>Fix preset selection buttons not working on the first click due to the scanning not having started. Now, scanning begins when the cursor is hovering over the button.</li>
+</ul>
+<h2 id="099-beta"><a class="header" href="#099-beta">0.9.9-beta</a></h2>
+<ul>
+<li>Sample library creation: add start_offset_frames to add_region</li>
+<li>Sample library creation: add tune_cents to add_region</li>
+<li>Normalise waveform GUI so that quiet samples are easier to see</li>
+<li>Fix rare crash related to sample library folder scanning</li>
+</ul>
+<h2 id="098-beta"><a class="header" href="#098-beta">0.9.8-beta</a></h2>
+<ul>
+<li>Fix rare error on Windows when closing the GUI when there’s a file picker open</li>
+<li>Fix rare errors in some VST3 hosts</li>
+<li>Fix rare crash related to sample library folder scanning</li>
+</ul>
+<h2 id="097-beta"><a class="header" href="#097-beta">0.9.7-beta</a></h2>
+<ul>
+<li>Fix rare crash related to closing the GUI on Floe AU</li>
+<li>Fix rare crash related to library images</li>
+<li>Fix rare crash related to voice stealing</li>
+<li>Fix edge cases related to file paths on Windows</li>
+</ul>
+<h2 id="096-beta"><a class="header" href="#096-beta">0.9.6-beta</a></h2>
+<ul>
+<li>Check for updates on startup; a small indicator on the Info button will appear - leading to more information on the Info panel. Can be disabled in the preferences.</li>
+<li>Fix file picker on Windows not opened when there’s missing folders</li>
+<li>Fix rare crash in Floe AU in Ableton Live</li>
+</ul>
+<h2 id="095-beta"><a class="header" href="#095-beta">0.9.5-beta</a></h2>
+<ul>
+<li>Fix potential crash in Floe AU format</li>
+<li>Fix errors related to filesystem watching on Windows</li>
+<li>Fix error related to sample library folders - could happen when installing a package</li>
+</ul>
+<h2 id="094-beta"><a class="header" href="#094-beta">0.9.4-beta</a></h2>
+<ul>
+<li>Offer separate downloads for Intel and Apple Silicon Macs rather than a universal binary, this reduces the size of the download to ~50 MB.</li>
+<li>Fix missing diagnostic information on macOS</li>
+</ul>
+<h2 id="093-beta"><a class="header" href="#093-beta">0.9.3-beta</a></h2>
+<ul>
+<li>Fix more errors with threads</li>
+<li>Fix memory leaks</li>
+<li>Fix some edge cases with certain hosts</li>
+<li>Improve automatic error reporting allowing us to fix bugs faster</li>
+<li>Protect against hosts that try to use multiple main threads</li>
+</ul>
+<h2 id="092-beta"><a class="header" href="#092-beta">0.9.2-beta</a></h2>
+<ul>
+<li>Slightly improve performance of Intel Mac builds</li>
+<li>Fix crash with Intel Mac builds</li>
+<li>Fix errors with threads</li>
+</ul>
+<h2 id="091-beta"><a class="header" href="#091-beta">0.9.1-beta</a></h2>
+<ul>
+<li>AU: fix crash when trying to open the file/folder picker</li>
+<li>Fix missing logo on macOS</li>
+</ul>
+<h2 id="090-beta"><a class="header" href="#090-beta">0.9.0-beta</a></h2>
+<ul>
+<li>Library creation: fix specifying loop end points relative to the end of the file.</li>
+<li>Library creation: replace always_loop, never_loop field with enum <code>loop_requirement</code>.</li>
+<li>Library creation: add round_robin_sequencing_group field to allow for different sets of variations.</li>
+<li>Library creation: separate note-off round-robin sequencing group from note-on round-robin sequencing group.</li>
+<li>Library creation: disable volume envelope for note-off regions</li>
+<li>Library creation: improve memory usage when reading Lua scripts</li>
+<li>Library creation: fix crash when an image file is empty</li>
+<li>VST3: fix not responding to note-on/note-off messages when they weren’t on channel 0</li>
+<li>GUI: on the Save Preset dialog, add the ability to store/load a preset author</li>
+<li>GUI: make the Save Preset dialog larger and scroll to top when a new preset is loaded</li>
+<li>Fix potential crash when reporting an error</li>
+<li>Rename parameter right-click menu Set Value to Enter Value</li>
+<li>Support CLAP reset() function</li>
+</ul>
+<h2 id="083-beta"><a class="header" href="#083-beta">0.8.3-beta</a></h2>
+<ul>
+<li>Fix crash when error occurs in the Windows native file picker</li>
+<li>Fix crash when given invalid arguments to CLAP activate</li>
+<li>Fix crash when opening VST3 in FL Studio on Windows</li>
+</ul>
+<h2 id="082-beta"><a class="header" href="#082-beta">0.8.2-beta</a></h2>
+<ul>
+<li>Fix crash when trying to randomise instruments, presets or IRs when there’s only one of them</li>
+<li>Fix presets folder still showing tags after a folder is removed. #120</li>
+<li>Fix crash when first opening the GUI</li>
+</ul>
+<h2 id="081-beta"><a class="header" href="#081-beta">0.8.1-beta</a></h2>
+<p>See the <a href="https://github.com/floe-audio/Floe/releases/tag/v0.8.0-beta">main release notes</a>.</p>
+<ul>
+<li>Fix issue where Mirage and Floe libraries with the same name would conflict</li>
+</ul>
+<h2 id="080-beta"><a class="header" href="#080-beta">0.8.0-beta</a></h2>
+<p>First beta release of Floe. This release is feature-complete. We are looking for feedback on the new features and any bugs you find.</p>
+<ul>
+<li>Add AU (Audio Unit v2) support</li>
+<li>Brand new instrument browser supporting tags, search, and filtering by library</li>
+<li>Brand new impulse response browser featuring all the options of the instrument browser</li>
+<li>Brand new preset browser with tags, search, and filtering by library. Preset metadata is tracked, library information is tracked, file changes are detected, duplicate presets are hidden.</li>
+<li>New built-in convolution reverb impulse library with 33 impulse responses</li>
+<li>New save preset dialog with author, description, and tags</li>
+<li>Fix instrument left/right and randomise buttons</li>
+<li>Fix instance ID not retaining</li>
+<li>Fix freeze when trying to resize GUI</li>
+<li>Fix GUI opening but only ever showing black</li>
+<li>Fix randomise parameters</li>
+</ul>
+<p>Note: we have jumped from 0.0.7 to 0.8.0. This is to signify the change from alpha to beta but also because it wasn’t really right in the first place only incrementing by the patch number. To make the jump obvious we start the minor version at 0.8.0 rather than 0.1.0.</p>
+<h2 id="007-alpha"><a class="header" href="#007-alpha">0.0.7-alpha</a></h2>
+<p>The focus of this version has been bug fixes; in particular around loading Mirage libraries and presets.</p>
+<ul>
+<li>Max voice is increased from 32 to 256 allowing for more complex instruments</li>
+<li>Show the instrument type on the GUI: single sample, multisample or oscillator waveform</li>
+<li>Rename ‘Dynamics’ knob to ‘Timbre’ and fix its behaviour - for instruments such as Arctic Strings, it can be used to crossfade between different sets of samples.</li>
+<li>Fix missing code signing on Windows installer resulting in ‘Unknown Publisher’ warning</li>
+<li>Fix layer filter type menu being the incorrect width</li>
+<li>Fix crash when loop points were very close together</li>
+<li>Improve loop modes on GUI: it’s obvious when a loop is built-in or custom, what modes are available for a given instrument, why loop modes are invalid.</li>
+<li>Add docs about looping</li>
+<li>Fix sustain pedal incorrectly ending notes</li>
+</ul>
+<p>Mirage loading:</p>
+<ul>
+<li>Fix incorrect loading of Mirage on/off switches - resulting in parameters being on when they should be off</li>
+<li>Fix incorrect handling of Mirage’s ‘always loop’ instruments</li>
+<li>Fix incorrect conversion from Mirage’s effects to Floe’s effects</li>
+<li>Improve sound matching when loading Mirage presets</li>
+<li>Fix failure loading some FrozenPlain Squeaky Gate instruments</li>
+</ul>
+<p>Library creation:</p>
+<ul>
+<li>Re-organise the fields for add_region - grouping better into correct sections and allowing for easier expansion in the future.</li>
+<li>Sample library region loops now are custom tables with <code>start_frame</code>, <code>end_frame</code>, <code>crossfade</code> and <code>mode</code> fields instead of an array.</li>
+<li>Add <code>always_loop</code> and <code>never_loop</code> fields to sample library regions allowing for more control over custom loop usage on Floe’s GUI.</li>
+<li>Show an error if there’s more than 2 velocity layers that are using ‘feathering’ mode. We don’t support this yet. Same for timbre layers.</li>
+</ul>
+<h2 id="006-alpha"><a class="header" href="#006-alpha">0.0.6-alpha</a></h2>
+<ul>
+<li>Add VST3 support</li>
+<li>Standardise how tags and folders will be used in instruments, presets and impulse responses: https://floe.audio/develop/tags-and-folders.html</li>
+<li>Fix sustain pedal</li>
+<li>Remove ‘retrig CC 64’ parameter from layer MIDI. This was mostly a legacy workaround from Mirage. Instead, we just use the typical behaviour that when you play the same note multiple times while holding the sustain pedal, the note plays again - stacking up.</li>
+<li>Fix package installation crash after removing folders</li>
+<li>Fix markers staying on ADSR envelope even when sound is silent</li>
+<li>Fix MIDI transpose causing notes to never stop</li>
+<li>Fix peak meters dropping to zero unexpectedly</li>
+<li>Fix not finding Mirage libraries/presets folders</li>
+</ul>
+<h2 id="005-alpha"><a class="header" href="#005-alpha">0.0.5-alpha</a></h2>
+<ul>
+<li>Fix text being pasted into text field when just pressing ‘V’ rather than ‘Ctrl+V’</li>
+<li>Windows: fix unable to use spacebar in text fields due to the host stealing the keypress</li>
+<li>Fix crash when trying to load or save a preset from file</li>
+<li>Improve the default background image</li>
+</ul>
+<h2 id="004-alpha"><a class="header" href="#004-alpha">0.0.4-alpha</a></h2>
+<p>Fix crash when opening the preset browser.</p>
+<h2 id="003-alpha"><a class="header" href="#003-alpha">0.0.3-alpha</a></h2>
+<p>Version 0.0.3-alpha is a big step towards a stable release. There’s been 250 changed files with 17,898 code additions and 7,634 deletions since the last release.</p>
+<p>It’s still alpha quality, and CLAP only. But if you’re feeling adventurous, we’d love for you to try it out and give us feedback:</p>
+<ul>
+<li><a href="https://floe.audio/installation/download-and-install-floe.html">Download Floe</a></li>
+<li><a href="https://floe.audio/packages/available-packages.html">Download some libraries</a></li>
+<li><a href="https://floe.audio/packages/install-packages.html">Install libraries</a></li>
+</ul>
+<p>Error reporting has been a significant focus of this release. We want to be able to fix bugs quickly and make Floe as stable as possible. A part of this is a new a Share Feedback panel on the GUI - please use this!</p>
+<p>Floe’s website has been filled out a lot too.</p>
+<p>New/edited documentation pages:</p>
+<ul>
+<li><a href="https://floe.audio/usage/attribution.html">Floe support for using CC BY libraries</a></li>
+<li><a href="https://floe.audio/usage/autosave.html">Autosave feature added</a></li>
+<li><a href="https://floe.audio/usage/error-reporting.html">New error reports, crash protection, feedback form</a></li>
+<li><a href="https://floe.audio/installation/uninstalling.html">New uninstaller for Windows</a></li>
+</ul>
+<h3 id="highlights"><a class="header" href="#highlights">Highlights</a></h3>
+<ul>
+<li>Add new Info panel featuring info about installed libraries. ‘About’, ‘Metrics’ and ‘Licenses’ have been moved here too instead of being separate panels.</li>
+<li>Add new Share Feedback panel for submitting bug reports and feature requests</li>
+<li>Add attribution-required panel which appears when needed with generated copyable text for fulfilling attribution requirements. Synchronised between all instances of Floe. Makes complying with licenses like CC BY easy.</li>
+<li>Add new fields to the Lua API to support license info and attribution, such as CC BY</li>
+<li>Add lots of new content to floe.audio</li>
+<li>Add error reporting. We are now better able to fix bugs. When an error occurs, an anonymous report is sent to us. You can disable this in the preferences. This pairs with the new Share Feedback panel - that form can also be used to report bugs.</li>
+<li>Add autosave feature, which efficiently saves the current state of Floe at a configurable interval. This is useful for recovering from crashes. Configurable in the preferences.</li>
+<li>Add a Floe uninstaller for Windows, integrated into Windows’ ‘Add or Remove Programs’ control panel</li>
+<li>Preferences system is more robust and flexible. Preferences are saved in a small file. It syncs between all instances of Floe - even if the instances are in different processes. Additionally, you can edit the preferences file directly if you want to; the results will be instantly reflected in Floe.</li>
+<li>Improve window resizing: fixed aspect ratio, correct remembering of previous size, correct keyboard show/hide, resizable to any size within a reasonable range.</li>
+</ul>
+<h3 id="other-changes"><a class="header" href="#other-changes">Other changes</a></h3>
+<ul>
+<li>Add support for packaging and installing MDATA libraries (Mirage)</li>
+<li>Add tooltips to the preferences GUI</li>
+<li>Add ability to select multiple packages to install at once</li>
+<li>Rename ‘settings’ to ‘preferences’ everywhere</li>
+<li>Rename ‘Appearance’ preferences to ‘General’ since it’s small and can be used for other preferences</li>
+<li>Make notifications dismiss themselves after a few seconds</li>
+<li>Fix externally deleted or moved-to-trash libraries not being removed from Floe</li>
+<li>Fix not installing to the chosen location</li>
+<li>Fix Windows installer creating nonsense CLAP folder</li>
+<li>Fix packager adding documents into the actual library rather than the package</li>
+</ul>
+<h2 id="002"><a class="header" href="#002">0.0.2</a></h2>
+<ul>
+<li>Fix Windows installer crash</li>
+<li>Don’t show a console window with the Windows installer</li>
+<li>Better logo for Windows installer</li>
+<li>Remove unnecessary ‘Floe Folders’ component from macOS installer</li>
+</ul>
+<h2 id="001"><a class="header" href="#001">0.0.1</a></h2>
+<p>This is the first release of Floe. It’s ‘alpha quality’ at the moment - there will be bugs and there are a couple of missing features. This release is designed mostly to test our release process.</p>
+<p>This release only contains the CLAP plugin. The VST3 and AU plugins will be released soon.</p>
+<h2 id="mirage"><a class="header" href="#mirage">Mirage</a></h2>
+<p>Floe used to be called <a href="https://floe.audio/about-the-project/mirage.html">Mirage</a>. Mirage contained many of the same features seen in Floe v0.0.1. But there are large structural changes, and some new features and improvements:</p>
+<ul>
+<li>Use multiple different libraries in the same instance.</li>
+<li>CLAP version added - VST3 and AU coming soon, VST2 support dropped.</li>
+<li>New installer: offline, no account/download-tickets needed. Libraries are installed separately.</li>
+<li>Ability for anyone to develop sample libraries using new Lua-based sample library format. The new format features a new system to tag instruments and libraries. Hot-reload library development: changes to a library are instantly applied to Floe.</li>
+<li>New <a href="https://floe.audio">comprehensive documentation</a>.</li>
+<li>Floe now can have multiple library and preset folders. It will scan all of them for libraries and presets. This is a much more robust and flexible way to manage assets rather than trying to track individual files.</li>
+<li>New, robust infrastructure:
+<ul>
+<li>Floe settings are saved in a more robust way avoiding issues with permissions/missing files.</li>
+<li>Improved default locations for saving libraries and presets to avoid permissions issues.</li>
+<li>New format for saving presets and DAW state - smaller and faster than before and allows for more expandability.</li>
+</ul>
+</li>
+<li>New settings GUI.</li>
+<li>Floe packages: a robust way to install libraries and presets. Floe packages are zip files with a particular layout that contain libraries and presets. In the settings of Floe, you can install these packages. It handles all the details of installing/updating libraries and presets. It checks for existing installations and updates them if needed. It even checks if the files of any existing installation have been modified and will ask if you want to replace them. Everything just works as you’d expect.</li>
+</ul>
+<p>Technical changes:</p>
+<ul>
+<li>Huge refactor of the codebase to be more maintainable and expandable. There’s still more to be done yet though.</li>
+<li>New build system using Zig; cross-compilation, dependency management, etc.</li>
+<li>Comprehensive CI/CD pipeline for testing and creating release builds.</li>
+<li>New ‘sample library server’, our system for providing libraries and audio files to Floe in a fast, async way.</li>
+</ul>
+<!--
+Notable changes from the last Mirage version to Floe v1.0.0:
+- CLAP and VST3
+- Load instruments from different libraries in same patch
+- New format for creating sample libraries - open to everyone
+- New settings GUI
+- Sample libraries can add impulse responses
+- New installer, offline and hassle-free
+- Ability to install libraries and presets (packages) with a button - handles all the details automatically
+- Voice count increased from 32 to 256
+- New comprehensive documentation: https://floe.audio
+- Add ability to have multiple library and preset folders
+- Show the type of instrument below the waveform: multisample, single sample or waveform oscillator
+- 'CC64 Retrigger' parameter removed - retrigger is the default now
+- Change behaviour when a volume envelope if off - it now plays the sample all the way through, without any loops, playing the same note again will stack the sound
+- Show the loop mode more clearly on the GUI - it's obvious when a loop is built-in or custom, what modes are available for a given instrument, why loop modes are invalid.
+- New format for saving presets and DAW state - smaller and faster than before and allows for more expandability
+- Improved default locations for saving libraries and presets to avoid permissions issues
+- New GUI for picking instruments, presets and convolution reverb impulse responses: filter by library, tags; search.
+- Floe is open source
+- Floe's codebase is vastly more maintainable and better designed - huge work was put into creating a solid foundation to build on.
+- Floe has systems in place for regularly releasing updates and new features
+- Fixed issue with FrozenPlain - Arctic Strings crossfade layers not working
+- Fixed issue where loop crossfade wouldn't be applied - resulting in pops
+- Fixed issue where Mirage would spend forever trying to open
+-->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="about-the-project/roadmap.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="about-the-project/roadmap.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

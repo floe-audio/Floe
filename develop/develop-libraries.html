@@ -1,0 +1,459 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Develop Libraries - Floe</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- Copyright 2025 Sam Windell -->
+        <!-- SPDX-License-Identifier: CC0-1.0  -->
+        <script defer src="https://cloud.umami.is/script.js" data-website-id="af8ccfdd-e91d-4e14-aba2-bb8fe04f935a"></script>
+
+        <meta name="description" content="Floe is a free, open-source sample library engine. Available as an audio plugin for Windows and macOS.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/floe-theme.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Floe</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/floe-audio/Floe" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="developing-libraries-for-floe"><a class="header" href="#developing-libraries-for-floe">Developing Libraries for Floe</a></h1>
+<p>This page explains how to develop sample libraries for Floe.</p>
+<p>Creating sample libraries for Floe <strong>requires programming knowledge</strong>. While Floe itself is designed for all musicians, developing libraries involves writing Lua scripts to configure and map audio files. This programming-first approach enables workflows and features that are rare to achieve with traditional GUI-based tools.</p>
+<p>In the future, we’re looking at tools that convert/generate Floe Lua scripts to allow non-programmers to create libraries.</p>
+<h3 id="what-youll-need"><a class="header" href="#what-youll-need">What you’ll need</a></h3>
+<ul>
+<li>Basic programming concepts (variables, functions, loops) or willingness to learn</li>
+<li>Familiarity with text editors (Sublime Text, VS Code, etc.)</li>
+<li>Understanding of sample mapping concepts (key ranges, velocity layers)</li>
+</ul>
+<h2 id="floes-sample-library-format"><a class="header" href="#floes-sample-library-format">Floe’s sample library format</a></h2>
+<p>Floe’s format is designed for configuring audio files into playable instruments. It does not add any audio-manipulation or custom GUIs. Floe has a ready-to-use GUI and lots of audio parameters. In the future we might add more advanced scripting/GUI creation features to the format. The format is designed to be extended whilst retaining backwards compatibility.</p>
+<p>Floe’s sample library format currently supports the following features:</p>
+<ul>
+<li>Velocity layers</li>
+<li>Round-robin</li>
+<li>Crossfade layers</li>
+<li>Loop points with crossfade</li>
+<li>Convolution reverb IRs</li>
+<li>Velocity layer feathering</li>
+<li>Trigger samples on note-off</li>
+</ul>
+<p>As someone in the community put it, our format is essentially <em>‘<a href="https://sfzformat.com/">SFZ</a> in Lua so you don’t lose your mind’</em> - which captures the gist pretty well.</p>
+<h3 id="why-a-new-format"><a class="header" href="#why-a-new-format">Why a new format?</a></h3>
+<p>No existing format met our requirements for Floe, which are:</p>
+<ul>
+<li>Libraries should be plain folders of audio files.</li>
+<li>Libraries should be portable across filesystems &amp; operating systems.</li>
+<li>Libraries should be configured using a proper programming language to enable creating complex libraries in a maintainable way.</li>
+<li>The format should be extensible - allowing us to innovate in the field of sampling.</li>
+<li>The solution should easily integrate into Floe’s codebase.</li>
+</ul>
+<p>We’re not trying to replace existing formats or create a new standard. Instead, our custom format is specifically designed to align with Floe’s architecture and philosophy, enabling us to rapidly develop and deliver the high-quality sample libraries our users deserve.</p>
+<h3 id="developer-friendly"><a class="header" href="#developer-friendly">Developer friendly</a></h3>
+<p>Floe’s format is designed to be developer-friendly. It plays well into the tooling and experience of people who are used to dealing with code:</p>
+<ul>
+<li>Works with version control: libraries are just folders of files, they’re portable across filesystems and operating systems.</li>
+<li>Hot reloading: Floe automatically reloads the library whenever you change a file: Lua, audio, or images. It creates a very fast feedback loop.</li>
+<li>Uses a full programming language: Lua is simple, powerful, and widely used. You can use variables, functions, loops, and conditionals to configure your library.</li>
+<li>Floe’s Lua API is simple and concise.</li>
+</ul>
+<h2 id="the-structure"><a class="header" href="#the-structure">The structure</a></h2>
+<p>Let’s look at the structure of a Floe sample library:</p>
+<pre><code>📂FrozenPlain - Slow/
+├── 📄slow.floe.lua
+├── 📄Licence.pdf
+├── 📄About Slow.html
+├── 📁Samples/
+│   ├── 📄synth_sustain_c4.flac
+│   └── 📄synth_sustain_d4.flac
+└── 📁Images/
+    ├── 📄background.png
+    └── 📄icon.png
+</code></pre>
+<p>There’s only one essential part of a Floe sample library: the <code>floe.lua</code> file. This file can have a custom name so long as it ends with <code>.floe.lua</code> - for example, <code>woodwind-textures.floe.lua</code>.</p>
+<p>The rest of the structure are conventions that are recommended but not required:</p>
+<ul>
+<li><strong>Licence</strong>: Sample libraries are recommended to have a file called Licence that describes the terms-of-use of the library. It can be any format: PDF, TXT, etc.</li>
+<li><strong>About</strong>: A file that describes the library. Any file format. Information about a library is useful for when someone might not have Floe’s GUI available. Use this document to explain what the library contains, website links and any other information that might be useful. Floe’s <a href="./packaging.html#packager-command-line-tool">packager tool</a> can automatically generate this file.</li>
+<li><strong>Library folder name</strong>: The folder containing the <code>floe.lua</code> file should be named: “Developer - Library Name”.</li>
+<li><strong>Subfolders</strong>: Subfolders are up to the developer. We recommend ‘Samples’ for audio files and ‘Images’ for images. These can have any number of subfolders. Your <code>floe.lua</code> file can reference any file in these subfolders.</li>
+</ul>
+<h2 id="the-floelua-file"><a class="header" href="#the-floelua-file">The <code>floe.lua</code> file</a></h2>
+<p>The <code>floe.lua</code> file is the most important part of a library. It’s a script that maps and configures the audio files into playable instruments, written in the Lua 5.4 programming language.</p>
+<p>This file uses <a href="library-lua-scripts.html">Floe’s Lua functions</a> to create the library, create instruments, and add regions and impulse responses. It can reference any file in the library using relative paths.</p>
+<p>Here’s a made-up example of a <code>floe.lua</code> file:</p>
+<pre><code class="language-lua">local library = floe.new_library({
+    name = "Iron Vibrations",
+    tagline = "Organic sounds from resonating metal objects",
+    library_url = "https://example.com/iron-vibrations",
+    description = "A collection of resonating metal objects sampled using a handheld stereo recorder.",
+    author = "Found-sound Labs",
+    author_url = "https://example.com",
+    minor_version = 1,
+    background_image_path = "Images/background.jpg",
+    icon_image_path = "Images/icon.png",
+})
+
+local instrument = floe.new_instrument(library, {
+    name = "Metal Fence Strike",
+    folder = "Fences/Steel",
+    description = "Tonal pluck metallic pluck made from striking a steel fence.",
+    tags = { "found sounds", "tonal percussion", "metal", "keys", "cold", "ambient", "IDM", "cinematic" },
+    waveform_audio_path = "Samples/file1.flac",
+})
+
+floe.add_region(instrument, {
+    path = "Samples/One-shots/Resonating String.flac",
+    root_key = 60,
+    trigger_criteria = {
+        trigger_event = "note-on",
+        key_range = { 60, 64 },
+        velocity_range = { 0, 100 },
+        velocity_range_high_resolution = { 0, 1000 },
+        round_robin_index = 0,
+        round_robin_sequencing_group = "group1",
+        feather_overlapping_velocity_layers = false,
+        auto_map_key_range_group = "group1",
+    },
+    loop = {
+        builtin_loop = {
+            start_frame = 24,
+            end_frame = 6600,
+            crossfade = 100,
+            mode = "standard",
+            lock_loop_points = false,
+            lock_mode = false,
+        },
+        loop_requirement = "always-loop",
+    },
+    timbre_layering = {
+        layer_range = { 0, 50 },
+    },
+    audio_properties = {
+        gain_db = -3,
+        start_offset_frames = 0,
+        tune_cents = 0,
+        fade_in_frames = 0,
+    },
+    playback = {
+        keytrack_requirement = "default",
+    },
+})
+
+floe.add_ir(library, {
+    name = "Cathedral",
+    path = "irs/cathedral.flac",
+    folder = "Cathedrals",
+    tags = { "acoustic", "cathedral" },
+    description = "Sine sweep in St. Paul's Cathedral.",
+    audio_properties = {
+        gain_db = -3,
+    },
+})
+
+floe.set_attribution_requirement("Samples/bell.flac", {
+    title = "Bell Strike",
+    license_name = "CC-BY-4.0",
+    license_url = "https://creativecommons.org/licenses/by/4.0/",
+    attributed_to = "John Doe",
+    attribution_url = "https://example.com",
+})
+
+floe.add_named_key_range(instrument, {
+    name = "Extended Notes",
+    key_range = { 80, 128 },
+})
+
+floe.set_required_floe_version("1.0.1+8fcc2119")
+
+local extended_table = floe.extend_table({ foo = "" }, {})
+
+local hundred_range = floe.midi_range_to_hundred_range({ 0, 127 })
+
+local thousand_range = floe.midi_range_to_thousand_range({ 0, 127 })
+
+return library
+
+</code></pre>
+<p><code>floe.new_library()</code> must be called and returned it at the end of the script. All other features are optional. When Floe runs your Lua file, it will show you any errors that occur along with a line number and a description.</p>
+<h2 id="how-to-get-started"><a class="header" href="#how-to-get-started">How to get started</a></h2>
+<ol>
+<li>Create a new folder in one of Floe’s <a href="../usage/sample-libraries.html">sample library folders</a>. We recommend naming it ‘Author Name - Library Name’.</li>
+<li>Create a file in that folder called <code>my-library.floe.lua</code>.</li>
+<li>Create a subfolder called <code>Samples</code> and put your audio files in there.</li>
+<li>Open the Lua file in your text editor. If you’re not already familiar with an editor, then Sublime Text or Visual Studio Code are reasonable choices.</li>
+<li>Use the <code>floe.new_library()</code> function to create your library, filling in all the fields marked <code>[required]</code> in the <a href="library-lua-scripts.html">Floe’s Lua reference</a>.</li>
+<li>Use <code>floe.new_instrument()</code> to create an instrument, and then add regions to it using <code>floe.add_region()</code>, again, filling in the fields that are documented.</li>
+<li>At the end of the file, return the library object you just created: <code>return library</code>.</li>
+<li>Floe automatically detects whenever any library file changes and will tell you if there’s any errors. If a library is correctly configured, it will instantly appear in Floe.</li>
+</ol>
+<h3 id="approach-to-sample-mapping"><a class="header" href="#approach-to-sample-mapping">Approach to sample mapping</a></h3>
+<p>You can start by manually writing individual <code>add_region</code> calls for each sample, filling out the required information as you go. When things start getting repetitive or you need to apply consistent logic across many samples, you’ll want to leverage Lua’s programming features:</p>
+<ul>
+<li><strong><a href="https://github.com/SamWindell/Signet">Signet</a></strong> to analyse your samples and generate metadata files</li>
+<li><strong>Variables and tables</strong> to store information about your samples</li>
+<li><strong>Loops</strong> to process multiple samples with the same logic</li>
+<li><strong>Functions</strong> to calculate parameters like tuning, velocity ranges, and key ranges</li>
+<li><strong>Pattern matching</strong> to extract information from filenames</li>
+</ul>
+<p>This programming approach can make it much more practical to work with larger sample sets - you write the mapping logic once and let the code apply it to all your samples.</p>
+<h2 id="using-signet"><a class="header" href="#using-signet">Using Signet</a></h2>
+<p>The command line tool <a href="https://github.com/SamWindell/Signet">Signet</a> in an excellent aid for developing Floe samples libraries. Signet can export data about your samples in Lua format which you can then use in your <code>floe.lua</code> file using <code>dofile</code>.</p>
+<p>For example, this file is generated by Signet:</p>
+<pre><code class="language-lua">-- signet . print-info --format lua --path-as-key 
+-- NOTE: Signet can also detect the pitch of your samples when 
+-- you use the `--detect-pitch` flag with print-info.
+return {
+  ["my-sample-a.flac"] = {
+    bit_depth = 16,
+    channels = 2,
+    crest_factor = 16.5734,
+    crest_factor_db = 24.3883,
+    frames = 208341,
+    length_seconds = 4.34044,
+    metadata = nil,
+    peak_db = -3.00036,
+    peak_frame = 5927,
+    rms_db = -27.3886,
+    sample_rate = 48000
+  },
+  ["my-sample-b.flac"] = {
+    bit_depth = 24,
+    channels = 2,
+    crest_factor = 8.90268,
+    crest_factor_db = 18.9904,
+    frames = 2299122,
+    length_seconds = 47.8984,
+    metadata = nil,
+    peak_db = -3,
+    peak_frame = 877676,
+    rms_db = -21.9904,
+    sample_rate = 48000
+  },
+}
+</code></pre>
+<p>Then in your Floe Lua file you have access to all the information about your samples allowing you to easily create instruments and regions.</p>
+<p>With the features of a full programming language and Floe’s hot-reloading of scripts, it’s easy to create complex configurations and bulk-tweak tuning, normalisation, loop points, and other parameters of an instrument.</p>
+<p>For example, normalising all samples to a target level can be done using a simple calculation based on the sample’s <code>peak_db</code> value. We often find it’s useful to partially move levels towards a target level rather than fully normalising them in order to retain some of the character of the instrument. This can be computed in the Lua and tweaked as needed, with the results being immediately audible in Floe.</p>
+<p>Floe doesn’t generate this kind of audio data for you because it can be slow to scan large folders of samples. It’s better for the sample library developer to generate it once with Signet and bake it into a Lua file, instead of the sample library users having to wait every time they load the library.</p>
+<h2 id="creating-high-quality-samples"><a class="header" href="#creating-high-quality-samples">Creating high-quality samples</a></h2>
+<h3 id="levels"><a class="header" href="#levels">Levels</a></h3>
+<p>It’s important to ensure your audio samples have the the right levels. This makes browsing and switching samples in Floe a consistent, nice experience. Additionally, Floe offers the ability to layer sounds together; this process is more ergonomic when instruments have similar volume levels.</p>
+<p><a href="https://github.com/SamWindell/Signet">Signet</a> can be a useful tool for changing the levels of your samples.</p>
+<p>When changing the volume levels of a realistic multi-sampled instrument, you probably don’t want to normalise each sample individually because part of the character of the instrument is its volume variation. Instead, you should change the gain of the instrument <em>as a whole</em>. Signet has features for this. It also has features for proportionally moving levels towards a target level. This allows you to keep some of the character of an instrument while nudging it towards a more consistent level.</p>
+<p>Here are some guidelines for levels:</p>
+<ul>
+<li>Each sample’s peak level should be less than -3 dB.</li>
+<li>Playing the instrument should barely cause Floe’s peak meter to reach its yellow region. Another way to levels could be this: RMS levels for an instrument <em>as a whole</em> should be around -18 dB. Play the instrument polyphonically and watch the RMS level. If the instrument is designed to be monophonic, then adjust for that.</li>
+<li>The noise floor should be as low as possible: -60 dB is a good target. Use high-quality noise reduction tools to remove noise from your samples if you need to. Noise levels can quickly stack up with a multi-sampled instrument played polyphonically. Being too aggressive with algorithmic noise reduction can make your samples sound unnatural - so it’s a balance.</li>
+<li>Impulse responses should be normalised by their energy (power) levels: <code>signet my-impulses norm -100 --mode energy --independently &amp;&amp; signet my-impulses norm 0</code>. Or if not using Signet, then adjust their levels so that they feel similar to the volume levels of Floe’s built-in IRs.</li>
+</ul>
+<h3 id="sample-rate-bit-depth-and-file-format"><a class="header" href="#sample-rate-bit-depth-and-file-format">Sample rate, bit depth, and file format</a></h3>
+<p>Floe only supports FLAC and WAV files. We recommend using FLAC for your samples. It’s lossless and can reduce the file size by 50% to 70% compared to WAV. Floe loads FLAC files very quickly.</p>
+<p>We find 44.1 kHz and 16-bit is often a perfectly reasonable choice. 48 kHz and 24-bit might also be appropriate in certain cases. FLAC also supports bit-depths between 16 and 24 bits (such as 20-bit). Floe supports these too.</p>
+<h3 id="volume-envelopes-of-samples"><a class="header" href="#volume-envelopes-of-samples">Volume envelopes of samples</a></h3>
+<p>Floe blurs the line between a sampler and a sample-based synthesizer. It has lots of parameters for manipulating the sound in real-time.</p>
+<p>If your sample is a single continuous sound, then don’t include a fade-in or fade-out in the sample. Floe has a GUI for volume envelopes that offer more control: they can be adjusted to any value, automated by the DAW, and they are independent of the playback speed of the sample. If you have a sample that is stretched across a keyboard range, it will be sped-up or slowed-down in order to be the correct pitch. If there’s a volume fade, then the speed of the fade will change depending on the pitch of the voice. This is not normally a desirable effect.</p>
+<p>If your sound has important timbral variation over time, then don’t cut that away. Only if the sound is a constant tone should you remove the fade in/out.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../usage/error-reporting.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../develop/library-lua-scripts.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../usage/error-reporting.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../develop/library-lua-scripts.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
