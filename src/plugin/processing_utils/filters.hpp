@@ -54,7 +54,7 @@ struct OnePoleLowPassFilter {
         return change < epsilon;
     }
 
-    T prev_output {k_nan<ElementType>};
+    T prev_output = k_nan<ElementType>;
 };
 
 // ===============================================================================
