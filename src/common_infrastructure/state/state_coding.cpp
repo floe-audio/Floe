@@ -742,7 +742,8 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
         state.LinearParam(ParamIndex::ReverbMix) =
             old_settings_wet_01 / (old_settings_wet_01 + old_settings_dry_01);
         state.LinearParam(ParamIndex::ReverbSize) = old_settings_size_01;
-        state.LinearParam(ParamIndex::ReverbDecayTimeMs) = old_settings_size_01 * 0.8f;
+        state.LinearParam(ParamIndex::ReverbDecayTimeMs) =
+            old_settings_size_01 * (uses_freeverb ? 0.5f : 0.8f);
         state.LinearParam(ParamIndex::ReverbDelay) = ParamDescriptorAt(ParamIndex::ReverbDelay)
                                                          .LineariseValue(old_settings_pre_delay_ms, true)
                                                          .Value();
@@ -1030,6 +1031,14 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
                     param_values::LoopMode::PingPong) {
                     layer_param_value(layer_index, LayerParamIndex::LoopCrossfade) = 0;
                 }
+            }
+        }
+
+        if (state.ir_id) {
+            if (state.ir_id->ir_name == "4s Standard Bright"_s || state.ir_id->ir_name == "Formant 1"_s ||
+                state.ir_id->ir_name == "2s Airy 1"_s) {
+                auto& wet_amp = state.LinearParam(ParamIndex::ConvolutionReverbWet);
+                wet_amp = DbToAmp(AmpToDb(wet_amp) - 10);
             }
         }
     }
