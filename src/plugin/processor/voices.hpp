@@ -60,9 +60,6 @@ struct Voice {
 
     Voice(VoicePool& p) : pool(p) {}
 
-    static constexpr int k_fade_out_samples_max = 64;
-    static constexpr int k_filter_fade_in_samples_max = 64;
-
     VoiceProcessingController* controller = {};
     u64 time_started = 0;
     u16 id {};
