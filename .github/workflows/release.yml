@@ -48,7 +48,7 @@ jobs:
           path: ${{ env.RELEASE_DIR }}
 
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-14
     permissions:
       id-token: write
       contents: read
