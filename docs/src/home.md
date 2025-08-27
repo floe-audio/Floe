@@ -57,6 +57,11 @@ The list of [libraries available](./packages/available-packages.md) for Floe is 
 
 ![Libraries list GUI](./images/expanding-library-pool.png)
 
+## What makes Floe different?
+Floe distinguishes itself through its hybrid sample-based synthesis approach, functioning more like a synthesiser that supports realistic multisampled instruments rather than just a sample player. Every library maintains a consistent, intuitive interface — no scripted UIs that vary per product — while offering powerful search capabilities, comprehensive preset systems, and macros that enable deep sound customisation. The platform combines essential features like layers, envelopes, filters, and automation with a focus on extensibility and continuous improvement, all developed by someone passionate about the complete product experience who works directly with professional composers on feature development, UI design, and sound creation.
+
+We take a different philosophical stance that might resonate with you: Floe is completely free and open source, with no accounts, online dependencies, or vendor lock-in. Your creativity belongs to you, not to a subscription service or cloud platform. While many sample library ecosystems become increasingly complex and intimidating, we prioritise accessibility and ease-of-use without sacrificing power. Anyone can create libraries for the platform, and our commitment to backward compatibility means your investment in learning and using Floe will continue to pay dividends as we expand the feature set.
+
 ## Handmade and open software
 Handmade and detail-focused, Floe is a professional-grade tool available to everyone. It's made by Sam Windell, who also runs a sample library development company: [FrozenPlain](https://frozenplain.com). 
 
