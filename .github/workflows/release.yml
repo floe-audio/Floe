@@ -66,7 +66,7 @@ jobs:
           just build-release mac_arm
           just build-release mac_x86
 
-      - uses: apple-actions/import-codesign-certs@v5.0.3
+      - uses: apple-actions/import-codesign-certs@v3
         with: 
           p12-file-base64: ${{ secrets.MACOS_DEV_CERTS_P12 }}
           p12-password: ${{ secrets.MACOS_DEV_CERTS_P12_PASSWORD }}
