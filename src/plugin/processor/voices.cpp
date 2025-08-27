@@ -883,7 +883,7 @@ struct VoiceProcessor {
     static void FillLfoBuffer(Voice& voice, Span<f32> lfo_amounts) {
         ZoneScoped;
         for (auto& amount : lfo_amounts)
-            amount = voice.lfo.Tick();
+            amount = -voice.lfo.Tick();
     }
 };
 

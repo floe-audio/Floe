@@ -1196,8 +1196,9 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     }
 
     // =======================================================================================================
-    u32 floe_version_in_state = k_floe_version.Packed();
-    TRY(coder.CodeNumber(floe_version_in_state, StateVersion::AddedFloeVersion));
+    u32 floe_version_in_state_packed = k_floe_version.Packed();
+    TRY(coder.CodeNumber(floe_version_in_state_packed, StateVersion::AddedFloeVersion));
+    Version floe_version_in_state(floe_version_in_state_packed);
 
     // =======================================================================================================
     {
@@ -1356,6 +1357,17 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
         if (coder.IsReading()) {
             if (coder.version < StateVersion::AddedLayerVelocityCurves) state.velocity_curve_points = {};
+
+            // In commit e0b15326e9528ca33de7d3c8f905a3449a36d31a we introduced a bug where the LFO amount was
+            // inverted prior to all previous versions. We have now fixed this, however, for presets that were
+            // saved with the broken version we need to maintain the broken behaviour.
+            if (floe_version_in_state >= Version(0, 12, 0) && floe_version_in_state <= Version(1, 0, 1)) {
+                for (auto const layer_index : Range(k_num_layers)) {
+                    auto& lfo_amount = state.LinearParam(
+                        ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LfoAmount));
+                    lfo_amount = -lfo_amount;
+                }
+            }
         }
     }
 
