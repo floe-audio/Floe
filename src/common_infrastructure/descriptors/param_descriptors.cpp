@@ -208,6 +208,8 @@ Optional<DynamicArrayBounded<char, 128>> ParamDescriptor::LinearValueToString(f3
         case ParamDisplayFormat::Ms: {
             if (RoundPositiveFloat(value) >= 1000)
                 result = fmt::FormatInline<k_size>("{.1} s", value / 1000);
+            else if (value < 10)
+                result = fmt::FormatInline<k_size>("{.2} ms", value);
             else
                 result = fmt::FormatInline<k_size>("{.0} ms", value);
             break;

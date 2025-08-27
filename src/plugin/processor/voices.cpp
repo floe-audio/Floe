@@ -343,7 +343,7 @@ void StartVoice(VoicePool& pool,
     UpdateLFOWaveform(voice);
     UpdateLFOTime(voice, audio_processing_context.sample_rate);
 
-    voice.volume_fade.ForceSetAsFadeIn(sample_rate);
+    voice.volume_fade.ForceSetFullVolume();
     voice.vol_env.Reset();
     voice.vol_env.Gate(true);
     voice.disable_vol_env = params.disable_vol_env;
@@ -355,7 +355,7 @@ void StartVoice(VoicePool& pool,
     voice.note_num = params.note_num;
     voice.frames_before_starting = params.num_frames_before_starting;
     voice.filters = {};
-    voice.gain_smoother.Reset();
+    voice.gain_smoother.prev_output = 0.0f;
     voice.filter_linear_cutoff_smoother.Reset();
     voice.filter_mix_smoother.Reset();
     voice.filter_resonance_smoother.Reset();
@@ -808,9 +808,9 @@ struct VoiceProcessor {
 
             // Apply smoothing to final gains
             auto const smooth_gain_1 =
-                voice.gain_smoother.LowPass(gain_1, context.one_pole_smoothing_cutoff_1ms);
+                voice.gain_smoother.LowPass(gain_1, context.one_pole_smoothing_cutoff_0_2ms);
             auto const smooth_gain_2 =
-                voice.gain_smoother.LowPass(gain_2, context.one_pole_smoothing_cutoff_1ms);
+                voice.gain_smoother.LowPass(gain_2, context.one_pole_smoothing_cutoff_0_2ms);
 
             // Apply gains to the buffer
             buffer[frame + 0] *= smooth_gain_1;
