@@ -8,6 +8,9 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 1.0.3
+- Fix crackle possible crackle in audio when host uses an odd-sized audio buffer
+
 ## 1.0.2
 - Tweak the smoothing of very short attack times to allow for more sharpness
 - GUI: show more decimal places on parameters for less than 10 ms

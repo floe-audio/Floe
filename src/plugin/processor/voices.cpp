@@ -806,15 +806,12 @@ struct VoiceProcessor {
             auto const gain_1 = final_gain1 * pan_gains.xy;
             auto const gain_2 = final_gain2 * pan_gains.zw;
 
-            // Apply smoothing to final gains
-            auto const smooth_gain_1 =
-                voice.gain_smoother.LowPass(gain_1, context.one_pole_smoothing_cutoff_0_2ms);
-            auto const smooth_gain_2 =
-                voice.gain_smoother.LowPass(gain_2, context.one_pole_smoothing_cutoff_0_2ms);
-
             // Apply gains to the buffer
-            buffer[frame + 0] *= smooth_gain_1;
-            if (frame_p1_is_valid) buffer[frame + 1] *= smooth_gain_2;
+            buffer[frame + 0] *= voice.gain_smoother.LowPass(gain_1, context.one_pole_smoothing_cutoff_0_2ms);
+            if (frame_p1_is_valid) {
+                buffer[frame + 1] *=
+                    voice.gain_smoother.LowPass(gain_2, context.one_pole_smoothing_cutoff_0_2ms);
+            }
 
             // Check for early termination conditions
             if ((env_on && voice.vol_env.IsIdle()) || voice.volume_fade.IsSilent()) {
