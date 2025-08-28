@@ -11,6 +11,7 @@ For instance: 0.0.1. Don't change the headings.
 ## 1.0.3
 - Fix issue with Bitwig, where presets wouldn't sometimes load completely
 - Fix crackle possible crackle in audio when host uses an odd-sized audio buffer
+- Fix rare crash when MDATA file is corrupted
 
 ## 1.0.2
 - Tweak the smoothing of very short attack times to allow for more sharpness
