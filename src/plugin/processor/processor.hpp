@@ -31,10 +31,28 @@
 #include "processing_utils/volume_fade.hpp"
 #include "voices.hpp"
 
-enum class EventForAudioThreadType : u8 {
+enum class ParamEventForAudioThreadType : u8 {
     ParamChanged,
     ParamGestureBegin,
     ParamGestureEnd,
+};
+
+struct MainThreadChangedParam {
+    f32 value;
+    ParamIndex param;
+    bool host_should_not_record;
+    bool send_to_host;
+};
+
+struct GuiStartedChangingParam {
+    ParamIndex param;
+};
+
+struct GuiEndedChangingParam {
+    ParamIndex param;
+};
+
+enum class EventForAudioThreadType : u8 {
     FxOrderChanged,
     ReloadAllAudioState,
     ConvolutionIRChanged,
@@ -45,20 +63,6 @@ enum class EventForAudioThreadType : u8 {
     RemoveMacroDestination,
     MacroDestinationValueChanged,
     RemoveAllMacroDestinations,
-};
-
-struct MainThreadChangedParam {
-    f32 value;
-    ParamIndex param;
-    bool host_should_not_record;
-};
-
-struct GuiStartedChangingParam {
-    ParamIndex param;
-};
-
-struct GuiEndedChangingParam {
-    ParamIndex param;
 };
 
 struct GuiNoteClicked {
@@ -98,15 +102,18 @@ struct MacroDestinationValueChanged {
 
 using EventForAudioThread = TaggedUnion<
     EventForAudioThreadType,
-    TypeAndTag<MainThreadChangedParam, EventForAudioThreadType::ParamChanged>,
-    TypeAndTag<GuiStartedChangingParam, EventForAudioThreadType::ParamGestureBegin>,
-    TypeAndTag<GuiEndedChangingParam, EventForAudioThreadType::ParamGestureEnd>,
     TypeAndTag<GuiNoteClicked, EventForAudioThreadType::StartNote>,
     TypeAndTag<GuiNoteClickReleased, EventForAudioThreadType::EndNote>,
     TypeAndTag<LayerInstrumentChanged, EventForAudioThreadType::LayerInstrumentChanged>,
     TypeAndTag<AppendMacroDestination, EventForAudioThreadType::AppendMacroDestination>,
     TypeAndTag<RemoveMacroDestination, EventForAudioThreadType::RemoveMacroDestination>,
     TypeAndTag<MacroDestinationValueChanged, EventForAudioThreadType::MacroDestinationValueChanged>>;
+
+using ParamEventForAudioThread =
+    TaggedUnion<ParamEventForAudioThreadType,
+                TypeAndTag<MainThreadChangedParam, ParamEventForAudioThreadType::ParamChanged>,
+                TypeAndTag<GuiStartedChangingParam, ParamEventForAudioThreadType::ParamGestureBegin>,
+                TypeAndTag<GuiEndedChangingParam, ParamEventForAudioThreadType::ParamGestureEnd>>;
 
 using EffectsArray = Array<Effect*, k_num_effect_types>;
 
@@ -245,7 +252,7 @@ struct AudioProcessor {
     Bitset<k_num_layers> mute {};
 
     AtomicQueue<EventForAudioThread, 128> events_for_audio_thread;
-    AtomicQueue<EventForAudioThread, NextPowerOf2(k_num_parameters * 2)> param_events_for_audio_thread;
+    AtomicQueue<ParamEventForAudioThread, NextPowerOf2(k_num_parameters * 2)> param_events_for_audio_thread;
 
     Bitset<k_num_parameters> pending_param_changes;
 
@@ -314,8 +321,6 @@ void SetConvolutionIrAudioData(AudioProcessor& processor,
                                AudioData const* audio_data,
                                sample_lib::ImpulseResponse::AudioProperties const& audio_props);
 
-// doesn't set instruments or convolution because they require loaded audio data which is often available at a
-// later time
 void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateSource source);
 
 StateSnapshot MakeStateSnapshot(AudioProcessor const& processor);

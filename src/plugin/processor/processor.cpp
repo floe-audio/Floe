@@ -7,6 +7,7 @@
 
 #include "common_infrastructure/cc_mapping.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
+#include "common_infrastructure/error_reporting.hpp"
 #include "common_infrastructure/preferences.hpp"
 
 #include "clap/ext/params.h"
@@ -827,6 +828,9 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
             state.velocity_curve_points[layer_index]);
     }
 
+    DynamicArrayBounded<EventForAudioThread, (k_num_macros * k_max_macro_destinations) + 4>
+        events_for_audio_thread;
+
     // Macro destinations.
     {
         processor.main_macro_destinations = state.macro_destinations;
@@ -834,7 +838,7 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
         // We need to tell the audio thread about the changes.
         //
         // Start with removing all macro destinations.
-        processor.events_for_audio_thread.Push(EventForAudioThreadType::RemoveAllMacroDestinations);
+        dyn::Emplace(events_for_audio_thread, EventForAudioThreadType::RemoveAllMacroDestinations);
 
         // Then add all the new ones.
         for (auto const [macro_index, macro] : Enumerate<u8>(state.macro_destinations)) {
@@ -844,7 +848,7 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
                     .param = dest.param_index,
                     .macro_index = macro_index,
                 };
-                processor.events_for_audio_thread.Push(event);
+                dyn::Emplace(events_for_audio_thread, event);
             }
         }
     }
@@ -855,18 +859,29 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
                 (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS))
             host_params->rescan(&processor.host, CLAP_PARAM_RESCAN_VALUES);
 
-        UninitialisedArray<EventForAudioThread, k_num_parameters> events;
+        UninitialisedArray<ParamEventForAudioThread, k_num_parameters> param_events;
         for (auto const param_index : Range(k_num_parameters)) {
-            PLACEMENT_NEW(&events[param_index])
-            EventForAudioThread {MainThreadChangedParam {
+            PLACEMENT_NEW(&param_events[param_index])
+            ParamEventForAudioThread {MainThreadChangedParam {
                 .value = state.param_values[param_index],
                 .param = (ParamIndex)param_index,
                 .host_should_not_record = true,
+                .send_to_host = false, // The host already knows because of the rescan above.
             }};
         }
-        processor.param_events_for_audio_thread.Push(events);
-        processor.events_for_audio_thread.Push(
-            EventForAudioThread {EventForAudioThreadType::ReloadAllAudioState});
+        if (!processor.param_events_for_audio_thread.Push(param_events)) {
+            ReportError(ErrorLevel::Warning,
+                        SourceLocationHash(),
+                        "ApplyNewState: failed to push all param events to audio thread");
+        }
+
+        dyn::Emplace(events_for_audio_thread, EventForAudioThreadType::ReloadAllAudioState);
+    }
+
+    if (!processor.events_for_audio_thread.Push(events_for_audio_thread)) {
+        ReportError(ErrorLevel::Warning,
+                    SourceLocationHash(),
+                    "ApplyNewState: failed to push all non-param events to audio thread");
     }
 
     processor.host.request_process(&processor.host);
@@ -962,6 +977,7 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
     // Update the audio-thread representations of the parameters.
     {
         processor.events_for_audio_thread.PopAll();
+        processor.param_events_for_audio_thread.PopAll();
         processor.audio_params = processor.main_params;
         processor.audio_macro_destinations = processor.main_macro_destinations;
         ProcessBlockChanges changes {
@@ -1264,31 +1280,33 @@ static void ConsumeParamEventsFromMainThread(AudioProcessor& processor,
     ZoneScoped;
     for (auto const& e : processor.param_events_for_audio_thread.PopAll()) {
         switch (e.tag) {
-            case EventForAudioThreadType::ParamChanged: {
+            case ParamEventForAudioThreadType::ParamChanged: {
                 auto const& value = e.Get<MainThreadChangedParam>();
 
-                clap_event_param_value const event {
-                    .header {
-                        .size = sizeof(event),
-                        .time = frame_index,
-                        .type = CLAP_EVENT_PARAM_VALUE,
-                        .flags = CLAP_EVENT_IS_LIVE |
-                                 (value.host_should_not_record ? (u32)CLAP_EVENT_DONT_RECORD : 0),
-                    },
-                    .param_id = ParamIndexToId(value.param),
-                    .note_id = -1,
-                    .port_index = -1,
-                    .channel = -1,
-                    .key = -1,
-                    .value = (f64)value.value,
-                };
+                if (value.send_to_host) {
+                    clap_event_param_value const event {
+                        .header {
+                            .size = sizeof(event),
+                            .time = frame_index,
+                            .type = CLAP_EVENT_PARAM_VALUE,
+                            .flags = CLAP_EVENT_IS_LIVE |
+                                     (value.host_should_not_record ? (u32)CLAP_EVENT_DONT_RECORD : 0),
+                        },
+                        .param_id = ParamIndexToId(value.param),
+                        .note_id = -1,
+                        .port_index = -1,
+                        .channel = -1,
+                        .key = -1,
+                        .value = (f64)value.value,
+                    };
+                    out.try_push(&out, &event.header);
+                }
 
-                out.try_push(&out, &event.header);
                 processor.audio_params.values[ToInt(value.param)] = value.value;
                 changes.changed_params.changed.Set(ToInt(value.param));
                 break;
             }
-            case EventForAudioThreadType::ParamGestureBegin: {
+            case ParamEventForAudioThreadType::ParamGestureBegin: {
                 auto const& gesture = e.Get<GuiStartedChangingParam>();
 
                 clap_event_param_gesture const event {
@@ -1304,7 +1322,7 @@ static void ConsumeParamEventsFromMainThread(AudioProcessor& processor,
                 out.try_push(&out, &event.header);
                 break;
             }
-            case EventForAudioThreadType::ParamGestureEnd: {
+            case ParamEventForAudioThreadType::ParamGestureEnd: {
                 auto const& gesture = e.Get<GuiEndedChangingParam>();
 
                 clap_event_param_gesture const event {
@@ -1320,16 +1338,6 @@ static void ConsumeParamEventsFromMainThread(AudioProcessor& processor,
                 out.try_push(&out, &event.header);
                 break;
             }
-            case EventForAudioThreadType::FxOrderChanged:
-            case EventForAudioThreadType::ReloadAllAudioState:
-            case EventForAudioThreadType::ConvolutionIRChanged:
-            case EventForAudioThreadType::LayerInstrumentChanged:
-            case EventForAudioThreadType::StartNote:
-            case EventForAudioThreadType::EndNote:
-            case EventForAudioThreadType::AppendMacroDestination:
-            case EventForAudioThreadType::RemoveMacroDestination:
-            case EventForAudioThreadType::MacroDestinationValueChanged:
-            case EventForAudioThreadType::RemoveAllMacroDestinations: PanicIfReached();
         }
     }
 }
@@ -1500,9 +1508,6 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                 processor.audio_macro_destinations = {};
                 break;
             }
-            case EventForAudioThreadType::ParamChanged:
-            case EventForAudioThreadType::ParamGestureBegin:
-            case EventForAudioThreadType::ParamGestureEnd: PanicIfReached();
             case EventForAudioThreadType::StartNote: break;
             case EventForAudioThreadType::EndNote: break;
         }
