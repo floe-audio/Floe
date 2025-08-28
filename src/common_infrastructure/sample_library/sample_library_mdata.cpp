@@ -108,7 +108,7 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
                             },
                             scratch_arena,
                             {});
-        ASSERT(parsed.Succeeded());
+        if (parsed.HasError()) return ErrorCode(CommonError::CorruptFile);
     }
 
     Span<mdata::ExtendedInstrumentInfo> ex_inst_infos {};

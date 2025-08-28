@@ -6,6 +6,7 @@
 
 enum class CommonError {
     InvalidFileFormat,
+    CorruptFile,
     PluginHostError,
     CurrentFloeVersionTooOld,
     NotFound,

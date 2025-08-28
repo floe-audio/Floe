@@ -11,6 +11,7 @@ ErrorCodeCategory const g_common_error_category = {
         String str {};
         switch ((CommonError)code.code) {
             case CommonError::InvalidFileFormat: str = "invalid file format"; break;
+            case CommonError::CorruptFile: str = "corrupt file"; break;
             case CommonError::CurrentFloeVersionTooOld: str = "current Floe version too old"; break;
             case CommonError::PluginHostError: str = "plugin host error"; break;
             case CommonError::NotFound: str = "item not found"; break;
