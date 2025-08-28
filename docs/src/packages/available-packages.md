@@ -14,6 +14,14 @@ _Floe Ports_ is the name we've given to the community project of converting high
 
 For developers: Floe Ports libraries are available on [Floe's GitHub](https://github.com/orgs/floe-audio/repositories).
 
+<div class="warning">
+
+These are currently very basic.
+
+They have just 1 instrument each and no presets.
+
+</div>
+
 | Name | Details | Download |
 |:--|:--|:--|
 | **Celtic Harp** by Floe Ports<br/>![Celtic Harp GUI](../images/harp-gui.png) | High-quality multisampled harp with velocity layers and round robins. Port of [Etherealwinds Harp 2: Community Edition by Versilian Studios](https://versilian-studios.com/etherealwinds-harp/).<br/>*1 instrument, CC-BY (attribution required)* | [Download Package (120.4 MB)](https://github.com/floe-audio/Harp/releases/download/v1.5/Floe.Ports.-.Celtic.Harp.Package.zip) |
