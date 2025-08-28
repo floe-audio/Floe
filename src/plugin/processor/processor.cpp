@@ -1849,6 +1849,8 @@ AudioProcessor::AudioProcessor(clap_host const& host,
     for (auto const i : Range(k_num_parameters))
         main_params.values[i] = k_param_descriptors[i].default_linear_value;
 
+    if (auto host_params = HostsParamsExtension(*this)) host_params->rescan(&host, CLAP_PARAM_RESCAN_VALUES);
+
     for (u32 i = 0; i < k_num_parameters; ++i)
         param_learned_ccs[i].AssignBlockwise(PersistentCcsForParam(prefs, ParamIndexToId((ParamIndex)i)));
 
