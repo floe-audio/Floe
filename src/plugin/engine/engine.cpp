@@ -214,10 +214,18 @@ static void ApplyNewStateFromPending(Engine& engine) {
     }
     engine.state_metadata = pending_state_change.snapshot.state.metadata;
     engine.macro_names = pending_state_change.snapshot.state.macro_names;
-    ApplyNewState(engine.processor, pending_state_change.snapshot.state, pending_state_change.source);
 
-    // do it last because it clears pending_state_change
-    SetLastSnapshot(engine, pending_state_change.snapshot);
+    // IMPORTANT: we clear the pending state before applying the new state because some hosts, such as Bitwig,
+    // will call our param get_value during the call to rescan that we make, and we want our get_value to
+    // correctly use the new values.
+    ArenaAllocatorWithInlineStorage<1000> temp_arena {Malloc::Instance()};
+    auto const snapshot = pending_state_change.snapshot.state;
+    auto const name = pending_state_change.snapshot.name.Clone(temp_arena);
+    auto const source = pending_state_change.source;
+    engine.pending_state_change.Clear();
+
+    ApplyNewState(engine.processor, snapshot, source);
+    SetLastSnapshot(engine, {snapshot, name});
 
     if (engine.stated_changed_callback) engine.stated_changed_callback();
 }
