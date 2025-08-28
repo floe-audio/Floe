@@ -201,6 +201,7 @@ static void DoStandaloneErrorGUI(Gui* g) {
                         GuiNoteClicked({.key = key, .velocity = 0.7f}));
                 else
                     engine.processor.events_for_audio_thread.Push(GuiNoteClickReleased({.key = key}));
+                engine.host.request_process(&engine.host);
             };
 
             struct Key {

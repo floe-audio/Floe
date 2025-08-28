@@ -651,8 +651,14 @@ bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, P
         .value = value,
         .param = index,
         .host_should_not_record = flags.host_should_not_record != 0,
+        .send_to_host = true,
     });
-    processor.host.request_process(&processor.host);
+
+    if (auto host_params =
+            (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS))
+        host_params->request_flush(&processor.host);
+    else
+        processor.host.request_process(&processor.host);
 
     return changed;
 }
