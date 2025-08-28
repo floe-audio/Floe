@@ -15,6 +15,10 @@
 #include "plugin/plugin.hpp"
 #include "voices.hpp"
 
+static auto HostsParamsExtension(AudioProcessor& processor) {
+    return (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS);
+}
+
 consteval auto PersistentDefaultCcParamMappingsString() {
     constexpr String k_start = "CC ";
     constexpr String k_middle = " -> ";
@@ -627,9 +631,7 @@ void ParameterJustStartedMoving(AudioProcessor& processor, ParamIndex index) {
 
     processor.param_events_for_audio_thread.Push(GuiStartedChangingParam {.param = index});
 
-    if (auto host_params =
-            (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS))
-        host_params->request_flush(&processor.host);
+    if (auto host_params = HostsParamsExtension(processor)) host_params->request_flush(&processor.host);
 }
 
 void ParameterJustStoppedMoving(AudioProcessor& processor, ParamIndex index) {
@@ -637,9 +639,7 @@ void ParameterJustStoppedMoving(AudioProcessor& processor, ParamIndex index) {
 
     processor.param_events_for_audio_thread.Push(GuiEndedChangingParam {.param = index});
 
-    if (auto host_params =
-            (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS))
-        host_params->request_flush(&processor.host);
+    if (auto host_params = HostsParamsExtension(processor)) host_params->request_flush(&processor.host);
 }
 
 bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, ParamChangeFlags flags) {
@@ -655,8 +655,7 @@ bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, P
         .send_to_host = true,
     });
 
-    if (auto host_params =
-            (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS))
+    if (auto host_params = HostsParamsExtension(processor))
         host_params->request_flush(&processor.host);
     else
         processor.host.request_process(&processor.host);
@@ -855,8 +854,7 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
 
     // Reload all parameters.
     {
-        if (auto const host_params =
-                (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS))
+        if (auto host_params = HostsParamsExtension(processor))
             host_params->rescan(&processor.host, CLAP_PARAM_RESCAN_VALUES);
 
         UninitialisedArray<ParamEventForAudioThread, k_num_parameters> param_events;
@@ -874,9 +872,9 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
                         SourceLocationHash(),
                         "ApplyNewState: failed to push all param events to audio thread");
         }
-
-        dyn::Emplace(events_for_audio_thread, EventForAudioThreadType::ReloadAllAudioState);
     }
+
+    dyn::Emplace(events_for_audio_thread, EventForAudioThreadType::ReloadAllAudioState);
 
     if (!processor.events_for_audio_thread.Push(events_for_audio_thread)) {
         ReportError(ErrorLevel::Warning,
