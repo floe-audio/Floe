@@ -3,10 +3,6 @@ SPDX-FileCopyrightText: 2025 Sam Windell
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-<div class="warning">
-The tags and folder features of Floe are under development. Some of the features on this page aren't implemented yet.
-</div>
-
 # Tags and folders
 
 Floe has 2 complimentary features for browsing, searching and filtering: tags and folders. Presets, instruments, and impulse responses all use tags and folders.
