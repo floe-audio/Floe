@@ -1,6 +1,8 @@
 // Copyright 2018-2024 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <signal.h>
+#include <spawn.h>
 #include <stdlib.h>
 #include <sys/file.h>
 #include <sys/random.h>
@@ -173,15 +175,22 @@ u64 RandomSeed() {
     return seed;
 }
 
-void OpenFolderInFileBrowser(String path) {
-    PathArena path_allocator {Malloc::Instance()};
-    // IMPROVE: system is not thread-safe?
-    auto _ = ::system( // NOLINT(concurrency-mt-unsafe)
-        fmt::Format(path_allocator, "xdg-open \"{}\"\0", path).data);
+static bool FireAndForgetCommand(char const* const command, String argument) {
+    Array<char, Kb(4)> argument_storage;
+    if (argument.size + 1 >= argument_storage.size) return false;
+    CopyStringIntoBufferWithNullTerm(argument_storage, argument);
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        // Create new session to fully detach from parent
+        setsid();
+        char const* argv[] = {command, argument_storage.data, nullptr};
+        if (execvp(command, (char* const*)argv) < 0) _exit(127);
+    }
+
+    return pid > 0;
 }
 
-void OpenUrlInBrowser(String url) {
-    ArenaAllocatorWithInlineStorage<200> arena {Malloc::Instance()};
-    // IMPROVE: system is not thread-safe?
-    auto _ = ::system(fmt::Format(arena, "xdg-open \"{}\"\0", url).data); // NOLINT(concurrency-mt-unsafe)
-}
+void OpenFolderInFileBrowser(String path) { FireAndForgetCommand("xdg-open", path); }
+
+void OpenUrlInBrowser(String url) { FireAndForgetCommand("xdg-open", url); }

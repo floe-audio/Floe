@@ -475,6 +475,11 @@ PUBLIC void CopyStringIntoBufferWithNullTerm(char (&destination)[k_size], String
     destination[size] = '\0';
 }
 
+template <usize k_size>
+PUBLIC void CopyStringIntoBufferWithNullTerm(Array<char, k_size>& buffer, String source) {
+    CopyStringIntoBufferWithNullTerm(buffer.data, source);
+}
+
 PUBLIC constexpr void CopyStringIntoBufferWithNullTerm(char* buffer, usize buffer_size, String source) {
     if (!buffer_size) return;
 
