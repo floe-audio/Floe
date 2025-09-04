@@ -107,6 +107,8 @@ struct FloePluginInstance : PluginInstanceMessages {
     u64 window_size_listener_id {};
 
     Optional<GuiPlatform> gui_platform {};
+
+    bool gui_opened {false};
 };
 
 inline Allocator& FloeInstanceAllocator() { return PageAllocator::Instance(); }
@@ -338,6 +340,7 @@ static bool ClapGuiCreate(clap_plugin_t const* plugin, char const* api, bool is_
         if (floe.gui_platform) return true;
 
         floe.gui_platform.Emplace(floe.host, g_shared_engine_systems->prefs);
+        floe.gui_opened = true;
         return ReportIfError(CreateView(*floe.gui_platform), "CreateView");
     } catch (PanicException) {
         return false;
@@ -1584,6 +1587,16 @@ static void const* ClapGetExtension(const struct clap_plugin* plugin, char const
     return nullptr;
 }
 
+static void OnMainThread(FloePluginInstance& floe) {
+    if (floe.engine) {
+        prefs::PollForExternalChanges(g_shared_engine_systems->prefs);
+
+        auto& processor = floe.engine->processor;
+        g_processor_callbacks.on_main_thread(processor);
+        g_engine_callbacks.on_main_thread(*floe.engine);
+    }
+}
+
 static void ClapOnMainThread(const struct clap_plugin* plugin) {
     ZoneScoped;
     if (PanicOccurred()) return;
@@ -1601,14 +1614,7 @@ static void ClapOnMainThread(const struct clap_plugin* plugin) {
         DEFER { LeaveLogicalMainThread(); };
 
         LogClapFunction(floe, ClapFunctionType::Any, k_func);
-
-        if (floe.engine) {
-            prefs::PollForExternalChanges(g_shared_engine_systems->prefs);
-
-            auto& processor = floe.engine->processor;
-            g_processor_callbacks.on_main_thread(processor);
-            g_engine_callbacks.on_main_thread(*floe.engine);
-        }
+        OnMainThread(floe);
     } catch (PanicException) {
     }
 }
@@ -1656,6 +1662,20 @@ void OnPollThread(FloeInstanceIndex index) {
     auto& floe = *g_floe_instances[index];
     ASSERT(floe.engine);
     g_engine_callbacks.on_poll_thread(*floe.engine);
+
+    if constexpr (IS_LINUX) {
+        if (g_final_binary_type == FinalBinaryType::Vst3 && !floe.gui_opened) {
+            // Reaper and Bitwig do not create a VST3 RunLoop until the GUI is opened. I'm not certain, but
+            // this seems like an issue more that just to do with clap-wrapper. To workaround this, we can
+            // pretend this is the main thread since we already have mechanisms to pretend we're on the main
+            // thread.
+            static_assert(PROTECT_MAIN_THREAD_WITH_MUTEX);
+            if (EnterLogicalMainThread()) {
+                DEFER { LeaveLogicalMainThread(); };
+                OnMainThread(floe);
+            }
+        }
+    }
 }
 
 static void

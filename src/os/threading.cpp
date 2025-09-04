@@ -21,7 +21,6 @@ thread_local DynamicArrayBounded<char, k_max_thread_name_size> g_thread_name {};
 // It actually quite simple to protect from this error by using a mutex. The performance cost should be
 // incredibly low; correctly behaving hosts will have no contention at all, and incorrectly behaving hosts
 // will just have a mutex lock/unlock around the main thread code.
-#define PROTECT_MAIN_THREAD_WITH_MUTEX 1
 
 thread_local u8 g_is_logical_main_thread = 0;
 

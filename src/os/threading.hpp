@@ -40,6 +40,7 @@ Optional<DynamicArrayBounded<char, k_max_thread_name_size>> ThreadName(bool tag_
 extern thread_local u8 g_is_logical_main_thread;
 
 // This is re-entrant safe. If it returns false, there's already a thread that is the logical main thread.
+#define PROTECT_MAIN_THREAD_WITH_MUTEX 1
 [[nodiscard]] bool EnterLogicalMainThread();
 void LeaveLogicalMainThread();
 
