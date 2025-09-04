@@ -1,0 +1,781 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Library Lua Scripts - Floe</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- Copyright 2025 Sam Windell -->
+        <!-- SPDX-License-Identifier: CC0-1.0  -->
+        <script defer src="https://analytics.frozenplain.com/script.js" data-website-id="09786971-9957-41b7-ad9c-fafdefed73f6"></script>
+
+        <meta name="description" content="Floe is a free, open-source sample library engine. Available as an audio plugin for Windows, macOS and Linux.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/floe-theme.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Floe</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/floe-audio/Floe" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="library-lua-scripts"><a class="header" href="#library-lua-scripts">Library Lua Scripts</a></h1>
+<p>The <code>floe.lua</code> file is the most important part of a Floe sample library. This page serves as documentation for all the functions that you can use in your script to create and configure the library and its instruments.</p>
+<p>Floe runs your script using Lua v5.4, providing you with access to these <a href="https://www.lua.org/manual/5.4/manual.html#6">standard libraries</a>: <code>math</code>, <code>string</code>, <code>table</code> and <code>utf8</code>. The other standard libraries are not available - including the <code>require</code> function. This is to minimise security risks.</p>
+<p>If there are any errors in your script, Floe will show them on the GUI along with a line number and a description of the problem.</p>
+<div class="warning">
+We are working on a standalone version of Floe that will allow you to more easily debug your Lua by outputting debug information to the console.
+</div>
+<h2 id="multiple-files"><a class="header" href="#multiple-files">Multiple files</a></h2>
+<p><code>dofile()</code> is available, so you can split your script into multiple files if you want to. Floe’s <code>dofile</code> implementation is the same as the standard Lua version except that you can only specify files relative to the library folder — that is, the folder that contains the <code>floe.lua</code> file.</p>
+<p>For example, you could have a folder next to <code>floe.lua</code> called <code>Lua</code> and put a file in there called <code>data.lua</code>. You could then load that file with <code>dofile("Lua/data.lua")</code>.</p>
+<p>To pass data between files, you would typically use the <a href="http://lua-users.org/wiki/ModuleDefinition">“module” pattern</a> (except using <code>dofile</code> instead of <code>require</code>).</p>
+<h2 id="library-functions"><a class="header" href="#library-functions">Library Functions</a></h2>
+<p>Use these functions to create your sample library. Take note of the <code>[required]</code> annotations - omitting fields marked with these will cause an error.</p>
+<h3 id="floenew_library"><a class="header" href="#floenew_library"><code>floe.new_library</code></a></h3>
+<p>Creates a new library. It takes one parameter: a table of configuration. It returns a new library object. You should only create one library in your script. Return the library at the end of your script.</p>
+<p>The library is the top-level object. It contains all the instruments, regions, and impulse responses.</p>
+<pre><code class="language-lua">-- Creates a new library. You should only create one library in your script. 
+-- Return the library at the end of your script.
+local library = floe.new_library({
+    -- The name of the library. Keep it short and use tagline for more details. 
+    -- [required]
+    name = "Iron Vibrations",
+
+    -- A few words to describe the library. [required]
+    tagline = "Organic sounds from resonating metal objects",
+
+    -- The URL for this Floe library.
+    -- [optional, default: no url]
+    library_url = "https://example.com/iron-vibrations",
+
+    -- A description of the library. You can be verbose and use newlines (\n).
+    -- [optional, default: no description]
+    description = "A collection of resonating metal objects sampled using a handheld stereo recorder.",
+
+    -- Who created this library. Keep it short, use the description for more 
+    -- details. [required]
+    author = "Found-sound Labs",
+
+    -- URL relating to the author or their work.
+    -- [optional, default: ]
+    author_url = "https://example.com",
+
+    -- The minor version of this library - backwards-compatible changes are 
+    -- allowed on a library; this field represents that. Non-backwards-compatibile 
+    -- changes are not allowed: you'd need to create a new library such as: 
+    -- "Strings 2".
+    -- [optional, default: 1]
+    minor_version = 1,
+
+    -- Path relative to this script for the background image. It should be a jpg 
+    -- or png.
+    -- [optional, default: ]
+    background_image_path = "Images/background.jpg",
+
+    -- Path relative to this script for the icon image. It should be a square jpg 
+    -- or png.
+    -- [optional, default: ]
+    icon_image_path = "Images/icon.png",
+})
+</code></pre>
+<h3 id="floenew_instrument"><a class="header" href="#floenew_instrument"><code>floe.new_instrument</code></a></h3>
+<p>Creates a new instrument on the library. It takes 2 parameters: the library object and a table of configuration. It returns a new instrument object. You can call this function multiple times to create multiple instruments.</p>
+<p>An instrument is like a musical instrument. It is a sound-producing entity that consists of one or more samples (samples are specified in regions). Each library can have multiple instruments.</p>
+<p>You can use Floe’s <a href="./tags-and-folders.html#instrument-tags">Tag Builder GUI</a> to generate tag tables.</p>
+<pre><code class="language-lua">-- Creates a new instrument on the library. You can call this multiple times to 
+-- create multiple instruments.
+local instrument = floe.new_instrument(library, {
+    -- The name of the instrument. Must be unique. [required]
+    name = "Metal Fence Strike",
+
+    -- Specify a folder to group instruments under a common heading. It may 
+    -- contain slashes to represent a hierarchy. See 
+    -- https://floe.audio/develop/tags-and-folders.html for more information.
+    -- [optional, default: no folders]
+    folder = "Fences/Steel",
+
+    -- A description of the instrument. Start with a capital letter an end with a 
+    -- period.
+    -- [optional, default: no description]
+    description = "Tonal pluck metallic pluck made from striking a steel fence.",
+
+    -- An array of strings to denote properties of the instrument. See 
+    -- https://floe.audio/develop/tags-and-folders.html for more information.
+    -- [optional, default: no tags]
+    tags = { "found sounds", "tonal percussion", "metal", "keys", "cold", "ambient", "IDM", "cinematic" },
+
+    -- Path to an audio file relative to this script that should be used as the 
+    -- waveform on Floe's GUI.
+    -- [optional, default: first region path]
+    waveform_audio_path = "Samples/file1.flac",
+})
+</code></pre>
+<h3 id="floeadd_region"><a class="header" href="#floeadd_region"><code>floe.add_region</code></a></h3>
+<p>Adds a region to an instrument. It takes 2 parameters: the instrument object and a table of configuration. Doesn’t return anything. You can call this function multiple times to create multiple regions.</p>
+<p>A region is a part of an instrument. It defines an audio file and the conditions under which it will be played. For example, you might have a region that plays the audio file <code>Piano_C3.flac</code> when the note C3 is played. Each instrument must have one or more regions.</p>
+<pre><code class="language-lua">-- Adds a region to an instrument. You can call this multiple times to create 
+-- multiple regions. Each instrument must have one or more regions.
+floe.add_region(instrument, {
+    -- A path to an audio file, relative to this current lua file. [required]
+    path = "Samples/One-shots/Resonating String.flac",
+
+    -- The pitch of the audio file as a number from 0 to 127 (a MIDI note number). 
+    -- On a range from 0 to 127. [required]
+    root_key = 60,
+
+    -- How this region should be triggered.
+    -- [optional, default: defaults]
+    trigger_criteria = {
+        -- What event triggers this region. Must be one of: "note-on" or 
+        -- "note-off".
+        -- [optional, default: note-on]
+        trigger_event = "note-on",
+
+        -- The pitch range of the keyboard that this region is mapped to. These 
+        -- should be MIDI note numbers, from 0 to 128. The start number is 
+        -- inclusive, the end is exclusive.
+        -- [optional, default: { 60, 64 }]
+        key_range = { 60, 64 },
+
+        -- The velocity range of the keyboard that this region is mapped to. This 
+        -- should be an array of 2 numbers ranging from 0 to 100. The start number 
+        -- is inclusive, the end is exclusive. Use the 
+        -- velocity_range_high_resolution instead if you need more than 100 
+        -- velocity layers.
+        -- [optional, default: { 0, 100 }]
+        velocity_range = { 0, 100 },
+
+        -- Alternative to velocity_range that allows for 1000 velocity layers 
+        -- instead of 100.
+        -- [optional, default: { 0, 1000 }]
+        velocity_range_high_resolution = { 0, 1000 },
+
+        -- Trigger this region only on this round-robin index. For example, if 
+        -- this index is 0 and there are 2 other groups with round-robin indices 
+        -- of 1 and 2 with the same round_robin_sequencing_group and 
+        -- trigger_event, then this region will trigger on every third press of a 
+        -- key only. round_robin_index should begin at 0 and be consecutive. The 
+        -- total number of round-robins is calculated automatically.
+        -- [optional, default: no round-robin]
+        round_robin_index = 0,
+
+        -- Group together regions that have this same string, so that their 
+        -- round_robin_index is part of a separate sequence to other 
+        -- round_robin_sequencing_groups. Use this when you have multiple sets of 
+        -- regions that have a different number of round-robins with the same 
+        -- trigger_event.
+        -- [optional, default: instrument-wide group]
+        round_robin_sequencing_group = "group1",
+
+        -- If another region in this instrument is triggered at the same time as 
+        -- this one and is overlapping this, and also has this option enabled, 
+        -- then both regions will play crossfaded in a proportional amount for the 
+        -- overlapping area, creating a smooth transition between velocity layers. 
+        -- Only works if there's exactly 2 overlapping layers.
+        -- [optional, default: false]
+        feather_overlapping_velocity_layers = false,
+
+        -- For every region that has this same string, automatically set the start 
+        -- and end values for each region's key range based on its root key.
+        -- [optional, default: no auto-map]
+        auto_map_key_range_group = "group1",
+    },
+
+    -- Loop configuration.
+    -- [optional, default: defaults]
+    loop = {
+        -- Define a built-in loop.
+        -- [optional, default: no built-in loop]
+        builtin_loop = {
+            -- The start of the loop in frames. Inclusive. It can be negative 
+            -- meaning index the file from the end rather than the start. 
+            -- [required]
+            start_frame = 24,
+
+            -- The end of the loop in frames. Exclusive. It can be negative 
+            -- meaning index the file from the end rather than the start. 0 means 
+            -- the end of the file. [required]
+            end_frame = 6600,
+
+            -- The number of frames to crossfade. [required]
+            crossfade = 100,
+
+            -- The mode of the loop. Must be one of: "standard" or "ping-pong".
+            -- [optional, default: standard]
+            mode = "standard",
+
+            -- If true, the start, end and crossfade values cannot be overriden by 
+            -- a custom loop from Floe's GUI.
+            -- [optional, default: ]
+            lock_loop_points = false,
+
+            -- If true, the loop mode value cannot be overriden by a custom mode 
+            -- from Floe's GUI.
+            -- [optional, default: ]
+            lock_mode = false,
+        },
+
+        -- The requirement for this region to loop. Must be one of: 
+        -- "default" =&gt; Default looping behaviour.
+        -- "always-loop" =&gt; This region will always loop - either using the built 
+        -- in loop, a user defined loop, or a default built-in loop.
+        -- "never-loop" =&gt; This region will never loop even if there is a 
+        -- user-defined loop. Set all regions of an instrument to this to entirely 
+        -- disable looping for the instrument.
+        -- [optional, default: default]
+        loop_requirement = "always-loop",
+    },
+
+    -- Timbre layering configuration.
+    -- [optional, default: no timbre layering]
+    timbre_layering = {
+        -- The start and end point, from 0 to 100, of the Timbre knob on Floe's 
+        -- GUI that this region should be heard. You should overlap this range 
+        -- with other timbre layer ranges. Floe will create an even crossfade of 
+        -- all overlapping sounds. The start number is inclusive, end is 
+        -- exclusive. This region's velocity_range should be the full range.
+        -- [optional, default: no timbre layering]
+        layer_range = { 0, 50 },
+    },
+
+    -- Audio properties.
+    -- [optional, default: defaults]
+    audio_properties = {
+        -- Apply a gain to the audio data in decibels.
+        -- [optional, default: 0]
+        gain_db = -3,
+
+        -- The number of frames to skip at the start of the audio data.
+        -- [optional, default: 0]
+        start_offset_frames = 0,
+
+        -- Tune the audio data in cents.
+        -- [optional, default: 0]
+        tune_cents = 0,
+
+        -- The number of frames to fade in the audio data.
+        -- [optional, default: 0]
+        fade_in_frames = 0,
+    },
+
+    -- Playback configuration.
+    -- [optional, default: defaults]
+    playback = {
+        -- The requirement for keytracking. Must be one of: "default", "always" or 
+        -- "never".
+        -- [optional, default: default]
+        keytrack_requirement = "default",
+    },
+})
+</code></pre>
+<h3 id="floeadd_named_key_range"><a class="header" href="#floeadd_named_key_range"><code>floe.add_named_key_range</code></a></h3>
+<p>Gives a name to a key range of this instrument. It takes 2 parameters: the instrument object and a table of configuration. Doesn’t return anything.</p>
+<p>For example, with a multi-sampled keyboard instrument, you might mark the ranges beyond the natural range of the real instrument as "Extended" ranges. Alternatively, if the instrument contains multiple sounds, you can name each sound: "Kick", "Snare", etc.</p>
+<p>You can call this multiple times to create multiple named key ranges.</p>
+<pre><code class="language-lua">-- Gives a name to a key range of this instrument. For example, with a 
+-- multi-sampled keyboard instrument, you might mark the ranges beyond the natural 
+-- range of the real instrument as "Extended" ranges. You can call this multiple 
+-- times to create multiple named key ranges. Alternatively, if the instrument 
+-- contains multiple sounds, you can name each sound: "Kick", "Snare", etc. Don't 
+-- overlap ranges.
+floe.add_named_key_range(instrument, {
+    -- The name of the key range. [required]
+    name = "Extended Notes",
+
+    -- The range of the keyboard to give a name to. These should be MIDI note 
+    -- numbers, from 0 to 128. The start number is inclusive, the end is 
+    -- exclusive. [required]
+    key_range = { 80, 128 },
+})
+</code></pre>
+<h3 id="floeadd_ir"><a class="header" href="#floeadd_ir"><code>floe.add_ir</code></a></h3>
+<p>Adds a reverb impulse response to the library. It takes 2 parameters: the library object and a table of configuration. Doesn’t return anything. You can call this function multiple times to create multiple impulse responses.</p>
+<pre><code class="language-lua">-- Adds a reverb impulse response to the library. You can call this multiple times 
+-- to create multiple impulse responses.
+floe.add_ir(library, {
+    -- The name of the IR. Must be unique. [required]
+    name = "Cathedral",
+
+    -- File path to the impulse response file, relative to this script. [required]
+    path = "irs/cathedral.flac",
+
+    -- Specify a folder to group IRs under a common heading. It may contain 
+    -- slashes to represent a hierarchy. See 
+    -- https://floe.audio/develop/tags-and-folders.html for more information.
+    -- [optional, default: no folders]
+    folder = "Cathedrals",
+
+    -- An array of strings to denote properties of the IR. See 
+    -- https://floe.audio/develop/tags-and-folders.html for more information.
+    -- [optional, default: no tags]
+    tags = { "acoustic", "cathedral" },
+
+    -- A description of the IR. Start with a capital letter an end with a period.
+    -- [optional, default: no description]
+    description = "Sine sweep in St. Paul's Cathedral.",
+
+    -- Audio properties.
+    -- [optional, default: defaults]
+    audio_properties = {
+        -- Apply a gain to the audio data in decibels.
+        -- [optional, default: 0]
+        gain_db = -3,
+    },
+})
+</code></pre>
+<h3 id="floeset_attribution_requirement"><a class="header" href="#floeset_attribution_requirement"><code>floe.set_attribution_requirement</code></a></h3>
+<p>Sets the attribution information for a particular audio file or folder. It takes 2 parameters: a path to the file or folder whose license information you want to set, and a table of configuration. If the path is a folder, the attribution requirement will be applied to all audio files in that folder and its subfolders.</p>
+<pre><code class="language-lua">-- Sets the attribution information for a particular audio file or folder. If the 
+-- path is a folder, the attribution requirement will be applied to all audio 
+-- files in that folder and its subfolders.
+floe.set_attribution_requirement("Samples/bell.flac", {
+    -- The title of the work. [required]
+    title = "Bell Strike",
+
+    -- Name of the license. [required]
+    license_name = "CC-BY-4.0",
+
+    -- URL to the license. [required]
+    license_url = "https://creativecommons.org/licenses/by/4.0/",
+
+    -- The name/identification of the persons or entities to attribute the work 
+    -- to. [required]
+    attributed_to = "John Doe",
+
+    -- URL to the original work if possible.
+    -- [optional, default: ]
+    attribution_url = "https://example.com",
+})
+</code></pre>
+<h3 id="floeset_required_floe_version"><a class="header" href="#floeset_required_floe_version"><code>floe.set_required_floe_version</code></a></h3>
+<p>Sets the minimum required version of Floe for this library. It takes one parameter: a string representing the version number (a <a href="https://semver.org/">semantic version</a>).</p>
+<p>It’s best to set this at the top of your <code>floe.lua</code> file so that Floe can check the version before running the script.</p>
+<p>Calling this function is recommended so that older versions of Floe behave predictably when trying to load an unsupported library.</p>
+<pre><code class="language-lua">-- Sets the required Floe version for this library. If the current Floe version is 
+-- lower than the required version, an error will be raised.
+floe.set_required_floe_version("1.0.4+5ed2c8bc")
+</code></pre>
+<h2 id="support-function"><a class="header" href="#support-function">Support Function</a></h2>
+<p>Floe provides some additional functions to make developing libraries easier.</p>
+<h3 id="floeextend_table"><a class="header" href="#floeextend_table"><code>floe.extend_table</code></a></h3>
+<p>Extends a table with another table, including all sub-tables. It takes 2 parameters: the base table and the table to extend it with. The base table is not modified. The extension table is modified and returned. It has all the keys of the base table plus all the keys of the extended table. If a key exists in both tables, the value from the extension table is used.</p>
+<p>Floe doesn’t have the concept of ‘groups’ like other formats like SFZ or Kontakt have. Instead, this function offers a way to apply a similar configuration to multiple regions. Alternatively, you can use functions and loops in Lua to add regions in a more dynamic way.</p>
+<pre><code class="language-lua">local group1 = {
+    trigger_criteria = {
+        trigger_event = "note-on",
+        velocity_range = { 0, 100 },
+        auto_map_key_range_group = "group1",
+        feather_overlapping_velocity_regions = false,
+    },
+}
+
+floe.add_region(instrument, floe.extend_table(group1, {
+    path = "One-shots/Resonating String 2.flac",
+    root_key = 65,
+}))
+
+floe.add_region(instrument, floe.extend_table(group1, {
+    path = "One-shots/Resonating String 3.flac",
+    root_key = 68,
+}))
+</code></pre>
+<h3 id="floemidi_range_to_hundred_range-and-floemidi_range_to_thousand_range"><a class="header" href="#floemidi_range_to_hundred_range-and-floemidi_range_to_thousand_range"><code>floe.midi_range_to_hundred_range</code> and <code>floe.midi_range_to_thousand_range</code></a></h3>
+<p>Floe prefers to use a range from 0 to 100 or 0 to 1000 (where the end value is exclusive, A.K.A. one-past the last) for velocity rather than MIDI 1.0’s typical range of 0 to 127 (where the end value is inclusive). These functions convert from the MIDI range to the Floe range. Useful when converting existing libraries to Floe.</p>
+<pre><code class="language-lua">-- Converts a MIDI note range (where the end value is inclusive) to Floe's 0-100 
+-- range (where the end value is exclusive, A.K.A, one-past the last). Takes a 
+-- table with two integers for start and end. Returns the same format but 
+-- remapped.
+local hundred_range = floe.midi_range_to_hundred_range({ 0, 127 })
+-- Converts a MIDI note range (where the end value is inclusive) to Floe's 0-1000 
+-- range (where the end value is exclusive, A.K.A, one-past the last). Takes a 
+-- table with two integers for start and end. Returns the same format but 
+-- remapped.
+local thousand_range = floe.midi_range_to_thousand_range({ 0, 127 })
+</code></pre>
+<h2 id="lua-language-server"><a class="header" href="#lua-language-server">Lua Language Server</a></h2>
+<p>If you are using the <a href="https://luals.github.io/">Lua Language Server</a>, you can get autocompletion and diagnostics for Floe’s Lua API by using the following configuration.</p>
+<ol>
+<li>Open Floe, and click on the 3-dot menu at the top of the window. Click “Library Developer Panel” and open the “Utilities” tab.</li>
+<li>Click on the “Install Lua definitions” button. This will generate the necessary file on your system.</li>
+<li>For the Lua LSP to find the definitions, you need to create a <code>.luarc.json</code> file in the same folder as your <code>floe.lua</code> file.</li>
+<li>Paste the following code into the <code>.luarc.json</code> file:</li>
+</ol>
+<pre><code class="language-json">{
+    "runtime": {
+        "version": "Lua 5.4"
+    },
+    "workspace": {
+        "library": [
+            "&lt;&lt; paste definitions file path &gt;&gt;"
+        ]
+    }
+}
+</code></pre>
+<ol start="5">
+<li>Replace the string with the path that is copied to your clipboard when you click the “Copy Lua definitions path” button in the Library Developer Panel.</li>
+<li>Done.</li>
+</ol>
+<h2 id="lua-lsp-definitions"><a class="header" href="#lua-lsp-definitions">Lua LSP Definitions</a></h2>
+<p>This file is also generated by the “Install Lua definitions” button in the Library Developer Panel.</p>
+<pre><code class="language-lua">---@meta FloeAPI
+
+---@class FloeLibraryConfig
+---@field name string The name of the library. Keep it short and use tagline for more details.
+---@field tagline string A few words to describe the library.
+---@field library_url? string The URL for this Floe library.
+---@field description? string A description of the library. You can be verbose and use newlines (\n).
+---@field author string Who created this library. Keep it short, use the description for more details.
+---@field author_url? string URL relating to the author or their work.
+---@field minor_version? number The minor version of this library - backwards-compatible changes are allowed on a library; this field represents that. Non-backwards-compatibile changes are not allowed: you'd need to create a new library such as: "Strings 2".
+---@field background_image_path? string Path relative to this script for the background image. It should be a jpg or png.
+---@field icon_image_path? string Path relative to this script for the icon image. It should be a square jpg or png.
+
+---@class FloeInstrumentConfig
+---@field name string The name of the instrument. Must be unique.
+---@field folder? string Specify a folder to group instruments under a common heading. It may contain slashes to represent a hierarchy. See https://floe.audio/develop/tags-and-folders.html for more information.
+---@field description? string A description of the instrument. Start with a capital letter an end with a period.
+---@field tags? string[] An array of strings to denote properties of the instrument. See https://floe.audio/develop/tags-and-folders.html for more information.
+---@field waveform_audio_path? string Path to an audio file relative to this script that should be used as the waveform on Floe's GUI.
+
+---@class FloeImpulseResponseAudioPropsConfig
+---@field gain_db? number Apply a gain to the audio data in decibels.
+
+---@class FloeBuiltinLoopConfig
+---@field start_frame number The start of the loop in frames. Inclusive. It can be negative meaning index the file from the end rather than the start.
+---@field end_frame number The end of the loop in frames. Exclusive. It can be negative meaning index the file from the end rather than the start. 0 means the end of the file.
+---@field crossfade number The number of frames to crossfade.
+---@field mode? "standard"|"ping-pong" The mode of the loop.
+---@field lock_loop_points? boolean If true, the start, end and crossfade values cannot be overriden by a custom loop from Floe's GUI.
+---@field lock_mode? boolean If true, the loop mode value cannot be overriden by a custom mode from Floe's GUI.
+
+---@class FloeRegionLoopConfig
+---@field builtin_loop? FloeBuiltinLoopConfig Define a built-in loop.
+---@field loop_requirement? "default"|"always-loop"|"never-loop" The requirement for this region to loop.
+
+---@class FloeRegionAudioPropsConfig
+---@field gain_db? number Apply a gain to the audio data in decibels.
+---@field start_offset_frames? number The number of frames to skip at the start of the audio data.
+---@field tune_cents? number Tune the audio data in cents.
+---@field fade_in_frames? number The number of frames to fade in the audio data.
+
+---@class FloeRegionTimbreLayeringConfig
+---@field layer_range? number[] The start and end point, from 0 to 100, of the Timbre knob on Floe's GUI that this region should be heard. You should overlap this range with other timbre layer ranges. Floe will create an even crossfade of all overlapping sounds. The start number is inclusive, end is exclusive. This region's velocity_range should be the full range.
+
+---@class FloeRegionPlaybackConfig
+---@field keytrack_requirement? "default"|"always"|"never" The requirement for keytracking.
+
+---@class FloeTriggerCriteriaConfig
+---@field trigger_event? "note-on"|"note-off" What event triggers this region.
+---@field key_range? number[] The pitch range of the keyboard that this region is mapped to. These should be MIDI note numbers, from 0 to 128. The start number is inclusive, the end is exclusive.
+---@field velocity_range? number[] The velocity range of the keyboard that this region is mapped to. This should be an array of 2 numbers ranging from 0 to 100. The start number is inclusive, the end is exclusive. Use the velocity_range_high_resolution instead if you need more than 100 velocity layers.
+---@field velocity_range_high_resolution? number[] Alternative to velocity_range that allows for 1000 velocity layers instead of 100.
+---@field round_robin_index? number Trigger this region only on this round-robin index. For example, if this index is 0 and there are 2 other groups with round-robin indices of 1 and 2 with the same round_robin_sequencing_group and trigger_event, then this region will trigger on every third press of a key only. round_robin_index should begin at 0 and be consecutive. The total number of round-robins is calculated automatically.
+---@field round_robin_sequencing_group? string Group together regions that have this same string, so that their round_robin_index is part of a separate sequence to other round_robin_sequencing_groups. Use this when you have multiple sets of regions that have a different number of round-robins with the same trigger_event.
+---@field feather_overlapping_velocity_layers? boolean If another region in this instrument is triggered at the same time as this one and is overlapping this, and also has this option enabled, then both regions will play crossfaded in a proportional amount for the overlapping area, creating a smooth transition between velocity layers. Only works if there's exactly 2 overlapping layers.
+---@field auto_map_key_range_group? string For every region that has this same string, automatically set the start and end values for each region's key range based on its root key.
+
+---@class FloeFileAttributionConfig
+---@field title string The title of the work.
+---@field license_name string Name of the license.
+---@field license_url string URL to the license.
+---@field attributed_to string The name/identification of the persons or entities to attribute the work to.
+---@field attribution_url? string URL to the original work if possible.
+
+---@class FloeNamedKeyRangeConfig
+---@field name string The name of the key range.
+---@field key_range number[] The range of the keyboard to give a name to. These should be MIDI note numbers, from 0 to 128. The start number is inclusive, the end is exclusive.
+
+---@class FloeImpulseResponseConfig
+---@field name string The name of the IR. Must be unique.
+---@field path string File path to the impulse response file, relative to this script.
+---@field folder? string Specify a folder to group IRs under a common heading. It may contain slashes to represent a hierarchy. See https://floe.audio/develop/tags-and-folders.html for more information.
+---@field tags? string[] An array of strings to denote properties of the IR. See https://floe.audio/develop/tags-and-folders.html for more information.
+---@field description? string A description of the IR. Start with a capital letter an end with a period.
+---@field audio_properties? FloeImpulseResponseAudioPropsConfig Audio properties.
+
+---@class FloeRegionConfig
+---@field path string A path to an audio file, relative to this current lua file.
+---@field root_key number The pitch of the audio file as a number from 0 to 127 (a MIDI note number).
+---@field trigger_criteria? FloeTriggerCriteriaConfig How this region should be triggered.
+---@field loop? FloeRegionLoopConfig Loop configuration.
+---@field timbre_layering? FloeRegionTimbreLayeringConfig Timbre layering configuration.
+---@field audio_properties? FloeRegionAudioPropsConfig Audio properties.
+---@field playback? FloeRegionPlaybackConfig Playback configuration.
+
+---@class floe
+floe = {}
+
+-- Creates a new library. You should only create one library in your script. 
+-- Return the library at the end of your script.
+---@param config FloeLibraryConfig
+---@return lightuserdata library
+function floe.new_library(config) end
+
+-- Creates a new instrument on the library. You can call this multiple times to 
+-- create multiple instruments.
+---@param library lightuserdata
+---@param config FloeInstrumentConfig
+---@return lightuserdata instrument
+function floe.new_instrument(library, config) end
+
+-- Adds a region to an instrument. You can call this multiple times to create 
+-- multiple regions. Each instrument must have one or more regions.
+---@param instrument lightuserdata
+---@param config FloeRegionConfig
+function floe.add_region(instrument, config) end
+
+-- Adds a reverb impulse response to the library. You can call this multiple times 
+-- to create multiple impulse responses.
+---@param library lightuserdata
+---@param config FloeImpulseResponseConfig
+function floe.add_ir(library, config) end
+
+-- Sets the attribution information for a particular audio file or folder. If the 
+-- path is a folder, the attribution requirement will be applied to all audio 
+-- files in that folder and its subfolders.
+---@param file_path string
+---@param config FloeFileAttributionConfig
+function floe.set_attribution_requirement(file_path, config) end
+
+-- Gives a name to a key range of this instrument. For example, with a 
+-- multi-sampled keyboard instrument, you might mark the ranges beyond the natural 
+-- range of the real instrument as "Extended" ranges. You can call this multiple 
+-- times to create multiple named key ranges. Alternatively, if the instrument 
+-- contains multiple sounds, you can name each sound: "Kick", "Snare", etc. Don't 
+-- overlap ranges.
+---@param instrument lightuserdata
+---@param config FloeNamedKeyRangeConfig
+function floe.add_named_key_range(instrument, config) end
+
+-- Sets the required Floe version for this library. If the current Floe version is 
+-- lower than the required version, an error will be raised.
+---@param version_string string
+function floe.set_required_floe_version(version_string) end
+
+-- Extends a table with another table, including all sub-tables. The base table is 
+-- not modified. The extension table is modified and returned with all keys from 
+-- both tables. If a key exists in both, the extension table value is used.
+---@param base_table table
+---@param t table
+---@return table extended_table
+function floe.extend_table(base_table, t) end
+
+-- Converts a MIDI note range (where the end value is inclusive) to Floe's 0-100 
+-- range (where the end value is exclusive, A.K.A, one-past the last). Takes a 
+-- table with two integers for start and end. Returns the same format but 
+-- remapped.
+---@param midi_range table
+---@return table hundred_range
+function floe.midi_range_to_hundred_range(midi_range) end
+
+-- Converts a MIDI note range (where the end value is inclusive) to Floe's 0-1000 
+-- range (where the end value is exclusive, A.K.A, one-past the last). Takes a 
+-- table with two integers for start and end. Returns the same format but 
+-- remapped.
+---@param midi_range table
+---@return table thousand_range
+function floe.midi_range_to_thousand_range(midi_range) end
+
+_G.floe = floe
+
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../develop/develop-libraries.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../develop/develop-preset-packs.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../develop/develop-libraries.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../develop/develop-preset-packs.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
