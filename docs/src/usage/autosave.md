@@ -16,6 +16,7 @@ The autosave feature has reasonable default settings, but you can edit them in t
 Autosaves are just preset files. You can load them as you would a preset file. Autosaves can be found here:
 - Windows: `C:\Users\Public\Floe\Autosaves`
 - macOS: `/Users/Shared/Floe/Autosaves`
+- Linux: `~/Floe/Autosaves`
 
 Some additional things to note:
 - The autosave system is efficient - it shouldn't noticeably slow your computer down.

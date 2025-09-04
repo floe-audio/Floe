@@ -23,7 +23,7 @@ We don't have an uninstaller program for macOS. Please follow the manual uninsta
 
 
 ## Uninstall libraries and presets
-##### Windows and macOS
+##### All operating systems
 1. Open Floe
 1. Click on the cog icon <i class="fa fa-cog"></i> at the top.
 1. Open the 'Folders' tab.
@@ -52,6 +52,11 @@ For Windows, use the uninstaller program described above. If you want to manuall
 - CLAP: `C:\Program Files\Common Files\CLAP\Floe.clap`
 - VST3: `C:\Program Files\Common Files\VST3\Floe.vst3`
 
+##### Linux
+- Preferences: `~/Floe/Preferences/floe.ini`
+- State: `~/.local/state/Floe`
+- CLAP: `~/.clap/Floe.clap`
+- VST3: `~/.vst3/Floe.vst3`
 
 ### Delete Mirage
 If you used to have [Mirage](../about-the-project/mirage.md) installed then some additional files may be present. To uninstall Mirage, delete the following files. Some of these files may not exist.

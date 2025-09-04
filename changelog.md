@@ -8,6 +8,9 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 1.0.4
+- Add Linux support - CLAP and VST3
+
 ## 1.0.3
 - Fix issue with Bitwig, where presets wouldn't sometimes load completely
 - Fix crackle possible crackle in audio when host uses an odd-sized audio buffer

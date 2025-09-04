@@ -52,6 +52,7 @@ Ctrl
 Cubase
 DAW
 DAWs
+Dbuild
 DecentSampler
 Dtargets
 EDM
@@ -62,6 +63,7 @@ FileCopyrightText
 FreePats
 FrozenPlain
 G8
+GLX
 GPL
 GPLv3
 GUIs
@@ -90,6 +92,7 @@ Multisampled
 NoiseCollector
 OSs
 Octaved
+OpenGL
 ProgramData
 Q1
 RMS
@@ -98,6 +101,7 @@ RegisterMyTests
 Retrig
 Retrigger
 Roadmap
+SDK
 SFZ
 SPDX
 SSE2
@@ -120,12 +124,14 @@ Versilian
 WAV
 WIP
 Windell
+X11
 YAML
 Zulip
 algorithmically
 analog
 api
 aren
+arm64
 arp
 arpeggiated
 asc
@@ -159,6 +165,7 @@ decrementing
 defs
 dev
 didn
+distro
 dll
 doesn
 dofile
@@ -176,6 +183,7 @@ fm
 foldback
 fx
 github
+glibc
 globals
 gui
 h1
@@ -192,6 +200,7 @@ isn
 json
 justfile
 keypress
+libcurl
 linux
 lsp
 lua
@@ -273,7 +282,10 @@ wavetable
 webpage
 weren
 wouldn
+x11
 x86
+xdg
 xml
+zenity
 zig
 zon

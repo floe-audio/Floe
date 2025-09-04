@@ -557,6 +557,31 @@ windows-prepare-release:
   zip -r $final_packager_zip_name floe-packager.exe
   mv $final_packager_zip_name {{release_files_dir}}
 
+[unix]
+linux-prepare-release:
+  #!/usr/bin/env bash
+  set -euxo pipefail
+  
+  version=$(cat version.txt)
+  mkdir -p {{release_files_dir}}
+  [[ ! -d zig-out/x86_64-linux ]] && echo "x86_64-linux folder not found" && exit 1
+  cd zig-out/x86_64-linux
+  
+  # CLAP
+  final_clap_tar_name="Floe-CLAP-v$version-Linux.tar.gz"
+  tar -czf $final_clap_tar_name Floe.clap
+  mv $final_clap_tar_name {{release_files_dir}}
+  
+  # VST3
+  final_vst3_tar_name="Floe-VST3-v$version-Linux.tar.gz"
+  tar -czf $final_vst3_tar_name Floe.vst3
+  mv $final_vst3_tar_name {{release_files_dir}}
+  
+  # Packager
+  final_packager_tar_name="Floe-Packager-v$version-Linux.tar.gz"
+  tar -czf $final_packager_tar_name floe-packager
+  mv $final_packager_tar_name {{release_files_dir}}
+
 [macos, no-cd]
 macos-notarize file:
   #!/usr/bin/env bash

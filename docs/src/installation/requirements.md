@@ -20,6 +20,14 @@ On macOS, Floe is available in the CLAP, VST3 and AU (v2) formats. We recommend 
 - Apple Silicon or Intel
 - CLAP, AU (v2) or VST3 host
 
+### <i class="fa fa-linux"></i> Linux
+On Linux, Floe is available in the CLAP and VST3 formats. We recommend using the CLAP version where possible. The requirements are quite minimal and you might find you already have everything you need. Requirements:
+
+- x86-64 processor
+- A reasonably recent distribution with glibc 2.29 or later
+- libcurl, OpenGL, X11 and GLX libraries installed
+- `zenity` and `xdg-open` installed
+
 ### Plugin Hosts (DAWs)
 Here are some examples of plugin hosts that can run Floe. There are many more than this.
 - **CLAP** hosts on Windows & macOS: Reaper, Bitwig, FL Studio (2024 or newer) and Studio One Pro (v7 or newer).
@@ -27,4 +35,4 @@ Here are some examples of plugin hosts that can run Floe. There are many more th
 - **AU** hosts on macOS include: Logic Pro, GarageBand, and more.
 
 ### Not supported
-Just for clarity: there's no Linux, no 'standalone' application and no AAX (Pro Tools) support. We hope to expand Floe's compatibility in the future.
+Just for clarity: no 'standalone' application and no AAX (Pro Tools) support. We hope to expand Floe's compatibility in the future.

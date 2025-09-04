@@ -47,6 +47,37 @@ jobs:
           if-no-files-found: error
           path: ${{ env.RELEASE_DIR }}
 
+  build-linux:
+    runs-on: ubuntu-22.04 
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/flakehub-cache-action@main
+      - uses: nicknovitski/nix-develop@v1.1.0
+      - uses: Hanaasagi/zig-action-cache@master
+
+      - run: |
+          just build-release linux
+
+      - run: just linux-prepare-release
+
+      - name: 'get release dir from just'
+        run: |
+          export RELEASE_DIR=$(just --evaluate release_files_dir)
+          echo "RELEASE_DIR=${RELEASE_DIR}" >> $GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-linux
+          if-no-files-found: error
+          path: ${{ env.RELEASE_DIR }}
+
   build-macos:
     runs-on: macos-14
     permissions:
@@ -91,7 +122,7 @@ jobs:
           path: ${{ env.RELEASE_DIR }}
 
   deploy:
-    needs: [build-macos, build-windows]
+    needs: [build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write

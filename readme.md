@@ -14,7 +14,7 @@ SPDX-License-Identifier: CC0-1.0
 ---
 
 ### Streamlined sample-based instrument platform
-Floe is a CLAP, VST3 and AU plugin for Windows, macOS, and (currently for development purposes only) Linux. It loads and plays sample libraries in the Floe format. Visit [floe.audio](https://floe.audio) for more information about the project. 
+Floe is a CLAP, VST3 and AU plugin for Windows, macOS, and Linux. It loads and plays sample libraries in the Floe format. Visit [floe.audio](https://floe.audio) for more information about the project. 
 
 ## Roadmap
 See our [roadmap](https://floe.audio/about-the-project/roadmap.html) section our our website. We also sometimes use GitHub issues to track [milestones](https://github.com/floe-audio/Floe/milestones?direction=asc&sort=title&state=open) towards future releases. 
@@ -23,14 +23,25 @@ See our [roadmap](https://floe.audio/about-the-project/roadmap.html) section our
 This project is licensed under GPL version 3 or later. See the LICENCES folder for the full licence text. We follow the [REUSE](https://reuse.software/) recommendations for this repository.
 
 ## Building
-Building is done on a Linux or macOS system. Cross-compilation is supported. Therefore from Linux/macOS you can build for Windows and other platforms. 
+Supported targets are:
+- Windows (x86_64)
+- macOS (x86_64 and arm64)
+- Linux (x86_64)
 
-Linux is only used for development purposes at the moment, and you can't cross-compile to Linux from a non-Linux system.
-
+We do all our building inside our Nix development environment which ensures the correct Zig version and the small number of dependencies are available. We build Windows binaries via cross-compilation. To follow our process:
+- Use Linux or macOS
 - Install Nix and enable Flakes
 - Run `nix develop` in the root of the project to enter a shell with all dependencies
-- Run `zig build -Dtargets=native`. Alternative options instead of `native` are: `linux`, `windows`, `mac_arm`, `mac_x86`
+- Run `zig build -Dtargets=native -Dbuild-mode=development`. Alternative options instead of `native` are: `linux`, `windows`, `mac_arm`, `mac_x86`
 - Binaries are created in the zig-out directory
+
+However, it's _probably_ possible to build without Nix, even on Windows. You need to have Zig 0.14.0 installed. Run `zig build` to build.
+
+Important things to note:
+- Building outside the Nix environment is largely untested. You may have problems with macOS SDK versions.
+- We don't currently support cross-compiling to Linux. You need to build Linux binaries on a Linux system.
+
+Building on Linux, you will need libraries for curl, x11, OpenGL and GLX (handled automatically in the Nix environment); these are also normally installed by default on your distro. Runtime dependencies are `xdg-open` and `zenity`.
 
 ## About this codebase
 Floe is written in C++ and we use Zig for the build system. Eventually, we're considering using Zig for the entire codebase.

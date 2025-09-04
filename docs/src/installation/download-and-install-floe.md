@@ -34,8 +34,7 @@ To [update Floe](./updating.md), just download and run the latest installer agai
 
 Download, unzip, and run the installer program. The installer will guide you through the installation process, including choosing the plugin formats you want to install. 
 
-Once the installation is complete you might need to restart your DAW in order for it to find the Floe plugins.
-
+On Windows, close your DAW first. 
 
 ## Manually Install (advanced)
 
@@ -44,6 +43,10 @@ Once the installation is complete you might need to restart your DAW in order fo
 > **<i class="fa fa-apple"></i> Floe Manual Install macOS Apple Silicon[^mac-arm]**:<br>==Floe-Manual-Install-macOS-Apple-Silicon-markdown-link==
 > 
 > **<i class="fa fa-apple"></i> Floe Manual Install macOS Intel[^mac-intel]**:<br>==Floe-Manual-Install-macOS-Intel-markdown-link==
+>
+> **<i class="fa fa-linux"></i> Floe Linux CLAP**:<br>==Floe-CLAP-Linux-markdown-link==
+>
+> **<i class="fa fa-linux"></i> Floe Linux VST3**:<br>==Floe-VST3-Linux-markdown-link==
 
 
 Normally you'll want to use the installer, but there could be some cases where you'd prefer to install Floe manually. To allow for this, we provide a zip file that contains Floe's plugin files. Extract it and move the files to your plugin folders.
@@ -57,7 +60,9 @@ Normally you'll want to use the installer, but there could be some cases where y
 - VST3: Move `Floe.vst3` into `/Library/Audio/Plug-Ins/VST3`
 - AU: Move `Floe.component` into `/Library/Audio/Plug-Ins/Components`
 
-## 
+##### Linux:
+- CLAP: Move `Floe.clap` into `~/.clap` or `/usr/lib/clap`
+- VST3: Move `Floe.vst3` into `~/.vst3` or `/usr/lib/vst3` or `/usr/local/lib/vst3`
 
 ---
 

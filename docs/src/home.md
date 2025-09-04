@@ -50,7 +50,7 @@ With three distinct layers, Floe lets you blend instruments across different lib
 ![Transform sounds GUI](./images/transform-sounds.png)
 
 ## Focus on making music
-Available as a plugin for your DAW (CLAP, VST3, and AU) on Windows and macOS. No accounts, no subscriptions, no interruptions — just musical creation. Openness is at the core of Floe and its libraries.
+Available as a plugin for your DAW (CLAP, VST3, and AU) on Windows, macOS and Linux. No accounts, no subscriptions, no interruptions — just musical creation. Openness is at the core of Floe and its libraries.
 
 ## Expanding library selection
 The list of [libraries available](./packages/available-packages.md) for Floe is growing. And they're installable in a few clicks. If you're a developer, you can make your own libraries for Floe and request adding them to the list.
