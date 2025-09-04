@@ -36,6 +36,24 @@ Download, unzip, and run the installer program. The installer will guide you thr
 
 On Windows, close your DAW first. 
 
+<div style="margin-top: 80px;"></div>
+
+## Linux
+Run the following command in a terminal to install or update Floe.
+
+For CLAP:
+```bash
+mkdir -p ~/.clap && curl -L ==Floe-CLAP-Linux-url== | tar -xzf - -C ~/.clap
+
+```
+
+For VST3:
+
+```bash
+mkdir -p ~/.vst3 && curl -L ==Floe-VST3-Linux-url== | tar -xzf - -C ~/.vst3
+
+```
+
 ## Manually Install (advanced)
 
 > **<i class="fa fa-windows"></i> Floe Manual Install Windows**:<br>==Floe-Manual-Install-Windows-markdown-link==
