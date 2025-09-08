@@ -33,7 +33,7 @@ ErrorCodeOr<void> HttpsGet(String url, Writer writer, RequestOptions options) {
     ArenaAllocatorWithInlineStorage<1000> arena {Malloc::Instance()};
 
     curl_easy_setopt(curl, CURLOPT_URL, NullTerminated(url, arena));
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "curl/7.42.0");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "curl/" LIBCURL_VERSION);
 
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFunction);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &writer);
