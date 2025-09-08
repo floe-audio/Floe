@@ -89,7 +89,7 @@ SharedEngineSystems::SharedEngineSystems(Span<sentry::Tag const> tags)
 
         // When Mirage opens, it scans its libraries/presets folder and adds all the paths to its
         // preferences file. It's possible that Mirage hasn't been opened after libraries/presets were
-        // installed, so we need to recreate Mirage's behaviour here.
+        // manually installed, so we need to recreate Mirage's behaviour here.
         struct MiragePath {
             ScanFolderType type;
             FloeKnownDirectoryType known_dir_type;
