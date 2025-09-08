@@ -1046,7 +1046,44 @@ fn getLicenceText(b: *std.Build, filename: []const u8) ![]const u8 {
     return try file.readToEndAlloc(b.allocator, 1024 * 1024 * 1024);
 }
 
+// Based on https://github.com/zigster64/dotenv.zig
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2024 Scribe of the Ziggurat
+fn loadEnvFile(b: *std.Build) !void {
+    var file = b.build_root.handle.openFile(".env", .{}) catch {
+        return;
+    };
+    defer file.close();
+
+    var buf_reader = std.io.bufferedReader(file.reader());
+    var in_stream = buf_reader.reader();
+    var buf: [1024]u8 = undefined;
+
+    while (try in_stream.readUntilDelimiterOrEof(&buf, '\n')) |line| {
+        // ignore commented out lines
+        if (line.len > 0 and line[0] == '#') {
+            continue;
+        }
+        // split into KEY and Value
+        if (std.mem.indexOf(u8, line, "=")) |index| {
+            const key = line[0..index];
+            var value = line[index + 1 ..];
+
+            // If the value starts and ends with quotes, remove them
+            if (value.len >= 2 and ((value[0] == '"' and value[value.len - 1] == '"') or
+                (value[0] == '\'' and value[value.len - 1] == '\'')))
+            {
+                value = value[1 .. value.len - 1];
+            }
+
+            try b.graph.env_map.put(key, value);
+        }
+    }
+}
+
 pub fn build(b: *std.Build) void {
+    loadEnvFile(b) catch {};
+
     const build_mode = b.option(
         BuildMode,
         "build-mode",

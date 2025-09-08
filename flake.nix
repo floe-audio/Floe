@@ -97,7 +97,10 @@
 
           vendorHash = "sha256-WUQW8EDJ7kT2CUZsNtlVUVwwqFRHkpkU6pFmx7/MDGg=";
 
-          ldflags = [ "-s" "-w" ];
+          ldflags = [
+            "-s"
+            "-w"
+          ];
 
           meta = {
             description = "Utility to generate a sitemap.xml file for an mdbook project";
@@ -249,6 +252,7 @@
           shellHook = ''
             export MACOSX_SDK_SYSROOT="${macosx-sdks}"
             export PATH="$PWD/${nativeBinSubdir}:$PATH"
+            export ZIG_GLOBAL_CACHE_DIR=".zig-cache-global"
           '';
         };
       }
