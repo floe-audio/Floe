@@ -37,6 +37,18 @@ void SharedEngineSystems::StartPollingThreadIfNeeded() {
         "polling");
 }
 
+void SharedEngineSystems::AddMirageFoldersIfNeeded() {
+    auto constexpr k_key = HashComptime("mirage_folders_checked");
+    auto const r = persistent_store::Get(persistent_store, k_key);
+    if (r.tag == persistent_store::GetResult::Found) return;
+
+    ArenaAllocatorWithInlineStorage<2000> scratch_arena {PageAllocator::Instance()};
+
+    // auto const path = FloeKnownDirectory(
+
+    persistent_store::AddValue(persistent_store, k_key, u8(1));
+}
+
 SharedEngineSystems::SharedEngineSystems(Span<sentry::Tag const> tags)
     : arena(PageAllocator::Instance(), Kb(4))
     , paths(CreateFloePaths(arena, true))
