@@ -37,16 +37,39 @@ void SharedEngineSystems::StartPollingThreadIfNeeded() {
         "polling");
 }
 
-void SharedEngineSystems::AddMirageFoldersIfNeeded() {
-    auto constexpr k_key = HashComptime("mirage_folders_checked");
-    auto const r = persistent_store::Get(persistent_store, k_key);
-    if (r.tag == persistent_store::GetResult::Found) return;
+// We've had reports of Floe not finding Mirage's libraries/presets. We already have other methods for reading
+// the Mirage prefs, and scanning the right folders, but it's possible it's still not sufficient - that Mirage
+// is leaving things in a state that misguides Floe. Let's just add a dead-simple additional check.
+static void AddMirageFoldersIfNeeded(persistent_store::Store& persistent_store,
+                                     prefs::Preferences& prefs,
+                                     FloePaths const& paths) {
+    if constexpr (IS_LINUX) return; // Mirage didn't exist on Linux.
 
-    ArenaAllocatorWithInlineStorage<2000> scratch_arena {PageAllocator::Instance()};
+    auto constexpr k_mirage_folders_checked_key = HashComptime("mirage_folders_checked");
 
-    // auto const path = FloeKnownDirectory(
+    if (persistent_store::Get(persistent_store, k_mirage_folders_checked_key).tag ==
+        persistent_store::GetResult::Found)
+        return;
 
-    persistent_store::AddValue(persistent_store, k_key, u8(1));
+    persistent_store::AddValue(persistent_store, k_mirage_folders_checked_key, u8(1));
+
+    auto add_if_exists = [&](ScanFolderType type, String dir) {
+        if (auto const o = GetFileType(dir); o.HasValue() && o.Value() == FileType::Directory)
+            prefs::AddValue(prefs,
+                            ExtraScanFolderDescriptor(paths, type),
+                            (String)dir,
+                            {.dont_send_on_change_event = true});
+    };
+
+    if constexpr (IS_WINDOWS) {
+        add_if_exists(ScanFolderType::Libraries, "C:\\Users\\Public\\FrozenPlain\\Mirage\\Libraries");
+        add_if_exists(ScanFolderType::Presets, "C:\\Users\\Public\\FrozenPlain\\Mirage\\Presets");
+    } else if constexpr (IS_MACOS) {
+        add_if_exists(ScanFolderType::Libraries, "/Library/Application Support/FrozenPlain/Mirage/Libraries");
+        add_if_exists(ScanFolderType::Presets, "/Library/Application Support/FrozenPlain/Mirage/Presets");
+    }
+
+    prefs.write_to_file_needed = true;
 }
 
 SharedEngineSystems::SharedEngineSystems(Span<sentry::Tag const> tags)
@@ -121,6 +144,8 @@ SharedEngineSystems::SharedEngineSystems(Span<sentry::Tag const> tags)
 
         prefs.write_to_file_needed = true;
     }
+
+    AddMirageFoldersIfNeeded(persistent_store, prefs, paths);
 
     if constexpr (!PRODUCTION_BUILD) {
         ArenaAllocatorWithInlineStorage<1000> scratch {PageAllocator::Instance()};

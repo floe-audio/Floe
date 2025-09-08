@@ -28,8 +28,6 @@ struct SharedEngineSystems {
     void RegisterFloeInstance(FloeInstanceIndex index);
     void UnregisterFloeInstance(FloeInstanceIndex index);
 
-    void AddMirageFoldersIfNeeded();
-
     RecursiveMutex registered_floe_instances_mutex {};
     DynamicArrayBounded<FloeInstanceIndex, k_max_num_floe_instances> registered_floe_instances {};
 
