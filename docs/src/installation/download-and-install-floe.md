@@ -5,86 +5,97 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Download & Install Floe
 
-There's two ways to install Floe: use the installer, or manually move files. 
+<div class="download-tabs">
+    <div class="download-tab" data-os="windows">
+        <i class="fa fa-windows"></i>
+        Windows
+    </div>
+    <div class="download-tab" data-os="macos">
+        <i class="fa fa-apple"></i>
+        macOS
+    </div>
+    <div class="download-tab" data-os="linux">
+        <i class="fa fa-linux"></i>
+        Linux
+    </div>
+</div>
 
-Either way, Floe is backwards-compatible[^pre-releases]. This means that you can replace an old version of Floe with a new version and everything will work.
+<div class="download-panels">
+    <div class="download-panel" data-os="windows">
+        <div class="installer-image">
+            <img src="../images/installer-windows-gui.png" alt="Windows installer screenshot">
+        </div>
+        <div class="download-buttons">
+            <a href="==Floe-Installer-Windows-url==" class="download-button">
+                <i class="fa fa-download"></i>Download Floe (==Floe-Installer-Windows-size==)
+            </a>
+        </div>
+        <p style="text-align: center; margin-bottom: 90px;"><em>Current version: v==latest-release-version== • <a href="/installation/requirements.html">Requirements</a></em></p>
+        <h3>Manual Installation (advanced)</h3>
+        <p>Normally you'll want to use the installer, but there could be some cases where you'd prefer to install Floe manually. To allow for this, we provide a zip file that contains Floe's plugin files. Extract it and move the files to your plugin folders.</p>
+        <blockquote>
+            <p><strong><i class="fa fa-windows"></i> Floe Manual Install Windows</strong>:<br><a href="==Floe-Manual-Install-Windows-url==">Download Floe-Manual-Install-Windows.zip</a> (==Floe-Manual-Install-Windows-size==)</p>
+        </blockquote>
+        <ul>
+            <li>CLAP: Move <code>Floe.clap</code> into <code>C:\Program Files\Common Files\CLAP</code></li>
+            <li>VST3: Move <code>Floe.vst3</code> into <code>C:\Program Files\Common Files\VST3</code></li>
+        </ul>
+    </div>
+    <div class="download-panel" data-os="macos">
+        <div class="installer-image">
+            <img src="../images/installer-macos-gui.png" alt="macOS installer screenshot">
+        </div>
+        <div class="download-buttons">
+            <a href="==Floe-Installer-macOS-Apple-Silicon-url==" class="download-button">
+                <i class="fa fa-download"></i>Apple Silicon (M1, M2, M3...) - ==Floe-Installer-macOS-Apple-Silicon-size==
+            </a>
+            <a href="==Floe-Installer-macOS-Intel-url==" class="download-button">
+                <i class="fa fa-download"></i>Intel (x86_64) - ==Floe-Installer-macOS-Intel-size==
+            </a>
+        </div>
+        <p style="text-align: center; margin-bottom: 90px;"><em>Current version: v==latest-release-version== • <a href="/installation/requirements.html">Requirements</a></em></p>
+        <h3>Manual Installation (advanced)</h3>
+        <p>Normally you'll want to use the installer, but there could be some cases where you'd prefer to install Floe manually. To allow for this, we provide a zip file that contains Floe's plugin files. Extract it and move the files to your plugin folders.</p>
+        <blockquote>
+            <p><strong><i class="fa fa-apple"></i> Floe Manual Install macOS Apple Silicon</strong>:<br><a href="==Floe-Manual-Install-macOS-Apple-Silicon-url==">Download Floe-Manual-Install-macOS-Apple-Silicon.zip</a> (==Floe-Manual-Install-macOS-Apple-Silicon-size==)</p>
+            <p><strong><i class="fa fa-apple"></i> Floe Manual Install macOS Intel</strong>:<br><a href="==Floe-Manual-Install-macOS-Intel-url==">Download Floe-Manual-Install-macOS-Intel.zip</a> (==Floe-Manual-Install-macOS-Intel-size==)</p>
+        </blockquote>
+        <ul>
+            <li>CLAP: Move <code>Floe.clap</code> into <code>/Library/Audio/Plug-Ins/CLAP</code></li>
+            <li>VST3: Move <code>Floe.vst3</code> into <code>/Library/Audio/Plug-Ins/VST3</code></li>
+            <li>AU: Move <code>Floe.component</code> into <code>/Library/Audio/Plug-Ins/Components</code></li>
+        </ul>
+        <h3>Apple Silicon vs Intel</h3>
+        <p>You must choose the right download for your machine. Most Macs since late 2020 use Apple Silicon chips whereas most Mac before that use Intel chips. See <a href="https://support.apple.com/en-us/116943">Apple's documentation</a> for more information.</p>
+    </div>
+    <div class="download-panel" data-os="linux">
+        <p><em>Current version: v==latest-release-version== • <a href="/installation/requirements.html">Requirements</a></em></p>
+        <p>Run the following command in a terminal to install or update Floe.</p>
+        <p>For CLAP:</p>
+        <pre><code>mkdir -p ~/.clap && curl -L ==Floe-CLAP-Linux-url== | tar -xzf - -C ~/.clap</code></pre>
+        <p>For VST3:</p>
+        <pre><code>mkdir -p ~/.vst3 && curl -L ==Floe-VST3-Linux-url== | tar -xzf - -C ~/.vst3</code></pre>
+        <h3 style="margin-top: 100px;">Manual Installation (advanced)</h3>
+        <p>Here's the download links if you want to install the plugins manually.</p>
+        <blockquote>
+            <p><strong><i class="fa fa-linux"></i> Floe Linux CLAP</strong>:<br><a href="==Floe-CLAP-Linux-url==">Download Floe-CLAP-Linux.tar.gz</a> (==Floe-CLAP-Linux-size==)</p>
+            <p><strong><i class="fa fa-linux"></i> Floe Linux VST3</strong>:<br><a href="==Floe-VST3-Linux-url==">Download Floe-VST3-Linux.tar.gz</a> (==Floe-VST3-Linux-size==)</p>
+        </blockquote>
+        <ul>
+            <li>CLAP: Move <code>Floe.clap</code> into <code>~/.clap</code> or <code>/usr/lib/clap</code></li>
+            <li>VST3: Move <code>Floe.vst3</code> into <code>~/.vst3</code> or <code>/usr/lib/vst3</code> or <code>/usr/local/lib/vst3</code></li>
+        </ul>
+    </div>
+</div>
 
-Please check the [requirements](requirements.md) before downloading. 
+## More Information
+Download the installer for your operating system using the buttons above. Double-click the downloaded file to extract it, and then double-click the extracted installer file to run it. It will guide you through the installation process including choosing which plugin formats to install.
 
-Additional information:
-- Floe is totally free, there's no signup or account needed; just download and install.
-- Sample libraries and presets are installed separately via [packages](../packages/install-packages.md).
-- The latest released version of Floe is v==latest-release-version==.
+You can replace old versions with new ones and everything will continue to work.
 
-[^pre-releases]: Main releases are backwards compatible, but alpha and beta versions do not have this guarantee.
+Just download and run the latest installer again - see [updating guide](./updating.md).
 
-To [update Floe](./updating.md), just download and run the latest installer again.
+## What's Next?
 
-## Installer (recommended)
+Install sample libraries and presets via [packages](../packages/install-packages.md).
 
-<img src="../images/installer-macos-gui.png" width="49%" style="display: inline;">
-<img src="../images/installer-windows-gui.png" width="49%" style="display: inline;">
-
-
-> **<i class="fa fa-windows"></i> Floe Installer Windows**:<br>==Floe-Installer-Windows-markdown-link==
-> 
-> **<i class="fa fa-apple"></i> Floe Installer macOS Apple Silicon[^mac-arm]**:<br>==Floe-Installer-macOS-Apple-Silicon-markdown-link==
-> 
-> **<i class="fa fa-apple"></i> Floe Installer macOS Intel[^mac-intel]**:<br>==Floe-Installer-macOS-Intel-markdown-link==
-
-Download, unzip, and run the installer program. The installer will guide you through the installation process, including choosing the plugin formats you want to install. 
-
-On Windows, close your DAW first. 
-
-<div style="margin-top: 80px;"></div>
-
-## Linux
-Run the following command in a terminal to install or update Floe.
-
-For CLAP:
-```bash
-mkdir -p ~/.clap && curl -L ==Floe-CLAP-Linux-url== | tar -xzf - -C ~/.clap
-
-```
-
-For VST3:
-
-```bash
-mkdir -p ~/.vst3 && curl -L ==Floe-VST3-Linux-url== | tar -xzf - -C ~/.vst3
-
-```
-
-## Manually Install (advanced)
-
-> **<i class="fa fa-windows"></i> Floe Manual Install Windows**:<br>==Floe-Manual-Install-Windows-markdown-link==
-> 
-> **<i class="fa fa-apple"></i> Floe Manual Install macOS Apple Silicon[^mac-arm]**:<br>==Floe-Manual-Install-macOS-Apple-Silicon-markdown-link==
-> 
-> **<i class="fa fa-apple"></i> Floe Manual Install macOS Intel[^mac-intel]**:<br>==Floe-Manual-Install-macOS-Intel-markdown-link==
->
-> **<i class="fa fa-linux"></i> Floe Linux CLAP**:<br>==Floe-CLAP-Linux-markdown-link==
->
-> **<i class="fa fa-linux"></i> Floe Linux VST3**:<br>==Floe-VST3-Linux-markdown-link==
-
-
-Normally you'll want to use the installer, but there could be some cases where you'd prefer to install Floe manually. To allow for this, we provide a zip file that contains Floe's plugin files. Extract it and move the files to your plugin folders.
-
-##### Windows:
-- CLAP: Move `Floe.clap` into `C:\Program Files\Common Files\CLAP`
-- VST3: Move `Floe.vst3` into `C:\Program Files\Common Files\VST3`
-
-##### macOS:
-- CLAP: Move `Floe.clap` into `/Library/Audio/Plug-Ins/CLAP`
-- VST3: Move `Floe.vst3` into `/Library/Audio/Plug-Ins/VST3`
-- AU: Move `Floe.component` into `/Library/Audio/Plug-Ins/Components`
-
-##### Linux:
-- CLAP: Move `Floe.clap` into `~/.clap` or `/usr/lib/clap`
-- VST3: Move `Floe.vst3` into `~/.vst3` or `/usr/lib/vst3` or `/usr/local/lib/vst3`
-
----
-
-Download links can also be found on the [Github releases page](https://github.com/floe-audio/Floe/releases/latest).
-
-[^mac-arm]: For computers with [Apple Silicon](https://support.apple.com/en-us/116943) chips; Apple's line of M processors (M1, M2, etc.); ARM64 architecture.
-[^mac-intel]: For computers with Intel chips; x86_64 architecture.

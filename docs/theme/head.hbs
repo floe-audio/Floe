@@ -1,3 +1,65 @@
 <!-- Copyright 2025 Sam Windell -->
 <!-- SPDX-License-Identifier: CC0-1.0  -->
 <script defer src="https://analytics.frozenplain.com/script.js" data-website-id="09786971-9957-41b7-ad9c-fafdefed73f6"></script>
+
+<script>
+// OS Detection and Tab Management for Download Page
+document.addEventListener('DOMContentLoaded', function() {
+    // Detect OS
+    function detectOS() {
+        const userAgent = navigator.userAgent;
+        const platform = navigator.platform;
+        
+        if (userAgent.indexOf('Mac OS X') !== -1 || platform.indexOf('Mac') !== -1) {
+            return 'macos';
+        } else if (userAgent.indexOf('Windows') !== -1 || platform.indexOf('Win') !== -1) {
+            return 'windows';
+        } else if (userAgent.indexOf('Linux') !== -1 || platform.indexOf('Linux') !== -1) {
+            return 'linux';
+        }
+        return 'windows'; // Default fallback
+    }
+    
+    // Initialize tabs
+    const detectedOS = detectOS();
+    const tabs = document.querySelectorAll('.download-tab');
+    const panels = document.querySelectorAll('.download-panel');
+    
+    // Show the detected OS tab by default
+    tabs.forEach(tab => {
+        if (tab.dataset.os === detectedOS) {
+            tab.classList.add('active');
+        } else {
+            tab.classList.remove('active');
+        }
+    });
+    
+    panels.forEach(panel => {
+        if (panel.dataset.os === detectedOS) {
+            panel.classList.add('active');
+        } else {
+            panel.classList.remove('active');
+        }
+    });
+    
+    // Add click handlers for tabs
+    tabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            const targetOS = this.dataset.os;
+            
+            // Update tab states
+            tabs.forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+            
+            // Update panel states
+            panels.forEach(panel => {
+                if (panel.dataset.os === targetOS) {
+                    panel.classList.add('active');
+                } else {
+                    panel.classList.remove('active');
+                }
+            });
+        });
+    });
+});
+</script>

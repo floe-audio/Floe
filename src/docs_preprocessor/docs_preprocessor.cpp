@@ -250,6 +250,19 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
                     dyn::AppendSpan(name, "-url");
                     ExpandIdentifier(result, Identifier(name), asset.url, scratch);
                 }
+                // Size only
+                {
+                    dyn::Assign(name, asset.name);
+                    dyn::Replace(name, latest_release_version, ""_s);
+                    dyn::Replace(name, "--"_s, "-"_s);
+                    name.size -= path::Extension(name).size;
+
+                    dyn::AppendSpan(name, "-size");
+                    ExpandIdentifier(result,
+                                     Identifier(name),
+                                     fmt::Format(scratch, "{} MB", Max(1uz, asset.size / 1024 / 1024)),
+                                     scratch);
+                }
             }
         }
 

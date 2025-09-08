@@ -6,3 +6,107 @@ Here we can override theme colours such as ayu or rust.
 See https://github.com/rust-lang/mdBook/blob/master/src/theme/css/variables.css 
 */
 
+/* Download Page Tabs */
+.download-tabs {
+    display: flex;
+    margin: 20px 0;
+    border-bottom: 2px solid var(--sidebar-bg);
+    gap: 0;
+}
+
+.download-tab {
+    padding: 12px 24px;
+    cursor: pointer;
+    border: none;
+    background: var(--sidebar-bg);
+    color: var(--sidebar-fg);
+    font-size: 16px;
+    font-weight: 500;
+    border-radius: 8px 8px 0 0;
+    margin-right: 4px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.download-tab:hover {
+    background: var(--sidebar-spacer);
+    transform: translateY(-2px);
+}
+
+.download-tab.active {
+    background: var(--bg);
+    color: var(--fg);
+    border-bottom: 2px solid var(--links);
+}
+
+.download-tab i {
+    font-size: 18px;
+}
+
+.download-panels {
+    margin-top: 0;
+}
+
+.download-panel {
+    display: none;
+    padding: 24px 0;
+}
+
+.download-panel.active {
+    display: block;
+}
+
+.download-button {
+    display: inline-block;
+    background-color: #555e85;
+    border: none;
+    border-radius: 4px;
+    color: white !important;
+    padding: 15px 32px;
+    text-align: center;
+    text-decoration: none !important;
+    font-size: 16px;
+    font-weight: bold;
+    margin: 4px 2px;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.download-button:hover {
+    background-color: #6a7396;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+.download-button i {
+    margin-right: 8px;
+}
+
+.download-buttons {
+    margin: 20px 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+}
+
+.download-buttons .download-button {
+    margin: 0;
+}
+
+.installer-image {
+    text-align: center;
+    margin: 20px 0;
+}
+
+.installer-image img {
+    max-width: 422px;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
