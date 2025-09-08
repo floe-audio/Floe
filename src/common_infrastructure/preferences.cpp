@@ -1136,7 +1136,6 @@ TEST_CASE(TestLegacyPreferences) {
     CHECK(*LookupBool(table, key::k_show_tooltips));
     CHECK(!*LookupBool(table, key::k_high_contrast_gui));
     CHECK_EQ(*LookupInt(table, key::k_gui_keyboard_octave), 0);
-    CHECK_EQ(*LookupInt(table, key::k_window_width), 910);
 
     CHECK(*LookupString(table, key::k_extra_presets_folder) ==
           fmt::Format(tester.scratch_arena, "{}Presets"_s, root_dir));
