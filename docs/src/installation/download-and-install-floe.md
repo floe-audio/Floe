@@ -47,10 +47,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
         </div>
         <div class="download-buttons">
             <a href="==Floe-Installer-macOS-Apple-Silicon-url==" class="download-button">
-                <i class="fa fa-download"></i>Apple Silicon (M1, M2, M3...) - ==Floe-Installer-macOS-Apple-Silicon-size==
+                <i class="fa fa-download"></i>Floe — Apple Silicon (==Floe-Installer-macOS-Apple-Silicon-size==)
             </a>
             <a href="==Floe-Installer-macOS-Intel-url==" class="download-button">
-                <i class="fa fa-download"></i>Intel (x86_64) - ==Floe-Installer-macOS-Intel-size==
+                <i class="fa fa-download"></i>Floe — Intel (==Floe-Installer-macOS-Intel-size==)
             </a>
         </div>
         <p style="text-align: center; margin-bottom: 90px;"><em>Current version: v==latest-release-version== • <a href="/installation/requirements.html">Requirements</a></em></p>
@@ -66,7 +66,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
             <li>AU: Move <code>Floe.component</code> into <code>/Library/Audio/Plug-Ins/Components</code></li>
         </ul>
         <h3>Apple Silicon vs Intel</h3>
-        <p>You must choose the right download for your machine. Most Macs since late 2020 use Apple Silicon chips whereas most Mac before that use Intel chips. See <a href="https://support.apple.com/en-us/116943">Apple's documentation</a> for more information.</p>
+        <p>You must choose the right download for your machine. Most Macs since late 2020 use Apple Silicon chips (M1, M2, M3…) whereas most Macs before that use Intel chips. See <a href="https://support.apple.com/en-us/116943">Apple's documentation</a> for more information.</p>
     </div>
     <div class="download-panel" data-os="linux">
         <p><em>Current version: v==latest-release-version== • <a href="/installation/requirements.html">Requirements</a></em></p>
@@ -93,7 +93,7 @@ Download the installer for your operating system using the buttons above. Double
 
 You can replace old versions with new ones and everything will continue to work.
 
-Just download and run the latest installer again - see [updating guide](./updating.md).
+To update Floe, just download and run the latest installer again.
 
 ## What's Next?
 
