@@ -287,6 +287,7 @@ struct LayerProcessor {
     DesiredInst desired_inst {};
 
     f32 gain = 1;
+    f32 mute_solo_gain = 1;
     OnePoleLowPassFilter<f32> gain_smoother = {};
 
     int midi_transpose = 0;

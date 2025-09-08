@@ -139,7 +139,7 @@ static f32 AmplitudeScalingFromVelocity(LayerProcessor& layer, f32 velocity, f32
     return mod;
 }
 
-void SetSilent(LayerProcessor& layer, bool state) { layer.gain = state ? 0.0f : 1.0f; }
+void SetSilent(LayerProcessor& layer, bool state) { layer.mute_solo_gain = state ? 0.0f : 1.0f; }
 
 static void
 UpdateVoiceLfoTimes(LayerProcessor& layer, VoicePool& voice_pool, AudioProcessingContext const& context) {
@@ -677,7 +677,8 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
         for (auto& frame : *result.output) {
             frame = layer.eq_bands.Process(context, frame);
 
-            frame *= layer.gain_smoother.LowPass(layer.gain, context.one_pole_smoothing_cutoff_10ms);
+            frame *= layer.gain_smoother.LowPass(layer.gain * layer.mute_solo_gain,
+                                                 context.one_pole_smoothing_cutoff_10ms);
 
             if (!result.instrument_swapped) {
                 auto const fade = layer.inst_change_fade.GetFadeAndStateChange();
