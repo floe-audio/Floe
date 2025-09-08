@@ -9,7 +9,7 @@ language = "en"
 multilingual = false
 src = "src"
 title = "Floe"
-description = "Floe is a free, open-source sample library engine. Available as an audio plugin for Windows and macOS."
+description = "Floe is a free, open-source sample library engine. Available as an audio plugin for Windows, macOS and Linux."
 
 [output.html]
 default-theme = "rust"

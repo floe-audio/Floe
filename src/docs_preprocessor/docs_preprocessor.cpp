@@ -223,20 +223,33 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
         {
             DynamicArrayBounded<char, 250> name {};
             for (auto& asset : assets) {
-                dyn::Assign(name, asset.name);
-                dyn::Replace(name, latest_release_version, ""_s);
-                dyn::Replace(name, "--"_s, "-"_s);
-                name.size -= path::Extension(name).size;
+                // Markdown
+                {
+                    dyn::Assign(name, asset.name);
+                    dyn::Replace(name, latest_release_version, ""_s);
+                    dyn::Replace(name, "--"_s, "-"_s);
+                    name.size -= path::Extension(name).size;
 
-                dyn::AppendSpan(name, "-markdown-link");
-                ExpandIdentifier(result,
-                                 Identifier(name),
-                                 fmt::Format(scratch,
-                                             "[Download {}]({}) ({} MB)",
-                                             asset.name,
-                                             asset.url,
-                                             Max(1uz, asset.size / 1024 / 1024)),
-                                 scratch);
+                    dyn::AppendSpan(name, "-markdown-link");
+                    ExpandIdentifier(result,
+                                     Identifier(name),
+                                     fmt::Format(scratch,
+                                                 "[Download {}]({}) ({} MB)",
+                                                 asset.name,
+                                                 asset.url,
+                                                 Max(1uz, asset.size / 1024 / 1024)),
+                                     scratch);
+                }
+                // Raw URL
+                {
+                    dyn::Assign(name, asset.name);
+                    dyn::Replace(name, latest_release_version, ""_s);
+                    dyn::Replace(name, "--"_s, "-"_s);
+                    name.size -= path::Extension(name).size;
+
+                    dyn::AppendSpan(name, "-url");
+                    ExpandIdentifier(result, Identifier(name), asset.url, scratch);
+                }
             }
         }
 
