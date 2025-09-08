@@ -103,6 +103,7 @@ check-links:
          --exclude 'https://creativecommons.org/licenses/by/2.0' \
          --exclude 'https://creativecommons.org/licenses/by/4.0' \
          --exclude 'https://creativecommons.org/licenses/by-sa/4.0' \
+         --exclude '==.*==' \
          "${extra_args[@]}" \
          docs readme.md changelog.md
 

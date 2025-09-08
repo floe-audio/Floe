@@ -1,6 +1,8 @@
 // Copyright 2018-2024 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+
+100px
 10px
 15px
 16px
@@ -27,8 +29,10 @@
 60px
 7HEJ7SF75K
 80s
+90px
 AAX
 ADSR
+APIs
 ARM64
 AUv2
 Ableton
@@ -84,6 +88,7 @@ LFOs
 Lua
 M1
 M2
+M3
 MBSF
 MDATA
 MIDI2
@@ -105,6 +110,7 @@ SDK
 SFZ
 SPDX
 SSE2
+STL
 Steinberg
 Stivell
 Synthwave
@@ -140,6 +146,7 @@ autocompletion
 automatable
 autosave
 autosaves
+blockquote
 br
 c1
 c4
@@ -164,6 +171,7 @@ d4
 decrementing
 defs
 dev
+dic
 didn
 distro
 dll
@@ -173,6 +181,7 @@ dubstep
 enum
 expandability
 extensibility
+fd
 fi
 filepath
 filesystem
@@ -186,7 +195,9 @@ github
 glibc
 globals
 gui
+gz
 h1
+h3
 hpp
 href
 html
@@ -200,6 +211,7 @@ isn
 json
 justfile
 keypress
+li
 libcurl
 linux
 lsp
@@ -214,6 +226,7 @@ mdBook
 mdata
 mdbook
 mirage64
+mkdir
 mkdocs
 mp4
 multisample
@@ -253,6 +266,7 @@ src
 srcset
 stacktraces
 structs
+subdirectories
 subfolder
 subfolders
 synthesiser
@@ -262,9 +276,11 @@ timbral
 tooltip
 tooltips
 ub
+ul
 unchecking
 unlink
 untagged
+url
 utf8
 utils
 v0
@@ -286,6 +302,7 @@ x11
 x86
 xdg
 xml
+xzf
 zenity
 zig
 zon

@@ -30,7 +30,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
                 <i class="fa fa-download"></i>Download Floe (==Floe-Installer-Windows-size==)
             </a>
         </div>
-        <p style="text-align: center; margin-bottom: 90px;"><em>Current version: v==latest-release-version== • <a href="/installation/requirements.html">Requirements</a></em></p>
+        <p style="text-align: center; margin-bottom: 90px;"><em>Current version: v==latest-release-version== • <a href="https://floe.audio/installation/requirements.html">Requirements</a></em></p>
         <h3>Manual Installation (advanced)</h3>
         <p>Normally you'll want to use the installer, but there could be some cases where you'd prefer to install Floe manually. To allow for this, we provide a zip file that contains Floe's plugin files. Extract it and move the files to your plugin folders.</p>
         <blockquote>
@@ -53,7 +53,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
                 <i class="fa fa-download"></i>Floe — Intel (==Floe-Installer-macOS-Intel-size==)
             </a>
         </div>
-        <p style="text-align: center; margin-bottom: 90px;"><em>Current version: v==latest-release-version== • <a href="/installation/requirements.html">Requirements</a></em></p>
+        <p style="text-align: center; margin-bottom: 90px;"><em>Current version: v==latest-release-version== • <a href="https://floe.audio/installation/requirements.html">Requirements</a></em></p>
         <h3>Manual Installation (advanced)</h3>
         <p>Normally you'll want to use the installer, but there could be some cases where you'd prefer to install Floe manually. To allow for this, we provide a zip file that contains Floe's plugin files. Extract it and move the files to your plugin folders.</p>
         <blockquote>
@@ -69,7 +69,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
         <p>You must choose the right download for your machine. Most Macs since late 2020 use Apple Silicon chips (M1, M2, M3…) whereas most Macs before that use Intel chips. See <a href="https://support.apple.com/en-us/116943">Apple's documentation</a> for more information.</p>
     </div>
     <div class="download-panel" data-os="linux">
-        <p><em>Current version: v==latest-release-version== • <a href="/installation/requirements.html">Requirements</a></em></p>
+        <p><em>Current version: v==latest-release-version== • <a href="https://floe.audio/installation/requirements.html">Requirements</a></em></p>
         <p>Run the following command in a terminal to install or update Floe.</p>
         <p>For CLAP:</p>
         <pre><code>mkdir -p ~/.clap && curl -L ==Floe-CLAP-Linux-url== | tar -xzf - -C ~/.clap</code></pre>
