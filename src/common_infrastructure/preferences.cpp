@@ -295,15 +295,20 @@ PreferencesTable ParseLegacyPreferencesFile(String file_data, ArenaAllocator& ar
         }
 
         bool HandleGui(json::EventHandlerStack&, json::Event const& event) {
-            u16 gui_size_index {};
-            if (SetIfMatching(event, "GUISize", gui_size_index)) {
-                // We used to set the window size based on an index in an array.
-                constexpr s64 k_window_width_presets[] = {580, 690, 800, 910, 1020, 1130, 1240};
-                gui_size_index = Min(gui_size_index, (u16)(ArraySize(k_window_width_presets) - 1));
-                table.InsertGrowIfNeeded(arena,
-                                         key::k_window_width,
-                                         arena.New<Value>(k_window_width_presets[gui_size_index]));
-                return true;
+            // Let's ignore the old UI size because it's not in pixels - it might be logical units on macOS.
+            // We can't easily convert that here without information about the screen and the main-thread.
+            // Floe has reasonable default for size, and is easily resizable anyway.
+            if constexpr (false) {
+                u16 gui_size_index {};
+                if (SetIfMatching(event, "GUISize", gui_size_index)) {
+                    // We used to set the window size based on an index in an array.
+                    constexpr s64 k_window_width_presets[] = {580, 690, 800, 910, 1020, 1130, 1240};
+                    gui_size_index = Min(gui_size_index, (u16)(ArraySize(k_window_width_presets) - 1));
+                    table.InsertGrowIfNeeded(arena,
+                                             key::k_window_width,
+                                             arena.New<Value>(k_window_width_presets[gui_size_index]));
+                    return true;
+                }
             }
 
             s64 s64_value {};
