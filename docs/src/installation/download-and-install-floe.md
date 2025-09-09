@@ -30,7 +30,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
                 <i class="fa fa-download"></i>Download Floe (==Floe-Installer-Windows-size==)
             </a>
         </div>
-        <p style="text-align: center; margin-bottom: 90px;"><em>Current version: v==latest-release-version== • <a href="https://floe.audio/installation/requirements.html">Requirements</a></em></p>
+        <p style="text-align: center; margin-bottom: 100px;"><em>Current version: v==latest-release-version== • <a href="https://floe.audio/installation/requirements.html">Requirements</a></em></p>
         <h3>Manual Installation (advanced)</h3>
         <p>Normally you'll want to use the installer, but there could be some cases where you'd prefer to install Floe manually. To allow for this, we provide a zip file that contains Floe's plugin files. Extract it and move the files to your plugin folders.</p>
         <blockquote>
@@ -53,7 +53,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
                 <i class="fa fa-download"></i>Floe — Intel (==Floe-Installer-macOS-Intel-size==)
             </a>
         </div>
-        <p style="text-align: center; margin-bottom: 90px;"><em>Current version: v==latest-release-version== • <a href="https://floe.audio/installation/requirements.html">Requirements</a></em></p>
+        <p style="text-align: center; margin-bottom: 100px;"><em>Current version: v==latest-release-version== • <a href="https://floe.audio/installation/requirements.html">Requirements</a></em></p>
         <h3>Manual Installation (advanced)</h3>
         <p>Normally you'll want to use the installer, but there could be some cases where you'd prefer to install Floe manually. To allow for this, we provide a zip file that contains Floe's plugin files. Extract it and move the files to your plugin folders.</p>
         <blockquote>
