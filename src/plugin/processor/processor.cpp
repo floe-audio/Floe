@@ -1424,7 +1424,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                 changes.tempo_changed = true;
             }
         }
-        if (processor.audio_processing_context.tempo <= 0) {
+        if (processor.audio_processing_context.tempo < 0.01) {
             processor.audio_processing_context.tempo = 120;
             changes.tempo_changed = true;
         }
