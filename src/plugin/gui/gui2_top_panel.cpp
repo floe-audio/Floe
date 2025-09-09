@@ -100,6 +100,17 @@ static void DoDotsMenu(Gui* g) {
                  })) {
         g->library_dev_panel_state.open = true;
     }
+
+    if constexpr (!IS_LINUX) {
+        if (MenuItem(g->box_system,
+                     root,
+                     {
+                         .text = "Add Mirage Folders",
+                         .tooltip = "Add sample library/preset folders from Mirage if needed"_s,
+                     })) {
+            g->shared_engine_systems.AddMirageFoldersIfNeeded();
+        }
+    }
 }
 
 static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {

@@ -37,21 +37,12 @@ void SharedEngineSystems::StartPollingThreadIfNeeded() {
         "polling");
 }
 
-// We've had reports of Floe not finding Mirage's libraries/presets. We already have other methods for reading
-// the Mirage prefs, and scanning the right folders, but it's possible it's still not sufficient - that Mirage
-// is leaving things in a state that misguides Floe. Let's just add a dead-simple additional check.
-static void AddMirageFoldersIfNeeded(persistent_store::Store& persistent_store,
-                                     prefs::Preferences& prefs,
-                                     FloePaths const& paths) {
+void SharedEngineSystems::AddMirageFoldersIfNeeded() {
     if constexpr (IS_LINUX) return; // Mirage didn't exist on Linux.
 
-    auto constexpr k_mirage_folders_checked_key = HashComptime("mirage_folders_checked");
-
-    if (persistent_store::Get(persistent_store, k_mirage_folders_checked_key).tag ==
-        persistent_store::GetResult::Found)
-        return;
-
-    persistent_store::AddValue(persistent_store, k_mirage_folders_checked_key, u8(1));
+    // When Mirage opens, it scans its libraries/presets folder and adds all the paths to its
+    // preferences file. It's possible that Mirage hasn't been opened after libraries/presets were
+    // manually installed, so we need to recreate Mirage's behaviour here.
 
     auto add_if_exists = [&](ScanFolderType type, String dir) {
         if (auto const o = GetFileType(dir); o.HasValue() && o.Value() == FileType::Directory)
@@ -67,6 +58,23 @@ static void AddMirageFoldersIfNeeded(persistent_store::Store& persistent_store,
     } else if constexpr (IS_MACOS) {
         add_if_exists(ScanFolderType::Libraries, "/Library/Application Support/FrozenPlain/Mirage/Libraries");
         add_if_exists(ScanFolderType::Presets, "/Library/Application Support/FrozenPlain/Mirage/Presets");
+    }
+
+    struct MiragePath {
+        ScanFolderType type;
+        FloeKnownDirectoryType known_dir_type;
+    };
+    for (auto const p : ArrayT<MiragePath>({
+             {ScanFolderType::Libraries, FloeKnownDirectoryType::MirageDefaultLibraries},
+             {ScanFolderType::Presets, FloeKnownDirectoryType::MirageDefaultPresets},
+         })) {
+        PathArena path_arena {PageAllocator::Instance()};
+        auto const dir = FloeKnownDirectory(path_arena, p.known_dir_type, k_nullopt, {.create = false});
+        if (auto const o = GetFileType(dir); o.HasValue() && o.Value() == FileType::Directory)
+            prefs::AddValue(prefs,
+                            ExtraScanFolderDescriptor(paths, p.type),
+                            (String)dir,
+                            {.dont_send_on_change_event = true});
     }
 
     prefs.write_to_file_needed = true;
@@ -122,30 +130,8 @@ SharedEngineSystems::SharedEngineSystems(Span<sentry::Tag const> tags)
             ASSERT_EQ(path::Extension(paths.possible_preferences_paths[0]), ".ini"_s);
         }
 
-        // When Mirage opens, it scans its libraries/presets folder and adds all the paths to its
-        // preferences file. It's possible that Mirage hasn't been opened after libraries/presets were
-        // manually installed, so we need to recreate Mirage's behaviour here.
-        struct MiragePath {
-            ScanFolderType type;
-            FloeKnownDirectoryType known_dir_type;
-        };
-        for (auto const p : ArrayT<MiragePath>({
-                 {ScanFolderType::Libraries, FloeKnownDirectoryType::MirageDefaultLibraries},
-                 {ScanFolderType::Presets, FloeKnownDirectoryType::MirageDefaultPresets},
-             })) {
-            PathArena path_arena {PageAllocator::Instance()};
-            auto const dir = FloeKnownDirectory(path_arena, p.known_dir_type, k_nullopt, {.create = false});
-            if (auto const o = GetFileType(dir); o.HasValue() && o.Value() == FileType::Directory)
-                prefs::AddValue(prefs,
-                                ExtraScanFolderDescriptor(paths, p.type),
-                                (String)dir,
-                                {.dont_send_on_change_event = true});
-        }
-
-        prefs.write_to_file_needed = true;
+        AddMirageFoldersIfNeeded();
     }
-
-    AddMirageFoldersIfNeeded(persistent_store, prefs, paths);
 
     if constexpr (!PRODUCTION_BUILD) {
         ArenaAllocatorWithInlineStorage<1000> scratch {PageAllocator::Instance()};

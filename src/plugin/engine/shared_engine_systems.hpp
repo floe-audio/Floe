@@ -24,6 +24,7 @@ struct SharedEngineSystems {
     ~SharedEngineSystems();
 
     void StartPollingThreadIfNeeded();
+    void AddMirageFoldersIfNeeded();
 
     void RegisterFloeInstance(FloeInstanceIndex index);
     void UnregisterFloeInstance(FloeInstanceIndex index);

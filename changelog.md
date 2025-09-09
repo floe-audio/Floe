@@ -9,9 +9,9 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 1.0.5
-- Add additional check for existing Mirage folders
 - Fix issue where mute/solo buttons sometimes wouldn't correctly work
 - Website: improve download page layout
+- Add additional check for existing Mirage folders, and add ability to run this manually from the menu
 
 ## 1.0.4
 - Add Linux support - CLAP and VST3
