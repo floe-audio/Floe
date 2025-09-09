@@ -1,0 +1,370 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Download &amp; Install Floe - Floe</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- Copyright 2025 Sam Windell -->
+        <!-- SPDX-License-Identifier: CC0-1.0  -->
+        <script defer src="https://analytics.frozenplain.com/script.js" data-website-id="09786971-9957-41b7-ad9c-fafdefed73f6"></script>
+        
+        <script>
+        // OS Detection and Tab Management for Download Page
+        document.addEventListener('DOMContentLoaded', function() {
+            // Detect OS
+            function detectOS() {
+                const userAgent = navigator.userAgent;
+                const platform = navigator.platform;
+                
+                if (userAgent.indexOf('Mac OS X') !== -1 || platform.indexOf('Mac') !== -1) {
+                    return 'macos';
+                } else if (userAgent.indexOf('Windows') !== -1 || platform.indexOf('Win') !== -1) {
+                    return 'windows';
+                } else if (userAgent.indexOf('Linux') !== -1 || platform.indexOf('Linux') !== -1) {
+                    return 'linux';
+                }
+                return 'windows'; // Default fallback
+            }
+            
+            // Initialize tabs
+            const detectedOS = detectOS();
+            const tabs = document.querySelectorAll('.download-tab');
+            const panels = document.querySelectorAll('.download-panel');
+            
+            // Show the detected OS tab by default
+            tabs.forEach(tab => {
+                if (tab.dataset.os === detectedOS) {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+            
+            panels.forEach(panel => {
+                if (panel.dataset.os === detectedOS) {
+                    panel.classList.add('active');
+                } else {
+                    panel.classList.remove('active');
+                }
+            });
+            
+            // Add click handlers for tabs
+            tabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const targetOS = this.dataset.os;
+                    
+                    // Update tab states
+                    tabs.forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Update panel states
+                    panels.forEach(panel => {
+                        if (panel.dataset.os === targetOS) {
+                            panel.classList.add('active');
+                        } else {
+                            panel.classList.remove('active');
+                        }
+                    });
+                });
+            });
+        });
+        </script>
+
+        <meta name="description" content="Floe is a free, open-source sample library engine. Available as an audio plugin for Windows, macOS and Linux.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/floe-theme.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Floe</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/floe-audio/Floe" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <!--
+SPDX-FileCopyrightText: 2024 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<h1 id="download--install-floe"><a class="header" href="#download--install-floe">Download &amp; Install Floe</a></h1>
+<div class="download-tabs">
+    <div class="download-tab" data-os="windows">
+        <i class="fa fa-windows"></i>
+        Windows
+    </div>
+    <div class="download-tab" data-os="macos">
+        <i class="fa fa-apple"></i>
+        macOS
+    </div>
+    <div class="download-tab" data-os="linux">
+        <i class="fa fa-linux"></i>
+        Linux
+    </div>
+</div>
+<div class="download-panels">
+    <div class="download-panel" data-os="windows">
+        <div class="installer-image">
+            <img src="../images/installer-windows-gui.png" alt="Windows installer screenshot">
+        </div>
+        <div class="download-buttons">
+            <a href="https://github.com/floe-audio/Floe/releases/download/v1.0.5/Floe-Installer-v1.0.5-Windows.zip" class="download-button">
+                <i class="fa fa-download"></i>Download Floe (49 MB)
+            </a>
+        </div>
+        <p style="text-align: center; margin-bottom: 100px;"><em>Current version: v1.0.5 • <a href="https://floe.audio/installation/requirements.html">Requirements</a></em></p>
+        <h3 id="manual-installation-advanced"><a class="header" href="#manual-installation-advanced">Manual Installation (advanced)</a></h3>
+        <p>Normally you'll want to use the installer, but there could be some cases where you'd prefer to install Floe manually. To allow for this, we provide a zip file that contains Floe's plugin files. Extract it and move the files to your plugin folders.</p>
+        <blockquote>
+            <p><strong><i class="fa fa-windows"></i> Floe Manual Install Windows</strong>:<br><a href="https://github.com/floe-audio/Floe/releases/download/v1.0.5/Floe-Manual-Install-v1.0.5-Windows.zip">Download Floe-Manual-Install-Windows.zip</a> (41 MB)</p>
+        </blockquote>
+        <ul>
+            <li>CLAP: Move <code>Floe.clap</code> into <code>C:\Program Files\Common Files\CLAP</code></li>
+            <li>VST3: Move <code>Floe.vst3</code> into <code>C:\Program Files\Common Files\VST3</code></li>
+        </ul>
+    </div>
+    <div class="download-panel" data-os="macos">
+        <div class="installer-image">
+            <img src="../images/installer-macos-gui.png" alt="macOS installer screenshot">
+        </div>
+        <div class="download-buttons">
+            <a href="https://github.com/floe-audio/Floe/releases/download/v1.0.5/Floe-Installer-v1.0.5-macOS-Apple-Silicon.zip" class="download-button">
+                <i class="fa fa-download"></i>Floe — Apple Silicon (52 MB)
+            </a>
+            <a href="https://github.com/floe-audio/Floe/releases/download/v1.0.5/Floe-Installer-v1.0.5-macOS-Intel.zip" class="download-button">
+                <i class="fa fa-download"></i>Floe — Intel (54 MB)
+            </a>
+        </div>
+        <p style="text-align: center; margin-bottom: 100px;"><em>Current version: v1.0.5 • <a href="https://floe.audio/installation/requirements.html">Requirements</a></em></p>
+        <h3 id="manual-installation-advanced-1"><a class="header" href="#manual-installation-advanced-1">Manual Installation (advanced)</a></h3>
+        <p>Normally you'll want to use the installer, but there could be some cases where you'd prefer to install Floe manually. To allow for this, we provide a zip file that contains Floe's plugin files. Extract it and move the files to your plugin folders.</p>
+        <blockquote>
+            <p><strong><i class="fa fa-apple"></i> Floe Manual Install macOS Apple Silicon</strong>:<br><a href="https://github.com/floe-audio/Floe/releases/download/v1.0.5/Floe-Manual-Install-v1.0.5-macOS-Apple-Silicon.zip">Download Floe-Manual-Install-macOS-Apple-Silicon.zip</a> (52 MB)</p>
+            <p><strong><i class="fa fa-apple"></i> Floe Manual Install macOS Intel</strong>:<br><a href="https://github.com/floe-audio/Floe/releases/download/v1.0.5/Floe-Manual-Install-v1.0.5-macOS-Intel.zip">Download Floe-Manual-Install-macOS-Intel.zip</a> (54 MB)</p>
+        </blockquote>
+        <ul>
+            <li>CLAP: Move <code>Floe.clap</code> into <code>/Library/Audio/Plug-Ins/CLAP</code></li>
+            <li>VST3: Move <code>Floe.vst3</code> into <code>/Library/Audio/Plug-Ins/VST3</code></li>
+            <li>AU: Move <code>Floe.component</code> into <code>/Library/Audio/Plug-Ins/Components</code></li>
+        </ul>
+        <h3 id="apple-silicon-vs-intel"><a class="header" href="#apple-silicon-vs-intel">Apple Silicon vs Intel</a></h3>
+        <p>You must choose the right download for your machine. Most Macs since late 2020 use Apple Silicon chips (M1, M2, M3…) whereas most Macs before that use Intel chips. See <a href="https://support.apple.com/en-us/116943">Apple's documentation</a> for more information.</p>
+    </div>
+    <div class="download-panel" data-os="linux">
+        <p><em>Current version: v1.0.5 • <a href="https://floe.audio/installation/requirements.html">Requirements</a></em></p>
+        <p>Run the following command in a terminal to install or update Floe.</p>
+        <p>For CLAP:</p>
+        <pre><code>mkdir -p ~/.clap && curl -L https://github.com/floe-audio/Floe/releases/download/v1.0.5/Floe-CLAP-v1.0.5-Linux.tar.gz | tar -xzf - -C ~/.clap</code></pre>
+        <p>For VST3:</p>
+        <pre><code>mkdir -p ~/.vst3 && curl -L https://github.com/floe-audio/Floe/releases/download/v1.0.5/Floe-VST3-v1.0.5-Linux.tar.gz | tar -xzf - -C ~/.vst3</code></pre>
+        <h3 style="margin-top: 100px;">Manual Installation (advanced)</h3>
+        <p>Here's the download links if you want to install the plugins manually.</p>
+        <blockquote>
+            <p><strong><i class="fa fa-linux"></i> Floe Linux CLAP</strong>:<br><a href="https://github.com/floe-audio/Floe/releases/download/v1.0.5/Floe-CLAP-v1.0.5-Linux.tar.gz">Download Floe-CLAP-Linux.tar.gz</a> (19 MB)</p>
+            <p><strong><i class="fa fa-linux"></i> Floe Linux VST3</strong>:<br><a href="https://github.com/floe-audio/Floe/releases/download/v1.0.5/Floe-VST3-v1.0.5-Linux.tar.gz">Download Floe-VST3-Linux.tar.gz</a> (22 MB)</p>
+        </blockquote>
+        <ul>
+            <li>CLAP: Move <code>Floe.clap</code> into <code>~/.clap</code> or <code>/usr/lib/clap</code></li>
+            <li>VST3: Move <code>Floe.vst3</code> into <code>~/.vst3</code> or <code>/usr/lib/vst3</code> or <code>/usr/local/lib/vst3</code></li>
+        </ul>
+    </div>
+</div>
+<h2 id="more-information"><a class="header" href="#more-information">More Information</a></h2>
+<p>Download the installer for your operating system using the buttons above. Double-click the downloaded file to extract it, and then double-click the extracted installer file to run it. It will guide you through the installation process including choosing which plugin formats to install.</p>
+<p>You can replace old versions with new ones and everything will continue to work.</p>
+<p>To update Floe, just download and run the latest installer again.</p>
+<h2 id="whats-next"><a class="header" href="#whats-next">What’s Next?</a></h2>
+<p>Install sample libraries and presets via <a href="../packages/install-packages.html">packages</a>.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../installation/requirements.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../installation/updating.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../installation/requirements.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../installation/updating.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
