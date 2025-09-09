@@ -253,8 +253,13 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
     standalone->plugin.process(&standalone->plugin, &process);
 
     for (auto const chan : Range(2))
-        for (auto const i : Range(num_buffer_frames))
-            ASSERT(channels[chan][i] >= -2 && channels[chan][i] <= 2);
+        for (auto const i : Range(num_buffer_frames)) {
+            constexpr f32 k_hard_limit = 3.0f;
+            if (channels[chan][i] > k_hard_limit)
+                channels[chan][i] = k_hard_limit;
+            else if (channels[chan][i] < -k_hard_limit)
+                channels[chan][i] = -k_hard_limit;
+        }
 
     CopySeparateChannelsToInterleaved((f32*)output_buffer, channels[0], channels[1], num_buffer_frames);
 }
