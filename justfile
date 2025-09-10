@@ -378,11 +378,29 @@ checks_ci := replace(
     "
   }, "\n", " ")
 
+checks_ci_optimised := replace(
+  "
+    test-units
+    test-clap-val
+    test-vst3-val
+  " +
+  if os() == "macos" {
+    "
+    test-pluginval
+    test-pluginval-au
+    test-auval
+    "
+  } else {
+    "
+    test-pluginval
+    "
+  }, "\n", " ")
+
 [unix]
 test level="0": (parallel if level == "0" { checks_level_0 } else { checks_level_1 })
 
 [unix]
-test-ci: 
+test-ci optimised="0": 
   #!/usr/bin/env bash
   set -x
 
@@ -392,7 +410,14 @@ test-ci:
   sleep 2 # Wait a moment for the server to fully start
   popd
 
-  just parallel "{{checks_ci}}"
+  if [[ "{{optimised}}" -eq 1 ]]; then
+      just parallel "{{checks_ci_optimised}}"
+      return_code=$?
+  else
+      just parallel "{{checks_ci}}"
+      return_code=$?
+  fi
+
   return_code=$?
 
   kill $MDBOOK_PID
