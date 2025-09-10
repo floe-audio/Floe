@@ -1436,7 +1436,7 @@ static void RemoveUnreferencedObjects(Server& server) {
 
     auto remove_unreferenced_in_lib = [](auto& lib) {
         auto remove_unreferenced = [](auto& list) {
-            list.RemoveIf([](auto const& n) { return n.ref_count.Load(LoadMemoryOrder::Relaxed) == 0; });
+            list.RemoveIf([](auto const& n) { return n.ref_count.Load(LoadMemoryOrder::Acquire) == 0; });
         };
         remove_unreferenced(lib.instruments);
         remove_unreferenced(lib.irs);
