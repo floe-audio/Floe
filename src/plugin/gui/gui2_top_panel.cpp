@@ -39,6 +39,15 @@ static void DoDotsMenu(Gui* g) {
     if (MenuItem(g->box_system,
                  root,
                  {
+                     .text = "Reset Audio Engine",
+                     .tooltip = "Stops all audio and clears all playing notes"_s,
+                 })) {
+        ResetAudioProcessing(g->engine.processor);
+    }
+
+    if (MenuItem(g->box_system,
+                 root,
+                 {
                      .text = "Randomise All Parameters",
                      .tooltip = "Randomise all parameters and load random instruments and IRs"_s,
                  })) {
