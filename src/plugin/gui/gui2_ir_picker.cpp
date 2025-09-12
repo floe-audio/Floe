@@ -25,10 +25,10 @@ static bool ShouldSkipIr(IrPickerState const& state, sample_lib::ImpulseResponse
 
     bool filtering_on = false;
 
-    if (state.common_state.selected_folder_hashes.size) {
+    if (state.common_state.selected_folder_hashes.HasSelected()) {
         filtering_on = true;
-        for (auto const folder_hash : state.common_state.selected_folder_hashes) {
-            if (!IsInsideFolder(ir.folder, folder_hash)) {
+        for (auto const& folder_hash : state.common_state.selected_folder_hashes) {
+            if (!IsInsideFolder(ir.folder, folder_hash.hash)) {
                 if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
             } else {
                 if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
@@ -36,29 +36,29 @@ static bool ShouldSkipIr(IrPickerState const& state, sample_lib::ImpulseResponse
         }
     }
 
-    if (state.common_state.selected_library_hashes.size) {
+    if (state.common_state.selected_library_hashes.HasSelected()) {
         filtering_on = true;
-        if (!Contains(state.common_state.selected_library_hashes, ir.library.Id().Hash())) {
+        if (!state.common_state.selected_library_hashes.Contains(ir.library.Id().Hash())) {
             if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
         } else {
             if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
         }
     }
 
-    if (state.common_state.selected_library_author_hashes.size) {
+    if (state.common_state.selected_library_author_hashes.HasSelected()) {
         filtering_on = true;
-        if (!Contains(state.common_state.selected_library_author_hashes, Hash(ir.library.author))) {
+        if (!state.common_state.selected_library_author_hashes.Contains(Hash(ir.library.author))) {
             if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
         } else {
             if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
         }
     }
 
-    if (state.common_state.selected_tags_hashes.size) {
+    if (state.common_state.selected_tags_hashes.HasSelected()) {
         filtering_on = true;
-        for (auto const selected_hash : state.common_state.selected_tags_hashes) {
-            if (!(ir.tags.ContainsSkipKeyCheck(selected_hash) ||
-                  (selected_hash == Hash(k_untagged_tag_name) && ir.tags.size == 0))) {
+        for (auto const& selected_hash : state.common_state.selected_tags_hashes) {
+            if (!(ir.tags.ContainsSkipKeyCheck(selected_hash.hash) ||
+                  (selected_hash.hash == Hash(k_untagged_tag_name) && ir.tags.size == 0))) {
                 if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
             } else {
                 if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
@@ -182,7 +182,7 @@ void LoadRandomIr(IrPickerContext const& context, IrPickerState& state) {
 }
 
 void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerState& state) {
-    auto const root = DoPickerItemsRoot(box_system);
+    auto const root = DoPickerItemsRoot(box_system, state.common_state, true);
 
     Optional<FolderNode*> previous_folder {};
     Optional<Box> folder_box {};

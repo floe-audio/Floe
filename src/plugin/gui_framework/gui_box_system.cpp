@@ -362,6 +362,8 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                                                                                      wrap_width,
                                                                                      config.text);
                                                    ASSERT(layout.size[1] > 0);
+                                                   if (config.size_from_text_preserve_height)
+                                                       layout.size.y = config.layout.size.y;
                                                } else {
                                                    // We can't know the text size until we know the parent
                                                    // width.
@@ -506,7 +508,10 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                 if (config.background_fill_colours.base == style::Colour::None) r = mouse_rect;
 
                 auto const rounding =
-                    config.round_background_corners ? builder.imgui.VwToPixels(style::k_button_rounding) : 0;
+                    config.round_background_corners
+                        ? (config.round_background_fully ? Min(r.w, r.h) / 2
+                                                         : builder.imgui.VwToPixels(style::k_button_rounding))
+                        : 0;
 
                 u32 col_u32 = style::Col(background_fill);
                 if (config.background_fill_auto_hot_active_overlay) {

@@ -44,10 +44,10 @@ static bool ShouldSkipInstrument(InstPickerState const& state,
 
     bool filtering_on = false;
 
-    if (common_state.selected_folder_hashes.size) {
+    if (common_state.selected_folder_hashes.HasSelected()) {
         filtering_on = true;
-        for (auto const folder_hash : common_state.selected_folder_hashes) {
-            if (!IsInsideFolder(inst.folder, folder_hash)) {
+        for (auto const& folder_hash : common_state.selected_folder_hashes) {
+            if (!IsInsideFolder(inst.folder, folder_hash.hash)) {
                 if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
             } else {
                 if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
@@ -55,18 +55,18 @@ static bool ShouldSkipInstrument(InstPickerState const& state,
         }
     }
 
-    if (common_state.selected_library_hashes.size) {
+    if (common_state.selected_library_hashes.HasSelected()) {
         filtering_on = true;
-        if (!Contains(common_state.selected_library_hashes, inst.library.Id().Hash())) {
+        if (!common_state.selected_library_hashes.Contains(inst.library.Id().Hash())) {
             if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
         } else {
             if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
         }
     }
 
-    if (common_state.selected_library_author_hashes.size) {
+    if (common_state.selected_library_author_hashes.HasSelected()) {
         filtering_on = true;
-        if (!Contains(common_state.selected_library_author_hashes, Hash(inst.library.author))) {
+        if (!common_state.selected_library_author_hashes.Contains(Hash(inst.library.author))) {
             if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
         } else {
             if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
@@ -74,11 +74,11 @@ static bool ShouldSkipInstrument(InstPickerState const& state,
     }
 
     if ((!picker_gui_is_open || state.tab == InstPickerState::Tab::FloeLibaries) &&
-        common_state.selected_tags_hashes.size) {
+        common_state.selected_tags_hashes.HasSelected()) {
         filtering_on = true;
-        for (auto const selected_hash : common_state.selected_tags_hashes)
-            if (!(inst.tags.ContainsSkipKeyCheck(selected_hash) ||
-                  (selected_hash == Hash(k_untagged_tag_name) && inst.tags.size == 0))) {
+        for (auto const& selected_hash : common_state.selected_tags_hashes)
+            if (!(inst.tags.ContainsSkipKeyCheck(selected_hash.hash) ||
+                  (selected_hash.hash == Hash(k_untagged_tag_name) && inst.tags.size == 0))) {
                 if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
             } else {
                 if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
@@ -313,7 +313,9 @@ static void InstPickerWaveformItems(GuiBoxSystem& box_system,
 }
 
 static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context, InstPickerState& state) {
-    auto const root = DoPickerItemsRoot(box_system);
+    auto& common_state = CommonState(state);
+
+    auto const root = DoPickerItemsRoot(box_system, common_state, true);
 
     if (state.tab == InstPickerState::Tab::Waveforms) {
         InstPickerWaveformItems(box_system, context, state, root);
@@ -322,8 +324,6 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
 
     Optional<FolderNode*> previous_folder {};
     Optional<Box> folder_box {};
-
-    auto& common_state = CommonState(state);
 
     auto const first = IterateInstrument(context,
                                          state,

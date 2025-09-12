@@ -39,10 +39,10 @@ static bool ShouldSkipPreset(PresetPickerContext const& context,
 
     bool filtering_on = false;
 
-    if (state.common_state.selected_folder_hashes.size) {
+    if (state.common_state.selected_folder_hashes.HasSelected()) {
         filtering_on = true;
-        for (auto const folder_hash : state.common_state.selected_folder_hashes) {
-            if (!IsInsideFolder(context.presets_snapshot.folder_nodes[folder_index], folder_hash)) {
+        for (auto const& folder_hash : state.common_state.selected_folder_hashes) {
+            if (!IsInsideFolder(context.presets_snapshot.folder_nodes[folder_index], folder_hash.hash)) {
                 if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
             } else {
                 if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
@@ -52,9 +52,9 @@ static bool ShouldSkipPreset(PresetPickerContext const& context,
 
     // If multiple preset types exist, we offer a way to filter by them.
     if (context.presets_snapshot.has_preset_type.NumSet() > 1) {
-        if (state.selected_preset_types.size) {
+        if (state.selected_preset_types.HasSelected()) {
             filtering_on = true;
-            if (Contains(state.selected_preset_types, ToInt(preset.file_format))) {
+            if (state.selected_preset_types.Contains(ToInt(preset.file_format))) {
                 if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
             } else {
                 if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
@@ -62,10 +62,10 @@ static bool ShouldSkipPreset(PresetPickerContext const& context,
         }
     }
 
-    if (state.common_state.selected_library_hashes.size) {
+    if (state.common_state.selected_library_hashes.HasSelected()) {
         filtering_on = true;
-        for (auto const selected_hash : state.common_state.selected_library_hashes) {
-            if (!preset.used_libraries.ContainsSkipKeyCheck(selected_hash)) {
+        for (auto const& selected_hash : state.common_state.selected_library_hashes) {
+            if (!preset.used_libraries.ContainsSkipKeyCheck(selected_hash.hash)) {
                 if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
             } else {
                 if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
@@ -73,10 +73,10 @@ static bool ShouldSkipPreset(PresetPickerContext const& context,
         }
     }
 
-    if (state.common_state.selected_library_author_hashes.size) {
+    if (state.common_state.selected_library_author_hashes.HasSelected()) {
         filtering_on = true;
-        for (auto const selected_hash : state.common_state.selected_library_author_hashes) {
-            if (!preset.used_library_authors.ContainsSkipKeyCheck(selected_hash)) {
+        for (auto const& selected_hash : state.common_state.selected_library_author_hashes) {
+            if (!preset.used_library_authors.ContainsSkipKeyCheck(selected_hash.hash)) {
                 if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
             } else {
                 if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
@@ -84,23 +84,23 @@ static bool ShouldSkipPreset(PresetPickerContext const& context,
         }
     }
 
-    if (state.selected_author_hashes.size) {
+    if (state.selected_author_hashes.HasSelected()) {
         filtering_on = true;
         auto const author_hash = Hash(preset.metadata.author);
-        if (!(Contains(state.selected_author_hashes, author_hash) ||
+        if (!(state.selected_author_hashes.Contains(author_hash) ||
               (preset.metadata.author.size == 0 &&
-               Contains(state.selected_author_hashes, Hash(k_no_preset_author))))) {
+               state.selected_author_hashes.Contains(Hash(k_no_preset_author))))) {
             if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
         } else {
             if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
         }
     }
 
-    if (state.common_state.selected_tags_hashes.size) {
+    if (state.common_state.selected_tags_hashes.HasSelected()) {
         filtering_on = true;
-        for (auto const selected_hash : state.common_state.selected_tags_hashes) {
-            if (!(preset.metadata.tags.ContainsSkipKeyCheck(selected_hash) ||
-                  (selected_hash == Hash(k_untagged_tag_name) && preset.metadata.tags.size == 0))) {
+        for (auto const& selected_hash : state.common_state.selected_tags_hashes) {
+            if (!(preset.metadata.tags.ContainsSkipKeyCheck(selected_hash.hash) ||
+                  (selected_hash.hash == Hash(k_untagged_tag_name) && preset.metadata.tags.size == 0))) {
                 if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
             } else {
                 if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
@@ -333,7 +333,7 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
 }
 
 void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, PresetPickerState& state) {
-    auto const root = DoPickerItemsRoot(box_system);
+    auto const root = DoPickerItemsRoot(box_system, state.common_state, true);
 
     auto const first =
         IteratePreset(context, state, {.folder_index = 0, .preset_index = 0}, SearchDirection::Forward, true);
@@ -477,7 +477,7 @@ void PresetPickerExtraFilters(GuiBoxSystem& box_system,
 
         if (section) {
             for (auto const type_index : Range(ToInt(PresetFormat::Count))) {
-                auto const is_selected = Contains(state.selected_preset_types, type_index);
+                auto const is_selected = state.selected_preset_types.Contains(type_index);
 
                 DoFilterButton(box_system,
                                state.common_state,
@@ -517,7 +517,7 @@ void PresetPickerExtraFilters(GuiBoxSystem& box_system,
 
         if (section) {
             for (auto const [author, author_info, author_hash] : preset_authors) {
-                auto const is_selected = Contains(state.selected_author_hashes, author_hash);
+                auto const is_selected = state.selected_author_hashes.Contains(author_hash);
 
                 DoFilterButton(box_system,
                                state.common_state,
@@ -678,6 +678,6 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
                                              parent,
                                              num_sections);
                 },
-            .has_extra_filters = state.selected_author_hashes.size != 0,
+            .has_extra_filters = state.selected_author_hashes.HasSelected() != 0,
         });
 }

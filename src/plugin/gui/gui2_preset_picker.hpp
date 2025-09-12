@@ -40,14 +40,14 @@ struct PresetPickerContext {
 
 // Persistent
 struct PresetPickerState {
-    DynamicArray<u64> selected_author_hashes {Malloc::Instance()};
+    SelectedHashes selected_author_hashes {"Author"};
     bool scroll_to_show_selected = false;
 
     // This is contains PresetFormat as u64. We use a dynamic array of u64 so we can share the same code as
     // the other types of selected_* filters.
-    DynamicArray<u64> selected_preset_types {Malloc::Instance()};
+    SelectedHashes selected_preset_types {"Preset Type"};
 
-    DynamicArray<u64> selected_folder_hashes {Malloc::Instance()};
+    SelectedHashes selected_folder_hashes {};
 
     CommonPickerState common_state {
         .other_selected_hashes = Array {&selected_author_hashes, &selected_preset_types},

@@ -133,7 +133,7 @@ struct BoxSystemCurrentPanelState {
     // layout/box data from the first pass, but the GUI has changed. This is a hack to prevent that. We should
     // fix this by perhaps turning the boxes field into a hashmap and requiring each box to have a unique ID.
     // This way, we lookup the box by ID and can know when something is missing and skip it.
-    DynamicArray<TrivialFixedSizeFunction<40, void()>> deferred_actions;
+    DynamicArray<TrivialFixedSizeFunction<48, void()>> deferred_actions;
 };
 
 struct GuiBoxSystem {
@@ -218,6 +218,7 @@ struct BoxConfig {
     String text {};
     f32 wrap_width = k_no_wrap; // See k_no_wrap and k_wrap_to_parent.
     bool32 size_from_text : 1 = false; // Sets layout.size for you.
+    bool32 size_from_text_preserve_height : 1 = false; // Only sets width when size_from_text is true.
 
     FontType font : NumBitsNeededToStore(ToInt(FontType::Count)) {FontType::Body};
     f32 font_size = k_default_font_size;
@@ -242,6 +243,7 @@ struct BoxConfig {
 
     // 4 bits, clockwise from top-left: top-left, top-right, bottom-right, bottom-left, set using 0b0001 etc.
     u32 round_background_corners : 4 = 0;
+    bool32 round_background_fully : 1 = false;
 
     // 4 bits, clockwise from left: left, top, right, bottom, set using 0b0001 etc.
     u32 border_edges : 4 = 0b1111;

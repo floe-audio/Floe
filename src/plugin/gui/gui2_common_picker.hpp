@@ -32,34 +32,84 @@ struct RightClickMenuState {
     u64 item_hash {}; // The hash of the item that opened the menu.
 };
 
+struct SelectedHashes {
+    using DisplayName = DynamicArrayBounded<char, 24>;
+
+    struct SelectedHash {
+        u64 hash {};
+        DisplayName display_name {};
+    };
+
+    void Clear() { dyn::Clear(hashes); }
+    bool Contains(u64 hash) const {
+        for (auto const& h : hashes)
+            if (h.hash == hash) return true;
+        return false;
+    }
+    void Remove(u64 hash) {
+        dyn::RemoveValueIfSwapLast(hashes, [hash](SelectedHash const& h) { return h.hash == hash; });
+    }
+    void Add(u64 hash, String display_name) {
+        if (hashes.size >= hashes.Capacity()) return;
+        dyn::Append(
+            hashes,
+            {
+                .hash = hash,
+                .display_name = ({
+                    DisplayName n;
+                    if (display_name.size > DisplayName::Capacity()) {
+                        constexpr auto k_ellipsis = "…"_s;
+                        display_name = display_name.SubSpan(
+                            0,
+                            FindUtf8TruncationPoint(display_name, DisplayName::Capacity() - k_ellipsis.size));
+                        n = display_name;
+                        dyn::AppendSpan(n, k_ellipsis);
+                    } else {
+                        n = display_name;
+                    }
+                    n;
+                }),
+            });
+    }
+    auto HasSelected() const { return hashes.size; }
+
+    auto begin() { return hashes.begin(); }
+    auto end() { return hashes.end(); }
+    auto begin() const { return hashes.begin(); }
+    auto end() const { return hashes.end(); }
+
+    String name;
+    DynamicArrayBounded<SelectedHash, 16> hashes {};
+};
+
 struct CommonPickerState {
     bool HasFilters() const {
-        if (selected_library_hashes.size || selected_library_author_hashes.size ||
-            selected_tags_hashes.size || selected_folder_hashes.size)
+        if (selected_library_hashes.HasSelected() || selected_library_author_hashes.HasSelected() ||
+            selected_tags_hashes.HasSelected() || selected_folder_hashes.HasSelected())
             return true;
         for (auto const& hashes : other_selected_hashes)
-            if (hashes->size) return true;
+            if (hashes->hashes.size) return true;
         return false;
     }
 
     void ClearAll() {
-        dyn::Clear(selected_library_hashes);
-        dyn::Clear(selected_library_author_hashes);
-        dyn::Clear(selected_tags_hashes);
-        dyn::Clear(selected_folder_hashes);
+        selected_library_hashes.Clear();
+        selected_library_author_hashes.Clear();
+        selected_tags_hashes.Clear();
+        selected_folder_hashes.Clear();
         for (auto other_hashes : other_selected_hashes)
-            dyn::Clear(*other_hashes);
+            other_hashes->Clear();
     }
 
     bool open {};
     Rect absolute_button_rect {}; // Absolute rectangle of the button that opened the picker.
-    DynamicArray<u64> selected_library_hashes {Malloc::Instance()};
-    DynamicArray<u64> selected_library_author_hashes {Malloc::Instance()};
-    DynamicArray<u64> selected_tags_hashes {Malloc::Instance()};
-    DynamicArray<u64> selected_folder_hashes {Malloc::Instance()};
-    DynamicArray<u64> hidden_filter_headers {Malloc::Instance()};
+    SelectedHashes selected_library_hashes {"Library"};
+    SelectedHashes selected_library_author_hashes {"Library Author"};
+    SelectedHashes selected_tags_hashes {"Tag"};
+    SelectedHashes selected_folder_hashes {"Folder"};
+    DynamicArrayBounded<u64, 16> hidden_filter_headers {};
     DynamicArrayBounded<char, 100> search {};
-    DynamicArrayBounded<DynamicArray<u64>*, 2> other_selected_hashes {};
+    DynamicArrayBounded<SelectedHashes*, 2> other_selected_hashes {};
     FilterMode filter_mode = FilterMode::ProgressiveNarrowing;
     RightClickMenuState right_click_menu_state {};
 };
@@ -143,7 +193,7 @@ struct PickerPopupOptions {
     bool has_extra_filters {};
 };
 
-Box DoPickerItemsRoot(GuiBoxSystem& box_system);
+Box DoPickerItemsRoot(GuiBoxSystem& box_system, CommonPickerState& state, bool filters_visible);
 
 struct PickerItemsSectionOptions {
     Box parent;
@@ -188,7 +238,7 @@ struct FilterButtonOptions {
     Optional<graphics::TextureHandle> icon;
     String text;
     TooltipString tooltip = k_nullopt;
-    DynamicArray<u64>& hashes;
+    SelectedHashes& hashes;
     u64 clicked_hash;
     FilterMode filter_mode;
     FontIcon font_icon = FontIconMode::NeverHasIcon;
