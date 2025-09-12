@@ -209,7 +209,7 @@ static void SetFolderSubtext(DynamicArrayBounded<char, 200>& out,
 
             usize num_presets = 0;
             for (auto const folder : snapshot.folders)
-                if (path::Equal(folder->scan_folder, dir)) num_presets += folder->presets.size;
+                if (path::Equal(folder.folder.scan_folder, dir)) num_presets += folder.folder.presets.size;
 
             dyn::AppendSpan(out, "Contains ");
             if (num_presets < 10000 && out.size + 5 < out.Capacity())

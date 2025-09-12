@@ -58,19 +58,21 @@ static void DoDotsMenu(Gui* g) {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .prefs = g->prefs,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
-            LoadRandomInstrument(context, g->inst_picker_state[layer.index], false);
+            LoadRandomInstrument(context, g->inst_picker_state[layer.index]);
         }
         {
             IrPickerContext ir_context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .prefs = g->prefs,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
@@ -149,7 +151,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
         DoBox(box_system,
               {
                   .parent = root,
-                  .background_tex = box_system.imgui.graphics->context->GetTextureFromImage(logo_image),
+                  .background_tex = logo_image.NullableValue(),
                   .layout {
                       .size = scale_size_to_fit_height(logo_image->size.ToFloat2(), root_size.y * 0.5f),
                   },
@@ -291,6 +293,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
+                .prefs = g->prefs,
                 .engine = g->engine,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
@@ -312,6 +315,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
+                .prefs = g->prefs,
                 .engine = g->engine,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
@@ -333,6 +337,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
+                .prefs = g->prefs,
                 .engine = g->engine,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
@@ -356,6 +361,15 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
         auto const preset_load =
             do_icon_button(preset_box, ICON_FA_FILE_IMPORT, "Load a preset from a file"_s, 0.8f, 3);
         if (preset_load.button_fired) g->preset_picker_state.common_state.open = true;
+    }
+
+    {
+        auto const new_preset = do_icon_button(preset_box,
+                                               ICON_FA_FILE_CIRCLE_PLUS,
+                                               "Reset Floe to its default state"_s,
+                                               0.8f,
+                                               3);
+        if (new_preset.button_fired) SetToDefaultState(g->engine);
     }
 
     auto right_icon_buttons_container = DoBox(box_system,

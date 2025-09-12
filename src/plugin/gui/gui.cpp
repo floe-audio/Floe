@@ -144,20 +144,6 @@ Gui::~Gui() {
 
 bool Tooltip(Gui* g, imgui::Id id, Rect r, char const* fmt, ...);
 
-f32x2 GetMaxUVToMaintainAspectRatio(graphics::ImageID img, f32x2 container_size) {
-    auto const img_w = (f32)img.size.width;
-    auto const img_h = (f32)img.size.height;
-    auto const window_ratio = container_size.x / container_size.y;
-    auto const image_ratio = img_w / img_h;
-
-    f32x2 uv {1, 1};
-    if (image_ratio > window_ratio)
-        uv.x = window_ratio / image_ratio;
-    else
-        uv.y = image_ratio / window_ratio;
-    return uv;
-}
-
 static void DoStandaloneErrorGUI(Gui* g) {
     ASSERT(!PRODUCTION_BUILD);
 
@@ -474,6 +460,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
                     .sample_library_server = g->shared_engine_systems.sample_library_server,
                     .library_images = g->library_images,
                     .engine = g->engine,
+                    .prefs = g->prefs,
                     .unknown_library_icon = UnknownLibraryIcon(g),
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,
@@ -482,20 +469,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 DEFER { context.Deinit(); };
 
                 auto& state = g->inst_picker_state[layer_obj.index];
-
-                auto& floe_state = state.common_state_floe_libraries;
-                auto& mirage_state = g->inst_picker_state[layer_obj.index].common_state_mirage_libraries;
-
-                // Bit of a hack. For instruments, we have 2 sets of common state - each state has its own
-                // open bool and rectangle. But we want these to always be in sync - they shouldn't be
-                // separate. To ensure this, we make copy over the state before showing the popup.
-                mirage_state.open = floe_state.open;
-                mirage_state.absolute_button_rect = floe_state.absolute_button_rect;
-
                 DoInstPickerPopup(g->box_system, context, state);
-
-                // If the state changed, we need to copy the open state back to the other.
-                if (state.tab == InstPickerState::Tab::MirageLibraries) floe_state.open = mirage_state.open;
             }
         }
 
@@ -504,6 +478,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
+                .prefs = g->prefs,
                 .engine = g->engine,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
@@ -517,6 +492,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .prefs = g->prefs,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,

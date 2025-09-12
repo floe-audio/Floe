@@ -14,13 +14,6 @@ struct InstPickerContext {
     void Init(ArenaAllocator& arena) {
         libraries = sample_lib_server::AllLibrariesRetained(sample_library_server, arena);
         Sort(libraries, [](auto const& a, auto const& b) { return a->name < b->name; });
-
-        for (auto const& l : libraries) {
-            if (l->file_format_specifics.tag == sample_lib::FileFormat::Mdata) {
-                has_mirage_libraries = true;
-                break;
-            }
-        }
     }
     void Deinit() { sample_lib_server::ReleaseAll(libraries); }
 
@@ -28,19 +21,18 @@ struct InstPickerContext {
     sample_lib_server::Server& sample_library_server;
     LibraryImagesArray& library_images;
     Engine& engine;
+    prefs::Preferences& prefs;
     Optional<graphics::ImageID>& unknown_library_icon;
     Notifications& notifications;
     persistent_store::Store& persistent_store;
 
     Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;
-    bool has_mirage_libraries {};
 };
 
 void LoadAdjacentInstrument(InstPickerContext const& context,
                             InstPickerState& state,
-                            SearchDirection direction,
-                            bool picker_gui_is_open);
+                            SearchDirection direction);
 
-void LoadRandomInstrument(InstPickerContext const& context, InstPickerState& state, bool picker_gui_is_open);
+void LoadRandomInstrument(InstPickerContext const& context, InstPickerState& state);
 
 void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, InstPickerState& state);

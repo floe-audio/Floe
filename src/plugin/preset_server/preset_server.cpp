@@ -9,6 +9,51 @@
 
 #include "common_infrastructure/state/state_coding.hpp"
 
+// If all presets in this folder and all subfolders use the same single library, return that library.
+static bool AllPresetsSingleLibrary(FolderNode const* node,
+                                    Optional<sample_lib::LibraryIdRef>& single_library) {
+    if (auto const folder = (PresetFolder const*)node->user_data) {
+        if (folder->used_libraries.size > 2) return false;
+        if (folder->used_libraries.size != 0) {
+            ASSERT(folder->used_libraries.size == 1 || folder->used_libraries.size == 2);
+
+            Optional<sample_lib::LibraryIdRef> library;
+            if (folder->used_libraries.size == 2) {
+                u8 num_proper_libraries = 0;
+                for (auto const& lib : folder->used_libraries) {
+                    if (lib.key != sample_lib::k_mirage_compat_library_id &&
+                        lib.key != sample_lib::k_builtin_library_id) {
+                        ++num_proper_libraries;
+                        if (num_proper_libraries == 2) return false;
+                        library = lib.key;
+                    }
+                }
+            } else {
+                library = (*folder->used_libraries.begin()).key;
+            }
+
+            if (library) {
+                if (single_library) {
+                    if (*single_library != *library) return false;
+                } else {
+                    single_library = *library;
+                }
+            }
+        }
+    }
+
+    for (auto* child = node->first_child; child; child = child->next)
+        if (!AllPresetsSingleLibrary(child, single_library)) return false;
+
+    return true;
+}
+
+Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& node) {
+    Optional<sample_lib::LibraryIdRef> single_library {};
+    if (AllPresetsSingleLibrary(&node, single_library)) return single_library;
+    return k_nullopt;
+}
+
 static String ExtensionForPreset(PresetFolder::Preset const& preset) {
     switch (preset.file_format) {
         case PresetFormat::Mirage: return preset.file_extension;
@@ -46,6 +91,7 @@ String PresetFolder::FullPathForPreset(PresetFolder::Preset const& preset, Alloc
 
 static Span<FolderNode> CloneFolderNodes(Span<FolderNode> folders, ArenaAllocator& arena) {
     auto result = arena.AllocateExactSizeUninitialised<FolderNode>(folders.size);
+
     auto const old_pointer_to_new_pointer = [&](FolderNode const* old_node) -> FolderNode* {
         if (!old_node) return nullptr;
         return result.data + (old_node - folders.data);
@@ -56,21 +102,9 @@ static Span<FolderNode> CloneFolderNodes(Span<FolderNode> folders, ArenaAllocato
         result[i].parent = old_pointer_to_new_pointer(folders[i].parent);
         result[i].first_child = old_pointer_to_new_pointer(folders[i].first_child);
         result[i].next = old_pointer_to_new_pointer(folders[i].next);
+        result[i].user_data = nullptr;
     }
 
-    return result;
-}
-
-static Span<FolderNode const*> CloneFolderNodesIntoPointerSpan(PresetServer const& server,
-                                                               ArenaAllocator& arena) {
-    auto const folders = CloneFolderNodes(server.folder_nodes, arena);
-    ASSERT_EQ(server.folder_node_order_indices.size, server.folders.size);
-    auto result =
-        arena.AllocateExactSizeUninitialised<FolderNode const*>(server.folder_node_order_indices.size);
-    for (auto const i : Range(server.folder_node_order_indices.size)) {
-        result[i] = &folders[server.folder_node_order_indices[i]];
-        ASSERT(result[i] != nullptr);
-    }
     return result;
 }
 
@@ -100,15 +134,25 @@ PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
         }
     }
 
-    // We take a snapshot the the folders list so that the server can continue to modify it while we're
+    // We take a snapshot of the folders list so that the server can continue to modify it while we're
     // reading and we don't have to do locking or reference counting.
     server.mutex.Lock();
     DEFER { server.mutex.Unlock(); };
-    auto const folders = arena.Clone(server.folders);
+    auto folders = arena.AllocateExactSizeUninitialised<PresetFolderWithNode>(server.folders.size);
+    auto folders_nodes = CloneFolderNodes(server.folder_nodes, arena);
+    ASSERT_EQ(server.folder_node_order_indices.size, server.folders.size);
+    for (auto const i : Range(server.folders.size)) {
+        auto& node = folders_nodes[server.folder_node_order_indices[i]];
+        node.user_data = (void*)server.folders[i];
+        PLACEMENT_NEW(&folders[i])
+        PresetFolderWithNode {
+            .folder = *server.folders[i],
+            .node = node,
+        };
+    }
 
     return {
-        .folders = {(PresetFolder const**)folders.data, folders.size},
-        .folder_nodes = CloneFolderNodesIntoPointerSpan(server, arena),
+        .folders = folders,
         .used_tags = {server.used_tags.table.Clone(arena, CloneType::Deep)},
         .used_libraries = {server.used_libraries.table.Clone(arena, CloneType::Deep)},
         .authors = {server.authors.table.Clone(arena, CloneType::Deep)},

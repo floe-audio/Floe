@@ -4,6 +4,8 @@
 
 #include "os/misc.hpp"
 
+#include "common_infrastructure/preferences.hpp"
+
 #include "gui/gui2_common_picker.hpp"
 #include "gui/gui_fwd.hpp"
 #include "preset_server/preset_server.hpp"
@@ -28,6 +30,7 @@ struct PresetPickerContext {
     sample_lib_server::Server& sample_library_server;
     PresetServer& preset_server;
     LibraryImagesArray& library_images;
+    prefs::Preferences& prefs;
     Engine& engine;
     Optional<graphics::ImageID>& unknown_library_icon;
     Notifications& notifications;
@@ -46,8 +49,6 @@ struct PresetPickerState {
     // This is contains PresetFormat as u64. We use a dynamic array of u64 so we can share the same code as
     // the other types of selected_* filters.
     SelectedHashes selected_preset_types {"Preset Type"};
-
-    SelectedHashes selected_folder_hashes {};
 
     CommonPickerState common_state {
         .other_selected_hashes = Array {&selected_author_hashes, &selected_preset_types},

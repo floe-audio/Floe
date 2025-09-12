@@ -1556,13 +1556,14 @@ inline String ToString(EmbeddedString s) { return {s.data, s.size}; }
 // not threadsafe
 static sample_lib::Library* BuiltinLibrary() {
     static constexpr String k_icon_path = "builtin-library-icon";
+    static constexpr String k_background_path = "builtin-library-background";
     static sample_lib::Library builtin_library {
         .name = sample_lib::k_builtin_library_id.name,
         .tagline = "Built-in IRs",
         .library_url = FLOE_HOMEPAGE_URL,
         .author = sample_lib::k_builtin_library_id.author,
         .minor_version = 1,
-        .background_image_path = k_nullopt,
+        .background_image_path = k_background_path,
         .icon_image_path = k_icon_path,
         .insts_by_name = {},
         .irs_by_name = {},
@@ -1572,6 +1573,9 @@ static sample_lib::Library* BuiltinLibrary() {
                                  sample_lib::LibraryPath path) -> ErrorCodeOr<Reader> {
             if (path == k_icon_path) {
                 auto data = EmbeddedIconImage();
+                return Reader::FromMemory({data.data, data.size});
+            } else if (path == k_background_path) {
+                auto data = EmbeddedDefaultBackground();
                 return Reader::FromMemory({data.data, data.size});
             }
 

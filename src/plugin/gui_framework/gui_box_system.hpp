@@ -210,6 +210,12 @@ ALWAYS_INLINE constexpr Behaviour operator&(Behaviour a, Behaviour b) {
     return (Behaviour)(ToInt(a) & ToInt(b));
 }
 
+enum class BackgroundTexFillMode : u8 {
+    Stretch, // Stretch the image to fill the entire box (default behavior)
+    Cover, // Maintain aspect ratio, crop image to fill box completely
+    Count,
+};
+
 struct BoxConfig {
     // Specifies the parent box for this box. This is used for layout. Use this instead of layout.parent.
     Optional<Box> parent {};
@@ -232,11 +238,15 @@ struct BoxConfig {
     Colours background_fill_colours = Splat(style::Colour::None);
     BackgroundShape background_shape
         : NumBitsNeededToStore(ToInt(BackgroundShape::Count)) = BackgroundShape::Rectangle;
+    u8 background_fill_alpha = 255;
     bool32 background_fill_auto_hot_active_overlay : 1 = false;
     bool32 drop_shadow : 1 = false;
-    Optional<graphics::TextureHandle> background_tex {};
+    graphics::ImageID const* background_tex {};
+    u8 background_tex_alpha = 255;
+    BackgroundTexFillMode background_tex_fill_mode = BackgroundTexFillMode::Stretch;
 
     Colours border_colours = Splat(style::Colour::None);
+    f32 border_width_pixels = 1.0f; // Pixels is more useful than vw here.
     bool32 border_auto_hot_active_overlay : 1 = false;
 
     bool32 parent_dictates_hot_and_active : 1 = false;

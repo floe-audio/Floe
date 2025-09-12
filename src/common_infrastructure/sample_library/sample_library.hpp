@@ -314,6 +314,9 @@ ErrorCodeOr<u64> MdataHash(String path, Reader& reader);
 ErrorCodeOr<u64> LuaHash(String path, Reader& reader);
 ErrorCodeOr<u64> Hash(String path, Reader& reader, FileFormat format);
 
+PUBLIC u64 InstHash(Instrument const& inst) { return inst.library.Id().HashWithExtra(inst.name); }
+PUBLIC u64 IrHash(ImpulseResponse const& ir) { return ir.library.Id().HashWithExtra(ir.name); }
+
 struct Error {
     ErrorCode code;
     String message;

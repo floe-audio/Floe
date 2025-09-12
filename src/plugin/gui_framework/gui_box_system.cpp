@@ -3,6 +3,8 @@
 
 #include "gui_box_system.hpp"
 
+#include "image.hpp"
+
 static f32 HeightOfWrappedText(GuiBoxSystem& box_system, layout::Id id, f32 width) {
     if (auto const t_ptr = box_system.state->word_wrapped_texts.Find(id)) {
         auto const& t = *t_ptr;
@@ -30,7 +32,7 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
     if (!panel) return;
 
     f32 const scrollbar_width = builder.imgui.VwToPixels(8);
-    f32 const scrollbar_padding = builder.imgui.VwToPixels(style::k_scrollbar_rhs_space);
+    f32 const scrollbar_padding = Max(2.0f, builder.imgui.VwToPixels(style::k_scrollbar_rhs_space));
     imgui::DrawWindowScrollbar* const draw_scrollbar = [](IMGUI_DRAW_WINDOW_SCROLLBAR_ARGS) {
         u32 handle_col = style::Col(style::Colour::Surface1);
         if (imgui.IsHotOrActive(id)) handle_col = style::Col(style::Colour::Surface2);
@@ -514,6 +516,7 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                         : 0;
 
                 u32 col_u32 = style::Col(background_fill);
+                if (col_u32) col_u32 = colours::WithAlpha(col_u32, config.background_fill_alpha);
                 if (config.background_fill_auto_hot_active_overlay) {
                     if (is_hot)
                         col_u32 = col_u32 ? style::BlendColours(col_u32, style::k_auto_hot_white_overlay)
@@ -543,8 +546,52 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                 }
             }
 
-            if (config.background_tex)
-                builder.imgui.graphics->AddImage(*config.background_tex, rect.Min(), rect.Max());
+            if (config.background_tex) {
+                auto const col =
+                    ((u32)config.background_tex_alpha << 24) | 0x00FFFFFF; // Alpha in high bits, RGB as white
+
+                f32x2 uv0 {0, 0};
+                f32x2 uv1 {1, 1};
+
+                switch (config.background_tex_fill_mode) {
+                    case BackgroundTexFillMode::Stretch: {
+                        // Default behavior - stretch image to fill entire box
+                        uv0 = {0, 0};
+                        uv1 = {1, 1};
+                        break;
+                    }
+                    case BackgroundTexFillMode::Cover: {
+                        // Use GetMaxUVToMaintainAspectRatio to crop the image while maintaining aspect ratio
+                        auto const container_size = f32x2 {rect.w, rect.h};
+                        auto const max_uv =
+                            GetMaxUVToMaintainAspectRatio(*config.background_tex, container_size);
+
+                        uv0 = {0, 0};
+                        uv1 = max_uv;
+                        break;
+                    }
+                    case BackgroundTexFillMode::Count: PanicIfReached();
+                }
+
+                // Convert ImageID to TextureHandle for rendering
+                if (auto const texture =
+                        builder.imgui.frame_input.graphics_ctx->GetTextureFromImage(*config.background_tex)) {
+                    auto const corner_flags = __builtin_bitreverse32(config.round_background_corners) >> 28;
+                    auto const rounding = config.round_background_corners
+                                              ? (config.round_background_fully
+                                                     ? Min(rect.w, rect.h) / 2
+                                                     : builder.imgui.VwToPixels(style::k_button_rounding))
+                                              : 0;
+                    builder.imgui.graphics->AddImageRounded(*texture,
+                                                            rect.Min(),
+                                                            rect.Max(),
+                                                            uv0,
+                                                            uv1,
+                                                            col,
+                                                            rounding,
+                                                            (int)corner_flags);
+                }
+            }
 
             if (auto const border = ({
                     style::Colour c {};
@@ -582,23 +629,39 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                     auto const rounding = config.round_background_corners
                                               ? builder.imgui.VwToPixels(style::k_button_rounding)
                                               : 0;
-                    builder.imgui.graphics->AddRect(r, col_u32, rounding, (int)corner_flags);
+                    builder.imgui.graphics->AddRect(r,
+                                                    col_u32,
+                                                    rounding,
+                                                    (int)corner_flags,
+                                                    config.border_width_pixels);
                 } else {
                     if (config.border_edges & 0b1000) {
                         // Left edge
-                        builder.imgui.graphics->AddLine(r.Min(), {r.x, r.y + r.h}, col_u32);
+                        builder.imgui.graphics->AddLine(r.Min(),
+                                                        {r.x, r.y + r.h},
+                                                        col_u32,
+                                                        config.border_width_pixels);
                     }
                     if (config.border_edges & 0b0100) {
                         // Top edge
-                        builder.imgui.graphics->AddLine(r.Min(), {r.x + r.w, r.y}, col_u32);
+                        builder.imgui.graphics->AddLine(r.Min(),
+                                                        {r.x + r.w, r.y},
+                                                        col_u32,
+                                                        config.border_width_pixels);
                     }
                     if (config.border_edges & 0b0010) {
                         // Right edge
-                        builder.imgui.graphics->AddLine({r.x + r.w, r.y}, {r.x + r.w, r.y + r.h}, col_u32);
+                        builder.imgui.graphics->AddLine({r.x + r.w, r.y},
+                                                        {r.x + r.w, r.y + r.h},
+                                                        col_u32,
+                                                        config.border_width_pixels);
                     }
                     if (config.border_edges & 0b0001) {
                         // Bottom edge
-                        builder.imgui.graphics->AddLine({r.x, r.y + r.h}, {r.x + r.w, r.y + r.h}, col_u32);
+                        builder.imgui.graphics->AddLine({r.x, r.y + r.h},
+                                                        {r.x + r.w, r.y + r.h},
+                                                        col_u32,
+                                                        config.border_width_pixels);
                     }
                 }
             }

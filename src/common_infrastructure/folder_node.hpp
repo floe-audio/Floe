@@ -12,6 +12,7 @@ struct FolderNode {
     FolderNode* parent {};
     FolderNode* first_child {};
     FolderNode* next {};
+    void* user_data {};
 };
 
 struct FolderNodeAllocators {

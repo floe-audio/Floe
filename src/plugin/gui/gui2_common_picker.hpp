@@ -20,8 +20,9 @@ constexpr auto k_untagged_tag_name = "<untagged>"_s;
 enum class SearchDirection { Forward, Backward };
 
 enum class FilterMode : u8 {
-    ProgressiveNarrowing, // AKA "match all", AND
-    AdditiveSelection, // AKA "match any", OR
+    Single, // Only one filter can be selected at a time.
+    MultipleAnd, // AKA "match all", AND
+    MultipleOr, // AKA "match any", OR
     Count,
 };
 
@@ -83,22 +84,50 @@ struct SelectedHashes {
 };
 
 struct CommonPickerState {
+    auto AllHashes() {
+        DynamicArrayBounded<SelectedHashes*, 7> all_hashes;
+        static_assert(decltype(all_hashes)::Capacity() >= (4 + decltype(other_selected_hashes)::Capacity()));
+        dyn::AppendAssumeCapacity(all_hashes, &selected_library_hashes);
+        dyn::AppendAssumeCapacity(all_hashes, &selected_library_author_hashes);
+        dyn::AppendAssumeCapacity(all_hashes, &selected_tags_hashes);
+        dyn::AppendAssumeCapacity(all_hashes, &selected_folder_hashes);
+        for (auto& hashes : other_selected_hashes)
+            dyn::AppendAssumeCapacity(all_hashes, hashes);
+        return all_hashes;
+    }
+
+    auto AllHashes() const { return const_cast<CommonPickerState*>(this)->AllHashes(); }
+
     bool HasFilters() const {
-        if (selected_library_hashes.HasSelected() || selected_library_author_hashes.HasSelected() ||
-            selected_tags_hashes.HasSelected() || selected_folder_hashes.HasSelected())
-            return true;
-        for (auto const& hashes : other_selected_hashes)
-            if (hashes->hashes.size) return true;
+        if (favourites_only) return true;
+        for (auto const& h : AllHashes())
+            if (h->HasSelected()) return true;
         return false;
     }
 
     void ClearAll() {
-        selected_library_hashes.Clear();
-        selected_library_author_hashes.Clear();
-        selected_tags_hashes.Clear();
-        selected_folder_hashes.Clear();
-        for (auto other_hashes : other_selected_hashes)
-            other_hashes->Clear();
+        for (auto& h : AllHashes())
+            h->Clear();
+        favourites_only = false;
+    }
+
+    void ClearToOne() {
+        if (favourites_only) {
+            ClearAll();
+            return;
+        }
+
+        bool found_one = false;
+        for (auto& hashes : AllHashes()) {
+            if (hashes->hashes.size) {
+                if (found_one)
+                    hashes->Clear();
+                else {
+                    found_one = true;
+                    dyn::Remove(hashes->hashes, 1, hashes->hashes.size - 1);
+                }
+            }
+        }
     }
 
     bool open {};
@@ -107,10 +136,11 @@ struct CommonPickerState {
     SelectedHashes selected_library_author_hashes {"Library Author"};
     SelectedHashes selected_tags_hashes {"Tag"};
     SelectedHashes selected_folder_hashes {"Folder"};
+    bool favourites_only {};
     DynamicArrayBounded<u64, 16> hidden_filter_headers {};
     DynamicArrayBounded<char, 100> search {};
-    DynamicArrayBounded<SelectedHashes*, 2> other_selected_hashes {};
-    FilterMode filter_mode = FilterMode::ProgressiveNarrowing;
+    DynamicArrayBounded<SelectedHashes*, 3> other_selected_hashes {};
+    FilterMode filter_mode = FilterMode::Single;
     RightClickMenuState right_click_menu_state {};
 };
 
@@ -136,11 +166,22 @@ bool RootNodeLessThan(FolderNode const* const& a,
                       DummyValueType const&);
 
 using FolderRootSet = OrderedSet<FolderNode const*, nullptr, RootNodeLessThan>;
+using FolderFilterItemInfoLookupTable = HashTable<FolderNode const*, FilterItemInfo>;
 
-struct FolderFilters {
-    HashTable<FolderNode const*, FilterItemInfo> folders;
-    FolderRootSet root_folders;
-    RightClickMenuState::Function do_right_click_menu = {};
+struct FilterCardOptions {
+    Box parent;
+    bool is_selected;
+    graphics::ImageID const* icon;
+    graphics::ImageID const* background_image1;
+    graphics::ImageID const* background_image2;
+    String text;
+    String subtext;
+    TooltipString tooltip = k_nullopt;
+    SelectedHashes& hashes;
+    u64 clicked_hash;
+    FilterMode filter_mode;
+    FolderFilterItemInfoLookupTable folder_infos;
+    FolderNode const* folder;
 };
 
 struct LibraryFilters {
@@ -148,6 +189,12 @@ struct LibraryFilters {
     OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
     OrderedHashTable<String, FilterItemInfo> library_authors;
     Optional<graphics::ImageID> unknown_library_icon;
+    bool card_view {};
+    sample_lib::ResourceType resource_type {};
+    FolderFilterItemInfoLookupTable folders;
+    RightClickMenuState::Function folder_do_right_click_menu = {};
+    FilterCardOptions const* additional_pseudo_card {};
+    FilterItemInfo const* additional_pseudo_card_info {};
 };
 
 // IMPORTANT: we use FunctionRef here, you need to make sure the lifetime of the functions outlives the
@@ -188,12 +235,13 @@ struct PickerPopupOptions {
 
     Optional<LibraryFilters> library_filters {};
     Optional<TagsFilters> tags_filters {};
-    Optional<FolderFilters> folder_filters {};
-    TrivialFunctionRef<void(GuiBoxSystem&, Box const& parent, u8& num_sections)> do_extra_filters {};
+    TrivialFunctionRef<void(GuiBoxSystem&, Box const& parent, u8& num_sections)> do_extra_filters_top {};
+    TrivialFunctionRef<void(GuiBoxSystem&, Box const& parent, u8& num_sections)> do_extra_filters_bottom {};
     bool has_extra_filters {};
+    FilterItemInfo const& favourites_filter_info;
 };
 
-Box DoPickerItemsRoot(GuiBoxSystem& box_system, CommonPickerState& state, bool filters_visible);
+Box DoPickerItemsRoot(GuiBoxSystem& box_system);
 
 struct PickerItemsSectionOptions {
     Box parent;
@@ -204,6 +252,7 @@ struct PickerItemsSectionOptions {
     bool multiline_contents;
     bool subsection;
     bool bigger_contents_gap {false};
+    bool skip_root_folder {};
     RightClickMenuState::Function right_click_menu {};
 };
 
@@ -217,12 +266,19 @@ struct PickerItemOptions {
     String text;
     TooltipString tooltip = k_nullopt;
     bool is_current;
-    Array<graphics::TextureHandle, k_num_layers + 1> icons;
+    bool is_favourite;
+    Array<Optional<graphics::ImageID>, k_num_layers + 1> icons;
     Notifications& notifications;
     persistent_store::Store& store;
 };
 
-Box DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptions const& options);
+struct PickerItemResult {
+    Box box;
+    bool favourite_toggled;
+};
+
+PickerItemResult
+DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptions const& options);
 
 struct FilterButtonOptions {
     enum class FontIconMode : u8 {
@@ -235,7 +291,7 @@ struct FilterButtonOptions {
 
     Box parent;
     bool is_selected;
-    Optional<graphics::TextureHandle> icon;
+    graphics::ImageID const* icon;
     String text;
     TooltipString tooltip = k_nullopt;
     SelectedHashes& hashes;
@@ -244,12 +300,18 @@ struct FilterButtonOptions {
     FontIcon font_icon = FontIconMode::NeverHasIcon;
     u8 indent;
     bool full_width;
+    bool no_bottom_margin;
 };
 
 Box DoFilterButton(GuiBoxSystem& box_system,
                    CommonPickerState& state,
                    FilterItemInfo const& info,
                    FilterButtonOptions const& options);
+
+Box DoFilterCard(GuiBoxSystem& box_system,
+                 CommonPickerState& state,
+                 FilterItemInfo const& info,
+                 FilterCardOptions const& options);
 
 void DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext context, PickerPopupOptions const& options);
 

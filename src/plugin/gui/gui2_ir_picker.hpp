@@ -18,6 +18,7 @@ struct IrPickerContext {
     sample_lib_server::Server& sample_library_server;
     LibraryImagesArray& library_images;
     Engine& engine;
+    prefs::Preferences& prefs;
     Optional<graphics::ImageID>& unknown_library_icon;
     Notifications& notifications;
     persistent_store::Store& persistent_store;

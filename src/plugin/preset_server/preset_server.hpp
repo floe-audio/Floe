@@ -91,9 +91,15 @@ void ShutdownPresetServer(PresetServer& server);
 
 void SetExtraScanFolders(PresetServer& server, Span<String const> folders);
 
+struct PresetFolderWithNode {
+    PresetFolder const& folder;
+    FolderNode const& node; // The node's user_data is a PresetFolder* or null.
+};
+
+Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& node);
+
 struct PresetsSnapshot {
-    Span<PresetFolder const*> folders; // Sorted
-    Span<FolderNode const*> folder_nodes; // Parallel to folders field.
+    Span<PresetFolderWithNode const> folders; // Sorted
 
     // Additional convenience data
     Set<String> used_tags;

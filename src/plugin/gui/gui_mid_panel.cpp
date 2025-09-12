@@ -10,6 +10,7 @@
 #include "gui_effects.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
+#include "gui_framework/image.hpp"
 #include "gui_prefs.hpp"
 #include "gui_widget_helpers.hpp"
 #include "gui_window.hpp"
@@ -206,13 +207,14 @@ void MidPanel(Gui* g) {
                     .sample_library_server = g->shared_engine_systems.sample_library_server,
                     .library_images = g->library_images,
                     .engine = g->engine,
+                    .prefs = g->prefs,
                     .unknown_library_icon = UnknownLibraryIcon(g),
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,
                 };
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };
-                LoadRandomInstrument(context, g->inst_picker_state[layer.index], false);
+                LoadRandomInstrument(context, g->inst_picker_state[layer.index]);
             }
         }
 
@@ -299,6 +301,7 @@ void MidPanel(Gui* g) {
                     .sample_library_server = g->shared_engine_systems.sample_library_server,
                     .library_images = g->library_images,
                     .engine = g->engine,
+                    .prefs = g->prefs,
                     .unknown_library_icon = UnknownLibraryIcon(g),
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,

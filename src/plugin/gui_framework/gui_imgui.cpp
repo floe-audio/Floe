@@ -1832,7 +1832,7 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
         window->bounds.pos += window->style.pad_top_left;
         window->bounds.size -= window->style.TotalPadSize();
     }
-    window->clipping_rect = window->bounds;
+    window->clipping_rect = window->bounds.Expanded(1);
 
     //
     // Handle parent
@@ -1947,9 +1947,9 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     if (window->has_yscrollbar && !auto_height && !no_scroll_y) {
         auto const result = Scrollbar(window,
                                       true,
-                                      bounds_for_scrollbar.y + settings.scrollbar_padding_top,
+                                      bounds_for_scrollbar.y + settings.scrollbar_padding_top + 1,
                                       bounds_for_scrollbar.h - (settings.scrollbar_padding_top * 2),
-                                      bounds_for_scrollbar.Right(),
+                                      bounds_for_scrollbar.Right() - 1,
                                       window->prev_content_size.y,
                                       window->scroll_offset.y,
                                       window->scroll_max.y,

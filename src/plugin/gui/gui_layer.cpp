@@ -77,9 +77,8 @@ static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
     DoInstSelectorRightClickMenu(g, r, layer);
 
     if (buttons::Button(g, imgui_id, r, inst_name, buttons::InstSelectorPopupButton(g->imgui, icon_tex))) {
-        g->inst_picker_state[layer].common_state_floe_libraries.open = true;
-        g->inst_picker_state[layer].common_state_floe_libraries.absolute_button_rect =
-            g->imgui.WindowRectToScreenRect(r);
+        g->inst_picker_state[layer].common_state.open = true;
+        g->inst_picker_state[layer].common_state.absolute_button_rect = g->imgui.WindowRectToScreenRect(r);
     }
 
     Tooltip(
@@ -1024,16 +1023,14 @@ void Draw(Gui* g,
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .prefs = g->prefs,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
-            LoadAdjacentInstrument(context,
-                                   g->inst_picker_state[layer->index],
-                                   SearchDirection::Backward,
-                                   false);
+            LoadAdjacentInstrument(context, g->inst_picker_state[layer->index], SearchDirection::Backward);
         }
         if (buttons::Button(g,
                             selector_right_id,
@@ -1045,16 +1042,14 @@ void Draw(Gui* g,
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .prefs = g->prefs,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
-            LoadAdjacentInstrument(context,
-                                   g->inst_picker_state[layer->index],
-                                   SearchDirection::Forward,
-                                   false);
+            LoadAdjacentInstrument(context, g->inst_picker_state[layer->index], SearchDirection::Forward);
         }
         {
             auto rand_id = g->imgui.GetID("Rand");
@@ -1069,13 +1064,14 @@ void Draw(Gui* g,
                     .sample_library_server = g->shared_engine_systems.sample_library_server,
                     .library_images = g->library_images,
                     .engine = g->engine,
+                    .prefs = g->prefs,
                     .unknown_library_icon = UnknownLibraryIcon(g),
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,
                 };
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };
-                LoadRandomInstrument(context, g->inst_picker_state[layer->index], false);
+                LoadRandomInstrument(context, g->inst_picker_state[layer->index]);
             }
             Tooltip(g, rand_id, rand_r, "Load a random instrument"_s);
         }
