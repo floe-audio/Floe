@@ -43,7 +43,10 @@ static bool ShouldSkipPreset(PresetPickerContext const& context,
         filtering_on = true;
         for (auto const& folder_hash : state.common_state.selected_folder_hashes) {
             if (!IsInsideFolder(context.presets_snapshot.folder_nodes[folder_index], folder_hash.hash)) {
-                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing)
+                    return true;
+                else if (state.common_state.filter_mode == FilterMode::SingleSelection)
+                    return true;
             } else {
                 if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
             }
@@ -54,10 +57,13 @@ static bool ShouldSkipPreset(PresetPickerContext const& context,
     if (context.presets_snapshot.has_preset_type.NumSet() > 1) {
         if (state.selected_preset_types.HasSelected()) {
             filtering_on = true;
-            if (state.selected_preset_types.Contains(ToInt(preset.file_format))) {
-                if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
+            if (!state.selected_preset_types.Contains(ToInt(preset.file_format))) {
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing)
+                    return true;
+                else if (state.common_state.filter_mode == FilterMode::SingleSelection)
+                    return true;
             } else {
-                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+                if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
             }
         }
     }
@@ -66,7 +72,10 @@ static bool ShouldSkipPreset(PresetPickerContext const& context,
         filtering_on = true;
         for (auto const& selected_hash : state.common_state.selected_library_hashes) {
             if (!preset.used_libraries.ContainsSkipKeyCheck(selected_hash.hash)) {
-                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing)
+                    return true;
+                else if (state.common_state.filter_mode == FilterMode::SingleSelection)
+                    return true;
             } else {
                 if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
             }
@@ -77,7 +86,10 @@ static bool ShouldSkipPreset(PresetPickerContext const& context,
         filtering_on = true;
         for (auto const& selected_hash : state.common_state.selected_library_author_hashes) {
             if (!preset.used_library_authors.ContainsSkipKeyCheck(selected_hash.hash)) {
-                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing)
+                    return true;
+                else if (state.common_state.filter_mode == FilterMode::SingleSelection)
+                    return true;
             } else {
                 if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
             }
@@ -90,7 +102,10 @@ static bool ShouldSkipPreset(PresetPickerContext const& context,
         if (!(state.selected_author_hashes.Contains(author_hash) ||
               (preset.metadata.author.size == 0 &&
                state.selected_author_hashes.Contains(Hash(k_no_preset_author))))) {
-            if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing)
+                return true;
+            else if (state.common_state.filter_mode == FilterMode::SingleSelection)
+                return true;
         } else {
             if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
         }
@@ -101,7 +116,10 @@ static bool ShouldSkipPreset(PresetPickerContext const& context,
         for (auto const& selected_hash : state.common_state.selected_tags_hashes) {
             if (!(preset.metadata.tags.ContainsSkipKeyCheck(selected_hash.hash) ||
                   (selected_hash.hash == Hash(k_untagged_tag_name) && preset.metadata.tags.size == 0))) {
-                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing)
+                    return true;
+                else if (state.common_state.filter_mode == FilterMode::SingleSelection)
+                    return true;
             } else {
                 if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
             }
@@ -654,17 +672,77 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
                 TagsFilters {
                     .tags = tags,
                 },
-            .folder_filters =
-                FolderFilters {
-                    .folders = folders,
-                    .root_folders = root_folder,
-                    .do_right_click_menu =
-                        [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
-                            PresetFolderRightClickMenu(box_system, context, state, menu_state);
-                        },
-                },
             .do_extra_filters =
                 [&](GuiBoxSystem& box_system, Box const& parent, u8& num_sections) {
+                    if (num_sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
+                    ++num_sections;
+
+                    auto const section = DoPickerSectionContainer(
+                        box_system,
+                        SourceLocationHash(),
+                        state.common_state,
+                        {
+                            .parent = parent,
+                            .heading = "FOLDER",
+                            .multiline_contents = false,
+                            .right_click_menu =
+                                [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
+                                    PresetFolderRightClickMenu(box_system, context, state, menu_state);
+                                },
+                        });
+
+                    // TODO: we have access to the PresetFolder here, we should look to see if only a single
+                    // library is used (or single library + Mirage Compatibility), in which case we can use
+                    // that library's icon and background.
+
+                    if (section) {
+                        for (auto const [root, _] : root_folder) {
+                            if (!root->first_child) {
+                                // No children, just do a card.
+                                DoFilterCard(
+                                    box_system,
+                                    state.common_state,
+                                    *folders.Find(root),
+                                    FilterCardOptions {
+                                        .parent = *section,
+                                        .is_selected =
+                                            state.common_state.selected_folder_hashes.Contains(root->Hash()),
+                                        .text = root->display_name.size ? root->display_name : root->name,
+                                        .subtext = ({ "Subtitle"_s; }),
+                                        .tooltip =
+                                            root->display_name.size ? TooltipString {root->name} : k_nullopt,
+                                        .hashes = state.common_state.selected_folder_hashes,
+                                        .clicked_hash = root->Hash(),
+                                        .filter_mode = state.common_state.filter_mode,
+                                        .folder_infos = folders,
+                                        .folder = root,
+                                    });
+                            } else {
+                                for (auto* child = root->first_child; child; child = child->next) {
+                                    DoFilterCard(
+                                        box_system,
+                                        state.common_state,
+                                        *folders.Find(child),
+                                        FilterCardOptions {
+                                            .parent = *section,
+                                            .is_selected = state.common_state.selected_folder_hashes.Contains(
+                                                child->Hash()),
+                                            .text =
+                                                child->display_name.size ? child->display_name : child->name,
+                                            .subtext = ({ "Subtitle"_s; }),
+                                            .tooltip = child->display_name.size ? TooltipString {child->name}
+                                                                                : k_nullopt,
+                                            .hashes = state.common_state.selected_folder_hashes,
+                                            .clicked_hash = child->Hash(),
+                                            .filter_mode = state.common_state.filter_mode,
+                                            .folder_infos = folders,
+                                            .folder = child,
+                                        });
+                                }
+                            }
+                        }
+                    }
+
                     PresetPickerExtraFilters(box_system,
                                              context,
                                              preset_authors,

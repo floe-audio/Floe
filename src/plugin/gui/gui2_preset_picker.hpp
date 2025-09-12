@@ -47,8 +47,6 @@ struct PresetPickerState {
     // the other types of selected_* filters.
     SelectedHashes selected_preset_types {"Preset Type"};
 
-    SelectedHashes selected_folder_hashes {};
-
     CommonPickerState common_state {
         .other_selected_hashes = Array {&selected_author_hashes, &selected_preset_types},
     };

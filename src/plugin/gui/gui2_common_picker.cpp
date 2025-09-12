@@ -204,6 +204,60 @@ Box DoPickerItemsRoot(GuiBoxSystem& box_system, CommonPickerState& state, bool f
     return result;
 }
 
+static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
+                                      CommonPickerState& state,
+                                      Box const& parent,
+                                      u8& indent,
+                                      FolderNode const* folder,
+                                      FolderFilterItemInfoLookupTable const& folder_infos,
+                                      RightClickMenuState::Function const& do_right_click_menu = nullptr) {
+
+    bool is_selected = false;
+    bool is_current = false;
+    for (auto f = folder; f; f = f->parent) {
+        if (state.selected_folder_hashes.Contains(f->Hash())) {
+            is_current = true;
+            if (f == folder) is_selected = true;
+            break;
+        }
+    }
+
+    auto this_info = folder_infos.Find(folder);
+    ASSERT(this_info);
+
+    auto const button = DoFilterButton(
+        box_system,
+        state,
+        *this_info,
+        {
+            .parent = parent,
+            .is_selected = is_selected,
+            .text = folder->display_name.size ? folder->display_name : folder->name,
+            .tooltip = folder->display_name.size ? TooltipString {folder->name} : k_nullopt,
+            .hashes = state.selected_folder_hashes,
+            .clicked_hash = folder->Hash(),
+            .filter_mode = state.filter_mode,
+            .font_icon = is_current ? FilterButtonOptions::FontIcon(String(ICON_FA_FOLDER_OPEN))
+                                    : FilterButtonOptions::FontIcon(String(ICON_FA_FOLDER_CLOSED)),
+            .indent = indent,
+            .full_width = true,
+        });
+
+    if (do_right_click_menu)
+        DoRightClickForBox(box_system, state, button, folder->Hash(), do_right_click_menu);
+
+    ++indent;
+    for (auto* child = folder->first_child; child; child = child->next)
+        DoFolderFilterAndChildren(box_system,
+                                  state,
+                                  parent,
+                                  indent,
+                                  child,
+                                  folder_infos,
+                                  do_right_click_menu);
+    --indent;
+}
+
 Box DoFilterButton(GuiBoxSystem& box_system,
                    CommonPickerState& state,
                    FilterItemInfo const& info,
@@ -215,6 +269,7 @@ Box DoFilterButton(GuiBoxSystem& box_system,
         switch (options.filter_mode) {
             case FilterMode::ProgressiveNarrowing: n = info.num_used_in_items_lists; break;
             case FilterMode::AdditiveSelection: n = info.total_available; break;
+            case FilterMode::SingleSelection: n = info.total_available; break;
             case FilterMode::Count: PanicIfReached();
         }
         n;
@@ -361,6 +416,11 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                      is_selected = options.is_selected,
                      filter_mode = options.filter_mode]() {
                         switch (filter_mode) {
+                            case FilterMode::SingleSelection: {
+                                state.ClearAll();
+                                if (!is_selected) hashes.Add(clicked_hash, display_name);
+                                break;
+                            }
                             case FilterMode::ProgressiveNarrowing: {
                                 if (is_selected) {
                                     hashes.Remove(clicked_hash);
@@ -399,6 +459,7 @@ Box DoFilterCard(GuiBoxSystem& box_system,
         switch (options.filter_mode) {
             case FilterMode::ProgressiveNarrowing: n = info.num_used_in_items_lists; break;
             case FilterMode::AdditiveSelection: n = info.total_available; break;
+            case FilterMode::SingleSelection: n = info.total_available; break;
             case FilterMode::Count: PanicIfReached();
         }
         n;
@@ -413,10 +474,23 @@ Box DoFilterCard(GuiBoxSystem& box_system,
     constexpr f32 k_text_spacing = 8.0f;
     constexpr f32 k_selected_line_width = 10;
 
-    auto const card =
+    auto const card = DoBox(box_system,
+                            {
+                                .parent = options.parent,
+                                .background_fill_colours = {style::Colour::Surface1},
+                                .layout {
+                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                    .margins = {.b = k_picker_spacing / 2},
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                },
+                            });
+
+    auto const card_top =
         DoBox(box_system,
               {
-                  .parent = options.parent,
+                  .parent = card,
                   .background_fill_colours = {style::Colour::DarkModeBackground0},
                   .background_fill_auto_hot_active_overlay = true,
                   .background_tex = options.background_image,
@@ -428,7 +502,6 @@ Box DoFilterCard(GuiBoxSystem& box_system,
                   .border_edges = 0b1000,
                   .layout {
                       .size = {layout::k_fill_parent, layout::k_hug_contents},
-                      .margins = {.b = k_picker_spacing / 2},
                       .contents_padding =
                           {
                               .l = k_card_padding + (is_selected ? k_selected_line_width : 0),
@@ -448,7 +521,7 @@ Box DoFilterCard(GuiBoxSystem& box_system,
     if (options.icon) {
         DoBox(box_system,
               {
-                  .parent = card,
+                  .parent = card_top,
                   .background_tex = options.icon,
                   .layout {
                       .size = k_icon_size,
@@ -458,7 +531,7 @@ Box DoFilterCard(GuiBoxSystem& box_system,
 
     auto const rhs = DoBox(box_system,
                            {
-                               .parent = card,
+                               .parent = card_top,
                                .layout {
                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
                                    .contents_gap = k_text_spacing / 2,
@@ -528,7 +601,7 @@ Box DoFilterCard(GuiBoxSystem& box_system,
           });
 
     // Handle click behavior
-    if (card.button_fired) {
+    if (card_top.button_fired) {
         dyn::Append(box_system.state->deferred_actions,
                     [&hashes = options.hashes,
                      &state = state,
@@ -538,6 +611,11 @@ Box DoFilterCard(GuiBoxSystem& box_system,
                      is_selected = is_selected,
                      filter_mode = options.filter_mode]() {
                         switch (filter_mode) {
+                            case FilterMode::SingleSelection: {
+                                state.ClearAll();
+                                if (!is_selected) hashes.Add(clicked_hash, display_name);
+                                break;
+                            }
                             case FilterMode::ProgressiveNarrowing: {
                                 if (is_selected) {
                                     hashes.Remove(clicked_hash);
@@ -559,7 +637,30 @@ Box DoFilterCard(GuiBoxSystem& box_system,
                     });
     }
 
-    return card;
+    if (options.folder && options.folder->first_child) {
+        // Carat down
+        DoBox(box_system,
+              {
+                  .parent = card_top,
+                  .text = ICON_FA_CARET_DOWN,
+                  .font = FontType::Icons,
+                  .font_size = style::k_font_icons_size * 0.6f,
+                  .text_colours = {style::Colour::DarkModeSubtext0},
+                  .text_align_x = TextAlignX::Centre,
+                  .text_align_y = TextAlignY::Centre,
+                  .layout {
+                      .size = style::k_font_icons_size * 0.4f,
+                  },
+              });
+
+        // Do the folder children, not the root folder.
+        for (auto* child = options.folder->first_child; child; child = child->next) {
+            u8 indent = 1;
+            DoFolderFilterAndChildren(box_system, state, card, indent, child, options.folder_infos);
+        }
+    }
+
+    return card_top;
 }
 
 Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
@@ -704,79 +805,6 @@ Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
                  });
 }
 
-static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
-                                      CommonPickerState& state,
-                                      Box const& parent,
-                                      u8& indent,
-                                      FolderNode const* folder,
-                                      FolderFilters const& folder_filters) {
-
-    bool is_selected = false;
-    bool is_current = false;
-    for (auto f = folder; f; f = f->parent) {
-        if (state.selected_folder_hashes.Contains(f->Hash())) {
-            is_current = true;
-            if (f == folder) is_selected = true;
-            break;
-        }
-    }
-
-    auto this_info = folder_filters.folders.Find(folder);
-    ASSERT(this_info);
-
-    auto const button = DoFilterButton(
-        box_system,
-        state,
-        *this_info,
-        {
-            .parent = parent,
-            .is_selected = is_selected,
-            .text = folder->display_name.size ? folder->display_name : folder->name,
-            .tooltip = folder->display_name.size ? TooltipString {folder->name} : k_nullopt,
-            .hashes = state.selected_folder_hashes,
-            .clicked_hash = folder->Hash(),
-            .filter_mode = state.filter_mode,
-            .font_icon = is_current ? FilterButtonOptions::FontIcon(String(ICON_FA_FOLDER_OPEN))
-                                    : FilterButtonOptions::FontIcon(String(ICON_FA_FOLDER_CLOSED)),
-            .indent = indent,
-            .full_width = true,
-        });
-
-    if (folder_filters.do_right_click_menu)
-        DoRightClickForBox(box_system, state, button, folder->Hash(), folder_filters.do_right_click_menu);
-
-    ++indent;
-    for (auto* child = folder->first_child; child; child = child->next)
-        DoFolderFilterAndChildren(box_system, state, parent, indent, child, folder_filters);
-    --indent;
-}
-
-static void DoPickerFolderFilters(GuiBoxSystem& box_system,
-                                  PickerPopupContext& context,
-                                  Box const& parent,
-                                  FolderFilters const& folder_filters,
-                                  u8& sections) {
-    if (sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
-    ++sections;
-
-    auto const section = DoPickerSectionContainer(box_system,
-                                                  context.picker_id + SourceLocationHash(),
-                                                  context.state,
-                                                  {
-                                                      .parent = parent,
-                                                      .heading = "FOLDER",
-                                                      .multiline_contents = false,
-                                                      .right_click_menu = folder_filters.do_right_click_menu,
-                                                  });
-
-    if (section) {
-        for (auto const [root, _] : folder_filters.root_folders) {
-            u8 indent = 0;
-            DoFolderFilterAndChildren(box_system, context.state, *section, indent, root, folder_filters);
-        }
-    }
-}
-
 static void DoLibraryRightClickMenu(GuiBoxSystem& box_system,
                                     PickerPopupContext& context,
                                     RightClickMenuState const& menu_state,
@@ -827,74 +855,129 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                                                       {
                                                           .parent = parent,
                                                           .heading = "LIBRARIES"_s,
-                                                          .multiline_contents = false,
+                                                          .multiline_contents = !library_filters.card_view,
                                                       });
 
         if (section) {
             for (auto const& [lib_id, lib_info, lib_hash] : library_filters.libraries) {
-                auto const is_selected = context.state.selected_library_hashes.Contains(lib_hash);
                 ASSERT(lib_id.name.size);
                 ASSERT(lib_id.author.size);
 
-                auto const button = DoFilterCard(
-                    box_system,
-                    context.state,
-                    lib_info,
-                    FilterCardOptions {
-                        .parent = *section,
-                        .is_selected = is_selected,
-                        .icon = ({
-                            graphics::ImageID const* tex =
-                                library_filters.unknown_library_icon.NullableValue();
-                            if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
-                                                                       box_system.imgui,
-                                                                       lib_id,
-                                                                       context.sample_library_server,
-                                                                       box_system.arena,
-                                                                       true);
-                                imgs && !imgs->icon_missing) {
-                                tex = imgs->icon.NullableValue();
-                            }
-                            tex;
-                        }),
-                        .background_image = ({
-                            graphics::ImageID const* tex = {};
-                            if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
-                                                                       box_system.imgui,
-                                                                       lib_id,
-                                                                       context.sample_library_server,
-                                                                       box_system.arena,
-                                                                       false);
-                                imgs && !imgs->background_missing) {
-                                tex = imgs->background.NullableValue();
-                            }
-                            tex;
-                        }),
-                        .text = lib_id.name,
-                        .subtext = ({
-                            auto lib =
-                                sample_lib_server::FindLibraryRetained(context.sample_library_server, lib_id);
-                            DEFER { lib.Release(); };
-                            String s;
-                            if (lib) s = box_system.arena.Clone(lib->tagline);
-                            s;
-                        }),
-                        .tooltip = FunctionRef<String()>([&]() -> String {
-                            auto lib =
-                                sample_lib_server::FindLibraryRetained(context.sample_library_server, lib_id);
-                            DEFER { lib.Release(); };
+                Box button;
+                if (library_filters.card_view) {
+                    // TODO: we probably want to cache this somewhere.
+                    auto lib = sample_lib_server::FindLibraryRetained(context.sample_library_server, lib_id);
+                    DEFER { lib.Release(); };
+                    if (!lib) continue;
 
-                            DynamicArray<char> buf {box_system.arena};
-                            fmt::Append(buf, "{} by {}.", lib_id.name, lib_id.author);
-                            if (lib) {
-                                if (lib->description) fmt::Append(buf, "\n\n{}", lib->description);
-                            }
-                            return buf.ToOwnedSpan();
-                        }),
-                        .hashes = context.state.selected_library_hashes,
-                        .clicked_hash = lib_hash,
-                        .filter_mode = context.state.filter_mode,
-                    });
+                    auto const folder = &lib->root_folders[ToInt(library_filters.resource_type)];
+                    auto const folder_hash = folder->Hash();
+
+                    // Despite these being library cards, we use the folder hashes for tracking since it works
+                    // nicely with the sub-folder systems.
+                    auto const is_selected = context.state.selected_folder_hashes.Contains(folder_hash);
+
+                    button = DoFilterCard(
+                        box_system,
+                        context.state,
+                        lib_info,
+                        FilterCardOptions {
+                            .parent = *section,
+                            .is_selected = is_selected,
+                            .icon = ({
+                                graphics::ImageID const* tex =
+                                    library_filters.unknown_library_icon.NullableValue();
+                                if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
+                                                                           box_system.imgui,
+                                                                           lib_id,
+                                                                           context.sample_library_server,
+                                                                           box_system.arena,
+                                                                           true);
+                                    imgs && !imgs->icon_missing) {
+                                    tex = imgs->icon.NullableValue();
+                                }
+                                tex;
+                            }),
+                            .background_image = ({
+                                graphics::ImageID const* tex = {};
+                                if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
+                                                                           box_system.imgui,
+                                                                           lib_id,
+                                                                           context.sample_library_server,
+                                                                           box_system.arena,
+                                                                           false);
+                                    imgs && !imgs->background_missing) {
+                                    tex = imgs->background.NullableValue();
+                                }
+                                tex;
+                            }),
+                            .text = lib_id.name,
+                            .subtext = ({
+                                String s;
+                                if (lib) s = box_system.arena.Clone(lib->tagline);
+                                s;
+                            }),
+                            .tooltip = FunctionRef<String()>([&]() -> String {
+                                auto lib =
+                                    sample_lib_server::FindLibraryRetained(context.sample_library_server,
+                                                                           lib_id);
+                                DEFER { lib.Release(); };
+
+                                DynamicArray<char> buf {box_system.arena};
+                                fmt::Append(buf, "{} by {}.", lib_id.name, lib_id.author);
+                                if (lib) {
+                                    if (lib->description) fmt::Append(buf, "\n\n{}", lib->description);
+                                }
+                                return buf.ToOwnedSpan();
+                            }),
+                            .hashes = context.state.selected_folder_hashes,
+                            .clicked_hash = folder_hash,
+                            .filter_mode = context.state.filter_mode,
+                            .folder_infos = library_filters.folders,
+                            .folder = folder,
+                        });
+                } else {
+                    // TODO: huge duplicate code with above
+                    button = DoFilterButton(
+                        box_system,
+                        context.state,
+                        lib_info,
+                        FilterButtonOptions {
+                            .parent = *section,
+                            .is_selected = context.state.selected_library_hashes.Contains(lib_hash),
+                            .icon = ({
+                                graphics::ImageID const* tex =
+                                    library_filters.unknown_library_icon.NullableValue();
+                                if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
+                                                                           box_system.imgui,
+                                                                           lib_id,
+                                                                           context.sample_library_server,
+                                                                           box_system.arena,
+                                                                           true);
+                                    imgs && !imgs->icon_missing) {
+                                    tex = imgs->icon.NullableValue();
+                                }
+                                tex;
+                            }),
+                            .text = lib_id.name,
+                            .tooltip = FunctionRef<String()>([&]() -> String {
+                                auto lib =
+                                    sample_lib_server::FindLibraryRetained(context.sample_library_server,
+                                                                           lib_id);
+                                DEFER { lib.Release(); };
+
+                                DynamicArray<char> buf {box_system.arena};
+                                fmt::Append(buf, "{} by {}.", lib_id.name, lib_id.author);
+                                if (lib) {
+                                    if (lib->description) fmt::Append(buf, "\n\n{}", lib->description);
+                                }
+                                return buf.ToOwnedSpan();
+                            }),
+                            .hashes = context.state.selected_library_hashes,
+                            .clicked_hash = lib_hash,
+                            .filter_mode = context.state.filter_mode,
+                        });
+                }
 
                 DoRightClickForBox(
                     box_system,
@@ -1047,6 +1130,7 @@ void DoPickerTagsFilters(GuiBoxSystem& box_system,
 
 static String FilterModeText(FilterMode mode) {
     switch (mode) {
+        case FilterMode::SingleSelection: return "Single selection";
         case FilterMode::ProgressiveNarrowing: return "Match all";
         case FilterMode::AdditiveSelection: return "Match any";
         case FilterMode::Count: break;
@@ -1056,6 +1140,7 @@ static String FilterModeText(FilterMode mode) {
 
 static String FilterModeDescription(FilterMode mode) {
     switch (mode) {
+        case FilterMode::SingleSelection: return "Only one filter can be selected at a time.";
         case FilterMode::ProgressiveNarrowing: return "AND logic: progressively narrow down the items.";
         case FilterMode::AdditiveSelection: return "OR logic: broaden the list of items.";
         case FilterMode::Count: break;
@@ -1328,13 +1413,6 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                                         *options.library_filters,
                                                         num_lhs_sections);
 
-                             if (options.folder_filters)
-                                 DoPickerFolderFilters(box_system,
-                                                       context,
-                                                       root,
-                                                       *options.folder_filters,
-                                                       num_lhs_sections);
-
                              if (options.tags_filters)
                                  DoPickerTagsFilters(box_system,
                                                      context,
@@ -1342,7 +1420,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                                      *options.tags_filters,
                                                      num_lhs_sections);
 
-                             if (options.folder_filters)
+                             if (options.library_filters)
                                  DoPickerLibraryAuthorFilters(box_system,
                                                               context,
                                                               root,

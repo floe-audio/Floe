@@ -29,7 +29,10 @@ static bool ShouldSkipIr(IrPickerState const& state, sample_lib::ImpulseResponse
         filtering_on = true;
         for (auto const& folder_hash : state.common_state.selected_folder_hashes) {
             if (!IsInsideFolder(ir.folder, folder_hash.hash)) {
-                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing)
+                    return true;
+                else if (state.common_state.filter_mode == FilterMode::SingleSelection)
+                    return true;
             } else {
                 if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
             }
@@ -39,7 +42,10 @@ static bool ShouldSkipIr(IrPickerState const& state, sample_lib::ImpulseResponse
     if (state.common_state.selected_library_hashes.HasSelected()) {
         filtering_on = true;
         if (!state.common_state.selected_library_hashes.Contains(ir.library.Id().Hash())) {
-            if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing)
+                return true;
+            else if (state.common_state.filter_mode == FilterMode::SingleSelection)
+                return true;
         } else {
             if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
         }
@@ -48,7 +54,10 @@ static bool ShouldSkipIr(IrPickerState const& state, sample_lib::ImpulseResponse
     if (state.common_state.selected_library_author_hashes.HasSelected()) {
         filtering_on = true;
         if (!state.common_state.selected_library_author_hashes.Contains(Hash(ir.library.author))) {
-            if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing)
+                return true;
+            else if (state.common_state.filter_mode == FilterMode::SingleSelection)
+                return true;
         } else {
             if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
         }
@@ -59,7 +68,10 @@ static bool ShouldSkipIr(IrPickerState const& state, sample_lib::ImpulseResponse
         for (auto const& selected_hash : state.common_state.selected_tags_hashes) {
             if (!(ir.tags.ContainsSkipKeyCheck(selected_hash.hash) ||
                   (selected_hash.hash == Hash(k_untagged_tag_name) && ir.tags.size == 0))) {
-                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+                if (state.common_state.filter_mode == FilterMode::ProgressiveNarrowing)
+                    return true;
+                else if (state.common_state.filter_mode == FilterMode::SingleSelection)
+                    return true;
             } else {
                 if (state.common_state.filter_mode == FilterMode::AdditiveSelection) return false;
             }
@@ -379,15 +391,13 @@ void DoIrPickerPopup(GuiBoxSystem& box_system, IrPickerContext& context, IrPicke
                     .libraries = libraries,
                     .library_authors = library_authors,
                     .unknown_library_icon = context.unknown_library_icon,
+                    .card_view = true,
+                    .resource_type = sample_lib::ResourceType::Ir,
+                    .folders = folders,
                 },
             .tags_filters =
                 TagsFilters {
                     .tags = tags,
-                },
-            .folder_filters =
-                FolderFilters {
-                    .folders = folders,
-                    .root_folders = root_folder,
                 },
         });
 }

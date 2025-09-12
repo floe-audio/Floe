@@ -20,6 +20,7 @@ constexpr auto k_untagged_tag_name = "<untagged>"_s;
 enum class SearchDirection { Forward, Backward };
 
 enum class FilterMode : u8 {
+    SingleSelection, // Only one filter can be selected at a time.
     ProgressiveNarrowing, // AKA "match all", AND
     AdditiveSelection, // AKA "match any", OR
     Count,
@@ -109,7 +110,7 @@ struct CommonPickerState {
     SelectedHashes selected_folder_hashes {"Folder"};
     DynamicArrayBounded<u64, 16> hidden_filter_headers {};
     DynamicArrayBounded<char, 100> search {};
-    DynamicArrayBounded<SelectedHashes*, 2> other_selected_hashes {};
+    DynamicArrayBounded<SelectedHashes*, 3> other_selected_hashes {};
     FilterMode filter_mode = FilterMode::ProgressiveNarrowing;
     RightClickMenuState right_click_menu_state {};
 };
@@ -136,9 +137,10 @@ bool RootNodeLessThan(FolderNode const* const& a,
                       DummyValueType const&);
 
 using FolderRootSet = OrderedSet<FolderNode const*, nullptr, RootNodeLessThan>;
+using FolderFilterItemInfoLookupTable = HashTable<FolderNode const*, FilterItemInfo>;
 
 struct FolderFilters {
-    HashTable<FolderNode const*, FilterItemInfo> folders;
+    FolderFilterItemInfoLookupTable folders;
     FolderRootSet root_folders;
     RightClickMenuState::Function do_right_click_menu = {};
 };
@@ -148,6 +150,10 @@ struct LibraryFilters {
     OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
     OrderedHashTable<String, FilterItemInfo> library_authors;
     Optional<graphics::ImageID> unknown_library_icon;
+    bool card_view {};
+    sample_lib::ResourceType resource_type {};
+    FolderFilterItemInfoLookupTable folders;
+    RightClickMenuState::Function folder_do_right_click_menu = {};
 };
 
 // IMPORTANT: we use FunctionRef here, you need to make sure the lifetime of the functions outlives the
@@ -188,7 +194,6 @@ struct PickerPopupOptions {
 
     Optional<LibraryFilters> library_filters {};
     Optional<TagsFilters> tags_filters {};
-    Optional<FolderFilters> folder_filters {};
     TrivialFunctionRef<void(GuiBoxSystem&, Box const& parent, u8& num_sections)> do_extra_filters {};
     bool has_extra_filters {};
 };
@@ -262,7 +267,7 @@ struct FilterCardOptions {
     SelectedHashes& hashes;
     u64 clicked_hash;
     FilterMode filter_mode;
-    HashTable<FolderNode const*, FilterItemInfo> folder_infos;
+    FolderFilterItemInfoLookupTable folder_infos;
     FolderNode const* folder;
 };
 

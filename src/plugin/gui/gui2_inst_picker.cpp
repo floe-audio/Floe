@@ -48,7 +48,10 @@ static bool ShouldSkipInstrument(InstPickerState const& state,
         filtering_on = true;
         for (auto const& folder_hash : common_state.selected_folder_hashes) {
             if (!IsInsideFolder(inst.folder, folder_hash.hash)) {
-                if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+                if (common_state.filter_mode == FilterMode::ProgressiveNarrowing)
+                    return true;
+                else if (common_state.filter_mode == FilterMode::SingleSelection)
+                    return true;
             } else {
                 if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
             }
@@ -58,7 +61,10 @@ static bool ShouldSkipInstrument(InstPickerState const& state,
     if (common_state.selected_library_hashes.HasSelected()) {
         filtering_on = true;
         if (!common_state.selected_library_hashes.Contains(inst.library.Id().Hash())) {
-            if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            if (common_state.filter_mode == FilterMode::ProgressiveNarrowing)
+                return true;
+            else if (common_state.filter_mode == FilterMode::SingleSelection)
+                return true;
         } else {
             if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
         }
@@ -67,7 +73,10 @@ static bool ShouldSkipInstrument(InstPickerState const& state,
     if (common_state.selected_library_author_hashes.HasSelected()) {
         filtering_on = true;
         if (!common_state.selected_library_author_hashes.Contains(Hash(inst.library.author))) {
-            if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+            if (common_state.filter_mode == FilterMode::ProgressiveNarrowing)
+                return true;
+            else if (common_state.filter_mode == FilterMode::SingleSelection)
+                return true;
         } else {
             if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
         }
@@ -79,7 +88,10 @@ static bool ShouldSkipInstrument(InstPickerState const& state,
         for (auto const& selected_hash : common_state.selected_tags_hashes)
             if (!(inst.tags.ContainsSkipKeyCheck(selected_hash.hash) ||
                   (selected_hash.hash == Hash(k_untagged_tag_name) && inst.tags.size == 0))) {
-                if (common_state.filter_mode == FilterMode::ProgressiveNarrowing) return true;
+                if (common_state.filter_mode == FilterMode::ProgressiveNarrowing)
+                    return true;
+                else if (common_state.filter_mode == FilterMode::SingleSelection)
+                    return true;
             } else {
                 if (common_state.filter_mode == FilterMode::AdditiveSelection) return false;
             }
@@ -560,6 +572,9 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
                         .libraries = libraries,
                         .library_authors = library_authors,
                         .unknown_library_icon = context.unknown_library_icon,
+                        .card_view = true,
+                        .resource_type = sample_lib::ResourceType::Instrument,
+                        .folders = folders,
                     };
                 }
                 f;
@@ -569,16 +584,6 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
                 if (state.tab == InstPickerState::Tab::FloeLibaries) {
                     f = TagsFilters {
                         .tags = tags,
-                    };
-                }
-                f;
-            }),
-            .folder_filters = ({
-                Optional<FolderFilters> f {};
-                if (state.tab != InstPickerState::Tab::Waveforms) {
-                    f = FolderFilters {
-                        .folders = folders,
-                        .root_folders = root_folder,
                     };
                 }
                 f;
