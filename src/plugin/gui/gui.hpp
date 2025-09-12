@@ -192,5 +192,3 @@ void GUIPresetLoaded(Gui* g, Engine* a, bool is_first_preset);
 GuiFrameResult GuiUpdate(Gui* g);
 void TopPanel(Gui* g, f32 height);
 void MidPanel(Gui* g);
-
-f32x2 GetMaxUVToMaintainAspectRatio(graphics::ImageID img, f32x2 container_size);

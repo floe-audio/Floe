@@ -410,14 +410,9 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
                                                                              box_system.arena,
                                                                              true);
                                 imgs && imgs->icon) {
-                                auto tex = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
-                                    imgs->icon);
-                                if (tex) icons[icons_index++] = *tex;
+                                icons[icons_index++] = imgs->icon;
                             } else if (context.unknown_library_icon) {
-                                auto const tex =
-                                    box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
-                                        *context.unknown_library_icon);
-                                if (tex) icons[icons_index++] = *tex;
+                                icons[icons_index++] = *context.unknown_library_icon;
                             }
                         }
                         icons;

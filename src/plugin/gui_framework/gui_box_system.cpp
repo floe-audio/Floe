@@ -3,6 +3,8 @@
 
 #include "gui_box_system.hpp"
 
+#include "image.hpp"
+
 static f32 HeightOfWrappedText(GuiBoxSystem& box_system, layout::Id id, f32 width) {
     if (auto const t_ptr = box_system.state->word_wrapped_texts.Find(id)) {
         auto const& t = *t_ptr;
@@ -543,8 +545,39 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                 }
             }
 
-            if (config.background_tex)
-                builder.imgui.graphics->AddImage(*config.background_tex, rect.Min(), rect.Max());
+            if (config.background_tex) {
+                auto const col =
+                    ((u32)config.background_tex_alpha << 24) | 0x00FFFFFF; // Alpha in high bits, RGB as white
+
+                f32x2 uv0 {0, 0};
+                f32x2 uv1 {1, 1};
+
+                switch (config.background_tex_fill_mode) {
+                    case BackgroundTexFillMode::Stretch: {
+                        // Default behavior - stretch image to fill entire box
+                        uv0 = {0, 0};
+                        uv1 = {1, 1};
+                        break;
+                    }
+                    case BackgroundTexFillMode::Cover: {
+                        // Use GetMaxUVToMaintainAspectRatio to crop the image while maintaining aspect ratio
+                        auto const container_size = f32x2 {rect.w, rect.h};
+                        auto const max_uv =
+                            GetMaxUVToMaintainAspectRatio(*config.background_tex, container_size);
+
+                        uv0 = {0, 0};
+                        uv1 = max_uv;
+                        break;
+                    }
+                    case BackgroundTexFillMode::Count: PanicIfReached();
+                }
+
+                // Convert ImageID to TextureHandle for rendering
+                if (auto const texture =
+                        builder.imgui.frame_input.graphics_ctx->GetTextureFromImage(*config.background_tex)) {
+                    builder.imgui.graphics->AddImage(*texture, rect.Min(), rect.Max(), uv0, uv1, col);
+                }
+            }
 
             if (auto const border = ({
                     style::Colour c {};
@@ -582,23 +615,39 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                     auto const rounding = config.round_background_corners
                                               ? builder.imgui.VwToPixels(style::k_button_rounding)
                                               : 0;
-                    builder.imgui.graphics->AddRect(r, col_u32, rounding, (int)corner_flags);
+                    builder.imgui.graphics->AddRect(r,
+                                                    col_u32,
+                                                    rounding,
+                                                    (int)corner_flags,
+                                                    config.border_width_pixels);
                 } else {
                     if (config.border_edges & 0b1000) {
                         // Left edge
-                        builder.imgui.graphics->AddLine(r.Min(), {r.x, r.y + r.h}, col_u32);
+                        builder.imgui.graphics->AddLine(r.Min(),
+                                                        {r.x, r.y + r.h},
+                                                        col_u32,
+                                                        config.border_width_pixels);
                     }
                     if (config.border_edges & 0b0100) {
                         // Top edge
-                        builder.imgui.graphics->AddLine(r.Min(), {r.x + r.w, r.y}, col_u32);
+                        builder.imgui.graphics->AddLine(r.Min(),
+                                                        {r.x + r.w, r.y},
+                                                        col_u32,
+                                                        config.border_width_pixels);
                     }
                     if (config.border_edges & 0b0010) {
                         // Right edge
-                        builder.imgui.graphics->AddLine({r.x + r.w, r.y}, {r.x + r.w, r.y + r.h}, col_u32);
+                        builder.imgui.graphics->AddLine({r.x + r.w, r.y},
+                                                        {r.x + r.w, r.y + r.h},
+                                                        col_u32,
+                                                        config.border_width_pixels);
                     }
                     if (config.border_edges & 0b0001) {
                         // Bottom edge
-                        builder.imgui.graphics->AddLine({r.x, r.y + r.h}, {r.x + r.w, r.y + r.h}, col_u32);
+                        builder.imgui.graphics->AddLine({r.x, r.y + r.h},
+                                                        {r.x + r.w, r.y + r.h},
+                                                        col_u32,
+                                                        config.border_width_pixels);
                     }
                 }
             }

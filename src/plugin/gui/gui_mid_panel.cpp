@@ -10,6 +10,7 @@
 #include "gui_effects.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
+#include "gui_framework/image.hpp"
 #include "gui_prefs.hpp"
 #include "gui_widget_helpers.hpp"
 #include "gui_window.hpp"

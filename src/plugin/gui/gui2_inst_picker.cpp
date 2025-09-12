@@ -334,7 +334,7 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
     if (!first) return;
 
     sample_lib::Library const* previous_library {};
-    graphics::TextureHandle lib_icon_tex {};
+    Optional<graphics::ImageID> lib_icon {};
     auto cursor = *first;
     while (true) {
         auto const& lib = *context.libraries[cursor.lib_index];
@@ -389,7 +389,7 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
                     .is_current = is_current,
                     .icons = ({
                         if (&lib != previous_library) {
-                            lib_icon_tex = nullptr;
+                            lib_icon = k_nullopt;
                             previous_library = &lib;
                             if (auto const imgs = LibraryImagesFromLibraryId(context.library_images,
                                                                              box_system.imgui,
@@ -397,13 +397,11 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
                                                                              context.sample_library_server,
                                                                              box_system.arena,
                                                                              true)) {
-                                auto opt = box_system.imgui.frame_input.graphics_ctx->GetTextureFromImage(
-                                    (imgs && !imgs->icon_missing) ? imgs->icon
-                                                                  : context.unknown_library_icon);
-                                lib_icon_tex = opt ? *opt : nullptr;
+                                lib_icon =
+                                    (imgs && !imgs->icon_missing) ? imgs->icon : context.unknown_library_icon;
                             }
                         }
-                        decltype(PickerItemOptions::icons) {lib_icon_tex};
+                        decltype(PickerItemOptions::icons) {lib_icon};
                     }),
                     .notifications = context.notifications,
                     .store = context.persistent_store,

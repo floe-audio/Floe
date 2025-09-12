@@ -144,20 +144,6 @@ Gui::~Gui() {
 
 bool Tooltip(Gui* g, imgui::Id id, Rect r, char const* fmt, ...);
 
-f32x2 GetMaxUVToMaintainAspectRatio(graphics::ImageID img, f32x2 container_size) {
-    auto const img_w = (f32)img.size.width;
-    auto const img_h = (f32)img.size.height;
-    auto const window_ratio = container_size.x / container_size.y;
-    auto const image_ratio = img_w / img_h;
-
-    f32x2 uv {1, 1};
-    if (image_ratio > window_ratio)
-        uv.x = window_ratio / image_ratio;
-    else
-        uv.y = image_ratio / window_ratio;
-    return uv;
-}
-
 static void DoStandaloneErrorGUI(Gui* g) {
     ASSERT(!PRODUCTION_BUILD);
 

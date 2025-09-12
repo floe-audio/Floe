@@ -217,7 +217,7 @@ struct PickerItemOptions {
     String text;
     TooltipString tooltip = k_nullopt;
     bool is_current;
-    Array<graphics::TextureHandle, k_num_layers + 1> icons;
+    Array<Optional<graphics::ImageID>, k_num_layers + 1> icons;
     Notifications& notifications;
     persistent_store::Store& store;
 };
@@ -235,7 +235,7 @@ struct FilterButtonOptions {
 
     Box parent;
     bool is_selected;
-    Optional<graphics::TextureHandle> icon;
+    graphics::ImageID const* icon;
     String text;
     TooltipString tooltip = k_nullopt;
     SelectedHashes& hashes;
@@ -250,6 +250,26 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                    CommonPickerState& state,
                    FilterItemInfo const& info,
                    FilterButtonOptions const& options);
+
+struct FilterCardOptions {
+    Box parent;
+    bool is_selected;
+    graphics::ImageID const* icon;
+    graphics::ImageID const* background_image;
+    String text;
+    String subtext;
+    TooltipString tooltip = k_nullopt;
+    SelectedHashes& hashes;
+    u64 clicked_hash;
+    FilterMode filter_mode;
+    HashTable<FolderNode const*, FilterItemInfo> folder_infos;
+    FolderNode const* folder;
+};
+
+Box DoFilterCard(GuiBoxSystem& box_system,
+                 CommonPickerState& state,
+                 FilterItemInfo const& info,
+                 FilterCardOptions const& options);
 
 void DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext context, PickerPopupOptions const& options);
 

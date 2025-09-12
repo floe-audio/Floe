@@ -149,7 +149,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
         DoBox(box_system,
               {
                   .parent = root,
-                  .background_tex = box_system.imgui.graphics->context->GetTextureFromImage(logo_image),
+                  .background_tex = logo_image.NullableValue(),
                   .layout {
                       .size = scale_size_to_fit_height(logo_image->size.ToFloat2(), root_size.y * 0.5f),
                   },
@@ -356,6 +356,15 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
         auto const preset_load =
             do_icon_button(preset_box, ICON_FA_FILE_IMPORT, "Load a preset from a file"_s, 0.8f, 3);
         if (preset_load.button_fired) g->preset_picker_state.common_state.open = true;
+    }
+
+    {
+        auto const new_preset = do_icon_button(preset_box,
+                                               ICON_FA_FILE_CIRCLE_PLUS,
+                                               "Reset Floe to its default state"_s,
+                                               0.8f,
+                                               3);
+        if (new_preset.button_fired) SetToDefaultState(g->engine);
     }
 
     auto right_icon_buttons_container = DoBox(box_system,
