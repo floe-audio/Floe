@@ -752,7 +752,11 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
                                     .background_image1 = background_image1.NullableValue(),
                                     .background_image2 = background_image2.NullableValue(),
                                     .text = folder->display_name.size ? folder->display_name : folder->name,
-                                    .subtext = ({ "Subtitle"_s; }),
+                                    .subtext = ({
+                                        String s {};
+                                        if (auto const m = MetadataForFolderNode(*folder)) s = m->subtitle;
+                                        s;
+                                    }),
                                     .tooltip =
                                         folder->display_name.size ? TooltipString {folder->name} : k_nullopt,
                                     .hashes = state.common_state.selected_folder_hashes,
@@ -760,14 +764,30 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
                                     .filter_mode = state.common_state.filter_mode,
                                     .folder_infos = folders,
                                     .folder = folder,
+                                    .right_click_menu =
+                                        [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
+                                            PresetFolderRightClickMenu(box_system,
+                                                                       context,
+                                                                       state,
+                                                                       menu_state);
+                                        },
                                 });
+
+                            [[clang::no_destroy]] static DynamicSet<String> printed_names {
+                                Malloc::Instance()};
+
+                            if (printed_names.FindOrInsert(folder->name, {}).inserted)
+                                LogInfo(ModuleName::Gui,
+                                        "Folder {}: {}",
+                                        folder->name,
+                                        FolderContentsHash(folder));
                         };
 
                         for (auto const [root, _] : root_folder) {
                             if (!root->first_child) {
                                 do_card(root, *folders.Find(root));
                             } else {
-                                if (auto const preset_folder = (PresetFolder const*)root->user_data;
+                                if (auto const preset_folder = root->user_data.As<PresetFolder const>();
                                     preset_folder && preset_folder->presets.size) {
                                     auto folder = *root;
                                     folder.first_child = nullptr;

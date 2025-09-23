@@ -4,6 +4,31 @@
 
 #include "foundation/foundation.hpp"
 
+struct TypeErasedUserData {
+    void* data;
+    u64 type_hash;
+
+    template <typename T>
+    static TypeErasedUserData Create(T* ptr) {
+        using BaseType = RemoveCV<T>;
+        return {(void*)ptr, TypeHashFor<BaseType>()};
+    }
+
+    template <typename T>
+    T* As() const {
+        using BaseType = RemoveCV<T>;
+        return (type_hash == TypeHashFor<BaseType>()) ? (T*)data : nullptr;
+    }
+
+    operator bool() const { return data != nullptr; }
+
+  private:
+    template <typename T>
+    static constexpr u64 TypeHashFor() {
+        return HashComptime(__PRETTY_FUNCTION__);
+    }
+};
+
 struct FolderNode {
     u64 Hash() const;
 
@@ -12,7 +37,7 @@ struct FolderNode {
     FolderNode* parent {};
     FolderNode* first_child {};
     FolderNode* next {};
-    void* user_data {};
+    TypeErasedUserData user_data {};
 };
 
 struct FolderNodeAllocators {

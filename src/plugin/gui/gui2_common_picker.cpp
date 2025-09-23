@@ -472,34 +472,31 @@ Box DoFilterCard(GuiBoxSystem& box_system,
                                         },
                                     });
 
-    auto const card_top =
-        DoBox(box_system,
-              {
-                  .parent = card_content,
-                  .background_fill_colours =
-                      {
-                          .base = style::Colour::None,
-                          .hot = style::Colour::DarkModeOverlay2,
-                          .active = style::Colour::DarkModeOverlay2,
-                      },
-                  .background_fill_alpha = 50,
-                  .round_background_corners = !is_selected ? 0b1111u : 0b0110,
-                  .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
-                      .contents_padding =
-                          {
-                              .l = k_card_padding + (is_selected ? k_selected_line_width : 0),
-                              .r = k_card_padding,
-                              .tb = k_card_padding,
-                          },
-                      .contents_gap = k_card_padding,
-                      .contents_direction = layout::Direction::Row,
-                      .contents_align = layout::Alignment::Start,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-                  .tooltip = options.tooltip,
-                  .behaviour = Behaviour::Button,
-              });
+    auto const card_top = DoBox(box_system,
+                                {
+                                    .parent = card_content,
+                                    .background_fill_colours =
+                                        {
+                                            .base = style::Colour::None,
+                                            .hot = style::Colour::DarkModeOverlay2,
+                                            .active = style::Colour::DarkModeOverlay2,
+                                        },
+                                    .background_fill_alpha = 50,
+                                    .round_background_corners = !is_selected ? 0b1111u : 0b0110,
+                                    .layout {
+                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                        .contents_padding = {.lrtb = k_card_padding},
+                                        .contents_gap = k_card_padding,
+                                        .contents_direction = layout::Direction::Row,
+                                        .contents_align = layout::Alignment::Start,
+                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                    },
+                                    .tooltip = options.tooltip,
+                                    .behaviour = Behaviour::Button,
+                                });
+
+    if (options.right_click_menu)
+        DoRightClickForBox(box_system, state, card_top, options.clicked_hash, options.right_click_menu);
 
     // Icon
     if (options.icon) {
@@ -655,7 +652,13 @@ Box DoFilterCard(GuiBoxSystem& box_system,
         // Do the folder children, not the root folder.
         for (auto* child = options.folder->first_child; child; child = child->next) {
             u8 indent = 0;
-            DoFolderFilterAndChildren(box_system, state, folder_box, indent, child, options.folder_infos);
+            DoFolderFilterAndChildren(box_system,
+                                      state,
+                                      folder_box,
+                                      indent,
+                                      child,
+                                      options.folder_infos,
+                                      options.right_click_menu);
         }
     }
 

@@ -182,6 +182,7 @@ struct FilterCardOptions {
     FilterMode filter_mode;
     FolderFilterItemInfoLookupTable folder_infos;
     FolderNode const* folder;
+    RightClickMenuState::Function right_click_menu {};
 };
 
 struct LibraryFilters {

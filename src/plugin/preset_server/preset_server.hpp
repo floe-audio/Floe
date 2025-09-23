@@ -5,9 +5,14 @@
 
 #include "utils/error_notifications.hpp"
 
+#include "common_infrastructure/preset-pack-metadata.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
+// Preset folders are designed to be unconnected to other folders. They are the granular unit of scanning and
+// updating. The hierarchy of folders is represented separately in a FolderNode tree - this has to be built
+// for a specific point in time, whereas PresetFolders can be created and destroyed as per our epoch-based
+// reclamation scheme.
 struct PresetFolder {
     struct Preset {
         String name {};
@@ -31,6 +36,10 @@ struct PresetFolder {
     Set<sample_lib::LibraryIdRef> used_libraries {};
     Set<String> used_tags {};
     Set<String> used_library_authors {};
+
+    Optional<PresetPackMetadata> metadata {};
+    Atomic<PresetPackMetadata const*> fallback_metadata {nullptr};
+    u64 all_presets_hash {}; // Hash of all presets in this folder.
 
     // private
     usize preset_array_capacity {};
@@ -93,10 +102,12 @@ void SetExtraScanFolders(PresetServer& server, Span<String const> folders);
 
 struct PresetFolderWithNode {
     PresetFolder const& folder;
-    FolderNode const& node; // The node's user_data is a PresetFolder* or null.
+    FolderNode const& node; // The node's user_data may be a PresetFolder* or PresetPackMetadata*.
 };
 
 Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& node);
+Optional<PresetPackMetadata> MetadataForFolderNode(FolderNode const& node);
+u64 FolderContentsHash(FolderNode const* node);
 
 struct PresetsSnapshot {
     Span<PresetFolderWithNode const> folders; // Sorted

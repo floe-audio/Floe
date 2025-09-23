@@ -12,13 +12,14 @@
 // If all presets in this folder and all subfolders use the same single library, return that library.
 static bool AllPresetsSingleLibrary(FolderNode const* node,
                                     Optional<sample_lib::LibraryIdRef>& single_library) {
-    if (auto const folder = (PresetFolder const*)node->user_data) {
-        if (folder->used_libraries.size > 2) return false;
+    if (auto const folder = node->user_data.As<PresetFolder const>()) {
+        if (folder->used_libraries.size > 3) return false;
         if (folder->used_libraries.size != 0) {
-            ASSERT(folder->used_libraries.size == 1 || folder->used_libraries.size == 2);
+            ASSERT(folder->used_libraries.size == 1 || folder->used_libraries.size == 2 ||
+                   folder->used_libraries.size == 3);
 
             Optional<sample_lib::LibraryIdRef> library;
-            if (folder->used_libraries.size == 2) {
+            if (folder->used_libraries.size != 1) {
                 u8 num_proper_libraries = 0;
                 for (auto const& lib : folder->used_libraries) {
                     if (lib.key != sample_lib::k_mirage_compat_library_id &&
@@ -52,6 +53,28 @@ Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& nod
     Optional<sample_lib::LibraryIdRef> single_library {};
     if (AllPresetsSingleLibrary(&node, single_library)) return single_library;
     return k_nullopt;
+}
+
+Optional<PresetPackMetadata> MetadataForFolderNode(FolderNode const& node) {
+    Optional<PresetPackMetadata> metadata {};
+    if (auto const folder = node.user_data.As<PresetFolder const>()) {
+        if (folder->metadata)
+            metadata = *folder->metadata;
+        else if (auto const fallback = folder->fallback_metadata.Load(LoadMemoryOrder::Relaxed))
+            metadata = *fallback;
+    } else if (auto const m = node.user_data.As<PresetPackMetadata const>())
+        metadata = *m;
+    return metadata;
+}
+
+u64 FolderContentsHash(FolderNode const* node) {
+    // Using XOR and only when we have an all_presets_hash means it doesn't matter about the order or exact
+    // hierarchy of the tree.
+    u64 hash = 0;
+    if (auto const folder = node->user_data.As<PresetFolder const>()) hash ^= folder->all_presets_hash;
+    for (auto n = node->first_child; n; n = n->next)
+        hash ^= FolderContentsHash(n);
+    return hash;
 }
 
 static String ExtensionForPreset(PresetFolder::Preset const& preset) {
@@ -102,7 +125,9 @@ static Span<FolderNode> CloneFolderNodes(Span<FolderNode> folders, ArenaAllocato
         result[i].parent = old_pointer_to_new_pointer(folders[i].parent);
         result[i].first_child = old_pointer_to_new_pointer(folders[i].first_child);
         result[i].next = old_pointer_to_new_pointer(folders[i].next);
-        result[i].user_data = nullptr;
+
+        // Clear out any PresetFolder pointers because they point to the old memory.
+        if (folders[i].user_data.As<PresetFolder const>()) result[i].user_data = {};
     }
 
     return result;
@@ -143,7 +168,7 @@ PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
     ASSERT_EQ(server.folder_node_order_indices.size, server.folders.size);
     for (auto const i : Range(server.folders.size)) {
         auto& node = folders_nodes[server.folder_node_order_indices[i]];
-        node.user_data = (void*)server.folders[i];
+        node.user_data = TypeErasedUserData::Create(server.folders[i]);
         PLACEMENT_NEW(&folders[i])
         PresetFolderWithNode {
             .folder = *server.folders[i],
@@ -345,6 +370,8 @@ struct FoldersAggregateInfo {
             // root.
             if (!node) node = root;
 
+            node->user_data = TypeErasedUserData::Create(&folder);
+
             auto const index = CheckedCast<usize>(node - folder_node_allocator.folders.data);
             ASSERT(index < folder_node_allocator.used);
             dyn::Append(folder_node_indices, index);
@@ -416,6 +443,209 @@ AppendFolderAndPublish(PresetServer& server, PresetFolder* new_preset_folder, Ar
     }
     if (insert_point == server.folders.size) info.AddFolder(*new_preset_folder);
 
+    for (auto [_, root, _] : info.scan_folder_nodes) {
+        ForEachNode(root, [](FolderNode* node) {
+            static constexpr PresetPackMetadata k_unknown_metadata {
+                .id = 0,
+                .subtitle = "Preset folder"_s,
+                .minor_version = 0,
+            };
+            PresetPackMetadata const* metadata = &k_unknown_metadata;
+
+            auto const hash = FolderContentsHash(node);
+
+            switch (hash) {
+                case 17797709789825583399ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.AbstractEnergy.Mirage"),
+                        .subtitle = "Factory presets for Abstract Energy (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 17678716117694255396ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.Wraith.Mirage"),
+                        .subtitle = "Factory presets for Wraith (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 4522276088530940864ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.ArcticStrings.Mirage"),
+                        .subtitle = "Factory presets for Arctic Strings (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 4667280085194985230ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.CinematicAtmosphereToolkit.Mirage"),
+                        .subtitle = "Factory presets for Cinematic Atmosphere Toolkit (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 1113295807784802420ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.DeepConjuring.Mirage"),
+                        .subtitle = "Factory presets for Deep Conjuring (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 13092190651134260875ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.FeedbackLoops.Mirage"),
+                        .subtitle = "Factory presets for Feedback Loops (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 10657727448210940357ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.IsolatedSignals.Mirage"),
+                        .subtitle = "Factory presets for Isolated Signals (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 5014338070805093321ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.LostReveries.Mirage"),
+                        .subtitle = "Factory presets for Lost Reveries (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 13346224102117216586ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.MusicBoxSuiteFree.Mirage"),
+                        .subtitle = "Factory presets for Music Box Suite Free (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 10450269504034189798ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.MusicBoxSuite.Mirage"),
+                        .subtitle = "Factory presets for Music Box Suite (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 12314029761590835424ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.Phoenix.Mirage"),
+                        .subtitle = "Factory presets for Phoenix (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 1979436314251425427ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.ScenicVibrations.Mirage"),
+                        .subtitle = "Factory presets for Scenic Vibrations (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 5617954846491642181ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.Slow.Mirage"),
+                        .subtitle = "Factory presets for Slow (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 4523343789936516079ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.SqueakyGate.Mirage"),
+                        .subtitle = "Factory presets for Squeaky Gate (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 2834298600494183622ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.Terracotta.Mirage"),
+                        .subtitle = "Factory presets for Terracotta (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 7286607532220839066ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.WraithDemo.Mirage"),
+                        .subtitle = "Factory presets for Wraith Demo (Mirage edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 3719497291850758672ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.Dulcitone"),
+                        .subtitle = "Factory presets for Dulcitone"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 6899967127661925909ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.MusicBoxSuite"),
+                        .subtitle = "Factory presets for Music Box Suite (Floe edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 9336774792391258852ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.MusicBoxSuiteFree"),
+                        .subtitle = "Factory presets for Music Box Suite Free (Floe edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+                case 11142846282151865892ull: {
+                    static constexpr PresetPackMetadata k_metadata {
+                        .id = HashComptime("com.FrozenPlain.MusicBoxSuiteFree.Beta"),
+                        .subtitle = "Factory presets for Music Box Suite Free (Floe beta edition)"_s,
+                        .minor_version = 1,
+                    };
+                    metadata = &k_metadata;
+                    break;
+                }
+            }
+
+            if (metadata) {
+                if (!node->user_data)
+                    node->user_data = TypeErasedUserData::Create(metadata);
+                else if (auto folder = node->user_data.As<PresetFolder>())
+                    folder->fallback_metadata.Store(metadata, StoreMemoryOrder::Relaxed);
+            }
+        });
+    }
+
     server.mutex.Lock();
     DEFER { server.mutex.Unlock(); };
 
@@ -453,11 +683,36 @@ static void RemoveFolderAndPublish(PresetServer& server, usize index, ArenaAlloc
     server.published_version.FetchAdd(1, RmwMemoryOrder::AcquireRelease);
 }
 
-ErrorCodeOr<void> ScanFolder(PresetServer& server,
-                             String subfolder_of_scan_folder,
-                             ArenaAllocator& scratch_arena,
-                             PresetServer::ScanFolder& scan_folder,
-                             u32 depth = 0) {
+static PresetFolder*
+CreatePresetFolder(PresetServer& server, String scan_folder, String subfolder_of_scan_folder) {
+    auto preset_folder = server.folder_pool.PrependUninitialised(server.arena);
+    PLACEMENT_NEW(preset_folder) PresetFolder();
+    preset_folder->scan_folder = preset_folder->arena.Clone(scan_folder);
+    preset_folder->abbreviated_scan_folder = path::MakeDisplayPath(preset_folder->scan_folder,
+                                                                   {
+                                                                       .stylize_dir_separators = true,
+                                                                       .compact_middle_sections = true,
+                                                                   },
+                                                                   preset_folder->arena);
+    preset_folder->folder = ({
+        auto f = preset_folder->arena.Clone(subfolder_of_scan_folder);
+        if constexpr (IS_WINDOWS) Replace(f, '\\', '/');
+        f;
+    });
+    return preset_folder;
+}
+
+static ErrorCodeOr<PresetPackMetadata>
+ReadMetadataFile(String path, ArenaAllocator& arena, ArenaAllocator& scratch_arena) {
+    auto const file_data = TRY(ReadEntireFile(path, scratch_arena));
+    return ParseMetadataFile(file_data, arena);
+}
+
+static ErrorCodeOr<void> ScanFolder(PresetServer& server,
+                                    String subfolder_of_scan_folder,
+                                    ArenaAllocator& scratch_arena,
+                                    PresetServer::ScanFolder& scan_folder,
+                                    u32 depth = 0) {
     ASSERT(CurrentThreadId() == server.server_thread_id);
 
     if (depth > k_max_nested_folders) {
@@ -485,6 +740,18 @@ ErrorCodeOr<void> ScanFolder(PresetServer& server,
 
     for (auto const& entry : entries) {
         if (entry.type != FileType::File) continue;
+
+        if (path::Equal(entry.subpath, k_metadata_filename)) {
+            if (!preset_folder)
+                preset_folder = CreatePresetFolder(server, scan_folder.path, subfolder_of_scan_folder);
+            preset_folder->metadata =
+                TRY_OR(ReadMetadataFile(path::Join(scratch_arena, Array {absolute_folder, entry.subpath}),
+                                        preset_folder->arena,
+                                        scratch_arena),
+                       continue);
+            continue;
+        }
+
         auto const preset_format = PresetFormatFromPath(entry.subpath);
         if (!preset_format) continue;
 
@@ -505,23 +772,8 @@ ErrorCodeOr<void> ScanFolder(PresetServer& server,
         auto reader = Reader::FromMemory(file_data);
         auto const snapshot = TRY_OR(LoadPresetFile(*preset_format, reader, scratch_arena, true), continue);
 
-        if (!preset_folder) {
-            preset_folder = server.folder_pool.PrependUninitialised(server.arena);
-            PLACEMENT_NEW(preset_folder) PresetFolder();
-            preset_folder->scan_folder = preset_folder->arena.Clone(scan_folder.path);
-            preset_folder->abbreviated_scan_folder =
-                path::MakeDisplayPath(preset_folder->scan_folder,
-                                      {
-                                          .stylize_dir_separators = true,
-                                          .compact_middle_sections = true,
-                                      },
-                                      preset_folder->arena);
-            preset_folder->folder = ({
-                auto f = preset_folder->arena.Clone(subfolder_of_scan_folder);
-                if constexpr (IS_WINDOWS) Replace(f, '\\', '/');
-                f;
-            });
-        }
+        if (!preset_folder)
+            preset_folder = CreatePresetFolder(server, scan_folder.path, subfolder_of_scan_folder);
 
         AddPresetToFolder(*preset_folder, entry, snapshot, file_hash, *preset_format);
     }
@@ -529,6 +781,11 @@ ErrorCodeOr<void> ScanFolder(PresetServer& server,
     if (preset_folder) {
         Sort(preset_folder->presets,
              [](PresetFolder::Preset const& a, PresetFolder::Preset const& b) { return a.name < b.name; });
+
+        // After sorting, we can compute the overall hash.
+        preset_folder->all_presets_hash = HashInit();
+        for (auto const& preset : preset_folder->presets)
+            HashUpdate(preset_folder->all_presets_hash, preset.file_hash);
 
         AppendFolderAndPublish(server, preset_folder, scratch_arena);
     }
