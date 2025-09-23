@@ -7,6 +7,7 @@
 #include "common_infrastructure/preferences.hpp"
 
 #include "gui/gui2_common_picker.hpp"
+#include "gui/gui2_confirmation_dialog_state.hpp"
 #include "gui/gui_fwd.hpp"
 #include "preset_server/preset_server.hpp"
 
@@ -35,6 +36,7 @@ struct PresetPickerContext {
     Optional<graphics::ImageID>& unknown_library_icon;
     Notifications& notifications;
     persistent_store::Store& persistent_store;
+    ConfirmationDialogState& confirmation_dialog_state;
 
     u32 init = 0;
     Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;

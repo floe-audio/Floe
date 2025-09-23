@@ -8,6 +8,7 @@
 
 #include "engine/engine.hpp"
 #include "gui/gui2_bot_panel.hpp"
+#include "gui/gui2_confirmation_dialog_state.hpp"
 #include "gui/gui2_feedback_panel_state.hpp"
 #include "gui/gui2_info_panel_state.hpp"
 #include "gui/gui2_inst_picker_state.hpp"
@@ -123,6 +124,7 @@ struct Gui {
     InfoPanelState info_panel_state {};
     bool attribution_panel_open {};
     FeedbackPanelState feedback_panel_state {};
+    ConfirmationDialogState confirmation_dialog_state {};
     Notifications notifications {};
     FilePickerState file_picker_state {.data = FilePickerStateType::None};
     Array<InstPickerState, k_num_layers> inst_picker_state {};

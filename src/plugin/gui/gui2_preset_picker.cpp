@@ -3,6 +3,8 @@
 
 #include "gui2_preset_picker.hpp"
 
+#include "os/filesystem.hpp"
+
 #include "engine/engine.hpp"
 #include "engine/favourite_items.hpp"
 #include "gui2_common_picker.hpp"
@@ -12,6 +14,33 @@
 constexpr String k_no_preset_author = "<no author>"_s;
 
 inline prefs::Key FavouriteKey() { return "favourite-preset"_s; }
+
+static Optional<String>
+FindFolderByHash(PresetPickerContext const& context, u64 folder_hash, ArenaAllocator& arena) {
+    DynamicSet<FolderNode const*> root_nodes {arena};
+
+    for (auto const& folder : context.presets_snapshot.folders) {
+        for (auto f = &folder.node; f; f = f->parent)
+            if (!f->parent) root_nodes.Insert(f);
+    }
+
+    Optional<String> result = k_nullopt;
+
+    for (auto [root, _] : root_nodes) {
+        ForEachNode((FolderNode*)root, [&](FolderNode const* node) {
+            if (result) return;
+            if (node->Hash() == folder_hash) {
+                DynamicArrayBounded<String, 20> parts;
+                for (auto f = node; f; f = f->parent)
+                    dyn::Append(parts, f->name);
+                Reverse(parts);
+                result = path::Join(arena, parts);
+            }
+        });
+    }
+
+    return result;
+}
 
 struct PresetCursor {
     bool operator==(PresetCursor const& o) const = default;
@@ -332,7 +361,7 @@ void PresetRightClickMenu(GuiBoxSystem& box_system,
 
 void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
                                 PresetPickerContext& context,
-                                PresetPickerState&,
+                                PresetPickerState& state,
                                 RightClickMenuState const& menu_state) {
     auto const root = DoBox(box_system,
                             {
@@ -349,15 +378,48 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
                      .text = fmt::Format(box_system.arena, "Open Folder in {}", GetFileBrowserAppName()),
                      .is_selected = false,
                  })) {
-        auto const find_folder = [&](u64 folder_hash) -> PresetFolder const* {
-            for (auto const& folder : context.presets_snapshot.folders)
-                if (folder.node.Hash() == folder_hash) return &folder.folder;
-            return nullptr;
-        };
+        if (auto const filepath = FindFolderByHash(context, menu_state.item_hash, box_system.arena))
+            OpenFolderInFileBrowser(*filepath);
+    }
 
-        if (auto const folder = find_folder(menu_state.item_hash)) {
-            OpenFolderInFileBrowser(
-                path::Join(box_system.arena, Array {folder->scan_folder, folder->folder}));
+    if (MenuItem(box_system,
+                 root,
+                 {
+                     .text = "Send folder to " TRASH_NAME,
+                     .is_selected = false,
+                 })) {
+        if (auto const folder_path = FindFolderByHash(context, menu_state.item_hash, box_system.arena)) {
+            // Clone the folder path using Malloc::Instance so it persists beyond this scope
+            auto cloned_path = Malloc::Instance().Clone(*folder_path);
+            DEFER { Malloc::Instance().Free(cloned_path.ToByteSpan()); };
+
+            dyn::AssignFitInCapacity(context.confirmation_dialog_state.title, "Delete Preset Folder");
+            fmt::Assign(
+                context.confirmation_dialog_state.body_text,
+                "Are you sure you want to delete the preset folder '{}'?\n\nThis will move the folder and all its contents to the {}.",
+                path::Filename(*folder_path),
+                TRASH_NAME);
+
+            context.confirmation_dialog_state.callback = [&error_notifications =
+                                                              context.engine.error_notifications,
+                                                          cloned_path](ConfirmationDialogResult result) {
+                if (result == ConfirmationDialogResult::Ok) {
+                    ArenaAllocatorWithInlineStorage<Kb(1)> scratch_arena {Malloc::Instance()};
+                    auto const outcome = TrashFileOrDirectory(cloned_path, scratch_arena);
+                    auto const error_id = HashMultiple(Array {"preset-folder-delete"_s, cloned_path});
+
+                    if (outcome.HasValue()) {
+                        error_notifications.RemoveError(error_id);
+                    } else if (auto item = error_notifications.BeginWriteError(error_id)) {
+                        DEFER { error_notifications.EndWriteError(*item); };
+                        item->title = "Failed to send preset folder to trash"_s;
+                        item->error_code = outcome.Error();
+                    }
+                }
+            };
+
+            context.confirmation_dialog_state.open = true;
+            state.common_state.open = false;
         }
     }
 }

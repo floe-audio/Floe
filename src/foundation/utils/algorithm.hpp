@@ -251,6 +251,11 @@ PUBLIC constexpr void Fill(ContiguousContainer auto& data, auto&& value) {
         v = value;
 }
 
+PUBLIC constexpr void Reverse(ContiguousContainer auto& data) {
+    for (usize i = 0; i < data.size / 2; ++i)
+        Swap(data[i], data[data.size - 1 - i]);
+}
+
 // compare_to_target follows the same requirements as stdlib bsearch():
 // [target](const Type &item) {
 //     if (item == target) return 0;

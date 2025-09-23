@@ -14,6 +14,7 @@
 #include "engine/engine.hpp"
 #include "gui/gui2_attribution_panel.hpp"
 #include "gui/gui2_bot_panel.hpp"
+#include "gui/gui2_confirmation_dialog.hpp"
 #include "gui/gui2_feedback_panel.hpp"
 #include "gui/gui2_info_panel.hpp"
 #include "gui/gui2_inst_picker.hpp"
@@ -417,6 +418,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
             DoFeedbackPanel(g->box_system, context, g->feedback_panel_state);
         }
 
+        DoConfirmationDialog(g->box_system, g->confirmation_dialog_state);
+
         {
             SavePresetPanelContext context {
                 .engine = g->engine,
@@ -483,6 +486,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
+                .confirmation_dialog_state = g->confirmation_dialog_state,
             };
             DoPresetPicker(g->box_system, context, g->preset_picker_state);
         }
