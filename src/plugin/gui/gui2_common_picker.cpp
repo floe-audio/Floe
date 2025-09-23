@@ -1231,16 +1231,6 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
         }
     }
 
-    if (options.current_tab_index) {
-        ASSERT(options.tab_config.size > 0);
-        DoModalTabBar(box_system,
-                      {
-                          .parent = root,
-                          .tabs = options.tab_config,
-                          .current_tab_index = *options.current_tab_index,
-                      });
-    }
-
     {
         auto const headings_row = DoBox(box_system,
                                         {

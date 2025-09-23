@@ -221,9 +221,6 @@ struct PickerPopupOptions {
     String item_type_name {}; // "instrument", "preset", etc.
     String items_section_heading {}; // "Instruments", "Presets", etc.
 
-    Span<ModalTabConfig const> tab_config {};
-    u32* current_tab_index;
-
     Optional<Button> rhs_top_button {};
     TrivialFunctionRef<void(GuiBoxSystem&)> rhs_do_items {};
     bool show_search {true};
