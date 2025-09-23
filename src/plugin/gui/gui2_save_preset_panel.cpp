@@ -130,7 +130,7 @@ bool DoTagsGui(GuiBoxSystem& box_system,
                           .text = tag_info.name,
                           .size_from_text = true,
                           .font = FontType::Body,
-                          .text_colours = {grey_out ? style::Colour::Overlay2 : style::Colour::Text},
+                          .text_colours = Splat(grey_out ? style::Colour::Overlay2 : style::Colour::Text),
                           .background_fill_colours = {is_selected ? style::Colour::Highlight
                                                                   : style::Colour::Background1},
                           .background_fill_auto_hot_active_overlay = true,
