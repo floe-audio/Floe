@@ -1105,7 +1105,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                     DEFER { error_notifications.EndWriteError(*err); };
                     err->error_code = CommonError::NotFound;
                     fmt::Assign(err->title, "{} library not found"_s, library_id);
-                    fmt::Append(
+                    fmt::Assign(
                         err->message,
                         "\"{}\" is not installed or is otherwise unavailable. Check your preferences or consult the library installation instructions.",
                         library_id);
