@@ -35,10 +35,10 @@
         },
         {
             "type": "lldb",
-            "request": "launch",
-            "name": "fl-studio",
+            "request": "attach",
+            "name": "attach-process",
             "runInTerminal": true,
-            "program": "/Applications/FL Studio 2024.app/Contents/MacOS/OsxFL",
+            "pid": "${command:pickProcess}",
             "args": []
         },
         {
