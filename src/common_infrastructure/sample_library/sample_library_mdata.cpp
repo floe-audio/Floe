@@ -72,7 +72,13 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
 
         auto parsed = Parse(json_string,
                             [&](EventHandlerStack&, Event const& event) {
-                                if (SetIfMatching(event, "description", library.tagline, arena)) return true;
+                                {
+                                    String tagline {};
+                                    if (SetIfMatchingRef(event, "description", tagline)) {
+                                        library.tagline = fmt::Format(arena, "{} (Mirage library)", tagline);
+                                        return true;
+                                    }
+                                }
 
                                 String url {};
                                 if (SetIfMatching(event, "url", url, arena)) {

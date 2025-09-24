@@ -378,8 +378,19 @@ Context::ScrollbarResult Context::Scrollbar(Window* window,
         }
     }
 
-    if (window->style.draw_routine_scrollbar)
-        window->style.draw_routine_scrollbar(*this, scrollbar_bb, scroll_r, id);
+    if (window->style.draw_routine_scrollbar) {
+        // Cuts all dimensions to integer bounds, but always shrinks the rectangle, never expands it.
+        auto const integer_bounds = [](Rect r) {
+            auto min = Ceil(r.pos);
+            auto max = Floor(r.Max());
+            return Rect::FromMinMax(min, max);
+        };
+
+        window->style.draw_routine_scrollbar(*this,
+                                             integer_bounds(scrollbar_bb),
+                                             integer_bounds(scroll_r),
+                                             id);
+    }
 
     return {
         .new_scroll_value = y_scroll_value,
@@ -672,11 +683,11 @@ void Context::Begin(WindowSettings settings) {
             window = window->parent_window;
         }
         if (final_window) {
-            f32 const k_pixels_per_line =
-                VwToPixels(20); // IMPROVE: this should be a setting so, for example, popups
-                                // can scroll in increments of each item
+            f32 const pixels_per_line = final_window->style.pixels_per_line >= 0
+                                            ? final_window->style.pixels_per_line
+                                            : VwToPixels(20);
             f32 const lines = -frame_input.mouse_scroll_delta_in_lines;
-            f32 const new_scroll = (lines * k_pixels_per_line) + final_window->scroll_offset.y;
+            f32 const new_scroll = (lines * pixels_per_line) + final_window->scroll_offset.y;
             final_window->scroll_offset.y = Round(Clamp(new_scroll, 0.0f, final_window->scroll_max.y));
         }
     }
@@ -713,6 +724,9 @@ void Context::Begin(WindowSettings settings) {
     } else {
         time_when_turned_hot = TimePoint {};
     }
+    keyboard_focus_item = temp_keyboard_focus_item;
+    temp_keyboard_focus_item = 0;
+    temp_keyboard_focus_item_is_popup = false;
 
     temp_active_item.just_activated = false;
     SetHotRaw(0);
@@ -884,7 +898,7 @@ void Context::End(ArenaAllocator& scratch_arena) {
     prev_popup_menu_just_created = popup_menu_just_created;
     popup_menu_just_created = 0;
 
-    frame_output.wants_keyboard_input = active_text_input != 0;
+    frame_output.wants_text_input = active_text_input != 0;
     frame_output.wants_mouse_capture = AnItemIsActive();
     frame_output.wants_mouse_scroll = true;
     frame_output.wants_all_left_clicks = focused_popup_window != nullptr || GetTextInput();
@@ -1116,6 +1130,21 @@ Window* Context::GetPopupFromID(Id id) {
     return nullptr;
 }
 
+bool Context::RequestKeyboardFocus(Id id) {
+    auto const inside_focused_popup =
+        curr_window == focused_popup_window || curr_window->root_window == focused_popup_window;
+
+    if (!inside_focused_popup && temp_keyboard_focus_item_is_popup) {
+        // We can never have focus because there's a popup open and that always has priority.
+        return false;
+    }
+
+    temp_keyboard_focus_item = id;
+    temp_keyboard_focus_item_is_popup = inside_focused_popup;
+
+    return IsKeyboardFocus(id);
+}
+
 bool Context::SetHot(Rect r, Id id, bool32 is_not_window_content) {
     // If there is a popup window focused and it is not this window we can leave
     // early as the popup has focus. (We also check that this current window is not
@@ -1157,6 +1186,7 @@ bool Context::SetHot(Rect r, Id id, bool32 is_not_window_content) {
 TextInputResult Context::TextInput(Rect r,
                                    Id id,
                                    String text_unfocused,
+                                   String placeholder_text,
                                    TextInputFlags flags,
                                    ButtonFlags button_flags,
                                    bool select_all_on_first_open) {
@@ -1225,8 +1255,9 @@ TextInputResult Context::TextInput(Rect r,
     if (IsHot(id)) frame_output.cursor_type = CursorType::IBeam;
 
     if (TextInputHasFocus(id)) {
-        if (frame_input.Key(KeyCode::Tab).presses.size && flags.tab_focuses_next_input &&
-            !tab_just_used_to_focus) {
+        RequestKeyboardFocus(id);
+        if (IsKeyboardFocus(id) && frame_input.Key(KeyCode::Tab).presses.size &&
+            flags.tab_focuses_next_input && !tab_just_used_to_focus) {
             tab_to_focus_next_input = true;
             tab_just_used_to_focus = true;
             SetTextInputFocus(0, {}, false);
@@ -1235,17 +1266,25 @@ TextInputResult Context::TextInput(Rect r,
         if ((active_item.id && active_item.id != id) || (temp_active_item.id && temp_active_item.id != id))
             SetTextInputFocus(0, {}, false);
 
-        if (!flags.multiline && frame_input.Key(KeyCode::Enter).presses.size) {
+        if (IsKeyboardFocus(id) && !flags.multiline &&
+            (frame_input.Key(KeyCode::Enter).presses.size ||
+             (flags.escape_unfocuses && frame_input.Key(KeyCode::Escape).presses.size))) {
             result.enter_pressed = true;
             SetTextInputFocus(0, {}, false);
         }
     }
 
     if (!TextInputHasFocus(id)) {
-        auto const text = TextInputJustUnfocused(id) ? String(textedit_text_utf8) : text_unfocused;
-        auto x_offset = get_offset(text);
+        if (TextInputJustUnfocused(id)) {
+            result.text = textedit_text_utf8;
+        } else if (text_unfocused.size) {
+            result.text = text_unfocused;
+        } else {
+            result.text = placeholder_text;
+            result.is_placeholder = true;
+        }
+        auto x_offset = get_offset(result.text);
         result.text_pos = get_text_pos(r, x_offset);
-        result.text = text;
         return result;
     }
 
@@ -1303,107 +1342,109 @@ TextInputResult Context::TextInput(Rect r,
         break;
     }
 
-    if (auto const backspaces = frame_input.Key(KeyCode::Backspace).presses_or_repeats; backspaces.size) {
-        for (auto const& event : backspaces)
-            stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_BACKSPACE | shift_bit(event));
-        result.buffer_changed = true;
-        reset_cursor = true;
-    }
-    if (auto const deletes = frame_input.Key(KeyCode::Delete).presses_or_repeats; deletes.size) {
-        for (auto const& event : deletes)
-            stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_DELETE | shift_bit(event));
-        result.buffer_changed = true;
-        reset_cursor = true;
-    }
-    if (auto const ends = frame_input.Key(KeyCode::End).presses_or_repeats; ends.size) {
-        for (auto const& event : ends)
-            stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_LINEEND | shift_bit(event));
-        result.buffer_changed = true;
-    }
-    if (auto const homes = frame_input.Key(KeyCode::Home).presses_or_repeats; homes.size) {
-        for (auto const& event : homes)
-            stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_LINESTART | shift_bit(event));
-        result.buffer_changed = true;
-    }
-    if (auto const zs = frame_input.Key(KeyCode::Z).presses_or_repeats; zs.size) {
-        for (auto const& event : zs)
-            if (event.modifiers.Get(ModifierKey::Modifier))
-                stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_UNDO | shift_bit(event));
-        result.buffer_changed = true;
-    }
-    if (auto const ys = frame_input.Key(KeyCode::Y).presses_or_repeats; ys.size) {
-        for (auto const& event : ys)
-            if (event.modifiers.Get(ModifierKey::Modifier))
-                stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_REDO | shift_bit(event));
-        result.buffer_changed = true;
-    }
-    if (auto const lefts = frame_input.Key(KeyCode::LeftArrow).presses_or_repeats; lefts.size) {
-        reset_cursor = true;
-        for (auto const event : lefts)
-            stb_textedit_key(
-                this,
-                &stb_state,
-                (event.modifiers.Get(ModifierKey::Modifier) ? STB_TEXTEDIT_K_WORDLEFT : STB_TEXTEDIT_K_LEFT) |
-                    shift_bit(event));
-    }
-    if (auto const rights = frame_input.Key(KeyCode::RightArrow).presses_or_repeats; rights.size) {
-        reset_cursor = true;
-        for (auto const event : rights)
-            stb_textedit_key(this,
-                             &stb_state,
-                             (event.modifiers.Get(ModifierKey::Modifier) ? STB_TEXTEDIT_K_WORDRIGHT
-                                                                         : STB_TEXTEDIT_K_RIGHT) |
-                                 shift_bit(event));
-    }
-    if (auto const ups = frame_input.Key(KeyCode::UpArrow).presses_or_repeats; ups.size) {
-        reset_cursor = true;
-        for (auto const event : ups)
-            stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_UP | shift_bit(event));
-    }
-    if (auto const downs = frame_input.Key(KeyCode::DownArrow).presses_or_repeats; downs.size) {
-        reset_cursor = true;
-        for (auto const event : downs)
-            stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_DOWN | shift_bit(event));
-    }
-    if (auto const vs = frame_input.Key(KeyCode::V).presses_or_repeats; vs.size) {
-        for (auto const event : vs) {
-            if (event.modifiers.Get(ModifierKey::Modifier)) {
-                frame_output.wants_clipboard_text_paste = true;
-                break;
+    if (IsKeyboardFocus(id)) {
+        if (auto const backspaces = frame_input.Key(KeyCode::Backspace).presses_or_repeats; backspaces.size) {
+            for (auto const& event : backspaces)
+                stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_BACKSPACE | shift_bit(event));
+            result.buffer_changed = true;
+            reset_cursor = true;
+        }
+        if (auto const deletes = frame_input.Key(KeyCode::Delete).presses_or_repeats; deletes.size) {
+            for (auto const& event : deletes)
+                stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_DELETE | shift_bit(event));
+            result.buffer_changed = true;
+            reset_cursor = true;
+        }
+        if (auto const ends = frame_input.Key(KeyCode::End).presses_or_repeats; ends.size) {
+            for (auto const& event : ends)
+                stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_LINEEND | shift_bit(event));
+            result.buffer_changed = true;
+        }
+        if (auto const homes = frame_input.Key(KeyCode::Home).presses_or_repeats; homes.size) {
+            for (auto const& event : homes)
+                stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_LINESTART | shift_bit(event));
+            result.buffer_changed = true;
+        }
+        if (auto const zs = frame_input.Key(KeyCode::Z).presses_or_repeats; zs.size) {
+            for (auto const& event : zs)
+                if (event.modifiers.Get(ModifierKey::Modifier))
+                    stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_UNDO | shift_bit(event));
+            result.buffer_changed = true;
+        }
+        if (auto const ys = frame_input.Key(KeyCode::Y).presses_or_repeats; ys.size) {
+            for (auto const& event : ys)
+                if (event.modifiers.Get(ModifierKey::Modifier))
+                    stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_REDO | shift_bit(event));
+            result.buffer_changed = true;
+        }
+        if (auto const lefts = frame_input.Key(KeyCode::LeftArrow).presses_or_repeats; lefts.size) {
+            reset_cursor = true;
+            for (auto const event : lefts)
+                stb_textedit_key(this,
+                                 &stb_state,
+                                 (event.modifiers.Get(ModifierKey::Modifier) ? STB_TEXTEDIT_K_WORDLEFT
+                                                                             : STB_TEXTEDIT_K_LEFT) |
+                                     shift_bit(event));
+        }
+        if (auto const rights = frame_input.Key(KeyCode::RightArrow).presses_or_repeats; rights.size) {
+            reset_cursor = true;
+            for (auto const event : rights)
+                stb_textedit_key(this,
+                                 &stb_state,
+                                 (event.modifiers.Get(ModifierKey::Modifier) ? STB_TEXTEDIT_K_WORDRIGHT
+                                                                             : STB_TEXTEDIT_K_RIGHT) |
+                                     shift_bit(event));
+        }
+        if (auto const ups = frame_input.Key(KeyCode::UpArrow).presses_or_repeats; ups.size) {
+            reset_cursor = true;
+            for (auto const event : ups)
+                stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_UP | shift_bit(event));
+        }
+        if (auto const downs = frame_input.Key(KeyCode::DownArrow).presses_or_repeats; downs.size) {
+            reset_cursor = true;
+            for (auto const event : downs)
+                stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_DOWN | shift_bit(event));
+        }
+        if (auto const vs = frame_input.Key(KeyCode::V).presses_or_repeats; vs.size) {
+            for (auto const event : vs) {
+                if (event.modifiers.Get(ModifierKey::Modifier)) {
+                    frame_output.wants_clipboard_text_paste = true;
+                    break;
+                }
             }
         }
-    }
-    if (auto const cs = frame_input.Key(KeyCode::C).presses_or_repeats; cs.size) {
-        for (auto const event : cs)
-            if (event.modifiers.Get(ModifierKey::Modifier)) {
-                copy_selection_to_clipboard();
-                break;
-            }
-    }
-    if (auto const xs = frame_input.Key(KeyCode::X).presses_or_repeats; xs.size) {
-        for (auto const event : xs)
-            if (event.modifiers.Get(ModifierKey::Modifier)) {
-                copy_selection_to_clipboard();
-                stb_textedit_cut(this, &stb_state);
-                result.buffer_changed = true;
-                break;
-            }
-    }
-    if (auto const as = frame_input.Key(KeyCode::A).presses_or_repeats; as.size) {
-        for (auto const event : as)
-            if (event.modifiers.Get(ModifierKey::Modifier)) {
-                TextInputSelectAll();
-                break;
-            }
-    }
-    if (auto const enters = frame_input.Key(KeyCode::Enter).presses_or_repeats; enters.size) {
-        if (flags.multiline) {
-            for (auto event : enters) {
-                if (event.modifiers.flags) continue;
-                result.enter_pressed = true;
-                result.buffer_changed = true;
-                reset_cursor = true;
-                stb_textedit_key(this, &stb_state, (int)'\n');
+        if (auto const cs = frame_input.Key(KeyCode::C).presses_or_repeats; cs.size) {
+            for (auto const event : cs)
+                if (event.modifiers.Get(ModifierKey::Modifier)) {
+                    copy_selection_to_clipboard();
+                    break;
+                }
+        }
+        if (auto const xs = frame_input.Key(KeyCode::X).presses_or_repeats; xs.size) {
+            for (auto const event : xs)
+                if (event.modifiers.Get(ModifierKey::Modifier)) {
+                    copy_selection_to_clipboard();
+                    stb_textedit_cut(this, &stb_state);
+                    result.buffer_changed = true;
+                    break;
+                }
+        }
+        if (auto const as = frame_input.Key(KeyCode::A).presses_or_repeats; as.size) {
+            for (auto const event : as)
+                if (event.modifiers.Get(ModifierKey::Modifier)) {
+                    TextInputSelectAll();
+                    break;
+                }
+        }
+        if (auto const enters = frame_input.Key(KeyCode::Enter).presses_or_repeats; enters.size) {
+            if (flags.multiline) {
+                for (auto event : enters) {
+                    if (event.modifiers.flags) continue;
+                    result.enter_pressed = true;
+                    result.buffer_changed = true;
+                    reset_cursor = true;
+                    stb_textedit_key(this, &stb_state, (int)'\n');
+                }
             }
         }
     }
@@ -1706,8 +1747,8 @@ bool Context::WasWindowJustUnhovered(Id id) {
     return !IsWindowHovered(id) && hovered_window_last_frame != nullptr &&
            hovered_window_last_frame->id == id;
 }
-bool Context::IsWindowHovered(Window* window) { return IsWindowHovered(window->id); }
-bool Context::IsWindowHovered(Id id) { return hovered_window != nullptr && hovered_window->id == id; }
+bool Context::IsWindowHovered(Window* window) const { return IsWindowHovered(window->id); }
+bool Context::IsWindowHovered(Id id) const { return hovered_window != nullptr && hovered_window->id == id; }
 
 void Context::BeginWindow(WindowSettings settings, Window* window, Rect r) {
     BeginWindow(settings, window, r, "");
@@ -1733,6 +1774,7 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     auto const no_scroll_x = (flags & WindowFlags_NoScrollbarX);
     auto const no_scroll_y = (flags & WindowFlags_NoScrollbarY);
     auto const draw_on_top = (flags & WindowFlags_DrawOnTop);
+    auto const scrollbar_inside_padding = (flags & WindowFlags_ScrollbarInsidePadding);
 
     ASSERT(r.x >= 0);
     ASSERT(r.y >= 0);
@@ -1764,7 +1806,8 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
                 if (!auto_height) {
                     bool const needs_yscroll =
                         window->prev_content_size.y > (r.h - window->style.TotalHeightPad());
-                    if (needs_yscroll) r.w += window->style.scrollbar_padding + window->style.scrollbar_width;
+                    if (needs_yscroll && !scrollbar_inside_padding)
+                        r.w += window->style.scrollbar_padding + window->style.scrollbar_width;
                 }
             }
         }
@@ -1775,19 +1818,23 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
                 if (!auto_width) {
                     bool const needs_xscroll =
                         window->prev_content_size.x > (r.w - window->style.TotalWidthPad());
-                    if (needs_xscroll) r.h += window->style.scrollbar_padding + window->style.scrollbar_width;
+                    if (needs_xscroll && !scrollbar_inside_padding)
+                        r.h += window->style.scrollbar_padding + window->style.scrollbar_width;
                 }
             }
         }
         if (auto_pos) {
             f32x2 size = r.size;
-            auto const scrollbar_size = window->style.scrollbar_width + window->style.scrollbar_padding;
 
-            bool const needs_xscroll = window->prev_content_size.x > r.w;
-            bool const needs_yscroll = window->prev_content_size.y > r.h;
+            if (!scrollbar_inside_padding) {
+                auto const scrollbar_size = window->style.scrollbar_width + window->style.scrollbar_padding;
 
-            if (needs_yscroll) size.x += scrollbar_size;
-            if (needs_xscroll) size.y += scrollbar_size;
+                bool const needs_xscroll = window->prev_content_size.x > r.w;
+                bool const needs_yscroll = window->prev_content_size.y > r.h;
+
+                if (needs_yscroll) size.x += scrollbar_size;
+                if (needs_xscroll) size.y += scrollbar_size;
+            }
 
             bool const has_parent_popup = curr_window && curr_window->flags & WindowFlags_Popup &&
                                           !(curr_window->flags & WindowFlags_ModalPopup);
@@ -1820,8 +1867,10 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     if (!(is_apopup || draw_on_top) && curr_window) RegisterAndConvertRect(&r);
     if (r.Bottom() > (f32)frame_input.window_size.height && is_apopup) {
         r.SetBottomByResizing((f32)frame_input.window_size.height - 1);
-        f32 const scrollbar_size = window->style.scrollbar_width + window->style.scrollbar_padding;
-        r.w += scrollbar_size;
+        if (!scrollbar_inside_padding) {
+            f32 const scrollbar_size = window->style.scrollbar_width + window->style.scrollbar_padding;
+            r.w += scrollbar_size;
+        }
         // IMPROVE: test properly sort what happens when a window is bigger than the screen
         auto_height = 0;
     }
@@ -1832,7 +1881,8 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
         window->bounds.pos += window->style.pad_top_left;
         window->bounds.size -= window->style.TotalPadSize();
     }
-    window->clipping_rect = window->bounds.Expanded(1);
+    auto constexpr k_clipping_expansion = 1.0f;
+    window->clipping_rect = window->bounds.Expanded(k_clipping_expansion);
 
     //
     // Handle parent
@@ -1876,7 +1926,6 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
         window->graphics = &window->root_window->local_graphics;
     }
     window->graphics = &window->local_graphics;
-    // window->graphics->is_dirty = true;
     window->graphics->BeginDraw();
     graphics = window->graphics;
 
@@ -1888,8 +1937,8 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     //
 
     if (is_apopup || draw_on_top) PushScissorStack();
-    PushRectToCurrentScissorStack(
-        window->visible_bounds); // temporarily while we doing drawing in this function
+    PushRectToCurrentScissorStack(window->visible_bounds.Expanded(
+        k_clipping_expansion)); // Temporarily while we doing drawing in this function
     PushID(window->id);
 
     if ((window->style.draw_routine_window_background ||
@@ -1905,9 +1954,10 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     // > Scrollbars
     //
 
-    f32 const scrollbar_size = window->style.scrollbar_width + window->style.scrollbar_padding;
+    f32 const scrollbar_size =
+        !scrollbar_inside_padding ? window->style.scrollbar_width + window->style.scrollbar_padding : 0;
     Rect bounds_for_scrollbar = window->bounds;
-    f32 const epsilon = 0.75f;
+    f32 const epsilon = 0.01f;
     window->has_yscrollbar =
         window->prev_content_size.y > (bounds_for_scrollbar.h + epsilon) && !window->y_contents_was_auto;
     window->has_xscrollbar =
@@ -1920,6 +1970,8 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
         if (!window->has_yscrollbar) window->scroll_offset.y = 0;
         window->has_yscrollbar = true;
     }
+
+    if (window->has_yscrollbar) window->clipping_rect.h -= 2;
 
     if (window->has_yscrollbar && !window->has_xscrollbar) {
         bounds_for_scrollbar.w -= scrollbar_size;
@@ -1945,11 +1997,15 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     }
 
     if (window->has_yscrollbar && !auto_height && !no_scroll_y) {
+        if (scrollbar_inside_padding) {
+            window->style.scrollbar_width = window->style.pad_bottom_right.x;
+            window->style.scrollbar_padding = 0;
+        }
         auto const result = Scrollbar(window,
                                       true,
-                                      bounds_for_scrollbar.y + settings.scrollbar_padding_top + 1,
+                                      bounds_for_scrollbar.y + settings.scrollbar_padding_top,
                                       bounds_for_scrollbar.h - (settings.scrollbar_padding_top * 2),
-                                      bounds_for_scrollbar.Right() - 1,
+                                      bounds_for_scrollbar.Right(),
                                       window->prev_content_size.y,
                                       window->scroll_offset.y,
                                       window->scroll_max.y,
@@ -1964,6 +2020,10 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     }
 
     if (window->has_xscrollbar && !auto_width && !no_scroll_x) {
+        if (scrollbar_inside_padding) {
+            window->style.scrollbar_width = window->style.pad_bottom_right.y;
+            window->style.scrollbar_padding = 0;
+        }
         auto const result = Scrollbar(window,
                                       false,
                                       bounds_for_scrollbar.x + settings.scrollbar_padding_top,
@@ -2119,7 +2179,10 @@ void Context::SetImguiTextEditState(String new_text, bool multiline) {
 }
 
 void Context::SetTextInputFocus(Id id, String new_text, bool multiline) {
+    bool update_needed = false;
+
     if (id == 0) {
+        update_needed = active_text_input != 0;
         active_text_input = id;
         stb_textedit_initialize_state(&stb_state, !multiline);
         ZeroMemory(textedit_text.data, sizeof(*textedit_text.data) * textedit_text.size);
@@ -2127,7 +2190,11 @@ void Context::SetTextInputFocus(Id id, String new_text, bool multiline) {
         active_text_input = id;
         SetImguiTextEditState(new_text, multiline);
         ResetTextInputCursorAnim();
+        active_text_input_shown = true;
+        update_needed = true;
     }
+
+    if (update_needed) frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
 }
 
 void Context::ResetTextInputCursorAnim() {
@@ -2304,7 +2371,7 @@ void Context::DebugWindow(Rect r) {
     sets.flags = 0;
     BeginWindow(sets, r, "TextWindow");
 
-    frame_output.wants_keyboard_input = true;
+    frame_output.wants_text_input = true;
 
     debug_y_pos = 0;
 
@@ -2452,8 +2519,13 @@ bool Context::PopupButton(ButtonSettings settings, Rect r, Id popup_id, String s
 
 TextInputResult Context::TextInput(TextInputSettings settings, Rect r, Id id, String str) {
     RegisterAndConvertRect(&r);
-    auto edit =
-        TextInput(r, id, str, settings.text_flags, settings.button_flags, settings.select_all_on_first_open);
+    auto edit = TextInput(r,
+                          id,
+                          str,
+                          ""_s,
+                          settings.text_flags,
+                          settings.button_flags,
+                          settings.select_all_on_first_open);
 
     settings.draw(*this, r, id, edit.text, &edit);
     return edit;
@@ -2474,6 +2546,7 @@ Context::DraggerResult Context::TextInputDraggerCustom(TextInputDraggerSettings 
     auto text_edit_result = TextInput(r,
                                       id,
                                       display_string,
+                                      ""_s,
                                       settings.text_input_settings.text_flags,
                                       settings.text_input_settings.button_flags,
                                       settings.text_input_settings.select_all_on_first_open);

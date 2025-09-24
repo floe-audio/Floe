@@ -211,6 +211,7 @@ void MidPanel(Gui* g) {
                     .unknown_library_icon = UnknownLibraryIcon(g),
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,
+                    .confirmation_dialog_state = g->confirmation_dialog_state,
                 };
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };
@@ -305,6 +306,7 @@ void MidPanel(Gui* g) {
                     .unknown_library_icon = UnknownLibraryIcon(g),
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,
+                    .confirmation_dialog_state = g->confirmation_dialog_state,
                 };
                 ir_context.Init(g->scratch_arena);
                 DEFER { ir_context.Deinit(); };

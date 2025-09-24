@@ -9,10 +9,12 @@
 
 #include "common_infrastructure/state/state_coding.hpp"
 
+constexpr bool k_skip_duplicate_presets = false;
+
 // If all presets in this folder and all subfolders use the same single library, return that library.
 static bool AllPresetsSingleLibrary(FolderNode const* node,
                                     Optional<sample_lib::LibraryIdRef>& single_library) {
-    if (auto const folder = node->user_data.As<PresetFolder const>()) {
+    if (auto const folder = node->user_data.As<PresetFolderListing const>()->folder) {
         if (folder->used_libraries.size > 3) return false;
         if (folder->used_libraries.size != 0) {
             ASSERT(folder->used_libraries.size == 1 || folder->used_libraries.size == 2 ||
@@ -55,23 +57,42 @@ Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& nod
     return k_nullopt;
 }
 
-Optional<PresetPackMetadata> MetadataForFolderNode(FolderNode const& node) {
-    Optional<PresetPackMetadata> metadata {};
-    if (auto const folder = node.user_data.As<PresetFolder const>()) {
-        if (folder->metadata)
-            metadata = *folder->metadata;
-        else if (auto const fallback = folder->fallback_metadata.Load(LoadMemoryOrder::Relaxed))
-            metadata = *fallback;
-    } else if (auto const m = node.user_data.As<PresetPackMetadata const>())
-        metadata = *m;
+PresetPackInfo const* PresetPackInfoForNode(FolderNode const& node) {
+    PresetPackInfo const* metadata {};
+    auto const listing = node.user_data.As<PresetFolderListing const>();
+    if (listing->folder && listing->folder->preset_pack_info)
+        metadata = &*listing->folder->preset_pack_info;
+    else if (listing->fallback_preset_pack_info)
+        metadata = listing->fallback_preset_pack_info;
     return metadata;
 }
 
-u64 FolderContentsHash(FolderNode const* node) {
+PresetPackInfo const* ContainingPresetPackInfo(FolderNode const* node) {
+    for (auto f = node; f; f = f->parent)
+        if (auto const info = PresetPackInfoForNode(*f); info) return info;
+    return nullptr;
+}
+
+bool IsInsideFolder(PresetFolderListing const* node, usize folder_node_hash) {
+    FolderNode const* possible_parent = nullptr;
+    for (auto f = &node->node; f; f = f->parent)
+        if (f->Hash() == folder_node_hash) {
+            possible_parent = f;
+            break;
+        }
+    if (!possible_parent) return false;
+
+    // The node and the possible parent must be in the same preset pack.
+    if (ContainingPresetPackInfo(&node->node) != ContainingPresetPackInfo(possible_parent)) return false;
+    return true;
+}
+
+static u64 FolderContentsHash(FolderNode const* node) {
     // Using XOR and only when we have an all_presets_hash means it doesn't matter about the order or exact
     // hierarchy of the tree.
     u64 hash = 0;
-    if (auto const folder = node->user_data.As<PresetFolder const>()) hash ^= folder->all_presets_hash;
+    if (auto const folder = node->user_data.As<PresetFolderListing const>()->folder)
+        hash ^= folder->all_presets_hash;
     for (auto n = node->first_child; n; n = n->next)
         hash ^= FolderContentsHash(n);
     return hash;
@@ -114,6 +135,7 @@ String PresetFolder::FullPathForPreset(PresetFolder::Preset const& preset, Alloc
 
 static Span<FolderNode> CloneFolderNodes(Span<FolderNode> folders, ArenaAllocator& arena) {
     auto result = arena.AllocateExactSizeUninitialised<FolderNode>(folders.size);
+    auto listings = arena.AllocateExactSizeUninitialised<PresetFolderListing>(folders.size);
 
     auto const old_pointer_to_new_pointer = [&](FolderNode const* old_node) -> FolderNode* {
         if (!old_node) return nullptr;
@@ -126,8 +148,15 @@ static Span<FolderNode> CloneFolderNodes(Span<FolderNode> folders, ArenaAllocato
         result[i].first_child = old_pointer_to_new_pointer(folders[i].first_child);
         result[i].next = old_pointer_to_new_pointer(folders[i].next);
 
-        // Clear out any PresetFolder pointers because they point to the old memory.
-        if (folders[i].user_data.As<PresetFolder const>()) result[i].user_data = {};
+        ASSERT(folders[i].user_data.As<PresetFolderListing>());
+        auto old_listing = folders[i].user_data.As<PresetFolderListing>();
+        PLACEMENT_NEW(&listings[i])
+        PresetFolderListing {
+            .folder = nullptr, // The folder points to the old arena, so we can't copy it.
+            .fallback_preset_pack_info = old_listing->fallback_preset_pack_info, // Static data.
+            .node = result[i],
+        };
+        result[i].user_data = TypeErasedUserData::Create(&listings[i]);
     }
 
     return result;
@@ -163,21 +192,27 @@ PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
     // reading and we don't have to do locking or reference counting.
     server.mutex.Lock();
     DEFER { server.mutex.Unlock(); };
-    auto folders = arena.AllocateExactSizeUninitialised<PresetFolderWithNode>(server.folders.size);
-    auto folders_nodes = CloneFolderNodes(server.folder_nodes, arena);
+
     ASSERT_EQ(server.folder_node_order_indices.size, server.folders.size);
-    for (auto const i : Range(server.folders.size)) {
+
+    auto folders_nodes = CloneFolderNodes(server.folder_nodes, arena);
+    auto preset_folders =
+        arena.AllocateExactSizeUninitialised<PresetFolderListing const*>(server.folders.size);
+    for (auto const i : Range(server.folder_node_order_indices.size)) {
         auto& node = folders_nodes[server.folder_node_order_indices[i]];
-        node.user_data = TypeErasedUserData::Create(server.folders[i]);
-        PLACEMENT_NEW(&folders[i])
-        PresetFolderWithNode {
-            .folder = *server.folders[i],
-            .node = node,
-        };
+        auto node_listing = node.user_data.As<PresetFolderListing>();
+        node_listing->folder = server.folders[i];
+        preset_folders[i] = node_listing;
     }
 
+    auto preset_packs =
+        arena.AllocateExactSizeUninitialised<FolderNode const*>(server.folder_node_preset_pack_indices.size);
+    for (auto const i : Range(server.folder_node_preset_pack_indices.size))
+        preset_packs[i] = &folders_nodes[server.folder_node_preset_pack_indices[i]];
+
     return {
-        .folders = folders,
+        .folders = preset_folders,
+        .preset_packs = preset_packs,
         .used_tags = {server.used_tags.table.Clone(arena, CloneType::Deep)},
         .used_libraries = {server.used_libraries.table.Clone(arena, CloneType::Deep)},
         .authors = {server.authors.table.Clone(arena, CloneType::Deep)},
@@ -252,7 +287,7 @@ static void AddPresetToFolder(PresetFolder& folder,
                                                                      folder.preset_array_capacity,
                                                                      folder.arena);
 
-    auto used_libraries = Set<sample_lib::LibraryIdRef>::Create(folder.arena, k_num_layers + 1);
+    auto used_libraries = OrderedSet<sample_lib::LibraryIdRef>::Create(folder.arena, k_num_layers + 1);
     auto used_library_authors = Set<String>::Create(folder.arena, k_num_layers + 1);
 
     for (auto const& inst_id : state.inst_ids) {
@@ -293,6 +328,7 @@ static void AddPresetToFolder(PresetFolder& folder,
                     .used_libraries = used_libraries,
                     .used_library_authors = used_library_authors,
                     .file_hash = file_hash,
+                    .full_path_hash = HashMultiple(Array {folder.scan_folder, folder.folder, entry.subpath}),
                     .file_extension = file_format == PresetFormat::Mirage
                                           ? (String)folder.arena.Clone(path::Extension(entry.subpath))
                                           : ""_s,
@@ -337,14 +373,44 @@ struct FoldersAggregateInfo {
         usize used = 0;
     };
 
+    struct ListingAllocator : Allocator {
+        Span<u8> DoCommand(AllocatorCommandUnion const& command) override {
+            CheckAllocatorCommandIsValid(command);
+
+            switch (command.tag) {
+                case AllocatorCommand::Allocate: {
+                    auto const& cmd = command.Get<AllocateCommand>();
+                    ASSERT(cmd.size == sizeof(PresetFolderListing));
+                    if (used == folders.size) return {};
+                    return Span<u8> {(u8*)&folders[used++], sizeof(PresetFolderListing)};
+                }
+
+                case AllocatorCommand::Free: {
+                    PanicIfReached();
+                    break;
+                }
+
+                case AllocatorCommand::Resize: {
+                    PanicIfReached();
+                    break;
+                }
+            }
+            return {};
+        }
+        Span<PresetFolderListing> folders;
+        usize used = 0;
+    };
+
     FoldersAggregateInfo(ArenaAllocator& arena, usize folders_used)
         : used_tags {arena}
         , used_libraries {arena}
         , authors {arena}
         , scan_folder_nodes {arena}
-        , folder_node_indices {arena} {
+        , folder_node_indices {arena}
+        , folder_node_preset_pack_indices {arena} {
         // We must know the full size up front so no reallocation happens.
         folder_node_allocator.folders = arena.AllocateExactSizeUninitialised<FolderNode>(folders_used);
+        listing_allocator.folders = arena.AllocateExactSizeUninitialised<PresetFolderListing>(folders_used);
     }
 
     // IMPORTANT: you must call this in sorted folder order so that the nodes are created in the same order as
@@ -370,7 +436,28 @@ struct FoldersAggregateInfo {
             // root.
             if (!node) node = root;
 
-            node->user_data = TypeErasedUserData::Create(&folder);
+            {
+                auto listing = listing_allocator.NewUninitialised<PresetFolderListing>();
+                PLACEMENT_NEW(listing)
+                PresetFolderListing {
+                    .folder = &folder,
+                    .node = *node,
+                };
+                node->user_data = TypeErasedUserData::Create(listing);
+            }
+
+            for (auto n = node->parent; n; n = n->parent) {
+                if (!n->user_data) {
+                    auto listing = listing_allocator.NewUninitialised<PresetFolderListing>();
+                    PLACEMENT_NEW(listing)
+                    PresetFolderListing {
+                        .folder = nullptr,
+                        .fallback_preset_pack_info = nullptr,
+                        .node = *n,
+                    };
+                    n->user_data = TypeErasedUserData::Create(listing);
+                }
+            }
 
             auto const index = CheckedCast<usize>(node - folder_node_allocator.folders.data);
             ASSERT(index < folder_node_allocator.used);
@@ -396,6 +483,275 @@ struct FoldersAggregateInfo {
         has_preset_type.Set(ToInt(preset.file_format));
     }
 
+    // Floe didn't use to have preset packs. To smooth the transition for users, we detect all the preset
+    // packs that existed before the Floe update and fill in the metadata for them.
+    static PresetPackInfo const* KnownPresetPackInfo(FolderNode const* node) {
+        auto const hash = FolderContentsHash(node);
+        LogDebug(ModuleName::PresetServer, "FolderContentsHash: {} -> {}", node->name, hash);
+        switch (hash) {
+            case 17797709789825583399ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.AbstractEnergy.Mirage"),
+                    .subtitle = "Factory presets for Abstract Energy (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 17678716117694255396ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.Wraith.Mirage"),
+                    .subtitle = "Factory presets for Wraith (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 4522276088530940864ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.ArcticStrings.Mirage"),
+                    .subtitle = "Factory presets for Arctic Strings (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 17067796986821586660ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.CinematicAtmosphereToolkit.Mirage"),
+                    .subtitle = "Factory presets for Cinematic Atmosphere Toolkit (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 1113295807784802420ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.DeepConjuring.Mirage"),
+                    .subtitle = "Factory presets for Deep Conjuring (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 14194170911065684425ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.FeedbackLoops.Mirage"),
+                    .subtitle = "Factory presets for Feedback Loops (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 10657727448210940357ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.IsolatedSignals.Mirage"),
+                    .subtitle = "Factory presets for Isolated Signals (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 5014338070805093321ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.LostReveries.Mirage"),
+                    .subtitle = "Factory presets for Lost Reveries (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 13346224102117216586ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.MusicBoxSuiteFree.Mirage"),
+                    .subtitle = "Factory presets for Music Box Suite Free (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 10450269504034189798ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.MusicBoxSuite.Mirage"),
+                    .subtitle = "Factory presets for Music Box Suite (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 12314029761590835424ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.Phoenix.Mirage"),
+                    .subtitle = "Factory presets for Phoenix (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 1979436314251425427ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.ScenicVibrations.Mirage"),
+                    .subtitle = "Factory presets for Scenic Vibrations (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 5617954846491642181ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.Slow.Mirage"),
+                    .subtitle = "Factory presets for Slow (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 4523343789936516079ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.SqueakyGate.Mirage"),
+                    .subtitle = "Factory presets for Squeaky Gate (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 15901798520857468560ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.Dreamstates.Mirage"),
+                    .subtitle = "Factory presets for Dreamstates (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 9622774010603600999ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.Paranormal.Mirage"),
+                    .subtitle = "Factory presets for Paranormal (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 2299133524087718373ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.ScareTactics.Mirage"),
+                    .subtitle = "Factory presets for Scare Tactics (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 3960283021267125531ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.SignalInterference.Mirage"),
+                    .subtitle = "Factory presets for Signal Interference (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 2834298600494183622ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.Terracotta.Mirage"),
+                    .subtitle = "Factory presets for Terracotta (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 7286607532220839066ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.WraithDemo.Mirage"),
+                    .subtitle = "Factory presets for Wraith Demo (Mirage presets)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 3719497291850758672ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.Dulcitone"),
+                    .subtitle = "Factory presets for Dulcitone"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 6899967127661925909ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.MusicBoxSuite"),
+                    .subtitle = "Factory presets for Music Box Suite (Floe edition)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 9336774792391258852ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.MusicBoxSuiteFree"),
+                    .subtitle = "Factory presets for Music Box Suite Free (Floe edition)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+            case 11142846282151865892ull: {
+                static constexpr PresetPackInfo k_metadata {
+                    .id = HashComptime("com.FrozenPlain.MusicBoxSuiteFree.Beta"),
+                    .subtitle = "Factory presets for Music Box Suite Free (Floe beta edition)"_s,
+                    .minor_version = 1,
+                };
+                return &k_metadata;
+            }
+        }
+        return nullptr;
+    }
+
+    void Finalise(ArenaAllocator& scratch_arena) {
+        for (auto [_, root, _] : scan_folder_nodes) {
+            // Add preset pack info for packs that we know existed before Floe had metadata files.
+            ForEachNode(root, [&](FolderNode* node) {
+                auto listing = node->user_data.As<PresetFolderListing>();
+                ASSERT(listing);
+                if (auto const metadata = KnownPresetPackInfo(node))
+                    listing->fallback_preset_pack_info = metadata;
+            });
+
+            DynamicArray<FolderNode*> miscellaneous_packs {scratch_arena};
+
+            // Add orphaned PresetFolder nodes to new "Miscellaneous" packs.
+            ForEachNode(root, [&](FolderNode* node) {
+                if (!node->user_data.As<PresetFolderListing>()->folder) return;
+
+                for (auto n = node; n; n = n->parent)
+                    if (PresetPackInfoForNode(*n)) return;
+
+                // The node is not part of any pack. We should see if we should create metadata for it
+                // by again walking up the tree, this time looking for the topmost parent that has a
+                // PresetFolder; we will put the metadata there.
+                DynamicArrayBounded<FolderNode*, k_max_nested_folders> lineage {};
+                DynamicArrayBounded<char, 512> lineage_str {};
+                for (auto n = node; n; n = n->parent) {
+                    dyn::Append(lineage, n);
+                    if (lineage_str.size) dyn::AppendSpan(lineage_str, " > ");
+                    dyn::AppendSpan(lineage_str, n->name);
+                }
+
+                LogDebug(ModuleName::PresetServer, "Folder {} lineage: {}", node->name, lineage_str);
+
+                // Walk back down the lineage looking for a PresetFolder, we use the topmost one we find.
+                for (usize i = lineage.size; i-- > 0;) {
+                    if (auto listing = lineage[i]->user_data.As<PresetFolderListing>(); listing->folder) {
+                        dyn::AppendIfNotAlreadyThere(miscellaneous_packs, lineage[i]);
+                        break;
+                    }
+                }
+            });
+
+            if (miscellaneous_packs.size) {
+                static constexpr PresetPackInfo k_miscellaneous_info {
+                    .id = HashComptime("misc"),
+                    .subtitle = "Miscellaneous Presets"_s,
+                };
+                auto const node = FirstCommonAncestor(miscellaneous_packs, scratch_arena);
+                auto listing = node->user_data.As<PresetFolderListing>();
+                listing->fallback_preset_pack_info = &k_miscellaneous_info;
+            }
+
+            ForEachNode(root, [&](FolderNode* node) {
+                if (auto m = PresetPackInfoForNode(*node)) {
+                    // Since we consider nesting of folders to be unimportant when identifying legacy packs,
+                    // we can end up with the subfolder having the same metadata as the parent. We don't want
+                    // to list both as separate packs so we walk up the tree to find the topmost folder with
+                    // the same metadata. This was quite common with the old Mirage factory presets which had
+                    // folders like LibraryName/Factory.
+                    for (; node->parent && PresetPackInfoForNode(*node->parent) == m; node = node->parent)
+                        ;
+                    auto const index = CheckedCast<usize>(node - folder_node_allocator.folders.data);
+                    dyn::AppendIfNotAlreadyThere(folder_node_preset_pack_indices, index);
+                }
+            });
+        }
+    }
+
     // Call under the mutex.
     void CopyToServer(PresetServer& server) const {
         server.used_tags.Assign(used_tags);
@@ -409,14 +765,18 @@ struct FoldersAggregateInfo {
             CloneFolderNodes(Span {folder_node_allocator.folders.data, folder_node_allocator.used},
                              server.folder_node_arena);
         server.folder_node_order_indices = server.folder_node_arena.Clone(folder_node_indices);
+        server.folder_node_preset_pack_indices =
+            server.folder_node_arena.Clone(folder_node_preset_pack_indices);
     }
 
     DynamicSet<String> used_tags;
     DynamicSet<sample_lib::LibraryIdRef> used_libraries;
     DynamicSet<String> authors;
     FolderNodeAllocator folder_node_allocator;
+    ListingAllocator listing_allocator;
     DynamicOrderedHashTable<String, FolderNode*> scan_folder_nodes;
     DynamicArray<usize> folder_node_indices;
+    DynamicArray<usize> folder_node_preset_pack_indices;
     Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
 };
 
@@ -442,209 +802,7 @@ AppendFolderAndPublish(PresetServer& server, PresetFolder* new_preset_folder, Ar
         info.AddFolder(*server.folders[folder_index]);
     }
     if (insert_point == server.folders.size) info.AddFolder(*new_preset_folder);
-
-    for (auto [_, root, _] : info.scan_folder_nodes) {
-        ForEachNode(root, [](FolderNode* node) {
-            static constexpr PresetPackMetadata k_unknown_metadata {
-                .id = 0,
-                .subtitle = "Preset folder"_s,
-                .minor_version = 0,
-            };
-            PresetPackMetadata const* metadata = &k_unknown_metadata;
-
-            auto const hash = FolderContentsHash(node);
-
-            switch (hash) {
-                case 17797709789825583399ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.AbstractEnergy.Mirage"),
-                        .subtitle = "Factory presets for Abstract Energy (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 17678716117694255396ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.Wraith.Mirage"),
-                        .subtitle = "Factory presets for Wraith (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 4522276088530940864ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.ArcticStrings.Mirage"),
-                        .subtitle = "Factory presets for Arctic Strings (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 4667280085194985230ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.CinematicAtmosphereToolkit.Mirage"),
-                        .subtitle = "Factory presets for Cinematic Atmosphere Toolkit (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 1113295807784802420ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.DeepConjuring.Mirage"),
-                        .subtitle = "Factory presets for Deep Conjuring (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 13092190651134260875ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.FeedbackLoops.Mirage"),
-                        .subtitle = "Factory presets for Feedback Loops (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 10657727448210940357ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.IsolatedSignals.Mirage"),
-                        .subtitle = "Factory presets for Isolated Signals (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 5014338070805093321ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.LostReveries.Mirage"),
-                        .subtitle = "Factory presets for Lost Reveries (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 13346224102117216586ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.MusicBoxSuiteFree.Mirage"),
-                        .subtitle = "Factory presets for Music Box Suite Free (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 10450269504034189798ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.MusicBoxSuite.Mirage"),
-                        .subtitle = "Factory presets for Music Box Suite (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 12314029761590835424ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.Phoenix.Mirage"),
-                        .subtitle = "Factory presets for Phoenix (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 1979436314251425427ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.ScenicVibrations.Mirage"),
-                        .subtitle = "Factory presets for Scenic Vibrations (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 5617954846491642181ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.Slow.Mirage"),
-                        .subtitle = "Factory presets for Slow (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 4523343789936516079ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.SqueakyGate.Mirage"),
-                        .subtitle = "Factory presets for Squeaky Gate (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 2834298600494183622ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.Terracotta.Mirage"),
-                        .subtitle = "Factory presets for Terracotta (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 7286607532220839066ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.WraithDemo.Mirage"),
-                        .subtitle = "Factory presets for Wraith Demo (Mirage edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 3719497291850758672ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.Dulcitone"),
-                        .subtitle = "Factory presets for Dulcitone"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 6899967127661925909ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.MusicBoxSuite"),
-                        .subtitle = "Factory presets for Music Box Suite (Floe edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 9336774792391258852ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.MusicBoxSuiteFree"),
-                        .subtitle = "Factory presets for Music Box Suite Free (Floe edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-                case 11142846282151865892ull: {
-                    static constexpr PresetPackMetadata k_metadata {
-                        .id = HashComptime("com.FrozenPlain.MusicBoxSuiteFree.Beta"),
-                        .subtitle = "Factory presets for Music Box Suite Free (Floe beta edition)"_s,
-                        .minor_version = 1,
-                    };
-                    metadata = &k_metadata;
-                    break;
-                }
-            }
-
-            if (metadata) {
-                if (!node->user_data)
-                    node->user_data = TypeErasedUserData::Create(metadata);
-                else if (auto folder = node->user_data.As<PresetFolder>())
-                    folder->fallback_metadata.Store(metadata, StoreMemoryOrder::Relaxed);
-            }
-        });
-    }
+    info.Finalise(scratch_arena);
 
     server.mutex.Lock();
     DEFER { server.mutex.Unlock(); };
@@ -663,8 +821,9 @@ static void RemoveFolderAndPublish(PresetServer& server, usize index, ArenaAlloc
 
     auto& folder = *server.folders[index];
     folder.delete_after_version = server.published_version.Load(LoadMemoryOrder::Relaxed);
-    for (auto const& preset : folder.presets)
-        server.preset_file_hashes.Delete(preset.file_hash);
+    if constexpr (k_skip_duplicate_presets)
+        for (auto const& preset : folder.presets)
+            server.preset_file_hashes.Delete(preset.file_hash);
 
     FoldersAggregateInfo info {scratch_arena,
                                ((server.folders.size + 1) * k_max_nested_folders) + server.scan_folders.size};
@@ -672,6 +831,7 @@ static void RemoveFolderAndPublish(PresetServer& server, usize index, ArenaAlloc
         if (existing_folder == &folder) continue;
         info.AddFolder(*existing_folder);
     }
+    info.Finalise(scratch_arena);
 
     server.mutex.Lock();
     DEFER { server.mutex.Unlock(); };
@@ -702,7 +862,7 @@ CreatePresetFolder(PresetServer& server, String scan_folder, String subfolder_of
     return preset_folder;
 }
 
-static ErrorCodeOr<PresetPackMetadata>
+static ErrorCodeOr<PresetPackInfo>
 ReadMetadataFile(String path, ArenaAllocator& arena, ArenaAllocator& scratch_arena) {
     auto const file_data = TRY(ReadEntireFile(path, scratch_arena));
     return ParseMetadataFile(file_data, arena);
@@ -744,7 +904,7 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
         if (path::Equal(entry.subpath, k_metadata_filename)) {
             if (!preset_folder)
                 preset_folder = CreatePresetFolder(server, scan_folder.path, subfolder_of_scan_folder);
-            preset_folder->metadata =
+            preset_folder->preset_pack_info =
                 TRY_OR(ReadMetadataFile(path::Join(scratch_arena, Array {absolute_folder, entry.subpath}),
                                         preset_folder->arena,
                                         scratch_arena),
@@ -766,8 +926,10 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
 
         auto const file_hash = XXH3_64bits(file_data.data, file_data.size) + Hash((String)entry.subpath);
 
-        if (server.preset_file_hashes.Contains(file_hash)) continue;
-        server.preset_file_hashes.Insert(file_hash);
+        if constexpr (k_skip_duplicate_presets) {
+            if (server.preset_file_hashes.Contains(file_hash)) continue;
+            server.preset_file_hashes.Insert(file_hash);
+        }
 
         auto reader = Reader::FromMemory(file_data);
         auto const snapshot = TRY_OR(LoadPresetFile(*preset_format, reader, scratch_arena, true), continue);

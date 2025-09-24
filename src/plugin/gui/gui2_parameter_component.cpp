@@ -23,7 +23,8 @@ static void DoMidiLearnMenu(Gui* g, ParamIndex param_index) {
                  {
                      .text = "Set to Default Value",
                      .tooltip = "Set the parameter to its default value"_s,
-                 })) {
+                 })
+            .button_fired) {
         SetParameterValue(g->engine.processor,
                           param_index,
                           k_param_descriptors[ToInt(param_index)].default_linear_value,
@@ -35,7 +36,8 @@ static void DoMidiLearnMenu(Gui* g, ParamIndex param_index) {
                  {
                      .text = "Enter Value",
                      .tooltip = "Open a text input to enter a value for the parameter"_s,
-                 })) {
+                 })
+            .button_fired) {
         g->param_text_editor_to_open = param_index;
     }
 
@@ -45,7 +47,8 @@ static void DoMidiLearnMenu(Gui* g, ParamIndex param_index) {
                      {
                          .text = "Cancel MIDI CC Learn",
                          .tooltip = "Cancel waiting for CC to learn"_s,
-                     })) {
+                     })
+                .button_fired) {
             CancelMidiCCLearn(g->engine.processor);
         }
     } else if (MenuItem(g->box_system,
@@ -53,7 +56,8 @@ static void DoMidiLearnMenu(Gui* g, ParamIndex param_index) {
                         {
                             .text = "MIDI CC Learn",
                             .tooltip = "Assign the next MIDI CC message received to this parameter"_s,
-                        })) {
+                        })
+                   .button_fired) {
         LearnMidiCC(g->engine.processor, param_index);
     }
 
@@ -69,7 +73,8 @@ static void DoMidiLearnMenu(Gui* g, ParamIndex param_index) {
                          .text = fmt::Format(g->scratch_arena, "Remove MIDI CC {}", cc_num),
                          .tooltip = "Remove the MIDI CC assignment for this parameter"_s,
                          .close_on_click = closes_popups,
-                     })) {
+                     })
+                .button_fired) {
             UnlearnMidiCC(g->engine.processor, param_index, (u7)cc_num);
         }
 
@@ -84,7 +89,8 @@ static void DoMidiLearnMenu(Gui* g, ParamIndex param_index) {
                              .tooltip = "Set this MIDI CC to this parameter value when Floe starts"_s,
                              .is_selected = state,
                              .close_on_click = closes_popups,
-                         })) {
+                         })
+                    .button_fired) {
                 state = !state;
                 if (state)
                     AddPersistentCcToParamMapping(g->prefs, (u8)cc_num, ParamIndexToId(param_index));
@@ -220,17 +226,6 @@ Box DoParameterComponent(Gui* g,
         if (g->param_text_editor_to_open && *g->param_text_editor_to_open == param.info.index) {
             g->param_text_editor_to_open.Clear();
             g->imgui.SetTextInputFocus(container.imgui_id, display_string, false);
-            g->frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
-
-            // This is a nasty hack. We have to set focus after DoBox because we need the imgui_id DoBox
-            // returns. But setting focus after running the text input, the system discards the focus
-            // at the end of the frame because it never sees the ID was actually used. (It does this because
-            // it's useful to deactivate inputs that have gone out of view). The workaround is the run a dummy
-            // input here. Next frame it will continue as normal with correct focus.
-            g->imgui.TextInput({.draw = [](IMGUI_DRAW_TEXT_INPUT_ARGS) {}},
-                               *BoxRect(builder, container),
-                               container.imgui_id,
-                               display_string);
         }
     }
 

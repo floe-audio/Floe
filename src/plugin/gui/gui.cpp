@@ -180,7 +180,7 @@ static void DoStandaloneErrorGUI(Gui* g) {
             error_window_open = false;
     }
     if (floe_ext->standalone_midi_device_error) {
-        imgui.frame_output.wants_keyboard_input = true;
+        imgui.frame_output.wants_text_input = true;
         if (platform->modifiers.Get(ModifierKey::Shift)) {
             auto gen_midi_message = [&](bool on, u7 key) {
                 if (on)
@@ -440,6 +440,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .libraries =
                     sample_lib_server::AllLibrariesRetained(g->shared_engine_systems.sample_library_server,
                                                             g->scratch_arena),
+                .error_notifications = g->engine.error_notifications,
+                .confirmation_dialog_state = g->confirmation_dialog_state,
             };
             DEFER { sample_lib_server::ReleaseAll(context.libraries); };
 
@@ -467,6 +469,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
                     .unknown_library_icon = UnknownLibraryIcon(g),
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,
+                    .confirmation_dialog_state = g->confirmation_dialog_state,
                 };
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };
@@ -500,6 +503,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
+                .confirmation_dialog_state = g->confirmation_dialog_state,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };

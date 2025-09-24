@@ -1,7 +1,7 @@
-#include "preset-pack-metadata.hpp"
+#include "preset_pack_info.hpp"
 
-PresetPackMetadata ParseMetadataFile(String file_data, ArenaAllocator& arena) {
-    PresetPackMetadata metadata {};
+PresetPackInfo ParseMetadataFile(String file_data, ArenaAllocator& arena) {
+    PresetPackInfo metadata {};
 
     for (auto line : SplitIterator {.whole = file_data, .token = '\n', .skip_consecutive = true}) {
         line = WhitespaceStripped(line);

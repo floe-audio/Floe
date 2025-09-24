@@ -65,6 +65,10 @@ void FreeFolderNode(FolderNode const* folder, FolderNodeAllocators const& alloca
 void SetParent(FolderNode* folder, FolderNode* parent);
 void SortFolderTree(FolderNode* root);
 
+// Returns the node that is the first common ancestor of all the nodes. IMPORTANT: all nodes must have the
+// same single top-level node.
+FolderNode* FirstCommonAncestor(Span<FolderNode*> nodes, ArenaAllocator& scratch_arena);
+
 PUBLIC bool IsInsideFolder(FolderNode const* node, usize folder_hash) {
     for (auto f = node; f; f = f->parent)
         if (f->Hash() == folder_hash) return true;

@@ -23,9 +23,12 @@ using Id = u64;
 
 struct Value {
     template <Arithmetic T>
-    T ValueAs() const {
-        ASSERT_EQ(data.size, sizeof(T));
-        return *(T const*)data.data;
+    Optional<T> TryGetValueAs() const {
+        if (data.size != sizeof(T)) return k_nullopt;
+        // It might not be aligned, so we need to copy it.
+        T result;
+        __builtin_memcpy_inline(&result, data.data, sizeof(T));
+        return result;
     }
 
     template <Arithmetic T>
@@ -35,7 +38,7 @@ struct Value {
         return false;
     }
 
-    Span<u8 const> data;
+    Span<u8 const> data; // Probably not aligned.
     Value* next;
 };
 
@@ -82,6 +85,14 @@ using Result = TaggedUnion<GetResult, TypeAndTag<Value const*, GetResult::Found>
 Result Get(Store& store, Id id);
 
 // Main-thread.
+template <Arithmetic T>
+PUBLIC Optional<T> GetValueAs(Store& store, Id id) {
+    auto const r = Get(store, id);
+    if (r.tag != GetResult::Found) return k_nullopt;
+    return r.Get<Value const*>()->TryGetValueAs<T>();
+}
+
+// Main-thread.
 void AddValue(Store& store, Id id, Span<u8 const> data);
 
 // Main-thread.
@@ -92,6 +103,11 @@ PUBLIC void AddValue(Store& store, Id id, T value) {
 
 // Main-thread.
 void RemoveValue(Store& store, Id id, Optional<Span<u8 const>> value);
+
+// Main-thread.
+PUBLIC bool GetFlag(Store& store, Id id) { return Get(store, id).tag == GetResult::Found; }
+PUBLIC void AddFlag(Store& store, Id id) { AddValue(store, id, {}); }
+PUBLIC void RemoveFlag(Store& store, Id id) { RemoveValue(store, id, k_nullopt); }
 
 // Background thread.
 void StoreActualFileModifiedTime(Store& store);

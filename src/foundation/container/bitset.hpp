@@ -22,6 +22,7 @@ struct Bitset {
 
     constexpr Bitset() = default;
     constexpr Bitset(ElementType v) : elements() { elements[0] = v; }
+    constexpr Bitset(ContiguousContainer auto const& bits) : elements() { SetBits(bits); }
 
     template <usize k_result_bits>
     Bitset<k_result_bits> Subsection(usize offset) const {
@@ -45,6 +46,11 @@ struct Bitset {
             Set(bit);
         else
             Clear(bit);
+    }
+
+    constexpr void SetBits(ContiguousContainer auto const& bits) {
+        for (auto const bit : bits)
+            Set((usize)bit);
     }
 
     constexpr void Clear(usize bit) {

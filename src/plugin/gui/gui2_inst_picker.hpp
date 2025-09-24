@@ -4,6 +4,7 @@
 
 #include "engine/engine.hpp"
 #include "gui/gui2_common_picker.hpp"
+#include "gui/gui2_confirmation_dialog_state.hpp"
 #include "gui/gui2_inst_picker_state.hpp"
 #include "gui/gui_library_images.hpp"
 #include "gui_framework/gui_box_system.hpp"
@@ -25,6 +26,7 @@ struct InstPickerContext {
     Optional<graphics::ImageID>& unknown_library_icon;
     Notifications& notifications;
     persistent_store::Store& persistent_store;
+    ConfirmationDialogState& confirmation_dialog_state;
 
     Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;
 };

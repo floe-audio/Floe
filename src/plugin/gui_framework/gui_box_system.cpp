@@ -3,6 +3,7 @@
 
 #include "gui_box_system.hpp"
 
+#include "gui/gui_drawing_helpers.hpp"
 #include "image.hpp"
 
 static f32 HeightOfWrappedText(GuiBoxSystem& box_system, layout::Id id, f32 width) {
@@ -31,12 +32,35 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
     ZoneScoped;
     if (!panel) return;
 
-    f32 const scrollbar_width = builder.imgui.VwToPixels(8);
+    f32 const scrollbar_width = builder.imgui.VwToPixels(6);
     f32 const scrollbar_padding = Max(2.0f, builder.imgui.VwToPixels(style::k_scrollbar_rhs_space));
     imgui::DrawWindowScrollbar* const draw_scrollbar = [](IMGUI_DRAW_WINDOW_SCROLLBAR_ARGS) {
-        u32 handle_col = style::Col(style::Colour::Surface1);
-        if (imgui.IsHotOrActive(id)) handle_col = style::Col(style::Colour::Surface2);
-        imgui.graphics->AddRectFilled(handle_rect.Min(), handle_rect.Max(), handle_col, imgui.VwToPixels(4));
+        if (imgui.IsWindowHovered(imgui.CurrentWindow()) || imgui.IsActive(id)) {
+            auto const hot_or_active = imgui.IsHotOrActive(id);
+            auto const rounding = imgui.VwToPixels(4);
+
+            // Channel.
+            if (hot_or_active) {
+                u32 col = style::Col(style::Colour::Background2);
+                imgui.graphics->AddRectFilled(bounds.Min(), bounds.Max(), col, rounding);
+            }
+
+            // Handle.
+            {
+                u32 handle_col = style::Col(style::Colour::Surface1);
+                if (hot_or_active) handle_col = style::Col(style::Colour::Overlay0);
+                if (imgui.CurrentWindow()->style.flags & imgui::WindowFlags_ScrollbarInsidePadding) {
+                    auto const pad_l = imgui.VwToPixels(hot_or_active ? 1 : 3.0f);
+                    auto const pad_r = 0;
+                    auto const total_pad = pad_l + pad_r;
+                    if (handle_rect.w > total_pad) {
+                        handle_rect.x += pad_l;
+                        handle_rect.w -= total_pad;
+                    }
+                }
+                imgui.graphics->AddRectFilled(handle_rect.Min(), handle_rect.Max(), handle_col, rounding);
+            }
+        }
     };
 
     imgui::DrawWindowBackground* const draw_window = [](IMGUI_DRAW_WINDOW_BG_ARGS) {
@@ -80,16 +104,19 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
     switch (panel->data.tag) {
         case PanelType::Subpanel: {
             auto const& subpanel = panel->data.Get<Subpanel>();
-            auto rect = panel->rect;
-            if (!rect) {
-                // If the Subpanel is the first panel of this current box system, we need can just use the
-                // given rect if there is one.
-                rect = subpanel.rect;
-            }
-            auto const size = rect->size;
+            // If the Subpanel is the first panel of this current box system, we can just use the
+            // given rect if there is one.
+            auto const rect = panel->rect.OrElse([&]() { return subpanel.rect.Value(); });
+            auto const size = rect.size;
             ASSERT(All(size > 0));
-            regular_window_settings.flags = subpanel.flags;
-            builder.imgui.BeginWindow(regular_window_settings, subpanel.imgui_id, *rect);
+            regular_window_settings.flags |= subpanel.flags;
+            regular_window_settings.pad_top_left =
+                builder.imgui.VwToPixels(f32x2 {subpanel.padding.l, subpanel.padding.t});
+            regular_window_settings.pad_bottom_right =
+                builder.imgui.VwToPixels(f32x2 {subpanel.padding.r, subpanel.padding.b});
+            regular_window_settings.pixels_per_line =
+                builder.imgui.VwToPixels(subpanel.line_height_for_scroll_wheel);
+            builder.imgui.BeginWindow(regular_window_settings, subpanel.imgui_id, rect);
             break;
         }
         case PanelType::Modal: {
@@ -111,10 +138,7 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
                 if (modal.close_on_click_outside) {
                     if (builder.imgui.IsWindowHovered(invis_window)) {
                         builder.imgui.frame_output.cursor_type = CursorType::Hand;
-                        if (builder.imgui.frame_input.Mouse(MouseButton::Left).presses.size) {
-                            [[maybe_unused]] int b = 0;
-                            modal.on_close();
-                        }
+                        if (builder.imgui.frame_input.Mouse(MouseButton::Left).presses.size) modal.on_close();
                     }
                 }
             }
@@ -126,6 +150,13 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
             if (modal.transparent_panel) settings.draw_routine_window_background = {};
 
             builder.imgui.BeginWindow(settings, modal.imgui_id, modal.r);
+
+            if (modal.close_on_esc) {
+                builder.imgui.frame_output.wants_keyboard_keys.Set(ToInt(KeyCode::Escape));
+                if (builder.imgui.RequestKeyboardFocus(modal.imgui_id))
+                    if (builder.imgui.frame_input.Key(KeyCode::Escape).presses.size) modal.on_close();
+            }
+
             break;
         }
         case PanelType::Popup: {
@@ -246,7 +277,12 @@ static f32x2 AlignWithin(Rect container, f32x2 size, TextAlignX align_x, TextAli
     return result;
 }
 
-static bool Tooltip(GuiBoxSystem& builder, imgui::Id id, Rect r, TooltipString tooltip_str) {
+static bool Tooltip(GuiBoxSystem& builder,
+                    imgui::Id id,
+                    Rect r,
+                    Optional<Rect> additional_avoid_r,
+                    TooltipString tooltip_str,
+                    bool show_left_or_right) {
     ZoneScoped;
     if (!builder.show_tooltips) return false;
     if (tooltip_str.tag == TooltipStringType::None) return false;
@@ -283,8 +319,12 @@ static bool Tooltip(GuiBoxSystem& builder, imgui::Id id, Rect r, TooltipString t
         auto text_size = draw::GetTextSize(font, str, imgui.VwToPixels(style::k_tooltip_max_width));
 
         Rect popup_r;
-        popup_r.x = r.x;
-        popup_r.y = r.y + r.h;
+        if (!show_left_or_right) {
+            popup_r.x = r.x;
+            popup_r.y = r.y + r.h;
+        } else {
+            popup_r.pos = r.pos;
+        }
         popup_r.w = text_size.x + pad_x * 2;
         popup_r.h = text_size.y + pad_y * 2;
 
@@ -293,7 +333,13 @@ static bool Tooltip(GuiBoxSystem& builder, imgui::Id id, Rect r, TooltipString t
         // Shift the x so that it's centred on the cursor.
         popup_r.x = cursor_pos.x - popup_r.w / 2;
 
-        popup_r.pos = imgui::BestPopupPos(popup_r, r, imgui.frame_input.window_size.ToFloat2(), false);
+        auto avoid_r = r;
+        if (additional_avoid_r) avoid_r = Rect::MakeRectThatEnclosesRects(avoid_r, *additional_avoid_r);
+
+        popup_r.pos = imgui::BestPopupPos(popup_r,
+                                          avoid_r,
+                                          imgui.frame_input.window_size.ToFloat2(),
+                                          show_left_or_right);
 
         f32x2 text_start;
         text_start.x = popup_r.x + pad_x;
@@ -427,10 +473,12 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                     rect,
                     box.imgui_id,
                     config.text,
+                    config.text_input_placeholder_text,
                     ({
                         imgui::TextInputFlags f {
                             .x_padding = builder.imgui.VwToPixels(config.text_input_x_padding),
                             .centre_align = (config.text_align_x == TextAlignX::Centre),
+                            .escape_unfocuses = true,
                         };
                         if (config.multiline_text_input) {
                             f.multiline = true;
@@ -439,13 +487,9 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                         f;
                     }),
                     button_flags,
-                    false);
+                    config.text_input_select_all_on_focus);
                 box.is_active = builder.imgui.TextInputHasFocus(box.imgui_id);
                 box.is_hot = builder.imgui.IsHot(box.imgui_id);
-                if (box.is_hot) {
-                    int b = 0;
-                    (void)b;
-                }
                 box.text_input_result = &builder.state->last_text_input_result;
             }
 
@@ -699,11 +743,19 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                                                 wrap_width == k_wrap_to_parent ? rect.w : wrap_width);
             }
 
-            if (config.tooltip.tag != TooltipStringType::None)
+            if (config.tooltip.tag != TooltipStringType::None) {
+                Optional<Rect> additional_avoid_r = {};
+                if (config.tooltip_avoid_window_id != 0) {
+                    if (auto w = builder.imgui.FindWindow(config.tooltip_avoid_window_id))
+                        additional_avoid_r = w->visible_bounds;
+                }
                 Tooltip(builder,
                         config.parent_dictates_hot_and_active ? config.parent->imgui_id : box.imgui_id,
                         rect,
-                        config.tooltip);
+                        additional_avoid_r,
+                        config.tooltip,
+                        config.tooltip_show_left_or_right);
+            }
 
             return box;
         }
@@ -717,8 +769,7 @@ void DrawTextInput(GuiBoxSystem& builder, Box const& box, DrawTextInputConfig co
 
     auto input_result = box.text_input_result;
 
-    // This shouldn't be null, but it can happen due to something with DoBox's early return when the box is
-    // not visible.
+    // Not normally null, but it can happen due to DoBox's early return when the box is not visible.
     if (!input_result) return;
 
     if (input_result->HasSelection()) {
@@ -734,9 +785,10 @@ void DrawTextInput(GuiBoxSystem& builder, Box const& box, DrawTextInputConfig co
         builder.imgui.graphics->AddRectFilled(cursor_r.Min(), cursor_r.Max(), style::Col(config.cursor_col));
     }
 
-    builder.imgui.graphics->AddText(input_result->GetTextPos(),
-                                    style::Col(config.text_col),
-                                    input_result->text);
+    builder.imgui.graphics->AddText(
+        input_result->GetTextPos(),
+        colours::WithAlpha(style::Col(config.text_col), input_result->is_placeholder ? 140 : 255),
+        input_result->text);
 }
 
 bool AdditionalClickBehaviour(GuiBoxSystem& box_system,

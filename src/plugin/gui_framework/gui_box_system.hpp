@@ -6,7 +6,6 @@
 #include "utils/debug/tracy_wrapped.hpp"
 
 #include "fonts.hpp"
-#include "gui/gui_drawing_helpers.hpp"
 #include "gui_imgui.hpp"
 #include "layout.hpp"
 #include "style.hpp"
@@ -16,13 +15,19 @@
 //
 // This is a new GUI system that we intend to use universally. For now only a couple of parts use it.
 //
-// This API is a mostly a wrapper on top of the existing GUI systems. When we do the GUI overhaul the
-// underlying systems will improve makes some aspects of this API better.
+// This API is built on top of our IMGUI and layout systems. It offers a higher-level API for making complete
+// UI elements using the flexbox-like layout system, drawing config, and input handling behaviour (button
+// behaviour, slider behaviour, etc.).
 //
-// It's an IMGUI system. No state is shared across frames, but within each frame we create a tree of boxes and
-// perform flexbox-like layout on them. This 2-pass approach (1. layout, 2. handle input + render) is
-// transparent to the user of this API. They just define layout, input-handling and rendering all in the same
-// place.
+// In order to have a single codepath for both layout and input-handling/rendering, we use a 2-pass approach.
+// This means that your functions that build the GUI are actually called twice per frame - this is almost
+// entirely a technical detail, though occasionally you need to be aware of it if you want to add some custom
+// rendering or input-handling (which must be done in the second pass). This is also why we
+// TrivialFixedSizeFunction as part of the API - we need to call the function twice at different stages.
+//
+// 1. The first pass is the layout pass where we build a tree of boxes and perform layout on them. No input or
+//    rendering should be done here.
+// 2. The second pass is the input-handling and rendering pass. At this point we have the layout data.
 //
 // An overview of the system:
 // - Panels correspond to the Windows in our current imgui system, accessing some functionality from them:
@@ -30,14 +35,12 @@
 //   things but for now they are. They contain a set of boxes and optionally subpanels. Each panel has a
 //   'panel function'. This is where everything happens. In a panel function you can add other panels - these
 //   will be run after the current panel.
-// - Boxes are the basic building block of the system. Boxes are configured using a bit BoxConfig struct.
-//   Designated initialisers are great and this whole system relies on them.
+// - Boxes are the basic building block of the system. Boxes are configured using a BoxConfig struct.
+//   C++ designated initialiser syntax is great and this whole system leans into it.
 //
 // IMPORTANT: you must have the same boxes in the same order within every frame. For example if you are
 // getting data from an external function that may produce different results based on when it's called, and
 // building boxes based on it, cache the data and use that.
-//
-// The flexbox-like layout system is in layout.hpp.
 //
 
 struct GuiBoxSystem;
@@ -55,6 +58,8 @@ struct Subpanel {
     Optional<Rect> rect; // Instead of id. Relative to the parent panel.
     imgui::Id imgui_id;
     imgui::WindowFlags flags;
+    layout::Margins padding;
+    f32 line_height_for_scroll_wheel; // 0 = default
     String debug_name;
 };
 
@@ -69,6 +74,7 @@ struct ModalPanel {
     bool auto_height;
     bool auto_position; // If true, r will be the rect to avoid.
     bool transparent_panel;
+    bool close_on_esc = true;
 };
 
 struct PopupPanel {
@@ -137,6 +143,11 @@ struct BoxSystemCurrentPanelState {
 };
 
 struct GuiBoxSystem {
+    bool LayoutPass() const { return state->pass == BoxSystemCurrentPanelState::Pass::LayoutBoxes; }
+    bool InputAndRenderPass() const {
+        return state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender;
+    }
+
     ArenaAllocator& arena;
     imgui::Context& imgui;
     Fonts& fonts;
@@ -186,7 +197,7 @@ inline Colours Splat(style::Colour colour) {
 enum class Behaviour : u8 {
     None = 0,
 
-    // Button behaviour. Handle Box::button_fired.
+    // Button behaviour. You should handle Box::button_fired.
     // Buttons can be fully configured using Boxes; their whole style and behaviour. We don't offer this level
     // of control for other widgets.
     Button = 1 << 0,
@@ -194,13 +205,13 @@ enum class Behaviour : u8 {
     // Text input behaviour. You should supply BoxConfig::text, and handle Box::text_input_result. You can use
     // BoxConfig::activate_on_click_button and the others for configuring when the text input is activated.
     // IMPORTANT: while the background/border is drawn by this system, you must do the drawing of the text,
-    // selection, and cursor yourself. There are helper functions for this.
+    // selection, and cursor yourself. Use BoxRect() to get the rect.
     TextInput = 1 << 1,
 
     // Knob behaviour.
     // Knobs always trigger on left mouse down.
-    // IMPORTANT: you must do the drawing of the knob yourself. There are helper functions for this. The
-    // background, border, and text is drawn by this system but nothing else.
+    // IMPORTANT: you must do the drawing of the knob yourself (use BoxRect()). The background, border, and
+    // text is drawn by this system but nothing else.
     Knob = 1 << 2,
 };
 ALWAYS_INLINE constexpr Behaviour operator|(Behaviour a, Behaviour b) {
@@ -246,7 +257,7 @@ struct BoxConfig {
     BackgroundTexFillMode background_tex_fill_mode = BackgroundTexFillMode::Stretch;
 
     Colours border_colours = Splat(style::Colour::None);
-    f32 border_width_pixels = 1.0f; // Pixels is more useful than vw here.
+    f32 border_width_pixels = 1.0f; // Pixels is more useful than VW here.
     bool32 border_auto_hot_active_overlay : 1 = false;
 
     bool32 parent_dictates_hot_and_active : 1 = false;
@@ -261,10 +272,13 @@ struct BoxConfig {
     layout::ItemOptions layout {}; // Don't set parent here, use BoxConfig::parent instead.
 
     TooltipString tooltip = k_nullopt;
+    imgui::Id tooltip_avoid_window_id = 0; // 0 = avoid nothing.
+    bool32 tooltip_show_left_or_right : 1 = false;
 
     Behaviour behaviour = Behaviour::None;
 
     bool32 multiline_text_input : 1 = false;
+    bool32 text_input_select_all_on_focus : 1 = false;
 
     MouseButton activate_on_click_button
         : NumBitsNeededToStore(ToInt(MouseButton::Count)) = MouseButton::Left;
@@ -275,6 +289,7 @@ struct BoxConfig {
     u8 extra_margin_for_mouse_events = 0;
 
     f32 text_input_x_padding = 4; // Padding for text input, left and right.
+    String text_input_placeholder_text {};
 
     // Configuration for knob behaviour.
     f32 knob_percent {};
@@ -306,7 +321,8 @@ bool AdditionalClickBehaviour(GuiBoxSystem& box_system,
                               imgui::ButtonFlags const& config,
                               Rect* out_item_rect = nullptr);
 
-// Returns k_nullopt if we're in the layout pass.
+// Returns k_nullopt if we're in the layout pass. Returns window-relative coordinates (relative to the
+// containing imgui::Window).
 Optional<Rect> BoxRect(GuiBoxSystem& box_system, Box const& box);
 
 struct DrawTextInputConfig {

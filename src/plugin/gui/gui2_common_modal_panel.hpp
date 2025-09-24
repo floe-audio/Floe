@@ -514,7 +514,7 @@ struct MenuItemOptions {
     bool close_on_click = true;
 };
 
-PUBLIC bool MenuItem(GuiBoxSystem& box_system, Box parent, MenuItemOptions const& options) {
+PUBLIC Box MenuItem(GuiBoxSystem& box_system, Box parent, MenuItemOptions const& options) {
     auto const item = DoBox(box_system,
                             {
                                 .parent = parent,
@@ -570,5 +570,5 @@ PUBLIC bool MenuItem(GuiBoxSystem& box_system, Box parent, MenuItemOptions const
               });
     }
 
-    return item.button_fired;
+    return item;
 }

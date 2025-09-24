@@ -3,9 +3,12 @@
 
 #pragma once
 
-#include "common_infrastructure/persistent_store.hpp"
+#include "utils/error_notifications.hpp"
 
-#include "gui/gui2_common_modal_panel.hpp"
+#include "common_infrastructure/persistent_store.hpp"
+#include "common_infrastructure/preferences.hpp"
+
+#include "gui/gui2_confirmation_dialog_state.hpp"
 #include "gui/gui_library_images.hpp"
 #include "gui_framework/gui_box_system.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
@@ -83,6 +86,72 @@ struct SelectedHashes {
     DynamicArrayBounded<SelectedHash, 16> hashes {};
 };
 
+struct PickerKeyboardNavigation {
+    enum class Panel : u8 {
+        None,
+        Filters,
+        Items,
+        Count,
+    };
+
+    struct ItemHistory {
+        static constexpr usize k_max_items = 8;
+
+        void Push(u64 item) { items[Mask(write++)] = item; }
+
+        // 1 means previous item, 2 means 2 items ago, etc.
+        u64 AtPrevious(u32 history_depth) {
+            ASSERT(history_depth > 0 && history_depth <= items.size);
+            return items[Mask(write - history_depth)];
+        }
+
+        u64 AtPreviousOrBarrier(u32 history_depth) {
+            if ((write - barrier) == 0) return {};
+            if (history_depth > write - barrier) return items[Mask(barrier)];
+            return items[Mask(write - history_depth)];
+        }
+
+        void SetBarrier() { barrier = write; }
+
+        constexpr u32 Mask(u32 val) const {
+            static_assert(IsPowerOfTwo(k_max_items));
+            return val & (items.size - 1);
+        }
+
+        Array<u64, k_max_items> items {}; // Ring buffer.
+        u32 write {}; // Unbounded.
+        u32 barrier {};
+    };
+
+    struct PanelState {
+        ItemHistory item_history {};
+        u64 previous_tab_item {};
+        u64 id_to_select {};
+        bool select_next_tab_item {}; // Doesn't wrap around.
+        bool select_next {}; // Wraps around.
+        u8 select_next_at {}; // Doesn't wrap around.
+    };
+
+    struct Input {
+        constexpr bool operator==(Input const& other) const = default;
+        u8 down_presses {};
+        u8 up_presses {};
+        u8 page_down_presses {};
+        u8 page_up_presses {};
+        u8 next_section_presses {};
+        u8 previous_section_presses {};
+    };
+
+    Panel focused_panel {Panel::Items};
+    bool panel_just_focused {};
+    PanelState panel_state {};
+
+    Array<u64, ToInt(Panel::Count)> focused_items {};
+    Array<u64, ToInt(Panel::Count)> temp_focused_items {};
+
+    Input input {};
+};
+
 struct CommonPickerState {
     auto AllHashes() {
         DynamicArrayBounded<SelectedHashes*, 7> all_hashes;
@@ -142,12 +211,17 @@ struct CommonPickerState {
     DynamicArrayBounded<SelectedHashes*, 3> other_selected_hashes {};
     FilterMode filter_mode = FilterMode::Single;
     RightClickMenuState right_click_menu_state {};
+    PickerKeyboardNavigation keyboard_navigation {};
+    imgui::Id picker_id; // TODO: this is emphemeral, mirror
 };
 
 // Ephemeral
 struct PickerPopupContext {
     sample_lib_server::Server& sample_library_server;
+    prefs::Preferences& preferences;
+    persistent_store::Store& store;
     CommonPickerState& state;
+    prefs::Key const& favourite_filters_key;
     imgui::Id picker_id;
 };
 
@@ -168,18 +242,22 @@ bool RootNodeLessThan(FolderNode const* const& a,
 using FolderRootSet = OrderedSet<FolderNode const*, nullptr, RootNodeLessThan>;
 using FolderFilterItemInfoLookupTable = HashTable<FolderNode const*, FilterItemInfo>;
 
-struct FilterCardOptions {
+struct FilterButtonCommonOptions {
     Box parent;
     bool is_selected;
-    graphics::ImageID const* icon;
-    graphics::ImageID const* background_image1;
-    graphics::ImageID const* background_image2;
     String text;
-    String subtext;
     TooltipString tooltip = k_nullopt;
     SelectedHashes& hashes;
     u64 clicked_hash;
     FilterMode filter_mode;
+};
+
+struct FilterCardOptions {
+    FilterButtonCommonOptions common;
+    graphics::ImageID const* background_image1;
+    graphics::ImageID const* background_image2;
+    graphics::ImageID const* icon;
+    String subtext;
     FolderFilterItemInfoLookupTable folder_infos;
     FolderNode const* folder;
     RightClickMenuState::Function right_click_menu {};
@@ -196,6 +274,8 @@ struct LibraryFilters {
     RightClickMenuState::Function folder_do_right_click_menu = {};
     FilterCardOptions const* additional_pseudo_card {};
     FilterItemInfo const* additional_pseudo_card_info {};
+    ThreadsafeErrorNotifications& error_notifications;
+    ConfirmationDialogState& confirmation_dialog_state;
 };
 
 // IMPORTANT: we use FunctionRef here, you need to make sure the lifetime of the functions outlives the
@@ -220,7 +300,6 @@ struct PickerPopupOptions {
     f32 filters_col_width {}; // VW
 
     String item_type_name {}; // "instrument", "preset", etc.
-    String items_section_heading {}; // "Instruments", "Presets", etc.
 
     Optional<Button> rhs_top_button {};
     TrivialFunctionRef<void(GuiBoxSystem&)> rhs_do_items {};
@@ -263,8 +342,10 @@ struct PickerItemOptions {
     Box parent;
     String text;
     TooltipString tooltip = k_nullopt;
+    u64 item_id;
     bool is_current;
     bool is_favourite;
+    bool is_tab_item; // Is a point where pressing Tab jumps to.
     Array<Optional<graphics::ImageID>, k_num_layers + 1> icons;
     Notifications& notifications;
     persistent_store::Store& store;
@@ -273,38 +354,34 @@ struct PickerItemOptions {
 struct PickerItemResult {
     Box box;
     bool favourite_toggled;
+    bool fired; // Either clicked or navigated to with the keyboard.
 };
 
 PickerItemResult
 DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptions const& options);
 
 struct FilterButtonOptions {
-    enum class FontIconMode : u8 {
-        NeverHasIcon,
-        HasIcon,
-        SometimesHasIcon,
-    };
-
-    using FontIcon = TaggedUnion<FontIconMode, TypeAndTag<String, FontIconMode::HasIcon>>;
-
-    Box parent;
-    bool is_selected;
+    FilterButtonCommonOptions common;
     graphics::ImageID const* icon;
-    String text;
-    TooltipString tooltip = k_nullopt;
-    SelectedHashes& hashes;
-    u64 clicked_hash;
-    FilterMode filter_mode;
-    FontIcon font_icon = FontIconMode::NeverHasIcon;
-    u8 indent;
-    bool full_width;
     bool no_bottom_margin;
+    RightClickMenuState::Function right_click_menu {nullptr};
+};
+
+struct FilterTreeButtonOptions {
+    FilterButtonCommonOptions common;
+    bool is_active;
+    u8 indent;
 };
 
 Box DoFilterButton(GuiBoxSystem& box_system,
                    CommonPickerState& state,
                    FilterItemInfo const& info,
                    FilterButtonOptions const& options);
+
+Box DoFilterTreeButton(GuiBoxSystem& box_system,
+                       CommonPickerState& state,
+                       FilterItemInfo const& info,
+                       FilterTreeButtonOptions const& options);
 
 Box DoFilterCard(GuiBoxSystem& box_system,
                  CommonPickerState& state,
@@ -313,8 +390,36 @@ Box DoFilterCard(GuiBoxSystem& box_system,
 
 void DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext context, PickerPopupOptions const& options);
 
-void DoRightClickForBox(GuiBoxSystem& box_system,
-                        CommonPickerState& state,
-                        Box const& box,
-                        u64 item_hash,
-                        RightClickMenuState::Function const& do_menu);
+void DoRightClickMenuForBox(GuiBoxSystem& box_system,
+                            CommonPickerState& state,
+                            Box const& box,
+                            u64 item_hash,
+                            RightClickMenuState::Function const& do_menu);
+
+bool ShowPrimaryFilterSectionHeader(CommonPickerState const& state,
+                                    prefs::Preferences const& preferences,
+                                    u64 section_heading_id);
+
+using FilterFavouriteHashFunction = u64 (*)(u64 item_hash);
+
+struct FilterRightClickMenuOptions {
+    persistent_store::Store& store;
+    prefs::Preferences& prefs;
+    prefs::Key const& favourite_filters_key;
+    Box const* parent;
+    FilterFavouriteHashFunction hash_func;
+    String menu_item_text;
+};
+
+void FilterRightClickMenuItems(GuiBoxSystem& box_system,
+                               RightClickMenuState const& menu_state,
+                               FilterRightClickMenuOptions const& options);
+
+bool ShowOnlyFavouriteFilters(persistent_store::Store& store);
+void ToggleOnlyFavouriteFilters(persistent_store::Store& store, bool current_state);
+
+PUBLIC u64 TagFavouriteHash(u64 tag_hash) { return tag_hash ^ HashComptime("favourite_tag"); }
+PUBLIC u64 LibraryFavouriteHash(u64 tag_hash) { return tag_hash ^ HashComptime("favourite_library"); }
+PUBLIC u64 LibraryAuthorFavouriteHash(u64 tag_hash) {
+    return tag_hash ^ HashComptime("favourite_library_author");
+}

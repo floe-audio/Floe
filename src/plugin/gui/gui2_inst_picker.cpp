@@ -8,7 +8,8 @@
 
 constexpr sample_lib::LibraryIdRef k_waveform_library_id = {.author = FLOE_VENDOR, .name = "Waveforms"};
 
-inline prefs::Key FavouriteKey() { return "favourite-instrument"_s; }
+inline prefs::Key FavouriteItemKey() { return "favourite-instrument"_s; }
+inline prefs::Key FavouriteFiltersKey() { return "favourite-instrument-filters"_s; }
 
 struct InstrumentCursor {
     bool operator==(InstrumentCursor const& o) const = default;
@@ -43,7 +44,7 @@ static bool ShouldSkipInstrument(InstPickerContext const& context,
 
     if (state.common_state.favourites_only) {
         filtering_on = true;
-        if (!IsFavourite(context.prefs, FavouriteKey(), (s64)sample_lib::InstHash(inst))) {
+        if (!IsFavourite(context.prefs, FavouriteItemKey(), sample_lib::InstHash(inst))) {
             if (common_state.filter_mode == FilterMode::MultipleAnd ||
                 common_state.filter_mode == FilterMode::Single)
                 return true;
@@ -289,9 +290,9 @@ static void InstPickerWaveformItems(GuiBoxSystem& box_system,
 
         if (ShouldSkipInstrument(context, state, pseudo_inst)) continue;
 
+        auto const inst_hash = sample_lib::InstHash(pseudo_inst);
         auto const is_current = waveform_type == context.layer.instrument_id.TryGetOpt<WaveformType>();
-        auto const is_favourite =
-            IsFavourite(context.prefs, FavouriteKey(), (s64)sample_lib::InstHash(pseudo_inst));
+        auto const is_favourite = IsFavourite(context.prefs, FavouriteItemKey(), inst_hash);
 
         auto const item = DoPickerItem(
             box_system,
@@ -305,13 +306,14 @@ static void InstPickerWaveformItems(GuiBoxSystem& box_system,
                         "{} waveform. A simple waveform useful for layering with sample instruments.",
                         k_waveform_type_names[ToInt(waveform_type)]);
                 }),
+                .item_id = inst_hash,
                 .is_current = is_current,
                 .is_favourite = is_favourite,
                 .notifications = context.notifications,
                 .store = context.persistent_store,
             });
 
-        if (item.box.button_fired) {
+        if (item.fired) {
             if (is_current)
                 LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
             else
@@ -319,10 +321,7 @@ static void InstPickerWaveformItems(GuiBoxSystem& box_system,
         }
 
         if (item.favourite_toggled)
-            ToggleFavourite(context.prefs,
-                            FavouriteKey(),
-                            (s64)sample_lib::InstHash(pseudo_inst),
-                            is_favourite);
+            ToggleFavourite(context.prefs, FavouriteItemKey(), inst_hash, is_favourite);
     }
 }
 
@@ -347,8 +346,9 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
         auto const& lib = *context.libraries[cursor.lib_index];
         auto const& inst = *lib.sorted_instruments[cursor.inst_index];
         auto const& folder = inst.folder;
+        auto const new_folder = folder != previous_folder;
 
-        if (folder != previous_folder) {
+        if (new_folder) {
             previous_folder = folder;
 
             folder_box = DoPickerSectionContainer(box_system,
@@ -362,9 +362,9 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
 
         if (folder_box) {
             auto const inst_id = sample_lib::InstrumentId {lib.Id(), inst.name};
+            auto const inst_hash = sample_lib::InstHash(inst);
             auto const is_current = context.layer.instrument_id == inst_id;
-            auto const is_favourite =
-                IsFavourite(context.prefs, FavouriteKey(), (s64)sample_lib::InstHash(inst));
+            auto const is_favourite = IsFavourite(context.prefs, FavouriteItemKey(), inst_hash);
 
             // TODO: a Panic was hit here where the GUI changed between layout and render passes while
             // updating a floe.lua file. It's rare though.
@@ -395,8 +395,10 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
 
                         return buf.ToOwnedSpan();
                     }),
+                    .item_id = inst_hash,
                     .is_current = is_current,
                     .is_favourite = is_favourite,
+                    .is_tab_item = new_folder,
                     .icons = ({
                         if (&lib != previous_library) {
                             lib_icon = k_nullopt;
@@ -424,23 +426,17 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
                     layout::GetRect(box_system.layout, item.box.layout_id));
             }
 
-            if (item.box.button_fired) {
-                if (is_current) {
+            if (item.fired) {
+                if (is_current)
                     LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
-                } else {
-                    LoadInstrument(context.engine,
-                                   context.layer.index,
-                                   sample_lib::InstrumentId {
-                                       .library = lib.Id(),
-                                       .inst_name = inst.name,
-                                   });
-                }
+                else
+                    LoadInstrument(context.engine, context.layer.index, inst_id);
             }
 
             if (item.favourite_toggled) {
                 dyn::Append(box_system.state->deferred_actions,
-                            [&prefs = context.prefs, hash = (s64)sample_lib::InstHash(inst), is_favourite]() {
-                                ToggleFavourite(prefs, FavouriteKey(), hash, is_favourite);
+                            [&prefs = context.prefs, hash = inst_hash, is_favourite]() {
+                                ToggleFavourite(prefs, FavouriteItemKey(), hash, is_favourite);
                             });
             }
         }
@@ -481,7 +477,7 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
         for (auto const& inst : l->sorted_instruments) {
             auto const skip = ShouldSkipInstrument(context, state, *inst);
 
-            if (IsFavourite(context.prefs, FavouriteKey(), (s64)sample_lib::InstHash(*inst))) {
+            if (IsFavourite(context.prefs, FavouriteItemKey(), sample_lib::InstHash(*inst))) {
                 if (!skip) ++favourites_info.num_used_in_items_lists;
                 ++favourites_info.total_available;
             }
@@ -533,15 +529,19 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
     }
 
     FilterCardOptions const waveform_card {
-        .is_selected = state.common_state.selected_library_hashes.Contains(k_waveform_library_id.Hash()),
-        .icon = waveform_icon.NullableValue(),
+        .common =
+            {
+                .is_selected =
+                    state.common_state.selected_library_hashes.Contains(k_waveform_library_id.Hash()),
+                .text = k_waveform_library_id.name,
+                .hashes = state.common_state.selected_library_hashes,
+                .clicked_hash = k_waveform_library_id.Hash(),
+                .filter_mode = state.common_state.filter_mode,
+            },
         .background_image1 = waveform_background1.NullableValue(),
         .background_image2 = waveform_background2.NullableValue(),
-        .text = k_waveform_library_id.name,
+        .icon = waveform_icon.NullableValue(),
         .subtext = "Basic waveforms built into Floe",
-        .hashes = state.common_state.selected_library_hashes,
-        .clicked_hash = k_waveform_library_id.Hash(),
-        .filter_mode = state.common_state.filter_mode,
     };
 
     FilterItemInfo const waveform_info = {
@@ -555,7 +555,10 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
         box_system,
         {
             .sample_library_server = context.sample_library_server,
+            .preferences = context.prefs,
+            .store = context.persistent_store,
             .state = state.common_state,
+            .favourite_filters_key = FavouriteFiltersKey(),
         },
         PickerPopupOptions {
             .title = fmt::Format(box_system.arena, "Layer {} Instrument", context.layer.index + 1),
@@ -568,14 +571,19 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
             .rhs_width = 300,
             .filters_col_width = 250,
             .item_type_name = "instrument",
-            .items_section_heading = "Instruments",
             .rhs_top_button =
                 PickerPopupOptions::Button {
-                    .text = fmt::Format(box_system.arena,
-                                        "Unload {}",
-                                        context.layer.instrument_id.tag == InstrumentType::None
-                                            ? "Instrument"
-                                            : context.layer.InstName()),
+                    .text = fmt::Format(
+                        box_system.arena,
+                        "Unload {}",
+                        context.layer.instrument_id.tag == InstrumentType::None ? "Instrument"_s : ({
+                            auto n = context.layer.InstName();
+                            if (n.size > 14)
+                                n = fmt::Format(box_system.arena,
+                                                "{}…",
+                                                n.SubSpan(0, FindUtf8TruncationPoint(n, 14)));
+                            n;
+                        })),
                     .tooltip = "Unload the current instrument.",
                     .disabled = context.layer.instrument_id.tag == InstrumentType::None,
                     .on_fired = TrivialFunctionRef<void()>([&]() {
@@ -600,6 +608,8 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
                     .folders = folders,
                     .additional_pseudo_card = &waveform_card,
                     .additional_pseudo_card_info = &waveform_info,
+                    .error_notifications = context.engine.error_notifications,
+                    .confirmation_dialog_state = context.confirmation_dialog_state,
                 };
                 f;
             }),

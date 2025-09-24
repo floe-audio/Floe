@@ -67,6 +67,13 @@ struct Rect {
     Rect CutRight(f32 cut_amount) const { return {.xywh = {x, y, w - cut_amount, h}}; }
     Rect CutBottom(f32 cut_amount) const { return {.xywh = {x, y, w, h - cut_amount}}; }
 
+    Rect ExpandLeft(f32 expand_amount) const {
+        return {.xywh = {x - expand_amount, y, w + expand_amount, h}};
+    }
+    Rect ExpandTop(f32 expand_amount) const { return {.xywh = {x, y - expand_amount, w, h + expand_amount}}; }
+    Rect ExpandRight(f32 expand_amount) const { return {.xywh = {x, y, w + expand_amount, h}}; }
+    Rect ExpandBottom(f32 expand_amount) const { return {.xywh = {x, y, w, h + expand_amount}}; }
+
     void SetBottomByResizing(f32 b) { h = b - pos.y; }
     void SetRightByResizing(f32 r) { w = r - pos.x; }
     void SetBottomByMoving(f32 b) { y = b - h; }

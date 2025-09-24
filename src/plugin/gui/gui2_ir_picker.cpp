@@ -7,6 +7,7 @@
 #include "gui2_common_picker.hpp"
 
 inline prefs::Key FavouriteIr() { return "favourite-ir"_s; }
+inline prefs::Key FavouriteFiltersKey() { return "favourite-ir-filters"_s; }
 
 static Optional<IrCursor> CurrentCursor(IrPickerContext const& context, sample_lib::IrId const& ir_id) {
     for (auto const [lib_index, l] : Enumerate(context.libraries)) {
@@ -32,7 +33,7 @@ static bool ShouldSkipIr(IrPickerContext const& context,
 
     if (state.common_state.favourites_only) {
         filtering_on = true;
-        if (!IsFavourite(context.prefs, FavouriteIr(), (s64)sample_lib::IrHash(ir))) {
+        if (!IsFavourite(context.prefs, FavouriteIr(), sample_lib::IrHash(ir))) {
             if (state.common_state.filter_mode == FilterMode::MultipleAnd ||
                 state.common_state.filter_mode == FilterMode::Single)
                 return true;
@@ -226,8 +227,9 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
         auto const& lib = *context.libraries[cursor.lib_index];
         auto const& ir = *lib.sorted_irs[cursor.ir_index];
         auto const& folder = ir.folder;
+        auto const new_folder = folder != previous_folder;
 
-        if (folder != previous_folder) {
+        if (new_folder) {
             previous_folder = folder;
             folder_box = DoPickerSectionContainer(box_system,
                                                   folder->Hash(),
@@ -239,8 +241,9 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
         }
 
         auto const ir_id = sample_lib::IrId {lib.Id(), ir.name};
+        auto const ir_hash = sample_lib::IrHash(ir);
         auto const is_current = context.engine.processor.convo.ir_id == ir_id;
-        auto const is_favourite = IsFavourite(context.prefs, FavouriteIr(), (s64)sample_lib::IrHash(ir));
+        auto const is_favourite = IsFavourite(context.prefs, FavouriteIr(), ir_hash);
 
         if (folder_box) {
             auto const item = DoPickerItem(
@@ -263,8 +266,10 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
 
                         return buffer.ToOwnedSpan();
                     }),
+                    .item_id = ir_hash,
                     .is_current = is_current,
                     .is_favourite = is_favourite,
+                    .is_tab_item = new_folder,
                     .icons = ({
                         if (&lib != previous_library) {
                             lib_icon = k_nullopt;
@@ -292,21 +297,16 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
                     layout::GetRect(box_system.layout, item.box.layout_id));
             }
 
-            if (item.box.button_fired) {
-                if (is_current) {
+            if (item.fired) {
+                if (is_current)
                     LoadConvolutionIr(context.engine, k_nullopt);
-                } else {
-                    LoadConvolutionIr(context.engine,
-                                      sample_lib::IrId {
-                                          .library = lib.Id(),
-                                          .ir_name = ir.name,
-                                      });
-                }
+                else
+                    LoadConvolutionIr(context.engine, ir_id);
             }
 
             if (item.favourite_toggled) {
                 dyn::Append(box_system.state->deferred_actions,
-                            [&prefs = context.prefs, hash = (s64)sample_lib::IrHash(ir), is_favourite]() {
+                            [&prefs = context.prefs, hash = ir_hash, is_favourite]() {
                                 ToggleFavourite(prefs, FavouriteIr(), hash, is_favourite);
                             });
             }
@@ -356,7 +356,7 @@ void DoIrPickerPopup(GuiBoxSystem& box_system, IrPickerContext& context, IrPicke
         for (auto const& ir : l->sorted_irs) {
             auto const skip = ShouldSkipIr(context, state, *ir);
 
-            if (IsFavourite(context.prefs, FavouriteIr(), (s64)sample_lib::IrHash(*ir))) {
+            if (IsFavourite(context.prefs, FavouriteIr(), sample_lib::IrHash(*ir))) {
                 if (!skip) ++favourites_info.num_used_in_items_lists;
                 ++favourites_info.total_available;
             }
@@ -392,19 +392,35 @@ void DoIrPickerPopup(GuiBoxSystem& box_system, IrPickerContext& context, IrPicke
         box_system,
         {
             .sample_library_server = context.sample_library_server,
+            .preferences = context.prefs,
+            .store = context.persistent_store,
             .state = state.common_state,
+            .favourite_filters_key = FavouriteFiltersKey(),
         },
         PickerPopupOptions {
-            .title = "Select Impulse Response",
+            .title = "Impulse Response",
             .height = 600,
             .rhs_width = 210,
             .filters_col_width = 210,
             .item_type_name = "impulse response",
-            .items_section_heading = "IRs",
             .rhs_top_button =
                 PickerPopupOptions::Button {
-                    .text =
-                        fmt::Format(box_system.arena, "Unload {}", ir_id ? (String)ir_id->ir_name : "IR"_s),
+                    // .text =
+                    //     fmt::Format(box_system.arena, "Unload {}", ir_id ? (String)ir_id->ir_name :
+                    //     "IR"_s),
+                    .text = fmt::Format(box_system.arena,
+                                        "Unload {}",
+                                        ir_id ? ({
+                                            auto n = (String)ir_id->ir_name;
+                                            usize constexpr k_max_len = 10;
+                                            if (n.size > k_max_len)
+                                                n = fmt::Format(
+                                                    box_system.arena,
+                                                    "{}…",
+                                                    n.SubSpan(0, FindUtf8TruncationPoint(n, k_max_len)));
+                                            n;
+                                        })
+                                              : "IR"_s),
                     .tooltip = "Unload the current impulse response.",
                     .disabled = !ir_id,
                     .on_fired = TrivialFunctionRef<void()>([&]() {
@@ -426,6 +442,8 @@ void DoIrPickerPopup(GuiBoxSystem& box_system, IrPickerContext& context, IrPicke
                     .card_view = true,
                     .resource_type = sample_lib::ResourceType::Ir,
                     .folders = folders,
+                    .error_notifications = context.engine.error_notifications,
+                    .confirmation_dialog_state = context.confirmation_dialog_state,
                 },
             .tags_filters =
                 TagsFilters {
