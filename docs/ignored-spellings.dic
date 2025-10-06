@@ -58,6 +58,7 @@ DAW
 DAWs
 Dbuild
 DecentSampler
+Dsanitize
 Dtargets
 EDM
 EQ
@@ -257,6 +258,7 @@ rms
 roadmap
 runtime
 s3a2
+sanitizer
 santur
 scrollable
 shouldn
@@ -277,6 +279,7 @@ tooltip
 tooltips
 ub
 ul
+umami
 unchecking
 unlink
 untagged

@@ -1105,7 +1105,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                     DEFER { error_notifications.EndWriteError(*err); };
                     err->error_code = CommonError::NotFound;
                     fmt::Assign(err->title, "{} library not found"_s, library_id);
-                    fmt::Append(
+                    fmt::Assign(
                         err->message,
                         "\"{}\" is not installed or is otherwise unavailable. Check your preferences or consult the library installation instructions.",
                         library_id);
@@ -1436,7 +1436,7 @@ static void RemoveUnreferencedObjects(Server& server) {
 
     auto remove_unreferenced_in_lib = [](auto& lib) {
         auto remove_unreferenced = [](auto& list) {
-            list.RemoveIf([](auto const& n) { return n.ref_count.Load(LoadMemoryOrder::Relaxed) == 0; });
+            list.RemoveIf([](auto const& n) { return n.ref_count.Load(LoadMemoryOrder::Acquire) == 0; });
         };
         remove_unreferenced(lib.instruments);
         remove_unreferenced(lib.irs);

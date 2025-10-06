@@ -4,7 +4,7 @@
 version = 1
 SPDX-PackageName = "Floe"
 SPDX-PackageSupplier = "Sam Windell"
-SPDX-PackageDownloadLocation = "https://github.com/floe-synth/floe"
+SPDX-PackageDownloadLocation = "https://github.com/floe-audio/floe"
 
 [[annotations]]
 path = "test_files/**"

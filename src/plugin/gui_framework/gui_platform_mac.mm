@@ -138,6 +138,7 @@ struct NativeFilePicker {
 constexpr uintptr k_file_picker_completed = 0xD1A106;
 
 bool detail::NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data1, uintptr data2) {
+    ASSERT(g_is_logical_main_thread);
     if (!platform.native_file_picker) return false;
     if (data1 != k_file_picker_completed) return false;
 
@@ -185,6 +186,7 @@ bool detail::NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data
 ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform,
                                                FilePickerDialogOptions const& options) {
     ASSERT(platform.view);
+    ASSERT(g_is_logical_main_thread);
     if (platform.native_file_picker) return k_success;
     platform.native_file_picker.Emplace();
     auto& native_file_picker = platform.native_file_picker->As<NativeFilePicker>();
@@ -251,7 +253,10 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform,
 }
 
 void detail::CloseNativeFilePicker(GuiPlatform& platform) {
-    ASSERT([NSThread isMainThread]);
+    // On rare ocassions in Logic Pro 11.0.1 (CLAP-as-AUv2), we've actually found it's possible that [NSThread
+    // isMainThread] is false here. However, this is still workable so long as it's at least the logical main
+    // thread.
+    ASSERT(g_is_logical_main_thread);
 
     if (!platform.native_file_picker) return;
     auto& native_file_picker = platform.native_file_picker->As<NativeFilePicker>();
@@ -259,7 +264,15 @@ void detail::CloseNativeFilePicker(GuiPlatform& platform) {
     {
         native_file_picker.mutex.Lock();
         DEFER { native_file_picker.mutex.Unlock(); };
-        [native_file_picker.panel close];
+        if ([NSThread isMainThread]) {
+            [native_file_picker.panel close];
+        } else {
+            LogInfo(ModuleName::Gui, "Closing native file picker from non-main thread");
+            // We assume here that there's a main thread regularly pumping the run loop.
+            [native_file_picker.panel performSelectorOnMainThread:@selector(close)
+                                                       withObject:nil
+                                                    waitUntilDone:YES];
+        }
         native_file_picker.panel = nullptr; // release
         native_file_picker.delegate = nullptr; // release
     }

@@ -378,11 +378,29 @@ checks_ci := replace(
     "
   }, "\n", " ")
 
+checks_ci_optimised := replace(
+  "
+    test-units
+    test-clap-val
+    test-vst3-val
+  " +
+  if os() == "macos" {
+    "
+    test-pluginval
+    test-pluginval-au
+    test-auval
+    "
+  } else {
+    "
+    test-pluginval
+    "
+  }, "\n", " ")
+
 [unix]
 test level="0": (parallel if level == "0" { checks_level_0 } else { checks_level_1 })
 
 [unix]
-test-ci: 
+test-ci optimised="0": 
   #!/usr/bin/env bash
   set -x
 
@@ -392,7 +410,14 @@ test-ci:
   sleep 2 # Wait a moment for the server to fully start
   popd
 
-  just parallel "{{checks_ci}}"
+  if [[ "{{optimised}}" -eq 1 ]]; then
+      just parallel "{{checks_ci_optimised}}"
+      return_code=$?
+  else
+      just parallel "{{checks_ci}}"
+      return_code=$?
+  fi
+
   return_code=$?
 
   kill $MDBOOK_PID
@@ -799,20 +824,15 @@ macos-build-installer folder:
     local title="$3"
     local description="$4"
 
-    local package_root="package_$file_extension"
-    local install_folder="Library/Audio/Plug-Ins/$destination_plugin_folder"
     local identifier="com.Floe.$file_extension"
     local plugin_path="$zig_out_abs_path/Floe.$file_extension"
+    local install_location="/Library/Audio/Plug-Ins/$destination_plugin_folder"
 
     codesign --verbose --verify "$plugin_path" || { echo "ERROR: the plugin file isn't codesigned, do that before this command"; exit 1; }
 
-    mkdir -p "$package_root/$install_folder"
-    cp -r "$plugin_path" "$package_root/$install_folder"
-    pkgbuild --analyze --root "$package_root" "$package_root.plist"
-    cat "$package_root.plist"
-    pkgbuild --root "$package_root" --component-plist "$package_root.plist" --identifier "$identifier" --install-location / --version "$version" "$package_root.pkg"
+    pkgbuild --identifier "$identifier" --version "$version" --component "$plugin_path" --install-location "$install_location" "$identifier.pkg"
 
-    add_package_to_distribution_xml "$identifier" "$title" "$description" "$package_root.pkg"
+    add_package_to_distribution_xml "$identifier" "$title" "$description" "$identifier.pkg"
   }
 
   make_package vst3 VST3 "Floe VST3" "VST3 format of the Floe plugin"

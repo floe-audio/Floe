@@ -1383,6 +1383,18 @@ FlushParameterEvents(AudioProcessor& processor, clap_input_events const& in, cla
     }
 }
 
+// Audio-thread
+static void AudioThreadReset(AudioProcessor& processor) {
+    FlushEventsForAudioThread(processor);
+    processor.voice_pool.EndAllVoicesInstantly();
+    processor.audio_processing_context.pitchwheel_position = {};
+    ProcessBlockChanges changes {
+        .changed_params = {processor.audio_params, Bitset<k_num_parameters>()},
+    };
+    changes.pitchwheel_changed.SetAll();
+    ResetProcessor(processor, changes);
+}
+
 static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                                            clap_process const& process,
                                            u32 frame_index,
@@ -1506,6 +1518,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                 processor.audio_macro_destinations = {};
                 break;
             }
+            case EventForAudioThreadType::ResetAudioProcessing: AudioThreadReset(processor); break;
             case EventForAudioThreadType::StartNote: break;
             case EventForAudioThreadType::EndNote: break;
         }
@@ -1780,16 +1793,11 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     return result;
 }
 
-// Audio-thread
-static void Reset(AudioProcessor& processor) {
-    FlushEventsForAudioThread(processor);
-    processor.voice_pool.EndAllVoicesInstantly();
-    processor.audio_processing_context.pitchwheel_position = {};
-    ProcessBlockChanges changes {
-        .changed_params = {processor.audio_params, Bitset<k_num_parameters>()},
-    };
-    changes.pitchwheel_changed.SetAll();
-    ResetProcessor(processor, changes);
+void ResetAudioProcessing(AudioProcessor& processor) {
+    ASSERT(g_is_logical_main_thread);
+    processor.events_for_audio_thread.Push(
+        EventForAudioThread {EventForAudioThreadType::ResetAudioProcessing});
+    processor.host.request_process(&processor.host);
 }
 
 static void OnMainThread(AudioProcessor& processor) {
@@ -1865,7 +1873,7 @@ AudioProcessor::~AudioProcessor() {
 PluginCallbacks<AudioProcessor> const g_processor_callbacks {
     .activate = Activate,
     .deactivate = Deactivate,
-    .reset = Reset,
+    .reset = AudioThreadReset,
     .process = Process,
     .flush_parameter_events = FlushParameterEvents,
     .on_main_thread = OnMainThread,

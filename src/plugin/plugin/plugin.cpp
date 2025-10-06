@@ -920,9 +920,14 @@ static bool ClapParamsValueToText(clap_plugin_t const* plugin,
         auto const opt_index = ParamIdToIndex(param_id);
         if (!opt_index) return false;
         if (!Check(floe, out_buffer, k_func, "out_buffer is null")) return false;
+
         auto const index = (usize)*opt_index;
-        auto const str = k_param_descriptors[index].LinearValueToString((f32)value);
+        auto const& desc = k_param_descriptors[index];
+        if (!desc.linear_range.Contains((f32)value)) return false;
+
+        auto const str = desc.LinearValueToString((f32)value);
         if (!str) return false;
+
         if (out_buffer_capacity < (str->size + 1)) return false;
         CopyMemory(out_buffer, str->data, str->size);
         out_buffer[str->size] = '\0';

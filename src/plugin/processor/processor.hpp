@@ -63,6 +63,7 @@ enum class EventForAudioThreadType : u8 {
     RemoveMacroDestination,
     MacroDestinationValueChanged,
     RemoveAllMacroDestinations,
+    ResetAudioProcessing,
 };
 
 struct GuiNoteClicked {
@@ -339,6 +340,7 @@ bool LayerIsSilent(AudioProcessor const& processor, u32 layer_index);
 void SetAllParametersToDefaultValues(AudioProcessor&);
 void RandomiseAllParameterValues(AudioProcessor&);
 void RandomiseAllEffectParameterValues(AudioProcessor&);
+void ResetAudioProcessing(AudioProcessor&);
 
 bool IsMidiCCLearnActive(AudioProcessor const& processor);
 void LearnMidiCC(AudioProcessor& processor, ParamIndex param);

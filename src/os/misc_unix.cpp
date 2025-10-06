@@ -55,13 +55,20 @@ void GlobalFree(Memory allocation) {
     free(allocation.data);
 }
 
+ALWAYS_INLINE inline bool UseMallocForPages() {
+#if __has_feature(thread_sanitizer)
+    constexpr bool k_running_on_tsan = true;
+#else
+    constexpr bool k_running_on_tsan = false;
+#endif
+    return !PRODUCTION_BUILD && (k_running_on_tsan || RUNNING_ON_VALGRIND);
+}
+
 void* AllocatePages(usize bytes) {
-    if constexpr (!PRODUCTION_BUILD) {
-        if (RUNNING_ON_VALGRIND) {
-            auto const p = aligned_alloc(256, bytes);
-            TracyAlloc(p, bytes);
-            return p;
-        }
+    if (UseMallocForPages()) {
+        auto const p = aligned_alloc(256, bytes);
+        TracyAlloc(p, bytes);
+        return p;
     }
 
     auto p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
@@ -73,19 +80,16 @@ void* AllocatePages(usize bytes) {
 void FreePages(void* ptr, usize bytes) {
     TracyFree(ptr);
 
-    if constexpr (!PRODUCTION_BUILD) {
-        if (RUNNING_ON_VALGRIND) {
-            free(ptr);
-            return;
-        }
+    if (UseMallocForPages()) {
+        free(ptr);
+        return;
     }
+
     munmap(ptr, bytes);
 }
 
 void TryShrinkPages(void* ptr, usize old_size, usize new_size) {
-    if constexpr (!PRODUCTION_BUILD) {
-        if (RUNNING_ON_VALGRIND) return;
-    }
+    if (UseMallocForPages()) return;
 
     auto const page_size = CachedSystemStats().page_size;
     auto const current_num_pages = old_size / page_size;

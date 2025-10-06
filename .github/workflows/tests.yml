@@ -43,7 +43,7 @@ jobs:
       - run: |
           just install-au 0
           killall -9 AudioComponentRegistrar || true
-      - run: just test-ci
+      - run: just test-ci 0
       - run: |
           just build -Dsanitize-thread
           just test-units
@@ -84,7 +84,7 @@ jobs:
         run: just build -Dbuild-mode=performance_profiling
 
       - if: '!cancelled()'
-        run: just test-ci
+        run: just test-ci 1
 
       - name: Upload errors
         if: '!cancelled()'
@@ -133,7 +133,7 @@ jobs:
         run: just install-docs-preprocessor
 
       - if: '!cancelled()'
-        run: just test-ci
+        run: just test-ci 0
 
       - if: '!cancelled()'
         run: |
