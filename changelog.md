@@ -8,6 +8,14 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 1.0.6
+- Add Reset Audio Engine to the menu for stopping all sound and voices
+- macOS installer: use different method to try and avoid 'cannot install to system volume' error
+- Fix rare crash when shutting down Floe on macOS when file-picker is open
+- Fix rare crash when host sends an out-of-bounds parameter value
+- Fix 'library not found' error message repeating itself
+- Fix hover effect for tag button on the Save panel
+
 ## 1.0.5
 - Fix issue where mute/solo buttons sometimes wouldn't correctly work
 - Website: improve download page layout
