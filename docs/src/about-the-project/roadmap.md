@@ -6,24 +6,13 @@ SPDX-License-Identifier: GPL-3.0-or-later
 # Roadmap
 Floe is an ongoing project that will have lots of backwards-compatible updates. We want to be able to release new features and improvements as soon as they're ready.
 
-- [x] Finish VST3 and AU support
-- [x] Complete the GUI for adding multiple libraries to a single instance
-- [x] Recreate the presets infrastructure and GUI
-- [x] Comprehensive testing of all plugin formats in all DAWs and operating systems
-- [x] Prepare a couple of Floe sample libraries ready for release
-- [x] Ability to split layers to different ranges on the keyboard
-- [x] Implement pitchbend
-- [x] Macro parameters
+- Visit our GitHub [milestones page](https://github.com/floe-audio/Floe/milestones?sort=title&direction=asc) to see what we're currently working on and what's planned for the future.
+- See our [changelog](../changelog.md) to see what we've done so far.
+- Give us feedback using [Github's discussions](https://github.com/floe-audio/Floe/discussions) section. FrozenPlain also have a Floe section on their [forum](https://forum.frozenplain.com/t/floe).
 
-Later down the line, we're hoping to:
-- [ ] Refresh the GUI: make it more consistent and performant, and refactor the code for easier expansion
-- [ ] Support MPE, MIDI2 and polyphonic modulation
-- [ ] Add more features to the Lua sample library format to allow for more complex instruments: legato, key-switches, drums, etc.
-
-Even further down the line, we're investigating ideas such as:
+### Dreams
+Thinking into the distant future, we're investigating ideas such as:
 - Allow for creating custom GUIs 'views' using the library Lua API
-- Adding wavetable oscillators/granular synthesis as an option to layer with sampled instruments
 - Adding a more comprehensive modulation system
-- Granular synthesis
-
-Give us feedback on these using [Github's discussions](https://github.com/floe-audio/Floe/discussions) section. FrozenPlain also have a Floe section on their [forum](https://forum.frozenplain.com/t/floe).
+- Add more features to the Lua sample library format to allow for more complex instruments: legato, key-switches, drums, etc.
+- Adding wavetable oscillators/granular synthesis as an option to layer with sampled instruments
