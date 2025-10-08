@@ -168,6 +168,11 @@ jobs:
         with:
           release: floe@${{ env.VERSION }}
 
+      - name: Clean up awaiting-release labels
+        run: just release-cleanup
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Trigger website deployment
         if: success()
         run: |
