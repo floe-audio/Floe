@@ -7,7 +7,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 This page explains how to develop sample libraries for Floe.
 
-Creating sample libraries for Floe **requires programming knowledge**. While Floe itself is designed for all musicians, developing libraries involves writing Lua scripts to configure and map audio files. This programming-first approach enables workflows and features that are rare to achieve with traditional GUI-based tools.
+Creating sample libraries for Floe **requires programming knowledge**. While Floe itself is designed for all musicians, developing libraries involves writing Lua scripts to configure and map audio files. This programming-first approach enables automation, version control integration, AI-assisted workflows, bulk operations — scaling all the way to very complex libraries. It also allows creating custom functions for sample-mapping, normalisation, pitch-correction, and building instrument variations - a level of flexibility that cannot be achieved with UI-based sample-mapping tools.
 
 In the future, we're looking at tools that convert/generate Floe Lua scripts to allow non-programmers to create libraries.
 
