@@ -160,6 +160,41 @@ upload-errors:
     fi
   done
 
+project-items-json:
+  gh project item-list 1 --owner floe-audio --limit 100 --format json
+
+# Get project item ID for an issue number. All Floe Github issues are added to the project board automatically.
+project-item-id issue_number:
+  just project-items-json | jq -r ".items[] | select(.content.number == {{issue_number}}) | .id"
+
+# Our project board has a 'status' field for tracking our workflow. This command gets the status for an issue number.
+project-status issue_number:
+  just project-items-json | jq -r ".items[] | select(.content.number == {{issue_number}}) | .status // \"null\""
+
+# Set project board status for an issue number
+# Status options: "Up Next", "In Progress", "Done"
+project-set-status issue_number status:
+  #!/usr/bin/env bash
+  issue_id=$(just project-item-id {{issue_number}})
+  if [ -z "$issue_id" ]; then
+    echo "Error: Issue {{issue_number}} not found in project"
+    exit 1
+  fi
+  
+  # Map status names to option IDs
+  case "{{status}}" in
+    "Up Next") option_id="cabe1aa3" ;;
+    "In Progress") option_id="47fc9ee4" ;;
+    "Done") option_id="98236657" ;;
+    *) echo "Error: Invalid status '{{status}}'. Valid options: Up Next, In Progress, Done"; exit 1 ;;
+  esac
+  
+  gh project item-edit --id "$issue_id" --field-id "PVTSSF_lADOCkRkv84AkDXazgcUbLA" --single-select-option-id "$option_id" --project-id "PVT_kwDOCkRkv84AkDXa"
+
+# Get issues by status - returns issue numbers and titles
+project-issues-by-status status:
+  just project-items-json | jq '.items[] | select(.status == "{{status}}") | {number: .content.number, title: .title}'
+
 # Issues that have been solved, but not yet had a release are labelled "awaiting-release". This command
 # removes that label from all closed issues. It should be run after a release is made.
 release-cleanup:
