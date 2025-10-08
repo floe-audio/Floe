@@ -160,6 +160,17 @@ upload-errors:
     fi
   done
 
+# Issues that have been solved, but not yet had a release are labelled "awaiting-release". This command
+# removes that label from all closed issues. It should be run after a release is made.
+release-cleanup:
+  #!/usr/bin/env bash
+  echo "Removing awaiting-release labels from released issues..."
+  gh issue list --label "awaiting-release" --state closed --json number \
+    --jq '.[].number' | while read issue_number; do
+    echo "Cleaning issue #$issue_number"
+    gh issue edit "$issue_number" --remove-label "awaiting-release"
+  done
+
 # For some reason, on CI, the docs_preprocessor binary is not being found. This is a workaround.
 [unix]
 install-docs-preprocessor:
