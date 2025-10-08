@@ -37,3 +37,14 @@ Floe uses a few third-party libraries. These are typically managed by the Zig pa
 - No C++ STL/standard library.
 - We write in a Zig-like style: closer to modern C than C++.
 - See `.clang-tidy`'s readability-identifier-naming section for naming conventions.
+
+# Github Issues
+We extensively use Github issues to track work. Use `gh` to query and manage issues. Our issues often include lots of details and design.
+
+- **Priority labels**: `priority/urgent` (blocking users or critical bug - ship ASAP), `priority/high` (significant impact - next release), `priority/medium` (valuable improvement - plan soon), `priority/low` (nice-to-have - when capacity allows)
+- **Effort labels**: `effort/small` (~1-4 hours), `effort/medium` (~0.5-1 day), `effort/large` (~2-3 days), `effort/extra-large` (~1 week or needs breakdown)
+- `awaiting-release` - for issues fixed but not yet released. Issues should be closed and tagged with this label.
+- `needs-repro` - needs investigation work to reproduce the issue
+- `needs-design` - needs thinking and design before beginning writing code
+
+**Never** try to write code for a `needs-design` issue. First, discuss, and design the solution - working out a full plan. Update the issue description with the design and remove the label when ready.
