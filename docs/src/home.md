@@ -41,7 +41,7 @@ Floe is an audio plugin (CLAP, VST3, AU) for Windows, macOS and Linux that loads
 ## Consistent, powerful interface
 Every library maintains a consistent, intuitive interface (each with its own background image) while offering powerful search capabilities, comprehensive preset systems, and macros that enable deep sound customisation. You can play sample-based instruments naturally, or transform them beyond their original nature using well-established sound-shaping tools.
 
-Load a preset for a production-ready sound, then effortlessly tweak it to your liking. Explore inspiring sounds and understand how they work, or precisely find what you need using comprehensive search, tags, and organization.
+Load a preset for a production-ready sound, then effortlessly tweak it to your liking. Explore inspiring sounds and understand how they work, or precisely find what you need using comprehensive search, tags, and organisation.
 
 ![Floe default UI](./images/floe-basic-gui.png)
 
