@@ -13,7 +13,7 @@ What follows is not really a result of frequently asked questions — though the
 
 ### What's the 'elevator pitch' for Floe?
 
-Floe is the open, streamlined sample-based instrument platform that puts sound transformation at your fingertips — where every library shares a consistent, powerful interface designed for the long-term, enabling composers to effortlessly find, perform, and reshape sounds beyond their natural boundaries.
+Floe is the open, streamlined sample-based instrument platform that puts sound transformation at your fingertips — enabling composers to effortlessly find, perform, and reshape sounds beyond their natural boundaries in a plugin that is designed for longevity.
 
 Every library shares the same consistent, familiar interface for sound-shaping parameters — no wild new approaches or gimmicks, just well-established tools that invite you to transform sampled instruments beyond their realism. Rather than laboriously building sounds from scratch, you start with rich timbres and shape from there. Load a preset for a production-ready sound, then effortlessly tweak it to your liking. Explore inspiring sounds and understand how they work, or precisely find what you need using comprehensive search, tags, and organisation.
 
@@ -30,7 +30,7 @@ Floe aims to provide highly-effective means for creating compelling music from s
 
 Primarily, Floe is for composers, producers and musicians - from beginner to seasoned veteran. Both professionals on a deadline, and producers engaging in non-commercial creative artistry. People who already have a DAW and are expanding their sonic palette with sample-based instruments.
 
-### What need does Floe fill music-makers?
+### What need does Floe fill for music-makers?
 
 Floe provides a streamlined solution to finding, performing and transforming sample-based instruments in order to create compelling music with joy and ease.
 
