@@ -50,7 +50,7 @@ We extensively use Github issues to track work. Use `gh` to query and manage iss
 **Never** try to write code for a `needs-design` issue. First, discuss, and design the solution - working out a full plan. Update the issue description with the design and remove the label when ready.
 
 # Github Project
-Additionally, we use an organization-level kanban board GitHub Project (floe-audio/1) with a "Status" field to track issue progress (Up Next, In Progress, Done). All issues are automatically added to the board.
+Additionally, we use an organisation-level kanban board GitHub Project (floe-audio/1) with a "Status" field to track issue progress (Up Next, In Progress, Done). All issues are automatically added to the board.
 
 ### Commands
 ```bash

@@ -1,7 +1,6 @@
 // Copyright 2018-2024 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-
 100px
 10px
 15px
@@ -24,10 +23,12 @@
 3s
 40px
 4px
+50px
 555e85
 5px
 60px
 7HEJ7SF75K
+80k
 80s
 90px
 AAX
@@ -46,6 +47,7 @@ CC
 CC0
 CC64
 CCs
+CMake
 Catch2
 Celtique
 Changelog
@@ -75,10 +77,12 @@ GUIs
 GarageBand
 Gentañ
 GitHub
+HISE
 Harpe
 IDM
 IRs
 Intel
+JUCE
 Jérémy
 Kergourlay
 Kickdrum
@@ -94,11 +98,14 @@ MBSF
 MDATA
 MIDI2
 MPE
+MSVC
 Multisampled
+Musio
 NoiseCollector
 OSs
 Octaved
 OpenGL
+Plogue
 ProgramData
 Q1
 RMS
@@ -112,6 +119,8 @@ SFZ
 SPDX
 SSE2
 STL
+Soundbox
+Soundpaint
 Steinberg
 Stivell
 Synthwave
@@ -121,7 +130,9 @@ Telenn
 TestName
 UI
 UIs
+UVI
 Utils
+VST
 VST2
 VST3
 VST3Validator
@@ -192,6 +203,7 @@ floelua
 fm
 foldback
 fx
+gh
 github
 glibc
 globals
@@ -207,10 +219,12 @@ impactful
 incrementing
 installable
 intel
+interoperable
 ir
 isn
 json
 justfile
+kanban
 keypress
 li
 libcurl
@@ -233,6 +247,7 @@ mp4
 multisample
 multisampled
 multisampling
+natively
 noir
 notarization
 oneshot
@@ -249,6 +264,7 @@ preprocess
 preprocessor
 reinstallation
 relicense
+repro
 resizable
 retrig
 retrigger
@@ -261,6 +277,7 @@ s3a2
 sanitizer
 santur
 scrollable
+sforzando
 shouldn
 signup
 spacebar
@@ -275,6 +292,7 @@ synthesiser
 synthesized
 synthwave
 timbral
+toolchain
 tooltip
 tooltips
 ub
