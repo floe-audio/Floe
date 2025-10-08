@@ -15,12 +15,6 @@
 constexpr String k_no_preset_author = "<no author>"_s;
 
 inline prefs::Key FavouriteItemKey() { return "favourite-preset"_s; }
-inline prefs::Key FavouriteFilterKey() { return "favourite-preset-filter"_s; }
-inline u64 FolderPackFavouriteHash(u64 folder_hash) {
-    return folder_hash ^ HashComptime("favourite_folder_pack");
-}
-inline u64 PresetAuthorFavouriteHash(u64 hash) { return hash ^ HashComptime("favourite_preset_author"); }
-inline u64 PresetTypeFavouriteHash(u64 hash) { return hash ^ HashComptime("favourite_preset_type"); }
 
 static FolderNode const* FindFolderByHash(PresetPickerContext const& context, u64 folder_hash) {
     FolderNode const* result = nullptr;
@@ -382,19 +376,6 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
 
     auto const folder = FindFolderByHash(context, menu_state.item_hash);
 
-    if (folder && PresetPackInfoForNode(*folder)) {
-        FilterRightClickMenuItems(box_system,
-                                  menu_state,
-                                  {
-                                      .store = context.persistent_store,
-                                      .prefs = context.prefs,
-                                      .favourite_filters_key = FavouriteFilterKey(),
-                                      .parent = &root,
-                                      .hash_func = FolderPackFavouriteHash,
-                                      .menu_item_text = "Favourite Preset Folder",
-                                  });
-    }
-
     if (MenuItem(box_system,
                  root,
                  {
@@ -412,13 +393,32 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
                      .is_selected = false,
                  })
             .button_fired) {
-        if (auto const folder_path = FolderPath(folder, box_system.arena)) {
+        if (({
+                bool has_child_pack = false;
+                auto root_pack = PresetPackInfoForNode(*folder);
+                ForEachNode((FolderNode*)folder, [&](FolderNode const* node) {
+                    if (has_child_pack) return;
+                    if (node == folder) return;
+                    auto pack = PresetPackInfoForNode(*node);
+                    if (!pack) return;
+                    if (root_pack != pack) has_child_pack = true;
+                });
+                has_child_pack;
+            })) {
+            auto const error_id = Hash(Array {SourceLocationHash(), folder->Hash()});
+            if (auto item = context.engine.error_notifications.BeginWriteError(error_id)) {
+                DEFER { context.engine.error_notifications.EndWriteError(*item); };
+                item->title = "Cannot to delete preset folder"_s;
+                item->message =
+                    "This folder contains one or more preset packs as subfolders. Please delete them first."_s;
+            }
+        } else if (auto const folder_path = FolderPath(folder, box_system.arena)) {
             auto cloned_path = Malloc::Instance().Clone(*folder_path);
 
             dyn::AssignFitInCapacity(context.confirmation_dialog_state.title, "Delete Preset Folder");
             fmt::Assign(
                 context.confirmation_dialog_state.body_text,
-                "Are you sure you want to delete the preset folder '{}'?\n\nThis will move the folder and all its contents to the {}.",
+                "Are you sure you want to delete the preset folder '{}'?\n\nThis will move the folder and all its contents to the {}. You can restore it from there if needed.",
                 path::Filename(*folder_path),
                 TRASH_NAME);
 
@@ -456,7 +456,7 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
 
     PresetFolderListing const* previous_folder = nullptr;
 
-    Optional<Box> folder_box;
+    Optional<PickerSection> folder_section;
 
     auto cursor = *first;
     while (true) {
@@ -466,22 +466,20 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
 
         if (new_folder) {
             previous_folder = preset_folder;
-            folder_box = DoPickerSectionContainer(
-                box_system,
-                preset_folder->node.Hash(),
-                state.common_state,
-                {
-                    .parent = root,
-                    .folder = &preset_folder->node,
-                    .skip_root_folder = true,
-                    .right_click_menu =
-                        [&context, &state](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
-                            PresetFolderRightClickMenu(box_system, context, state, menu_state);
-                        },
-                });
+            folder_section = PickerSection {
+                .state = state.common_state,
+                .id = preset_folder->node.Hash(),
+                .parent = root,
+                .folder = &preset_folder->node,
+                .skip_root_folder = true,
+                .right_click_menu =
+                    [&context, &state](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
+                        PresetFolderRightClickMenu(box_system, context, state, menu_state);
+                    },
+            };
         }
 
-        if (folder_box) {
+        if (folder_section->Do(box_system).tag != PickerSection::State::Collapsed) {
             auto const is_current = ({
                 bool c {};
                 if (auto const current_path = CurrentPath(context.engine))
@@ -495,7 +493,7 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
                 box_system,
                 state.common_state,
                 {
-                    .parent = *folder_box,
+                    .parent = folder_section->Do(box_system).Get<Box>(),
                     .text = preset.name,
                     .tooltip = FunctionRef<String()>([&]() -> String {
                         DynamicArray<char> buffer {box_system.arena};
@@ -624,110 +622,89 @@ void PresetPickerExtraFilters(GuiBoxSystem& box_system,
     // We only show the preset type filter if we have both types of presets.
     if (context.presets_snapshot.has_preset_type.NumSet() > 1 &&
         !AllOf(preset_type_filter_info, [](FilterItemInfo const& i) { return i.total_available == 0; })) {
-        if (num_sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
-        ++num_sections;
+        PickerSection section {
+            .state = state.common_state,
+            .num_sections_rendered = &num_sections,
+            .id = HashComptime("preset-type-section"),
+            .parent = parent,
+            .heading = "PRESET TYPE",
+            .multiline_contents = true,
+        };
 
-        auto const section = DoPickerSectionContainer(box_system,
-                                                      53847912837, // never change
-                                                      state.common_state,
-                                                      {
-                                                          .parent = parent,
-                                                          .heading = "PRESET TYPE",
-                                                          .multiline_contents = true,
-                                                      });
+        for (auto const type_index : Range(ToInt(PresetFormat::Count))) {
+            auto const is_selected = state.selected_preset_types.Contains(type_index);
+            auto const info = preset_type_filter_info[type_index];
+            if (info.total_available == 0) continue;
 
-        if (section) {
-            for (auto const type_index : Range(ToInt(PresetFormat::Count))) {
-                auto const is_selected = state.selected_preset_types.Contains(type_index);
-                auto const info = preset_type_filter_info[type_index];
-                if (info.total_available == 0) continue;
+            if (!MatchesFilterSearch(({
+                                         String n {};
+                                         switch ((PresetFormat)type_index) {
+                                             case PresetFormat::Floe: n = "Floe"; break;
+                                             case PresetFormat::Mirage: n = "Mirage"; break;
+                                             case PresetFormat::Count: PanicIfReached(); break;
+                                         }
+                                         n;
+                                     }),
+                                     state.common_state.filter_search))
+                continue;
 
-                DoFilterButton(
-                    box_system,
-                    state.common_state,
-                    preset_type_filter_info[type_index],
-                    {
-                        .common =
-                            {
-                                .parent = *section,
-                                .is_selected = is_selected,
-                                .text = ({
-                                    String s {};
-                                    switch ((PresetFormat)type_index) {
-                                        case PresetFormat::Floe: s = "Floe"; break;
-                                        case PresetFormat::Mirage: s = "Mirage"; break;
-                                        default: PanicIfReached();
-                                    }
-                                    s;
-                                }),
-                                .hashes = state.selected_preset_types,
-                                .clicked_hash = type_index,
-                                .filter_mode = state.common_state.filter_mode,
-                            },
-                        .right_click_menu =
-                            [&context](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
-                                FilterRightClickMenuItems(box_system,
-                                                          menu_state,
-                                                          {
-                                                              .store = context.persistent_store,
-                                                              .prefs = context.prefs,
-                                                              .favourite_filters_key = FavouriteFilterKey(),
-                                                              .parent = nullptr,
-                                                              .hash_func = PresetTypeFavouriteHash,
-                                                              .menu_item_text = "Favourite Preset Type",
-                                                          });
-                            },
-                    });
-            }
+            if (section.Do(box_system) == PickerSection::State::Collapsed) break;
+
+            DoFilterButton(box_system,
+                           state.common_state,
+                           preset_type_filter_info[type_index],
+                           {
+                               .common =
+                                   {
+                                       .parent = section.Do(box_system).Get<Box>(),
+                                       .is_selected = is_selected,
+                                       .text = ({
+                                           String s {};
+                                           switch ((PresetFormat)type_index) {
+                                               case PresetFormat::Floe: s = "Floe"; break;
+                                               case PresetFormat::Mirage: s = "Mirage"; break;
+                                               default: PanicIfReached();
+                                           }
+                                           s;
+                                       }),
+                                       .hashes = state.selected_preset_types,
+                                       .clicked_hash = type_index,
+                                       .filter_mode = state.common_state.filter_mode,
+                                   },
+                           });
         }
     }
 
     if (preset_authors.size) {
-        if (num_sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
-        ++num_sections;
+        PickerSection section {
+            .state = state.common_state,
+            .num_sections_rendered = &num_sections,
+            .id = HashComptime("preset-author-section"),
+            .parent = parent,
+            .heading = "AUTHOR",
+            .multiline_contents = true,
+        };
 
-        auto const section = DoPickerSectionContainer(box_system,
-                                                      125342985712309, // never change
-                                                      state.common_state,
-                                                      {
-                                                          .parent = parent,
-                                                          .heading = "AUTHOR",
-                                                          .multiline_contents = true,
-                                                      });
+        for (auto const [author, author_info, author_hash] : preset_authors) {
+            if (!MatchesFilterSearch(author, state.common_state.filter_search)) continue;
+            if (section.Do(box_system) == PickerSection::State::Collapsed) break;
 
-        if (section) {
-            for (auto const [author, author_info, author_hash] : preset_authors) {
-                auto const is_selected = state.selected_author_hashes.Contains(author_hash);
+            auto const is_selected = state.selected_author_hashes.Contains(author_hash);
 
-                DoFilterButton(
-                    box_system,
-                    state.common_state,
-                    author_info,
-                    {
-                        .common =
-                            {
-                                .parent = *section,
-                                .is_selected = is_selected,
-                                .text = author,
-                                .hashes = state.selected_author_hashes,
-                                .clicked_hash = author_hash,
-                                .filter_mode = state.common_state.filter_mode,
-                            },
-                        .right_click_menu =
-                            [&context](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
-                                FilterRightClickMenuItems(box_system,
-                                                          menu_state,
-                                                          {
-                                                              .store = context.persistent_store,
-                                                              .prefs = context.prefs,
-                                                              .favourite_filters_key = FavouriteFilterKey(),
-                                                              .parent = nullptr,
-                                                              .hash_func = PresetAuthorFavouriteHash,
-                                                              .menu_item_text = "Favourite Preset Author",
-                                                          });
-                            },
-                    });
-            }
+            DoFilterButton(box_system,
+                           state.common_state,
+                           author_info,
+                           {
+                               .common =
+                                   {
+                                       .parent = section.Do(box_system).Get<Box>(),
+                                       .is_selected = is_selected,
+                                       .text = author,
+                                       .hashes = state.selected_author_hashes,
+                                       .clicked_hash = author_hash,
+                                       .filter_mode = state.common_state.filter_mode,
+                                   },
+                           });
         }
     }
 }
@@ -737,8 +714,6 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
 
     context.Init(box_system.arena);
     DEFER { context.Deinit(); };
-
-    auto const show_favourite_filters_only = ShowOnlyFavouriteFilters(context.persistent_store);
 
     auto tags = HashTable<String, FilterItemInfo>::Create(box_system.arena,
                                                           context.presets_snapshot.used_tags.size + 1);
@@ -771,39 +746,24 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
             }
 
             for (auto const [tag, tag_hash] : preset.metadata.tags) {
-                if (show_favourite_filters_only &&
-                    !IsFavourite(context.prefs, FavouriteFilterKey(), TagFavouriteHash(tag_hash)))
-                    continue;
                 auto& i = tags.FindOrInsertWithoutGrowing(tag, {}, tag_hash).element.data;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
             }
 
             if (!preset.metadata.tags.size) {
-                if (!(show_favourite_filters_only &&
-                      !IsFavourite(context.prefs,
-                                   FavouriteFilterKey(),
-                                   TagFavouriteHash(Hash(k_untagged_tag_name))))) {
-                    auto& i = tags.FindOrInsertWithoutGrowing(k_untagged_tag_name, {}).element.data;
-                    if (!skip) ++i.num_used_in_items_lists;
-                    ++i.total_available;
-                }
+                auto& i = tags.FindOrInsertWithoutGrowing(k_untagged_tag_name, {}).element.data;
+                if (!skip) ++i.num_used_in_items_lists;
+                ++i.total_available;
             }
 
             for (auto const [lib_id, lib_id_hash] : preset.used_libraries) {
-                if (show_favourite_filters_only &&
-                    !IsFavourite(context.prefs, FavouriteFilterKey(), LibraryFavouriteHash(lib_id_hash)))
-                    continue;
                 auto& i = libraries.FindOrInsertWithoutGrowing(lib_id, {}, lib_id_hash).element.data;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
             }
 
             for (auto const [author, author_hash] : preset.used_library_authors) {
-                if (show_favourite_filters_only && !IsFavourite(context.prefs,
-                                                                FavouriteFilterKey(),
-                                                                LibraryAuthorFavouriteHash(author_hash)))
-                    continue;
                 auto& i = library_authors.FindOrInsertWithoutGrowing(author, {}, author_hash).element.data;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
@@ -812,23 +772,15 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
             {
                 auto const author = preset.metadata.author.size ? preset.metadata.author : k_no_preset_author;
                 auto const hash = Hash(author);
-                if (!(show_favourite_filters_only &&
-                      !IsFavourite(context.prefs, FavouriteFilterKey(), PresetAuthorFavouriteHash(hash)))) {
-                    auto& i = preset_authors.FindOrInsertWithoutGrowing(author, {}, hash).element.data;
-                    if (!skip) ++i.num_used_in_items_lists;
-                    ++i.total_available;
-                }
+                auto& i = preset_authors.FindOrInsertWithoutGrowing(author, {}, hash).element.data;
+                if (!skip) ++i.num_used_in_items_lists;
+                ++i.total_available;
             }
 
             {
-                if (!(show_favourite_filters_only &&
-                      !IsFavourite(context.prefs,
-                                   FavouriteFilterKey(),
-                                   PresetTypeFavouriteHash(ToInt(preset.file_format))))) {
-                    auto& i = preset_type_filter_info[ToInt(preset.file_format)];
-                    if (!skip) ++i.num_used_in_items_lists;
-                    ++i.total_available;
-                }
+                auto& i = preset_type_filter_info[ToInt(preset.file_format)];
+                if (!skip) ++i.num_used_in_items_lists;
+                ++i.total_available;
             }
 
             for (auto f = &folder->node; f; f = f->parent) {
@@ -849,7 +801,6 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
             .preferences = context.prefs,
             .store = context.persistent_store,
             .state = state.common_state,
-            .favourite_filters_key = FavouriteFilterKey(),
         },
         PickerPopupOptions {
             .title = "Presets",
@@ -863,6 +814,8 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
             .filters_col_width = 320,
             .item_type_name = "preset",
             .rhs_do_items = [&](GuiBoxSystem& box_system) { PresetPickerItems(box_system, context, state); },
+            .filter_search_placeholder_text = "Search preset packs/tags",
+            .item_search_placeholder_text = "Search presets",
             .on_load_previous = [&]() { LoadAdjacentPreset(context, state, SearchDirection::Backward); },
             .on_load_next = [&]() { LoadAdjacentPreset(context, state, SearchDirection::Forward); },
             .on_load_random = [&]() { LoadRandomPreset(context, state); },
@@ -882,103 +835,91 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
                 },
             .do_extra_filters_top =
                 [&](GuiBoxSystem& box_system, Box const& parent, u8& num_sections) {
-                    if (num_sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
+                    if (num_sections) DoModalDivider(box_system, parent, {.horizontal = true});
                     ++num_sections;
 
-                    auto const section_heading_id = SourceLocationHash();
+                    auto constexpr k_section_id = HashComptime("preset-folders-section");
+                    PickerSection section {
+                        .state = state.common_state,
+                        .id = k_section_id,
+                        .parent = parent,
+                        .heading =
+                            ShowPrimaryFilterSectionHeader(state.common_state, context.prefs, k_section_id)
+                                ? Optional<String> {"FOLDER"_s}
+                                : k_nullopt,
+                        .multiline_contents = false,
+                        .right_click_menu =
+                            [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
+                                PresetFolderRightClickMenu(box_system, context, state, menu_state);
+                            },
+                    };
 
-                    auto const section = DoPickerSectionContainer(
-                        box_system,
-                        section_heading_id,
-                        state.common_state,
-                        {
-                            .parent = parent,
-                            .heading = ShowPrimaryFilterSectionHeader(state.common_state,
-                                                                      context.prefs,
-                                                                      section_heading_id)
-                                           ? Optional<String> {"FOLDER"_s}
-                                           : k_nullopt,
-                            .multiline_contents = false,
-                            .right_click_menu =
-                                [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
-                                    PresetFolderRightClickMenu(box_system, context, state, menu_state);
-                                },
-                        });
+                    auto const do_card = [&](FolderNode const* folder, FilterItemInfo const& info) {
+                        auto const folder_name =
+                            folder->display_name.size ? folder->display_name : folder->name;
+                        if (!MatchesFilterSearch(folder_name, state.common_state.filter_search)) return;
+                        if (section.Do(box_system).tag == PickerSection::State::Collapsed) return;
 
-                    if (section) {
-                        auto const do_card = [&](FolderNode const* folder, FilterItemInfo const& info) {
-                            Optional<graphics::ImageID> icon = {};
-                            Optional<graphics::ImageID> background_image1 = {};
-                            Optional<graphics::ImageID> background_image2 = {};
-                            if (auto const single_library = AllPresetsSingleLibrary(*folder)) {
-                                if (auto imgs = LibraryImagesFromLibraryId(context.library_images,
-                                                                           box_system.imgui,
-                                                                           *single_library,
-                                                                           context.sample_library_server,
-                                                                           box_system.arena,
-                                                                           false)) {
-                                    if (!imgs->icon_missing) icon = imgs->icon;
-                                    if (!imgs->background_missing) {
-                                        background_image1 = imgs->blurred_background;
-                                        background_image2 = imgs->background;
-                                    }
+                        Optional<graphics::ImageID> icon = {};
+                        Optional<graphics::ImageID> background_image1 = {};
+                        Optional<graphics::ImageID> background_image2 = {};
+                        if (auto const single_library = AllPresetsSingleLibrary(*folder)) {
+                            if (auto imgs = LibraryImagesFromLibraryId(context.library_images,
+                                                                       box_system.imgui,
+                                                                       *single_library,
+                                                                       context.sample_library_server,
+                                                                       box_system.arena,
+                                                                       false)) {
+                                if (!imgs->icon_missing) icon = imgs->icon;
+                                if (!imgs->background_missing) {
+                                    background_image1 = imgs->blurred_background;
+                                    background_image2 = imgs->background;
                                 }
                             }
-
-                            DoFilterCard(
-                                box_system,
-                                state.common_state,
-                                info,
-                                FilterCardOptions {
-                                    .common =
-                                        {
-                                            .parent = *section,
-                                            .is_selected = state.common_state.selected_folder_hashes.Contains(
-                                                folder->Hash()),
-                                            .text = folder->display_name.size ? folder->display_name
-                                                                              : folder->name,
-                                            .tooltip = folder->display_name.size
-                                                           ? TooltipString {folder->name}
-                                                           : k_nullopt,
-                                            .hashes = state.common_state.selected_folder_hashes,
-                                            .clicked_hash = folder->Hash(),
-                                            .filter_mode = state.common_state.filter_mode,
-                                        },
-                                    .background_image1 = background_image1.NullableValue(),
-                                    .background_image2 = background_image2.NullableValue(),
-                                    .icon = icon.NullableValue(),
-                                    .subtext = ({
-                                        String s {};
-                                        if (auto const m = PresetPackInfoForNode(*folder))
-                                            s = m->subtitle;
-                                        else
-                                            s = "Preset folder";
-                                        s;
-                                    }),
-                                    .folder_infos = folders,
-                                    .folder = folder,
-                                    .right_click_menu =
-                                        [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
-                                            PresetFolderRightClickMenu(box_system,
-                                                                       context,
-                                                                       state,
-                                                                       menu_state);
-                                        },
-                                });
-                        };
-
-                        for (auto const folder : context.presets_snapshot.preset_packs) {
-                            if (show_favourite_filters_only &&
-                                !IsFavourite(context.prefs,
-                                             FavouriteFilterKey(),
-                                             FolderPackFavouriteHash(folder->Hash()))) {
-                                continue;
-                            }
-
-                            auto const info = folders.Find(folder);
-                            if (!info) continue;
-                            do_card(folder, *info);
                         }
+
+                        DoFilterCard(
+                            box_system,
+                            state.common_state,
+                            info,
+                            FilterCardOptions {
+                                .common =
+                                    {
+                                        .parent = section.Do(box_system).Get<Box>(),
+                                        .is_selected = state.common_state.selected_folder_hashes.Contains(
+                                            folder->Hash()),
+                                        .text =
+                                            folder->display_name.size ? folder->display_name : folder->name,
+                                        .tooltip = folder->display_name.size ? TooltipString {folder->name}
+                                                                             : k_nullopt,
+                                        .hashes = state.common_state.selected_folder_hashes,
+                                        .clicked_hash = folder->Hash(),
+                                        .filter_mode = state.common_state.filter_mode,
+                                    },
+                                .background_image1 = background_image1.NullableValue(),
+                                .background_image2 = background_image2.NullableValue(),
+                                .icon = icon.NullableValue(),
+                                .subtext = ({
+                                    String s {};
+                                    if (auto const m = PresetPackInfoForNode(*folder))
+                                        s = m->subtitle;
+                                    else
+                                        s = "Preset folder";
+                                    s;
+                                }),
+                                .folder_infos = folders,
+                                .folder = folder,
+                                .right_click_menu =
+                                    [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
+                                        PresetFolderRightClickMenu(box_system, context, state, menu_state);
+                                    },
+                            });
+                    };
+
+                    for (auto const folder : context.presets_snapshot.preset_packs) {
+                        auto const info = folders.Find(folder);
+                        if (!info) continue;
+                        do_card(folder, *info);
                     }
                 },
             .do_extra_filters_bottom =

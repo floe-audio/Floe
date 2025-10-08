@@ -28,6 +28,12 @@ static prefs::Descriptor ShowPrimaryFilterSectionHeaderDescriptor() {
     };
 }
 
+bool MatchesFilterSearch(String filter_text, String search_text) {
+    if (search_text.size == 0) return true; // Empty search shows all filters
+    if (filter_text.size == 0) return false; // Empty filter text doesn't match
+    return ContainsCaseInsensitiveAscii(filter_text, search_text);
+}
+
 constexpr auto k_right_click_menu_popup_id = (imgui::Id)SourceLocationHash();
 
 void DoRightClickMenuForBox(GuiBoxSystem& box_system,
@@ -977,25 +983,37 @@ Box DoFilterCard(GuiBoxSystem& box_system,
     return card_top;
 }
 
-Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
-                                       u64 id,
-                                       CommonPickerState& state,
-                                       PickerItemsSectionOptions const& options) {
-    auto const container = DoBox(
-        box_system,
-        {
-            .parent = options.parent,
-            .layout =
-                {
-                    .size = {layout::k_fill_parent, layout::k_hug_contents},
-                    .contents_padding = {.l = options.subsection ? k_picker_spacing / 2 : 0},
-                    .contents_gap = f32x2 {0, options.bigger_contents_gap ? k_picker_spacing * 1.5f : 0},
-                    .contents_direction = layout::Direction::Column,
-                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                },
-        });
+PickerSection::Result PickerSection::Do(GuiBoxSystem& box_system) {
+    if (!init) {
+        is_collapsed = Contains(state.collapsed_filter_headers, id);
+        init = true;
+    } else {
+        if (is_collapsed) return State::Collapsed;
+    }
 
-    if (options.heading || options.folder) {
+    if (is_box_init) return box_cache;
+
+    if (num_sections_rendered) {
+        auto& n = *num_sections_rendered;
+        if (n) DoModalDivider(box_system, parent, {.horizontal = true, .subtle = true});
+        ++n;
+    }
+
+    auto const container =
+        DoBox(box_system,
+              {
+                  .parent = parent,
+                  .layout =
+                      {
+                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                          .contents_padding = {.l = subsection ? k_picker_spacing / 2 : 0},
+                          .contents_gap = f32x2 {0, bigger_contents_gap ? k_picker_spacing * 1.5f : 0},
+                          .contents_direction = layout::Direction::Column,
+                          .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                      },
+              });
+
+    if (heading || folder) {
         auto const heading_container =
             DoBox(box_system,
                   {
@@ -1008,30 +1026,28 @@ Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
                           .contents_align = layout::Alignment::Start,
                           .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                       },
-                      .tooltip = options.folder ? TooltipString {"Folder"_s} : k_nullopt,
+                      .tooltip = folder ? TooltipString {"Folder"_s} : k_nullopt,
                       .tooltip_avoid_window_id = state.picker_id,
                       .tooltip_show_left_or_right = true,
                       .behaviour = Behaviour::Button,
                   });
 
         if (heading_container.button_fired) {
-            dyn::Append(box_system.state->deferred_actions, [&state, id]() {
-                if (Contains(state.hidden_filter_headers, id))
-                    dyn::RemoveValue(state.hidden_filter_headers, id);
+            dyn::Append(box_system.state->deferred_actions, [&state = this->state, id = id]() {
+                if (Contains(state.collapsed_filter_headers, id))
+                    dyn::RemoveValue(state.collapsed_filter_headers, id);
                 else
-                    dyn::Append(state.hidden_filter_headers, id);
+                    dyn::Append(state.collapsed_filter_headers, id);
             });
         }
 
-        if (options.right_click_menu)
-            DoRightClickMenuForBox(box_system, state, heading_container, id, options.right_click_menu);
-
-        bool const is_hidden = Contains(state.hidden_filter_headers, id);
+        if (right_click_menu)
+            DoRightClickMenuForBox(box_system, state, heading_container, id, right_click_menu);
 
         DoBox(box_system,
               {
                   .parent = heading_container,
-                  .text = is_hidden ? ICON_FA_CARET_RIGHT : ICON_FA_CARET_DOWN,
+                  .text = is_collapsed ? ICON_FA_CARET_RIGHT : ICON_FA_CARET_DOWN,
                   .font = FontType::Icons,
                   .font_size = style::k_font_icons_size * 0.6f,
                   .text_colours = {style::Colour::Subtext0},
@@ -1040,11 +1056,11 @@ Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
                   },
               });
 
-        if (options.icon) {
+        if (icon) {
             DoBox(box_system,
                   {
                       .parent = heading_container,
-                      .text = *options.icon,
+                      .text = *icon,
                       .size_from_text = true,
                       .font = FontType::Icons,
                       .font_size = style::k_font_icons_size * 0.7f,
@@ -1054,19 +1070,19 @@ Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
         {
             DynamicArray<char> buf {box_system.arena};
 
-            String text = options.heading.ValueOr({});
+            String text = heading.ValueOr({});
 
-            if (options.capitalise) {
+            if (capitalise) {
                 dyn::Resize(buf, text.size);
                 for (auto i : Range(text.size))
                     buf[i] = ToUppercaseAscii(text[i]);
                 text = buf;
-            } else if (options.folder) {
+            } else if (folder) {
                 DynamicArrayBounded<String, sample_lib::k_max_folders + 1> parts;
-                for (auto f = options.folder; f; f = f->parent)
+                for (auto f = folder; f; f = f->parent)
                     dyn::Append(parts, f->display_name.size ? f->display_name : f->name);
 
-                if (options.skip_root_folder && parts.size > 1) dyn::Pop(parts);
+                if (skip_root_folder && parts.size > 1) dyn::Pop(parts);
 
                 // We want to display the last part in a less prominent way.
                 Optional<String> top_folder_name {};
@@ -1107,22 +1123,28 @@ Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
             }
         }
 
-        if (is_hidden) return k_nullopt;
+        if (is_collapsed) return State::Collapsed;
     }
 
-    if (!options.multiline_contents) return container;
+    is_box_init = true;
 
-    return DoBox(box_system,
-                 {
-                     .parent = container,
-                     .layout {
-                         .size = {layout::k_fill_parent, layout::k_hug_contents},
-                         .contents_gap = k_picker_spacing / 2,
-                         .contents_direction = layout::Direction::Row,
-                         .contents_multiline = true,
-                         .contents_align = layout::Alignment::Start,
-                     },
-                 });
+    if (!multiline_contents) {
+        box_cache = container;
+        return box_cache;
+    }
+
+    box_cache = DoBox(box_system,
+                      {
+                          .parent = container,
+                          .layout {
+                              .size = {layout::k_fill_parent, layout::k_hug_contents},
+                              .contents_gap = k_picker_spacing / 2,
+                              .contents_direction = layout::Direction::Row,
+                              .contents_multiline = true,
+                              .contents_align = layout::Alignment::Start,
+                          },
+                      });
+    return box_cache;
 }
 
 static void DoLibraryRightClickMenu(GuiBoxSystem& box_system,
@@ -1143,17 +1165,6 @@ static void DoLibraryRightClickMenu(GuiBoxSystem& box_system,
             if (lib_hash == library_hash) return lib_id;
         return k_nullopt;
     };
-
-    FilterRightClickMenuItems(box_system,
-                              menu_state,
-                              {
-                                  .store = context.store,
-                                  .prefs = context.preferences,
-                                  .favourite_filters_key = context.favourite_filters_key,
-                                  .parent = &root,
-                                  .hash_func = LibraryFavouriteHash,
-                                  .menu_item_text = "Favourite Library",
-                              });
 
     if (MenuItem(box_system,
                  root,
@@ -1191,7 +1202,7 @@ static void DoLibraryRightClickMenu(GuiBoxSystem& box_system,
                                              "Delete Library");
                     fmt::Assign(
                         library_filters.confirmation_dialog_state.body_text,
-                        "Are you sure you want to delete the library '{}'?\n\nThis will move the library folder and all its contents to the {}.",
+                        "Are you sure you want to delete the library '{}'?\n\nThis will move the library folder and all its contents to the {}. You can restore it from there if needed.",
                         lib->name,
                         TRASH_NAME);
 
@@ -1230,7 +1241,7 @@ bool ShowPrimaryFilterSectionHeader(CommonPickerState const& state,
 
     // If it's currently collapsed, show the heading otherwise it's not intuitive to why there's no
     // items.
-    if (Contains(state.hidden_filter_headers, section_heading_id)) v = true;
+    if (Contains(state.collapsed_filter_headers, section_heading_id)) v = true;
     return v;
 }
 
@@ -1240,160 +1251,159 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                                    LibraryFilters const& library_filters,
                                    u8& sections) {
     if (library_filters.libraries.size) {
-        if (sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
-        ++sections;
+        PickerSection section = {
+            .state = context.state,
+            .num_sections_rendered = &sections,
+            .id = context.picker_id ^ HashComptime("libraries-section"),
+            .parent = parent,
+            .heading = !library_filters.card_view ||
+                               ShowPrimaryFilterSectionHeader(context.state, context.preferences, section.id)
+                           ? Optional<String> {"LIBRARIES"_s}
+                           : k_nullopt,
+            .multiline_contents = !library_filters.card_view,
+        };
 
-        auto const section_heading_id = context.picker_id + SourceLocationHash();
+        for (auto const& [lib_id, lib_info, lib_hash] : library_filters.libraries) {
+            ASSERT(lib_id.name.size);
+            ASSERT(lib_id.author.size);
 
-        auto const section = DoPickerSectionContainer(
-            box_system,
-            section_heading_id,
-            context.state,
-            {
-                .parent = parent,
-                .heading = !library_filters.card_view || ShowPrimaryFilterSectionHeader(context.state,
-                                                                                        context.preferences,
-                                                                                        section_heading_id)
-                               ? Optional<String> {"LIBRARIES"_s}
-                               : k_nullopt,
-                .multiline_contents = !library_filters.card_view,
-            });
+            if (!MatchesFilterSearch(lib_id.name, context.state.filter_search)) continue;
 
-        if (section) {
-            for (auto const& [lib_id, lib_info, lib_hash] : library_filters.libraries) {
-                ASSERT(lib_id.name.size);
-                ASSERT(lib_id.author.size);
+            Box button;
+            if (library_filters.card_view) {
+                // TODO: we probably want to cache this somewhere.
+                auto lib = sample_lib_server::FindLibraryRetained(context.sample_library_server, lib_id);
+                DEFER { lib.Release(); };
+                if (!lib) continue;
 
-                Box button;
-                if (library_filters.card_view) {
-                    // TODO: we probably want to cache this somewhere.
-                    auto lib = sample_lib_server::FindLibraryRetained(context.sample_library_server, lib_id);
-                    DEFER { lib.Release(); };
-                    if (!lib) continue;
+                auto const folder = &lib->root_folders[ToInt(library_filters.resource_type)];
 
-                    auto const folder = &lib->root_folders[ToInt(library_filters.resource_type)];
+                auto const is_selected = context.state.selected_library_hashes.Contains(lib_hash);
 
-                    auto const is_selected = context.state.selected_library_hashes.Contains(lib_hash);
-
-                    Optional<graphics::ImageID> icon = library_filters.unknown_library_icon;
-                    Optional<graphics::ImageID> background1 = {};
-                    Optional<graphics::ImageID> background2 = {};
-                    if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
-                                                               box_system.imgui,
-                                                               lib_id,
-                                                               context.sample_library_server,
-                                                               box_system.arena,
-                                                               false)) {
-                        if (!imgs->background_missing) {
-                            background1 = imgs->blurred_background;
-                            background2 = imgs->background;
-                        }
-                        if (!imgs->icon_missing) icon = imgs->icon;
+                Optional<graphics::ImageID> icon = library_filters.unknown_library_icon;
+                Optional<graphics::ImageID> background1 = {};
+                Optional<graphics::ImageID> background2 = {};
+                if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
+                                                           box_system.imgui,
+                                                           lib_id,
+                                                           context.sample_library_server,
+                                                           box_system.arena,
+                                                           false)) {
+                    if (!imgs->background_missing) {
+                        background1 = imgs->blurred_background;
+                        background2 = imgs->background;
                     }
-
-                    button = DoFilterCard(
-                        box_system,
-                        context.state,
-                        lib_info,
-                        FilterCardOptions {
-                            .common =
-                                {
-                                    .parent = *section,
-                                    .is_selected = is_selected,
-                                    .text = lib_id.name,
-                                    .tooltip = FunctionRef<String()>([&]() -> String {
-                                        auto lib = sample_lib_server::FindLibraryRetained(
-                                            context.sample_library_server,
-                                            lib_id);
-                                        DEFER { lib.Release(); };
-
-                                        DynamicArray<char> buf {box_system.arena};
-                                        fmt::Append(buf, "{} by {}.", lib_id.name, lib_id.author);
-                                        if (lib) {
-                                            if (lib->description)
-                                                fmt::Append(buf, "\n\n{}", lib->description);
-                                        }
-                                        return buf.ToOwnedSpan();
-                                    }),
-                                    .hashes = context.state.selected_library_hashes,
-                                    .clicked_hash = lib_hash,
-                                    .filter_mode = context.state.filter_mode,
-                                },
-                            .background_image1 = background1.NullableValue(),
-                            .background_image2 = background2.NullableValue(),
-                            .icon = icon.NullableValue(),
-                            .subtext = ({
-                                String s;
-                                if (lib) s = box_system.arena.Clone(lib->tagline);
-                                s;
-                            }),
-                            .folder_infos = library_filters.folders,
-                            .folder = folder,
-                        });
-                } else {
-                    button = DoFilterButton(
-                        box_system,
-                        context.state,
-                        lib_info,
-                        FilterButtonOptions {
-                            .common =
-                                {
-                                    .parent = *section,
-                                    .is_selected = context.state.selected_library_hashes.Contains(lib_hash),
-                                    .text = lib_id.name,
-                                    .tooltip = FunctionRef<String()>([&]() -> String {
-                                        auto lib = sample_lib_server::FindLibraryRetained(
-                                            context.sample_library_server,
-                                            lib_id);
-                                        DEFER { lib.Release(); };
-
-                                        DynamicArray<char> buf {box_system.arena};
-                                        fmt::Append(buf, "{} by {}.", lib_id.name, lib_id.author);
-                                        if (lib) {
-                                            if (lib->description)
-                                                fmt::Append(buf, "\n\n{}", lib->description);
-                                        } else {
-                                            fmt::Append(
-                                                buf,
-                                                "\n\nThis library is not installed, but some presets require it.");
-                                        }
-                                        return buf.ToOwnedSpan();
-                                    }),
-                                    .hashes = context.state.selected_library_hashes,
-                                    .clicked_hash = lib_hash,
-                                    .filter_mode = context.state.filter_mode,
-                                },
-                            .icon = ({
-                                graphics::ImageID const* tex =
-                                    library_filters.unknown_library_icon.NullableValue();
-                                if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
-                                                                           box_system.imgui,
-                                                                           lib_id,
-                                                                           context.sample_library_server,
-                                                                           box_system.arena,
-                                                                           true);
-                                    imgs && !imgs->icon_missing) {
-                                    tex = imgs->icon.NullableValue();
-                                }
-                                tex;
-                            }),
-                        });
+                    if (!imgs->icon_missing) icon = imgs->icon;
                 }
 
-                if (lib_hash != sample_lib::k_builtin_library_id.Hash())
-                    DoRightClickMenuForBox(
-                        box_system,
-                        context.state,
-                        button,
-                        lib_hash,
-                        [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
-                            DoLibraryRightClickMenu(box_system, context, menu_state, library_filters);
-                        });
+                if (section.Do(box_system) == PickerSection::State::Collapsed) break;
+
+                button =
+                    DoFilterCard(box_system,
+                                 context.state,
+                                 lib_info,
+                                 FilterCardOptions {
+                                     .common =
+                                         {
+                                             .parent = section.Do(box_system).Get<Box>(),
+                                             .is_selected = is_selected,
+                                             .text = lib_id.name,
+                                             .tooltip = FunctionRef<String()>([&]() -> String {
+                                                 auto lib = sample_lib_server::FindLibraryRetained(
+                                                     context.sample_library_server,
+                                                     lib_id);
+                                                 DEFER { lib.Release(); };
+
+                                                 DynamicArray<char> buf {box_system.arena};
+                                                 fmt::Append(buf, "{} by {}.", lib_id.name, lib_id.author);
+                                                 if (lib) {
+                                                     if (lib->description)
+                                                         fmt::Append(buf, "\n\n{}", lib->description);
+                                                 }
+                                                 return buf.ToOwnedSpan();
+                                             }),
+                                             .hashes = context.state.selected_library_hashes,
+                                             .clicked_hash = lib_hash,
+                                             .filter_mode = context.state.filter_mode,
+                                         },
+                                     .background_image1 = background1.NullableValue(),
+                                     .background_image2 = background2.NullableValue(),
+                                     .icon = icon.NullableValue(),
+                                     .subtext = ({
+                                         String s;
+                                         if (lib) s = box_system.arena.Clone(lib->tagline);
+                                         s;
+                                     }),
+                                     .folder_infos = library_filters.folders,
+                                     .folder = folder,
+                                 });
+            } else {
+                if (section.Do(box_system) == PickerSection::State::Collapsed) break;
+
+                button = DoFilterButton(
+                    box_system,
+                    context.state,
+                    lib_info,
+                    FilterButtonOptions {
+                        .common =
+                            {
+                                .parent = section.Do(box_system).Get<Box>(),
+                                .is_selected = context.state.selected_library_hashes.Contains(lib_hash),
+                                .text = lib_id.name,
+                                .tooltip = FunctionRef<String()>([&]() -> String {
+                                    auto lib =
+                                        sample_lib_server::FindLibraryRetained(context.sample_library_server,
+                                                                               lib_id);
+                                    DEFER { lib.Release(); };
+
+                                    DynamicArray<char> buf {box_system.arena};
+                                    fmt::Append(buf, "{} by {}.", lib_id.name, lib_id.author);
+                                    if (lib) {
+                                        if (lib->description) fmt::Append(buf, "\n\n{}", lib->description);
+                                    } else {
+                                        fmt::Append(
+                                            buf,
+                                            "\n\nThis library is not installed, but some presets require it.");
+                                    }
+                                    return buf.ToOwnedSpan();
+                                }),
+                                .hashes = context.state.selected_library_hashes,
+                                .clicked_hash = lib_hash,
+                                .filter_mode = context.state.filter_mode,
+                            },
+                        .icon = ({
+                            graphics::ImageID const* tex =
+                                library_filters.unknown_library_icon.NullableValue();
+                            if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
+                                                                       box_system.imgui,
+                                                                       lib_id,
+                                                                       context.sample_library_server,
+                                                                       box_system.arena,
+                                                                       true);
+                                imgs && !imgs->icon_missing) {
+                                tex = imgs->icon.NullableValue();
+                            }
+                            tex;
+                        }),
+                    });
             }
 
-            if (library_filters.additional_pseudo_card) {
-                auto options = *library_filters.additional_pseudo_card;
-                options.common.parent = *section;
+            if (lib_hash != sample_lib::k_builtin_library_id.Hash())
+                DoRightClickMenuForBox(
+                    box_system,
+                    context.state,
+                    button,
+                    lib_hash,
+                    [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
+                        DoLibraryRightClickMenu(box_system, context, menu_state, library_filters);
+                    });
+        }
+
+        if (library_filters.additional_pseudo_card) {
+            auto options = *library_filters.additional_pseudo_card;
+            if (MatchesFilterSearch(options.common.text, context.state.filter_search) &&
+                section.Do(box_system) != PickerSection::State::Collapsed) {
+                options.common.parent = section.Do(box_system).Get<Box>();
 
                 DoFilterCard(box_system,
                              context.state,
@@ -1415,95 +1425,33 @@ static void DoPickerLibraryAuthorFilters(GuiBoxSystem& box_system,
                                          LibraryFilters const& library_filters,
                                          u8& sections) {
     if (library_filters.library_authors.size) {
-        if (sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
-        ++sections;
+        PickerSection section = {
+            .state = context.state,
+            .num_sections_rendered = &sections,
+            .id = context.picker_id ^ HashComptime("library-authors-section"),
+            .parent = parent,
+            .heading = "LIBRARY AUTHORS"_s,
+            .multiline_contents = true,
+        };
 
-        auto const section = DoPickerSectionContainer(box_system,
-                                                      context.picker_id + SourceLocationHash(),
-                                                      context.state,
-                                                      {
-                                                          .parent = parent,
-                                                          .heading = "LIBRARY AUTHORS"_s,
-                                                          .multiline_contents = true,
-                                                      });
-
-        if (section) {
-            for (auto const [author, author_info, author_hash] : library_filters.library_authors) {
-                auto const is_selected = context.state.selected_library_author_hashes.Contains(author_hash);
-                DoFilterButton(box_system,
-                               context.state,
-                               author_info,
-                               {
-                                   .common =
-                                       {
-                                           .parent = *section,
-                                           .is_selected = is_selected,
-                                           .text = author,
-                                           .hashes = context.state.selected_library_author_hashes,
-                                           .clicked_hash = author_hash,
-                                           .filter_mode = context.state.filter_mode,
-                                       },
-                                   .right_click_menu =
-                                       [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
-                                           FilterRightClickMenuItems(
-                                               box_system,
-                                               menu_state,
-                                               {
-                                                   .store = context.store,
-                                                   .prefs = context.preferences,
-                                                   .favourite_filters_key = context.favourite_filters_key,
-                                                   .parent = nullptr,
-                                                   .hash_func = LibraryAuthorFavouriteHash,
-                                                   .menu_item_text = "Favourite Library Author",
-                                               });
-                                       },
-                               });
-            }
-        }
-    }
-}
-
-using FilterFavouriteHashFunction = u64 (*)(u64 item_hash);
-
-void FilterRightClickMenuItems(GuiBoxSystem& box_system,
-                               RightClickMenuState const& menu_state,
-                               FilterRightClickMenuOptions const& options) {
-    auto const root = options.parent ? *options.parent
-                                     : DoBox(box_system,
-                                             {
-                                                 .layout {
-                                                     .size = layout::k_hug_contents,
-                                                     .contents_direction = layout::Direction::Column,
-                                                     .contents_align = layout::Alignment::Start,
-                                                 },
-                                             });
-
-    {
-        auto const hash = options.hash_func(menu_state.item_hash);
-        auto const is_favourite = IsFavourite(options.prefs, options.favourite_filters_key, hash);
-        if (MenuItem(box_system,
-                     root,
-                     {
-                         .text = options.menu_item_text,
-                         .is_selected = is_favourite,
-                     })
-                .button_fired) {
-            ToggleFavourite(options.prefs, options.favourite_filters_key, hash, is_favourite);
-        }
-    }
-
-    {
-        auto const show_faves_only = ShowOnlyFavouriteFilters(options.store);
-        if (MenuItem(box_system,
-                     root,
-                     {
-                         .text = "Show Favourite Filters Only",
-                         .is_selected = show_faves_only,
-                     })
-                .button_fired) {
-            dyn::Append(box_system.state->deferred_actions, [&store = options.store, show_faves_only]() {
-                ToggleOnlyFavouriteFilters(store, show_faves_only);
-            });
+        for (auto const [author, author_info, author_hash] : library_filters.library_authors) {
+            if (!MatchesFilterSearch(author, context.state.filter_search)) continue;
+            if (section.Do(box_system) == PickerSection::State::Collapsed) break;
+            auto const is_selected = context.state.selected_library_author_hashes.Contains(author_hash);
+            DoFilterButton(box_system,
+                           context.state,
+                           author_info,
+                           {
+                               .common =
+                                   {
+                                       .parent = section.Do(box_system).Get<Box>(),
+                                       .is_selected = is_selected,
+                                       .text = author,
+                                       .hashes = context.state.selected_library_author_hashes,
+                                       .clicked_hash = author_hash,
+                                       .filter_mode = context.state.filter_mode,
+                                   },
+                           });
         }
     }
 }
@@ -1514,9 +1462,6 @@ void DoPickerTagsFilters(GuiBoxSystem& box_system,
                          TagsFilters const& tags_filters,
                          u8& sections) {
     if (!tags_filters.tags.size) return;
-
-    if (sections) DoModalDivider(box_system, parent, DividerType::Horizontal);
-    ++sections;
 
     OrderedHashTable<TagCategory, OrderedHashTable<TagType, FilterItemInfo>> standard_tags {};
     OrderedHashTable<String, FilterItemInfo> non_standard_tags {};
@@ -1531,104 +1476,91 @@ void DoPickerTagsFilters(GuiBoxSystem& box_system,
         }
     }
 
-    auto const compact_view = (standard_tags.size + non_standard_tags.size) <= 8;
-
-    auto const tags_container = DoPickerSectionContainer(box_system,
-                                                         context.picker_id + SourceLocationHash(),
-                                                         context.state,
-                                                         {
-                                                             .parent = parent,
-                                                             .heading = "TAGS",
-                                                             .multiline_contents = compact_view,
-                                                             .bigger_contents_gap = !compact_view,
-                                                         });
-
-    auto const right_click_menu = [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
-        FilterRightClickMenuItems(box_system,
-                                  menu_state,
-                                  {
-                                      .store = context.store,
-                                      .prefs = context.preferences,
-                                      .favourite_filters_key = context.favourite_filters_key,
-                                      .hash_func = TagFavouriteHash,
-                                      .menu_item_text = "Favourite Tag",
-                                  });
+    PickerSection tags_section {
+        .state = context.state,
+        .num_sections_rendered = &sections,
+        .id = context.picker_id ^ HashComptime("tags-section"),
+        .parent = parent,
+        .heading = "TAGS",
+        .multiline_contents = false,
+        .bigger_contents_gap = true,
     };
 
-    if (tags_container) {
-        for (auto [category, tags_for_category, category_hash] : standard_tags) {
-            auto const category_info = Tags(category);
-            auto const section = compact_view
-                                     ? Optional<Box>(tags_container)
-                                     : DoPickerSectionContainer(box_system,
-                                                                context.picker_id + category_hash,
-                                                                context.state,
-                                                                {
-                                                                    .parent = *tags_container,
-                                                                    .heading = category_info.name,
-                                                                    .icon = category_info.font_awesome_icon,
-                                                                    .capitalise = true,
-                                                                    .multiline_contents = true,
-                                                                    .subsection = true,
-                                                                });
+    for (auto [category, tags_for_category, category_hash] : standard_tags) {
+        auto const category_info = Tags(category);
 
-            if (!section) continue;
+        PickerSection inner_section {
+            .state = context.state,
+            .id = context.picker_id ^ HashComptime("tags-section") ^ category_hash,
+            .parent = {}, // IMPORTANT: set later
+            .heading = category_info.name,
+            .icon = category_info.font_awesome_icon,
+            .capitalise = true,
+            .multiline_contents = true,
+            .subsection = true,
+        };
 
-            for (auto const [tag, filter_item_info, _] : tags_for_category) {
-                auto const tag_info = GetTagInfo(tag);
-                auto const tag_hash = Hash(tag_info.name);
-                auto const is_selected = context.state.selected_tags_hashes.Contains(tag_hash);
-                DoFilterButton(box_system,
-                               context.state,
-                               filter_item_info,
-                               {
-                                   .common =
-                                       {
-                                           .parent = *section,
-                                           .is_selected = is_selected,
-                                           .text = tag_info.name,
-                                           .hashes = context.state.selected_tags_hashes,
-                                           .clicked_hash = tag_hash,
-                                           .filter_mode = context.state.filter_mode,
-                                       },
-                                   .right_click_menu = right_click_menu,
-                               });
-            }
-        }
+        for (auto const [tag, filter_item_info, _] : tags_for_category) {
+            auto const tag_info = GetTagInfo(tag);
+            if (!MatchesFilterSearch(tag_info.name, context.state.filter_search)) continue;
 
-        if (non_standard_tags.size) {
-            auto const section = compact_view
-                                     ? Optional<Box>(tags_container)
-                                     : DoPickerSectionContainer(box_system,
-                                                                context.picker_id + SourceLocationHash(),
-                                                                context.state,
-                                                                {
-                                                                    .parent = *tags_container,
-                                                                    .heading = "UNCATEGORISED",
-                                                                    .multiline_contents = true,
-                                                                    .subsection = true,
-                                                                });
+            if (tags_section.Do(box_system) == PickerSection::State::Collapsed) break;
+            // We now have the outer section. We can give it to the inner section.
+            inner_section.parent = tags_section.Do(box_system).Get<Box>();
+            if (inner_section.Do(box_system) == PickerSection::State::Collapsed) break;
 
-            if (section) {
-                for (auto const [name, filter_item_info, _] : non_standard_tags) {
-                    auto const is_selected = context.state.selected_tags_hashes.Contains(Hash(name));
-                    DoFilterButton(box_system,
-                                   context.state,
-                                   filter_item_info,
+            auto const tag_hash = Hash(tag_info.name);
+            auto const is_selected = context.state.selected_tags_hashes.Contains(tag_hash);
+            DoFilterButton(box_system,
+                           context.state,
+                           filter_item_info,
+                           {
+                               .common =
                                    {
-                                       .common =
-                                           {
-                                               .parent = *section,
-                                               .is_selected = is_selected,
-                                               .text = name,
-                                               .hashes = context.state.selected_tags_hashes,
-                                               .clicked_hash = Hash(name),
-                                               .filter_mode = context.state.filter_mode,
-                                           },
-                                       .right_click_menu = right_click_menu,
-                                   });
-                }
-            }
+                                       .parent = inner_section.Do(box_system).Get<Box>(),
+                                       .is_selected = is_selected,
+                                       .text = tag_info.name,
+                                       .hashes = context.state.selected_tags_hashes,
+                                       .clicked_hash = tag_hash,
+                                       .filter_mode = context.state.filter_mode,
+                                   },
+                           });
+        }
+    }
+
+    if (non_standard_tags.size) {
+        PickerSection inner_section {
+            .state = context.state,
+            .id = context.picker_id ^ HashComptime("tags-section-uncategorised"),
+            .parent = {}, // IMPORTANT: set later
+            .heading = "UNCATEGORISED",
+            .multiline_contents = true,
+            .subsection = true,
+        };
+
+        for (auto const [name, filter_item_info, _] : non_standard_tags) {
+            if (!MatchesFilterSearch(name, context.state.filter_search)) continue;
+
+            if (tags_section.Do(box_system) == PickerSection::State::Collapsed) break;
+            // We now have the outer section. We can give it to the inner section.
+            inner_section.parent = tags_section.Do(box_system).Get<Box>();
+            if (inner_section.Do(box_system) == PickerSection::State::Collapsed) break;
+
+            auto const is_selected = context.state.selected_tags_hashes.Contains(Hash(name));
+            DoFilterButton(box_system,
+                           context.state,
+                           filter_item_info,
+                           {
+                               .common =
+                                   {
+                                       .parent = inner_section.Do(box_system).Get<Box>(),
+                                       .is_selected = is_selected,
+                                       .text = name,
+                                       .hashes = context.state.selected_tags_hashes,
+                                       .clicked_hash = Hash(name),
+                                       .filter_mode = context.state.filter_mode,
+                                   },
+                           });
         }
     }
 }
@@ -1651,19 +1583,6 @@ static String FilterModeDescription(FilterMode mode) {
         case FilterMode::Count: break;
     }
     PanicIfReached();
-}
-
-constexpr auto k_show_only_favourite_filters_key = HashComptime("picker-show-favourites-only");
-
-bool ShowOnlyFavouriteFilters(persistent_store::Store& store) {
-    return persistent_store::GetFlag(store, k_show_only_favourite_filters_key);
-}
-
-void ToggleOnlyFavouriteFilters(persistent_store::Store& store, bool current_state) {
-    if (current_state)
-        persistent_store::RemoveFlag(store, k_show_only_favourite_filters_key);
-    else
-        persistent_store::AddFlag(store, k_show_only_favourite_filters_key);
 }
 
 static void DoMoreOptionsMenu(GuiBoxSystem& box_system, PickerPopupContext& context) {
@@ -1694,7 +1613,7 @@ static void DoMoreOptionsMenu(GuiBoxSystem& box_system, PickerPopupContext& cont
         }
     }
 
-    DoModalDivider(box_system, root, DividerType::Horizontal);
+    DoModalDivider(box_system, root, {.margin = 4, .horizontal = true});
 
     {
         bool const state = prefs::GetBool(context.preferences, ShowPrimaryFilterSectionHeaderDescriptor());
@@ -1708,20 +1627,6 @@ static void DoMoreOptionsMenu(GuiBoxSystem& box_system, PickerPopupContext& cont
             dyn::Append(box_system.state->deferred_actions, [&prefs = context.preferences, state]() {
                 prefs::SetValue(prefs, ShowPrimaryFilterSectionHeaderDescriptor(), !state);
             });
-        }
-    }
-
-    {
-        auto const state = ShowOnlyFavouriteFilters(context.store);
-        if (MenuItem(box_system,
-                     root,
-                     {
-                         .text = "Show Favourite Filters Only",
-                         .is_selected = state,
-                     })
-                .button_fired) {
-            dyn::Append(box_system.state->deferred_actions,
-                        [&store = context.store, state]() { ToggleOnlyFavouriteFilters(store, state); });
         }
     }
 }
@@ -1785,15 +1690,53 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                                          .margins = {.r = k_picker_spacing * 2},
                                                      },
                                                  });
-                if (TextButton(box_system,
-                               btn_container,
-                               {
-                                   .text = btn->text,
-                                   .tooltip = btn->tooltip,
-                                   .fill_x = false,
-                                   .disabled = options.rhs_top_button->disabled,
-                               }))
-                    dyn::Append(box_system.state->deferred_actions, [&]() { btn->on_fired(); });
+
+                // Custom button with icon, styled like TextButton
+                auto const button =
+                    DoBox(box_system,
+                          {
+                              .parent = btn_container,
+                              .background_fill_colours = Splat(style::Colour::Background2),
+                              .background_fill_auto_hot_active_overlay = !btn->disabled,
+                              .round_background_corners = 0b1111,
+                              .layout {
+                                  .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                  .contents_padding = {.lr = style::k_button_padding_x,
+                                                       .tb = style::k_button_padding_y},
+                                  .contents_gap = 3,
+                                  .contents_direction = layout::Direction::Row,
+                                  .contents_align = layout::Alignment::Start,
+                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                              },
+                              .tooltip = btn->disabled ? TooltipString {k_nullopt} : btn->tooltip,
+                              .behaviour = btn->disabled ? Behaviour::None : Behaviour::Button,
+                          });
+
+                // Button text
+                DoBox(box_system,
+                      {
+                          .parent = button,
+                          .text = btn->text,
+                          .size_from_text = true,
+                          .font = FontType::Body,
+                          .text_colours = {btn->disabled ? style::Colour::Surface1 : style::Colour::Text},
+                          .text_align_y = TextAlignY::Centre,
+                          .text_overflow = TextOverflowType::AllowOverflow,
+                      });
+
+                // X icon
+                DoBox(box_system,
+                      {
+                          .parent = button,
+                          .text = ICON_FA_XMARK,
+                          .size_from_text = true,
+                          .font = FontType::Icons,
+                          .font_size = style::k_font_body_size,
+                          .text_colours = {btn->disabled ? style::Colour::Surface1 : style::Colour::Subtext0},
+                      });
+
+                if (button.button_fired && !btn->disabled)
+                    dyn::Append(box_system.state->deferred_actions, [&fn = btn->on_fired]() { fn(); });
             }
 
             for (auto const& btn : ArrayT<PickerPopupOptions::Button>({
@@ -1878,7 +1821,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
         }
     }
 
-    DoModalDivider(box_system, root, DividerType::Horizontal);
+    DoModalDivider(box_system, root, {.horizontal = true});
 
     auto const main_section = DoBox(box_system,
                                     {
@@ -1897,24 +1840,100 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                    .layout {
                                        .size = {options.filters_col_width, layout::k_fill_parent},
                                        .contents_padding = {.t = k_picker_spacing},
+                                       .contents_gap = k_picker_spacing,
                                        .contents_direction = layout::Direction::Column,
                                        .contents_align = layout::Alignment::Start,
                                    },
                                });
 
-        if (ShowOnlyFavouriteFilters(context.store)) {
-            // Show a notice that only favourite filters are shown.
+        {
+            auto const lhs_top = DoBox(box_system,
+                                       {
+                                           .parent = lhs,
+                                           .layout {
+                                               .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                               .contents_padding = {.lr = k_picker_spacing},
+                                               .contents_gap = k_picker_spacing,
+                                               .contents_direction = layout::Direction::Column,
+                                               .contents_align = layout::Alignment::Start,
+                                               .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                           },
+                                       });
+
+            // Filter search box - always visible
+            auto const filter_search_box =
+                DoBox(box_system,
+                      {
+                          .parent = lhs_top,
+                          .background_fill_colours = {style::Colour::Background2},
+                          .round_background_corners = 0b1111,
+                          .layout {
+                              .size = {layout::k_fill_parent, layout::k_hug_contents},
+                              .contents_padding = {.lr = k_picker_spacing / 2},
+                              .contents_direction = layout::Direction::Row,
+                              .contents_align = layout::Alignment::Start,
+                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                          },
+                      });
+
             DoBox(box_system,
                   {
-                      .parent = lhs,
-                      .text = "Showing favourite filters only"_s,
+                      .parent = filter_search_box,
+                      .text = ICON_FA_MAGNIFYING_GLASS,
                       .size_from_text = true,
-                      .font = FontType::Body,
-                      .layout {
-                          .size = {layout::k_fill_parent, layout::k_hug_contents},
-                          .margins = {.lr = k_picker_spacing, .b = k_picker_spacing},
-                      },
+                      .font = FontType::Icons,
+                      .font_size = k_picker_item_height * 0.8f,
+                      .text_colours = {style::Colour::Subtext0},
                   });
+
+            auto const filter_text_input =
+                DoBox(box_system,
+                      {
+                          .parent = filter_search_box,
+                          .text = (String)context.state.filter_search,
+                          .round_background_corners = 0b1111,
+                          .layout {
+                              .size = {layout::k_fill_parent, k_picker_item_height},
+                          },
+                          .tooltip = "Search filters"_s,
+                          .behaviour = Behaviour::TextInput,
+                          .text_input_select_all_on_focus = true,
+                          .text_input_placeholder_text = options.filter_search_placeholder_text,
+                      });
+            DrawTextInput(box_system,
+                          filter_text_input,
+                          {
+                              .text_col = style::Colour::Text,
+                              .cursor_col = style::Colour::Text,
+                              .selection_col = style::Colour::Highlight,
+                          });
+            if (filter_text_input.text_input_result && filter_text_input.text_input_result->buffer_changed) {
+                dyn::Append(box_system.state->deferred_actions,
+                            [&s = context.state.filter_search,
+                             new_text = filter_text_input.text_input_result->text]() {
+                                dyn::AssignFitInCapacity(s, new_text);
+                            });
+                box_system.imgui.frame_output.ElevateUpdateRequest(
+                    GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+            }
+
+            if (context.state.filter_search.size) {
+                if (DoBox(box_system,
+                          {
+                              .parent = filter_search_box,
+                              .text = ICON_FA_XMARK,
+                              .size_from_text = true,
+                              .font = FontType::Icons,
+                              .font_size = k_picker_item_height * 0.9f,
+                              .text_colours = Splat(style::Colour::Subtext0),
+                              .background_fill_auto_hot_active_overlay = true,
+                              .behaviour = Behaviour::Button,
+                          })
+                        .button_fired) {
+                    dyn::Append(box_system.state->deferred_actions,
+                                [&s = context.state.filter_search]() { dyn::Clear(s); });
+                }
+            }
         }
 
         AddPanel(
@@ -1974,7 +1993,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
             });
     }
 
-    DoModalDivider(box_system, main_section, DividerType::Vertical);
+    DoModalDivider(box_system, main_section, {.vertical = true});
 
     {
         auto const rhs = DoBox(box_system,
@@ -2041,19 +2060,20 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                           .text_colours = {style::Colour::Subtext0},
                       });
 
-                auto const text_input = DoBox(box_system,
-                                              {
-                                                  .parent = search_box,
-                                                  .text = (String)context.state.search,
-                                                  .round_background_corners = 0b1111,
-                                                  .layout {
-                                                      .size = {layout::k_fill_parent, k_picker_item_height},
-                                                  },
-                                                  .tooltip = "Search (" MODIFIER_KEY_NAME "+F to focus)"_s,
-                                                  .behaviour = Behaviour::TextInput,
-                                                  .text_input_select_all_on_focus = true,
-                                                  .text_input_placeholder_text = "Search",
-                                              });
+                auto const text_input =
+                    DoBox(box_system,
+                          {
+                              .parent = search_box,
+                              .text = (String)context.state.search,
+                              .round_background_corners = 0b1111,
+                              .layout {
+                                  .size = {layout::k_fill_parent, k_picker_item_height},
+                              },
+                              .tooltip = "Search (" MODIFIER_KEY_NAME "+F to focus)"_s,
+                              .behaviour = Behaviour::TextInput,
+                              .text_input_select_all_on_focus = true,
+                              .text_input_placeholder_text = options.item_search_placeholder_text,
+                          });
                 DrawTextInput(box_system,
                               text_input,
                               {
@@ -2093,7 +2113,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                   .size_from_text = true,
                                   .font = FontType::Icons,
                                   .font_size = k_picker_item_height * 0.9f,
-                                  .text_colours = {style::Colour::Subtext0},
+                                  .text_colours = Splat(style::Colour::Subtext0),
                                   .background_fill_auto_hot_active_overlay = true,
                                   .behaviour = Behaviour::Button,
                               })

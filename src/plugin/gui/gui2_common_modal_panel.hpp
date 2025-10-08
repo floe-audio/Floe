@@ -82,18 +82,26 @@ PUBLIC Box DoModalHeader(GuiBoxSystem& box_system, ModalHeaderConfig const& conf
     return title_container;
 }
 
-enum class DividerType { Horizontal, Vertical };
-PUBLIC Box DoModalDivider(GuiBoxSystem& box_system, Box parent, DividerType type) {
+struct DividerOptions {
+    f32 margin = 0;
+    bool horizontal = 0;
+    bool vertical = 0;
+    bool subtle = 0;
+};
+PUBLIC Box DoModalDivider(GuiBoxSystem& box_system, Box parent, DividerOptions options) {
     auto const one_pixel = box_system.imgui.PixelsToVw(1);
-    return DoBox(box_system,
-                 {
-                     .parent = parent,
-                     .background_fill_colours = {style::Colour::Surface2},
-                     .layout {
-                         .size = type == DividerType::Horizontal ? f32x2 {layout::k_fill_parent, one_pixel}
-                                                                 : f32x2 {one_pixel, layout::k_fill_parent},
-                     },
-                 });
+    return DoBox(
+        box_system,
+        {
+            .parent = parent,
+            .background_fill_colours = {!options.subtle ? style::Colour::Surface2 : style::Colour::Surface0},
+            .layout {
+                .size = options.horizontal ? f32x2 {layout::k_fill_parent, one_pixel}
+                                           : f32x2 {one_pixel, layout::k_fill_parent},
+                .margins = {.lr = options.vertical ? options.margin : 0,
+                            .tb = options.horizontal ? options.margin : 0},
+            },
+        });
 }
 
 struct ModalTabConfig {

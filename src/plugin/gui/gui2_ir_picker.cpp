@@ -7,7 +7,6 @@
 #include "gui2_common_picker.hpp"
 
 inline prefs::Key FavouriteIr() { return "favourite-ir"_s; }
-inline prefs::Key FavouriteFiltersKey() { return "favourite-ir-filters"_s; }
 
 static Optional<IrCursor> CurrentCursor(IrPickerContext const& context, sample_lib::IrId const& ir_id) {
     for (auto const [lib_index, l] : Enumerate(context.libraries)) {
@@ -214,7 +213,7 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
     auto const root = DoPickerItemsRoot(box_system);
 
     Optional<FolderNode*> previous_folder {};
-    Optional<Box> folder_box {};
+    Optional<PickerSection> folder_section {};
 
     auto const first =
         IterateIr(context, state, {.lib_index = 0, .ir_index = 0}, SearchDirection::Forward, true);
@@ -231,13 +230,12 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
 
         if (new_folder) {
             previous_folder = folder;
-            folder_box = DoPickerSectionContainer(box_system,
-                                                  folder->Hash(),
-                                                  state.common_state,
-                                                  {
-                                                      .parent = root,
-                                                      .folder = folder,
-                                                  });
+            folder_section = PickerSection {
+                .state = state.common_state,
+                .id = folder->Hash(),
+                .parent = root,
+                .folder = folder,
+            };
         }
 
         auto const ir_id = sample_lib::IrId {lib.Id(), ir.name};
@@ -245,12 +243,12 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
         auto const is_current = context.engine.processor.convo.ir_id == ir_id;
         auto const is_favourite = IsFavourite(context.prefs, FavouriteIr(), ir_hash);
 
-        if (folder_box) {
+        if (folder_section->Do(box_system).tag != PickerSection::State::Collapsed) {
             auto const item = DoPickerItem(
                 box_system,
                 state.common_state,
                 {
-                    .parent = *folder_box,
+                    .parent = folder_section->Do(box_system).Get<Box>(),
                     .text = ir.name,
                     .tooltip = FunctionRef<String()>([&]() -> String {
                         DynamicArray<char> buffer {box_system.arena};
@@ -395,7 +393,6 @@ void DoIrPickerPopup(GuiBoxSystem& box_system, IrPickerContext& context, IrPicke
             .preferences = context.prefs,
             .store = context.persistent_store,
             .state = state.common_state,
-            .favourite_filters_key = FavouriteFiltersKey(),
         },
         PickerPopupOptions {
             .title = "Impulse Response",
@@ -429,6 +426,8 @@ void DoIrPickerPopup(GuiBoxSystem& box_system, IrPickerContext& context, IrPicke
                                 }).CloneObject(box_system.arena),
                 },
             .rhs_do_items = [&](GuiBoxSystem& box_system) { IrPickerItems(box_system, context, state); },
+            .filter_search_placeholder_text = "Search libraries/tags",
+            .item_search_placeholder_text = "Search IRs",
             .on_load_previous = [&]() { LoadAdjacentIr(context, state, SearchDirection::Backward); },
             .on_load_next = [&]() { LoadAdjacentIr(context, state, SearchDirection::Forward); },
             .on_load_random = [&]() { LoadRandomIr(context, state); },

@@ -18,7 +18,7 @@ static void AttributionPanel(GuiBoxSystem& box_system, AttributionPanelContext& 
                       .title = "Attribution requirements",
                       .on_close = [&open]() { open = false; },
                   });
-    DoModalDivider(box_system, root, DividerType::Horizontal);
+    DoModalDivider(box_system, root, {.horizontal = true});
 
     auto const main_container = DoBox(box_system,
                                       {

@@ -162,7 +162,7 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
                 dyn::AssignFitInCapacity(context.confirmation_dialog_state.title, "Delete Library");
                 fmt::Assign(
                     context.confirmation_dialog_state.body_text,
-                    "Are you sure you want to delete the library '{}'?\n\nThis will move the library folder and all its contents to the {}.",
+                    "Are you sure you want to delete the library '{}'?\n\nThis will move the library folder and all its contents to the {}. You can restore it from there if needed.",
                     lib->name,
                     TRASH_NAME);
 

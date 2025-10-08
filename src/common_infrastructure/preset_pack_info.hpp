@@ -9,4 +9,4 @@ struct PresetPackInfo {
     u16 minor_version {};
 };
 
-PresetPackInfo ParseMetadataFile(String file_data, ArenaAllocator& arena);
+PresetPackInfo ParsePresetPackInfoFile(String file_data, ArenaAllocator& arena);

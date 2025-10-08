@@ -15,7 +15,7 @@ static void ConfirmationDialog(GuiBoxSystem& box_system, ConfirmationDialogState
                       .on_close = [&state]() { state.open = false; },
                   });
 
-    DoModalDivider(box_system, root, DividerType::Horizontal);
+    DoModalDivider(box_system, root, {.horizontal = true});
 
     auto const panel = DoBox(box_system,
                              {

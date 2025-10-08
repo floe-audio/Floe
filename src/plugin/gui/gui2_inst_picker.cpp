@@ -9,7 +9,6 @@
 constexpr sample_lib::LibraryIdRef k_waveform_library_id = {.author = FLOE_VENDOR, .name = "Waveforms"};
 
 inline prefs::Key FavouriteItemKey() { return "favourite-instrument"_s; }
-inline prefs::Key FavouriteFiltersKey() { return "favourite-instrument-filters"_s; }
 
 struct InstrumentCursor {
     bool operator==(InstrumentCursor const& o) const = default;
@@ -333,7 +332,7 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
     DEFER { InstPickerWaveformItems(box_system, context, state, root); };
 
     Optional<FolderNode*> previous_folder {};
-    Optional<Box> folder_box {};
+    Optional<PickerSection> folder_section {};
 
     auto const first =
         IterateInstrument(context, state, {.lib_index = 0, .inst_index = 0}, SearchDirection::Forward, true);
@@ -351,16 +350,15 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
         if (new_folder) {
             previous_folder = folder;
 
-            folder_box = DoPickerSectionContainer(box_system,
-                                                  folder->Hash(),
-                                                  common_state,
-                                                  {
-                                                      .parent = root,
-                                                      .folder = folder,
-                                                  });
+            folder_section = PickerSection {
+                .state = common_state,
+                .id = folder->Hash(),
+                .parent = root,
+                .folder = folder,
+            };
         }
 
-        if (folder_box) {
+        if (folder_section->Do(box_system).tag != PickerSection::State::Collapsed) {
             auto const inst_id = sample_lib::InstrumentId {lib.Id(), inst.name};
             auto const inst_hash = sample_lib::InstHash(inst);
             auto const is_current = context.layer.instrument_id == inst_id;
@@ -372,7 +370,7 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
                 box_system,
                 common_state,
                 {
-                    .parent = *folder_box,
+                    .parent = folder_section->Do(box_system).Get<Box>(),
                     .text = inst.name,
                     .tooltip = FunctionRef<String()>([&]() -> String {
                         DynamicArray<char> buf {box_system.arena};
@@ -558,7 +556,6 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
             .preferences = context.prefs,
             .store = context.persistent_store,
             .state = state.common_state,
-            .favourite_filters_key = FavouriteFiltersKey(),
         },
         PickerPopupOptions {
             .title = fmt::Format(box_system.arena, "Layer {} Instrument", context.layer.index + 1),
@@ -593,6 +590,8 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
                 },
             .rhs_do_items = [&](GuiBoxSystem& box_system) { InstPickerItems(box_system, context, state); },
             .show_search = true,
+            .filter_search_placeholder_text = "Search libraries/tags",
+            .item_search_placeholder_text = "Search instruments",
             .on_load_previous = [&]() { LoadAdjacentInstrument(context, state, SearchDirection::Backward); },
             .on_load_next = [&]() { LoadAdjacentInstrument(context, state, SearchDirection::Forward); },
             .on_load_random = [&]() { LoadRandomInstrument(context, state); },

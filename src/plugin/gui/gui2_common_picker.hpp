@@ -206,8 +206,9 @@ struct CommonPickerState {
     SelectedHashes selected_tags_hashes {"Tag"};
     SelectedHashes selected_folder_hashes {"Folder"};
     bool favourites_only {};
-    DynamicArrayBounded<u64, 16> hidden_filter_headers {};
+    DynamicArrayBounded<u64, 16> collapsed_filter_headers {};
     DynamicArrayBounded<char, 100> search {};
+    DynamicArrayBounded<char, 100> filter_search {};
     DynamicArrayBounded<SelectedHashes*, 3> other_selected_hashes {};
     FilterMode filter_mode = FilterMode::Single;
     RightClickMenuState right_click_menu_state {};
@@ -221,7 +222,6 @@ struct PickerPopupContext {
     prefs::Preferences& preferences;
     persistent_store::Store& store;
     CommonPickerState& state;
-    prefs::Key const& favourite_filters_key;
     imgui::Id picker_id;
 };
 
@@ -304,6 +304,8 @@ struct PickerPopupOptions {
     Optional<Button> rhs_top_button {};
     TrivialFunctionRef<void(GuiBoxSystem&)> rhs_do_items {};
     bool show_search {true};
+    String filter_search_placeholder_text {"Search filters..."};
+    String item_search_placeholder_text {"Search"};
 
     TrivialFunctionRef<void()> on_load_previous {};
     TrivialFunctionRef<void()> on_load_next {};
@@ -320,8 +322,24 @@ struct PickerPopupOptions {
 
 Box DoPickerItemsRoot(GuiBoxSystem& box_system);
 
-struct PickerItemsSectionOptions {
-    Box parent;
+struct PickerItemsSectionOptions {};
+
+struct PickerSection {
+    enum class State : u8 {
+        Collapsed,
+        Box,
+    };
+
+    using Result = TaggedUnion<State, TypeAndTag<Box, State::Box>>;
+
+    // First time this is called, it either returns Collapsed or NormalBoxUninitialised. If
+    // NormalBoxUninitialised, any subsequent calls will return a valid Box.
+    Result Do(GuiBoxSystem& box_system);
+
+    CommonPickerState& state;
+    u8* num_sections_rendered; // Optional.
+    u64 id;
+    ::Box parent;
     Optional<String> heading;
     Optional<String> icon;
     FolderNode const* folder;
@@ -331,12 +349,13 @@ struct PickerItemsSectionOptions {
     bool bigger_contents_gap {false};
     bool skip_root_folder {};
     RightClickMenuState::Function right_click_menu {};
-};
 
-Optional<Box> DoPickerSectionContainer(GuiBoxSystem& box_system,
-                                       u64 id,
-                                       CommonPickerState& state,
-                                       PickerItemsSectionOptions const& options);
+    // Don't set these, they are set internally.
+    Box box_cache {};
+    u8 init : 1 = 0;
+    u8 is_collapsed : 1 = 0;
+    u8 is_box_init : 1 = 0;
+};
 
 struct PickerItemOptions {
     Box parent;
@@ -400,26 +419,4 @@ bool ShowPrimaryFilterSectionHeader(CommonPickerState const& state,
                                     prefs::Preferences const& preferences,
                                     u64 section_heading_id);
 
-using FilterFavouriteHashFunction = u64 (*)(u64 item_hash);
-
-struct FilterRightClickMenuOptions {
-    persistent_store::Store& store;
-    prefs::Preferences& prefs;
-    prefs::Key const& favourite_filters_key;
-    Box const* parent;
-    FilterFavouriteHashFunction hash_func;
-    String menu_item_text;
-};
-
-void FilterRightClickMenuItems(GuiBoxSystem& box_system,
-                               RightClickMenuState const& menu_state,
-                               FilterRightClickMenuOptions const& options);
-
-bool ShowOnlyFavouriteFilters(persistent_store::Store& store);
-void ToggleOnlyFavouriteFilters(persistent_store::Store& store, bool current_state);
-
-PUBLIC u64 TagFavouriteHash(u64 tag_hash) { return tag_hash ^ HashComptime("favourite_tag"); }
-PUBLIC u64 LibraryFavouriteHash(u64 tag_hash) { return tag_hash ^ HashComptime("favourite_library"); }
-PUBLIC u64 LibraryAuthorFavouriteHash(u64 tag_hash) {
-    return tag_hash ^ HashComptime("favourite_library_author");
-}
+bool MatchesFilterSearch(String filter_text, String search_text);

@@ -863,9 +863,9 @@ CreatePresetFolder(PresetServer& server, String scan_folder, String subfolder_of
 }
 
 static ErrorCodeOr<PresetPackInfo>
-ReadMetadataFile(String path, ArenaAllocator& arena, ArenaAllocator& scratch_arena) {
+ReadPresetPackInfoFile(String path, ArenaAllocator& arena, ArenaAllocator& scratch_arena) {
     auto const file_data = TRY(ReadEntireFile(path, scratch_arena));
-    return ParseMetadataFile(file_data, arena);
+    return ParsePresetPackInfoFile(file_data, arena);
 }
 
 static ErrorCodeOr<void> ScanFolder(PresetServer& server,
@@ -904,11 +904,11 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
         if (path::Equal(entry.subpath, k_metadata_filename)) {
             if (!preset_folder)
                 preset_folder = CreatePresetFolder(server, scan_folder.path, subfolder_of_scan_folder);
-            preset_folder->preset_pack_info =
-                TRY_OR(ReadMetadataFile(path::Join(scratch_arena, Array {absolute_folder, entry.subpath}),
-                                        preset_folder->arena,
-                                        scratch_arena),
-                       continue);
+            preset_folder->preset_pack_info = TRY_OR(
+                ReadPresetPackInfoFile(path::Join(scratch_arena, Array {absolute_folder, entry.subpath}),
+                                       preset_folder->arena,
+                                       scratch_arena),
+                continue);
             continue;
         }
 

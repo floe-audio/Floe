@@ -302,7 +302,7 @@ void DoSavePresetPanel(GuiBoxSystem& box_system,
                                       .modeless = &state.modeless,
                                   });
 
-                    DoModalDivider(box_system, root, DividerType::Horizontal);
+                    DoModalDivider(box_system, root, {.horizontal = true});
 
                     AddPanel(
                         box_system,
@@ -327,7 +327,7 @@ void DoSavePresetPanel(GuiBoxSystem& box_system,
 
                         });
 
-                    DoModalDivider(box_system, root, DividerType::Horizontal);
+                    DoModalDivider(box_system, root, {.horizontal = true});
 
                     // bottom buttons
                     auto const button_container =

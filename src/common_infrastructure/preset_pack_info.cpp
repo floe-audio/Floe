@@ -1,7 +1,7 @@
 #include "preset_pack_info.hpp"
 
-PresetPackInfo ParseMetadataFile(String file_data, ArenaAllocator& arena) {
-    PresetPackInfo metadata {};
+PresetPackInfo ParsePresetPackInfoFile(String file_data, ArenaAllocator& arena) {
+    PresetPackInfo pack {};
 
     for (auto line : SplitIterator {.whole = file_data, .token = '\n', .skip_consecutive = true}) {
         line = WhitespaceStripped(line);
@@ -17,18 +17,18 @@ PresetPackInfo ParseMetadataFile(String file_data, ArenaAllocator& arena) {
         if (value_str.size == 0) continue;
 
         if (key == "subtitle"_s) {
-            metadata.subtitle = arena.Clone(value_str);
+            pack.subtitle = arena.Clone(value_str);
         } else if (key == "minor_version"_s) {
             usize num_chars_read = {};
             if (auto const v = ParseInt(value_str, ParseIntBase::Decimal, &num_chars_read, false);
                 v && num_chars_read == value_str.size &&
-                *v <= LargestRepresentableValue<decltype(metadata.minor_version)>()) {
-                metadata.minor_version = (decltype(metadata.minor_version))*v;
+                *v <= LargestRepresentableValue<decltype(pack.minor_version)>()) {
+                pack.minor_version = (decltype(pack.minor_version))*v;
             }
         } else if (key == "id"_s) {
-            metadata.id = Hash(value_str);
+            pack.id = Hash(value_str);
         }
     }
 
-    return metadata;
+    return pack;
 }
