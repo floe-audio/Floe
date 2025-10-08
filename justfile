@@ -82,7 +82,7 @@ check-format:
 check-spelling:
   #!/usr/bin/env bash
   set -euo pipefail
-  output=$(fd . -e .md --exclude third_party_libs/ --exclude src/readme.md | xargs hunspell -l -d en_GB -p docs/ignored-spellings.dic | sort -u)
+  output=$(fd . -e .md --exclude third_party_libs/ | xargs hunspell -l -d en_GB -p docs/ignored-spellings.dic | sort -u)
   echo "$output"
   test "$output" == ""
 
