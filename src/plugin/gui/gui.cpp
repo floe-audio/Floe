@@ -47,7 +47,6 @@ LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, LibraryI
                                       g->imgui,
                                       library_id,
                                       g->shared_engine_systems.sample_library_server,
-                                      g->scratch_arena,
                                       needed);
 }
 
@@ -131,6 +130,8 @@ Gui::Gui(GuiFrameInput& frame_input, Engine& engine)
 }
 
 Gui::~Gui() {
+    Shutdown(library_images);
+
     engine.stated_changed_callback = {};
 
     sample_lib_server::CloseAsyncCommsChannel(engine.shared_engine_systems.sample_library_server,
@@ -282,6 +283,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
     ASSERT(g_is_logical_main_thread);
     g->imgui.SetPixelsPerVw(PixelsPerVw(g));
 
+    BeginFrame(g->library_images, g->imgui);
     BeginFrame(g->box_system, prefs::GetBool(g->prefs, SettingDescriptor(GuiSetting::ShowTooltips)));
 
     g->frame_output = {};

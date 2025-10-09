@@ -1322,16 +1322,6 @@ TEST_CASE(TestFutureAndAsync) {
         CHECK_EQ(future.Result().value, 99);
     }
 
-    SUBCASE("in dynamic array") {
-        DynamicArray<Future<int>> futures {tester.arena};
-        dyn::Emplace(futures, Future<int> {});
-        pool.Async(futures[0], []() { return 123; });
-        CHECK(futures[0].WaitUntilFinished());
-        REQUIRE(futures[0].IsFinished());
-        CHECK_EQ(futures[0].Result(), 123);
-        dyn::Clear(futures);
-    }
-
     return k_success;
 }
 

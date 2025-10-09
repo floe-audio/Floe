@@ -19,6 +19,7 @@ constexpr u16 k_rgba_channels = 4;
 struct ImageBytes {
     usize NumPixels() const { return (usize)(size.width * size.height); }
     usize NumBytes() const { return NumPixels() * k_rgba_channels; }
+    Span<u8> Bytes() const { return {rgba, NumBytes()}; }
     u8* rgba {};
     UiSize size {};
 };
@@ -30,13 +31,10 @@ struct ImageF32 {
     UiSize size;
 };
 
-// NOTE: sadly we can't use an arena allocator with stb_image. So we have to free the image data using
-// FreeDecodedImage.
-
-static ErrorCodeOr<ImageBytes> DecodeJpgOrPng(Span<u8 const> image_data, ArenaAllocator& arena) {
+static ErrorCodeOr<ImageBytes> DecodeJpgOrPng(Span<u8 const> image_data, Allocator& allocator) {
     if (!image_data.size) return ErrorCode(CommonError::InvalidFileFormat);
 
-    // always returns rgba because we specify k_rgba_channels as the output channels
+    // Always returns rgba because we specify k_rgba_channels as the output channels.
     int actual_number_channels;
     int width;
     int height;
@@ -57,7 +55,7 @@ static ErrorCodeOr<ImageBytes> DecodeJpgOrPng(Span<u8 const> image_data, ArenaAl
     // It's a bit silly, but stb_image doesn't let us allocate the image data in an arena allocator, so we
     // just copy it here.
     auto const num_bytes = CheckedCast<usize>(width) * CheckedCast<usize>(height) * k_rgba_channels;
-    auto rgba_arena = arena.AllocateExactSizeUninitialised<u8>(num_bytes);
+    auto rgba_arena = allocator.AllocateExactSizeUninitialised<u8>(num_bytes);
     CopyMemory(rgba_arena.data, rgba, num_bytes);
     stbi_image_free(rgba);
 
@@ -67,19 +65,20 @@ static ErrorCodeOr<ImageBytes> DecodeJpgOrPng(Span<u8 const> image_data, ArenaAl
     };
 }
 
-PUBLIC ErrorCodeOr<ImageBytes> DecodeImage(Span<u8 const> image_data, ArenaAllocator& arena) {
-    return DecodeJpgOrPng(image_data, arena);
+PUBLIC ErrorCodeOr<ImageBytes> DecodeImage(Span<u8 const> image_data, Allocator& allocator) {
+    return DecodeJpgOrPng(image_data, allocator);
 }
 
-PUBLIC ErrorCodeOr<ImageBytes> DecodeImageFromFile(String filename, ArenaAllocator& scratch_arena) {
+PUBLIC ErrorCodeOr<ImageBytes>
+DecodeImageFromFile(String filename, ArenaAllocator& scratch_arena, Allocator& allocator) {
     auto const file_data = TRY(ReadEntireFile(filename, scratch_arena));
-    return DecodeImage(file_data.ToByteSpan(), scratch_arena);
+    return DecodeImage(file_data.ToByteSpan(), allocator);
 }
 
 PUBLIC ImageBytes ShrinkImageIfNeeded(ImageBytes image,
                                       u16 bounding_width,
                                       u16 shrunk_width,
-                                      ArenaAllocator& arena,
+                                      Allocator& allocator,
                                       bool always_allocate) {
     // see if it's already small enough
     if (image.size.width <= bounding_width) {
@@ -87,7 +86,7 @@ PUBLIC ImageBytes ShrinkImageIfNeeded(ImageBytes image,
             return image;
         else {
             auto const num_bytes = image.NumBytes();
-            auto rgba = arena.AllocateExactSizeUninitialised<u8>(num_bytes).data;
+            auto rgba = allocator.AllocateExactSizeUninitialised<u8>(num_bytes).data;
             CopyMemory(rgba, image.rgba, num_bytes);
             return {.rgba = rgba, .size = image.size};
         }
@@ -109,7 +108,8 @@ PUBLIC ImageBytes ShrinkImageIfNeeded(ImageBytes image,
     };
 
     ImageBytes result {
-        .rgba = arena.AllocateExactSizeUninitialised<u8>(shrunk_width * shrunk_height * k_rgba_channels).data,
+        .rgba =
+            allocator.AllocateExactSizeUninitialised<u8>(shrunk_width * shrunk_height * k_rgba_channels).data,
         .size = {shrunk_width, shrunk_height},
     };
 
@@ -122,6 +122,9 @@ PUBLIC ImageBytes ShrinkImageIfNeeded(ImageBytes image,
                               result.size.height,
                               0,
                               STBIR_RGBA);
+
+    allocator.Free(image.Bytes());
+
     return result;
 }
 
@@ -245,13 +248,13 @@ static bool BoxBlur(ImageF32 in, f32x4* out, u16 radius) {
     return true;
 }
 
-static f32x4* CreateBlurredImage(ArenaAllocator& arena, ImageF32 original, u16 blur_radius) {
+static f32x4* CreateBlurredImage(Allocator& arena, ImageF32 original, u16 blur_radius) {
     auto const result = arena.AllocateExactSizeUninitialised<f32x4>(original.NumPixels()).data;
     if (!BoxBlur(original, result, blur_radius)) CopyMemory(result, original.rgba.data, original.NumBytes());
     return result;
 }
 
-static ImageF32 ImageBytesToImageF32(ImageBytes image, ArenaAllocator& arena) {
+static ImageF32 ImageBytesToImageF32(ImageBytes image, Allocator& arena) {
     auto const result = arena.AllocateExactSizeUninitialised<f32x4>(image.NumPixels());
     for (auto [pixel_index, pixel] : Enumerate(result)) {
         auto const bytes = LoadUnalignedToType<u8x4>(image.rgba + (pixel_index * k_rgba_channels));
@@ -298,7 +301,8 @@ static f32 CalculateBrightnessAverage(ImageF32 image) {
 }
 
 PUBLIC ImageBytes CreateBlurredLibraryBackground(ImageBytes original,
-                                                 ArenaAllocator& arena,
+                                                 Allocator& allocator,
+                                                 ArenaAllocator& scratch_arena,
                                                  BlurredImageBackgroundOptions options) {
     ASSERT(options.downscale_factor > 0 && options.downscale_factor <= 1);
     ASSERT(options.brightness_scaling_exponent >= 0);
@@ -318,10 +322,10 @@ PUBLIC ImageBytes CreateBlurredLibraryBackground(ImageBytes original,
     // Shrink the image down for better speed. We are about to blur it, we don't need detail.
     auto const shrunk_width =
         Max(CheckedCast<u16>(original.size.width * options.downscale_factor), original.size.width);
-    auto const result = ShrinkImageIfNeeded(original, shrunk_width, shrunk_width, arena, true);
+    auto const result = ShrinkImageIfNeeded(original, shrunk_width, shrunk_width, allocator, true);
 
     // For ease-of-use and performance, we convert the image to f32x4 format
-    auto const pixels = ImageBytesToImageF32(result, arena);
+    auto const pixels = ImageBytesToImageF32(result, scratch_arena);
 
     // Make the blurred image more of a mid-brightness, instead of very light or very dark. We adjust the
     // brightness relative to the average brightness of the image.
@@ -347,10 +351,12 @@ PUBLIC ImageBytes CreateBlurredLibraryBackground(ImageBytes original,
     // Do a pair of blurs with different radii, and blend them together. 2 is enough to get a nice effect with
     // minimal performance cost.
     {
-        auto const blur1 =
-            CreateBlurredImage(arena, pixels, (u16)(options.blur1_radius_percent * pixels.size.width));
-        auto const blur2 =
-            CreateBlurredImage(arena, pixels, (u16)(options.blur2_radius_percent * pixels.size.width));
+        auto const blur1 = CreateBlurredImage(scratch_arena,
+                                              pixels,
+                                              (u16)(options.blur1_radius_percent * pixels.size.width));
+        auto const blur2 = CreateBlurredImage(scratch_arena,
+                                              pixels,
+                                              (u16)(options.blur2_radius_percent * pixels.size.width));
 
         for (auto const pixel_index : Range(pixels.NumPixels()))
             pixels.rgba[pixel_index] =

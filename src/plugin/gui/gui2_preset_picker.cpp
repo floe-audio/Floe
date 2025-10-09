@@ -553,7 +553,6 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
                                                                          box_system.imgui,
                                                                          lib_id,
                                                                          context.sample_library_server,
-                                                                         box_system.arena,
                                                                          LibraryImagesNeeded::All);
                             if (!imgs.icon) ++num_unknown;
                             if (lib_id == sample_lib::k_mirage_compat_library_id)
@@ -863,7 +862,6 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
                                                                   box_system.imgui,
                                                                   *single_library,
                                                                   context.sample_library_server,
-                                                                  box_system.arena,
                                                                   LibraryImagesNeeded::All);
                         }
 

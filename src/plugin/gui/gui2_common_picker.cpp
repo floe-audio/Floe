@@ -1284,7 +1284,6 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                                                        box_system.imgui,
                                                        lib_id,
                                                        context.sample_library_server,
-                                                       box_system.arena,
                                                        LibraryImagesNeeded::All);
                 if (!imgs.icon) imgs.icon = library_filters.unknown_library_icon;
 
@@ -1370,7 +1369,6 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                                                                    box_system.imgui,
                                                                    lib_id,
                                                                    context.sample_library_server,
-                                                                   box_system.arena,
                                                                    LibraryImagesNeeded::Icon);
                             if (imgs.icon) tex = imgs.icon.NullableValue();
                             tex;

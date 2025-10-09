@@ -276,7 +276,6 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
                                                                         box_system.imgui,
                                                                         lib.Id(),
                                                                         context.sample_library_server,
-                                                                        box_system.arena,
                                                                         LibraryImagesNeeded::Icon);
                                          lib_icon = imgs.icon ? imgs.icon : context.unknown_library_icon;
                                      }

@@ -405,7 +405,6 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
                                                                         box_system.imgui,
                                                                         lib.Id(),
                                                                         context.sample_library_server,
-                                                                        box_system.arena,
                                                                         LibraryImagesNeeded::Icon);
                                          lib_icon = imgs.icon ? imgs.icon : context.unknown_library_icon;
                                      }
@@ -512,7 +511,6 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
                                            box_system.imgui,
                                            sample_lib::k_builtin_library_id,
                                            context.sample_library_server,
-                                           box_system.arena,
                                            LibraryImagesNeeded::All);
     if (!imgs.icon) imgs.icon = context.unknown_library_icon;
 
