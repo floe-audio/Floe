@@ -590,3 +590,156 @@ class ScopedSpinLock {
   private:
     SpinLock& m_l;
 };
+
+struct FutureStatus {
+    enum class Status : u32 {
+        Inactive, // Unscheduled.
+        Pending, // Scheduled to be filled but not started yet.
+        Running, // In progress.
+        Completed, // Successfully completed.
+        Cancelled, // Cancelled before it could complete.
+    };
+
+    static bool IsInProgress(u32 s) { return IsAnyOf(s, Array {(u32)Status::Pending, (u32)Status::Running}); }
+    static bool IsCancelled(u32 s) { return s == (u32)Status::Cancelled; }
+    static bool IsFinished(u32 s) {
+        return IsAnyOf(s, Array {(u32)Status::Completed, (u32)Status::Cancelled});
+    }
+
+    bool IsFinished() const { return IsFinished(status.Load(LoadMemoryOrder::Acquire)); }
+    bool IsCancelled() const { return IsCancelled(status.Load(LoadMemoryOrder::Acquire)); }
+    bool IsInProgress() const { return IsInProgress(status.Load(LoadMemoryOrder::Acquire)); }
+
+    // Returns true if completed, false if cancelled or timed out.
+    bool WaitUntilFinished(Optional<u32> timeout_milliseconds = {}) {
+        while (true) {
+            auto const s = status.Load(LoadMemoryOrder::Acquire);
+            ASSERT(s != (u32)Status::Inactive, "Can't wait on an inactive future");
+
+            if (s == (u32)Status::Completed) return true;
+            if (s == (u32)Status::Cancelled) return false;
+
+            if (WaitIfValueIsExpected(status, s, timeout_milliseconds) == WaitResult::TimedOut) return false;
+        }
+    }
+
+    // Cancel only succeeds for Pending. Returns true if it was successfully cancelled.
+    bool Cancel() {
+        while (true) {
+            auto current = status.Load(LoadMemoryOrder::Acquire);
+            ASSERT(current != (u32)Status::Inactive, "Can't cancel an inactive future");
+
+            if (IsAnyOf(current,
+                        Array {(u32)Status::Running, (u32)Status::Cancelled, (u32)Status::Completed}))
+                return false;
+
+            ASSERT(current == (u32)Status::Pending);
+            if (status.CompareExchangeWeak(current,
+                                           (u32)Status::Cancelled,
+                                           RmwMemoryOrder::AcquireRelease,
+                                           LoadMemoryOrder::Acquire)) {
+                WakeWaitingThreads(status, NumWaitingThreads::All);
+                return true;
+            }
+        }
+    }
+
+    void MarkCompleted() {
+        ASSERT(status.Load(LoadMemoryOrder::Acquire) == (u32)Status::Running);
+        status.Store((u32)Status::Completed, StoreMemoryOrder::Release);
+        WakeWaitingThreads(status, NumWaitingThreads::All);
+    }
+
+    bool TrySetRunning() {
+        auto expected = (u32)Status::Pending;
+        return status.CompareExchangeStrong(expected,
+                                            (u32)Status::Running,
+                                            RmwMemoryOrder::AcquireRelease,
+                                            LoadMemoryOrder::Acquire);
+    }
+
+    void SetPending() {
+        ASSERT(status.Load(LoadMemoryOrder::Acquire) == (u32)Status::Inactive);
+        status.Store((u32)Status::Pending, StoreMemoryOrder::Release);
+    }
+
+    void Reset() {
+        ASSERT(IsAnyOf(status.Load(LoadMemoryOrder::Acquire),
+                       Array {(u32)Status::Completed, (u32)Status::Cancelled, (u32)Status::Inactive}));
+        status.Store((u32)Status::Inactive, StoreMemoryOrder::Release);
+    }
+
+    Atomic<u32> status {(u32)Status::Inactive};
+};
+
+template <TriviallyCopyable Type>
+struct Future {
+    using ValueType = Type;
+
+    Future() = default;
+
+    Future(Future const& other) { AssignAssumeSafe(other); }
+    Future(Future&& other) { AssignAssumeSafe(other); }
+
+    Future& operator=(Future const& other) {
+        ASSERT(this != &other);
+        Assign(other);
+        return *this;
+    }
+
+    Future& operator=(Future&& other) {
+        ASSERT(this != &other);
+        Assign(other);
+        return *this;
+    }
+
+    ~Future() { ASSERT(!FutureStatus::IsInProgress(status.status.Load(LoadMemoryOrder::Acquire))); }
+
+    void AssignAssumeSafe(Future const& other) {
+        auto const other_s = other.status.status.Load(LoadMemoryOrder::Acquire);
+        ASSERT(!FutureStatus::IsInProgress(other_s), "Cannot assign from an in-progress future");
+        result_storage = other.result_storage;
+        status.status.Store(other_s, StoreMemoryOrder::Release);
+    }
+
+    void Assign(Future const& other) {
+        auto const s = status.status.Load(LoadMemoryOrder::Acquire);
+        ASSERT(!FutureStatus::IsInProgress(s), "Cannot assign to an in-progress future");
+        AssignAssumeSafe(other);
+    }
+
+    Type& Result() {
+        ASSERT(status.status.Load(LoadMemoryOrder::Acquire) == (u32)FutureStatus::Status::Completed);
+        return RawResult();
+    }
+
+    bool IsFinished() const { return status.IsFinished(); }
+
+    bool WaitUntilFinished(Optional<u32> timeout_milliseconds = {}) {
+        return status.WaitUntilFinished(timeout_milliseconds);
+    }
+
+    bool Cancel() { return status.Cancel(); }
+
+    void CancelAndWait() {
+        Cancel();
+        WaitUntilFinished();
+    }
+
+    void SetResult(Type const& v) {
+        RawResult() = v;
+        status.MarkCompleted();
+    }
+
+    void Reset() {
+        auto const s = status.status.Load(LoadMemoryOrder::Acquire);
+        ASSERT(!FutureStatus::IsInProgress(s), "Cannot reset an in-progress future");
+        if (s == (u32)FutureStatus::Status::Completed) result_storage = {};
+        status.status.Store((u32)FutureStatus::Status::Inactive, StoreMemoryOrder::Release);
+    }
+
+    Type& RawResult() { return *(Type*)result_storage.data; }
+
+    alignas(Type) Array<u8, sizeof(Type)> result_storage {};
+    FutureStatus status;
+};

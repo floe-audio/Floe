@@ -14,6 +14,7 @@
 #include "utils/thread_extra/atomic_queue.hpp"
 #include "utils/thread_extra/atomic_ref_list.hpp"
 #include "utils/thread_extra/atomic_swap_buffer.hpp"
+#include "utils/thread_extra/thread_pool.hpp"
 
 TEST_CASE(TestParseCommandLineArgs) {
     auto& a = tester.scratch_arena;
@@ -1296,11 +1297,50 @@ TEST_CASE(TestSprintfBuffer) {
     return k_success;
 }
 
+TEST_CASE(TestFutureAndAsync) {
+    ThreadPool pool;
+    pool.Init("test", 2u);
+
+    SUBCASE("basic async with return value") {
+        Future<int> future;
+        CHECK(!future.IsFinished());
+        pool.Async(future, []() { return 42; });
+        CHECK(future.WaitUntilFinished());
+        REQUIRE(future.IsFinished());
+        CHECK_EQ(future.Result(), 42);
+    }
+
+    SUBCASE("type with no default constructor") {
+        struct NoDefault {
+            NoDefault(int v) : value(v) {}
+            int value;
+        };
+        Future<NoDefault> future;
+        pool.Async(future, []() { return NoDefault(99); });
+        CHECK(future.WaitUntilFinished());
+        REQUIRE(future.IsFinished());
+        CHECK_EQ(future.Result().value, 99);
+    }
+
+    SUBCASE("in dynamic array") {
+        DynamicArray<Future<int>> futures {tester.arena};
+        dyn::Emplace(futures, Future<int> {});
+        pool.Async(futures[0], []() { return 123; });
+        CHECK(futures[0].WaitUntilFinished());
+        REQUIRE(futures[0].IsFinished());
+        CHECK_EQ(futures[0].Result(), 123);
+        dyn::Clear(futures);
+    }
+
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterUtilsTests) {
     REGISTER_TEST(TestAtomicQueue);
     REGISTER_TEST(TestAtomicRefList);
     REGISTER_TEST(TestAtomicSwapBuffer);
     REGISTER_TEST(TestErrorNotifications);
+    REGISTER_TEST(TestFutureAndAsync);
     REGISTER_TEST(TestHasAddressesInCurrentModule);
     REGISTER_TEST(TestJsonReader);
     REGISTER_TEST(TestJsonWriter);

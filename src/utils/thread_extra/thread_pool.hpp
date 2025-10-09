@@ -46,6 +46,24 @@ struct ThreadPool {
         m_cond_var.WakeOne();
     }
 
+    // The caller owns the future and is responsible for ensuring it outlives the async task.
+    void Async(auto& future, auto&& function) {
+        ZoneScoped;
+        ASSERT(m_workers.size > 0);
+
+        using FutureType = RemoveReference<decltype(future)>;
+        using JobFunctionType = RemoveReference<decltype(function)>;
+
+        static_assert(Same<typename FutureType::ValueType, InvokeResult<JobFunctionType>>);
+
+        future.status.SetPending();
+
+        AddJob([&future, f = Move(function)]() mutable {
+            if (!future.status.TrySetRunning()) return;
+            future.SetResult(f());
+        });
+    }
+
   private:
     static void WorkerProc(ThreadPool* thread_pool) {
         ZoneScoped;
