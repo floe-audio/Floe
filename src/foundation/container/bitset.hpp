@@ -53,6 +53,11 @@ struct Bitset {
             Set((usize)bit);
     }
 
+    constexpr void ClearBits(ContiguousContainer auto const& bits) {
+        for (auto const bit : bits)
+            Clear((usize)bit);
+    }
+
     constexpr void Clear(usize bit) {
         ASSERT(bit < k_bits);
         elements[bit / k_bits_per_element] &= ~(ElementType(1) << bit % k_bits_per_element);
@@ -86,6 +91,12 @@ struct Bitset {
     }
 
     constexpr bool AllValuesSet() const { return NumSet() == k_bits; }
+
+    constexpr bool AnySetInSpan(ContiguousContainer auto const& bits) const {
+        for (auto const bit : bits)
+            if (Get((usize)bit)) return true;
+        return false;
+    }
 
     constexpr usize NumSet() const {
         usize result = 0;

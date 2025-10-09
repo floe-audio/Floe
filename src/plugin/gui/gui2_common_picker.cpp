@@ -1280,11 +1280,11 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
 
                 auto const is_selected = context.state.selected_library_hashes.Contains(lib_hash);
 
-                auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
-                                                       box_system.imgui,
-                                                       lib_id,
-                                                       context.sample_library_server,
-                                                       LibraryImagesNeeded::All);
+                auto imgs = GetLibraryImages(library_filters.library_images,
+                                             box_system.imgui,
+                                             lib_id,
+                                             context.sample_library_server,
+                                             LibraryImagesTypes::All);
                 if (!imgs.icon) imgs.icon = library_filters.unknown_library_icon;
 
                 if (section.Do(box_system) == PickerSection::State::Collapsed) break;
@@ -1365,11 +1365,11 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                         .icon = ({
                             graphics::ImageID const* tex =
                                 library_filters.unknown_library_icon.NullableValue();
-                            auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
-                                                                   box_system.imgui,
-                                                                   lib_id,
-                                                                   context.sample_library_server,
-                                                                   LibraryImagesNeeded::Icon);
+                            auto imgs = GetLibraryImages(library_filters.library_images,
+                                                         box_system.imgui,
+                                                         lib_id,
+                                                         context.sample_library_server,
+                                                         LibraryImagesTypes::Icon);
                             if (imgs.icon) tex = imgs.icon.NullableValue();
                             tex;
                         }),

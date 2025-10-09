@@ -489,85 +489,85 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
 
             auto const is_favourite = IsFavourite(context.prefs, FavouriteItemKey(), preset.file_hash);
 
-            auto const item = DoPickerItem(
-                box_system,
-                state.common_state,
-                {
-                    .parent = folder_section->Do(box_system).Get<Box>(),
-                    .text = preset.name,
-                    .tooltip = FunctionRef<String()>([&]() -> String {
-                        DynamicArray<char> buffer {box_system.arena};
+            auto const item =
+                DoPickerItem(box_system,
+                             state.common_state,
+                             {
+                                 .parent = folder_section->Do(box_system).Get<Box>(),
+                                 .text = preset.name,
+                                 .tooltip = FunctionRef<String()>([&]() -> String {
+                                     DynamicArray<char> buffer {box_system.arena};
 
-                        fmt::Append(buffer, "{}", preset.name);
-                        if (preset.metadata.author.size)
-                            fmt::Append(buffer, " by {}.", preset.metadata.author);
-                        if (preset.metadata.description.size)
-                            fmt::Append(buffer, "\n\n{}", preset.metadata.description);
+                                     fmt::Append(buffer, "{}", preset.name);
+                                     if (preset.metadata.author.size)
+                                         fmt::Append(buffer, " by {}.", preset.metadata.author);
+                                     if (preset.metadata.description.size)
+                                         fmt::Append(buffer, "\n\n{}", preset.metadata.description);
 
-                        dyn::AppendSpan(buffer, "\n\nTags: ");
-                        if (preset.metadata.tags.size) {
-                            for (auto const [tag, _] : preset.metadata.tags)
-                                fmt::Append(buffer, "{}, ", tag);
-                            dyn::Pop(buffer, 2);
-                        } else {
-                            dyn::AppendSpan(buffer, "none");
-                        }
+                                     dyn::AppendSpan(buffer, "\n\nTags: ");
+                                     if (preset.metadata.tags.size) {
+                                         for (auto const [tag, _] : preset.metadata.tags)
+                                             fmt::Append(buffer, "{}, ", tag);
+                                         dyn::Pop(buffer, 2);
+                                     } else {
+                                         dyn::AppendSpan(buffer, "none");
+                                     }
 
-                        if (preset.used_libraries.size) {
-                            dyn::AppendSpan(buffer, "\n\nRequires libraries: ");
-                            for (auto const [library, _] : preset.used_libraries) {
-                                dyn::AppendSpan(buffer, library.name);
-                                auto lib =
-                                    sample_lib_server::FindLibraryRetained(context.sample_library_server,
-                                                                           library);
-                                DEFER { lib.Release(); };
-                                if (!lib) dyn::AppendSpan(buffer, " (not installed)");
-                                if (preset.used_libraries.size == 2)
-                                    dyn::AppendSpan(buffer, " and ");
-                                else
-                                    dyn::AppendSpan(buffer, ", ");
-                            }
-                            if (preset.used_libraries.size == 2)
-                                dyn::Pop(buffer, 5);
-                            else
-                                dyn::Pop(buffer, 2);
-                            dyn::AppendSpan(buffer, ".");
-                        }
+                                     if (preset.used_libraries.size) {
+                                         dyn::AppendSpan(buffer, "\n\nRequires libraries: ");
+                                         for (auto const [library, _] : preset.used_libraries) {
+                                             dyn::AppendSpan(buffer, library.name);
+                                             auto lib = sample_lib_server::FindLibraryRetained(
+                                                 context.sample_library_server,
+                                                 library);
+                                             DEFER { lib.Release(); };
+                                             if (!lib) dyn::AppendSpan(buffer, " (not installed)");
+                                             if (preset.used_libraries.size == 2)
+                                                 dyn::AppendSpan(buffer, " and ");
+                                             else
+                                                 dyn::AppendSpan(buffer, ", ");
+                                         }
+                                         if (preset.used_libraries.size == 2)
+                                             dyn::Pop(buffer, 5);
+                                         else
+                                             dyn::Pop(buffer, 2);
+                                         dyn::AppendSpan(buffer, ".");
+                                     }
 
-                        return buffer.ToOwnedSpan();
-                    }),
-                    .item_id = preset.full_path_hash,
-                    .is_current = is_current,
-                    .is_favourite = is_favourite,
-                    .is_tab_item = new_folder,
-                    .icons = ({
-                        // The items are normally ordered, but we want special handling for the Mirage
-                        // Compatibility library and unknown libraries.
+                                     return buffer.ToOwnedSpan();
+                                 }),
+                                 .item_id = preset.full_path_hash,
+                                 .is_current = is_current,
+                                 .is_favourite = is_favourite,
+                                 .is_tab_item = new_folder,
+                                 .icons = ({
+                                     // The items are normally ordered, but we want special handling for the
+                                     // Mirage Compatibility library and unknown libraries.
 
-                        decltype(PickerItemOptions::icons) icons {};
-                        usize icons_index = 0;
-                        Optional<graphics::ImageID> mirage_compat_icon = k_nullopt;
-                        usize num_unknown = 0;
-                        for (auto const [lib_id, _] : preset.used_libraries) {
-                            auto const imgs = LibraryImagesFromLibraryId(context.library_images,
-                                                                         box_system.imgui,
-                                                                         lib_id,
-                                                                         context.sample_library_server,
-                                                                         LibraryImagesNeeded::All);
-                            if (!imgs.icon) ++num_unknown;
-                            if (lib_id == sample_lib::k_mirage_compat_library_id)
-                                mirage_compat_icon = imgs.icon;
-                            else
-                                icons[icons_index++] = imgs.icon;
-                        }
-                        for (auto const _ : Range(num_unknown))
-                            icons[icons_index++] = *context.unknown_library_icon;
-                        if (mirage_compat_icon) icons[icons_index++] = *mirage_compat_icon;
-                        icons;
-                    }),
-                    .notifications = context.notifications,
-                    .store = context.persistent_store,
-                });
+                                     decltype(PickerItemOptions::icons) icons {};
+                                     usize icons_index = 0;
+                                     Optional<graphics::ImageID> mirage_compat_icon = k_nullopt;
+                                     usize num_unknown = 0;
+                                     for (auto const [lib_id, _] : preset.used_libraries) {
+                                         auto const imgs = GetLibraryImages(context.library_images,
+                                                                            box_system.imgui,
+                                                                            lib_id,
+                                                                            context.sample_library_server,
+                                                                            LibraryImagesTypes::All);
+                                         if (!imgs.icon) ++num_unknown;
+                                         if (lib_id == sample_lib::k_mirage_compat_library_id)
+                                             mirage_compat_icon = imgs.icon;
+                                         else
+                                             icons[icons_index++] = imgs.icon;
+                                     }
+                                     for (auto const _ : Range(num_unknown))
+                                         icons[icons_index++] = *context.unknown_library_icon;
+                                     if (mirage_compat_icon) icons[icons_index++] = *mirage_compat_icon;
+                                     icons;
+                                 }),
+                                 .notifications = context.notifications,
+                                 .store = context.persistent_store,
+                             });
 
             // Right-click menu.
             DoRightClickMenuForBox(box_system,
@@ -858,11 +858,11 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
 
                         Optional<LibraryImages> lib_imgs {};
                         if (auto const single_library = AllPresetsSingleLibrary(*folder)) {
-                            lib_imgs = LibraryImagesFromLibraryId(context.library_images,
-                                                                  box_system.imgui,
-                                                                  *single_library,
-                                                                  context.sample_library_server,
-                                                                  LibraryImagesNeeded::All);
+                            lib_imgs = GetLibraryImages(context.library_images,
+                                                        box_system.imgui,
+                                                        *single_library,
+                                                        context.sample_library_server,
+                                                        LibraryImagesTypes::All);
                         }
 
                         DoFilterCard(

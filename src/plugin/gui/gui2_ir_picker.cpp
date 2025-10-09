@@ -271,12 +271,11 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
                                  .icons = ({
                                      if (&lib != previous_library) {
                                          previous_library = &lib;
-                                         auto const imgs =
-                                             LibraryImagesFromLibraryId(context.library_images,
-                                                                        box_system.imgui,
-                                                                        lib.Id(),
-                                                                        context.sample_library_server,
-                                                                        LibraryImagesNeeded::Icon);
+                                         auto const imgs = GetLibraryImages(context.library_images,
+                                                                            box_system.imgui,
+                                                                            lib.Id(),
+                                                                            context.sample_library_server,
+                                                                            LibraryImagesTypes::Icon);
                                          lib_icon = imgs.icon ? imgs.icon : context.unknown_library_icon;
                                      }
                                      decltype(PickerItemOptions::icons) {lib_icon};

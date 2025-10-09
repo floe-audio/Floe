@@ -400,12 +400,11 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
                                  .icons = ({
                                      if (&lib != previous_library) {
                                          previous_library = &lib;
-                                         auto const imgs =
-                                             LibraryImagesFromLibraryId(context.library_images,
-                                                                        box_system.imgui,
-                                                                        lib.Id(),
-                                                                        context.sample_library_server,
-                                                                        LibraryImagesNeeded::Icon);
+                                         auto const imgs = GetLibraryImages(context.library_images,
+                                                                            box_system.imgui,
+                                                                            lib.Id(),
+                                                                            context.sample_library_server,
+                                                                            LibraryImagesTypes::Icon);
                                          lib_icon = imgs.icon ? imgs.icon : context.unknown_library_icon;
                                      }
                                      decltype(PickerItemOptions::icons) {lib_icon};
@@ -507,11 +506,11 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
         }
     }
 
-    auto imgs = LibraryImagesFromLibraryId(context.library_images,
-                                           box_system.imgui,
-                                           sample_lib::k_builtin_library_id,
-                                           context.sample_library_server,
-                                           LibraryImagesNeeded::All);
+    auto imgs = GetLibraryImages(context.library_images,
+                                 box_system.imgui,
+                                 sample_lib::k_builtin_library_id,
+                                 context.sample_library_server,
+                                 LibraryImagesTypes::All);
     if (!imgs.icon) imgs.icon = context.unknown_library_icon;
 
     FilterCardOptions const waveform_card {

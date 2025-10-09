@@ -30,6 +30,7 @@
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/layout.hpp"
 #include "gui_layer.hpp"
+#include "gui_waveform_images.hpp"
 
 struct GuiFrameInput;
 
@@ -38,79 +39,6 @@ struct DraggingFX {
     Effect* fx {};
     usize drop_slot {};
     f32x2 relative_grab_point {};
-};
-
-class FloeWaveformImages {
-  public:
-    ErrorCodeOr<graphics::TextureHandle> FetchOrCreate(graphics::DrawContext& graphics,
-                                                       ArenaAllocator& scratch_arena,
-                                                       WaveformAudioSource source,
-                                                       f32 unscaled_width,
-                                                       f32 unscaled_height) {
-        UiSize const size {CheckedCast<u16>(unscaled_width), CheckedCast<u16>(unscaled_height)};
-
-        u64 source_hash = 0;
-        switch (source.tag) {
-            case WaveformAudioSourceType::AudioData: {
-                auto const audio_data = source.Get<AudioData const*>();
-                if (!audio_data) return ErrorCode {CommonError::NotFound};
-                source_hash = audio_data->hash;
-                break;
-            }
-            case WaveformAudioSourceType::Sine:
-            case WaveformAudioSourceType::WhiteNoise: {
-                source_hash = (u64)source.tag + 1;
-                break;
-            }
-        }
-
-        for (auto& waveform : m_waveforms) {
-            if (waveform.source_hash == source_hash && waveform.image_id.size == size) {
-                auto tex = graphics.GetTextureFromImage(waveform.image_id);
-                if (tex) {
-                    waveform.used = true;
-                    return *tex;
-                }
-            }
-        }
-
-        Waveform waveform {};
-        auto pixels = CreateWaveformImage(source, size, scratch_arena, scratch_arena);
-        waveform.source_hash = source_hash;
-        waveform.image_id = TRY(graphics.CreateImageID(pixels.data, size, 4));
-        waveform.used = true;
-
-        dyn::Append(m_waveforms, waveform);
-        auto tex = graphics.GetTextureFromImage(waveform.image_id);
-        ASSERT(tex);
-        return *tex;
-    }
-
-    void StartFrame() {
-        for (auto& waveform : m_waveforms)
-            waveform.used = false;
-    }
-
-    void EndFrame(graphics::DrawContext& graphics) {
-        dyn::RemoveValueIf(m_waveforms, [&graphics](Waveform& w) {
-            if (!w.used) {
-                graphics.DestroyImageID(w.image_id);
-                return true;
-            }
-            return false;
-        });
-    }
-
-    void Clear() { dyn::Clear(m_waveforms); }
-
-  private:
-    struct Waveform {
-        u64 source_hash {};
-        graphics::ImageID image_id = graphics::k_invalid_image_id;
-        bool used {};
-    };
-
-    DynamicArray<Waveform> m_waveforms {Malloc::Instance()};
 };
 
 struct Gui {
@@ -185,7 +113,7 @@ struct Gui {
 //
 
 LibraryImages
-LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, LibraryImagesNeeded needed);
+LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, LibraryImagesTypes needed);
 
 Optional<graphics::ImageID> LogoImage(Gui* g);
 Optional<graphics::ImageID>& UnknownLibraryIcon(Gui* g);

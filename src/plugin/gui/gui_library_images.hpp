@@ -7,11 +7,14 @@
 #include "gui_framework/image.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 
+// Images for a particular sample library.
 struct LibraryImages {
     struct LoadingBackgrounds {
         Optional<ImageBytes> background {};
         Optional<ImageBytes> blurred_background {};
     };
+
+    enum class ImageType : u8 { Icon, Background, BlurredBackground, Count };
 
     Optional<graphics::ImageID> icon {};
     Optional<graphics::ImageID> background {};
@@ -25,9 +28,7 @@ struct LibraryImages {
     Future<Optional<LoadingBackgrounds>>* loading_backgrounds;
 
     // Per-frame state.
-    bool needs_icon_reload {};
-    bool needs_background_reload {};
-    bool needs_blurred_background_reload {};
+    Bitset<ToInt(ImageType::Count)> needs_reload {};
 };
 
 struct LibraryImagesTable {
@@ -35,22 +36,23 @@ struct LibraryImagesTable {
     HashTable<sample_lib::LibraryId, LibraryImages> table;
 };
 
-enum class LibraryImagesNeeded : u8 {
+enum class LibraryImagesTypes : u8 {
     Icon = 1 << 0,
     Backgrounds = 1 << 1,
     All = Icon | Backgrounds,
 };
-BITWISE_OPERATORS(LibraryImagesNeeded)
+BITWISE_OPERATORS(LibraryImagesTypes)
+
+// Very efficiently receives library images for a given library, starting any asynchronous loading if needed.
+// You can use bits to not trigger image loading that you don't need right now.
+LibraryImages GetLibraryImages(LibraryImagesTable& table,
+                               imgui::Context& imgui,
+                               sample_lib::LibraryIdRef const& library_id,
+                               sample_lib_server::Server& server,
+                               LibraryImagesTypes needed_types = LibraryImagesTypes::All);
 
 void BeginFrame(LibraryImagesTable& table, imgui::Context& imgui);
 void Shutdown(LibraryImagesTable& table);
-
-LibraryImages LibraryImagesFromLibraryId(LibraryImagesTable& table,
-                                         imgui::Context& imgui,
-                                         sample_lib::LibraryIdRef const& library_id,
-                                         sample_lib_server::Server& server,
-                                         LibraryImagesNeeded needed = LibraryImagesNeeded::All);
-
 void InvalidateLibraryImages(LibraryImagesTable& table,
                              sample_lib::LibraryIdRef library_id,
                              graphics::DrawContext& ctx);

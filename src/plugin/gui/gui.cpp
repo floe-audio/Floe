@@ -42,12 +42,12 @@ static f32 PixelsPerVw(Gui* g) {
 }
 
 LibraryImages
-LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, LibraryImagesNeeded needed) {
-    return LibraryImagesFromLibraryId(g->library_images,
-                                      g->imgui,
-                                      library_id,
-                                      g->shared_engine_systems.sample_library_server,
-                                      needed);
+LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, LibraryImagesTypes needed) {
+    return GetLibraryImages(g->library_images,
+                            g->imgui,
+                            library_id,
+                            g->shared_engine_systems.sample_library_server,
+                            needed);
 }
 
 Optional<graphics::ImageID> LogoImage(Gui* g) {
@@ -345,7 +345,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
         if (!prefs::GetBool(g->prefs, SettingDescriptor(GuiSetting::HighContrastGui))) {
             auto overall_library = LibraryForOverallBackground(g->engine);
             if (overall_library) {
-                auto imgs = LibraryImagesFromLibraryId(g, *overall_library, LibraryImagesNeeded::Backgrounds);
+                auto imgs = LibraryImagesFromLibraryId(g, *overall_library, LibraryImagesTypes::Backgrounds);
                 if (imgs.background) {
                     auto tex = g->frame_input.graphics_ctx->GetTextureFromImage(*imgs.background);
                     if (tex) {
