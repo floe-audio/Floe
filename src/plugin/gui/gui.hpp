@@ -160,7 +160,7 @@ struct Gui {
     FloeWaveformImages waveforms {};
     Optional<graphics::ImageID> floe_logo_image {};
 
-    LibraryImagesArray library_images {Malloc::Instance()};
+    LibraryImagesTable library_images {Malloc::Instance()};
     Optional<graphics::ImageID> unknown_library_icon {};
 
     Optional<DraggingFX> dragging_fx_unit {};

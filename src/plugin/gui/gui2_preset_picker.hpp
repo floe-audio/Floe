@@ -30,7 +30,7 @@ struct PresetPickerContext {
 
     sample_lib_server::Server& sample_library_server;
     PresetServer& preset_server;
-    LibraryImagesArray& library_images;
+    LibraryImagesTable& library_images;
     prefs::Preferences& prefs;
     Engine& engine;
     Optional<graphics::ImageID>& unknown_library_icon;

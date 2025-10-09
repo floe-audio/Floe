@@ -264,7 +264,7 @@ struct FilterCardOptions {
 };
 
 struct LibraryFilters {
-    LibraryImagesArray& library_images;
+    LibraryImagesTable& library_images;
     OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
     OrderedHashTable<String, FilterItemInfo> library_authors;
     Optional<graphics::ImageID> unknown_library_icon;

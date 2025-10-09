@@ -50,16 +50,6 @@ static void CreateLibraryBackgroundImageTextures(imgui::Context const& imgui,
     }
 }
 
-static LibraryImages& FindOrCreateLibraryImages(LibraryImagesArray& library_images,
-                                                sample_lib::LibraryIdRef library_id) {
-    auto opt_index =
-        FindIf(library_images, [&](LibraryImages const& l) { return l.library_id == library_id; });
-    if (opt_index) return library_images[*opt_index];
-
-    dyn::Append(library_images, {library_id});
-    return library_images[library_images.size - 1];
-}
-
 struct CheckLibraryImagesResult {
     bool reload_icon = false;
     bool reload_background = false;
@@ -77,10 +67,10 @@ static CheckLibraryImagesResult CheckLibraryImages(graphics::DrawContext& ctx, L
     return result;
 }
 
-static LibraryImages LoadDefaultLibraryImagesIfNeeded(LibraryImagesArray& library_images,
+static LibraryImages LoadDefaultLibraryImagesIfNeeded(LibraryImagesTable& library_images,
                                                       imgui::Context& imgui,
                                                       ArenaAllocator& scratch_arena) {
-    auto& images = FindOrCreateLibraryImages(library_images, k_default_background_lib_id);
+    auto& images = library_images.FindOrInsert(k_default_background_lib_id, {}).element.data;
     auto const reloads = CheckLibraryImages(*imgui.frame_input.graphics_ctx, images);
 
     if (reloads.reload_background || reloads.reload_blurred_background) {
@@ -163,13 +153,13 @@ Optional<ImageBytes> ImagePixelsFromLibrary(sample_lib::Library const& lib,
     return pixels;
 }
 
-static LibraryImages LoadLibraryImagesIfNeeded(LibraryImagesArray& array,
+static LibraryImages LoadLibraryImagesIfNeeded(LibraryImagesTable& table,
                                                imgui::Context& imgui,
                                                sample_lib::Library const& lib,
                                                sample_lib_server::Server& server,
                                                ArenaAllocator& scratch_arena,
                                                bool only_icon_needed) {
-    auto& images = FindOrCreateLibraryImages(array, lib.Id());
+    auto& images = table.FindOrInsert(lib.Id(), {}).element.data;
     auto const reloads = CheckLibraryImages(*imgui.frame_input.graphics_ctx, images);
 
     if (reloads.reload_icon) {
@@ -202,33 +192,31 @@ static LibraryImages LoadLibraryImagesIfNeeded(LibraryImagesArray& array,
     return images;
 }
 
-Optional<LibraryImages> LibraryImagesFromLibraryId(LibraryImagesArray& array,
+Optional<LibraryImages> LibraryImagesFromLibraryId(LibraryImagesTable& table,
                                                    imgui::Context& imgui,
                                                    sample_lib::LibraryIdRef const& library_id,
                                                    sample_lib_server::Server& server,
                                                    ArenaAllocator& scratch_arena,
                                                    bool only_icon_needed) {
     if (!only_icon_needed && library_id == k_default_background_lib_id)
-        return LoadDefaultLibraryImagesIfNeeded(array, imgui, scratch_arena);
+        return LoadDefaultLibraryImagesIfNeeded(table, imgui, scratch_arena);
 
     auto lib = sample_lib_server::FindLibraryRetained(server, library_id);
     DEFER { lib.Release(); };
     if (!lib) return k_nullopt;
 
-    return LoadLibraryImagesIfNeeded(array, imgui, *lib, server, scratch_arena, only_icon_needed);
+    return LoadLibraryImagesIfNeeded(table, imgui, *lib, server, scratch_arena, only_icon_needed);
 }
 
-void InvalidateLibraryImages(LibraryImagesArray& array,
+void InvalidateLibraryImages(LibraryImagesTable& table,
                              sample_lib::LibraryIdRef library_id,
                              graphics::DrawContext& ctx) {
     ASSERT(g_is_logical_main_thread);
-    auto opt_index = FindIf(array, [&](LibraryImages const& l) { return l.library_id == library_id; });
-    if (opt_index) {
-        auto& imgs = array[*opt_index];
-        imgs.icon_missing = false;
-        imgs.background_missing = false;
-        if (imgs.icon) ctx.DestroyImageID(*imgs.icon);
-        if (imgs.background) ctx.DestroyImageID(*imgs.background);
-        if (imgs.blurred_background) ctx.DestroyImageID(*imgs.blurred_background);
+    if (auto imgs = table.Find(library_id)) {
+        imgs->icon_missing = false;
+        imgs->background_missing = false;
+        if (imgs->icon) ctx.DestroyImageID(*imgs->icon);
+        if (imgs->background) ctx.DestroyImageID(*imgs->background);
+        if (imgs->blurred_background) ctx.DestroyImageID(*imgs->blurred_background);
     }
 }

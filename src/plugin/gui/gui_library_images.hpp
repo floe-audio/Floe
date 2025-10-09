@@ -15,15 +15,15 @@ struct LibraryImages {
     bool background_missing {};
 };
 
-using LibraryImagesArray = DynamicArray<LibraryImages>;
+using LibraryImagesTable = DynamicHashTable<sample_lib::LibraryIdRef, LibraryImages>;
 
-Optional<LibraryImages> LibraryImagesFromLibraryId(LibraryImagesArray& array,
+Optional<LibraryImages> LibraryImagesFromLibraryId(LibraryImagesTable& table,
                                                    imgui::Context& imgui,
                                                    sample_lib::LibraryIdRef const& library_id,
                                                    sample_lib_server::Server& server,
                                                    ArenaAllocator& scratch_arena,
                                                    bool only_icon_needed);
 
-void InvalidateLibraryImages(LibraryImagesArray& array,
+void InvalidateLibraryImages(LibraryImagesTable& table,
                              sample_lib::LibraryIdRef library_id,
                              graphics::DrawContext& ctx);

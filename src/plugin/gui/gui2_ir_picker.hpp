@@ -17,7 +17,7 @@ struct IrPickerContext {
     void Deinit() { sample_lib_server::ReleaseAll(libraries); }
 
     sample_lib_server::Server& sample_library_server;
-    LibraryImagesArray& library_images;
+    LibraryImagesTable& library_images;
     Engine& engine;
     prefs::Preferences& prefs;
     Optional<graphics::ImageID>& unknown_library_icon;
