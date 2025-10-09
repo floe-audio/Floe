@@ -184,8 +184,8 @@ struct Gui {
 //
 //
 
-Optional<LibraryImages>
-LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, bool only_icon_needed);
+LibraryImages
+LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, LibraryImagesNeeded needed);
 
 Optional<graphics::ImageID> LogoImage(Gui* g);
 Optional<graphics::ImageID>& UnknownLibraryIcon(Gui* g);

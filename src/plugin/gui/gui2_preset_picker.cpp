@@ -549,20 +549,17 @@ void PresetPickerItems(GuiBoxSystem& box_system, PresetPickerContext& context, P
                         Optional<graphics::ImageID> mirage_compat_icon = k_nullopt;
                         usize num_unknown = 0;
                         for (auto const [lib_id, _] : preset.used_libraries) {
-                            if (auto const imgs = LibraryImagesFromLibraryId(context.library_images,
-                                                                             box_system.imgui,
-                                                                             lib_id,
-                                                                             context.sample_library_server,
-                                                                             box_system.arena,
-                                                                             true);
-                                imgs && imgs->icon) {
-                                if (lib_id == sample_lib::k_mirage_compat_library_id)
-                                    mirage_compat_icon = imgs->icon;
-                                else
-                                    icons[icons_index++] = imgs->icon;
-                            } else if (context.unknown_library_icon) {
-                                ++num_unknown;
-                            }
+                            auto const imgs = LibraryImagesFromLibraryId(context.library_images,
+                                                                         box_system.imgui,
+                                                                         lib_id,
+                                                                         context.sample_library_server,
+                                                                         box_system.arena,
+                                                                         LibraryImagesNeeded::All);
+                            if (!imgs.icon) ++num_unknown;
+                            if (lib_id == sample_lib::k_mirage_compat_library_id)
+                                mirage_compat_icon = imgs.icon;
+                            else
+                                icons[icons_index++] = imgs.icon;
                         }
                         for (auto const _ : Range(num_unknown))
                             icons[icons_index++] = *context.unknown_library_icon;
@@ -860,22 +857,14 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
                         if (!MatchesFilterSearch(folder_name, state.common_state.filter_search)) return;
                         if (section.Do(box_system).tag == PickerSection::State::Collapsed) return;
 
-                        Optional<graphics::ImageID> icon = {};
-                        Optional<graphics::ImageID> background_image1 = {};
-                        Optional<graphics::ImageID> background_image2 = {};
+                        Optional<LibraryImages> lib_imgs {};
                         if (auto const single_library = AllPresetsSingleLibrary(*folder)) {
-                            if (auto imgs = LibraryImagesFromLibraryId(context.library_images,
-                                                                       box_system.imgui,
-                                                                       *single_library,
-                                                                       context.sample_library_server,
-                                                                       box_system.arena,
-                                                                       false)) {
-                                if (!imgs->icon_missing) icon = imgs->icon;
-                                if (!imgs->background_missing) {
-                                    background_image1 = imgs->blurred_background;
-                                    background_image2 = imgs->background;
-                                }
-                            }
+                            lib_imgs = LibraryImagesFromLibraryId(context.library_images,
+                                                                  box_system.imgui,
+                                                                  *single_library,
+                                                                  context.sample_library_server,
+                                                                  box_system.arena,
+                                                                  LibraryImagesNeeded::All);
                         }
 
                         DoFilterCard(
@@ -896,9 +885,11 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
                                         .clicked_hash = folder->Hash(),
                                         .filter_mode = state.common_state.filter_mode,
                                     },
-                                .background_image1 = background_image1.NullableValue(),
-                                .background_image2 = background_image2.NullableValue(),
-                                .icon = icon.NullableValue(),
+                                .background_image1 =
+                                    lib_imgs ? lib_imgs->blurred_background.NullableValue() : nullptr,
+                                .background_image2 =
+                                    lib_imgs ? lib_imgs->background.NullableValue() : nullptr,
+                                .icon = lib_imgs ? lib_imgs->icon.NullableValue() : nullptr,
                                 .subtext = ({
                                     String s {};
                                     if (auto const m = PresetPackInfoForNode(*folder))

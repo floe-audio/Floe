@@ -366,56 +366,54 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
 
             // TODO: a Panic was hit here where the GUI changed between layout and render passes while
             // updating a floe.lua file. It's rare though.
-            auto const item = DoPickerItem(
-                box_system,
-                common_state,
-                {
-                    .parent = folder_section->Do(box_system).Get<Box>(),
-                    .text = inst.name,
-                    .tooltip = FunctionRef<String()>([&]() -> String {
-                        DynamicArray<char> buf {box_system.arena};
-                        fmt::Append(buf,
-                                    "{} from {} by {}.\n\n",
-                                    inst.name,
-                                    inst.library.name,
-                                    inst.library.author);
+            auto const item =
+                DoPickerItem(box_system,
+                             common_state,
+                             {
+                                 .parent = folder_section->Do(box_system).Get<Box>(),
+                                 .text = inst.name,
+                                 .tooltip = FunctionRef<String()>([&]() -> String {
+                                     DynamicArray<char> buf {box_system.arena};
+                                     fmt::Append(buf,
+                                                 "{} from {} by {}.\n\n",
+                                                 inst.name,
+                                                 inst.library.name,
+                                                 inst.library.author);
 
-                        if (inst.description) fmt::Append(buf, "{}", inst.description);
+                                     if (inst.description) fmt::Append(buf, "{}", inst.description);
 
-                        fmt::Append(buf, "\n\nTags: ");
-                        if (inst.tags.size == 0)
-                            fmt::Append(buf, "None");
-                        else {
-                            for (auto const [t, _] : inst.tags)
-                                fmt::Append(buf, "{}, ", t);
-                            dyn::Pop(buf, 2);
-                        }
+                                     fmt::Append(buf, "\n\nTags: ");
+                                     if (inst.tags.size == 0)
+                                         fmt::Append(buf, "None");
+                                     else {
+                                         for (auto const [t, _] : inst.tags)
+                                             fmt::Append(buf, "{}, ", t);
+                                         dyn::Pop(buf, 2);
+                                     }
 
-                        return buf.ToOwnedSpan();
-                    }),
-                    .item_id = inst_hash,
-                    .is_current = is_current,
-                    .is_favourite = is_favourite,
-                    .is_tab_item = new_folder,
-                    .icons = ({
-                        if (&lib != previous_library) {
-                            lib_icon = k_nullopt;
-                            previous_library = &lib;
-                            if (auto const imgs = LibraryImagesFromLibraryId(context.library_images,
-                                                                             box_system.imgui,
-                                                                             lib.Id(),
-                                                                             context.sample_library_server,
-                                                                             box_system.arena,
-                                                                             true)) {
-                                lib_icon =
-                                    (imgs && !imgs->icon_missing) ? imgs->icon : context.unknown_library_icon;
-                            }
-                        }
-                        decltype(PickerItemOptions::icons) {lib_icon};
-                    }),
-                    .notifications = context.notifications,
-                    .store = context.persistent_store,
-                });
+                                     return buf.ToOwnedSpan();
+                                 }),
+                                 .item_id = inst_hash,
+                                 .is_current = is_current,
+                                 .is_favourite = is_favourite,
+                                 .is_tab_item = new_folder,
+                                 .icons = ({
+                                     if (&lib != previous_library) {
+                                         previous_library = &lib;
+                                         auto const imgs =
+                                             LibraryImagesFromLibraryId(context.library_images,
+                                                                        box_system.imgui,
+                                                                        lib.Id(),
+                                                                        context.sample_library_server,
+                                                                        box_system.arena,
+                                                                        LibraryImagesNeeded::Icon);
+                                         lib_icon = imgs.icon ? imgs.icon : context.unknown_library_icon;
+                                     }
+                                     decltype(PickerItemOptions::icons) {lib_icon};
+                                 }),
+                                 .notifications = context.notifications,
+                                 .store = context.persistent_store,
+                             });
 
             if (is_current &&
                 box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
@@ -510,21 +508,13 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
         }
     }
 
-    Optional<graphics::ImageID> waveform_icon = context.unknown_library_icon;
-    Optional<graphics::ImageID> waveform_background1 = {};
-    Optional<graphics::ImageID> waveform_background2 = {};
-    if (auto imgs = LibraryImagesFromLibraryId(context.library_images,
-                                               box_system.imgui,
-                                               sample_lib::k_builtin_library_id,
-                                               context.sample_library_server,
-                                               box_system.arena,
-                                               false)) {
-        if (!imgs->icon_missing) waveform_icon = imgs->icon;
-        if (!imgs->background_missing) {
-            waveform_background1 = imgs->blurred_background;
-            waveform_background2 = imgs->background;
-        }
-    }
+    auto imgs = LibraryImagesFromLibraryId(context.library_images,
+                                           box_system.imgui,
+                                           sample_lib::k_builtin_library_id,
+                                           context.sample_library_server,
+                                           box_system.arena,
+                                           LibraryImagesNeeded::All);
+    if (!imgs.icon) imgs.icon = context.unknown_library_icon;
 
     FilterCardOptions const waveform_card {
         .common =
@@ -536,9 +526,9 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
                 .clicked_hash = k_waveform_library_id.Hash(),
                 .filter_mode = state.common_state.filter_mode,
             },
-        .background_image1 = waveform_background1.NullableValue(),
-        .background_image2 = waveform_background2.NullableValue(),
-        .icon = waveform_icon.NullableValue(),
+        .background_image1 = imgs.blurred_background.NullableValue(),
+        .background_image2 = imgs.background.NullableValue(),
+        .icon = imgs.icon.NullableValue(),
         .subtext = "Basic waveforms built into Floe",
     };
 

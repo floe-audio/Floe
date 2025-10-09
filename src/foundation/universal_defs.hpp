@@ -723,3 +723,7 @@ struct PlacementNewTag {};
 // runtime is undefined which one it will use. This is across all currently loaded bundles. i.e. different
 // versions of Floe, or multiple plugins.
 #define MAKE_UNIQUE_OBJC_NAME(name) CONCAT(name, FLOE_VERSION_HASH)
+
+#define BITWISE_OPERATORS(enum_class)                                                                        \
+    constexpr enum_class operator|(enum_class a, enum_class b) { return (enum_class)(ToInt(a) | ToInt(b)); } \
+    constexpr UnderlyingType<enum_class> operator&(enum_class a, enum_class b) { return ToInt(a) & ToInt(b); }

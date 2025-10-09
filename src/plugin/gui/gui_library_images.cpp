@@ -67,9 +67,9 @@ static CheckLibraryImagesResult CheckLibraryImages(graphics::DrawContext& ctx, L
     return result;
 }
 
-static LibraryImages LoadDefaultLibraryImagesIfNeeded(LibraryImagesTable& library_images,
-                                                      imgui::Context& imgui,
-                                                      ArenaAllocator& scratch_arena) {
+static LibraryImages LoadDefaultBackgroundImagesIfNeeded(LibraryImagesTable& library_images,
+                                                         imgui::Context& imgui,
+                                                         ArenaAllocator& scratch_arena) {
     auto& images = library_images.FindOrInsert(k_default_background_lib_id, {}).element.data;
     auto const reloads = CheckLibraryImages(*imgui.frame_input.graphics_ctx, images);
 
@@ -158,11 +158,11 @@ static LibraryImages LoadLibraryImagesIfNeeded(LibraryImagesTable& table,
                                                sample_lib::Library const& lib,
                                                sample_lib_server::Server& server,
                                                ArenaAllocator& scratch_arena,
-                                               bool only_icon_needed) {
+                                               LibraryImagesNeeded needed) {
     auto& images = table.FindOrInsert(lib.Id(), {}).element.data;
     auto const reloads = CheckLibraryImages(*imgui.frame_input.graphics_ctx, images);
 
-    if (reloads.reload_icon) {
+    if ((needed & LibraryImagesNeeded::Icon) && reloads.reload_icon) {
         if (auto const icon_pixels =
                 ImagePixelsFromLibrary(lib, LibraryImageType::Icon, server, scratch_arena)) {
             // Twice the desired size seems to produce the nicest looking results.
@@ -175,7 +175,8 @@ static LibraryImages LoadLibraryImagesIfNeeded(LibraryImagesTable& table,
             images.icon_missing = true;
     }
 
-    if (!only_icon_needed && (reloads.reload_background || reloads.reload_blurred_background)) {
+    if ((needed & LibraryImagesNeeded::Backgrounds) &&
+        (reloads.reload_background || reloads.reload_blurred_background)) {
         auto const bg_pixels =
             TRY_OPT_OR(ImagePixelsFromLibrary(lib, LibraryImageType::Background, server, scratch_arena), {
                 images.background_missing = true;
@@ -192,20 +193,20 @@ static LibraryImages LoadLibraryImagesIfNeeded(LibraryImagesTable& table,
     return images;
 }
 
-Optional<LibraryImages> LibraryImagesFromLibraryId(LibraryImagesTable& table,
-                                                   imgui::Context& imgui,
-                                                   sample_lib::LibraryIdRef const& library_id,
-                                                   sample_lib_server::Server& server,
-                                                   ArenaAllocator& scratch_arena,
-                                                   bool only_icon_needed) {
-    if (!only_icon_needed && library_id == k_default_background_lib_id)
-        return LoadDefaultLibraryImagesIfNeeded(table, imgui, scratch_arena);
+LibraryImages LibraryImagesFromLibraryId(LibraryImagesTable& table,
+                                         imgui::Context& imgui,
+                                         sample_lib::LibraryIdRef const& library_id,
+                                         sample_lib_server::Server& server,
+                                         ArenaAllocator& scratch_arena,
+                                         LibraryImagesNeeded needed) {
+    if (needed == LibraryImagesNeeded::Backgrounds && library_id == k_default_background_lib_id)
+        return LoadDefaultBackgroundImagesIfNeeded(table, imgui, scratch_arena);
 
     auto lib = sample_lib_server::FindLibraryRetained(server, library_id);
     DEFER { lib.Release(); };
-    if (!lib) return k_nullopt;
+    if (!lib) return {};
 
-    return LoadLibraryImagesIfNeeded(table, imgui, *lib, server, scratch_arena, only_icon_needed);
+    return LoadLibraryImagesIfNeeded(table, imgui, *lib, server, scratch_arena, needed);
 }
 
 void InvalidateLibraryImages(LibraryImagesTable& table,

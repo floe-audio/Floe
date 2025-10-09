@@ -1280,21 +1280,13 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
 
                 auto const is_selected = context.state.selected_library_hashes.Contains(lib_hash);
 
-                Optional<graphics::ImageID> icon = library_filters.unknown_library_icon;
-                Optional<graphics::ImageID> background1 = {};
-                Optional<graphics::ImageID> background2 = {};
-                if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
-                                                           box_system.imgui,
-                                                           lib_id,
-                                                           context.sample_library_server,
-                                                           box_system.arena,
-                                                           false)) {
-                    if (!imgs->background_missing) {
-                        background1 = imgs->blurred_background;
-                        background2 = imgs->background;
-                    }
-                    if (!imgs->icon_missing) icon = imgs->icon;
-                }
+                auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
+                                                       box_system.imgui,
+                                                       lib_id,
+                                                       context.sample_library_server,
+                                                       box_system.arena,
+                                                       LibraryImagesNeeded::All);
+                if (!imgs.icon) imgs.icon = library_filters.unknown_library_icon;
 
                 if (section.Do(box_system) == PickerSection::State::Collapsed) break;
 
@@ -1326,9 +1318,9 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                                              .clicked_hash = lib_hash,
                                              .filter_mode = context.state.filter_mode,
                                          },
-                                     .background_image1 = background1.NullableValue(),
-                                     .background_image2 = background2.NullableValue(),
-                                     .icon = icon.NullableValue(),
+                                     .background_image1 = imgs.blurred_background.NullableValue(),
+                                     .background_image2 = imgs.background.NullableValue(),
+                                     .icon = imgs.icon.NullableValue(),
                                      .subtext = ({
                                          String s;
                                          if (lib) s = box_system.arena.Clone(lib->tagline);
@@ -1374,15 +1366,13 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                         .icon = ({
                             graphics::ImageID const* tex =
                                 library_filters.unknown_library_icon.NullableValue();
-                            if (auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
-                                                                       box_system.imgui,
-                                                                       lib_id,
-                                                                       context.sample_library_server,
-                                                                       box_system.arena,
-                                                                       true);
-                                imgs && !imgs->icon_missing) {
-                                tex = imgs->icon.NullableValue();
-                            }
+                            auto imgs = LibraryImagesFromLibraryId(library_filters.library_images,
+                                                                   box_system.imgui,
+                                                                   lib_id,
+                                                                   context.sample_library_server,
+                                                                   box_system.arena,
+                                                                   LibraryImagesNeeded::Icon);
+                            if (imgs.icon) tex = imgs.icon.NullableValue();
                             tex;
                         }),
                     });

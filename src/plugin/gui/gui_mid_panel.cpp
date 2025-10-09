@@ -26,12 +26,11 @@ static void DoBlurredBackground(Gui* g,
     auto& imgui = g->imgui;
     auto const panel_rounding = LiveSize(imgui, UiSizeId::BlurredPanelRounding);
 
-    auto imgs = LibraryImagesFromLibraryId(g, library_id, false);
+    auto imgs = LibraryImagesFromLibraryId(g, library_id, LibraryImagesNeeded::Backgrounds);
 
-    if (imgs && imgs->blurred_background) {
-        if (auto tex = g->frame_input.graphics_ctx->GetTextureFromImage(imgs->blurred_background)) {
-
-            auto const whole_uv = GetMaxUVToMaintainAspectRatio(*imgs->background, mid_panel_size);
+    if (imgs.blurred_background) {
+        if (auto tex = g->frame_input.graphics_ctx->GetTextureFromImage(imgs.blurred_background)) {
+            auto const whole_uv = GetMaxUVToMaintainAspectRatio(*imgs.background, mid_panel_size);
             auto const left_margin = r.x - window->parent_window->bounds.x;
             auto const top_margin = r.y - window->parent_window->bounds.y;
 

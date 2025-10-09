@@ -244,49 +244,47 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
         auto const is_favourite = IsFavourite(context.prefs, FavouriteIr(), ir_hash);
 
         if (folder_section->Do(box_system).tag != PickerSection::State::Collapsed) {
-            auto const item = DoPickerItem(
-                box_system,
-                state.common_state,
-                {
-                    .parent = folder_section->Do(box_system).Get<Box>(),
-                    .text = ir.name,
-                    .tooltip = FunctionRef<String()>([&]() -> String {
-                        DynamicArray<char> buffer {box_system.arena};
+            auto const item =
+                DoPickerItem(box_system,
+                             state.common_state,
+                             {
+                                 .parent = folder_section->Do(box_system).Get<Box>(),
+                                 .text = ir.name,
+                                 .tooltip = FunctionRef<String()>([&]() -> String {
+                                     DynamicArray<char> buffer {box_system.arena};
 
-                        fmt::Append(buffer, "{}. Tags: ", ir.name);
-                        if (ir.tags.size) {
-                            for (auto const& [tag, _] : ir.tags)
-                                fmt::Append(buffer, "{}, ", tag);
-                            dyn::Pop(buffer, 2);
-                        } else {
-                            dyn::AppendSpan(buffer, "none");
-                        }
+                                     fmt::Append(buffer, "{}. Tags: ", ir.name);
+                                     if (ir.tags.size) {
+                                         for (auto const& [tag, _] : ir.tags)
+                                             fmt::Append(buffer, "{}, ", tag);
+                                         dyn::Pop(buffer, 2);
+                                     } else {
+                                         dyn::AppendSpan(buffer, "none");
+                                     }
 
-                        return buffer.ToOwnedSpan();
-                    }),
-                    .item_id = ir_hash,
-                    .is_current = is_current,
-                    .is_favourite = is_favourite,
-                    .is_tab_item = new_folder,
-                    .icons = ({
-                        if (&lib != previous_library) {
-                            lib_icon = k_nullopt;
-                            previous_library = &lib;
-                            if (auto const imgs = LibraryImagesFromLibraryId(context.library_images,
-                                                                             box_system.imgui,
-                                                                             lib.Id(),
-                                                                             context.sample_library_server,
-                                                                             box_system.arena,
-                                                                             true)) {
-                                lib_icon =
-                                    (imgs && !imgs->icon_missing) ? imgs->icon : context.unknown_library_icon;
-                            }
-                        }
-                        decltype(PickerItemOptions::icons) {lib_icon};
-                    }),
-                    .notifications = context.notifications,
-                    .store = context.persistent_store,
-                });
+                                     return buffer.ToOwnedSpan();
+                                 }),
+                                 .item_id = ir_hash,
+                                 .is_current = is_current,
+                                 .is_favourite = is_favourite,
+                                 .is_tab_item = new_folder,
+                                 .icons = ({
+                                     if (&lib != previous_library) {
+                                         previous_library = &lib;
+                                         auto const imgs =
+                                             LibraryImagesFromLibraryId(context.library_images,
+                                                                        box_system.imgui,
+                                                                        lib.Id(),
+                                                                        context.sample_library_server,
+                                                                        box_system.arena,
+                                                                        LibraryImagesNeeded::Icon);
+                                         lib_icon = imgs.icon ? imgs.icon : context.unknown_library_icon;
+                                     }
+                                     decltype(PickerItemOptions::icons) {lib_icon};
+                                 }),
+                                 .notifications = context.notifications,
+                                 .store = context.persistent_store,
+                             });
 
             if (is_current &&
                 box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&

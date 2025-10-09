@@ -7,7 +7,6 @@
 #include "sample_lib_server/sample_library_server.hpp"
 
 struct LibraryImages {
-    sample_lib::LibraryId library_id {};
     Optional<graphics::ImageID> icon {};
     Optional<graphics::ImageID> background {};
     Optional<graphics::ImageID> blurred_background {};
@@ -15,14 +14,21 @@ struct LibraryImages {
     bool background_missing {};
 };
 
-using LibraryImagesTable = DynamicHashTable<sample_lib::LibraryIdRef, LibraryImages>;
+using LibraryImagesTable = DynamicHashTable<sample_lib::LibraryId, LibraryImages>;
 
-Optional<LibraryImages> LibraryImagesFromLibraryId(LibraryImagesTable& table,
-                                                   imgui::Context& imgui,
-                                                   sample_lib::LibraryIdRef const& library_id,
-                                                   sample_lib_server::Server& server,
-                                                   ArenaAllocator& scratch_arena,
-                                                   bool only_icon_needed);
+enum class LibraryImagesNeeded : u8 {
+    Icon = 1 << 0,
+    Backgrounds = 1 << 1,
+    All = Icon | Backgrounds,
+};
+BITWISE_OPERATORS(LibraryImagesNeeded)
+
+LibraryImages LibraryImagesFromLibraryId(LibraryImagesTable& table,
+                                         imgui::Context& imgui,
+                                         sample_lib::LibraryIdRef const& library_id,
+                                         sample_lib_server::Server& server,
+                                         ArenaAllocator& scratch_arena,
+                                         LibraryImagesNeeded needed = LibraryImagesNeeded::All);
 
 void InvalidateLibraryImages(LibraryImagesTable& table,
                              sample_lib::LibraryIdRef library_id,

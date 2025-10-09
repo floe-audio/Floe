@@ -69,9 +69,8 @@ static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
     Optional<graphics::TextureHandle> icon_tex {};
     if (layer_obj->instrument_id.tag == InstrumentType::Sampler) {
         auto sample_inst_id = layer_obj->instrument_id.Get<sample_lib::InstrumentId>();
-        auto imgs = LibraryImagesFromLibraryId(g, sample_inst_id.library, true);
-        if (imgs && imgs->icon)
-            icon_tex = g->imgui.frame_input.graphics_ctx->GetTextureFromImage(*imgs->icon);
+        auto imgs = LibraryImagesFromLibraryId(g, sample_inst_id.library, LibraryImagesNeeded::Icon);
+        if (imgs.icon) icon_tex = g->imgui.frame_input.graphics_ctx->GetTextureFromImage(*imgs.icon);
     }
 
     DoInstSelectorRightClickMenu(g, r, layer);
