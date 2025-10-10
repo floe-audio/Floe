@@ -463,6 +463,21 @@ struct HashTable {
         }
     }
 
+    template <typename PredicateType>
+    usize RemoveIf(PredicateType&& should_remove) {
+        if (!elems) return 0;
+        
+        usize num_removed = 0;
+        for (usize i = 0; i < mask + 1; ++i) {
+            auto& element = elems[i];
+            if (element.Active() && should_remove(element.key, element.data)) {
+                DeleteIndex(i);
+                ++num_removed;
+            }
+        }
+        return num_removed;
+    }
+
     void RemoveFromOrderedIndicesIfNeeded(usize elem_index) {
         if constexpr (k_ordering == HashTableOrdering::Ordered) {
             bool found = false;
@@ -584,6 +599,11 @@ struct DynamicHashTable {
     void DeleteIndex(usize i) { table.DeleteIndex(i); }
     void DeleteAll() { table.DeleteAll(); }
 
+    template <typename PredicateType>
+    usize RemoveIf(PredicateType&& should_remove) {
+        return table.RemoveIf(Forward<PredicateType>(should_remove));
+    }
+
     void Assign(Table const& other) { table.Assign(other, allocator); }
 
     Span<typename Table::Element const> Elements() const { return table.Elements(); }
@@ -637,6 +657,13 @@ struct Set : HashTable<KeyType_, DummyValueType, k_hash_function_, k_ordering_, 
     auto FindOrInsertGrowIfNeeded(Allocator& allocator, KeyType key, u64 hash = 0) {
         return Table::FindOrInsertGrowIfNeeded(allocator, key, {}, hash);
     }
+
+    template <typename PredicateType>
+    usize RemoveIf(PredicateType&& should_remove) {
+        return Table::RemoveIf([&should_remove](KeyType const& key, DummyValueType const&) {
+            return should_remove(key);
+        });
+    }
 };
 
 template <TriviallyCopyable KeyType_,
@@ -661,6 +688,14 @@ struct DynamicSet
         auto result = this->table;
         this->table = {};
         return (Set)result;
+    }
+
+    template <typename PredicateType>
+    usize RemoveIf(PredicateType&& should_remove) {
+        return DynamicHashTable<KeyType, DummyValueType, k_hash_function>::RemoveIf(
+            [&should_remove](KeyType const& key, DummyValueType const&) {
+                return should_remove(key);
+            });
     }
 
     operator Set() const { return this->table; }

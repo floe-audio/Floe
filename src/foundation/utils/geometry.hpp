@@ -9,6 +9,7 @@ union UiSize {
     constexpr UiSize() : width(0), height(0) {}
     constexpr UiSize(u16 w, u16 h) : width(w), height(h) {}
     f32x2 ToFloat2() const { return {(f32)width, (f32)height}; }
+    static UiSize FromFloat2(f32x2 v) { return {CheckedCast<u16>(v.x), CheckedCast<u16>(v.y)}; }
 
     struct {
         u16 width;

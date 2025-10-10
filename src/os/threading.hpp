@@ -591,15 +591,21 @@ class ScopedSpinLock {
     SpinLock& m_l;
 };
 
-struct FutureStatus {
+struct FutureStatus {};
+
+template <TriviallyCopyable Type>
+struct Future {
+    using ValueType = Type;
+
     enum class Status : u32 {
-        Inactive, // Unscheduled.
+        Inactive, // Unscheduled, no result.
         Pending, // Scheduled to be filled but not started yet.
         Running, // In progress.
-        Finished, // Completed.
+        Finished, // Completed, result is valid.
     };
     static constexpr u32 k_cancel_bit = 1u << 31;
-    static constexpr u32 k_status_mask = ~k_cancel_bit;
+    static constexpr u32 k_working_bit = 1u << 30;
+    static constexpr u32 k_status_mask = ~(k_cancel_bit | k_working_bit);
 
     static bool IsInProgress(u32 s) {
         return IsAnyOf(s & k_status_mask, Array {(u32)Status::Pending, (u32)Status::Running});
@@ -608,22 +614,59 @@ struct FutureStatus {
     static bool IsFinished(u32 s) { return (s & k_status_mask) == (u32)Status::Finished; }
     static bool IsInactive(u32 s) { return (s & k_status_mask) == (u32)Status::Inactive; }
 
+    // Thread-safe.
     bool IsFinished() const { return IsFinished(status.Load(LoadMemoryOrder::Acquire)); }
+    bool HasResult() const { return IsFinished(); }
     bool IsCancelled() const { return IsCancelled(status.Load(LoadMemoryOrder::Acquire)); }
     bool IsInProgress() const { return IsInProgress(status.Load(LoadMemoryOrder::Acquire)); }
     bool IsInactive() const { return IsInactive(status.Load(LoadMemoryOrder::Acquire)); }
 
+    // Consumer thread
+    Optional<Type> TryReleaseResult() {
+        if (IsFinished()) {
+            Type v = RawResult();
+            Reset();
+            return v;
+        } else
+            return {};
+    }
+
+    // Consumer thread
+    Type& Result() {
+        ASSERT(IsFinished());
+        return RawResult();
+    }
+
+    // Consumer thread
+    Type ReleaseResult() {
+        ASSERT(IsFinished());
+        Type v = RawResult();
+        Reset();
+        return v;
+    }
+
+    // Consumer thread
+    void Reset() {
+        ASSERT(!IsInProgress());
+        status.Store((u32)Status::Inactive, StoreMemoryOrder::Release);
+    }
+
+    // Consumer thread
     bool WaitUntilFinished(Optional<u32> timeout_milliseconds = {}) {
         while (true) {
             auto const s = status.Load(LoadMemoryOrder::Acquire);
 
-            if (IsFinished(s) || IsInactive(s)) return true;
+            if (IsFinished(s) || IsInactive(s)) {
+                BusyWaitForWorkingBitClear();
+                return true;
+            }
 
             if (WaitIfValueIsExpected(status, s, timeout_milliseconds) == WaitResult::TimedOut) return false;
         }
     }
 
-    bool Cancel(bool wake_waiting_threads) {
+    // Consumer thread
+    bool Cancel() {
         auto current = status.Load(LoadMemoryOrder::Acquire);
         ASSERT(current != (u32)Status::Inactive, "Can't cancel an inactive future");
 
@@ -632,19 +675,22 @@ struct FutureStatus {
 
         auto const prev = status.FetchOr(k_cancel_bit, RmwMemoryOrder::AcquireRelease);
         if (!(prev & k_cancel_bit)) {
-            if (wake_waiting_threads) WakeWaitingThreads(status, NumWaitingThreads::All);
+            // NOTE: if a producer thread was to call this, it would need to wake waiters here.
             return true;
         }
 
         return false;
     }
 
-    // Cancels and waits for finishing if needed.
+    // Consumer thread
+    // Cancels and waits for finishing if needed. Once this function returns its safe to free the memory.
     void Shutdown() {
         auto const s = status.Load(LoadMemoryOrder::Acquire);
         switch ((Status)(s & k_status_mask)) {
             case Status::Finished:
-            case Status::Inactive: return;
+            case Status::Inactive:
+                if (s & k_working_bit) BusyWaitForWorkingBitClear();
+                return;
 
             case Status::Pending:
             case Status::Running: {
@@ -655,14 +701,46 @@ struct FutureStatus {
         }
     }
 
-    void MarkFinished() {
+    // Producer thread
+    bool TrySetRunning() {
+        while (true) {
+            auto current = status.Load(LoadMemoryOrder::Acquire);
+            ASSERT((current & k_status_mask) == (u32)Status::Pending);
+            ASSERT(current & k_working_bit);
+
+            if (current & k_cancel_bit) {
+                // We've been cancelled before we could start running. We set to Inactive because Finished
+                // state suggests that there is a valid payload. We retain the cancel bit so that a reader can
+                // see what happened.
+                status.Store(k_cancel_bit | (u32)Status::Inactive, StoreMemoryOrder::Release);
+                return false;
+            }
+
+            if (status.CompareExchangeWeak(current,
+                                           (u32)Status::Running | k_working_bit,
+                                           RmwMemoryOrder::AcquireRelease,
+                                           LoadMemoryOrder::Acquire))
+                return true;
+        }
+    }
+
+    // Producer thread
+    void SetPending() {
+        ASSERT(IsInactive());
+        status.Store((u32)Status::Pending | k_working_bit, StoreMemoryOrder::Release);
+    }
+
+    // Producer thread. After this returns, you must not touch this object again.
+    void SetResult(Type const& v) {
+        RawResult() = v;
+
         while (true) {
             auto current = status.Load(LoadMemoryOrder::Acquire);
             auto const s = (Status)(current & k_status_mask);
             ASSERT(s == Status::Running);
 
-            // Try to exchange to finished, ensuring we retain the cancel bit even if it was set between here
-            // and the acquiring of the status.
+            // Try to exchange to finished, ensuring we retain the cancel bit. We might have been cancelled
+            // while running - we couldn't act on it, but we retain the information for the reader to see.
             if (status.CompareExchangeWeak(current,
                                            (current & k_cancel_bit) | (u32)Status::Finished,
                                            RmwMemoryOrder::AcquireRelease,
@@ -671,89 +749,25 @@ struct FutureStatus {
         }
 
         WakeWaitingThreads(status, NumWaitingThreads::All);
+
+        // We are done touching status now, we can clear the working bit meaning another thread can now free
+        // this memory.
+        status.FetchAnd(~k_working_bit, RmwMemoryOrder::Release);
     }
 
-    bool TrySetRunning() {
-        while (true) {
-            auto current = status.Load(LoadMemoryOrder::Acquire);
-            ASSERT((current & k_status_mask) == (u32)Status::Pending);
-
-            if (current & k_cancel_bit) {
-                status.Store(k_cancel_bit | (u32)Status::Inactive, StoreMemoryOrder::Release);
-                return false;
-            }
-
-            if (status.CompareExchangeWeak(current,
-                                           (current & k_cancel_bit) | (u32)Status::Running,
-                                           RmwMemoryOrder::AcquireRelease,
-                                           LoadMemoryOrder::Acquire))
-                return true;
+    // Consumer thread. Private.
+    void BusyWaitForWorkingBitClear() {
+        while (status.Load(LoadMemoryOrder::Acquire) & k_working_bit) {
+            // Busy spin - this should be very brief.
+            SpinLoopPause();
         }
     }
 
-    void SetPending() {
-        ASSERT(IsInactive());
-        status.Store((u32)Status::Pending, StoreMemoryOrder::Release);
-    }
-
-    void Reset() {
-        ASSERT(!IsInProgress());
-        status.Store((u32)Status::Inactive, StoreMemoryOrder::Release);
-    }
-
-    Atomic<u32> status {(u32)Status::Inactive};
-};
-
-// IMPORTANT: it's a bug to move or copy a Future while it's in progress.
-template <TriviallyCopyable Type>
-struct Future {
-    using ValueType = Type;
-
-    Optional<Type> TryReleaseResult() {
-        if (status.IsFinished()) {
-            Type v = RawResult();
-            Reset();
-            return v;
-        } else
-            return {};
-    }
-
-    Type& Result() {
-        ASSERT(status.IsFinished());
-        return RawResult();
-    }
-
-    Type ReleaseResult() {
-        ASSERT(status.IsFinished());
-        Type v = RawResult();
-        Reset();
-        return v;
-    }
-
-    bool IsFinished() const { return status.IsFinished(); }
-    bool HasResult() const { return IsFinished(); }
-    bool IsInactive() const { return status.IsInactive(); }
-    bool IsInProgress() const { return status.IsInProgress(); }
-    bool IsCancelled() const { return status.IsCancelled(); }
-
-    bool WaitUntilFinished(Optional<u32> timeout_milliseconds = {}) {
-        return status.WaitUntilFinished(timeout_milliseconds);
-    }
-
-    bool Cancel(bool wake_waiting_thread) { return status.Cancel(wake_waiting_thread); }
-
-    void Shutdown() { status.Shutdown(); }
-
-    void Reset() { status.Reset(); }
-
     // Private.
-    void SetResult(Type const& v) {
-        RawResult() = v;
-        status.MarkFinished();
-    }
-
     Type& RawResult() { return *(Type*)result_storage.data; }
 
+    ~Future() { ASSERT(!IsInProgress()); }
+
     alignas(Type) Array<u8, sizeof(Type)> result_storage {};
-    FutureStatus status;
+    Atomic<u32> status {(u32)Status::Inactive};
 };

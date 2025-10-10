@@ -63,11 +63,14 @@ struct RefCounted {
         , m_work_signaller(s) {}
 
     void Retain() const {
-        if (m_ref_count) m_ref_count->FetchAdd(1, RmwMemoryOrder::Relaxed);
+        if (m_ref_count) {
+            auto const prev = m_ref_count->FetchAdd(1, RmwMemoryOrder::Relaxed);
+            ASSERT(prev != 0);
+        }
     }
     void Release() const {
         if (m_ref_count) {
-            auto prev = m_ref_count->SubFetch(1, RmwMemoryOrder::AcquireRelease);
+            auto const prev = m_ref_count->SubFetch(1, RmwMemoryOrder::AcquireRelease);
             ASSERT(prev != ~(u32)0);
             if (prev == 0 && m_work_signaller) m_work_signaller->Signal();
         }
@@ -96,7 +99,6 @@ struct RefCounted {
         return *m_data;
     }
 
-  private:
     Type const* m_data {};
     Atomic<u32>* m_ref_count {};
     WorkSignaller* m_work_signaller {};

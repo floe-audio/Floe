@@ -84,9 +84,9 @@ static void FreeLoadingBytes(Future<Optional<ImageBytes>>& future) {
     future.Shutdown();
 
     if (future.HasResult()) {
-        if (auto const bytes_obj = future.ReleaseResult(); bytes_obj && bytes_obj->rgba)
-            ImageBytesAllocator().Free(bytes_obj->Bytes());
-    }
+        if (auto const bytes_obj = future.ReleaseResult()) bytes_obj->Free(ImageBytesAllocator());
+    } else
+        future.Reset();
 }
 
 static void FreeLoadingBytes(Future<Optional<LibraryImages::LoadingBackgrounds>>& future) {
@@ -94,12 +94,11 @@ static void FreeLoadingBytes(Future<Optional<LibraryImages::LoadingBackgrounds>>
 
     if (future.HasResult()) {
         if (auto const bgs = future.ReleaseResult()) {
-            if (bgs->background && bgs->background->rgba)
-                ImageBytesAllocator().Free(bgs->background->Bytes());
-            if (bgs->blurred_background && bgs->blurred_background->rgba)
-                ImageBytesAllocator().Free(bgs->blurred_background->Bytes());
+            if (bgs->background) bgs->background->Free(ImageBytesAllocator());
+            if (bgs->blurred_background) bgs->blurred_background->Free(ImageBytesAllocator());
         }
-    }
+    } else
+        future.Reset();
 }
 
 static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
@@ -127,6 +126,9 @@ static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
                                                     true);
             request_gui_update.Store(true, StoreMemoryOrder::Release);
             return result;
+        },
+        []() {
+            // no cleanup
         });
 }
 
@@ -194,6 +196,9 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryIdRef const& lib_id_ref,
                                                                            scratch_arena,
                                                                            blur_options);
             return result;
+        },
+        []() {
+            // no cleanup
         });
 }
 
@@ -263,7 +268,7 @@ void BeginFrame(LibraryImagesTable& table, imgui::Context& imgui) {
             auto const icon_pixels = *result;
             if (icon_pixels) {
                 imgs.icon = CreateImageIdChecked(*imgui.frame_input.graphics_ctx, *icon_pixels);
-                ImageBytesAllocator().Free(icon_pixels->Bytes());
+                icon_pixels->Free(ImageBytesAllocator());
             } else
                 imgs.icon_missing = true;
         }
@@ -274,12 +279,12 @@ void BeginFrame(LibraryImagesTable& table, imgui::Context& imgui) {
                 if (backgrounds->background) {
                     imgs.background =
                         CreateImageIdChecked(*imgui.frame_input.graphics_ctx, *backgrounds->background);
-                    ImageBytesAllocator().Free(backgrounds->background->Bytes());
+                    backgrounds->background->Free(ImageBytesAllocator());
                 }
                 if (backgrounds->blurred_background) {
                     imgs.blurred_background = CreateImageIdChecked(*imgui.frame_input.graphics_ctx,
                                                                    *backgrounds->blurred_background);
-                    ImageBytesAllocator().Free(backgrounds->blurred_background->Bytes());
+                    backgrounds->blurred_background->Free(ImageBytesAllocator());
                 }
             } else {
                 imgs.background_missing = true;
@@ -292,11 +297,10 @@ void BeginFrame(LibraryImagesTable& table, imgui::Context& imgui) {
             imgs.needs_reload.ClearAll();
             auto& graphics = *imgui.frame_input.graphics_ctx;
 
-            if (!graphics.ImageIdIsValid(imgs.icon) && !imgs.icon_missing &&
-                !imgs.loading_icon->IsInProgress())
+            if (!graphics.ImageIdIsValid(imgs.icon) && !imgs.icon_missing && imgs.loading_icon->IsInactive())
                 imgs.needs_reload.Set(ToInt(LibraryImages::ImageType::Icon));
 
-            if (!imgs.background_missing && !imgs.loading_backgrounds->IsInProgress()) {
+            if (!imgs.background_missing && imgs.loading_backgrounds->IsInactive()) {
                 if (!graphics.ImageIdIsValid(imgs.background))
                     imgs.needs_reload.Set(ToInt(LibraryImages::ImageType::Background));
                 if (!graphics.ImageIdIsValid(imgs.blurred_background))

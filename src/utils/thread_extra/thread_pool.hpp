@@ -47,7 +47,7 @@ struct ThreadPool {
     }
 
     // The caller owns the future and is responsible for ensuring it outlives the async task.
-    void Async(auto& future, auto&& function) {
+    void Async(auto& future, auto&& function, auto&& cleanup) {
         ZoneScoped;
         ASSERT(m_workers.size > 0);
 
@@ -56,10 +56,11 @@ struct ThreadPool {
 
         static_assert(Same<typename FutureType::ValueType, InvokeResult<JobFunctionType>>);
 
-        future.status.SetPending();
+        future.SetPending();
 
-        AddJob([&future, f = Move(function)]() mutable {
-            if (!future.status.TrySetRunning()) return;
+        AddJob([&future, f = Move(function), cleanup = Move(cleanup)]() mutable {
+            DEFER { cleanup(); };
+            if (!future.TrySetRunning()) return;
             future.SetResult(f());
         });
     }
@@ -73,13 +74,13 @@ struct ThreadPool {
             {
                 ScopedMutexLock lock(thread_pool->m_mutex);
                 while (thread_pool->m_job_queue.Empty() &&
-                       !thread_pool->m_thread_stop_requested.Load(LoadMemoryOrder::Relaxed))
+                       !thread_pool->m_thread_stop_requested.Load(LoadMemoryOrder::Acquire))
                     thread_pool->m_cond_var.Wait(lock);
                 f = thread_pool->m_job_queue.TryPop(scratch_arena);
             }
             if (f) (*f)();
 
-            if (thread_pool->m_thread_stop_requested.Load(LoadMemoryOrder::Relaxed)) return;
+            if (thread_pool->m_thread_stop_requested.Load(LoadMemoryOrder::Acquire)) return;
             scratch_arena.ResetCursorAndConsolidateRegions();
         }
     }

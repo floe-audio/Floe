@@ -1301,10 +1301,12 @@ TEST_CASE(TestFutureAndAsync) {
     ThreadPool pool;
     pool.Init("test", 2u);
 
+    auto cleanup = []() {};
+
     SUBCASE("basic async with return value") {
         Future<int> future;
         CHECK(!future.IsFinished());
-        pool.Async(future, []() { return 42; });
+        pool.Async(future, []() { return 42; }, cleanup);
         CHECK(future.WaitUntilFinished());
         REQUIRE(future.IsFinished());
         CHECK_EQ(future.Result(), 42);
@@ -1316,7 +1318,7 @@ TEST_CASE(TestFutureAndAsync) {
             int value;
         };
         Future<NoDefault> future;
-        pool.Async(future, []() { return NoDefault(99); });
+        pool.Async(future, []() { return NoDefault(99); }, cleanup);
         CHECK(future.WaitUntilFinished());
         REQUIRE(future.IsFinished());
         CHECK_EQ(future.Result().value, 99);

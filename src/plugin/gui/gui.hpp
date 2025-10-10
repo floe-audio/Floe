@@ -85,7 +85,7 @@ struct Gui {
 
     layer_gui::LayerLayout layer_gui[k_num_layers] = {};
 
-    FloeWaveformImages waveforms {};
+    WaveformImagesTable waveform_images {};
     Optional<graphics::ImageID> floe_logo_image {};
 
     LibraryImagesTable library_images {};

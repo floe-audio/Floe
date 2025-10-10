@@ -683,6 +683,7 @@ ListedAudioData::~ListedAudioData() {
     auto const s = state.Load(LoadMemoryOrder::Acquire);
     ASSERT(s == FileLoadingState::CompletedCancelled || s == FileLoadingState::CompletedWithError ||
            s == FileLoadingState::CompletedSucessfully);
+    ASSERT(ref_count.Load(LoadMemoryOrder::Relaxed) == 0);
     if (audio_data.interleaved_samples.size)
         AudioDataAllocator::Instance().Free(audio_data.interleaved_samples.ToByteSpan());
     library_ref_count.FetchSub(1, RmwMemoryOrder::Relaxed);
@@ -1389,7 +1390,26 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
 
             server.channels.Use([&](auto&) {
                 if (pending_resource.request.async_comms_channel.used.Load(LoadMemoryOrder::Acquire)) {
-                    result.Retain();
+                    // We always add results with a ref count of 1, we do that manually rather than call
+                    // Retain() because here we accept that ref count might be 0 here: something that is
+                    // disallowed in Retain().
+                    if (auto ref_count = ({
+                            Atomic<u32>* rc = nullptr;
+                            if (auto resource = pending_resource.state.TryGet<Resource>()) {
+                                switch (resource->tag) {
+                                    case LoadRequestType::Instrument:
+                                        rc = resource->Get<RefCounted<sample_lib::LoadedInstrument>>()
+                                                 .m_ref_count;
+                                        break;
+                                    case LoadRequestType::Ir:
+                                        rc = resource->Get<RefCounted<sample_lib::LoadedIr>>().m_ref_count;
+                                        break;
+                                }
+                            }
+                            rc;
+                        })) {
+                        ref_count->FetchAdd(1, RmwMemoryOrder::Relaxed);
+                    }
                     pending_resource.request.async_comms_channel.results.Push(result);
                     pending_resource.request.async_comms_channel.result_added_callback();
                 }
@@ -1680,7 +1700,7 @@ Server::~Server() {
     end_thread.Store(true, StoreMemoryOrder::Release);
     work_signaller.Signal();
     thread.Join();
-    ASSERT(channels.Use([](auto& h) { return h.Empty(); }), "missing channel close");
+    ASSERT(channels.Use([](auto& c) { return c.Empty(); }), "missing channel close");
 
     scan_folders.folder_allocator.Clear();
 }

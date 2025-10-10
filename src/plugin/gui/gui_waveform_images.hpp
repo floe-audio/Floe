@@ -1,81 +1,64 @@
 // Copyright 2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
 
-#include "common_infrastructure/common_errors.hpp"
-
 #include "gui_framework/draw_list.hpp"
-#include "processor/sample_processing.hpp"
+#include "gui_framework/image.hpp"
+#include "sample_lib_server/sample_library_server.hpp"
 
-// TODO: make this API similar to LibraryImagesTable and use Future for async loading.
-struct FloeWaveformImages {
-    ErrorCodeOr<graphics::TextureHandle> FetchOrCreate(graphics::DrawContext& graphics,
-                                                       ArenaAllocator& scratch_arena,
-                                                       WaveformAudioSource source,
-                                                       f32 unscaled_width,
-                                                       f32 unscaled_height) {
-        UiSize const size {CheckedCast<u16>(unscaled_width), CheckedCast<u16>(unscaled_height)};
+struct WaveformImageKey {
+    u64 source_hash {};
+    UiSize size {};
 
-        u64 source_hash = 0;
-        switch (source.tag) {
-            case WaveformAudioSourceType::AudioData: {
-                auto const audio_data = source.Get<AudioData const*>();
-                if (!audio_data) return ErrorCode {CommonError::NotFound};
-                source_hash = audio_data->hash;
-                break;
-            }
-            case WaveformAudioSourceType::Sine:
-            case WaveformAudioSourceType::WhiteNoise: {
-                source_hash = (u64)source.tag + 1;
-                break;
-            }
-        }
+    constexpr bool operator==(WaveformImageKey const& other) const = default;
 
-        for (auto& waveform : m_waveforms) {
-            if (waveform.source_hash == source_hash && waveform.image_id.size == size) {
-                auto tex = graphics.GetTextureFromImage(waveform.image_id);
-                if (tex) {
-                    waveform.used = true;
-                    return *tex;
-                }
-            }
-        }
+    u64 Hash() const { return ::Hash(source_hash) ^ (::Hash(size.width) << 1) ^ (::Hash(size.height) << 2); }
+};
 
-        Waveform waveform {};
-        auto pixels = CreateWaveformImage(source, size, scratch_arena, scratch_arena);
-        waveform.source_hash = source_hash;
-        waveform.image_id = TRY(graphics.CreateImageID(pixels.data, size, 4));
-        waveform.used = true;
+struct WaveformImage {
+    using FuturePixels = Future<ImageBytes>;
+    Optional<graphics::ImageID> image_id {};
+    bool used {};
+    u64 hash {};
+    FuturePixels* loading_pixels {};
+};
 
-        dyn::Append(m_waveforms, waveform);
-        auto tex = graphics.GetTextureFromImage(waveform.image_id);
-        ASSERT(tex);
-        return *tex;
-    }
-
-    void StartFrame() {
-        for (auto& waveform : m_waveforms)
-            waveform.used = false;
-    }
-
-    void EndFrame(graphics::DrawContext& graphics) {
-        dyn::RemoveValueIf(m_waveforms, [&graphics](Waveform& w) {
-            if (!w.used) {
-                graphics.DestroyImageID(w.image_id);
-                return true;
-            }
-            return false;
-        });
-    }
-
-    void Clear() { dyn::Clear(m_waveforms); }
-
-    struct Waveform {
-        u64 source_hash {};
-        graphics::ImageID image_id = graphics::k_invalid_image_id;
-        bool used {};
+struct WaveformPixelsFutureAllocator {
+    struct Node : WaveformImage::FuturePixels {
+        Node* next {nullptr};
     };
 
-    ArenaAllocator arena {PageAllocator::Instance()};
-    DynamicArray<Waveform> m_waveforms {arena};
+    WaveformImage::FuturePixels* Allocate(ArenaAllocator& a) {
+        if (free_list) {
+            auto* n = free_list;
+            free_list = free_list->next;
+            return n;
+        }
+        return a.New<Node>();
+    }
+
+    void Free(WaveformImage::FuturePixels* f) {
+        auto* n = (Node*)f;
+        n->next = free_list;
+        free_list = n;
+    }
+
+    Node* free_list {};
 };
+
+struct WaveformImagesTable {
+    ArenaAllocator arena {PageAllocator::Instance()};
+    WaveformPixelsFutureAllocator future_allocator {};
+    HashTable<WaveformImageKey, WaveformImage> table;
+};
+
+Optional<graphics::ImageID> GetWaveformImage(WaveformImagesTable& table,
+                                             Instrument const& inst,
+                                             graphics::DrawContext& graphics,
+                                             ThreadPool& thread_pool,
+                                             f32x2 size);
+
+void StartFrame(WaveformImagesTable& table, graphics::DrawContext& graphics);
+void EndFrame(WaveformImagesTable& table, graphics::DrawContext& graphics);
+void Shutdown(WaveformImagesTable& table);

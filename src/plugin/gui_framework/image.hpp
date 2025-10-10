@@ -20,6 +20,9 @@ struct ImageBytes {
     usize NumPixels() const { return (usize)(size.width * size.height); }
     usize NumBytes() const { return NumPixels() * k_rgba_channels; }
     Span<u8> Bytes() const { return {rgba, NumBytes()}; }
+    void Free(Allocator& a) const {
+        if (rgba) a.Free(Span {rgba, NumBytes()});
+    }
     u8* rgba {};
     UiSize size {};
 };

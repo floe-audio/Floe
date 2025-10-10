@@ -131,6 +131,7 @@ Gui::Gui(GuiFrameInput& frame_input, Engine& engine)
 
 Gui::~Gui() {
     Shutdown(library_images);
+    Shutdown(waveform_images);
 
     engine.stated_changed_callback = {};
 
@@ -323,8 +324,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
 
     MacroGuiBeginFrame(g);
 
-    g->waveforms.StartFrame();
-    DEFER { g->waveforms.EndFrame(*g->frame_input.graphics_ctx); };
+    StartFrame(g->waveform_images, *g->frame_input.graphics_ctx);
+    DEFER { EndFrame(g->waveform_images, *g->frame_input.graphics_ctx); };
 
     auto whole_window_sets = imgui::DefMainWindow();
     whole_window_sets.draw_routine_window_background = [&](IMGUI_DRAW_WINDOW_BG_ARGS_TYPES) {};

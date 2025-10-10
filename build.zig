@@ -1832,6 +1832,7 @@ pub fn build(b: *std.Build) void {
                     plugin_path ++ "/gui/gui_label_widgets.cpp",
                     plugin_path ++ "/gui/gui_layer.cpp",
                     plugin_path ++ "/gui/gui_library_images.cpp",
+                    plugin_path ++ "/gui/gui_waveform_images.cpp",
                     plugin_path ++ "/gui/gui_mid_panel.cpp",
                     plugin_path ++ "/gui/gui_modal_windows.cpp",
                     plugin_path ++ "/gui/gui_peak_meter_widget.cpp",
