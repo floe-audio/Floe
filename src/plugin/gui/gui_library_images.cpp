@@ -286,8 +286,8 @@ void BeginFrame(LibraryImagesTable& table, imgui::Context& imgui) {
             }
         }
 
-        // Check if we need to reload any images. We don't actually do that here because we want to defer it
-        // to the point that we know that the images are actually needed.
+        // Check if we need to reload any images. We don't actually do the loading here because we want to
+        // defer it to the point where we know that the images are actually needed.
         {
             imgs.needs_reload.ClearAll();
             auto& graphics = *imgui.frame_input.graphics_ctx;

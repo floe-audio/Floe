@@ -764,21 +764,49 @@ Box DoFilterCard(GuiBoxSystem& box_system,
     auto const card_outer = DoBox(box_system,
                                   {
                                       .parent = options.common.parent,
-                                      .background_fill_colours = {style::Colour::DarkModeBackground2},
-                                      .background_tex = options.background_image1,
-                                      .background_tex_alpha = 180,
-                                      .background_tex_fill_mode = BackgroundTexFillMode::Cover,
-                                      .round_background_corners = 0b1111,
                                       .layout {
                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
                                           .margins = {.b = k_picker_spacing},
                                           .contents_direction = layout::Direction::Row,
                                       },
                                   });
+
+    graphics::ImageID const* background_image1 {};
+    graphics::ImageID const* background_image2 {};
+    graphics::ImageID const* icon {};
+    if (options.library_id && box_system.InputAndRenderPass()) {
+        if (box_system.imgui.IsRectVisible(
+                box_system.imgui.WindowRectToScreenRect(*BoxRect(box_system, card_outer)))) {
+            auto imgs = GetLibraryImages(options.library_images,
+                                         box_system.imgui,
+                                         *options.library_id,
+                                         options.sample_library_server,
+                                         LibraryImagesTypes::All);
+            background_image1 = imgs.blurred_background.NullableValue();
+            background_image2 = imgs.background.NullableValue();
+            icon = imgs.icon.NullableValue();
+            if (!icon) icon = options.unknown_library_icon.NullableValue();
+        }
+    }
+
+    auto const base_background = DoBox(box_system,
+                                       {
+                                           .parent = card_outer,
+                                           .background_fill_colours = {style::Colour::DarkModeBackground2},
+                                           .background_tex = background_image1,
+                                           .background_tex_alpha = 180,
+                                           .background_tex_fill_mode = BackgroundTexFillMode::Cover,
+                                           .round_background_corners = 0b1111,
+                                           .layout {
+                                               .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                               .contents_direction = layout::Direction::Row,
+                                           },
+                                       });
+
     auto const card = DoBox(box_system,
                             {
-                                .parent = card_outer,
-                                .background_tex = options.background_image2,
+                                .parent = base_background,
+                                .background_tex = background_image2,
                                 .background_tex_alpha = 15,
                                 .background_tex_fill_mode = BackgroundTexFillMode::Cover,
                                 .round_background_corners = 0b1111,
@@ -846,11 +874,11 @@ Box DoFilterCard(GuiBoxSystem& box_system,
                                options.common.clicked_hash,
                                options.right_click_menu);
 
-    if (options.icon) {
+    if (options.library_id || options.unknown_library_icon) {
         DoBox(box_system,
               {
                   .parent = card_top,
-                  .background_tex = options.icon,
+                  .background_tex = icon,
                   .layout {
                       .size = 28,
                   },
@@ -1280,13 +1308,6 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
 
                 auto const is_selected = context.state.selected_library_hashes.Contains(lib_hash);
 
-                auto imgs = GetLibraryImages(library_filters.library_images,
-                                             box_system.imgui,
-                                             lib_id,
-                                             context.sample_library_server,
-                                             LibraryImagesTypes::All);
-                if (!imgs.icon) imgs.icon = library_filters.unknown_library_icon;
-
                 if (section.Do(box_system) == PickerSection::State::Collapsed) break;
 
                 button =
@@ -1317,9 +1338,10 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                                              .clicked_hash = lib_hash,
                                              .filter_mode = context.state.filter_mode,
                                          },
-                                     .background_image1 = imgs.blurred_background.NullableValue(),
-                                     .background_image2 = imgs.background.NullableValue(),
-                                     .icon = imgs.icon.NullableValue(),
+                                     .library_id = lib_id,
+                                     .library_images = library_filters.library_images,
+                                     .sample_library_server = context.sample_library_server,
+                                     .unknown_library_icon = library_filters.unknown_library_icon,
                                      .subtext = ({
                                          String s;
                                          if (lib) s = box_system.arena.Clone(lib->tagline);

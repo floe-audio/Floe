@@ -254,9 +254,10 @@ struct FilterButtonCommonOptions {
 
 struct FilterCardOptions {
     FilterButtonCommonOptions common;
-    graphics::ImageID const* background_image1;
-    graphics::ImageID const* background_image2;
-    graphics::ImageID const* icon;
+    Optional<sample_lib::LibraryIdRef> library_id; // For images.
+    LibraryImagesTable& library_images;
+    sample_lib_server::Server& sample_library_server;
+    Optional<graphics::ImageID> unknown_library_icon;
     String subtext;
     FolderFilterItemInfoLookupTable folder_infos;
     FolderNode const* folder;

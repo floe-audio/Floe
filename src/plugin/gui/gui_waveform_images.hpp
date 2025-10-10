@@ -7,6 +7,7 @@
 #include "gui_framework/draw_list.hpp"
 #include "processor/sample_processing.hpp"
 
+// TODO: make this API similar to LibraryImagesTable and use Future for async loading.
 struct FloeWaveformImages {
     ErrorCodeOr<graphics::TextureHandle> FetchOrCreate(graphics::DrawContext& graphics,
                                                        ArenaAllocator& scratch_arena,

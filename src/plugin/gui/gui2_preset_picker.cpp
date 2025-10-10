@@ -856,15 +856,6 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
                         if (!MatchesFilterSearch(folder_name, state.common_state.filter_search)) return;
                         if (section.Do(box_system).tag == PickerSection::State::Collapsed) return;
 
-                        Optional<LibraryImages> lib_imgs {};
-                        if (auto const single_library = AllPresetsSingleLibrary(*folder)) {
-                            lib_imgs = GetLibraryImages(context.library_images,
-                                                        box_system.imgui,
-                                                        *single_library,
-                                                        context.sample_library_server,
-                                                        LibraryImagesTypes::All);
-                        }
-
                         DoFilterCard(
                             box_system,
                             state.common_state,
@@ -883,11 +874,9 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
                                         .clicked_hash = folder->Hash(),
                                         .filter_mode = state.common_state.filter_mode,
                                     },
-                                .background_image1 =
-                                    lib_imgs ? lib_imgs->blurred_background.NullableValue() : nullptr,
-                                .background_image2 =
-                                    lib_imgs ? lib_imgs->background.NullableValue() : nullptr,
-                                .icon = lib_imgs ? lib_imgs->icon.NullableValue() : nullptr,
+                                .library_id = AllPresetsSingleLibrary(*folder),
+                                .library_images = context.library_images,
+                                .sample_library_server = context.sample_library_server,
                                 .subtext = ({
                                     String s {};
                                     if (auto const m = PresetPackInfoForNode(*folder))
