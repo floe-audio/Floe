@@ -32,7 +32,8 @@ static void DoDotsMenu(Gui* g) {
                  {
                      .text = "Reset State",
                      .tooltip = "Set all parameters to their default values, clear all instruments and IRs"_s,
-                 })) {
+                 })
+            .button_fired) {
         SetToDefaultState(g->engine);
     }
 
@@ -41,7 +42,8 @@ static void DoDotsMenu(Gui* g) {
                  {
                      .text = "Reset Audio Engine",
                      .tooltip = "Stops all audio and clears all playing notes"_s,
-                 })) {
+                 })
+            .button_fired) {
         ResetAudioProcessing(g->engine.processor);
     }
 
@@ -50,7 +52,8 @@ static void DoDotsMenu(Gui* g) {
                  {
                      .text = "Randomise All Parameters",
                      .tooltip = "Randomise all parameters and load random instruments and IRs"_s,
-                 })) {
+                 })
+            .button_fired) {
         RandomiseAllParameterValues(g->engine.processor);
         for (auto& layer : g->engine.processor.layer_processors) {
             InstPickerContext context {
@@ -58,22 +61,26 @@ static void DoDotsMenu(Gui* g) {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .prefs = g->prefs,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
+                .confirmation_dialog_state = g->confirmation_dialog_state,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
-            LoadRandomInstrument(context, g->inst_picker_state[layer.index], false);
+            LoadRandomInstrument(context, g->inst_picker_state[layer.index]);
         }
         {
             IrPickerContext ir_context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .prefs = g->prefs,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
+                .confirmation_dialog_state = g->confirmation_dialog_state,
             };
             ir_context.Init(g->scratch_arena);
             DEFER { ir_context.Deinit(); };
@@ -88,7 +95,8 @@ static void DoDotsMenu(Gui* g) {
                 .text = "Legacy Parameters",
                 .tooltip =
                     "Open the legacy parameters window to edit parameters that are not shown in the main UI"_s,
-            })) {
+            })
+            .button_fired) {
         g->legacy_params_window_open = true;
     }
 
@@ -97,7 +105,8 @@ static void DoDotsMenu(Gui* g) {
                  {
                      .text = "Share Feedback",
                      .tooltip = "Open the feedback panel to share your thoughts about Floe"_s,
-                 })) {
+                 })
+            .button_fired) {
         g->feedback_panel_state.open = true;
     }
 
@@ -106,7 +115,8 @@ static void DoDotsMenu(Gui* g) {
                  {
                      .text = "Library Developer Panel",
                      .tooltip = "Open the developer panel for tools to help develop libraries"_s,
-                 })) {
+                 })
+            .button_fired) {
         g->library_dev_panel_state.open = true;
     }
 
@@ -116,7 +126,8 @@ static void DoDotsMenu(Gui* g) {
                      {
                          .text = "Add Mirage Folders",
                          .tooltip = "Add sample library/preset folders from Mirage if needed"_s,
-                     })) {
+                     })
+                .button_fired) {
             g->shared_engine_systems.AddMirageFoldersIfNeeded();
         }
     }
@@ -149,7 +160,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
         DoBox(box_system,
               {
                   .parent = root,
-                  .background_tex = box_system.imgui.graphics->context->GetTextureFromImage(logo_image),
+                  .background_tex = logo_image.NullableValue(),
                   .layout {
                       .size = scale_size_to_fit_height(logo_image->size.ToFloat2(), root_size.y * 0.5f),
                   },
@@ -291,10 +302,12 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
+                .prefs = g->prefs,
                 .engine = g->engine,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
+                .confirmation_dialog_state = g->confirmation_dialog_state,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
@@ -312,10 +325,12 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
+                .prefs = g->prefs,
                 .engine = g->engine,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
+                .confirmation_dialog_state = g->confirmation_dialog_state,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
@@ -333,10 +348,12 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
+                .prefs = g->prefs,
                 .engine = g->engine,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
+                .confirmation_dialog_state = g->confirmation_dialog_state,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };

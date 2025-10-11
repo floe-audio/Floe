@@ -14,6 +14,7 @@
 #include "utils/thread_extra/atomic_queue.hpp"
 #include "utils/thread_extra/atomic_ref_list.hpp"
 #include "utils/thread_extra/atomic_swap_buffer.hpp"
+#include "utils/thread_extra/thread_pool.hpp"
 
 TEST_CASE(TestParseCommandLineArgs) {
     auto& a = tester.scratch_arena;
@@ -1296,11 +1297,42 @@ TEST_CASE(TestSprintfBuffer) {
     return k_success;
 }
 
+TEST_CASE(TestFutureAndAsync) {
+    ThreadPool pool;
+    pool.Init("test", 2u);
+
+    auto cleanup = []() {};
+
+    SUBCASE("basic async with return value") {
+        Future<int> future;
+        CHECK(!future.IsFinished());
+        pool.Async(future, []() { return 42; }, cleanup);
+        CHECK(future.WaitUntilFinished());
+        REQUIRE(future.IsFinished());
+        CHECK_EQ(future.Result(), 42);
+    }
+
+    SUBCASE("type with no default constructor") {
+        struct NoDefault {
+            NoDefault(int v) : value(v) {}
+            int value;
+        };
+        Future<NoDefault> future;
+        pool.Async(future, []() { return NoDefault(99); }, cleanup);
+        CHECK(future.WaitUntilFinished());
+        REQUIRE(future.IsFinished());
+        CHECK_EQ(future.Result().value, 99);
+    }
+
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterUtilsTests) {
     REGISTER_TEST(TestAtomicQueue);
     REGISTER_TEST(TestAtomicRefList);
     REGISTER_TEST(TestAtomicSwapBuffer);
     REGISTER_TEST(TestErrorNotifications);
+    REGISTER_TEST(TestFutureAndAsync);
     REGISTER_TEST(TestHasAddressesInCurrentModule);
     REGISTER_TEST(TestJsonReader);
     REGISTER_TEST(TestJsonWriter);

@@ -161,6 +161,56 @@ void SortFolderTree(FolderNode* root) {
         SortFolderTree(child);
 }
 
+FolderNode* FirstCommonAncestor(Span<FolderNode*> nodes, ArenaAllocator& scratch_arena) {
+    ASSERT(nodes.size);
+
+    if (nodes.size == 1) return nodes[0];
+
+    // Collect ancestor paths for all nodes
+    DynamicArray<DynamicArray<FolderNode*>> ancestor_paths(scratch_arena);
+    ASSERT(ancestor_paths.Reserve(nodes.size));
+
+    for (auto node : nodes) {
+        DynamicArray<FolderNode*> path(scratch_arena);
+
+        // Build path from node to root
+        for (auto* current = node; current; current = current->parent)
+            ASSERT(dyn::Append(path, current));
+
+        ASSERT(dyn::Append(ancestor_paths, Move(path)));
+    }
+
+    // Find the shortest path length to avoid going out of bounds
+    usize min_path_length = ancestor_paths[0].size;
+    for (usize i = 1; i < ancestor_paths.size; ++i)
+        if (ancestor_paths[i].size < min_path_length) min_path_length = ancestor_paths[i].size;
+
+    // Find common ancestors by checking from the root (end of paths) towards leaves
+    FolderNode* common_ancestor = nullptr;
+    for (usize depth = 0; depth < min_path_length; ++depth) {
+        usize index_from_end = ancestor_paths[0].size - 1 - depth;
+        FolderNode* candidate = ancestor_paths[0][index_from_end];
+
+        // Check if this ancestor exists at the same depth in all other paths
+        bool is_common = true;
+        for (usize path_idx = 1; path_idx < ancestor_paths.size; ++path_idx) {
+            usize other_index_from_end = ancestor_paths[path_idx].size - 1 - depth;
+            if (ancestor_paths[path_idx][other_index_from_end] != candidate) {
+                is_common = false;
+                break;
+            }
+        }
+
+        if (is_common)
+            common_ancestor = candidate;
+        else
+            break;
+    }
+
+    ASSERT(common_ancestor);
+    return common_ancestor;
+}
+
 TEST_CASE(TestFolderFromString) {
     struct FolderNodeAllocator : Allocator {
         FolderNodeAllocator(ArenaAllocator& arena) : arena(arena) {}
@@ -283,4 +333,86 @@ TEST_CASE(TestFolderFromString) {
     return k_success;
 }
 
-TEST_REGISTRATION(RegisterFolderNodeTests) { REGISTER_TEST(TestFolderFromString); }
+TEST_CASE(TestFirstCommonAncestor) {
+    auto& a = tester.scratch_arena;
+    FolderNode root {
+        .name = "root",
+    };
+    FolderNodeAllocators const allocators {
+        .node_allocator = a,
+    };
+
+    SUBCASE("single node") {
+        auto folder1 = FindOrInsertFolderNode(&root, Array {"Folder1"_s}, allocators);
+        REQUIRE(folder1 != nullptr);
+
+        Array<FolderNode*, 1> nodes {folder1};
+        auto result = FirstCommonAncestor(nodes.Items(), a);
+        CHECK(result == folder1);
+    }
+
+    SUBCASE("two sibling nodes") {
+        auto folder1 = FindOrInsertFolderNode(&root, Array {"Parent"_s, "Child1"_s}, allocators);
+        auto folder2 = FindOrInsertFolderNode(&root, Array {"Parent"_s, "Child2"_s}, allocators);
+        REQUIRE(folder1 != nullptr);
+        REQUIRE(folder2 != nullptr);
+
+        Array<FolderNode*, 2> nodes {folder1, folder2};
+        auto result = FirstCommonAncestor(nodes.Items(), a);
+        CHECK(result->name == "Parent"_s);
+        CHECK(result == folder1->parent);
+        CHECK(result == folder2->parent);
+    }
+
+    SUBCASE("nodes at different depths") {
+        auto folder1 = FindOrInsertFolderNode(&root, Array {"A"_s, "B"_s, "C"_s}, allocators);
+        auto folder2 = FindOrInsertFolderNode(&root, Array {"A"_s, "D"_s}, allocators);
+        REQUIRE(folder1 != nullptr);
+        REQUIRE(folder2 != nullptr);
+
+        Array<FolderNode*, 2> nodes {folder1, folder2};
+        auto result = FirstCommonAncestor(nodes.Items(), a);
+        CHECK(result->name == "A"_s);
+    }
+
+    SUBCASE("three nodes with common ancestor") {
+        auto folder1 = FindOrInsertFolderNode(&root, Array {"Common"_s, "Branch1"_s, "Leaf1"_s}, allocators);
+        auto folder2 = FindOrInsertFolderNode(&root, Array {"Common"_s, "Branch1"_s, "Leaf2"_s}, allocators);
+        auto folder3 = FindOrInsertFolderNode(&root, Array {"Common"_s, "Branch2"_s, "Leaf3"_s}, allocators);
+        REQUIRE(folder1 != nullptr);
+        REQUIRE(folder2 != nullptr);
+        REQUIRE(folder3 != nullptr);
+
+        Array<FolderNode*, 3> nodes {folder1, folder2, folder3};
+        auto result = FirstCommonAncestor(nodes.Items(), a);
+        CHECK(result->name == "Common"_s);
+    }
+
+    SUBCASE("nodes where one is ancestor of another") {
+        auto parent = FindOrInsertFolderNode(&root, Array {"Parent"_s}, allocators);
+        auto child = FindOrInsertFolderNode(&root, Array {"Parent"_s, "Child"_s}, allocators);
+        auto grandchild =
+            FindOrInsertFolderNode(&root, Array {"Parent"_s, "Child"_s, "Grandchild"_s}, allocators);
+        REQUIRE(parent != nullptr);
+        REQUIRE(child != nullptr);
+        REQUIRE(grandchild != nullptr);
+
+        Array<FolderNode*, 3> nodes {parent, child, grandchild};
+        auto result = FirstCommonAncestor(nodes.Items(), a);
+        CHECK(result == parent);
+        CHECK(result->name == "Parent"_s);
+    }
+
+    SUBCASE("all nodes are root") {
+        Array<FolderNode*, 2> nodes {&root, &root};
+        auto result = FirstCommonAncestor(nodes.Items(), a);
+        CHECK(result == &root);
+    }
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterFolderNodeTests) {
+    REGISTER_TEST(TestFolderFromString);
+    REGISTER_TEST(TestFirstCommonAncestor);
+}

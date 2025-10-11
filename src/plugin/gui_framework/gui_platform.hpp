@@ -574,12 +574,8 @@ static bool EventKeyRegular(GuiPlatform& platform, KeyCode key_code, bool is_dow
     }
     key.is_down = is_down;
 
-    if (platform.last_result.wants_keyboard_input) return true;
-    if (platform.last_result.wants_just_arrow_keys &&
-        (key_code == KeyCode::UpArrow || key_code == KeyCode::DownArrow || key_code == KeyCode::LeftArrow ||
-         key_code == KeyCode::RightArrow)) {
-        return true;
-    }
+    if (platform.last_result.wants_text_input) return true;
+    if (platform.last_result.wants_keyboard_keys.Get(ToInt(key_code))) return true;
     return false;
 }
 
@@ -609,6 +605,7 @@ static Optional<KeyCode> RemapKeyCode(u32 pugl_key) {
         case 'x': return KeyCode::X;
         case 'y': return KeyCode::Y;
         case 'z': return KeyCode::Z;
+        case 'f': return KeyCode::F;
     }
     return k_nullopt;
 }
@@ -628,7 +625,7 @@ static bool EventKey(GuiPlatform& platform, PuglKeyEvent const& key_event, bool 
 static bool EventText(GuiPlatform& platform, PuglTextEvent const& text_event) {
     platform.frame_state.modifiers = CreateModifierFlags(text_event.state);
     dyn::Append(platform.frame_state.input_utf32_chars, text_event.character);
-    if (platform.last_result.wants_keyboard_input) return true;
+    if (platform.last_result.wants_text_input) return true;
     return false;
 }
 
@@ -748,7 +745,7 @@ static void HandlePostUpdateRequests(GuiPlatform& platform) {
                       }));
     }
 
-    if (platform.last_result.wants_keyboard_input) {
+    if (platform.last_result.wants_text_input) {
         if (!puglHasFocus(platform.view)) {
             auto const result = puglGrabFocus(platform.view);
             if (result != PUGL_SUCCESS) LogWarning(ModuleName::Gui, "failed to grab focus: {}", result);

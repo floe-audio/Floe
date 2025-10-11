@@ -9,6 +9,7 @@ union UiSize {
     constexpr UiSize() : width(0), height(0) {}
     constexpr UiSize(u16 w, u16 h) : width(w), height(h) {}
     f32x2 ToFloat2() const { return {(f32)width, (f32)height}; }
+    static UiSize FromFloat2(f32x2 v) { return {CheckedCast<u16>(v.x), CheckedCast<u16>(v.y)}; }
 
     struct {
         u16 width;
@@ -66,6 +67,13 @@ struct Rect {
     Rect CutTop(f32 cut_amount) const { return {.xywh = {x, y + cut_amount, w, h - cut_amount}}; }
     Rect CutRight(f32 cut_amount) const { return {.xywh = {x, y, w - cut_amount, h}}; }
     Rect CutBottom(f32 cut_amount) const { return {.xywh = {x, y, w, h - cut_amount}}; }
+
+    Rect ExpandLeft(f32 expand_amount) const {
+        return {.xywh = {x - expand_amount, y, w + expand_amount, h}};
+    }
+    Rect ExpandTop(f32 expand_amount) const { return {.xywh = {x, y - expand_amount, w, h + expand_amount}}; }
+    Rect ExpandRight(f32 expand_amount) const { return {.xywh = {x, y, w + expand_amount, h}}; }
+    Rect ExpandBottom(f32 expand_amount) const { return {.xywh = {x, y, w, h + expand_amount}}; }
 
     void SetBottomByResizing(f32 b) { h = b - pos.y; }
     void SetRightByResizing(f32 r) { w = r - pos.x; }

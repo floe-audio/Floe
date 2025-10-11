@@ -8,6 +8,7 @@
 
 #include "engine/engine.hpp"
 #include "gui/gui2_bot_panel.hpp"
+#include "gui/gui2_confirmation_dialog_state.hpp"
 #include "gui/gui2_feedback_panel_state.hpp"
 #include "gui/gui2_info_panel_state.hpp"
 #include "gui/gui2_inst_picker_state.hpp"
@@ -29,6 +30,7 @@
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/layout.hpp"
 #include "gui_layer.hpp"
+#include "gui_waveform_images.hpp"
 
 struct GuiFrameInput;
 
@@ -37,79 +39,6 @@ struct DraggingFX {
     Effect* fx {};
     usize drop_slot {};
     f32x2 relative_grab_point {};
-};
-
-class FloeWaveformImages {
-  public:
-    ErrorCodeOr<graphics::TextureHandle> FetchOrCreate(graphics::DrawContext& graphics,
-                                                       ArenaAllocator& scratch_arena,
-                                                       WaveformAudioSource source,
-                                                       f32 unscaled_width,
-                                                       f32 unscaled_height) {
-        UiSize const size {CheckedCast<u16>(unscaled_width), CheckedCast<u16>(unscaled_height)};
-
-        u64 source_hash = 0;
-        switch (source.tag) {
-            case WaveformAudioSourceType::AudioData: {
-                auto const audio_data = source.Get<AudioData const*>();
-                if (!audio_data) return ErrorCode {CommonError::NotFound};
-                source_hash = audio_data->hash;
-                break;
-            }
-            case WaveformAudioSourceType::Sine:
-            case WaveformAudioSourceType::WhiteNoise: {
-                source_hash = (u64)source.tag + 1;
-                break;
-            }
-        }
-
-        for (auto& waveform : m_waveforms) {
-            if (waveform.source_hash == source_hash && waveform.image_id.size == size) {
-                auto tex = graphics.GetTextureFromImage(waveform.image_id);
-                if (tex) {
-                    waveform.used = true;
-                    return *tex;
-                }
-            }
-        }
-
-        Waveform waveform {};
-        auto pixels = CreateWaveformImage(source, size, scratch_arena, scratch_arena);
-        waveform.source_hash = source_hash;
-        waveform.image_id = TRY(graphics.CreateImageID(pixels.data, size, 4));
-        waveform.used = true;
-
-        dyn::Append(m_waveforms, waveform);
-        auto tex = graphics.GetTextureFromImage(waveform.image_id);
-        ASSERT(tex);
-        return *tex;
-    }
-
-    void StartFrame() {
-        for (auto& waveform : m_waveforms)
-            waveform.used = false;
-    }
-
-    void EndFrame(graphics::DrawContext& graphics) {
-        dyn::RemoveValueIf(m_waveforms, [&graphics](Waveform& w) {
-            if (!w.used) {
-                graphics.DestroyImageID(w.image_id);
-                return true;
-            }
-            return false;
-        });
-    }
-
-    void Clear() { dyn::Clear(m_waveforms); }
-
-  private:
-    struct Waveform {
-        u64 source_hash {};
-        graphics::ImageID image_id = graphics::k_invalid_image_id;
-        bool used {};
-    };
-
-    DynamicArray<Waveform> m_waveforms {Malloc::Instance()};
 };
 
 struct Gui {
@@ -123,6 +52,7 @@ struct Gui {
     InfoPanelState info_panel_state {};
     bool attribution_panel_open {};
     FeedbackPanelState feedback_panel_state {};
+    ConfirmationDialogState confirmation_dialog_state {};
     Notifications notifications {};
     FilePickerState file_picker_state {.data = FilePickerStateType::None};
     Array<InstPickerState, k_num_layers> inst_picker_state {};
@@ -155,10 +85,10 @@ struct Gui {
 
     layer_gui::LayerLayout layer_gui[k_num_layers] = {};
 
-    FloeWaveformImages waveforms {};
+    WaveformImagesTable waveform_images {};
     Optional<graphics::ImageID> floe_logo_image {};
 
-    LibraryImagesArray library_images {Malloc::Instance()};
+    LibraryImagesTable library_images {};
     Optional<graphics::ImageID> unknown_library_icon {};
 
     Optional<DraggingFX> dragging_fx_unit {};
@@ -182,8 +112,8 @@ struct Gui {
 //
 //
 
-Optional<LibraryImages>
-LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, bool only_icon_needed);
+LibraryImages
+LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, LibraryImagesTypes needed);
 
 Optional<graphics::ImageID> LogoImage(Gui* g);
 Optional<graphics::ImageID>& UnknownLibraryIcon(Gui* g);
@@ -192,5 +122,3 @@ void GUIPresetLoaded(Gui* g, Engine* a, bool is_first_preset);
 GuiFrameResult GuiUpdate(Gui* g);
 void TopPanel(Gui* g, f32 height);
 void MidPanel(Gui* g);
-
-f32x2 GetMaxUVToMaintainAspectRatio(graphics::ImageID img, f32x2 container_size);

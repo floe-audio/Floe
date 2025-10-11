@@ -86,6 +86,7 @@ enum class Colour : u8 {
     Green,
     Red,
     Highlight,
+    HighlightBright,
     Blue,
 
     Background0,
@@ -162,6 +163,7 @@ constexpr auto k_colours = [] {
             case Colour::Red: result[i] = ToAbgr(0xFF8C71); break;
             case Colour::Blue: result[i] = ToAbgr(0x66a9d4); break;
             case Colour::Highlight: result[i] = Hsla(k_highlight_hue, 93, 78, 100); break;
+            case Colour::HighlightBright: result[i] = Hsla(k_highlight_hue, 100, 85, 100); break;
 
             case Colour::Background0:
             case Colour::Background1:
@@ -209,8 +211,7 @@ constexpr f32 k_spacing = 16.0f;
 constexpr f32 k_button_rounding = 3.0f;
 constexpr f32 k_button_padding_x = 5.0f;
 constexpr f32 k_button_padding_y = 2.0f;
-constexpr f32 k_scrollbar_rhs_space = 2.0f;
-constexpr f32 k_scrollbar_lhs_space = 10.0f;
+constexpr f32 k_scrollbar_rhs_space = 1.0f;
 constexpr f32 k_panel_rounding = 7.0f;
 constexpr f32 k_prefs_lhs_width = 190.0f;
 constexpr f32 k_prefs_small_gap = 3.0f;

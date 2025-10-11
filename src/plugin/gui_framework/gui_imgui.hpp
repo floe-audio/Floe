@@ -53,7 +53,8 @@ constexpr Id k_imgui_app_window_id = 4; // id of the full size window created wi
     X(AlwaysDrawScrollX, 1, 15)                                                                              \
     X(AlwaysDrawScrollY, 1, 16)                                                                              \
     X(PositionOnTopOfParentPopup, 1, 17)                                                                     \
-    X(ModalPopup, 1, 18)
+    X(ModalPopup, 1, 18)                                                                                     \
+    X(ScrollbarInsidePadding, 1, 19)
 
 enum WindowFlagsEnum : u32 {
 #define X(name, val, num) WindowFlags_##name = val << num,
@@ -109,6 +110,7 @@ struct TextInputFlags {
     bool32 chars_note_names : 1; // Allow 0123456789+-#abcdefgABCDEFG
     bool32 tab_focuses_next_input : 1;
     bool32 centre_align : 1;
+    bool32 escape_unfocuses : 1;
     bool32 multiline : 1;
     bool32 multiline_wordwrap_hack : 1; // quick and dirty word wrap
 };
@@ -164,6 +166,7 @@ struct WindowSettings {
     f32 scrollbar_padding;
     f32 scrollbar_padding_top;
     f32 scrollbar_width;
+    f32 pixels_per_line; // How pixels make up a 'line'. 0 means use default.
     DrawWindowScrollbar* draw_routine_scrollbar;
     TrivialFixedSizeFunction<48, void(IMGUI_DRAW_WINDOW_BG_ARGS)> draw_routine_window_background;
     TrivialFixedSizeFunction<48, void(IMGUI_DRAW_WINDOW_BG_ARGS)> draw_routine_popup_background;
@@ -297,6 +300,7 @@ struct TextInputResult {
     int selection_start = 0;
     int selection_end = 0;
     bool show_cursor = false;
+    bool is_placeholder = false;
 };
 
 extern LiveEditGui g_live_edit_values;
@@ -357,8 +361,13 @@ struct Context {
     //
     // Text Input
     //
-    TextInputResult
-    TextInput(Rect r, Id id, String text, TextInputFlags flags, ButtonFlags button_flags, bool select_all);
+    TextInputResult TextInput(Rect r,
+                              Id id,
+                              String text,
+                              String placeholder_text,
+                              TextInputFlags flags,
+                              ButtonFlags button_flags,
+                              bool select_all);
 
     Id GetTextInput() const { return active_text_input; }
     bool TextInputHasFocus(Id id) const;
@@ -411,8 +420,8 @@ struct Context {
     bool WasWindowJustHovered(Id id);
     bool WasWindowJustUnhovered(Window* window);
     bool WasWindowJustUnhovered(Id id);
-    bool IsWindowHovered(Window* window);
-    bool IsWindowHovered(Id id);
+    bool IsWindowHovered(Window* window) const;
+    bool IsWindowHovered(Id id) const;
 
     //
     // > Popups (a type of window)
@@ -466,6 +475,11 @@ struct Context {
     }
 
     bool IsHotOrActive(Id id) const { return IsHot(id) || IsActive(id); }
+
+    // Returns true if the ID is the keyboard focus item.
+    bool RequestKeyboardFocus(Id id);
+    bool IsKeyboardFocus(Id id) const { return keyboard_focus_item == id; }
+    Id KeyboardFocus() const { return keyboard_focus_item; }
 
     // 'Is the cursor over the given ID' is often the same as IsHot(). But unlike the hot item,
     // there can be both an active item and a hovered item at the same time, you most likely
@@ -754,6 +768,10 @@ struct Context {
     ActiveItem active_item = {};
     ActiveItem temp_active_item = {};
 
+    Id keyboard_focus_item = 0;
+    Id temp_keyboard_focus_item = {};
+    bool temp_keyboard_focus_item_is_popup = false;
+
     Id dragged_id = 0;
     int dragged_value = 0;
     int dragged_identifier = 0;
@@ -914,7 +932,7 @@ PUBLIC SliderSettings DefSlider() {
 PUBLIC TextInputSettings DefTextInput() {
     TextInputSettings s;
     s.button_flags = {.left_mouse = true, .triggers_on_mouse_down = true};
-    s.text_flags = {.tab_focuses_next_input = true};
+    s.text_flags = {.tab_focuses_next_input = true, .escape_unfocuses = true};
     s.draw = DefaultDrawTextInput;
     s.select_all_on_first_open = true;
     return s;
@@ -928,7 +946,11 @@ PUBLIC TextInputDraggerSettings DefTextInputDraggerInt() {
     s.text_input_settings.button_flags = {.left_mouse = true,
                                           .double_click = true,
                                           .triggers_on_mouse_down = true};
-    s.text_input_settings.text_flags = {.chars_decimal = true, .tab_focuses_next_input = true};
+    s.text_input_settings.text_flags = {
+        .chars_decimal = true,
+        .tab_focuses_next_input = true,
+        .escape_unfocuses = true,
+    };
     s.text_input_settings.draw = DefaultDrawTextInput;
     s.text_input_settings.select_all_on_first_open = true;
     s.format = "{}";

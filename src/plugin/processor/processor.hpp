@@ -283,7 +283,7 @@ struct AudioProcessor {
         LayerProcessor {1, host, shared_layer_params},
         LayerProcessor {2, host, shared_layer_params},
     };
-    DynamicArray<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>> lifetime_extended_insts {
+    DynamicArray<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>> lifetime_extended_insts {
         Malloc::Instance()};
 
     f32 master_vol;

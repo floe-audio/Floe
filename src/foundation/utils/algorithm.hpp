@@ -27,16 +27,18 @@ PUBLIC constexpr auto SpanFromContainerOfContainers(auto const& c_of_c) {
 
 // This function allows for consteval usage if the data is already a single byte, otherwise, it has to do a
 // reinterpret_cast.
-template <Fundamental T>
-constexpr auto ToBytes(Span<T const> data) {
-    if constexpr (sizeof(T) == 1)
+constexpr auto ToBytes(ContiguousContainer auto const& data) {
+    using ValueType = typename RemoveCVReference<RemoveCV<decltype(data)>>::ValueType;
+    static_assert(Fundamental<ValueType>);
+    if constexpr (sizeof(ValueType) == 1)
         return data;
     else
-        return data.ToByteSpan();
+        return Span<u8 const> {(u8 const*)data.data, data.size * sizeof(ValueType)};
 }
 
-template <Fundamental T>
-PUBLIC constexpr u64 HashFnv1a(Span<T const> data) {
+PUBLIC constexpr u64 HashFnv1a(ContiguousContainer auto const& data) {
+    using ValueType = typename RemoveCVReference<RemoveCV<decltype(data)>>::ValueType;
+    static_assert(Fundamental<ValueType>);
     // FNV-1a https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function#FNV-1a_hash
     u64 hash = 0xcbf29ce484222325;
     for (auto& byte : ToBytes(data)) {
@@ -70,12 +72,6 @@ inline void HashUpdate(u64& hash, Span<T const> data) {
 }
 inline void HashUpdate(u64& hash, Integral auto data) {
     HashUpdate(hash, Span {(u8 const*)&data, sizeof(data)});
-}
-
-PUBLIC bool IsAnyOf(auto const& value, auto const& values_span) {
-    for (auto const& v : values_span)
-        if (value == v) return true;
-    return false;
 }
 
 template <Fundamental T>
@@ -249,6 +245,11 @@ PUBLIC constexpr void Sort(Type (&array)[N]) {
 PUBLIC constexpr void Fill(ContiguousContainer auto& data, auto&& value) {
     for (auto& v : data)
         v = value;
+}
+
+PUBLIC constexpr void Reverse(ContiguousContainer auto& data) {
+    for (usize i = 0; i < data.size / 2; ++i)
+        Swap(data[i], data[data.size - 1 - i]);
 }
 
 // compare_to_target follows the same requirements as stdlib bsearch():
@@ -449,6 +450,18 @@ PUBLIC constexpr Optional<usize> FindLastIf(ContiguousContainer auto const& data
     for (usize i = data.size - 1; i != usize(-1); --i)
         if (item_is_desired(data[i])) return i;
     return k_nullopt;
+}
+
+PUBLIC constexpr bool AllOf(ContiguousContainer auto const& data, auto&& item_is_desired) {
+    for (auto const& v : data)
+        if (!item_is_desired(v)) return false;
+    return true;
+}
+
+PUBLIC bool IsAnyOf(auto const& value, auto const& values_span) {
+    for (auto const& v : values_span)
+        if (value == v) return true;
+    return false;
 }
 
 PUBLIC constexpr bool ContainsSpan(ContiguousContainer auto const& haystack,

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "gui/gui.hpp"
+#include "gui/gui_drawing_helpers.hpp"
 #include "gui/gui_menu.hpp"
 #include "gui/gui_window.hpp"
 #include "gui_widget_helpers.hpp"

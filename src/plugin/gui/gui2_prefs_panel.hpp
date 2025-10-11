@@ -187,7 +187,7 @@ static void SetFolderSubtext(DynamicArrayBounded<char, 200>& out,
             if (is_default) dyn::AppendSpan(out, "Default. ");
 
             u32 num_libs = 0;
-            for (auto& l_node : server.libraries) {
+            for (auto& l_node : sample_lib_server::LibrariesList(server)) {
                 if (auto l = l_node.TryScoped()) {
                     if (path::IsWithinDirectory(l->lib->path, dir)) ++num_libs;
                 }
@@ -209,7 +209,8 @@ static void SetFolderSubtext(DynamicArrayBounded<char, 200>& out,
 
             usize num_presets = 0;
             for (auto const folder : snapshot.folders)
-                if (path::Equal(folder->scan_folder, dir)) num_presets += folder->presets.size;
+                if (path::Equal(folder->folder->scan_folder, dir))
+                    num_presets += folder->folder->presets.size;
 
             dyn::AppendSpan(out, "Contains ");
             if (num_presets < 10000 && out.size + 5 < out.Capacity())
@@ -349,7 +350,8 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
                          .text = dir,
                          .subtext = subtext_buffer,
                          .is_selected = path::Equal(dir, current_install_location),
-                     })) {
+                     })
+                .button_fired) {
             prefs::SetValue(context.prefs,
                             InstallLocationDescriptor(context.paths, context.prefs, scan_folder_type),
                             dir);
@@ -369,7 +371,8 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
                          .text = dir,
                          .subtext = subtext_buffer,
                          .is_selected = path::Equal(dir, current_install_location),
-                     })) {
+                     })
+                .button_fired) {
             prefs::SetValue(context.prefs,
                             InstallLocationDescriptor(context.paths, context.prefs, scan_folder_type),
                             dir);
