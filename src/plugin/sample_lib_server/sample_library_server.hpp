@@ -52,14 +52,18 @@ using LoadRequest = TaggedUnion<LoadRequestType,
 // ==========================================================================================================
 enum class RefCountChange { Retain, Release };
 
-// NOTE: this doesn't do reference counting automatically. You must use Retain() and Release() manually.
-// We do this because things can get messy and inefficient doing ref-counting automatically in copy/move
-// constructors and assignment operators. Instead, you will get assertion failures if you have mismatched
-// retain/release.
+// A reference counted handle to a resource. This object is just like a pointer really. The resource will stay
+// valid for as long as you are between Retain/Release pairs. The server gives you one of these with a Retain
+// already called for you - you must Release it if you don't want to keep it.
+//
+// NOTE: this doesn't do reference counting automatically using C++ constructors/operators. You must use
+// Retain() and Release() manually. We do this because things can get messy and inefficient doing ref-counting
+// automatically in copy/move constructors and assignment operators. Instead, you will get assertion failures
+// if you have mismatched retain/release.
 template <typename Type>
-struct RefCounted {
-    RefCounted() = default;
-    RefCounted(Type& t, Atomic<u32>& r, WorkSignaller* s) : data(&t), ref_count(&r), work_signaller(s) {}
+struct ResourcePointer {
+    ResourcePointer() = default;
+    ResourcePointer(Type& t, Atomic<u32>& r) : resource(&t), ref_count(&r) {}
 
     void Retain() const {
         if (ref_count) {
@@ -79,11 +83,10 @@ struct RefCounted {
             ASSERT(curr != ~(u32)0);
 
             if (curr == 0) {
-                if (work_signaller) work_signaller->Signal();
-
-                data = nullptr;
+                // For easier debugging, we null out the pointers here because the object could be freed as
+                // soon as the ref count is 0.
+                resource = nullptr;
                 ref_count = nullptr;
-                work_signaller = nullptr;
             }
         }
     }
@@ -95,25 +98,24 @@ struct RefCounted {
         }
     }
 
-    constexpr explicit operator bool() const { return data != nullptr; }
+    constexpr explicit operator bool() const { return resource != nullptr; }
     constexpr Type const* operator->() const {
-        ASSERT(data);
-        return data;
+        ASSERT(resource);
+        return resource;
     }
     constexpr Type const& operator*() const {
-        ASSERT(data);
-        return *data;
+        ASSERT(resource);
+        return *resource;
     }
 
-    Type const* data {};
+    Type const* resource {};
     Atomic<u32>* ref_count {};
-    WorkSignaller* work_signaller {};
 };
 
 using Resource =
     TaggedUnion<LoadRequestType,
-                TypeAndTag<RefCounted<sample_lib::LoadedInstrument>, LoadRequestType::Instrument>,
-                TypeAndTag<RefCounted<sample_lib::LoadedIr>, LoadRequestType::Ir>>;
+                TypeAndTag<ResourcePointer<sample_lib::LoadedInstrument>, LoadRequestType::Instrument>,
+                TypeAndTag<ResourcePointer<sample_lib::LoadedIr>, LoadRequestType::Ir>>;
 
 struct LoadResult {
     enum class ResultType { Success, Error, Cancelled };
@@ -323,10 +325,10 @@ void RescanFolder(Server& server, String folder);
 
 // You must call Release() on all results
 // [threadsafe]
-Span<RefCounted<sample_lib::Library>> AllLibrariesRetained(Server& server, ArenaAllocator& arena);
-RefCounted<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::LibraryIdRef id);
+Span<ResourcePointer<sample_lib::Library>> AllLibrariesRetained(Server& server, ArenaAllocator& arena);
+ResourcePointer<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::LibraryIdRef id);
 
-inline void ReleaseAll(Span<RefCounted<sample_lib::Library>> libs) {
+inline void ReleaseAll(Span<ResourcePointer<sample_lib::Library>> libs) {
     for (auto& l : libs)
         l.Release();
 }
@@ -336,5 +338,5 @@ inline void ReleaseAll(Span<RefCounted<sample_lib::Library>> libs) {
 // Loaded instrument
 using Instrument = TaggedUnion<
     InstrumentType,
-    TypeAndTag<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>, InstrumentType::Sampler>,
+    TypeAndTag<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>, InstrumentType::Sampler>,
     TypeAndTag<WaveformType, InstrumentType::WaveformSynth>>;

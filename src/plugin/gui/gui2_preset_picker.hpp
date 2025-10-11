@@ -39,7 +39,7 @@ struct PresetPickerContext {
     ConfirmationDialogState& confirmation_dialog_state;
 
     u32 init = 0;
-    Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;
+    Span<sample_lib_server::ResourcePointer<sample_lib::Library>> libraries;
     PresetsSnapshot presets_snapshot;
 };
 

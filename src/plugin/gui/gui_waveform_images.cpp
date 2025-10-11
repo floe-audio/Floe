@@ -17,8 +17,9 @@ static void CreateWaveformImageAsync(WaveformImage::FuturePixels& future,
                                      UiSize size,
                                      ThreadPool& thread_pool) {
     // We use ValueOr, because we need to have a RefCounted handle, not a _pointer_ to a RefCounted handle
-    // since we need to pass the whole handle to another thread.
-    auto inst_ref = inst.TryGetOpt<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>>().ValueOr({});
+    // since we need to pass the whole handle to the cleanup function.
+    auto inst_ref =
+        inst.TryGetOpt<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>().ValueOr({});
     if (inst_ref) inst_ref.Retain();
 
     thread_pool.Async(

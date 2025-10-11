@@ -1273,8 +1273,8 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
             });
             if (num_completed == i->audio_data_set.size) {
                 pending_resource.LoadingPercent().Store(-1, StoreMemoryOrder::Relaxed);
-                pending_resource.state = Resource {
-                    RefCounted<sample_lib::LoadedInstrument> {i->inst, i->ref_count, &server.work_signaller}};
+                pending_resource.state =
+                    Resource {ResourcePointer<sample_lib::LoadedInstrument> {i->inst, i->ref_count}};
             } else {
                 f32 const percent = 100.0f * ((f32)num_completed / (f32)i->audio_data_set.size);
                 pending_resource.LoadingPercent().Store(RoundPositiveFloat(percent),
@@ -1326,10 +1326,9 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
             case FileLoadingState::CompletedSucessfully: {
                 error_notifications.RemoveError(audio_load_error_id);
                 pending_resource.state = Resource {
-                    RefCounted<sample_lib::LoadedIr> {
+                    ResourcePointer<sample_lib::LoadedIr> {
                         ir_ptr->ir,
                         ir_ptr->ref_count,
-                        &server.work_signaller,
                     },
                 };
                 break;
@@ -1400,11 +1399,11 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                             if (auto resource = pending_resource.state.TryGet<Resource>()) {
                                 switch (resource->tag) {
                                     case LoadRequestType::Instrument:
-                                        rc = resource->Get<RefCounted<sample_lib::LoadedInstrument>>()
+                                        rc = resource->Get<ResourcePointer<sample_lib::LoadedInstrument>>()
                                                  .ref_count;
                                         break;
                                     case LoadRequestType::Ir:
-                                        rc = resource->Get<RefCounted<sample_lib::LoadedIr>>().ref_count;
+                                        rc = resource->Get<ResourcePointer<sample_lib::LoadedIr>>().ref_count;
                                         break;
                                 }
                             }
@@ -1816,21 +1815,21 @@ void SetExtraScanFolders(Server& server, Span<String const> extra_folders) {
     }
 }
 
-Span<RefCounted<sample_lib::Library>> AllLibrariesRetained(Server& server, ArenaAllocator& arena) {
+Span<ResourcePointer<sample_lib::Library>> AllLibrariesRetained(Server& server, ArenaAllocator& arena) {
     // IMPROVE: is this slow to do at every request for a library?
     RequestScanningOfUnscannedFolders(server);
 
-    DynamicArray<RefCounted<sample_lib::Library>> result(arena);
+    DynamicArray<ResourcePointer<sample_lib::Library>> result(arena);
     for (auto& i : server.libraries) {
         if (i.TryRetain()) {
-            auto ref = RefCounted<sample_lib::Library>(*i.value.lib, i.reader_uses, nullptr);
+            auto ref = ResourcePointer<sample_lib::Library>(*i.value.lib, i.reader_uses);
             dyn::Append(result, ref);
         }
     }
     return result.ToOwnedSpan();
 }
 
-RefCounted<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::LibraryIdRef id) {
+ResourcePointer<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::LibraryIdRef id) {
     // IMPROVE: is this slow to do at every request for a library?
     RequestScanningOfUnscannedFolders(server);
 
@@ -1840,17 +1839,17 @@ RefCounted<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::
     if (!l) return {};
     auto& node = **l;
     if (!node.TryRetain()) return {};
-    return RefCounted<sample_lib::Library>(*node.value.lib, node.reader_uses, nullptr);
+    return ResourcePointer<sample_lib::Library>(*node.value.lib, node.reader_uses);
 }
 
 void LoadResult::ChangeRefCount(RefCountChange t) {
     if (auto resource_union = result.TryGet<Resource>()) {
         switch (resource_union->tag) {
             case LoadRequestType::Instrument:
-                resource_union->Get<RefCounted<sample_lib::LoadedInstrument>>().ChangeRefCount(t);
+                resource_union->Get<ResourcePointer<sample_lib::LoadedInstrument>>().ChangeRefCount(t);
                 break;
             case LoadRequestType::Ir:
-                resource_union->Get<RefCounted<sample_lib::LoadedIr>>().ChangeRefCount(t);
+                resource_union->Get<ResourcePointer<sample_lib::LoadedIr>>().ChangeRefCount(t);
                 break;
         }
     }
@@ -2017,7 +2016,8 @@ TEST_CASE(TestSampleLibraryServer) {
                                           .ir_name = String {builtin_ir.name.data, builtin_ir.name.size}},
                     .check_result =
                         [&](LoadResult const& r, LoadRequest const& request) {
-                            auto ir = ExtractSuccess<RefCounted<sample_lib::LoadedIr>>(tester, r, request);
+                            auto ir =
+                                ExtractSuccess<ResourcePointer<sample_lib::LoadedIr>>(tester, r, request);
                             REQUIRE(ir->audio_data);
                             CHECK(ir->audio_data->interleaved_samples.size);
                         },
@@ -2025,154 +2025,160 @@ TEST_CASE(TestSampleLibraryServer) {
         }
 
         SUBCASE("library and instrument") {
-            dyn::Append(
-                requests,
-                {
-                    .request =
-                        LoadRequestInstrumentIdWithLayer {
-                            .id =
-                                {
-                                    .library = {{.author = sample_lib::k_mdata_library_author,
-                                                 .name = "SharedFilesMdata"_s}},
-                                    .inst_name = "Groups And Refs"_s,
+            dyn::Append(requests,
+                        {
+                            .request =
+                                LoadRequestInstrumentIdWithLayer {
+                                    .id =
+                                        {
+                                            .library = {{.author = sample_lib::k_mdata_library_author,
+                                                         .name = "SharedFilesMdata"_s}},
+                                            .inst_name = "Groups And Refs"_s,
+                                        },
+                                    .layer_index = 0,
                                 },
-                            .layer_index = 0,
-                        },
-                    .check_result =
-                        [&](LoadResult const& r, LoadRequest const& request) {
-                            auto inst =
-                                ExtractSuccess<RefCounted<sample_lib::LoadedInstrument>>(tester, r, request);
-                            CHECK(inst->audio_datas.size);
-                        },
-                });
+                            .check_result =
+                                [&](LoadResult const& r, LoadRequest const& request) {
+                                    auto inst = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
+                                        tester,
+                                        r,
+                                        request);
+                                    CHECK(inst->audio_datas.size);
+                                },
+                        });
         }
 
         SUBCASE("library and instrument (lua)") {
-            dyn::Append(
-                requests,
-                {
-                    .request =
-                        LoadRequestInstrumentIdWithLayer {
-                            .id =
-                                {
-                                    .library = {{.author = "Tester"_s, .name = "Test Lua"_s}},
-                                    .inst_name = "Single Sample"_s,
+            dyn::Append(requests,
+                        {
+                            .request =
+                                LoadRequestInstrumentIdWithLayer {
+                                    .id =
+                                        {
+                                            .library = {{.author = "Tester"_s, .name = "Test Lua"_s}},
+                                            .inst_name = "Single Sample"_s,
+                                        },
+                                    .layer_index = 0,
                                 },
-                            .layer_index = 0,
-                        },
-                    .check_result =
-                        [&](LoadResult const& r, LoadRequest const& request) {
-                            auto inst =
-                                ExtractSuccess<RefCounted<sample_lib::LoadedInstrument>>(tester, r, request);
-                            CHECK(inst->audio_datas.size);
-                        },
-                });
+                            .check_result =
+                                [&](LoadResult const& r, LoadRequest const& request) {
+                                    auto inst = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
+                                        tester,
+                                        r,
+                                        request);
+                                    CHECK(inst->audio_datas.size);
+                                },
+                        });
         }
 
         SUBCASE("audio file shared across insts") {
-            dyn::Append(
-                requests,
-                {
-                    .request =
-                        LoadRequestInstrumentIdWithLayer {
-                            .id =
-                                {
-                                    .library = {{
-                                        .author = sample_lib::k_mdata_library_author,
-                                        .name = "SharedFilesMdata"_s,
-                                    }},
-                                    .inst_name = "Groups And Refs"_s,
+            dyn::Append(requests,
+                        {
+                            .request =
+                                LoadRequestInstrumentIdWithLayer {
+                                    .id =
+                                        {
+                                            .library = {{
+                                                .author = sample_lib::k_mdata_library_author,
+                                                .name = "SharedFilesMdata"_s,
+                                            }},
+                                            .inst_name = "Groups And Refs"_s,
+                                        },
+                                    .layer_index = 0,
                                 },
-                            .layer_index = 0,
-                        },
-                    .check_result =
-                        [&](LoadResult const& r, LoadRequest const& request) {
-                            auto i =
-                                ExtractSuccess<RefCounted<sample_lib::LoadedInstrument>>(tester, r, request);
-                            CHECK_EQ(i->instrument.name, "Groups And Refs"_s);
-                            CHECK_EQ(i->audio_datas.size, 4u);
-                            for (auto& d : i->audio_datas)
-                                CHECK_NEQ(d->interleaved_samples.size, 0u);
-                        },
-                });
-            dyn::Append(
-                requests,
-                {
-                    .request =
-                        LoadRequestInstrumentIdWithLayer {
-                            .id =
-                                {
-                                    .library = {{
-                                        .author = sample_lib::k_mdata_library_author,
-                                        .name = "SharedFilesMdata"_s,
-                                    }},
-                                    .inst_name = "Groups And Refs (copy)"_s,
+                            .check_result =
+                                [&](LoadResult const& r, LoadRequest const& request) {
+                                    auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
+                                        tester,
+                                        r,
+                                        request);
+                                    CHECK_EQ(i->instrument.name, "Groups And Refs"_s);
+                                    CHECK_EQ(i->audio_datas.size, 4u);
+                                    for (auto& d : i->audio_datas)
+                                        CHECK_NEQ(d->interleaved_samples.size, 0u);
                                 },
-                            .layer_index = 1,
-                        },
-                    .check_result =
-                        [&](LoadResult const& r, LoadRequest const& request) {
-                            auto i =
-                                ExtractSuccess<RefCounted<sample_lib::LoadedInstrument>>(tester, r, request);
-                            CHECK_EQ(i->instrument.name, "Groups And Refs (copy)"_s);
-                            CHECK_EQ(i->audio_datas.size, 4u);
-                            for (auto& d : i->audio_datas)
-                                CHECK_NEQ(d->interleaved_samples.size, 0u);
-                        },
-                });
-            dyn::Append(
-                requests,
-                {
-                    .request =
-                        LoadRequestInstrumentIdWithLayer {
-                            .id =
-                                {
-                                    .library = {{
-                                        .author = sample_lib::k_mdata_library_author,
-                                        .name = "SharedFilesMdata"_s,
-                                    }},
-                                    .inst_name = "Single Sample"_s,
+                        });
+            dyn::Append(requests,
+                        {
+                            .request =
+                                LoadRequestInstrumentIdWithLayer {
+                                    .id =
+                                        {
+                                            .library = {{
+                                                .author = sample_lib::k_mdata_library_author,
+                                                .name = "SharedFilesMdata"_s,
+                                            }},
+                                            .inst_name = "Groups And Refs (copy)"_s,
+                                        },
+                                    .layer_index = 1,
                                 },
-                            .layer_index = 2,
-                        },
-                    .check_result =
-                        [&](LoadResult const& r, LoadRequest const& request) {
-                            auto i =
-                                ExtractSuccess<RefCounted<sample_lib::LoadedInstrument>>(tester, r, request);
-                            CHECK_EQ(i->instrument.name, "Single Sample"_s);
-                            CHECK_EQ(i->audio_datas.size, 1u);
-                            for (auto& d : i->audio_datas)
-                                CHECK_NEQ(d->interleaved_samples.size, 0u);
-                        },
-                });
+                            .check_result =
+                                [&](LoadResult const& r, LoadRequest const& request) {
+                                    auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
+                                        tester,
+                                        r,
+                                        request);
+                                    CHECK_EQ(i->instrument.name, "Groups And Refs (copy)"_s);
+                                    CHECK_EQ(i->audio_datas.size, 4u);
+                                    for (auto& d : i->audio_datas)
+                                        CHECK_NEQ(d->interleaved_samples.size, 0u);
+                                },
+                        });
+            dyn::Append(requests,
+                        {
+                            .request =
+                                LoadRequestInstrumentIdWithLayer {
+                                    .id =
+                                        {
+                                            .library = {{
+                                                .author = sample_lib::k_mdata_library_author,
+                                                .name = "SharedFilesMdata"_s,
+                                            }},
+                                            .inst_name = "Single Sample"_s,
+                                        },
+                                    .layer_index = 2,
+                                },
+                            .check_result =
+                                [&](LoadResult const& r, LoadRequest const& request) {
+                                    auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
+                                        tester,
+                                        r,
+                                        request);
+                                    CHECK_EQ(i->instrument.name, "Single Sample"_s);
+                                    CHECK_EQ(i->audio_datas.size, 1u);
+                                    for (auto& d : i->audio_datas)
+                                        CHECK_NEQ(d->interleaved_samples.size, 0u);
+                                },
+                        });
         }
 
         SUBCASE("audio files shared within inst") {
-            dyn::Append(
-                requests,
-                {
-                    .request =
-                        LoadRequestInstrumentIdWithLayer {
-                            .id =
-                                {
-                                    .library = {{
-                                        .author = sample_lib::k_mdata_library_author,
-                                        .name = "SharedFilesMdata"_s,
-                                    }},
-                                    .inst_name = "Same Sample Twice"_s,
+            dyn::Append(requests,
+                        {
+                            .request =
+                                LoadRequestInstrumentIdWithLayer {
+                                    .id =
+                                        {
+                                            .library = {{
+                                                .author = sample_lib::k_mdata_library_author,
+                                                .name = "SharedFilesMdata"_s,
+                                            }},
+                                            .inst_name = "Same Sample Twice"_s,
+                                        },
+                                    .layer_index = 0,
                                 },
-                            .layer_index = 0,
-                        },
-                    .check_result =
-                        [&](LoadResult const& r, LoadRequest const& request) {
-                            auto i =
-                                ExtractSuccess<RefCounted<sample_lib::LoadedInstrument>>(tester, r, request);
-                            CHECK_EQ(i->instrument.name, "Same Sample Twice"_s);
-                            CHECK_EQ(i->audio_datas.size, 2u);
-                            for (auto& d : i->audio_datas)
-                                CHECK_NEQ(d->interleaved_samples.size, 0u);
-                        },
-                });
+                            .check_result =
+                                [&](LoadResult const& r, LoadRequest const& request) {
+                                    auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
+                                        tester,
+                                        r,
+                                        request);
+                                    CHECK_EQ(i->instrument.name, "Same Sample Twice"_s);
+                                    CHECK_EQ(i->audio_datas.size, 2u);
+                                    for (auto& d : i->audio_datas)
+                                        CHECK_NEQ(d->interleaved_samples.size, 0u);
+                                },
+                        });
         };
 
         SUBCASE("invalid lib+path") {

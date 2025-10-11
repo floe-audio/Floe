@@ -771,11 +771,12 @@ void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const&
     // time.
     if (auto const current =
             processor.layer_processors[layer_index]
-                .instrument.TryGet<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>>())
+                .instrument.TryGet<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>())
         dyn::Append(processor.lifetime_extended_insts, *current);
 
     // Retain the new instrument
-    if (auto sampled_inst = instrument.TryGet<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>>())
+    if (auto sampled_inst =
+            instrument.TryGet<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>())
         sampled_inst->Retain();
 
     processor.layer_processors[layer_index].instrument = instrument;
@@ -783,7 +784,7 @@ void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const&
     switch (instrument.tag) {
         case InstrumentType::Sampler: {
             auto& sampler_inst =
-                instrument.Get<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>>();
+                instrument.Get<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>();
             processor.layer_processors[layer_index].desired_inst.Set(&*sampler_inst);
             break;
         }

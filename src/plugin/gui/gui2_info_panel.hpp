@@ -19,7 +19,7 @@ struct InfoPanelContext {
     ArenaAllocator& scratch_arena;
     check_for_update::State& check_for_update_state;
     prefs::Preferences& prefs;
-    Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;
+    Span<sample_lib_server::ResourcePointer<sample_lib::Library>> libraries;
     ThreadsafeErrorNotifications& error_notifications;
     ConfirmationDialogState& confirmation_dialog_state;
 };

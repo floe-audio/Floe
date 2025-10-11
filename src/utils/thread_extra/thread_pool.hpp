@@ -47,6 +47,8 @@ struct ThreadPool {
     }
 
     // The caller owns the future and is responsible for ensuring it outlives the async task.
+    // The cleanup function is always called, regardless of whether the task completed successfully or was
+    // cancelled.
     void Async(auto& future, auto&& function, auto&& cleanup) {
         ZoneScoped;
         ASSERT(m_workers.size > 0);

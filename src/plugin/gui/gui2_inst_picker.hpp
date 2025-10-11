@@ -28,7 +28,7 @@ struct InstPickerContext {
     persistent_store::Store& persistent_store;
     ConfirmationDialogState& confirmation_dialog_state;
 
-    Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;
+    Span<sample_lib_server::ResourcePointer<sample_lib::Library>> libraries;
 };
 
 void LoadAdjacentInstrument(InstPickerContext const& context,

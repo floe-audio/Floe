@@ -180,7 +180,7 @@ struct LayerProcessor {
 
     ~LayerProcessor() {
         if (auto sampled_inst =
-                instrument.TryGet<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>>())
+                instrument.TryGet<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>())
             sampled_inst->Release();
     }
 
@@ -204,7 +204,8 @@ struct LayerProcessor {
             case InstrumentType::WaveformSynth: return "Oscillator waveform"_s;
             case InstrumentType::Sampler: {
                 auto const& s =
-                    instrument.Get<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>>()->instrument;
+                    instrument.Get<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>()
+                        ->instrument;
                 if (s.regions.size == 0) return "Empty"_s;
                 if (s.regions.size == 1) return "Single sample"_s;
                 return "Multisample"_s;
@@ -219,7 +220,8 @@ struct LayerProcessor {
             case InstrumentType::WaveformSynth: return false;
             case InstrumentType::Sampler: {
                 auto const& s =
-                    instrument.Get<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>>()->instrument;
+                    instrument.Get<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>()
+                        ->instrument;
                 return s.uses_timbre_layering;
             }
             case InstrumentType::None: return false;

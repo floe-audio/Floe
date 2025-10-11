@@ -53,11 +53,12 @@ static void UpdateAttributionText(Engine& engine, ArenaAllocator& scratch_arena)
 
     DynamicArrayBounded<sample_lib::Instrument const*, k_num_layers> insts {};
     for (auto& l : engine.processor.layer_processors)
-        if (auto opt_i = l.instrument.TryGet<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>>())
+        if (auto opt_i =
+                l.instrument.TryGet<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>())
             dyn::Append(insts, &(*opt_i)->instrument);
 
     sample_lib::ImpulseResponse const* ir = nullptr;
-    sample_lib_server::RefCounted<sample_lib::Library> ir_lib {};
+    sample_lib_server::ResourcePointer<sample_lib::Library> ir_lib {};
     DEFER { ir_lib.Release(); }; // IMPORTANT: release before we return
     if (engine.processor.main_params.BoolValue(ParamIndex::ConvolutionReverbOn)) {
         if (auto const ir_id = engine.processor.convo.ir_id) {
@@ -174,7 +175,7 @@ static Instrument InstrumentFromPendingState(Engine::PendingStateChange const& p
         case InstrumentType::Sampler: {
             for (auto const& r : pending_state_change.retained_results) {
                 auto const loaded_inst =
-                    r.TryExtract<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>>();
+                    r.TryExtract<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>();
 
                 if (loaded_inst && inst_id.GetFromTag<InstrumentType::Sampler>() == **loaded_inst)
                     instrument = *loaded_inst;
@@ -185,12 +186,12 @@ static Instrument InstrumentFromPendingState(Engine::PendingStateChange const& p
     return instrument;
 }
 
-static sample_lib_server::RefCounted<sample_lib::LoadedIr>
+static sample_lib_server::ResourcePointer<sample_lib::LoadedIr>
 IrFromPendingState(Engine::PendingStateChange const& pending_state_change) {
     auto const ir_id = pending_state_change.snapshot.state.ir_id;
     if (!ir_id) return {};
     for (auto const& r : pending_state_change.retained_results) {
-        auto const loaded_ir = r.TryExtract<sample_lib_server::RefCounted<sample_lib::LoadedIr>>();
+        auto const loaded_ir = r.TryExtract<sample_lib_server::ResourcePointer<sample_lib::LoadedIr>>();
         if (loaded_ir && *ir_id == **loaded_ir) return *loaded_ir;
     }
     return {};
@@ -275,7 +276,7 @@ static void SampleLibraryResourceLoaded(Engine& engine, sample_lib_server::LoadR
             switch (resource.tag) {
                 case sample_lib_server::LoadRequestType::Instrument: {
                     auto const loaded_inst =
-                        resource.Get<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>>();
+                        resource.Get<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>();
 
                     for (auto [layer_index, l] : Enumerate<u32>(engine.processor.layer_processors)) {
                         if (auto const i = l.instrument_id.TryGet<sample_lib::InstrumentId>()) {
@@ -286,7 +287,7 @@ static void SampleLibraryResourceLoaded(Engine& engine, sample_lib_server::LoadR
                 }
                 case sample_lib_server::LoadRequestType::Ir: {
                     auto const loaded_ir =
-                        resource.Get<sample_lib_server::RefCounted<sample_lib::LoadedIr>>();
+                        resource.Get<sample_lib_server::ResourcePointer<sample_lib::LoadedIr>>();
 
                     auto const current_ir_id = engine.processor.convo.ir_id;
                     if (current_ir_id.HasValue()) {
@@ -541,7 +542,7 @@ static void PluginOnPreferenceChanged(Engine& engine, prefs::Key key, prefs::Val
 usize MegabytesUsedBySamples(Engine const& engine) {
     usize result = 0;
     for (auto& l : engine.processor.layer_processors) {
-        if (auto i = l.instrument.TryGet<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>>())
+        if (auto i = l.instrument.TryGet<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>())
             for (auto& d : (*i)->audio_datas)
                 result += d->RamUsageBytes();
     }

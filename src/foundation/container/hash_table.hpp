@@ -466,7 +466,7 @@ struct HashTable {
     template <typename PredicateType>
     usize RemoveIf(PredicateType&& should_remove) {
         if (!elems) return 0;
-        
+
         usize num_removed = 0;
         for (usize i = 0; i < mask + 1; ++i) {
             auto& element = elems[i];
@@ -660,9 +660,8 @@ struct Set : HashTable<KeyType_, DummyValueType, k_hash_function_, k_ordering_, 
 
     template <typename PredicateType>
     usize RemoveIf(PredicateType&& should_remove) {
-        return Table::RemoveIf([&should_remove](KeyType const& key, DummyValueType const&) {
-            return should_remove(key);
-        });
+        return Table::RemoveIf(
+            [&should_remove](KeyType const& key, DummyValueType const&) { return should_remove(key); });
     }
 };
 
@@ -693,9 +692,7 @@ struct DynamicSet
     template <typename PredicateType>
     usize RemoveIf(PredicateType&& should_remove) {
         return DynamicHashTable<KeyType, DummyValueType, k_hash_function>::RemoveIf(
-            [&should_remove](KeyType const& key, DummyValueType const&) {
-                return should_remove(key);
-            });
+            [&should_remove](KeyType const& key, DummyValueType const&) { return should_remove(key); });
     }
 
     operator Set() const { return this->table; }
