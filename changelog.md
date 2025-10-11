@@ -8,6 +8,22 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 1.1.0
+- Picker panel UI overhaul (all three: instruments, presets, IRs)
+  - Fully keyboard arrow-navigable, enter to select, CTRL+F/CMD+F to focus search box, page up/down, home/end, CTRL+up/down to jump sections
+  - Search for libraries, preset-packs and tags
+  - Favourites system - tag items as for easy access
+  - New 'cards' on left panel for libraries or preset-packs
+  - Filtering mode is now 'one' mode by default, and alternate modes for 'AND' or 'OR' filtering are selected in the 3-dots menu
+  - Scrollbars are less intrusive and only appear when needed
+  - Header is more compact leaving more space for the content
+  - Tooltips no longer get in the way of the picker items
+- Background-load images so the GUI stays responsive
+- Uninstall libraries and presets by right-clicking them in the picker panels
+- New concept of 'preset packs' - a folder of presets can be tagged as a pack and given more metadata such as a description. To create one add `floe-preset-pack.ini` to a folder of presets.
+- Press escape on the keyboard to close panels
+
+
 ## 1.0.6
 - Add Reset Audio Engine to the menu for stopping all sound and voices
 - macOS installer: use different method to try and avoid 'cannot install to system volume' error
