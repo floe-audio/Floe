@@ -774,18 +774,22 @@ Box DoFilterCard(GuiBoxSystem& box_system,
     graphics::ImageID const* background_image1 {};
     graphics::ImageID const* background_image2 {};
     graphics::ImageID const* icon {};
-    if (options.library_id && box_system.InputAndRenderPass()) {
-        if (box_system.imgui.IsRectVisible(
-                box_system.imgui.WindowRectToScreenRect(*BoxRect(box_system, card_outer)))) {
-            auto imgs = GetLibraryImages(options.library_images,
-                                         box_system.imgui,
-                                         *options.library_id,
-                                         options.sample_library_server,
-                                         LibraryImagesTypes::All);
-            background_image1 = imgs.blurred_background.NullableValue();
-            background_image2 = imgs.background.NullableValue();
-            icon = imgs.icon.NullableValue();
-            if (!icon) icon = options.unknown_library_icon.NullableValue();
+    bool has_icon = false;
+    if (options.library_id) {
+        auto imgs = GetLibraryImages(options.library_images,
+                                     box_system.imgui,
+                                     *options.library_id,
+                                     options.sample_library_server,
+                                     LibraryImagesTypes::All);
+        has_icon = imgs.icon.HasValue() || options.unknown_library_icon.HasValue();
+        if (box_system.InputAndRenderPass()) {
+            if (box_system.imgui.IsRectVisible(
+                    box_system.imgui.WindowRectToScreenRect(*BoxRect(box_system, card_outer)))) {
+                background_image1 = imgs.blurred_background.NullableValue();
+                background_image2 = imgs.background.NullableValue();
+                icon = imgs.icon.NullableValue();
+                if (!icon) icon = options.unknown_library_icon.NullableValue();
+            }
         }
     }
 
@@ -874,7 +878,7 @@ Box DoFilterCard(GuiBoxSystem& box_system,
                                options.common.clicked_hash,
                                options.right_click_menu);
 
-    if (options.library_id || options.unknown_library_icon) {
+    if (has_icon) {
         DoBox(box_system,
               {
                   .parent = card_top,
