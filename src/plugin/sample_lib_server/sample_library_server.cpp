@@ -690,12 +690,14 @@ ListedAudioData::~ListedAudioData() {
 }
 
 ListedInstrument::~ListedInstrument() {
+    ASSERT(ref_count.Load(LoadMemoryOrder::Relaxed) == 0);
     ZoneScoped;
     for (auto a : audio_data_set)
         a->ref_count.FetchSub(1, RmwMemoryOrder::Relaxed);
 }
 
 ListedImpulseResponse::~ListedImpulseResponse() {
+    ASSERT(ref_count.Load(LoadMemoryOrder::Relaxed) == 0);
     audio_data->ref_count.FetchSub(1, RmwMemoryOrder::Relaxed);
 }
 
@@ -1399,10 +1401,10 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                                 switch (resource->tag) {
                                     case LoadRequestType::Instrument:
                                         rc = resource->Get<RefCounted<sample_lib::LoadedInstrument>>()
-                                                 .m_ref_count;
+                                                 .ref_count;
                                         break;
                                     case LoadRequestType::Ir:
-                                        rc = resource->Get<RefCounted<sample_lib::LoadedIr>>().m_ref_count;
+                                        rc = resource->Get<RefCounted<sample_lib::LoadedIr>>().ref_count;
                                         break;
                                 }
                             }
@@ -1554,7 +1556,7 @@ static void ServerThreadProc(Server& server) {
 
         DeleteUnusedScanFolders(server.scan_folders);
 
-        // We have completed all of the loading requests, but there might still be audio data that is in the
+        // We have completed all the loading requests, but there might still be audio data that is in the
         // thread pool. We need for them to finish before we potentially delete the memory that they rely on.
         pending_resources.thread_pool_jobs.WaitUntilZero();
 
@@ -1841,7 +1843,7 @@ RefCounted<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::
     return RefCounted<sample_lib::Library>(*node.value.lib, node.reader_uses, nullptr);
 }
 
-void LoadResult::ChangeRefCount(RefCountChange t) const {
+void LoadResult::ChangeRefCount(RefCountChange t) {
     if (auto resource_union = result.TryGet<Resource>()) {
         switch (resource_union->tag) {
             case LoadRequestType::Instrument:
@@ -1853,6 +1855,8 @@ void LoadResult::ChangeRefCount(RefCountChange t) const {
         }
     }
 }
+
+void LoadResult::ChangeRefCount(RefCountChange t) const { const_cast<LoadResult*>(this)->ChangeRefCount(t); }
 
 //=================================================
 //  _______        _

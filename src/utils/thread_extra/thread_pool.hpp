@@ -59,7 +59,7 @@ struct ThreadPool {
         future.SetPending();
 
         AddJob([&future, f = Move(function), cleanup = Move(cleanup)]() mutable {
-            DEFER { cleanup(); };
+            DEFER { cleanup(); }; // Always clean-up.
             if (!future.TrySetRunning()) return;
             future.SetResult(f());
         });

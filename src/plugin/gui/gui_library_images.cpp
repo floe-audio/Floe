@@ -81,7 +81,7 @@ static Optional<ImageBytes> ImagePixelsFromLibrary(sample_lib::LibraryIdRef cons
 inline Allocator& ImageBytesAllocator() { return PageAllocator::Instance(); }
 
 static void FreeLoadingBytes(Future<Optional<ImageBytes>>& future) {
-    future.Shutdown();
+    future.Shutdown(10000u);
 
     if (future.HasResult()) {
         if (auto const bytes_obj = future.ReleaseResult()) bytes_obj->Free(ImageBytesAllocator());
@@ -90,7 +90,7 @@ static void FreeLoadingBytes(Future<Optional<ImageBytes>>& future) {
 }
 
 static void FreeLoadingBytes(Future<Optional<LibraryImages::LoadingBackgrounds>>& future) {
-    future.Shutdown();
+    future.Shutdown(10000u);
 
     if (future.HasResult()) {
         if (auto const bgs = future.ReleaseResult()) {

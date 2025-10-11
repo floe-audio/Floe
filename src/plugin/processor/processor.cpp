@@ -769,8 +769,9 @@ void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const&
 
     // If we currently have a sampler instrument, we keep it alive by storing it and releasing at a later
     // time.
-    if (auto current = processor.layer_processors[layer_index]
-                           .instrument.TryGet<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>>())
+    if (auto const current =
+            processor.layer_processors[layer_index]
+                .instrument.TryGet<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>>())
         dyn::Append(processor.lifetime_extended_insts, *current);
 
     // Retain the new instrument

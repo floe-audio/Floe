@@ -4,7 +4,9 @@
 #pragma once
 #include "foundation/foundation.hpp"
 #include "os/threading.hpp"
+#include "utils/debug/debug.hpp"
 #include "utils/error_notifications.hpp"
+#include "utils/logger/logger.hpp"
 #include "utils/thread_extra/atomic_ref_list.hpp"
 #include "utils/thread_extra/thread_extra.hpp"
 #include "utils/thread_extra/thread_pool.hpp"
@@ -57,51 +59,55 @@ enum class RefCountChange { Retain, Release };
 template <typename Type>
 struct RefCounted {
     RefCounted() = default;
-    RefCounted(Type& t, Atomic<u32>& r, WorkSignaller* s)
-        : m_data(&t)
-        , m_ref_count(&r)
-        , m_work_signaller(s) {}
+    RefCounted(Type& t, Atomic<u32>& r, WorkSignaller* s) : data(&t), ref_count(&r), work_signaller(s) {}
 
     void Retain() const {
-        if (m_ref_count) {
-            auto const prev = m_ref_count->FetchAdd(1, RmwMemoryOrder::Relaxed);
+        if (ref_count) {
+            auto const prev = ref_count->FetchAdd(1, RmwMemoryOrder::Relaxed);
+
+            // The special case where the ref count is 0 is only meant to be handled internally where we can
+            // be more certain of lifetimes. For general use, a 0 ref count suggests a bug, because if its 0,
+            // `data` could be deleted or about to be deleted.
             ASSERT(prev != 0);
         }
     }
-    void Release() const {
-        if (m_ref_count) {
-            auto const prev = m_ref_count->SubFetch(1, RmwMemoryOrder::AcquireRelease);
-            ASSERT(prev != ~(u32)0);
-            if (prev == 0 && m_work_signaller) m_work_signaller->Signal();
+
+    void Release() {
+        if (ref_count) {
+            auto const curr = ref_count->SubFetch(1, RmwMemoryOrder::AcquireRelease);
+
+            ASSERT(curr != ~(u32)0);
+
+            if (curr == 0) {
+                if (work_signaller) work_signaller->Signal();
+
+                data = nullptr;
+                ref_count = nullptr;
+                work_signaller = nullptr;
+            }
         }
     }
-    void Assign(RefCounted const& other) {
-        Release();
-        other.Retain();
-        m_data = other.m_data;
-        m_ref_count = other.m_ref_count;
-        m_work_signaller = other.m_work_signaller;
-    }
-    void ChangeRefCount(RefCountChange t) const {
+
+    void ChangeRefCount(RefCountChange t) {
         switch (t) {
             case RefCountChange::Retain: Retain(); break;
             case RefCountChange::Release: Release(); break;
         }
     }
 
-    constexpr explicit operator bool() const { return m_data != nullptr; }
+    constexpr explicit operator bool() const { return data != nullptr; }
     constexpr Type const* operator->() const {
-        ASSERT(m_data);
-        return m_data;
+        ASSERT(data);
+        return data;
     }
     constexpr Type const& operator*() const {
-        ASSERT(m_data);
-        return *m_data;
+        ASSERT(data);
+        return *data;
     }
 
-    Type const* m_data {};
-    Atomic<u32>* m_ref_count {};
-    WorkSignaller* m_work_signaller {};
+    Type const* data {};
+    Atomic<u32>* ref_count {};
+    WorkSignaller* work_signaller {};
 };
 
 using Resource =
@@ -115,9 +121,10 @@ struct LoadResult {
                                TypeAndTag<Resource, ResultType::Success>,
                                TypeAndTag<ErrorCode, ResultType::Error>>;
 
+    void ChangeRefCount(RefCountChange t);
     void ChangeRefCount(RefCountChange t) const;
     void Retain() const { ChangeRefCount(RefCountChange::Retain); }
-    void Release() const { ChangeRefCount(RefCountChange::Release); }
+    void Release() { ChangeRefCount(RefCountChange::Release); }
 
     template <typename T>
     T const* TryExtract() const {

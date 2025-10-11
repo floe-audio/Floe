@@ -14,40 +14,27 @@ inline Allocator& PixelsAllocator() { return PageAllocator::Instance(); }
 static void CreateWaveformImageAsync(WaveformImage::FuturePixels& future,
                                      WaveformAudioSource source,
                                      Instrument const& inst,
-                                     u64 source_hash,
                                      UiSize size,
                                      ThreadPool& thread_pool) {
-    auto const inst_ref = inst.TryGetFromTag<InstrumentType::Sampler>();
-    if (inst_ref) {
-        inst_ref->Retain();
-        LogDebug(ModuleName::Gui,
-                 "increased ref count to {}: {}",
-                 inst_ref->m_ref_count->Load(LoadMemoryOrder::Acquire),
-                 source_hash);
-    }
+    // We use ValueOr, because we need to have a RefCounted handle, not a _pointer_ to a RefCounted handle
+    // since we need to pass the whole handle to another thread.
+    auto inst_ref = inst.TryGetOpt<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>>().ValueOr({});
+    if (inst_ref) inst_ref.Retain();
 
     thread_pool.Async(
         future,
-        [source, size, source_hash]() -> ImageBytes {
+        [source, size]() -> ImageBytes {
             ArenaAllocator scratch_arena {PageAllocator::Instance()};
             auto const bytes = CreateWaveformImage(source, size, PixelsAllocator(), scratch_arena);
-            LogDebug(ModuleName::Gui, "ending async waveform image load: {}", source_hash);
             return {.rgba = bytes.data, .size = size};
         },
-        [inst_ref, source_hash]() {
-            LogDebug(ModuleName::Gui, "cleanup for waveform image load: {}", source_hash);
-            if (inst_ref) {
-                inst_ref->Release();
-                LogDebug(ModuleName::Gui,
-                         "decreased ref count to {}: {}",
-                         inst_ref->m_ref_count->Load(LoadMemoryOrder::Acquire),
-                         source_hash);
-            }
+        [inst_ref]() mutable {
+            if (inst_ref) inst_ref.Release();
         });
 }
 
 static void FreeWaveform(WaveformImage& waveform, WaveformPixelsFutureAllocator& allocator) {
-    waveform.loading_pixels->Shutdown();
+    waveform.loading_pixels->Shutdown(10000u);
     if (waveform.loading_pixels->HasResult())
         waveform.loading_pixels->ReleaseResult().Free(PixelsAllocator());
     else
@@ -68,6 +55,7 @@ Optional<graphics::ImageID> GetWaveformImage(WaveformImagesTable& table,
 
     switch (inst.tag) {
         case InstrumentType::None: return k_nullopt;
+
         case InstrumentType::WaveformSynth: {
             switch (inst.Get<WaveformType>()) {
                 case WaveformType::Sine: source = WaveformAudioSourceType::Sine; break;
@@ -78,6 +66,7 @@ Optional<graphics::ImageID> GetWaveformImage(WaveformImagesTable& table,
             source_hash = (u64)source.tag + 1;
             break;
         }
+
         case InstrumentType::Sampler: {
             auto sampled_inst = inst.GetFromTag<InstrumentType::Sampler>();
             auto audio_data = sampled_inst->file_for_gui_waveform;
@@ -88,19 +77,14 @@ Optional<graphics::ImageID> GetWaveformImage(WaveformImagesTable& table,
         }
     }
 
-    WaveformImageKey const key {source_hash, size};
-
-    auto e = table.table.FindOrInsertGrowIfNeeded(table.arena, key, {});
+    auto e = table.table.FindOrInsertGrowIfNeeded(table.arena, source_hash, {});
     auto& waveform = e.element.data;
     waveform.used = true;
-    waveform.hash = source_hash;
 
     if (e.inserted) waveform.loading_pixels = table.future_allocator.Allocate(table.arena);
 
-    if (!graphics.ImageIdIsValid(waveform.image_id) && waveform.loading_pixels->IsInactive()) {
-        LogDebug(ModuleName::Gui, "starting async waveform image load: {}", source_hash);
-        CreateWaveformImageAsync(*waveform.loading_pixels, source, inst, source_hash, size, thread_pool);
-    }
+    if (!graphics.ImageIdIsValid(waveform.image_id) && waveform.loading_pixels->IsInactive())
+        CreateWaveformImageAsync(*waveform.loading_pixels, source, inst, size, thread_pool);
 
     return waveform.image_id;
 }
@@ -117,22 +101,17 @@ void StartFrame(WaveformImagesTable& table, graphics::DrawContext& graphics) {
 }
 
 void EndFrame(WaveformImagesTable& table, graphics::DrawContext& graphics) {
-    table.table.RemoveIf([&](WaveformImageKey const&, WaveformImage& waveform) {
+    table.table.RemoveIf([&](u64 const&, WaveformImage& waveform) {
         if (!waveform.used) {
-            LogDebug(ModuleName::Gui, "removing unused waveform image: {}", waveform.hash);
             if (waveform.image_id) {
                 graphics.DestroyImageID(*waveform.image_id);
                 waveform.image_id = k_nullopt;
             }
             FreeWaveform(waveform, table.future_allocator);
-            // waveform.loading_pixels->Shutdown();
             return true;
         }
         return false;
     });
-    LogDebug(ModuleName::Gui, "waveform images in table: {}", table.table.size);
-    (void)table;
-    (void)graphics;
 }
 
 void Shutdown(WaveformImagesTable& table) {

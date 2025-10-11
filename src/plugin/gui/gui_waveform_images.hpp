@@ -7,20 +7,10 @@
 #include "gui_framework/image.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 
-struct WaveformImageKey {
-    u64 source_hash {};
-    UiSize size {};
-
-    constexpr bool operator==(WaveformImageKey const& other) const = default;
-
-    u64 Hash() const { return ::Hash(source_hash) ^ (::Hash(size.width) << 1) ^ (::Hash(size.height) << 2); }
-};
-
 struct WaveformImage {
     using FuturePixels = Future<ImageBytes>;
     Optional<graphics::ImageID> image_id {};
     bool used {};
-    u64 hash {};
     FuturePixels* loading_pixels {};
 };
 
@@ -50,7 +40,7 @@ struct WaveformPixelsFutureAllocator {
 struct WaveformImagesTable {
     ArenaAllocator arena {PageAllocator::Instance()};
     WaveformPixelsFutureAllocator future_allocator {};
-    HashTable<WaveformImageKey, WaveformImage> table;
+    HashTable<u64, WaveformImage> table;
 };
 
 Optional<graphics::ImageID> GetWaveformImage(WaveformImagesTable& table,

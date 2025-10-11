@@ -684,7 +684,7 @@ struct Future {
 
     // Consumer thread
     // Cancels and waits for finishing if needed. Once this function returns its safe to free the memory.
-    void Shutdown() {
+    void Shutdown(Optional<u32> timeout_milliseconds = {}) {
         auto const s = status.Load(LoadMemoryOrder::Acquire);
         switch ((Status)(s & k_status_mask)) {
             case Status::Finished:
@@ -695,7 +695,7 @@ struct Future {
             case Status::Pending:
             case Status::Running: {
                 if (!(s & k_cancel_bit)) status.FetchOr(k_cancel_bit, RmwMemoryOrder::AcquireRelease);
-                WaitUntilFinished();
+                if (!WaitUntilFinished(timeout_milliseconds)) Panic("Future::Shutdown timed out");
                 break;
             }
         }
@@ -709,10 +709,19 @@ struct Future {
             ASSERT(current & k_working_bit);
 
             if (current & k_cancel_bit) {
-                // We've been cancelled before we could start running. We set to Inactive because Finished
-                // state suggests that there is a valid payload. We retain the cancel bit so that a reader can
-                // see what happened.
-                status.Store(k_cancel_bit | (u32)Status::Inactive, StoreMemoryOrder::Release);
+                // We've been cancelled before we could start running. We set to Inactive instead of Finished
+                // because the Finished state suggests that there is a valid payload. We retain the cancel bit
+                // so that a reader can see what happened.
+                status.Store(k_cancel_bit | k_working_bit | (u32)Status::Inactive, StoreMemoryOrder::Release);
+
+                // We have set the new status, including the working bit. The working bit ensure we are safe
+                // to wake the waiters using the still-valid memory.
+                WakeWaitingThreads(status, NumWaitingThreads::All);
+
+                // We are done with this object now, we can clear the working bit meaning another thread can
+                // now free this memory if they choose.
+                status.FetchAnd(~k_working_bit, RmwMemoryOrder::Release);
+
                 return false;
             }
 
@@ -720,6 +729,8 @@ struct Future {
                                            (u32)Status::Running | k_working_bit,
                                            RmwMemoryOrder::AcquireRelease,
                                            LoadMemoryOrder::Acquire))
+                // We have successfully set to running and retained the working bit. The producer thread will
+                // continue its work.
                 return true;
         }
     }
