@@ -187,7 +187,7 @@ static void SetFolderSubtext(DynamicArrayBounded<char, 200>& out,
             if (is_default) dyn::AppendSpan(out, "Default. ");
 
             u32 num_libs = 0;
-            for (auto& l_node : server.libraries) {
+            for (auto& l_node : sample_lib_server::LibrariesList(server)) {
                 if (auto l = l_node.TryScoped()) {
                     if (path::IsWithinDirectory(l->lib->path, dir)) ++num_libs;
                 }

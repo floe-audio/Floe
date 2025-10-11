@@ -4,9 +4,7 @@
 #pragma once
 #include "foundation/foundation.hpp"
 #include "os/threading.hpp"
-#include "utils/debug/debug.hpp"
 #include "utils/error_notifications.hpp"
-#include "utils/logger/logger.hpp"
 #include "utils/thread_extra/atomic_ref_list.hpp"
 #include "utils/thread_extra/thread_extra.hpp"
 #include "utils/thread_extra/thread_pool.hpp"
@@ -19,6 +17,14 @@
 // Sample library server
 // A centralised manager for sample libraries that multiple plugins/systems can use at once.
 //
+// We use the term 'resource' for loadable things from a library, such as an Instrument, IR, audio data,
+// image, etc.
+//
+// The server provides convenient access and lookup of all available sample libraries information. However,
+// for specific resources (instruments and audio data), a request-response API is used. The request triggers
+// an asynchronous load of the resource, and the response containing the resource is provided via a
+// 'communication channel'. Resources are kept alive using reference counting.
+//
 // - Manages loading, unloading and storage of sample libraries (including instruments, irs, etc)
 // - Provides an asynchronous request-response API (we tend to call response 'result')
 // - Very quick for resources that are already loaded
@@ -28,8 +34,6 @@
 // - No duplication of resources in memory
 // - Provides progress/status metrics for other threads to read
 //
-// We use the term 'resource' for loadable things from a library, such as an Instrument, IR, audio data,
-// image, etc.
 
 namespace sample_lib_server {
 
@@ -220,7 +224,7 @@ struct ListedLibrary {
     ArenaList<ListedImpulseResponse> irs {};
 };
 
-using LibrariesList = AtomicRefList<ListedLibrary>;
+using LibrariesAtomicList = AtomicRefList<ListedLibrary>;
 
 struct ScanFolder {
     enum class Source { AlwaysScannedFolder, ExtraFolder };
@@ -248,6 +252,7 @@ struct QueuedRequest {
 
 // Public API
 // ==========================================================================================================
+// You may directly access some fields of the server, but most things are done through functions.
 
 struct Server {
     Server(ThreadPool& pool,
@@ -264,9 +269,9 @@ struct Server {
 
     // private
     detail::ScanFolders scan_folders;
-    detail::LibrariesList libraries;
+    detail::LibrariesAtomicList libraries;
     Mutex libraries_by_id_mutex;
-    DynamicHashTable<sample_lib::LibraryIdRef, detail::LibrariesList::Node*> libraries_by_id {
+    DynamicHashTable<sample_lib::LibraryIdRef, detail::LibrariesAtomicList::Node*> libraries_by_id {
         Malloc::Instance()};
     // Connection-independent errors. If we have access to a channel, we post to the channel's
     // error_notifications instead of this.
@@ -282,10 +287,38 @@ struct Server {
     ThreadsafeQueue<detail::QueuedRequest> request_queue {PageAllocator::Instance()};
     WorkSignaller work_signaller {};
     Atomic<bool> request_debug_dump_current_state {false};
+
+    // IMPROVE: we can set limits on some things here: we know there's only going to be
+    // k_max_num_floe_instances for instance.
+    // IMPROVE: would a Future-based API instead of request-response be better?
 };
 
-// IMPROVE: we can set limits: we know there's only going to be k_max_num_floe_instances.
+// ACCESSING LIBRARY INFORMATION
+// ==========================================================================================================
+// At any time, you can access library information from the server using these functions.
 
+//
+// Thread-safe. You must call Release() on all results.
+Span<ResourcePointer<sample_lib::Library>> AllLibrariesRetained(Server& server, ArenaAllocator& arena);
+
+// Thread-safe.
+ResourcePointer<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::LibraryIdRef id);
+
+// Thread-safe.
+inline void ReleaseAll(Span<ResourcePointer<sample_lib::Library>> libs) {
+    for (auto& l : libs)
+        l.Release();
+}
+
+// Thread-safe. You need understand the AtomicRefList API to use this properly.
+detail::LibrariesAtomicList& LibrariesList(Server& server);
+
+// LOADING RESOURCES
+// ==========================================================================================================
+// To load resources you need to open a communication channel with the server and then send requests.
+
+// STEP 1: open a 'communications channel' with the server
+//
 // The server owns the channel, you just get a reference to it that will be valid until you close it. The
 // callback will be called whenever a request from this channel is completed. If you want to keep any of
 // the resources that are contained in the LoadResult, you must 'retain' them in the callback. You can release
@@ -304,12 +337,17 @@ AsyncCommsChannel& OpenAsyncCommsChannel(Server& server, OpenAsyncCommsChannelAr
 // [threadsafe]
 void CloseAsyncCommsChannel(Server& server, AsyncCommsChannel& channel);
 
+// STEP 2: send requests for resources
+//
 // You'll receive a callback when the request is completed. After that you should consume all the results in
 // your channel's 'results' field (threadsafe). Each result is already retained so you must Release() them
 // when you're done with them. The server monitors the layer_index of each of your requests and works out if
 // any currently-loading resources are no longer needed and aborts their loading.
 // [threadsafe]
 RequestId SendAsyncLoadRequest(Server& server, AsyncCommsChannel& channel, LoadRequest const& request);
+
+// SERVER CONFIGURATION
+// =========================================================================================================
 
 // Change the set of extra folders that will be scanned for libraries.
 // [threadsafe]
@@ -322,16 +360,6 @@ void RequestScanningOfUnscannedFolders(Server& server);
 
 // [threadsafe]
 void RescanFolder(Server& server, String folder);
-
-// You must call Release() on all results
-// [threadsafe]
-Span<ResourcePointer<sample_lib::Library>> AllLibrariesRetained(Server& server, ArenaAllocator& arena);
-ResourcePointer<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::LibraryIdRef id);
-
-inline void ReleaseAll(Span<ResourcePointer<sample_lib::Library>> libs) {
-    for (auto& l : libs)
-        l.Release();
-}
 
 } // namespace sample_lib_server
 

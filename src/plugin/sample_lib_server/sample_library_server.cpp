@@ -56,7 +56,7 @@ struct PendingLibraryJobs {
             struct Args {
                 PathOrMemory path_or_memory;
                 sample_lib::FileFormat format;
-                LibrariesList& libraries;
+                LibrariesAtomicList& libraries;
             };
             struct Result {
                 ArenaAllocator arena {PageAllocator::Instance()};
@@ -70,7 +70,7 @@ struct PendingLibraryJobs {
         struct ScanFolder {
             struct Args {
                 detail::ScanFolder* folder;
-                LibrariesList& libraries;
+                LibrariesAtomicList& libraries;
             };
             struct Result {
                 ErrorCodeOr<void> outcome {};
@@ -102,7 +102,7 @@ struct PendingLibraryJobs {
 };
 
 static void ReadLibraryAsync(PendingLibraryJobs& pending_library_jobs,
-                             LibrariesList& lib_list,
+                             LibrariesAtomicList& lib_list,
                              PathOrMemory path_or_memory,
                              sample_lib::FileFormat format);
 
@@ -142,7 +142,7 @@ static void DoReadLibraryJob(PendingLibraryJobs::Job::ReadLibrary& job, ArenaAll
 static void DoScanFolderJob(PendingLibraryJobs::Job::ScanFolder& job,
                             ArenaAllocator& scratch_arena,
                             PendingLibraryJobs& pending_library_jobs,
-                            LibrariesList& lib_list) {
+                            LibrariesAtomicList& lib_list) {
     auto folder = job.args.folder;
     ASSERT(folder);
 
@@ -172,7 +172,7 @@ static void DoScanFolderJob(PendingLibraryJobs::Job::ScanFolder& job,
 
 // threadsafe
 static void AddAsyncJob(PendingLibraryJobs& pending_library_jobs,
-                        LibrariesList& lib_list,
+                        LibrariesAtomicList& lib_list,
                         PendingLibraryJobs::Job::DataUnion data) {
     ZoneNamed(add_job, true);
     PendingLibraryJobs::Job* job;
@@ -220,7 +220,7 @@ static void AddAsyncJob(PendingLibraryJobs& pending_library_jobs,
 
 // threadsafe
 static void ReadLibraryAsync(PendingLibraryJobs& pending_library_jobs,
-                             LibrariesList& lib_list,
+                             LibrariesAtomicList& lib_list,
                              PathOrMemory path_or_memory,
                              sample_lib::FileFormat format) {
     auto read_job = ({
@@ -485,7 +485,7 @@ static bool UpdateLibraryJobs(Server& server,
         });
 
         // we buffer these up so we don't spam the channels with notifications
-        DynamicArray<LibrariesList::Node*> libraries_that_changed {scratch_arena};
+        DynamicArray<LibrariesAtomicList::Node*> libraries_that_changed {scratch_arena};
 
         if (auto const outcome = PollDirectoryChanges(*watcher,
                                                       {
@@ -799,7 +799,7 @@ static void TriggerReloadIfAudioIsCancelled(ListedAudioData& audio_data,
     }
 }
 
-static ListedAudioData* FetchOrCreateAudioData(LibrariesList::Node& lib_node,
+static ListedAudioData* FetchOrCreateAudioData(LibrariesAtomicList::Node& lib_node,
                                                sample_lib::LibraryPath path,
                                                ThreadPoolArgs thread_pool_args,
                                                u32 debug_inst_id) {
@@ -828,7 +828,7 @@ static ListedAudioData* FetchOrCreateAudioData(LibrariesList::Node& lib_node,
     return audio_data;
 }
 
-static ListedInstrument* FetchOrCreateInstrument(LibrariesList::Node& lib_node,
+static ListedInstrument* FetchOrCreateInstrument(LibrariesAtomicList::Node& lib_node,
                                                  sample_lib::Instrument const& inst,
                                                  ThreadPoolArgs thread_pool_args) {
     auto& lib = lib_node.value;
@@ -887,7 +887,7 @@ static ListedInstrument* FetchOrCreateInstrument(LibrariesList::Node& lib_node,
     return new_inst;
 }
 
-static ListedImpulseResponse* FetchOrCreateImpulseResponse(LibrariesList::Node& lib_node,
+static ListedImpulseResponse* FetchOrCreateImpulseResponse(LibrariesAtomicList::Node& lib_node,
                                                            sample_lib::ImpulseResponse const& ir,
                                                            ThreadPoolArgs thread_pool_args) {
     auto audio_data = FetchOrCreateAudioData(lib_node, ir.path, thread_pool_args, 999999);
@@ -1093,7 +1093,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
         ASSERT(library_id.name.size != 0);
         ASSERT(library_id.author.size != 0);
 
-        LibrariesList::Node* lib {};
+        LibrariesAtomicList::Node* lib {};
         if (auto l_ptr = server.libraries_by_id.Find(library_id)) lib = *l_ptr;
 
         auto const find_lib_error_id =
@@ -1814,6 +1814,8 @@ void SetExtraScanFolders(Server& server, Span<String const> extra_folders) {
         server.work_signaller.Signal();
     }
 }
+
+detail::LibrariesAtomicList& LibrariesList(Server& server) { return server.libraries; }
 
 Span<ResourcePointer<sample_lib::Library>> AllLibrariesRetained(Server& server, ArenaAllocator& arena) {
     // IMPROVE: is this slow to do at every request for a library?
