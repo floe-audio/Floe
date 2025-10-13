@@ -35,11 +35,8 @@ static void CreateWaveformImageAsync(WaveformImage::FuturePixels& future,
 }
 
 static void FreeWaveform(WaveformImage& waveform, WaveformPixelsFutureAllocator& allocator) {
-    waveform.loading_pixels->Shutdown(10000u);
-    if (waveform.loading_pixels->HasResult())
-        waveform.loading_pixels->ReleaseResult().Free(PixelsAllocator());
-    else
-        waveform.loading_pixels->Reset();
+    if (auto image_bytes = waveform.loading_pixels->ShutdownAndRelease(10000u))
+        image_bytes->Free(PixelsAllocator());
 
     allocator.Free(waveform.loading_pixels);
 }

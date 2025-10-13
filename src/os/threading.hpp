@@ -591,8 +591,42 @@ class ScopedSpinLock {
     SpinLock& m_l;
 };
 
-struct FutureStatus {};
-
+// This is a low-overhead 'future' implementation that uses atomics and futexes. It's quite low-level but also
+// low-overhead and uncomplicated.
+//
+// It wraps a payload (Type) with the machinery for 2 threads to communicate about the filling of the payload:
+// you can wait for the result, cancel the operation, check if it's done, etc. For example, it might be used
+// by the UI thread and a worker thread to communicate about the result of file-read.
+//
+// It's designed for a single producer thread and a single consumer thread. It doesn't concern itself with
+// memory management. Typically, the consumer thread owns this object, and gives a reference to the producer
+// thread.
+//
+// Futures should almost always call Shutdown() before being destroyed.
+//
+// e.g.:
+//
+// Consumer thread:
+// if (future.IsInactive() && async_work_needed) {
+//     future.SetPending();
+//
+//     AddJobOnWorkerThread([&future, do_slow_work, cleanup_function]() mutable {
+//         DEFER { cleanup_function(); }; // Always clean-up.
+//         if (!future.TrySetRunning()) return; // Cancelled.
+//         future.SetResult(do_slow_work());
+//     });
+// }
+//
+// // Run periodically on the consumer thread:
+// if (auto const result = future.TryReleaseResult()) {
+//     // use result...
+// }
+//
+// // Consumer thread:
+// if (shutdown_requested) {
+//     future.Shutdown(); // Ensure no worker is using `future`.
+// }
+//
 template <TriviallyCopyable Type>
 struct Future {
     using ValueType = Type;
@@ -604,7 +638,11 @@ struct Future {
         Finished, // Completed, result is valid.
     };
     static constexpr u32 k_cancel_bit = 1u << 31;
+
+    // The working bit provides us with a safe way to ensure that the producer thread is done with this object
+    // without breaking the producer's ability to signal the consumer thread with a 'wake' call.
     static constexpr u32 k_working_bit = 1u << 30;
+
     static constexpr u32 k_status_mask = ~(k_cancel_bit | k_working_bit);
 
     static bool IsInProgress(u32 s) {
@@ -683,26 +721,34 @@ struct Future {
     }
 
     // Consumer thread
-    // Cancels and waits for finishing if needed. Once this function returns its safe to free the memory.
-    void Shutdown(Optional<u32> timeout_milliseconds = {}) {
+    // Cancels, waits for finishing if needed and resets the status. Returns the value if there is one. Once
+    // this function returns, the producer thread is done with this Future (so long as it honours the Future
+    // API).
+    [[nodiscard]] Type* ShutdownAndRelease(Optional<u32> timeout_milliseconds = {}) {
         auto const s = status.Load(LoadMemoryOrder::Acquire);
         switch ((Status)(s & k_status_mask)) {
             case Status::Finished:
             case Status::Inactive:
                 if (s & k_working_bit) BusyWaitForWorkingBitClear();
-                return;
+                return nullptr;
 
             case Status::Pending:
             case Status::Running: {
                 if (!(s & k_cancel_bit)) status.FetchOr(k_cancel_bit, RmwMemoryOrder::AcquireRelease);
                 if (!WaitUntilFinished(timeout_milliseconds)) Panic("Future::Shutdown timed out");
-                break;
+                if (IsFinished()) {
+                    status.Store((u32)Status::Inactive, StoreMemoryOrder::Release);
+                    return &RawResult();
+                }
+                return nullptr;
             }
         }
     }
 
-    // Producer thread
-    bool TrySetRunning() {
+    // Producer thread.
+    // Returns true if we successfully set to running, false if we was cancelled.
+    // IMPORTANT: if this returns false, you must not touch this object again.
+    [[nodiscard]] bool TrySetRunning() {
         while (true) {
             auto current = status.Load(LoadMemoryOrder::Acquire);
             ASSERT((current & k_status_mask) == (u32)Status::Pending);
@@ -714,8 +760,8 @@ struct Future {
                 // so that a reader can see what happened.
                 status.Store(k_cancel_bit | k_working_bit | (u32)Status::Inactive, StoreMemoryOrder::Release);
 
-                // We have set the new status, including the working bit. The working bit ensure we are safe
-                // to wake the waiters using the still-valid memory.
+                // We have set the new status, including the working bit. The working bit ensures we are safe
+                // to wake the waiters using the still-valid 'status' memory.
                 WakeWaitingThreads(status, NumWaitingThreads::All);
 
                 // We are done with this object now, we can clear the working bit meaning another thread can
@@ -735,7 +781,7 @@ struct Future {
         }
     }
 
-    // Producer thread
+    // Producer/consumer thread. This is the first step in scheduling work.
     void SetPending() {
         ASSERT(IsInactive());
         status.Store((u32)Status::Pending | k_working_bit, StoreMemoryOrder::Release);

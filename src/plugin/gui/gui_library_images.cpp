@@ -81,24 +81,18 @@ static Optional<ImageBytes> ImagePixelsFromLibrary(sample_lib::LibraryIdRef cons
 inline Allocator& ImageBytesAllocator() { return PageAllocator::Instance(); }
 
 static void FreeLoadingBytes(Future<Optional<ImageBytes>>& future) {
-    future.Shutdown(10000u);
-
-    if (future.HasResult()) {
-        if (auto const bytes_obj = future.ReleaseResult()) bytes_obj->Free(ImageBytesAllocator());
-    } else
-        future.Reset();
+    if (auto const bytes_opt_ptr = future.ShutdownAndRelease(10000u)) {
+        if (auto bytes_optional = *bytes_opt_ptr) bytes_optional->Free(ImageBytesAllocator());
+    }
 }
 
 static void FreeLoadingBytes(Future<Optional<LibraryImages::LoadingBackgrounds>>& future) {
-    future.Shutdown(10000u);
-
-    if (future.HasResult()) {
-        if (auto const bgs = future.ReleaseResult()) {
+    if (auto const bgs_ptr = future.ShutdownAndRelease(10000u)) {
+        if (auto bgs = *bgs_ptr) {
             if (bgs->background) bgs->background->Free(ImageBytesAllocator());
             if (bgs->blurred_background) bgs->blurred_background->Free(ImageBytesAllocator());
         }
-    } else
-        future.Reset();
+    }
 }
 
 static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
