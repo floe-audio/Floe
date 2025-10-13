@@ -464,8 +464,6 @@ test-ci optimised="0":
       return_code=$?
   fi
 
-  return_code=$?
-
   kill $MDBOOK_PID
 
   exit $return_code
