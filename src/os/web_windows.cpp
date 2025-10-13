@@ -37,10 +37,16 @@ ErrorCodeOr<void> HttpsGet(String url, Writer response_writer, RequestOptions op
     auto const timeout_ms = int(options.timeout_seconds * 1000);
     WinHttpSetTimeouts(session, timeout_ms, timeout_ms, timeout_ms, timeout_ms);
 
-    unsigned long protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
-    WinHttpSetOption(session, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof(protocols));
+    // Detect if this is HTTPS or HTTP
+    bool const is_https = url_comps.nScheme == INTERNET_SCHEME_HTTPS;
+    
+    if (is_https) {
+        unsigned long protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
+        WinHttpSetOption(session, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof(protocols));
+    }
 
-    auto connection = WinHttpConnect(session, server, INTERNET_DEFAULT_PORT, 0);
+    INTERNET_PORT const port = url_comps.nPort ? url_comps.nPort : (is_https ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT);
+    auto connection = WinHttpConnect(session, server, port, 0);
     if (connection == nullptr) return ErrorCode {WebError::NetworkError};
     DEFER { WinHttpCloseHandle(connection); };
 
@@ -50,7 +56,7 @@ ErrorCodeOr<void> HttpsGet(String url, Writer response_writer, RequestOptions op
                                       nullptr,
                                       WINHTTP_NO_REFERER,
                                       WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                      WINHTTP_FLAG_SECURE);
+                                      is_https ? WINHTTP_FLAG_SECURE : 0);
     if (!request) return ErrorCode {WebError::NetworkError};
     DEFER { WinHttpCloseHandle(request); };
 
@@ -116,10 +122,16 @@ HttpsPost(String url, String body, Optional<Writer> response_writer, RequestOpti
     auto const timeout_ms = int(options.timeout_seconds * 1000);
     WinHttpSetTimeouts(session, timeout_ms, timeout_ms, timeout_ms, timeout_ms);
 
-    unsigned long protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
-    WinHttpSetOption(session, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof(protocols));
+    // Detect if this is HTTPS or HTTP
+    bool const is_https = url_comps.nScheme == INTERNET_SCHEME_HTTPS;
+    
+    if (is_https) {
+        unsigned long protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
+        WinHttpSetOption(session, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof(protocols));
+    }
 
-    auto connection = WinHttpConnect(session, server, INTERNET_DEFAULT_PORT, 0);
+    INTERNET_PORT const port = url_comps.nPort ? url_comps.nPort : (is_https ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT);
+    auto connection = WinHttpConnect(session, server, port, 0);
     if (connection == nullptr) return ErrorCode {WebError::NetworkError};
     DEFER { WinHttpCloseHandle(connection); };
 
@@ -129,7 +141,7 @@ HttpsPost(String url, String body, Optional<Writer> response_writer, RequestOpti
                                       nullptr,
                                       WINHTTP_NO_REFERER,
                                       WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                      WINHTTP_FLAG_SECURE);
+                                      is_https ? WINHTTP_FLAG_SECURE : 0);
     if (!request) return ErrorCode {WebError::NetworkError};
     DEFER { WinHttpCloseHandle(request); };
 
