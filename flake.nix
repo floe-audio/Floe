@@ -203,6 +203,7 @@
               zigpkgs."0.14.0"
               pkgs-unstable.zls
               pkgs.sentry-cli
+              pkgs.go-httpbin # HTTP testing server
 
               # dsymutil internally calls "lipo", so we have to make sure it's available under that name
               (pkgs.writeShellScriptBin "lipo" "llvm-lipo $@")

@@ -453,8 +453,13 @@ test-ci optimised="0":
   pushd docs
   mdbook serve &
   MDBOOK_PID=$!
-  sleep 2 # Wait a moment for the server to fully start
   popd
+
+  # Start go-httpbin server for HTTP testing
+  go-httpbin -host 127.0.0.1 -port 8081 &
+  HTTPBIN_PID=$!
+
+  sleep 2 # Wait a moment for both servers to fully start
 
   if [[ "{{optimised}}" -eq 1 ]]; then
       just parallel "{{checks_ci_optimised}}"
@@ -465,6 +470,7 @@ test-ci optimised="0":
   fi
 
   kill $MDBOOK_PID
+  kill $HTTPBIN_PID
 
   exit $return_code
 
