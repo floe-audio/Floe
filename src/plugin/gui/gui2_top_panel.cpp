@@ -296,7 +296,11 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
 
     {
         auto const preset_next =
-            do_icon_button(preset_box, ICON_FA_CARET_LEFT, "Load previous preset"_s, 1.0f, 3);
+            do_icon_button(preset_box,
+                           ICON_FA_CARET_LEFT,
+                           "Load previous preset\n\nThis is based on the currently selected filters."_s,
+                           1.0f,
+                           3);
         if (preset_next.button_fired) {
             PresetPickerContext context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
@@ -319,7 +323,11 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
 
     {
         auto const preset_prev =
-            do_icon_button(preset_box, ICON_FA_CARET_RIGHT, "Load next preset"_s, 1.0f, 3);
+            do_icon_button(preset_box,
+                           ICON_FA_CARET_RIGHT,
+                           "Load next preset\n\nThis is based on the currently selected filters."_s,
+                           1.0f,
+                           3);
         if (preset_prev.button_fired) {
             PresetPickerContext context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
@@ -342,7 +350,11 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
 
     {
         auto const preset_random =
-            do_icon_button(preset_box, ICON_FA_SHUFFLE, "Load a random preset"_s, 0.9f, 3);
+            do_icon_button(preset_box,
+                           ICON_FA_SHUFFLE,
+                           "Load a random preset\n\nThis is based on the currently selected filters."_s,
+                           0.9f,
+                           3);
         if (preset_random.button_fired) {
             PresetPickerContext context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,

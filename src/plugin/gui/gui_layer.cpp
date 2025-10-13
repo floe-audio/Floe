@@ -1075,11 +1075,20 @@ void Draw(Gui* g,
                 DEFER { context.Deinit(); };
                 LoadRandomInstrument(context, g->inst_picker_state[layer->index]);
             }
-            Tooltip(g, rand_id, rand_r, "Load a random instrument"_s);
+            Tooltip(g,
+                    rand_id,
+                    rand_r,
+                    "Load a random instrument.\n\nThis is based on the currently selected filters."_s);
         }
 
-        Tooltip(g, selector_left_id, selector_left_r, "Load the previous instrument"_s);
-        Tooltip(g, selector_right_id, selector_right_r, "Load the next instrument"_s);
+        Tooltip(g,
+                selector_left_id,
+                selector_left_r,
+                "Load the previous instrument\n\nThis is based on the currently selected filters."_s);
+        Tooltip(g,
+                selector_right_id,
+                selector_right_r,
+                "Load the next instrument\n\nThis is based on the currently selected filters."_s);
     }
 
     if (layer->instrument.tag == InstrumentType::None) return;

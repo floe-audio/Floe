@@ -190,17 +190,24 @@ static void DoImpulseResponseMenu(Gui* g, layout::Id lay_id) {
     auto const button_style = buttons::IconButton(g->imgui);
     auto const left_id = id - 4;
     auto const right_id = id + 4;
+    auto const random_id = id + 8;
     if (buttons::Button(g, left_id, rect_prev, ICON_FA_CARET_LEFT, button_style))
         LoadAdjacentIr(context, g->ir_picker_state, SearchDirection::Backward);
     if (buttons::Button(g, right_id, rect_next, ICON_FA_CARET_RIGHT, button_style))
         LoadAdjacentIr(context, g->ir_picker_state, SearchDirection::Forward);
     if (buttons::Button(g,
-                        id + 8,
+                        random_id,
                         rect_rand,
                         ICON_FA_SHUFFLE,
                         buttons::IconButton(g->imgui).WithRandomiseIconScaling()))
         LoadRandomIr(context, g->ir_picker_state);
 
+    Tooltip(g, left_id, rect_prev, "Previous IR.\n\nThis is based on the currently selected filters."_s);
+    Tooltip(g, right_id, rect_next, "Next IR.\n\nThis is based on the currently selected filters."_s);
+    Tooltip(g,
+            random_id,
+            rect_rand,
+            "Load a random IR.\n\nThis is based on the currently selected filters."_s);
     Tooltip(g,
             id,
             r,
