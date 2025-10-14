@@ -237,7 +237,12 @@ test-units:
   {{native_binary_dir}}/tests --log-level=debug --write-to-file
 
 test-pluginval: 
-  pluginval {{native_binary_dir}}/Floe.vst3
+  #!/usr/bin/env bash
+  args=""
+  if [[ "{{os()}}" == "linux" && ! -z "$CI" ]]; then
+    args="--skip-gui-tests"
+  fi
+  pluginval $args --validate {{native_binary_dir}}/Floe.vst3
 
 [macos]
 check-au-installed:
