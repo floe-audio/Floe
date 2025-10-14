@@ -49,7 +49,7 @@ struct MidiNoteState {
 struct AudioProcessingContext {
     f32 sample_rate = 44100;
     u32 process_block_size_max = 512;
-    f64 tempo = 0;
+    f64 tempo = 120;
     Array<f32, 16> pitchwheel_position = {}; // -1.0 to 1.0
     MidiNoteState midi_note_state;
     f32 one_pole_smoothing_cutoff_0_2ms = 1;
