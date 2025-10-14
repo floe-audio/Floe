@@ -243,6 +243,7 @@ enum class NumWaitingThreads { One, All };
 WaitResult WaitIfValueIsExpected(Atomic<u32>& value, u32 expected, Optional<u32> timeout_milliseconds = {});
 void WakeWaitingThreads(Atomic<u32>& value, NumWaitingThreads num_waiters);
 
+// Same as WaitIfValueIsExpected, but without spurious returns. Returns false if timed out.
 inline bool
 WaitIfValueIsExpectedStrong(Atomic<u32>& value, u32 expected, Optional<u32> timeout_milliseconds = {}) {
     while (value.Load(LoadMemoryOrder::Acquire) == expected)

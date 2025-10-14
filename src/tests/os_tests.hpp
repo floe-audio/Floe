@@ -1093,27 +1093,29 @@ TEST_CASE(TestMutex) {
 }
 
 TEST_CASE(TestFutex) {
-    for (auto wake_mode : Array {NumWaitingThreads::One, NumWaitingThreads::All}) {
-        Atomic<u32> atomic {0};
+    SUBCASE("basic wait and wake") {
+        for (auto const wake_mode : Array {NumWaitingThreads::One, NumWaitingThreads::All}) {
+            Atomic<u32> atomic {0};
 
-        Thread thread;
-        thread.Start(
-            [&]() {
-                SleepThisThread(1);
-                atomic.Store(1, StoreMemoryOrder::Relaxed);
-                WakeWaitingThreads(atomic, wake_mode);
-            },
-            "thread");
+            Thread thread;
+            thread.Start(
+                [&]() {
+                    SleepThisThread(1);
+                    atomic.Store(1, StoreMemoryOrder::Release);
+                    WakeWaitingThreads(atomic, wake_mode);
+                },
+                "thread");
 
-        while (atomic.Load(LoadMemoryOrder::Relaxed) == 1)
-            WaitIfValueIsExpected(atomic, 1, {});
+            auto const timed_out = !WaitIfValueIsExpectedStrong(atomic, 0, {});
+            CHECK(!timed_out);
 
-        thread.Join();
+            thread.Join();
+        }
     }
 
-    {
+    SUBCASE("timeout when not woken") {
         Atomic<u32> atomic {0};
-        CHECK_EQ(WaitIfValueIsExpected(atomic, 0, 1u), WaitResult::TimedOut);
+        CHECK(!WaitIfValueIsExpectedStrong(atomic, 0, 1u));
     }
     return k_success;
 }
