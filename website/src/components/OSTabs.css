@@ -1,0 +1,90 @@
+/* 
+ * SPDX-FileCopyrightText: 2025 Sam Windell
+ * SPDX-License-Identifier: MIT
+*/
+
+/* OS Tabs Styling */
+.os-tabs-container {
+  margin: 2rem 0;
+}
+
+.download-tabs {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid var(--ifm-color-emphasis-200);
+}
+
+.download-tab {
+  padding: 1rem 2rem;
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--ifm-color-emphasis-700);
+  border-bottom: 3px solid transparent;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.download-tab:hover {
+  color: var(--ifm-color-primary);
+  background-color: var(--ifm-color-emphasis-100);
+}
+
+.download-tab.active {
+  color: var(--ifm-color-primary);
+  border-bottom-color: var(--ifm-color-primary);
+  background-color: var(--ifm-color-emphasis-100);
+}
+
+.download-tab i {
+  font-size: 1.2rem;
+}
+
+.download-panels {
+  position: relative;
+}
+
+.download-panel {
+  display: none;
+  animation: fadeIn 0.3s ease-in;
+}
+
+.download-panel.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .download-tabs {
+    flex-direction: column;
+    border-bottom: none;
+  }
+  
+  .download-tab {
+    justify-content: center;
+    border-bottom: 1px solid var(--ifm-color-emphasis-200);
+    border-radius: 0;
+  }
+  
+  .download-tab.active {
+    border-bottom-color: var(--ifm-color-primary);
+  }
+}
+

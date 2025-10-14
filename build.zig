@@ -1939,7 +1939,7 @@ pub fn build(b: *std.Build) void {
             });
             docs_generator.addCSourceFiles(.{
                 .files = &.{
-                    "src/docs_preprocessor/docs_preprocessor.cpp",
+                    "src/docs_generator/docs_generator.cpp",
                     "src/common_infrastructure/final_binary_type.cpp",
                 },
                 .flags = FlagsBuilder.init(&build_context, target, .{

@@ -46,7 +46,7 @@ patch-rpath:
     patch_file patchrpath "{{native_binary_dir}}/Floe.clap"
     patch_file patchrpath "{{native_binary_dir}}/Floe.vst3/Contents/x86_64-linux/Floe.so"
     patch_file patchinterpreter "{{native_binary_dir}}/tests"
-    patch_file patchinterpreter "{{native_binary_dir}}/docs_preprocessor"
+    patch_file patchinterpreter "{{native_binary_dir}}/docs_generator"
     patch_file patchinterpreter "{{native_binary_dir}}/VST3-Validator"
   fi
 
@@ -82,7 +82,7 @@ check-format:
 check-spelling:
   #!/usr/bin/env bash
   set -euo pipefail
-  output=$(fd . -e .md --exclude third_party_libs/ | xargs hunspell -l -d en_GB -p docs/ignored-spellings.dic | sort -u)
+  output=$(fd . -e .md -e .mdx --exclude third_party_libs/ | xargs hunspell -l -d en_GB -p ignored-spellings.dic | sort -u)
   echo "$output"
   test "$output" == ""
 
@@ -91,12 +91,12 @@ check-links:
   #!/usr/bin/env bash
   set -euxo pipefail
 
-  # If our website is being served locally (mdbook serve), we can check links against the local version by remapping
+  # If our website is being served locally (Docusaurus dev server), we can check links against the local version by remapping
   # floe.audio to localhost.
-  mdbook_localhost="http://localhost:3000"
+  docusaurus_localhost="http://localhost:3000"
   declare -a extra_args=()
-  if curl -s --head --request GET "$mdbook_localhost" | grep "200 OK" > /dev/null; then
-    extra_args=(--remap "https://floe.audio $mdbook_localhost")
+  if curl -s --head --request GET "$docusaurus_localhost" | grep "200 OK" > /dev/null; then
+    extra_args=(--remap "https://floe.audio $docusaurus_localhost")
   fi
   # For some reason creativecommons links return 403 via lychee, so we exclude them.
   lychee --exclude 'v%7B%7B#include' \
@@ -105,7 +105,7 @@ check-links:
          --exclude 'https://creativecommons.org/licenses/by-sa/4.0' \
          --exclude '==.*==' \
          "${extra_args[@]}" \
-         docs readme.md changelog.md
+         docs readme.md
 
 # install Compile DataBase (compile_commands.json)
 install-cbd arch_os_pair=native_arch_os_pair:
@@ -206,13 +206,18 @@ release-cleanup:
     gh issue edit "$issue_number" --remove-label "awaiting-release"
   done
 
-# For some reason, on CI, the docs_preprocessor binary is not being found. This is a workaround.
-[unix]
-install-docs-preprocessor:
+# Website development and build commands for Docusaurus
+website-dev:
   #!/usr/bin/env bash
-  set -x
-  sudo install "{{native_binary_dir_abs}}/docs_preprocessor" /usr/local/bin/ 2>&1 || { echo "Failed to install binary: $?"; exit 1; }
-  echo "Installation completed"
+  {{native_binary_dir}}/docs_generator > website/static/generated-data.json
+  cd website && npm run start
+
+website-build:
+  #!/usr/bin/env bash
+  # Generate static data first
+  {{native_binary_dir}}/docs_generator > website/static/generated-data.json
+  # Build Docusaurus site
+  cd website && npm run build
 
 # IMPROVE: (June 2024) cppcheck v2.14.0 and v2.14.1 thinks there are syntax errors in valid code. It could be a cppcheck bug or it could be an incompatibility in how we are using it. Regardless, we should try again in the future and see if it's fixed. If it works it should run alongside clang-tidy in CI, etc.
 # cppcheck arch_os_pair=native_arch_os_pair:
@@ -455,9 +460,9 @@ test-ci optimised="0":
   #!/usr/bin/env bash
   set -x
 
-  pushd docs
-  mdbook serve &
-  MDBOOK_PID=$!
+  pushd website
+  npm run start &
+  DOCUSAURUS_PID=$!
   popd
 
   # Start go-httpbin server for HTTP testing
@@ -474,7 +479,7 @@ test-ci optimised="0":
       return_code=$?
   fi
 
-  kill $MDBOOK_PID
+  kill $DOCUSAURUS_PID
   kill $HTTPBIN_PID
 
   exit $return_code
@@ -617,7 +622,7 @@ echo-latest-changes:
   #!/usr/bin/env bash
   # Extract text from the heading with the current version number until the next heading with exactly 2 hashes
   version=$(cat version.txt)
-  changes=$(sed -n "/^## $version/,/^## [^#]/ { /^## [^#]/!p }" changelog.md)
+  changes=$(sed -n "/^## $version/,/^## [^#]/ { /^## [^#]/!p }" website/docs/changelog.md)
   printf "%s" "$changes" # trim trailing newline
 
 [unix, no-cd]

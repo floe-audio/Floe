@@ -1,0 +1,97 @@
+/* 
+ * SPDX-FileCopyrightText: 2025 Sam Windell
+ * SPDX-License-Identifier: MIT
+*/
+
+/* Main container with bottom padding */
+.pageContainer {
+  padding-bottom: 4rem;
+}
+
+/* Standard section */
+.section {
+  margin: 8rem 0;
+}
+
+/* Header section with intro text */
+.headerSection {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.headerContent {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+.headerContent h1 {
+  margin-bottom: 1.5rem;
+}
+
+.headerContent p {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+/* Section header (for package categories) */
+.sectionHeader {
+  max-width: 950px;
+  margin: 0 auto 2rem auto;
+  text-align: center;
+}
+
+.sectionHeader h2 {
+  margin-bottom: 1rem;
+}
+
+.sectionHeader p {
+  font-size: 1.1rem;
+  color: var(--ifm-color-emphasis-700);
+}
+
+/* Wide content area for package grids */
+.wideContent {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+/* Standard content area for text */
+.content {
+  max-width: 950px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+.content h2 {
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+/* Developer cards grid */
+.developerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+.developerCard {
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.developerCard h3 {
+  margin-bottom: 1.5rem;
+  margin-top: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.developerCard p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}

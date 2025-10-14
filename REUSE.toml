@@ -13,13 +13,13 @@ SPDX-FileCopyrightText = "2024 Sam Windell"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
 [[annotations]]
-path = "docs/src/images/*"
+path = ["website/static/images/*", "website/static/package-database.json"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2024-2025 Sam Windell"
-SPDX-License-Identifier = "CC-BY-4.0"
+SPDX-License-Identifier = "MIT"
 
 [[annotations]]
-path = ["**.lock", "build_resources/**.lock", "version.txt"]
+path = ["**.lock", "build_resources/**.lock", "version.txt", "website/package-lock.json", "website/package.json"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2024 Sam Windell"
 SPDX-License-Identifier = "CC0-1.0"

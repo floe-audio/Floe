@@ -1,0 +1,103 @@
+/* 
+ * SPDX-FileCopyrightText: 2025 Sam Windell
+ * SPDX-License-Identifier: MIT
+*/
+
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+/* You can override the default Infima variables here. */
+:root {
+  /* Floe brand colors - blue/purple theme */
+  --ifm-color-primary: #555e85;
+  --ifm-color-primary-dark: #4a5274;
+  --ifm-color-primary-darker: #454e6e;
+  --ifm-color-primary-darkest: #3a4259;
+  --ifm-color-primary-light: #606a96;
+  --ifm-color-primary-lighter: #656f9c;
+  --ifm-color-primary-lightest: #7481b3;
+  
+  /* Enhanced color system */
+  --ifm-color-secondary: #7481b3;
+  --ifm-color-accent: #8a96c7;
+  
+  /* Typography */
+  --ifm-code-font-size: 95%;
+  --ifm-font-family-base: Optima, Candara, 'Noto Sans', source-sans-pro, sans-serif;
+  --ifm-heading-font-weight: 600;
+  
+  /* Layout */
+  --ifm-container-width-xl: 1000px;
+  --ifm-container-width: 950px;
+  
+  /* Improved spacing */
+  --ifm-section-spacing: 4rem;
+  
+  /* Enhanced shadows and borders */
+  --ifm-card-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --ifm-button-border-radius: 6px;
+  
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+/* For readability concerns, you should choose a lighter palette in dark mode. */
+[data-theme='dark'] {
+  --ifm-color-primary: #7481b3;
+  --ifm-color-primary-dark: #6370a5;
+  --ifm-color-primary-darker: #5d6a9e;
+  --ifm-color-primary-darkest: #4d5885;
+  --ifm-color-primary-light: #8592c1;
+  --ifm-color-primary-lighter: #8c98c8;
+  --ifm-color-primary-lightest: #a3aed6;
+  
+  --ifm-color-secondary: #8a96c7;
+  --ifm-color-accent: #9ca7d2;
+  
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+/* Hide pagination navigation on docs */
+.pagination-nav {
+  display: none;
+}
+
+/* Homepage wider content */
+.homepage-layout .container {
+  max-width: 1400px !important;
+}
+
+/* Enhanced section spacing */ 
+section {
+  position: relative;
+}
+
+/* Enhanced heading gaps */
+h2, h3, h4, h5, h6 {
+    margin-top: 1.8em;
+}
+
+/* Enhanced footer contrast */
+.theme-layout-footer {
+  --ifm-footer-link-color: #ffffff;
+}
+
+/* docs images have rounded corners */
+.docs-wrapper img {
+  border-radius: 8px;
+}
+
+/* Prevent text color change on outline button hover */
+.button--outline:hover {
+  color: var(--ifm-color-primary) !important;
+}
+
+/* Adjustments for the blog page */
+.blog-list-page .avatar {
+    display: none;
+}
+.blog-list-page header h2  {
+    font-size: 1.5rem;
+}

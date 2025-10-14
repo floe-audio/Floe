@@ -29,25 +29,30 @@ jobs:
 
       - run: just build
 
-      - run: just install-docs-preprocessor
+      - name: Generate static data
+        run: |
+          zig-out/x86_64-linux/docs_generator > website/static/generated-data.json
 
       - name: Generate API files
         run: |
-          mkdir -p docs/src/api/v1
+          mkdir -p website/static/api/v1
           version=$(cat version.txt)
-          cat > docs/src/api/v1/version << EOF
+          cat > website/static/api/v1/version << EOF
           latest=$version
           EOF
+
+      - name: Install Node.js dependencies
+        run: |
+          cd website
+          npm ci
+
+      - name: Build Docusaurus site
+        run: just website-build
 
       - name: Deploy GitHub Pages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd docs
-          wget https://raw.githubusercontent.com/floe-audio/Floe-Logos/main/rasterized/favicon.png -P theme
-          wget https://raw.githubusercontent.com/floe-audio/Floe-Logos/main/rasterized/favicon.svg -P theme
-          mdbook build
-          mdbook-sitemap-generator --domain floe.audio --output book/sitemap.xml
           git worktree add gh-pages
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
@@ -55,7 +60,7 @@ jobs:
           # Delete the ref to avoid keeping history.
           git update-ref -d refs/heads/gh-pages
           rm -rf *
-          mv ../book/* .
+          mv ../website/build/* .
           git add .
           git commit -m "Deploy $GITHUB_SHA to gh-pages"
           git push --force --set-upstream origin gh-pages
