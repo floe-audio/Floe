@@ -43,8 +43,8 @@ enum class LibraryImagesTypes : u8 {
 };
 BITWISE_OPERATORS(LibraryImagesTypes)
 
-// Very efficiently receives library images for a given library, starting any asynchronous loading if needed.
-// You can use bits to not trigger image loading that you don't need right now.
+// Very efficiently retrieves library images for a given library - starting any asynchronous loading if
+// needed. Use needed_types to trigger loading only for the images you need.
 LibraryImages GetLibraryImages(LibraryImagesTable& table,
                                imgui::Context& imgui,
                                sample_lib::LibraryIdRef const& library_id,
