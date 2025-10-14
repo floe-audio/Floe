@@ -517,6 +517,12 @@ test-ci-windows:
   echo "| Command | Return-Code |" >> $GITHUB_STEP_SUMMARY
   echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
 
+  # Start go-httpbin server for HTTP testing
+  go run github.com/mccutchen/go-httpbin/v2/cmd/go-httpbin@latest -host 127.0.0.1 -port 8081 &
+  HTTPBIN_PID=$!
+
+  sleep 10 # Wait a moment for the server to fully start
+
   test() {
     local name="$1"
 
@@ -532,6 +538,11 @@ test-ci-windows:
   test test-windows-units
   test test-windows-vst3-val 
   test test-windows-clap-val
+
+  # Try to kill the go-httpbin server
+  kill $HTTPBIN_PID 2>/dev/null || true
+  # Fallback: kill any remaining go-httpbin processes
+  pkill -f "go-httpbin" 2>/dev/null || true
 
   if [[ ! -v $GITHUB_ACTIONS ]]; then
     cat {{cache_dir}}/test_ci_windows_summary.md
