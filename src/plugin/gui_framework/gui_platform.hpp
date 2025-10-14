@@ -251,7 +251,7 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
         ASSERT(platform.world != nullptr);
     } else {
         platform.world = puglNewWorld(PUGL_MODULE, 0);
-        if (platform.world == nullptr) Panic("out of memory");
+        if (platform.world == nullptr) return ErrorCode {GuiPlatformErrorCode::UnknownError};
         puglSetWorldString(platform.world, PUGL_CLASS_NAME, GuiPlatform::k_window_class_name);
         platform.world = platform.world;
         LogInfo(ModuleName::Gui, "creating new world");
