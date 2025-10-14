@@ -1,0 +1,34 @@
+/* 
+ * SPDX-FileCopyrightText: 2025 Sam Windell
+ * SPDX-License-Identifier: MIT
+*/
+
+.packageSection {
+  margin-bottom: 48px;
+}
+
+.sectionTitle {
+  margin-bottom: 24px;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--ifm-color-content);
+}
+
+.packageGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .packageGrid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  
+  .packageSection {
+    margin-bottom: 32px;
+  }
+}

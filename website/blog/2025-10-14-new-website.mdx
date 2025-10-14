@@ -1,0 +1,41 @@
+---
+slug: new-website
+title: "New Website, Better Discovery"
+description: "We've launched a new website for Floe with improved navigation, a dedicated packages directory, and a blog section to keep you updated on development."
+authors: [windell]
+---
+
+<!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: MIT
+-->
+
+Welcome to the new website with improved navigation, a dedicated packages directory, and this blog section. The redesigned site makes it easier to discover content and stay updated on Floe's development.
+
+{/* truncate */}
+
+Whilst the primary motivation for this redesign was infrastructure for enabling beta releases of Floe for better user testing, it also provided an opportunity to improve many other aspects.
+
+## Key additions
+
+The [homepage](/) now does a better job explaining what Floe is and why someone might want to use it.
+
+The [documentation](/docs/introduction) remains comprehensive but is now part of a more cohesive overall experience.
+
+We've also enhanced our [packages directory](/packages) showcasing available Floe libraries and content. This page represents a big step in growing the potential for Floe as a platform. Whether you want to download a single library or explore many different creators' work, having a central place to discover quality content makes the whole experience more straightforward.
+
+As a slight aside: the packages page highlights both community contributions and professional libraries. For those interested selling sample libraries, FrozenPlain offers partnerships that handle the business side of selling sample libraries - payment processing, marketing, and distribution - so creators can focus on making great content.
+
+This [new blog section](/blog) will be used to share updates on Floe's development.
+
+Finally, the [download](/download) page has been simplified to focus on what matters most, with more detailed instructions moved to the documentation.
+
+## Looking ahead
+
+We're working on significant improvements to Floe itself. The picker panel (where you browse and select sounds) is getting major updates based on user feedback. We're also developing a beta release system that will make it easier for users to access new features as they're developed, and I'm personally working on new sample library content for FrozenPlain.
+
+## Technical details
+
+For those curious about the behind-the-scenes work: we migrated from mdbook to Docusaurus to better support both documentation and interactive website features.
+
+The old system struggled with dynamic elements like our download page that automatically detects your operating system and shows the right download links. Docusaurus gives us the flexibility to build these user-friendly features using the full, industry-standard power of React, while keeping documentation simple to maintain in markdown format.

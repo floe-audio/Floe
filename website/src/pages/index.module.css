@@ -1,0 +1,575 @@
+/* 
+ * SPDX-FileCopyrightText: 2025 Sam Windell
+ * SPDX-License-Identifier: MIT
+*/
+
+/**
+ * CSS files with the .module.css suffix will be treated as CSS modules
+ * and scoped locally.
+ */
+
+/* Hero Section */
+.hero {
+  padding: 6rem 0 8rem;
+  position: relative;
+  text-align: center;
+  color: var(--ifm-color-content);
+  background: 
+    radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(120, 119, 198, 0.15) 0%, transparent 50%),
+    linear-gradient(135deg, 
+      var(--ifm-background-color) 0%, 
+      rgba(var(--ifm-color-primary-rgb, 85, 94, 133), 0.03) 50%, 
+      var(--ifm-background-color) 100%
+    );
+}
+
+[data-theme='dark'] .hero {
+  background: 
+    radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(120, 119, 198, 0.1) 0%, transparent 50%),
+    linear-gradient(135deg, 
+      var(--ifm-background-color) 0%, 
+      rgba(120, 119, 198, 0.02) 50%, 
+      var(--ifm-background-color) 100%
+    );
+}
+
+.hero::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: #ffffff;
+  border-radius: 0 0 50% 50% / 0 0 100% 100%;
+  transform: scaleY(-1);
+  z-index: 1;
+}
+
+[data-theme='dark'] .hero::after {
+  background: #1b1b1d;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    radial-gradient(circle at 1px 1px, rgba(125,125,125,0.45) 1px, transparent 0);
+  background-size: 20px 20px;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.heroContent {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.logoContainer {
+  margin-bottom: 2rem;
+}
+
+.heroLogo {
+  height: 80px;
+  width: auto;
+}
+
+.heroLogoDark {
+  display: none;
+}
+
+[data-theme='dark'] .heroLogo:not(.heroLogoDark) {
+  display: none;
+}
+
+[data-theme='dark'] .heroLogoDark {
+  display: inline-block;
+}
+
+.heroTitle {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+  line-height: 1.2;
+}
+
+.heroSubtitle {
+  font-size: 1.25rem;
+  margin-bottom: 2.5rem;
+  line-height: 1.6;
+  opacity: 0.95;
+}
+
+.heroButtons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+
+/* Showcase Section - Large Image After Hero */
+.showcaseSection {
+  padding: 4rem 0 6rem;
+}
+
+.showcaseImage {
+  width: 100%;
+  max-width: 900px;
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  margin: 0 auto;
+  display: block;
+}
+
+/* Core Aspects Section - Find, Perform, Transform */
+.coreAspectsSection {
+  padding: 4rem 0;
+}
+
+.sectionHeading {
+  font-size: 2.5rem;
+  text-align: center;
+  margin-bottom: 1rem;
+  color: var(--ifm-heading-color);
+}
+
+.sectionSubheading {
+  font-size: 1.2rem;
+  text-align: center;
+  max-width: 600px;
+  margin: 0 auto 4rem;
+  line-height: 1.6;
+  color: var(--ifm-color-content);
+  opacity: 0.9;
+}
+
+.aspectsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.aspectItem {
+  text-align: center;
+}
+
+.aspectImageContainer {
+  margin-bottom: 2rem;
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.aspectImageContainer:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 35px rgba(0, 0, 0, 0.15);
+}
+
+.aspectImage {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.aspectContent h3 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: var(--ifm-heading-color);
+  font-weight: 600;
+}
+
+.aspectContent p {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--ifm-color-content);
+  text-align: left;
+}
+
+/* Ecosystem Section */
+.ecosystemSection {
+  padding: 5rem 0;
+}
+
+.ecosystemSection h2 {
+  font-size: 2.25rem;
+  text-align: center;
+  margin-bottom: 1rem;
+  color: var(--ifm-heading-color);
+}
+
+.ecosystemDescription {
+  font-size: 1.1rem;
+  text-align: center;
+  max-width: 600px;
+  margin: 0 auto 3rem;
+  line-height: 1.6;
+  color: var(--ifm-color-content);
+}
+
+.packagePreview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+/* Technical Section */
+.technicalSection {
+  padding: 4rem 0;
+}
+
+.technicalSection h2 {
+  font-size: 2rem;
+  text-align: center;
+  margin-bottom: 2rem;
+  color: var(--ifm-heading-color);
+}
+
+.technicalContent {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.technicalContent ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+  margin: 0;
+}
+
+.technicalContent li {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  margin-bottom: 0.75rem;
+  color: var(--ifm-color-content);
+}
+
+.technicalContent li:last-child {
+  margin-bottom: 0;
+}
+
+/* Feature Sections */
+.featureSection {
+  padding: 4rem 0;
+}
+
+.featureContent {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4rem;
+  align-items: center;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.reverse .featureContent {
+  direction: rtl;
+}
+
+.reverse .featureText {
+  direction: ltr;
+}
+
+.featureText h2 {
+  font-size: 2.25rem;
+  margin-bottom: 1rem;
+  color: var(--ifm-heading-color);
+}
+
+.featureText p {
+  font-size: 1.1rem;
+  line-height: 1.7;
+  color: var(--ifm-color-content);
+}
+
+.featureImage {
+  text-align: center;
+}
+
+.featureImage img {
+  max-width: 110%;
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Full Width Feature Section */
+.fullWidth {
+}
+
+.fullWidth .featureContent {
+  max-width: 1400px;
+  gap: 6rem;
+  padding: 0 2rem;
+}
+
+.fullWidth .featureImage img {
+  max-width: 120%;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.15);
+}
+
+.fullWidth .featureText h2 {
+  font-size: 2.75rem;
+}
+
+.fullWidth .featureText p {
+  font-size: 1.2rem;
+}
+
+
+/* Highlight Section */
+.highlightSection {
+  padding: 4rem 0;
+}
+
+.highlightGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2.5rem;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.highlightItem {
+  background: rgba(var(--ifm-color-primary-rgb, 85, 94, 133), 0.03);
+  border: 1px solid rgba(var(--ifm-color-primary-rgb, 85, 94, 133), 0.08);
+  border-radius: 12px;
+  padding: 3rem 2rem 2rem 2rem;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: visible;
+  text-align: center;
+  margin-top: 24px;
+}
+
+.highlightItem::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(var(--ifm-color-primary-rgb, 85, 94, 133), 0.02) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.highlightItem:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+  border-color: rgba(var(--ifm-color-primary-rgb, 85, 94, 133), 0.12);
+}
+
+[data-theme='dark'] .highlightItem {
+  background: rgba(var(--ifm-color-primary-rgb, 116, 129, 179), 0.05);
+  border-color: rgba(var(--ifm-color-primary-rgb, 116, 129, 179), 0.1);
+}
+
+[data-theme='dark'] .highlightItem:hover {
+  border-color: rgba(var(--ifm-color-primary-rgb, 116, 129, 179), 0.15);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+.iconContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--ifm-color-primary);
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  border: 3px solid var(--ifm-background-color);
+}
+
+.iconContainer svg {
+  font-size: 1.25rem;
+  color: white;
+}
+
+.highlightItem h3 {
+  font-size: 1.25rem;
+  margin-bottom: 1rem;
+  color: var(--ifm-heading-color);
+  position: relative;
+  z-index: 1;
+}
+
+.highlightItem p {
+  line-height: 1.6;
+  color: var(--ifm-color-content);
+  position: relative;
+  z-index: 1;
+  text-align: left;
+}
+
+/* Open Source Section */
+.openSourceSection {
+  padding: 4rem 0;
+  background: var(--ifm-background-color);
+}
+
+.openSourceSection h2 {
+  font-size: 2.25rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  color: var(--ifm-heading-color);
+}
+
+.openSourceSection p {
+  font-size: 1.1rem;
+  line-height: 1.7;
+  max-width: 800px;
+  margin: 0 auto 1.5rem;
+  text-align: center;
+  color: var(--ifm-color-content);
+}
+
+.benefitsList {
+  max-width: 800px;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.benefitsList li {
+  font-size: 1.1rem;
+  line-height: 1.7;
+  margin-bottom: 0.75rem;
+  color: var(--ifm-color-content);
+}
+
+/* Responsive Design */
+@media screen and (max-width: 996px) {
+  .hero {
+    padding: 4rem 0 8rem;
+  }
+  
+  .heroTitle {
+    font-size: 2.5rem;
+  }
+  
+  .heroSubtitle {
+    font-size: 1.1rem;
+  }
+  
+  .heroButtons {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .featureContent {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    text-align: center;
+  }
+  
+  .featureImage img {
+    max-width: 100%;
+  }
+  
+  .reverse .featureContent {
+    direction: ltr;
+  }
+  
+  
+  .highlightGrid {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+  
+  .aspectsGrid {
+    grid-template-columns: 1fr;
+    gap: 3rem;
+  }
+  
+  
+  .sectionHeading {
+    font-size: 2rem;
+  }
+  
+  .ecosystemSection h2 {
+    font-size: 2rem;
+  }
+  
+  .packagePreview {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .heroTitle {
+    font-size: 2rem;
+  }
+  
+  .heroLogo {
+    height: 60px;
+  }
+  
+  .featureText h2 {
+    font-size: 1.75rem;
+  }
+  
+  .fullWidth .featureText h2 {
+    font-size: 2rem;
+  }
+  
+  .fullWidth .featureContent {
+    gap: 3rem;
+    padding: 0 1rem;
+  }
+  
+  .sectionHeading {
+    font-size: 1.75rem;
+  }
+  
+  .sectionSubheading {
+    font-size: 1rem;
+    margin-bottom: 3rem;
+  }
+  
+  .aspectContent h3 {
+    font-size: 1.25rem;
+  }
+  
+  .aspectContent p {
+    font-size: 0.95rem;
+  }
+  
+  .showcaseImage {
+    border-radius: 8px;
+  }
+  
+  .technicalContent li {
+    font-size: 1rem;
+  }
+  
+  .ecosystemSection h2 {
+    font-size: 1.75rem;
+  }
+  
+  .ecosystemDescription {
+    font-size: 1rem;
+    margin-bottom: 2rem;
+  }
+  
+  .packagePreview {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}

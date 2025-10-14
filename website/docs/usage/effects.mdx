@@ -1,0 +1,41 @@
+---
+id: effects
+title: Effects
+hide_table_of_contents: true
+description: Information about the audio effects available in Floe
+---
+
+<!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: MIT
+-->
+
+import data from "@site/static/generated-data.json";
+
+![Effects](/images/effects.png)
+
+Floe has a selection of {data["effects-count"]} effects that can be applied to the audio. These effects are applied to the mix of the three layers. The effects are shown in a list on the right-hand side of the main panel. 
+
+## Reordering
+
+You can change the ordering of the effects by dragging and dropping the effect names — either the name in the rack or the name next to the on/off switch.
+
+## Available effects
+
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    {data.effects.map((effect, index) => (
+      <tr key={index}>
+        <td>{effect.name}</td>
+        <td>{effect.description}</td>
+      </tr>
+    ))}
+  </tbody>
+</table>
+

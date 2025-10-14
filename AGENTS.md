@@ -7,13 +7,15 @@ This is the Floe repository, an audio plugin written in C++ and built using the 
 
 Floe, at it's core, is a CLAP plugin, a modern alternative to APIs such as VST3. CLAP is documented in the C header files that make up its interface. See the dependencies section below for where to find the CLAP source code.
 
+Additionally, this repository contains Floe's website in the subdirectory `website/`, built using Docusaurus.
+
 # Commands
 Building is done inside a Nix flake shell. You can use `nix develop` to enter the shell. Or to run a command inside a shell (normally recommended), use `nix develop --command <command>`. All these commands should be prefixed with `nix develop --command` if you're not already in the shell:
 - Compile the project: `zig build -Dtargets=native -Dbuild-mode=development`. Cross-compiling is supported. Alternatives options instead of `native` are: `linux`, `windows`, `mac_arm`, `mac_x86`. You can add `-Dsanitize-thread` to enable Clang's thread sanitizer.
 - Run unit tests: `tests --filter=*`. Run `tests --help` for more options.
 - Format all code using clang-tidy: `just format`
 - Check spelling : `just check-spelling`
-  - Be prepared to add exceptions to docs/ignored-spellings.dic since our spell-check is not smart and will often think non-words are words. We use British English.
+  - Be prepared to add exceptions to ignored-spellings.dic since our spell-check is not smart and will often think non-words are words. We use British English.
 - Check license comment headers: `just check-reuse`
 
 # Source code overview
@@ -23,7 +25,7 @@ Here are some notable subdirectories, though there are plenty more.
 - `src/utils/`: more specific utilities that are not necessary Floe-specific, building on OS and foundation.
 - `src/common_infrastructure/`: Floe-specific code that's used by the plugin and also installers and other tools.
 - `src/plugin/`: the actual plugin code, including audio processing and GUI.
-- `docs/`: markdown documentation built into a website using mdbook.
+- `website/`: Docusaurus website source code.
 - `src/tests/`: unit test framework and test for foundation, OS, and utils modules.
 
 # Dependencies

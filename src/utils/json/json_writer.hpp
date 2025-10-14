@@ -261,6 +261,7 @@ PUBLIC ErrorCodeOr<void> WriteValue(WriteContext& ctx, char const (&arr)[N]) {
 }
 
 template <typename Type>
+requires(!CharacterType<Type>)
 PUBLIC ErrorCodeOr<void> WriteValue(WriteContext& ctx, Span<Type> const& val) {
     TRY(WriteArrayBegin(ctx));
     for (auto const& v : val)
