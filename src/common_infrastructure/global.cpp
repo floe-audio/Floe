@@ -120,7 +120,7 @@ void GlobalInit(GlobalInitOptions options) {
                         case FinalBinaryType::PresetEditor:
                         case FinalBinaryType::WindowsInstaller:
                         case FinalBinaryType::WindowsUninstaller:
-                        case FinalBinaryType::DocsPreprocessor:
+                        case FinalBinaryType::DocsGenerator:
                         case FinalBinaryType::Tests: d = LogConfig::Destination::Stderr; break;
                     }
                     d;

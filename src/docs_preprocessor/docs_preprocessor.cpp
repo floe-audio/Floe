@@ -22,29 +22,10 @@
 #include "config.h"
 #include "packager_tool/packager.hpp"
 
-static DynamicArrayBounded<char, 64> Identifier(String name, Optional<String> sub_name = {}) {
-    DynamicArrayBounded<char, 64> result {};
-    dyn::AppendSpan(result, "==");
-    dyn::AppendSpan(result, name);
-    if (sub_name) {
-        dyn::AppendSpan(result, ":");
-        dyn::AppendSpan(result, *sub_name);
-    }
-    dyn::AppendSpan(result, "==");
-    return result;
-}
-
-static void ExpandIdentifier(DynamicArray<char>& markdown_blob,
-                             String identifier,
-                             String replacement,
-                             ArenaAllocator& scratch) {
-    dyn::Replace(markdown_blob, identifier, json::EncodeString(replacement, scratch));
-}
-
-static void ExpandIdentifiersBasedOnLuaSections(DynamicArray<char>& markdown_blob,
-                                                String lua,
-                                                String identifier,
-                                                ArenaAllocator& scratch) {
+static ErrorCodeOr<void> WriteLuaSectionValues(json::WriteContext& ctx,
+                                               String lua,
+                                               String identifier_prefix,
+                                               ArenaAllocator& allocator) {
     Optional<String> current_section_name {};
     char const* section_start {};
     char const* section_end {};
@@ -58,9 +39,11 @@ static void ExpandIdentifiersBasedOnLuaSections(DynamicArray<char>& markdown_blo
             section_end = line.data;
             auto const section =
                 WhitespaceStripped(String {section_start, (usize)(section_end - section_start)});
-            ExpandIdentifier(markdown_blob, Identifier(identifier, *current_section_name), section, scratch);
+            auto const key = fmt::Format(allocator, "{}:{}", identifier_prefix, *current_section_name);
+            TRY(json::WriteKeyValue(ctx, key, section));
         }
     }
+    return k_success;
 }
 
 static String MakeMarkdownNote(String text, Allocator& alloc) {
@@ -70,37 +53,41 @@ static String MakeMarkdownNote(String text, Allocator& alloc) {
     return result;
 }
 
-// We just replace the placeholders with the actual content.
-static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
+static ErrorCodeOr<void> WriteLuaData(json::WriteContext& ctx) {
     ArenaAllocator scratch {PageAllocator::Instance()};
     DynamicArray<char> buffer {scratch};
 
-    DynamicArray<char> result {PageAllocator::Instance()};
-    dyn::Assign(result, markdown_blob);
-
+    // Lua examples with sections
     {
         dyn::Clear(buffer);
         TRY(sample_lib::WriteDocumentedLuaExample(dyn::WriterFor(buffer), true));
-        ExpandIdentifiersBasedOnLuaSections(result, buffer, "sample-library-example-lua", scratch);
+        TRY(WriteLuaSectionValues(ctx, buffer, "sample-library-example-lua", scratch));
     }
 
+    // Lua LSP definitions
     {
         dyn::Clear(buffer);
         TRY(sample_lib::WriteLuaLspDefintionsFile(dyn::WriterFor(buffer)));
-        ExpandIdentifier(result, Identifier("floe-lua-lsp-defs"), buffer, scratch);
+        TRY(json::WriteKeyValue(ctx, "floe-lua-lsp-defs", String(buffer)));
     }
 
+    // Lua example without comments
     {
         dyn::Clear(buffer);
         TRY(sample_lib::WriteDocumentedLuaExample(dyn::WriterFor(buffer), false));
-        ExpandIdentifier(result, Identifier("sample-library-example-lua-no-comments"), buffer, scratch);
+        TRY(json::WriteKeyValue(ctx, "sample-library-example-lua-no-comments", String(buffer)));
     }
 
-    ExpandIdentifier(result,
-                     Identifier("lua-version"),
-                     String {LUA_VERSION_MAJOR "." LUA_VERSION_MINOR},
-                     scratch);
+    return k_success;
+}
 
+static ErrorCodeOr<void> WriteVersionData(json::WriteContext& ctx) {
+    ArenaAllocator scratch {PageAllocator::Instance()};
+
+    // Lua version
+    TRY(json::WriteKeyValue(ctx, "lua-version", String {LUA_VERSION_MAJOR "." LUA_VERSION_MINOR}));
+
+    // Windows version
     {
         String windows_version = {};
 
@@ -123,9 +110,10 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
             default: PanicIfReached();
         }
 
-        ExpandIdentifier(result, Identifier("min-windows-version"), windows_version, scratch);
+        TRY(json::WriteKeyValue(ctx, "min-windows-version", windows_version));
     }
 
+    // macOS version
     {
         auto const macos_version = ParseVersionString(MIN_MACOS_VERSION).Value();
         DynamicArrayBounded<char, 64> macos_version_str {"macOS "};
@@ -145,353 +133,306 @@ static ErrorCodeOr<String> PreprocessMarkdownBlob(String markdown_blob) {
         }
         fmt::Append(macos_version_str, " ({})", release_name);
 
-        ExpandIdentifier(result, Identifier("min-macos-version"), macos_version_str, scratch);
+        TRY(json::WriteKeyValue(ctx, "min-macos-version", String(macos_version_str)));
     }
 
-    // get the latest release version and the download links
-    {
-        auto const cached_reponse_path =
-            path::Join(scratch, Array {String(FLOE_PROJECT_CACHE_PATH), "latest-release.json"});
+    return k_success;
+}
 
-        auto const cached_response = ({
-            Optional<String> response = {};
-            auto const o = ReadEntireFile(cached_reponse_path, scratch);
-            if (o.HasError()) {
-                if (o.Error() != FilesystemError::PathDoesNotExist) return o.Error();
-            } else
-                response = o.Value();
-            response;
-        });
+static ErrorCodeOr<void> WriteGithubReleaseData(json::WriteContext& ctx) {
+    ArenaAllocator scratch {PageAllocator::Instance()};
 
-        String json_data {};
+    auto const cached_reponse_path =
+        path::Join(scratch, Array {String(FLOE_PROJECT_CACHE_PATH), "latest-release.json"});
 
-        if (cached_response) {
-            json_data = *cached_response;
-        } else {
-            Span<String> headers {};
-            if (auto const token = GetEnvironmentVariable("GITHUB_TOKEN"_s, scratch)) {
-                headers = scratch.AllocateExactSizeUninitialised<String>(1);
-                headers[0] = fmt::Format(scratch, "Authorization: Bearer {}", *token);
-            }
+    auto const cached_response = ({
+        Optional<String> response = {};
+        auto const o = ReadEntireFile(cached_reponse_path, scratch);
+        if (o.HasError()) {
+            if (o.Error() != FilesystemError::PathDoesNotExist) return o.Error();
+        } else
+            response = o.Value();
+        response;
+    });
 
-            DynamicArray<char> data {scratch};
-            TRY(HttpsGet("https://api.github.com/repos/floe-audio/Floe/releases/latest",
-                         dyn::WriterFor(data),
-                         {.headers = headers}));
-            json_data = data.ToOwnedSpan();
-            TRY(WriteFile(cached_reponse_path, json_data));
+    String json_data {};
+
+    if (cached_response) {
+        json_data = *cached_response;
+    } else {
+        Span<String> headers {};
+        if (auto const token = GetEnvironmentVariable("GITHUB_TOKEN"_s, scratch)) {
+            headers = scratch.AllocateExactSizeUninitialised<String>(1);
+            headers[0] = fmt::Format(scratch, "Authorization: Bearer {}", *token);
         }
 
-        String latest_release_version {};
-        struct Asset {
-            String name;
-            usize size;
-            String url;
-        };
-        ArenaList<Asset> assets {};
+        DynamicArray<char> data {scratch};
+        TRY(HttpsGet("https://api.github.com/repos/floe-audio/Floe/releases/latest",
+                     dyn::WriterFor(data),
+                     {.headers = headers}));
+        json_data = data.ToOwnedSpan();
+        TRY(WriteFile(cached_reponse_path, json_data));
+    }
 
-        auto const handle_asset_object = [&](json::EventHandlerStack&, json::Event const& event) {
-            if (event.type == json::EventType::HandlingStarted) {
-                *assets.PrependUninitialised(scratch) = {};
-                return true;
-            }
+    String latest_release_version {};
+    struct Asset {
+        String name;
+        usize size;
+        String url;
+    };
+    ArenaList<Asset> assets {};
 
-            if (json::SetIfMatchingRef(event, "name", assets.first->data.name)) return true;
-            if (json::SetIfMatching(event, "size", assets.first->data.size)) return true;
-            if (json::SetIfMatchingRef(event, "browser_download_url", assets.first->data.url)) return true;
-
-            return false;
-        };
-
-        auto const handle_assets_array = [&](json::EventHandlerStack& handler_stack,
-                                             json::Event const& event) {
-            if (SetIfMatchingObject(handler_stack, event, "", handle_asset_object)) return true;
-            return false;
-        };
-
-        auto const handle_root_object = [&](json::EventHandlerStack& handler_stack,
-                                            json::Event const& event) {
-            json::SetIfMatchingRef(event, "tag_name", latest_release_version);
-            if (SetIfMatchingArray(handler_stack, event, "assets", handle_assets_array)) return true;
-            return false;
-        };
-
-        auto const o = json::Parse(json_data, handle_root_object, scratch, {});
-
-        if (o.HasError()) return ErrorCode {CommonError::InvalidFileFormat};
-
-        {
-            DynamicArrayBounded<char, 250> name {};
-            for (auto& asset : assets) {
-                // Markdown
-                {
-                    dyn::Assign(name, asset.name);
-                    dyn::Replace(name, latest_release_version, ""_s);
-                    dyn::Replace(name, "--"_s, "-"_s);
-                    name.size -= path::Extension(name).size;
-
-                    dyn::AppendSpan(name, "-markdown-link");
-                    ExpandIdentifier(result,
-                                     Identifier(name),
-                                     fmt::Format(scratch,
-                                                 "[Download {}]({}) ({} MB)",
-                                                 asset.name,
-                                                 asset.url,
-                                                 Max(1uz, asset.size / 1024 / 1024)),
-                                     scratch);
-                }
-                // Raw URL
-                {
-                    dyn::Assign(name, asset.name);
-                    dyn::Replace(name, latest_release_version, ""_s);
-                    dyn::Replace(name, "--"_s, "-"_s);
-                    name.size -= path::Extension(name).size;
-
-                    dyn::AppendSpan(name, "-url");
-                    ExpandIdentifier(result, Identifier(name), asset.url, scratch);
-                }
-                // Size only
-                {
-                    dyn::Assign(name, asset.name);
-                    dyn::Replace(name, latest_release_version, ""_s);
-                    dyn::Replace(name, "--"_s, "-"_s);
-                    name.size -= path::Extension(name).size;
-
-                    dyn::AppendSpan(name, "-size");
-                    ExpandIdentifier(result,
-                                     Identifier(name),
-                                     fmt::Format(scratch, "{} MB", Max(1uz, asset.size / 1024 / 1024)),
-                                     scratch);
-                }
-            }
+    auto const handle_asset_object = [&](json::EventHandlerStack&, json::Event const& event) {
+        if (event.type == json::EventType::HandlingStarted) {
+            *assets.PrependUninitialised(scratch) = {};
+            return true;
         }
 
-        {
-            if (StartsWith(latest_release_version, 'v')) latest_release_version.RemovePrefix(1);
-            if (latest_release_version.size == 0) {
-                LogError(ModuleName::Main, "Failed to parse github release version: {}\n", json_data);
-                return ErrorCode {CommonError::InvalidFileFormat};
-            }
-            ExpandIdentifier(result, Identifier("latest-release-version"), latest_release_version, scratch);
-        }
-    }
+        if (json::SetIfMatchingRef(event, "name", assets.first->data.name)) return true;
+        if (json::SetIfMatching(event, "size", assets.first->data.size)) return true;
+        if (json::SetIfMatchingRef(event, "browser_download_url", assets.first->data.url)) return true;
 
-    // packger tool --help
-    {
-        DynamicArray<char> packager_help {scratch};
-        TRY(PrintUsage(dyn::WriterFor(packager_help),
-                       "floe-packager",
-                       k_packager_description,
-                       k_packager_command_line_args_defs));
-        ExpandIdentifier(result,
-                         Identifier("packager-help"),
-                         WhitespaceStrippedEnd(String(packager_help)),
-                         scratch);
-    }
+        return false;
+    };
 
-    {
-        DynamicArray<char> param_table {scratch};
-        fmt::Append(param_table, "| Module | Name | ID | Description |\n");
-        fmt::Append(param_table, "|--|--|--|--|\n");
+    auto const handle_assets_array = [&](json::EventHandlerStack& handler_stack,
+                                         json::Event const& event) {
+        if (SetIfMatchingObject(handler_stack, event, "", handle_asset_object)) return true;
+        return false;
+    };
 
-        Array<ParamDescriptor const*, k_num_parameters> descriptors;
-        for (auto const i : Range(k_num_parameters))
-            descriptors[i] = &k_param_descriptors[i];
-        Sort(descriptors, [](ParamDescriptor const* a, ParamDescriptor const* b) {
-            if (ToInt(a->module_parts[0]) == ToInt(b->module_parts[0])) return a->id < b->id;
-            return ToInt(a->module_parts[0]) < ToInt(b->module_parts[0]);
-        });
+    auto const handle_root_object = [&](json::EventHandlerStack& handler_stack,
+                                        json::Event const& event) {
+        json::SetIfMatchingRef(event, "tag_name", latest_release_version);
+        if (SetIfMatchingArray(handler_stack, event, "assets", handle_assets_array)) return true;
+        return false;
+    };
 
-        for (auto const& p : descriptors)
-            fmt::Append(param_table,
-                        "| {} | {} | {} | {} |\n",
-                        p->ModuleString(),
-                        p->name,
-                        p->id,
-                        p->tooltip);
-        ExpandIdentifier(result, Identifier("parameter-table"), param_table, scratch);
-    }
+    auto const o = json::Parse(json_data, handle_root_object, scratch, {});
+
+    if (o.HasError()) return ErrorCode {CommonError::InvalidFileFormat};
 
     {
-        DynamicArray<char> effects_table {scratch};
-        fmt::Append(effects_table, "| Name | Description |\n");
-        fmt::Append(effects_table, "|--|--|\n");
-
-        for (auto const& e : k_effect_info)
-            fmt::Append(effects_table, "| {} | {} |\n", e.name, e.description);
-        ExpandIdentifier(result, Identifier("effects-table"), effects_table, scratch);
-    }
-
-    ExpandIdentifier(result, Identifier("effects-count"), fmt::IntToString(k_num_effect_types), scratch);
-
-    {
-        DynamicArray<char> text {scratch};
-        for (auto const& map : k_default_cc_to_param_mapping) {
-            auto const& desc = k_param_descriptors[ToInt(map.param)];
-            fmt::Append(text, "- CC {}: {} ({})\n", map.cc, desc.name, desc.ModuleString(" › "));
-        }
-        ExpandIdentifier(result, Identifier("default-cc-mappings"), text, scratch);
-    }
-
-    {
-        DynamicArray<char> tags_md {scratch};
-
-        u8 category_number = 1;
-
-        for (auto const category : EnumIterator<TagCategory>()) {
-            auto const tags = Tags(category);
-            fmt::Append(tags_md,
-                        "### {}. {} {}: {}\n",
-                        category_number++,
-                        tags.emoji,
-                        tags.name,
-                        tags.question);
-
-            // If more than 25% tags have descriptions we use a table rather than notes.
-            bool use_table = false;
+        DynamicArrayBounded<char, 250> name {};
+        for (auto& asset : assets) {
+            // Markdown
             {
-                u8 num_descriptions = 0;
-                for (auto const tag : tags.tags) {
-                    auto const tag_info = GetTagInfo(tag);
-                    if (tag_info.description.size) {
-                        ++num_descriptions;
-                        if (num_descriptions > tags.tags.size / 4) {
-                            use_table = true;
-                            break;
-                        }
+                dyn::Assign(name, asset.name);
+                dyn::Replace(name, latest_release_version, ""_s);
+                dyn::Replace(name, "--"_s, "-"_s);
+                name.size -= path::Extension(name).size;
+
+                dyn::AppendSpan(name, "-markdown-link");
+                TRY(json::WriteKeyValue(ctx,
+                                       String(name),
+                                       fmt::Format(scratch,
+                                                   "[Download {}]({}) ({} MB)",
+                                                   asset.name,
+                                                   asset.url,
+                                                   Max(1uz, asset.size / 1024 / 1024))));
+            }
+            // Raw URL
+            {
+                dyn::Assign(name, asset.name);
+                dyn::Replace(name, latest_release_version, ""_s);
+                dyn::Replace(name, "--"_s, "-"_s);
+                name.size -= path::Extension(name).size;
+
+                dyn::AppendSpan(name, "-url");
+                TRY(json::WriteKeyValue(ctx, String(name), asset.url));
+            }
+            // Size only
+            {
+                dyn::Assign(name, asset.name);
+                dyn::Replace(name, latest_release_version, ""_s);
+                dyn::Replace(name, "--"_s, "-"_s);
+                name.size -= path::Extension(name).size;
+
+                dyn::AppendSpan(name, "-size");
+                TRY(json::WriteKeyValue(ctx,
+                                       String(name),
+                                       fmt::Format(scratch, "{} MB", Max(1uz, asset.size / 1024 / 1024))));
+            }
+        }
+    }
+
+    {
+        if (StartsWith(latest_release_version, 'v')) latest_release_version.RemovePrefix(1);
+        if (latest_release_version.size == 0) {
+            LogError(ModuleName::Main, "Failed to parse github release version: {}\n", json_data);
+            return ErrorCode {CommonError::InvalidFileFormat};
+        }
+        TRY(json::WriteKeyValue(ctx, "latest-release-version", latest_release_version));
+    }
+
+    return k_success;
+}
+
+static ErrorCodeOr<void> WritePackagerData(json::WriteContext& ctx) {
+    ArenaAllocator scratch {PageAllocator::Instance()};
+    DynamicArray<char> packager_help {scratch};
+    TRY(PrintUsage(dyn::WriterFor(packager_help),
+                   "floe-packager",
+                   k_packager_description,
+                   k_packager_command_line_args_defs));
+    TRY(json::WriteKeyValue(ctx,
+                           "packager-help",
+                           WhitespaceStrippedEnd(String(packager_help))));
+    return k_success;
+}
+
+static ErrorCodeOr<void> WriteParameterData(json::WriteContext& ctx) {
+    ArenaAllocator scratch {PageAllocator::Instance()};
+    DynamicArray<char> param_table {scratch};
+    fmt::Append(param_table, "| Module | Name | ID | Description |\n");
+    fmt::Append(param_table, "|--|--|--|--|\n");
+
+    Array<ParamDescriptor const*, k_num_parameters> descriptors;
+    for (auto const i : Range(k_num_parameters))
+        descriptors[i] = &k_param_descriptors[i];
+    Sort(descriptors, [](ParamDescriptor const* a, ParamDescriptor const* b) {
+        if (ToInt(a->module_parts[0]) == ToInt(b->module_parts[0])) return a->id < b->id;
+        return ToInt(a->module_parts[0]) < ToInt(b->module_parts[0]);
+    });
+
+    for (auto const& p : descriptors)
+        fmt::Append(param_table,
+                    "| {} | {} | {} | {} |\n",
+                    p->ModuleString(),
+                    p->name,
+                    p->id,
+                    p->tooltip);
+    TRY(json::WriteKeyValue(ctx, "parameter-table", String(param_table)));
+    return k_success;
+}
+
+static ErrorCodeOr<void> WriteEffectsData(json::WriteContext& ctx) {
+    ArenaAllocator scratch {PageAllocator::Instance()};
+    DynamicArray<char> effects_table {scratch};
+    fmt::Append(effects_table, "| Name | Description |\n");
+    fmt::Append(effects_table, "|--|--|\n");
+
+    for (auto const& e : k_effect_info)
+        fmt::Append(effects_table, "| {} | {} |\n", e.name, e.description);
+    TRY(json::WriteKeyValue(ctx, "effects-table", String(effects_table)));
+    TRY(json::WriteKeyValue(ctx, "effects-count", fmt::IntToString(k_num_effect_types)));
+    return k_success;
+}
+
+static ErrorCodeOr<void> WriteCCMappingData(json::WriteContext& ctx) {
+    ArenaAllocator scratch {PageAllocator::Instance()};
+    DynamicArray<char> text {scratch};
+    for (auto const& map : k_default_cc_to_param_mapping) {
+        auto const& desc = k_param_descriptors[ToInt(map.param)];
+        fmt::Append(text, "- CC {}: {} ({})\n", map.cc, desc.name, desc.ModuleString(" › "));
+    }
+    TRY(json::WriteKeyValue(ctx, "default-cc-mappings", String(text)));
+    return k_success;
+}
+
+static ErrorCodeOr<void> WriteTagsData(json::WriteContext& ctx) {
+    ArenaAllocator scratch {PageAllocator::Instance()};
+    DynamicArray<char> tags_md {scratch};
+
+    u8 category_number = 1;
+
+    for (auto const category : EnumIterator<TagCategory>()) {
+        auto const tags = Tags(category);
+        fmt::Append(tags_md,
+                    "### {}. {} {}: {}\n",
+                    category_number++,
+                    tags.emoji,
+                    tags.name,
+                    tags.question);
+
+        // If more than 25% tags have descriptions we use a table rather than notes.
+        bool use_table = false;
+        {
+            u8 num_descriptions = 0;
+            for (auto const tag : tags.tags) {
+                auto const tag_info = GetTagInfo(tag);
+                if (tag_info.description.size) {
+                    ++num_descriptions;
+                    if (num_descriptions > tags.tags.size / 4) {
+                        use_table = true;
+                        break;
                     }
                 }
             }
+        }
 
-            if (use_table) {
-                fmt::Append(tags_md, "| Tag | Description |\n");
-                fmt::Append(tags_md, "|:--|:--|\n");
-                for (auto const tag : tags.tags) {
-                    auto const tag_info = GetTagInfo(tag);
-                    fmt::Append(tags_md, "| `{}` | {} |\n", tag_info.name, tag_info.description);
-                }
-                dyn::Append(tags_md, '\n');
-            } else {
-                for (auto const [tag_index, tag] : Enumerate(tags.tags)) {
-                    auto const tag_info = GetTagInfo(tag);
-                    fmt::Append(tags_md, "`{}`", tag_info.name);
-                    if (tag_info.description.size)
-                        fmt::Append(tags_md, "[^{}]", MakeMarkdownNote(tag_info.name, scratch));
-                    if (tag_index + 1 < tags.tags.size)
-                        fmt::Append(tags_md, ", ");
-                    else
-                        fmt::Append(tags_md, ".\n");
-                }
-
-                dyn::Append(tags_md, '\n');
-
-                for (auto const tag : tags.tags) {
-                    auto const tag_info = GetTagInfo(tag);
-                    if (tag_info.description.size) {
-                        fmt::Append(tags_md,
-                                    "[^{}]: {}\n",
-                                    MakeMarkdownNote(tag_info.name, scratch),
-                                    tag_info.description);
-                    }
-                }
-
-                dyn::Append(tags_md, '\n');
+        if (use_table) {
+            fmt::Append(tags_md, "| Tag | Description |\n");
+            fmt::Append(tags_md, "|:--|:--|\n");
+            for (auto const tag : tags.tags) {
+                auto const tag_info = GetTagInfo(tag);
+                fmt::Append(tags_md, "| `{}` | {} |\n", tag_info.name, tag_info.description);
+            }
+            dyn::Append(tags_md, '\n');
+        } else {
+            for (auto const [tag_index, tag] : Enumerate(tags.tags)) {
+                auto const tag_info = GetTagInfo(tag);
+                fmt::Append(tags_md, "`{}`", tag_info.name);
+                if (tag_info.description.size)
+                    fmt::Append(tags_md, "[^{}]", MakeMarkdownNote(tag_info.name, scratch));
+                if (tag_index + 1 < tags.tags.size)
+                    fmt::Append(tags_md, ", ");
+                else
+                    fmt::Append(tags_md, ".\n");
             }
 
-            fmt::Append(tags_md, "{}\n", tags.recommendation);
+            dyn::Append(tags_md, '\n');
+
+            for (auto const tag : tags.tags) {
+                auto const tag_info = GetTagInfo(tag);
+                if (tag_info.description.size) {
+                    fmt::Append(tags_md,
+                                "[^{}]: {}\n",
+                                MakeMarkdownNote(tag_info.name, scratch),
+                                tag_info.description);
+                }
+            }
+
             dyn::Append(tags_md, '\n');
         }
 
-        ExpandIdentifier(result, Identifier("tags-listing"), tags_md, scratch);
+        fmt::Append(tags_md, "{}\n", tags.recommendation);
+        dyn::Append(tags_md, '\n');
     }
 
-    return result.ToOwnedSpan();
+    TRY(json::WriteKeyValue(ctx, "tags-listing", String(tags_md)));
+    return k_success;
 }
 
-// "The JSON consists of an array of [context, book] where context is the serialized object
-// PreprocessorContext and book is a Book object containing the content of the book. The preprocessor should
-// return the JSON format of the Book object to stdout, with any modifications it wishes to perform."
-//
-// We can avoid parsing the JSON and instead just find the book object through some simple string
-// manipulation.
-static ErrorCodeOr<String> FindBookJson(String json) {
-    // [
-    //    {
-    //      <PreprocessorContext object (we don't care about this)>
-    //    },
-    //    {
-    //      <Book object (we need to return this)>
-    //    }
-    // ]
-
-    json = WhitespaceStripped(json);
-
-    char const* p = json.data;
-    char const* end = json.data + json.size;
-
-    auto const skip_whitespace = [&p, end]() -> ErrorCodeOr<void> {
-        while (p != end && IsWhitespace(*p))
-            ++p;
-        if (p == end) return ErrorCode {CommonError::InvalidFileFormat};
-        return k_success;
-    };
-
-    auto const skip_char = [&p, end](char c) -> ErrorCodeOr<void> {
-        if (p == end || *p != c) return ErrorCode {CommonError::InvalidFileFormat};
-        ++p;
-        return k_success;
-    };
-
-    TRY(skip_char('['));
-    TRY(skip_whitespace());
-
-    TRY(skip_char('{'));
-    // Skip everything until this current object ends, considering nested objects
-    u8 nesting = 1;
-    while (p != end && nesting) {
-        // IMPROVE: this doesn't handle nested objects properly - what if { is in a string? It doesn't seem to
-        // be a problem for the current input though.
-        if (*p == '{') ++nesting;
-        if (*p == '}') --nesting;
-        ++p;
-    }
-    TRY(skip_char(','));
-
-    TRY(skip_whitespace());
-
-    char const* book_start = p;
-    char const* book_end = end;
-
-    // Remove the array closing bracket from the end
-    book_end -= 1;
-
-    return WhitespaceStripped(String {book_start, (usize)(book_end - book_start)});
+static ErrorCodeOr<void> GenerateAllData(json::WriteContext& ctx) {
+    TRY(json::WriteObjectBegin(ctx));
+    
+    TRY(WriteLuaData(ctx));
+    TRY(WriteVersionData(ctx));
+    TRY(WriteGithubReleaseData(ctx));
+    TRY(WritePackagerData(ctx));
+    TRY(WriteParameterData(ctx));
+    TRY(WriteEffectsData(ctx));
+    TRY(WriteCCMappingData(ctx));
+    TRY(WriteTagsData(ctx));
+    
+    TRY(json::WriteObjectEnd(ctx));
+    return k_success;
 }
 
-static ErrorCodeOr<int> Main(ArgsCstr args) {
-    if (args.size > 1) {
-        // Behaviour matching mdbook's python example
-        if (NullTermStringsEqual(args.args[1], "supports")) return 0;
-    }
-
+static ErrorCodeOr<int> Main(ArgsCstr) {
     WebGlobalInit();
     DEFER { WebGlobalCleanup(); };
 
-    ArenaAllocator arena {PageAllocator::Instance()};
+    DynamicArray<char> output {PageAllocator::Instance()};
+    json::WriteContext ctx {
+        .out = dyn::WriterFor(output),
+        .add_whitespace = true
+    };
 
-    // A mdbook preprocessor receives JSON on stdin (an array: [context, book]) and should output
-    // the modified book JSON to stdout.
+    TRY(GenerateAllData(ctx));
 
-    auto const raw_json_input = TRY(ReadAllStdin(arena));
-
-    auto const book_json = TRY(FindBookJson(raw_json_input));
-
-    // We just manipulate the unparsed JSON string directly - we're only doing simple text expansions. It
-    // would be good to parse it but it's a faff with our current JSON parser. We'd also need to re-serialize
-    // it back to JSON.
-    auto const preprocessed_book_json = TRY(PreprocessMarkdownBlob(book_json));
-
-    TRY(StdPrint(StdStream::Out, preprocessed_book_json));
+    TRY(StdPrint(StdStream::Out, output.ToOwnedSpan()));
 
     return 0;
 }
