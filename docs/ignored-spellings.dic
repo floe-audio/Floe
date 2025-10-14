@@ -47,6 +47,7 @@ CC
 CC0
 CC64
 CCs
+CMD
 CMake
 Catch2
 Celtique
@@ -119,6 +120,7 @@ SFZ
 SPDX
 SSE2
 STL
+Scrollbars
 Soundbox
 Soundpaint
 Steinberg
@@ -217,6 +219,7 @@ html
 img
 impactful
 incrementing
+ini
 installable
 intel
 interoperable
