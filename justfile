@@ -521,7 +521,20 @@ test-ci-windows:
   go run github.com/mccutchen/go-httpbin/v2/cmd/go-httpbin@latest -host 127.0.0.1 -port 8081 &
   HTTPBIN_PID=$!
 
-  sleep 10 # Wait a moment for the server to fully start
+  # Wait for server to be ready (poll with timeout)
+  echo "Waiting for go-httpbin server to start..."
+  for i in {1..30}; do
+    if curl -s --connect-timeout 1 http://127.0.0.1:8081/status >/dev/null 2>&1; then
+      echo "go-httpbin server is ready"
+      break
+    fi
+    if [ $i -eq 30 ]; then
+      echo "Timeout waiting for go-httpbin server to start"
+      kill $HTTPBIN_PID 2>/dev/null || true
+      exit 1
+    fi
+    sleep 1
+  done
 
   test() {
     local name="$1"
