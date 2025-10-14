@@ -12,8 +12,11 @@
 
 enum class HttpMethod { Get, Post };
 
-static ErrorCodeOr<void>
-HttpRequestImpl(String url, HttpMethod method, Optional<String> body, Optional<Writer> response_writer, RequestOptions options) {
+static ErrorCodeOr<void> HttpRequestImpl(String url,
+                                         HttpMethod method,
+                                         Optional<String> body,
+                                         Optional<Writer> response_writer,
+                                         RequestOptions options) {
     ArenaAllocatorWithInlineStorage<1000> temp_arena {Malloc::Instance()};
 
     URL_COMPONENTS url_comps {};
@@ -42,13 +45,15 @@ HttpRequestImpl(String url, HttpMethod method, Optional<String> body, Optional<W
 
     // Detect if this is HTTPS or HTTP
     bool const is_https = url_comps.nScheme == INTERNET_SCHEME_HTTPS;
-    
+
     if (is_https) {
         unsigned long protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
         WinHttpSetOption(session, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof(protocols));
     }
 
-    INTERNET_PORT const port = url_comps.nPort ? url_comps.nPort : (is_https ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT);
+    INTERNET_PORT const port = url_comps.nPort
+                                   ? url_comps.nPort
+                                   : (is_https ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT);
     auto connection = WinHttpConnect(session, server, port, 0);
     if (connection == nullptr) return ErrorCode {WebError::NetworkError};
     DEFER { WinHttpCloseHandle(connection); };

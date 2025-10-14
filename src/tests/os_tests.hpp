@@ -1197,7 +1197,7 @@ TEST_CASE(TestWeb) {
     // Uses go-httpbin server started with: go-httpbin -host 127.0.0.1 -port 8081
     // Localhost is reliable whereas httpbin.org was often unavailable.
     constexpr auto k_base_url = "http://127.0.0.1:8081"_s;
-    
+
     WebGlobalInit();
     DEFER { WebGlobalCleanup(); };
 
