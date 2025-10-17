@@ -117,36 +117,35 @@ RunFilePicker(FilePickerDialogOptions const& args, ArenaAllocator& arena, HWND p
     ASSERT(f);
     DEFER { f->Release(); };
 
-    if (args.default_path) {
-        ASSERT(args.default_path->size);
-        ASSERT(IsValidUtf8(*args.default_path));
-        ASSERT(path::IsAbsolute(*args.default_path));
+    if (args.default_folder) {
+        ASSERT(args.default_folder->size);
+        ASSERT(IsValidUtf8(*args.default_folder));
+        ASSERT(path::IsAbsolute(*args.default_folder));
 
         PathArena temp_path_arena {Malloc::Instance()};
 
-        if (auto const narrow_dir = path::Directory(*args.default_path)) {
-            auto dir = WidenAllocNullTerm(temp_path_arena, *narrow_dir).Value();
-            Replace(dir, L'/', L'\\');
-            IShellItem* item = nullptr;
-            // SHCreateItemFromParsingName can fail with ERROR_FILE_NOT_FOUND. We only set the default folder
-            // if it succeeds.
-            if (auto const hr = SHCreateItemFromParsingName(dir.data, nullptr, IID_PPV_ARGS(&item));
-                SUCCEEDED(hr)) {
-                ASSERT(item);
-                DEFER { item->Release(); };
+        auto wide_dir = WidenAllocNullTerm(temp_path_arena, *args.default_folder).Value();
+        Replace(wide_dir, L'/', L'\\');
+        IShellItem* item = nullptr;
+        // SHCreateItemFromParsingName can fail with ERROR_FILE_NOT_FOUND. We only set the default folder
+        // if it succeeds.
+        if (auto const hr = SHCreateItemFromParsingName(wide_dir.data, nullptr, IID_PPV_ARGS(&item));
+            SUCCEEDED(hr)) {
+            ASSERT(item);
+            DEFER { item->Release(); };
 
-                constexpr bool k_forced_default_folder = false;
-                if constexpr (k_forced_default_folder)
-                    f->SetFolder(item);
-                else
-                    f->SetDefaultFolder(item);
-            }
+            constexpr bool k_forced_default_folder = false;
+            if constexpr (k_forced_default_folder)
+                f->SetFolder(item);
+            else
+                f->SetDefaultFolder(item);
         }
+    }
 
-        if (args.type == FilePickerDialogOptions::Type::SaveFile) {
-            auto filename = path::Filename(*args.default_path);
-            f->SetFileName(WidenAllocNullTerm(temp_path_arena, filename).Value().data);
-        }
+    if (args.default_filename && args.type == FilePickerDialogOptions::Type::SaveFile) {
+        PathArena temp_path_arena {Malloc::Instance()};
+        auto wide_filename = WidenAllocNullTerm(temp_path_arena, *args.default_filename).Value();
+        f->SetFileName(wide_filename.data);
     }
 
     if (args.filters.size) {
