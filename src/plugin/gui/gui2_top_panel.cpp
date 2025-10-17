@@ -384,7 +384,8 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
     {
         auto const preset_load =
             do_icon_button(preset_box, ICON_FA_FILE_IMPORT, "Load a preset from a file"_s, 0.8f, 3);
-        if (preset_load.button_fired) g->preset_picker_state.common_state.open = true;
+        if (preset_load.button_fired)
+            OpenFilePickerLoadPreset(g->file_picker_state, g->frame_output, g->shared_engine_systems.paths);
     }
 
     auto right_icon_buttons_container = DoBox(box_system,
