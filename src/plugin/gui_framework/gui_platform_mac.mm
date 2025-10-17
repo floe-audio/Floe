@@ -217,6 +217,9 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform,
                 NSSavePanel* save_panel = [NSSavePanel savePanel];
                 ASSERT(!native_file_picker.panel);
                 native_file_picker.panel = (NSSavePanel*)save_panel; // retain
+
+                if (options.default_filename)
+                    save_panel.nameFieldStringValue = StringToNSString(*options.default_filename);
                 break;
             }
         }
@@ -229,8 +232,8 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform,
         panel.showsResizeIndicator = YES;
         panel.showsHiddenFiles = NO;
         panel.canCreateDirectories = YES;
-        if (options.default_path)
-            panel.directoryURL = [NSURL fileURLWithPath:StringToNSString(*options.default_path)];
+        if (options.default_folder)
+            panel.directoryURL = [NSURL fileURLWithPath:StringToNSString(*options.default_folder)];
 
         [panel beginWithCompletionHandler:^(NSInteger response) {
           // I don't think we can assert that this is always the main thread, so let's send it via

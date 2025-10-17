@@ -192,7 +192,8 @@ struct FilePickerDialogOptions {
         return {
             .type = type,
             .title = title.Clone(a, t),
-            .default_path = default_path.Clone(a, t),
+            .default_folder = default_folder.Clone(a, t),
+            .default_filename = default_filename.Clone(a, t),
             .filters = a.Clone(filters, t),
             .allow_multiple_selection = allow_multiple_selection,
         };
@@ -200,7 +201,8 @@ struct FilePickerDialogOptions {
 
     Type type {Type::OpenFile};
     String title {"Select File"};
-    Optional<String> default_path {}; // folder and file
+    Optional<String> default_folder {};
+    Optional<String> default_filename {};
     Span<FileFilter const> filters {};
     bool allow_multiple_selection {};
 };

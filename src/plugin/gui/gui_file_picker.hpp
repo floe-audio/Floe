@@ -54,7 +54,7 @@ PUBLIC void OpenFilePickerAddExtraScanFolders(FilePickerState& state,
             }
             s;
         }),
-        .default_path = default_folder,
+        .default_folder = default_folder,
         .filters = {},
         .allow_multiple_selection = true,
     };
@@ -75,7 +75,7 @@ PUBLIC void OpenFilePickerInstallPackage(FilePickerState& state, GuiFrameResult&
     frame_result.file_picker_dialog = FilePickerDialogOptions {
         .type = FilePickerDialogOptions::Type::OpenFile,
         .title = "Select 1 or more Floe Package",
-        .default_path = KnownDirectory(state.arena, KnownDirectoryType::Downloads, {.create = false}),
+        .default_folder = KnownDirectory(state.arena, KnownDirectoryType::Downloads, {.create = false}),
         .filters = k_filters,
         .allow_multiple_selection = true,
     };
@@ -83,14 +83,11 @@ PUBLIC void OpenFilePickerInstallPackage(FilePickerState& state, GuiFrameResult&
     state.data = FilePickerStateType::InstallPackage;
 }
 
-static String
-PresetFileDefaultPath(ArenaAllocator& arena, FloePaths const& paths, PresetFilePickerMode mode) {
-    String folder = paths.always_scanned_folder[ToInt(ScanFolderType::Presets)];
+static String PresetFileDefaultPath(FloePaths const& paths, PresetFilePickerMode mode) {
+    String result = paths.always_scanned_folder[ToInt(ScanFolderType::Presets)];
 
     if (auto const& last_path = paths.file_picker_last_path[ToInt(mode)]; last_path.size)
-        if (auto const dir = path::Directory(last_path)) folder = *dir;
-
-    auto const result = path::Join(arena, Array {folder, "untitled" FLOE_PRESET_FILE_EXTENSION});
+        if (auto const dir = path::Directory(last_path)) result = *dir;
 
     ASSERT(path::IsAbsolute(result));
 
@@ -111,7 +108,8 @@ OpenFilePickerSavePreset(FilePickerState& state, GuiFrameResult& frame_result, F
     frame_result.file_picker_dialog = FilePickerDialogOptions {
         .type = FilePickerDialogOptions::Type::SaveFile,
         .title = "Save Floe Preset",
-        .default_path = PresetFileDefaultPath(state.arena, paths, PresetFilePickerMode::Save),
+        .default_folder = PresetFileDefaultPath(paths, PresetFilePickerMode::Save),
+        .default_filename = "untitled" FLOE_PRESET_FILE_EXTENSION,
         .filters = k_filters,
         .allow_multiple_selection = false,
     };
@@ -136,7 +134,7 @@ OpenFilePickerLoadPreset(FilePickerState& state, GuiFrameResult& frame_result, F
     frame_result.file_picker_dialog = FilePickerDialogOptions {
         .type = FilePickerDialogOptions::Type::OpenFile,
         .title = "Load Floe Preset",
-        .default_path = PresetFileDefaultPath(state.arena, paths, PresetFilePickerMode::Load),
+        .default_folder = PresetFileDefaultPath(paths, PresetFilePickerMode::Load),
         .filters = k_filters,
         .allow_multiple_selection = false,
     };

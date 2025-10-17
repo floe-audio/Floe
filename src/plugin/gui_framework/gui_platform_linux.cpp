@@ -28,7 +28,7 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePicker
     ASSERT(g_is_logical_main_thread);
     if (platform.native_file_picker) return k_success;
 
-    if (args.default_path) ASSERT(path::IsAbsolute(*args.default_path));
+    if (args.default_folder) ASSERT(path::IsAbsolute(*args.default_folder));
 
     // This implmentation is blocking, so we only need to check for recursion.
     platform.native_file_picker.Emplace();
@@ -44,7 +44,9 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePicker
     DynamicArrayBounded<char, 3000> command {};
     dyn::AppendSpan(command, "zenity --file-selection "_s);
     fmt::Append(command, "--title=\"{}\" ", args.title);
-    if (args.default_path) fmt::Append(command, "--filename=\"{}\" ", *args.default_path);
+    if (args.default_folder)
+        // Trailing backslash is necessary for Zenity to set the folder.
+        fmt::Append(command, "--filename=\"{}/\" ", *args.default_folder);
     for (auto f : args.filters)
         fmt::Append(command, "--file-filter=\"{}|{}\" ", f.description, f.wildcard_filter);
 
