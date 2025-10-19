@@ -6,6 +6,7 @@
 #include "gui.hpp"
 #include "gui/gui2_parameter_component.hpp"
 #include "gui/gui_draw_knob.hpp"
+#include "gui/gui_drawing_helpers.hpp"
 #include "gui/gui_widget_helpers.hpp"
 #include "gui_framework/gui_box_system.hpp"
 
@@ -490,6 +491,7 @@ void MacroGuiBeginFrame(Gui* g) {
 
 void MacroGuiEndFrame(Gui* g) {
     if (g->macros_gui_state.macro_destination_select_mode) {
+        g->imgui.frame_output.wants_keyboard_keys.Set(ToInt(KeyCode::Escape));
         if (imgui::ClickCheck(
                 {
                     .left_mouse = true,
@@ -497,6 +499,8 @@ void MacroGuiEndFrame(Gui* g) {
                 },
                 g->imgui.frame_input) &&
             !g->imgui.AnItemIsHot()) {
+            g->macros_gui_state.macro_destination_select_mode.Clear();
+        } else if (g->imgui.frame_input.Key(KeyCode::Escape).presses.size) {
             g->macros_gui_state.macro_destination_select_mode.Clear();
         }
     }

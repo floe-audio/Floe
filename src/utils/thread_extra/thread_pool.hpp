@@ -46,6 +46,27 @@ struct ThreadPool {
         m_cond_var.WakeOne();
     }
 
+    // The caller owns the future and is responsible for ensuring it outlives the async task.
+    // The cleanup function is always called, regardless of whether the task completed successfully or was
+    // cancelled.
+    void Async(auto& future, auto&& function, auto&& cleanup) {
+        ZoneScoped;
+        ASSERT(m_workers.size > 0);
+
+        using FutureType = RemoveReference<decltype(future)>;
+        using JobFunctionType = RemoveReference<decltype(function)>;
+
+        static_assert(Same<typename FutureType::ValueType, InvokeResult<JobFunctionType>>);
+
+        future.SetPending();
+
+        AddJob([&future, f = Move(function), cleanup = Move(cleanup)]() mutable {
+            DEFER { cleanup(); }; // Always clean-up.
+            if (!future.TrySetRunning()) return;
+            future.SetResult(f());
+        });
+    }
+
   private:
     static void WorkerProc(ThreadPool* thread_pool) {
         ZoneScoped;
@@ -55,13 +76,13 @@ struct ThreadPool {
             {
                 ScopedMutexLock lock(thread_pool->m_mutex);
                 while (thread_pool->m_job_queue.Empty() &&
-                       !thread_pool->m_thread_stop_requested.Load(LoadMemoryOrder::Relaxed))
+                       !thread_pool->m_thread_stop_requested.Load(LoadMemoryOrder::Acquire))
                     thread_pool->m_cond_var.Wait(lock);
                 f = thread_pool->m_job_queue.TryPop(scratch_arena);
             }
             if (f) (*f)();
 
-            if (thread_pool->m_thread_stop_requested.Load(LoadMemoryOrder::Relaxed)) return;
+            if (thread_pool->m_thread_stop_requested.Load(LoadMemoryOrder::Acquire)) return;
             scratch_arena.ResetCursorAndConsolidateRegions();
         }
     }

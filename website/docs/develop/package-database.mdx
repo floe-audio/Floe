@@ -1,0 +1,43 @@
+---
+id: package-database
+title: Packages Page Submissions
+hide_table_of_contents: true
+description: Documentation for developers to submit packages to Floe's Package Directory
+---
+
+<!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+
+# Packages Page Submissions
+
+Do you have a Floe package you'd like to add to the [Package Directory](/packages)? We're happy to help you get it listed.
+- If you're familiar with development workflows, please submit a [pull request](https://github.com/floe-audio/Floe/pulls) with a new entry to `package-database.json` following the schema below.
+- Otherwise, please [contact us](https://github.com/floe-audio/floe/discussions) and we'll help add your package.
+
+All packages must be compatible with the current Floe version and meet basic quality standards for audio, scripting, and presentation.
+
+## Database Schema
+
+The package database (`website/static/package-database.json`) contains information about available Floe packages displayed on the website's packages page. Each entry represents a package that users can discover and install.
+
+- **`name`** - Package display name
+- **`slug`** - Lowercase version of name using dashes instead of spaces - used to make the URL
+- **`developer`** - Developer/studio name
+- **`developer_icon`** - URL to developer icon/logo
+- **`background_image`** - URL to package preview image
+- **`attribution_required`** - Boolean, shows ATTRIBUTION badge if true
+- **`description`** - HTML description with links allowed
+- **`category`** - `"community"` or `"professional"`, see below
+- **`direct_download_link`** - Direct ZIP download URL (null if external)
+- **`external_product_page`** - Developer's product page URL
+- **`instruments`** - Number of instruments in package
+- **`presets`** - Number of presets in package
+- **`irs`** - Number of impulse responses in package
+
+## Categories
+
+**Community** - Open-source libraries, passion projects, independent conversions from other formats. Always free. Open to submissions from individual creators and non-commercial entities.
+
+**Professional** - High-quality libraries from established developers/studios. May be free or paid. [Requires project sponsorship](/docs/about-the-project/sponsorship).

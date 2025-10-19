@@ -5,16 +5,22 @@
 
 #include "utils/error_notifications.hpp"
 
+#include "common_infrastructure/preset_pack_info.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
+// Preset folders are designed to be unconnected to other folders. They are the granular unit of scanning and
+// updating. The hierarchy of folders is represented separately in a FolderNode tree - this has to be built
+// for a specific point in time, whereas PresetFolders can be created and destroyed as per our epoch-based
+// reclamation scheme.
 struct PresetFolder {
     struct Preset {
         String name {};
         StateMetadataRef metadata {};
-        Set<sample_lib::LibraryIdRef> used_libraries {};
+        OrderedSet<sample_lib::LibraryIdRef> used_libraries {};
         Set<String> used_library_authors {};
         u64 file_hash {};
+        u64 full_path_hash {};
         String file_extension {}; // Only if file_format is Mirage. Mirage had variable extensions.
         PresetFormat file_format {};
     };
@@ -31,6 +37,10 @@ struct PresetFolder {
     Set<sample_lib::LibraryIdRef> used_libraries {};
     Set<String> used_tags {};
     Set<String> used_library_authors {};
+
+    Optional<PresetPackInfo> preset_pack_info {}; // From metadata file (primary importance)
+
+    u64 all_presets_hash {}; // Hash of all presets in this folder.
 
     // private
     usize preset_array_capacity {};
@@ -72,6 +82,7 @@ struct PresetServer {
     ArenaAllocator folder_node_arena {(Allocator&)arena};
     Span<FolderNode> folder_nodes {};
     Span<usize> folder_node_order_indices {};
+    Span<usize> folder_node_preset_pack_indices {};
 
     DynamicSet<u64, NoHash> preset_file_hashes {arena};
     Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
@@ -91,9 +102,33 @@ void ShutdownPresetServer(PresetServer& server);
 
 void SetExtraScanFolders(PresetServer& server, Span<String const> folders);
 
+// A 'listing' augments a FolderNode with more preset-specific information such as the PresetFolder
+// (immutable), and preset pack info. For convenience, the node's user_data is also points to this listing so
+// that given only a node you can get the listing.
+struct PresetFolderListing {
+    // May be null if the folder does not contain any presets, in which case it's just a node in the folder
+    // tree.
+    PresetFolder const* folder;
+
+    // This is of secondary importance if preset_pack_info is specified in PresetFolder.
+    PresetPackInfo const* fallback_preset_pack_info;
+
+    // The node's user_data is this listing.
+    FolderNode const& node;
+};
+
+Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& node);
+PresetPackInfo const* PresetPackInfoForNode(FolderNode const& node);
+PresetPackInfo const* ContainingPresetPackInfo(FolderNode const* node);
+bool IsInsideFolder(PresetFolderListing const* node, usize folder_node_hash);
+
 struct PresetsSnapshot {
-    Span<PresetFolder const*> folders; // Sorted
-    Span<FolderNode const*> folder_nodes; // Parallel to folders field.
+    // Folders that contain presets, sorted. e.i. these will have PresetFolderListing::folder != null.
+    Span<PresetFolderListing const*> folders;
+
+    // Root nodes of all preset packs. All presets are guaranteed to be inside one of these nodes. Presets
+    // that aren't explicitly put into packs will be smartly grouped into "Miscellaneous Presets" packs.
+    Span<FolderNode const*> preset_packs;
 
     // Additional convenience data
     Set<String> used_tags;

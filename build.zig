@@ -1739,6 +1739,7 @@ pub fn build(b: *std.Build) void {
                     path ++ "/paths.cpp",
                     path ++ "/persistent_store.cpp",
                     path ++ "/preferences.cpp",
+                    path ++ "/preset_pack_info.cpp",
                     path ++ "/sample_library/audio_file.cpp",
                     path ++ "/sample_library/sample_library.cpp",
                     path ++ "/sample_library/sample_library_lua.cpp",
@@ -1831,6 +1832,7 @@ pub fn build(b: *std.Build) void {
                     plugin_path ++ "/gui/gui_label_widgets.cpp",
                     plugin_path ++ "/gui/gui_layer.cpp",
                     plugin_path ++ "/gui/gui_library_images.cpp",
+                    plugin_path ++ "/gui/gui_waveform_images.cpp",
                     plugin_path ++ "/gui/gui_mid_panel.cpp",
                     plugin_path ++ "/gui/gui_modal_windows.cpp",
                     plugin_path ++ "/gui/gui_peak_meter_widget.cpp",
@@ -1931,13 +1933,13 @@ pub fn build(b: *std.Build) void {
         }
 
         if (!clap_only and build_context.build_mode != .production) {
-            var docs_preprocessor = b.addExecutable(.{
-                .name = "docs_preprocessor",
+            var docs_generator = b.addExecutable(.{
+                .name = "docs_generator",
                 .root_module = b.createModule(module_options),
             });
-            docs_preprocessor.addCSourceFiles(.{
+            docs_generator.addCSourceFiles(.{
                 .files = &.{
-                    "src/docs_preprocessor/docs_preprocessor.cpp",
+                    "src/docs_generator/docs_generator.cpp",
                     "src/common_infrastructure/final_binary_type.cpp",
                 },
                 .flags = FlagsBuilder.init(&build_context, target, .{
@@ -1946,13 +1948,13 @@ pub fn build(b: *std.Build) void {
                     .cpp = true,
                 }).flags.items,
             });
-            docs_preprocessor.root_module.addCMacro("FINAL_BINARY_TYPE", "DocsPreprocessor");
-            docs_preprocessor.linkLibrary(common_infrastructure);
-            docs_preprocessor.addIncludePath(b.path("src"));
-            docs_preprocessor.addConfigHeader(build_config_step);
-            join_compile_commands.step.dependOn(&docs_preprocessor.step);
-            applyUniversalSettings(&build_context, docs_preprocessor);
-            b.getInstallStep().dependOn(&b.addInstallArtifact(docs_preprocessor, .{ .dest_dir = install_subfolder }).step);
+            docs_generator.root_module.addCMacro("FINAL_BINARY_TYPE", "DocsGenerator");
+            docs_generator.linkLibrary(common_infrastructure);
+            docs_generator.addIncludePath(b.path("src"));
+            docs_generator.addConfigHeader(build_config_step);
+            join_compile_commands.step.dependOn(&docs_generator.step);
+            applyUniversalSettings(&build_context, docs_generator);
+            b.getInstallStep().dependOn(&b.addInstallArtifact(docs_generator, .{ .dest_dir = install_subfolder }).step);
         }
 
         if (!clap_only) {

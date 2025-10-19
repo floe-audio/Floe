@@ -51,7 +51,7 @@ struct GuiPlatform {
     bool inside_update {};
     bool first_update_made {};
     ArenaAllocator file_picker_result_arena {Malloc::Instance()};
-    Optional<OpaqueHandle<IS_WINDOWS ? 160 : IS_MACOS ? 80 : 16>> native_file_picker {};
+    Optional<OpaqueHandle<IS_WINDOWS ? 184 : IS_MACOS ? 80 : 16>> native_file_picker {};
     bool windows_keyboard_hook_added {};
 };
 
@@ -251,7 +251,7 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
         ASSERT(platform.world != nullptr);
     } else {
         platform.world = puglNewWorld(PUGL_MODULE, 0);
-        if (platform.world == nullptr) Panic("out of memory");
+        if (platform.world == nullptr) return ErrorCode {GuiPlatformErrorCode::UnknownError};
         puglSetWorldString(platform.world, PUGL_CLASS_NAME, GuiPlatform::k_window_class_name);
         platform.world = platform.world;
         LogInfo(ModuleName::Gui, "creating new world");
@@ -574,12 +574,8 @@ static bool EventKeyRegular(GuiPlatform& platform, KeyCode key_code, bool is_dow
     }
     key.is_down = is_down;
 
-    if (platform.last_result.wants_keyboard_input) return true;
-    if (platform.last_result.wants_just_arrow_keys &&
-        (key_code == KeyCode::UpArrow || key_code == KeyCode::DownArrow || key_code == KeyCode::LeftArrow ||
-         key_code == KeyCode::RightArrow)) {
-        return true;
-    }
+    if (platform.last_result.wants_text_input) return true;
+    if (platform.last_result.wants_keyboard_keys.Get(ToInt(key_code))) return true;
     return false;
 }
 
@@ -609,6 +605,7 @@ static Optional<KeyCode> RemapKeyCode(u32 pugl_key) {
         case 'x': return KeyCode::X;
         case 'y': return KeyCode::Y;
         case 'z': return KeyCode::Z;
+        case 'f': return KeyCode::F;
     }
     return k_nullopt;
 }
@@ -628,7 +625,7 @@ static bool EventKey(GuiPlatform& platform, PuglKeyEvent const& key_event, bool 
 static bool EventText(GuiPlatform& platform, PuglTextEvent const& text_event) {
     platform.frame_state.modifiers = CreateModifierFlags(text_event.state);
     dyn::Append(platform.frame_state.input_utf32_chars, text_event.character);
-    if (platform.last_result.wants_keyboard_input) return true;
+    if (platform.last_result.wants_text_input) return true;
     return false;
 }
 
@@ -748,7 +745,7 @@ static void HandlePostUpdateRequests(GuiPlatform& platform) {
                       }));
     }
 
-    if (platform.last_result.wants_keyboard_input) {
+    if (platform.last_result.wants_text_input) {
         if (!puglHasFocus(platform.view)) {
             auto const result = puglGrabFocus(platform.view);
             if (result != PUGL_SUCCESS) LogWarning(ModuleName::Gui, "failed to grab focus: {}", result);

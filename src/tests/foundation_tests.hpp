@@ -1989,6 +1989,92 @@ TEST_CASE(TestHashTable) {
                 CHECK(tag == "pad"_s || tag == "synthesized"_s);
     }
 
+    SUBCASE("RemoveIf") {
+        // Test DynamicHashTable RemoveIf
+        DynamicHashTable<String, int, nullptr, k_ordering> tab {a};
+        CHECK(tab.Insert("keep1", 100));
+        CHECK(tab.Insert("remove1", 200));
+        CHECK(tab.Insert("keep2", 300));
+        CHECK(tab.Insert("remove2", 400));
+        CHECK(tab.Insert("keep3", 500));
+
+        CHECK(tab.table.size == 5);
+
+        // Remove entries with "remove" in the key
+        auto removed =
+            tab.RemoveIf([](String const& key, int const&) { return ContainsSpan(key, "remove"_s); });
+
+        CHECK(removed == 2);
+        CHECK(tab.table.size == 3);
+        CHECK(tab.Find("keep1") && *tab.Find("keep1") == 100);
+        CHECK(tab.Find("keep2") && *tab.Find("keep2") == 300);
+        CHECK(tab.Find("keep3") && *tab.Find("keep3") == 500);
+        CHECK(!tab.Find("remove1"));
+        CHECK(!tab.Find("remove2"));
+
+        // Remove entries with value > 300
+        removed = tab.RemoveIf([](String const&, int const& value) { return value > 300; });
+
+        CHECK(removed == 1);
+        CHECK(tab.table.size == 2);
+        CHECK(tab.Find("keep1") && *tab.Find("keep1") == 100);
+        CHECK(tab.Find("keep2") && *tab.Find("keep2") == 300);
+        CHECK(!tab.Find("keep3"));
+
+        // Remove all remaining
+        removed = tab.RemoveIf([](String const&, int const&) { return true; });
+        CHECK(removed == 2);
+        CHECK(tab.table.size == 0);
+
+        // Test removing from empty table
+        removed = tab.RemoveIf([](String const&, int const&) { return true; });
+        CHECK(removed == 0);
+        CHECK(tab.table.size == 0);
+    }
+
+    SUBCASE("Set RemoveIf") {
+        // Test DynamicSet RemoveIf
+        DynamicSet<String> set {a};
+        CHECK(set.Insert("apple"));
+        CHECK(set.Insert("banana"));
+        CHECK(set.Insert("cherry"));
+        CHECK(set.Insert("apricot"));
+        CHECK(set.Insert("blueberry"));
+
+        CHECK(set.table.size == 5);
+
+        // Remove entries starting with "a"
+        auto removed = set.RemoveIf([](String const& key) { return StartsWithSpan(key, "a"_s); });
+
+        CHECK(removed == 2);
+        CHECK(set.table.size == 3);
+        CHECK(set.table.Contains("banana"));
+        CHECK(set.table.Contains("cherry"));
+        CHECK(set.table.Contains("blueberry"));
+        CHECK(!set.table.Contains("apple"));
+        CHECK(!set.table.Contains("apricot"));
+
+        // Remove entries with length >= 6
+        removed = set.RemoveIf([](String const& key) { return key.size >= 6; });
+
+        CHECK(removed == 3);
+        CHECK(set.table.size == 0);
+
+        // Test Set (non-dynamic) RemoveIf
+        auto static_set = Set<String>::Create(a, 10);
+        CHECK(static_set.FindOrInsertGrowIfNeeded(a, "test1").inserted);
+        CHECK(static_set.FindOrInsertGrowIfNeeded(a, "test2").inserted);
+        CHECK(static_set.FindOrInsertGrowIfNeeded(a, "keep").inserted);
+
+        removed = static_set.RemoveIf([](String const& key) { return StartsWithSpan(key, "test"_s); });
+
+        CHECK(removed == 2);
+        CHECK(static_set.size == 1);
+        CHECK(static_set.Contains("keep"));
+        CHECK(!static_set.Contains("test1"));
+        CHECK(!static_set.Contains("test2"));
+    }
+
     return k_success;
 }
 

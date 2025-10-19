@@ -425,7 +425,7 @@ bool DoOverlayClickableBackground(Gui* g) {
 
 imgui::TextInputSettings GetParameterTextInputSettings() {
     imgui::TextInputSettings settings = imgui::DefTextInputDraggerInt().text_input_settings;
-    settings.text_flags = {.centre_align = true};
+    settings.text_flags = {.centre_align = true, .escape_unfocuses = true};
     settings.draw = [](IMGUI_DRAW_TEXT_INPUT_ARGS) {
         if (!imgui.TextInputHasFocus(id)) return;
 

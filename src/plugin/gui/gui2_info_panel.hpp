@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
+#include "os/filesystem.hpp"
+#include "utils/error_notifications.hpp"
+
 #include "engine/check_for_update.hpp"
 #include "gui2_common_modal_panel.hpp"
+#include "gui2_confirmation_dialog_state.hpp"
 #include "gui2_info_panel_state.hpp"
 #include "gui_framework/gui_box_system.hpp"
 #include "processor/voices.hpp"
@@ -15,10 +19,12 @@ struct InfoPanelContext {
     ArenaAllocator& scratch_arena;
     check_for_update::State& check_for_update_state;
     prefs::Preferences& prefs;
-    Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;
+    Span<sample_lib_server::ResourcePointer<sample_lib::Library>> libraries;
+    ThreadsafeErrorNotifications& error_notifications;
+    ConfirmationDialogState& confirmation_dialog_state;
 };
 
-static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context) {
+static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoPanelState& state) {
     DynamicArrayBounded<char, 500> buffer {};
 
     // sort libraries by name
@@ -142,6 +148,47 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
                             (String)fmt::Assign(buffer, "Open {} in {}", *dir, GetFileBrowserAppName()),
                     }))
                 OpenFolderInFileBrowser(*dir);
+
+        if (TextButton(
+                box_system,
+                button_row,
+                {
+                    .text = "Uninstall",
+                    .tooltip = (String)fmt::Assign(buffer, "Send library '{}' to {}", lib->name, TRASH_NAME),
+                })) {
+            if (auto const dir = path::Directory(lib->path)) {
+                auto cloned_path = Malloc::Instance().Clone(*dir);
+
+                dyn::AssignFitInCapacity(context.confirmation_dialog_state.title, "Delete Library");
+                fmt::Assign(
+                    context.confirmation_dialog_state.body_text,
+                    "Are you sure you want to delete the library '{}'?\n\nThis will move the library folder and all its contents to the {}. You can restore it from there if needed.",
+                    lib->name,
+                    TRASH_NAME);
+
+                context.confirmation_dialog_state.callback = [&error_notifications =
+                                                                  context.error_notifications,
+                                                              cloned_path](ConfirmationDialogResult result) {
+                    DEFER { Malloc::Instance().Free(cloned_path.ToByteSpan()); };
+                    if (result == ConfirmationDialogResult::Ok) {
+                        ArenaAllocatorWithInlineStorage<Kb(1)> scratch_arena {Malloc::Instance()};
+                        auto const outcome = TrashFileOrDirectory(cloned_path, scratch_arena);
+                        auto const error_id = HashMultiple(Array {"library-delete"_s, cloned_path});
+
+                        if (outcome.HasValue()) {
+                            error_notifications.RemoveError(error_id);
+                        } else if (auto item = error_notifications.BeginWriteError(error_id)) {
+                            DEFER { error_notifications.EndWriteError(*item); };
+                            item->title = "Failed to send library to trash"_s;
+                            item->error_code = outcome.Error();
+                        }
+                    }
+                };
+
+                context.confirmation_dialog_state.open = true;
+                state.open = false;
+            }
+        }
     }
 
     // Make sure there's a gap at the end of the scroll region.
@@ -154,7 +201,7 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
           });
 }
 
-static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context) {
+static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoPanelState&) {
     auto const root = DoBox(box_system,
                             {
                                 .layout {
@@ -265,7 +312,7 @@ static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context) 
     }
 }
 
-static void MetricsInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context) {
+static void MetricsInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoPanelState&) {
     auto const root = DoBox(box_system,
                             {
                                 .layout {
@@ -308,7 +355,7 @@ static void MetricsInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context
                         context.server.num_samples_loaded.Load(LoadMemoryOrder::Relaxed)));
 }
 
-static void LegalInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&) {
+static void LegalInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&, InfoPanelState&) {
 #include "third_party_licence_text.hpp"
     static bool open[ArraySize(k_third_party_licence_texts)];
 
@@ -427,7 +474,7 @@ static void InfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoP
                                   .current_tab_index = ToIntRef(state.tab),
                               });
 
-    using TabPanelFunction = void (*)(GuiBoxSystem&, InfoPanelContext&);
+    using TabPanelFunction = void (*)(GuiBoxSystem&, InfoPanelContext&, InfoPanelState&);
     AddPanel(box_system,
              Panel {
                  .run = ({
@@ -439,7 +486,7 @@ static void InfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoP
                          case InfoPanelState::Tab::Legal: f = LegalInfoPanel; break;
                          case InfoPanelState::Tab::Count: PanicIfReached();
                      }
-                     [f, &context](GuiBoxSystem& box_system) { f(box_system, context); };
+                     [f, &context, &state](GuiBoxSystem& box_system) { f(box_system, context, state); };
                  }),
                  .data =
                      Subpanel {

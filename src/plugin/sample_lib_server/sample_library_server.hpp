@@ -17,6 +17,14 @@
 // Sample library server
 // A centralised manager for sample libraries that multiple plugins/systems can use at once.
 //
+// We use the term 'resource' for loadable things from a library, such as an Instrument, IR, audio data,
+// image, etc.
+//
+// The server provides convenient access and lookup of all available sample libraries information. However,
+// for specific resources (instruments and audio data), a request-response API is used. The request triggers
+// an asynchronous load of the resource, and the response containing the resource is provided via a
+// 'communication channel'. Resources are kept alive using reference counting.
+//
 // - Manages loading, unloading and storage of sample libraries (including instruments, irs, etc)
 // - Provides an asynchronous request-response API (we tend to call response 'result')
 // - Very quick for resources that are already loaded
@@ -26,8 +34,6 @@
 // - No duplication of resources in memory
 // - Provides progress/status metrics for other threads to read
 //
-// We use the term 'resource' for loadable things from a library, such as an Instrument, IR, audio data,
-// image, etc.
 
 namespace sample_lib_server {
 
@@ -50,62 +56,70 @@ using LoadRequest = TaggedUnion<LoadRequestType,
 // ==========================================================================================================
 enum class RefCountChange { Retain, Release };
 
-// NOTE: this doesn't do reference counting automatically. You must use Retain() and Release() manually.
-// We do this because things can get messy and inefficient doing ref-counting automatically in copy/move
-// constructors and assignment operators. Instead, you will get assertion failures if you have mismatched
-// retain/release.
+// A reference counted handle to a resource. This object is just like a pointer really. The resource will stay
+// valid for as long as you are between Retain/Release pairs. The server gives you one of these with a Retain
+// already called for you - you must Release it if you don't want to keep it.
+//
+// NOTE: this doesn't do reference counting automatically using C++ constructors/operators. You must use
+// Retain() and Release() manually. We do this because things can get messy and inefficient doing ref-counting
+// automatically in copy/move constructors and assignment operators. Instead, you will get assertion failures
+// if you have mismatched retain/release.
 template <typename Type>
-struct RefCounted {
-    RefCounted() = default;
-    RefCounted(Type& t, Atomic<u32>& r, WorkSignaller* s)
-        : m_data(&t)
-        , m_ref_count(&r)
-        , m_work_signaller(s) {}
+struct ResourcePointer {
+    ResourcePointer() = default;
+    ResourcePointer(Type& t, Atomic<u32>& r) : resource(&t), ref_count(&r) {}
 
     void Retain() const {
-        if (m_ref_count) m_ref_count->FetchAdd(1, RmwMemoryOrder::Relaxed);
-    }
-    void Release() const {
-        if (m_ref_count) {
-            auto prev = m_ref_count->SubFetch(1, RmwMemoryOrder::AcquireRelease);
-            ASSERT(prev != ~(u32)0);
-            if (prev == 0 && m_work_signaller) m_work_signaller->Signal();
+        if (ref_count) {
+            auto const prev = ref_count->FetchAdd(1, RmwMemoryOrder::Relaxed);
+
+            // The special case where the ref count is 0 is only meant to be handled internally where we can
+            // be more certain of lifetimes. For general use, a 0 ref count suggests a bug, because if its 0,
+            // `data` could be deleted or about to be deleted.
+            ASSERT(prev != 0);
         }
     }
-    void Assign(RefCounted const& other) {
-        Release();
-        other.Retain();
-        m_data = other.m_data;
-        m_ref_count = other.m_ref_count;
-        m_work_signaller = other.m_work_signaller;
+
+    void Release() {
+        if (ref_count) {
+            auto const curr = ref_count->SubFetch(1, RmwMemoryOrder::AcquireRelease);
+
+            ASSERT(curr != ~(u32)0);
+
+            if (curr == 0) {
+                // For easier debugging, we null out the pointers here because the object could be freed as
+                // soon as the ref count is 0.
+                resource = nullptr;
+                ref_count = nullptr;
+            }
+        }
     }
-    void ChangeRefCount(RefCountChange t) const {
+
+    void ChangeRefCount(RefCountChange t) {
         switch (t) {
             case RefCountChange::Retain: Retain(); break;
             case RefCountChange::Release: Release(); break;
         }
     }
 
-    constexpr explicit operator bool() const { return m_data != nullptr; }
+    constexpr explicit operator bool() const { return resource != nullptr; }
     constexpr Type const* operator->() const {
-        ASSERT(m_data);
-        return m_data;
+        ASSERT(resource);
+        return resource;
     }
     constexpr Type const& operator*() const {
-        ASSERT(m_data);
-        return *m_data;
+        ASSERT(resource);
+        return *resource;
     }
 
-  private:
-    Type const* m_data {};
-    Atomic<u32>* m_ref_count {};
-    WorkSignaller* m_work_signaller {};
+    Type const* resource {};
+    Atomic<u32>* ref_count {};
 };
 
 using Resource =
     TaggedUnion<LoadRequestType,
-                TypeAndTag<RefCounted<sample_lib::LoadedInstrument>, LoadRequestType::Instrument>,
-                TypeAndTag<RefCounted<sample_lib::LoadedIr>, LoadRequestType::Ir>>;
+                TypeAndTag<ResourcePointer<sample_lib::LoadedInstrument>, LoadRequestType::Instrument>,
+                TypeAndTag<ResourcePointer<sample_lib::LoadedIr>, LoadRequestType::Ir>>;
 
 struct LoadResult {
     enum class ResultType { Success, Error, Cancelled };
@@ -113,9 +127,10 @@ struct LoadResult {
                                TypeAndTag<Resource, ResultType::Success>,
                                TypeAndTag<ErrorCode, ResultType::Error>>;
 
+    void ChangeRefCount(RefCountChange t);
     void ChangeRefCount(RefCountChange t) const;
     void Retain() const { ChangeRefCount(RefCountChange::Retain); }
-    void Release() const { ChangeRefCount(RefCountChange::Release); }
+    void Release() { ChangeRefCount(RefCountChange::Release); }
 
     template <typename T>
     T const* TryExtract() const {
@@ -209,7 +224,7 @@ struct ListedLibrary {
     ArenaList<ListedImpulseResponse> irs {};
 };
 
-using LibrariesList = AtomicRefList<ListedLibrary>;
+using LibrariesAtomicList = AtomicRefList<ListedLibrary>;
 
 struct ScanFolder {
     enum class Source { AlwaysScannedFolder, ExtraFolder };
@@ -237,6 +252,7 @@ struct QueuedRequest {
 
 // Public API
 // ==========================================================================================================
+// You may directly access some fields of the server, but most things are done through functions.
 
 struct Server {
     Server(ThreadPool& pool,
@@ -253,9 +269,9 @@ struct Server {
 
     // private
     detail::ScanFolders scan_folders;
-    detail::LibrariesList libraries;
+    detail::LibrariesAtomicList libraries;
     Mutex libraries_by_id_mutex;
-    DynamicHashTable<sample_lib::LibraryIdRef, detail::LibrariesList::Node*> libraries_by_id {
+    DynamicHashTable<sample_lib::LibraryIdRef, detail::LibrariesAtomicList::Node*> libraries_by_id {
         Malloc::Instance()};
     // Connection-independent errors. If we have access to a channel, we post to the channel's
     // error_notifications instead of this.
@@ -271,10 +287,38 @@ struct Server {
     ThreadsafeQueue<detail::QueuedRequest> request_queue {PageAllocator::Instance()};
     WorkSignaller work_signaller {};
     Atomic<bool> request_debug_dump_current_state {false};
+
+    // IMPROVE: we can set limits on some things here: we know there's only going to be
+    // k_max_num_floe_instances for instance.
+    // IMPROVE: would a Future-based API instead of request-response be better?
 };
 
-// IMPROVE: we can set limits: we know there's only going to be k_max_num_floe_instances.
+// ACCESSING LIBRARY INFORMATION
+// ==========================================================================================================
+// At any time, you can access library information from the server using these functions.
 
+//
+// Thread-safe. You must call Release() on all results.
+Span<ResourcePointer<sample_lib::Library>> AllLibrariesRetained(Server& server, ArenaAllocator& arena);
+
+// Thread-safe.
+ResourcePointer<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::LibraryIdRef id);
+
+// Thread-safe.
+inline void ReleaseAll(Span<ResourcePointer<sample_lib::Library>> libs) {
+    for (auto& l : libs)
+        l.Release();
+}
+
+// Thread-safe. You need understand the AtomicRefList API to use this properly.
+detail::LibrariesAtomicList& LibrariesList(Server& server);
+
+// LOADING RESOURCES
+// ==========================================================================================================
+// To load resources you need to open a communication channel with the server and then send requests.
+
+// STEP 1: open a 'communications channel' with the server
+//
 // The server owns the channel, you just get a reference to it that will be valid until you close it. The
 // callback will be called whenever a request from this channel is completed. If you want to keep any of
 // the resources that are contained in the LoadResult, you must 'retain' them in the callback. You can release
@@ -293,12 +337,17 @@ AsyncCommsChannel& OpenAsyncCommsChannel(Server& server, OpenAsyncCommsChannelAr
 // [threadsafe]
 void CloseAsyncCommsChannel(Server& server, AsyncCommsChannel& channel);
 
+// STEP 2: send requests for resources
+//
 // You'll receive a callback when the request is completed. After that you should consume all the results in
 // your channel's 'results' field (threadsafe). Each result is already retained so you must Release() them
 // when you're done with them. The server monitors the layer_index of each of your requests and works out if
 // any currently-loading resources are no longer needed and aborts their loading.
 // [threadsafe]
 RequestId SendAsyncLoadRequest(Server& server, AsyncCommsChannel& channel, LoadRequest const& request);
+
+// SERVER CONFIGURATION
+// =========================================================================================================
 
 // Change the set of extra folders that will be scanned for libraries.
 // [threadsafe]
@@ -312,20 +361,10 @@ void RequestScanningOfUnscannedFolders(Server& server);
 // [threadsafe]
 void RescanFolder(Server& server, String folder);
 
-// You must call Release() on all results
-// [threadsafe]
-Span<RefCounted<sample_lib::Library>> AllLibrariesRetained(Server& server, ArenaAllocator& arena);
-RefCounted<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::LibraryIdRef id);
-
-inline void ReleaseAll(Span<RefCounted<sample_lib::Library>> libs) {
-    for (auto& l : libs)
-        l.Release();
-}
-
 } // namespace sample_lib_server
 
 // Loaded instrument
 using Instrument = TaggedUnion<
     InstrumentType,
-    TypeAndTag<sample_lib_server::RefCounted<sample_lib::LoadedInstrument>, InstrumentType::Sampler>,
+    TypeAndTag<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>, InstrumentType::Sampler>,
     TypeAndTag<WaveformType, InstrumentType::WaveformSynth>>;

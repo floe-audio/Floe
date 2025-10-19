@@ -4,7 +4,10 @@
 
 #include "os/misc.hpp"
 
+#include "common_infrastructure/preferences.hpp"
+
 #include "gui/gui2_common_picker.hpp"
+#include "gui/gui2_confirmation_dialog_state.hpp"
 #include "gui/gui_fwd.hpp"
 #include "preset_server/preset_server.hpp"
 
@@ -27,27 +30,27 @@ struct PresetPickerContext {
 
     sample_lib_server::Server& sample_library_server;
     PresetServer& preset_server;
-    LibraryImagesArray& library_images;
+    LibraryImagesTable& library_images;
+    prefs::Preferences& prefs;
     Engine& engine;
     Optional<graphics::ImageID>& unknown_library_icon;
     Notifications& notifications;
     persistent_store::Store& persistent_store;
+    ConfirmationDialogState& confirmation_dialog_state;
 
     u32 init = 0;
-    Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;
+    Span<sample_lib_server::ResourcePointer<sample_lib::Library>> libraries;
     PresetsSnapshot presets_snapshot;
 };
 
 // Persistent
 struct PresetPickerState {
-    DynamicArray<u64> selected_author_hashes {Malloc::Instance()};
+    SelectedHashes selected_author_hashes {"Author"};
     bool scroll_to_show_selected = false;
 
     // This is contains PresetFormat as u64. We use a dynamic array of u64 so we can share the same code as
     // the other types of selected_* filters.
-    DynamicArray<u64> selected_preset_types {Malloc::Instance()};
-
-    DynamicArray<u64> selected_folder_hashes {Malloc::Instance()};
+    SelectedHashes selected_preset_types {"Preset Type"};
 
     CommonPickerState common_state {
         .other_selected_hashes = Array {&selected_author_hashes, &selected_preset_types},

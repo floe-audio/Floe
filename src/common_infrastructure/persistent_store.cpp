@@ -26,11 +26,11 @@ StoreTable Read(ArenaAllocator& arena, String data) {
             break; // Invalid data. We just stop reading, we might have some valid data before this point.
 
         ChunkHeader header {};
-        CopyMemory(&header, data_ptr, sizeof(ChunkHeader));
+        __builtin_memcpy_inline(&header, data_ptr, sizeof(ChunkHeader));
         data_ptr += sizeof(ChunkHeader);
 
         auto value = arena.New<Value>(Value {
-            .data = {data_ptr, header.size},
+            .data = header.size ? Span {data_ptr, header.size} : Span<u8 const> {},
             .next = nullptr,
         });
 
@@ -51,7 +51,7 @@ ErrorCodeOr<void> Write(StoreTable const& store, Writer writer) {
                 .size = (u32)v->data.size,
             };
             TRY(writer.WriteBytes({(u8 const*)&header, sizeof(header)}));
-            TRY(writer.WriteBytes({v->data.data, v->data.size}));
+            if (v->data.size) TRY(writer.WriteBytes({v->data.data, v->data.size}));
         }
     }
     return k_success;

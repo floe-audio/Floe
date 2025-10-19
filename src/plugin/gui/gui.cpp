@@ -14,6 +14,7 @@
 #include "engine/engine.hpp"
 #include "gui/gui2_attribution_panel.hpp"
 #include "gui/gui2_bot_panel.hpp"
+#include "gui/gui2_confirmation_dialog.hpp"
 #include "gui/gui2_feedback_panel.hpp"
 #include "gui/gui2_info_panel.hpp"
 #include "gui/gui2_inst_picker.hpp"
@@ -40,14 +41,13 @@ static f32 PixelsPerVw(Gui* g) {
     return (f32)g->frame_input.window_size.width / k_points_in_width;
 }
 
-Optional<LibraryImages>
-LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, bool only_icon_needed) {
-    return LibraryImagesFromLibraryId(g->library_images,
-                                      g->imgui,
-                                      library_id,
-                                      g->shared_engine_systems.sample_library_server,
-                                      g->scratch_arena,
-                                      only_icon_needed);
+LibraryImages
+LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, LibraryImagesTypes needed) {
+    return GetLibraryImages(g->library_images,
+                            g->imgui,
+                            library_id,
+                            g->shared_engine_systems.sample_library_server,
+                            needed);
 }
 
 Optional<graphics::ImageID> LogoImage(Gui* g) {
@@ -130,6 +130,9 @@ Gui::Gui(GuiFrameInput& frame_input, Engine& engine)
 }
 
 Gui::~Gui() {
+    Shutdown(library_images);
+    Shutdown(waveform_images);
+
     engine.stated_changed_callback = {};
 
     sample_lib_server::CloseAsyncCommsChannel(engine.shared_engine_systems.sample_library_server,
@@ -143,20 +146,6 @@ Gui::~Gui() {
 }
 
 bool Tooltip(Gui* g, imgui::Id id, Rect r, char const* fmt, ...);
-
-f32x2 GetMaxUVToMaintainAspectRatio(graphics::ImageID img, f32x2 container_size) {
-    auto const img_w = (f32)img.size.width;
-    auto const img_h = (f32)img.size.height;
-    auto const window_ratio = container_size.x / container_size.y;
-    auto const image_ratio = img_w / img_h;
-
-    f32x2 uv {1, 1};
-    if (image_ratio > window_ratio)
-        uv.x = window_ratio / image_ratio;
-    else
-        uv.y = image_ratio / window_ratio;
-    return uv;
-}
 
 static void DoStandaloneErrorGUI(Gui* g) {
     ASSERT(!PRODUCTION_BUILD);
@@ -193,7 +182,7 @@ static void DoStandaloneErrorGUI(Gui* g) {
             error_window_open = false;
     }
     if (floe_ext->standalone_midi_device_error) {
-        imgui.frame_output.wants_keyboard_input = true;
+        imgui.frame_output.wants_text_input = true;
         if (platform->modifiers.Get(ModifierKey::Shift)) {
             auto gen_midi_message = [&](bool on, u7 key) {
                 if (on)
@@ -295,6 +284,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
     ASSERT(g_is_logical_main_thread);
     g->imgui.SetPixelsPerVw(PixelsPerVw(g));
 
+    BeginFrame(g->library_images, g->imgui);
     BeginFrame(g->box_system, prefs::GetBool(g->prefs, SettingDescriptor(GuiSetting::ShowTooltips)));
 
     g->frame_output = {};
@@ -334,8 +324,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
 
     MacroGuiBeginFrame(g);
 
-    g->waveforms.StartFrame();
-    DEFER { g->waveforms.EndFrame(*g->frame_input.graphics_ctx); };
+    StartFrame(g->waveform_images, *g->frame_input.graphics_ctx);
+    DEFER { EndFrame(g->waveform_images, *g->frame_input.graphics_ctx); };
 
     auto whole_window_sets = imgui::DefMainWindow();
     whole_window_sets.draw_routine_window_background = [&](IMGUI_DRAW_WINDOW_BG_ARGS_TYPES) {};
@@ -356,15 +346,15 @@ GuiFrameResult GuiUpdate(Gui* g) {
         if (!prefs::GetBool(g->prefs, SettingDescriptor(GuiSetting::HighContrastGui))) {
             auto overall_library = LibraryForOverallBackground(g->engine);
             if (overall_library) {
-                auto imgs = LibraryImagesFromLibraryId(g, *overall_library, false);
-                if (imgs && imgs->background) {
-                    auto tex = g->frame_input.graphics_ctx->GetTextureFromImage(*imgs->background);
+                auto imgs = LibraryImagesFromLibraryId(g, *overall_library, LibraryImagesTypes::Backgrounds);
+                if (imgs.background) {
+                    auto tex = g->frame_input.graphics_ctx->GetTextureFromImage(*imgs.background);
                     if (tex) {
                         imgui.graphics->AddImage(*tex,
                                                  r.Min(),
                                                  r.Max(),
                                                  {0, 0},
-                                                 GetMaxUVToMaintainAspectRatio(*imgs->background, r.size));
+                                                 GetMaxUVToMaintainAspectRatio(*imgs.background, r.size));
                     }
                 }
             }
@@ -431,6 +421,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
             DoFeedbackPanel(g->box_system, context, g->feedback_panel_state);
         }
 
+        DoConfirmationDialog(g->box_system, g->confirmation_dialog_state);
+
         {
             SavePresetPanelContext context {
                 .engine = g->engine,
@@ -451,6 +443,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .libraries =
                     sample_lib_server::AllLibrariesRetained(g->shared_engine_systems.sample_library_server,
                                                             g->scratch_arena),
+                .error_notifications = g->engine.error_notifications,
+                .confirmation_dialog_state = g->confirmation_dialog_state,
             };
             DEFER { sample_lib_server::ReleaseAll(context.libraries); };
 
@@ -474,28 +468,17 @@ GuiFrameResult GuiUpdate(Gui* g) {
                     .sample_library_server = g->shared_engine_systems.sample_library_server,
                     .library_images = g->library_images,
                     .engine = g->engine,
+                    .prefs = g->prefs,
                     .unknown_library_icon = UnknownLibraryIcon(g),
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,
+                    .confirmation_dialog_state = g->confirmation_dialog_state,
                 };
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };
 
                 auto& state = g->inst_picker_state[layer_obj.index];
-
-                auto& floe_state = state.common_state_floe_libraries;
-                auto& mirage_state = g->inst_picker_state[layer_obj.index].common_state_mirage_libraries;
-
-                // Bit of a hack. For instruments, we have 2 sets of common state - each state has its own
-                // open bool and rectangle. But we want these to always be in sync - they shouldn't be
-                // separate. To ensure this, we make copy over the state before showing the popup.
-                mirage_state.open = floe_state.open;
-                mirage_state.absolute_button_rect = floe_state.absolute_button_rect;
-
                 DoInstPickerPopup(g->box_system, context, state);
-
-                // If the state changed, we need to copy the open state back to the other.
-                if (state.tab == InstPickerState::Tab::MirageLibraries) floe_state.open = mirage_state.open;
             }
         }
 
@@ -504,10 +487,12 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
+                .prefs = g->prefs,
                 .engine = g->engine,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
+                .confirmation_dialog_state = g->confirmation_dialog_state,
             };
             DoPresetPicker(g->box_system, context, g->preset_picker_state);
         }
@@ -517,9 +502,11 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
+                .prefs = g->prefs,
                 .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
+                .confirmation_dialog_state = g->confirmation_dialog_state,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };

@@ -4,26 +4,55 @@
 #pragma once
 
 #include "gui_framework/gui_imgui.hpp"
+#include "gui_framework/image.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 
+// Images for a particular sample library.
 struct LibraryImages {
-    sample_lib::LibraryId library_id {};
+    struct LoadingBackgrounds {
+        Optional<ImageBytes> background {};
+        Optional<ImageBytes> blurred_background {};
+    };
+
+    enum class ImageType : u8 { Icon, Background, BlurredBackground, Count };
+
     Optional<graphics::ImageID> icon {};
     Optional<graphics::ImageID> background {};
     Optional<graphics::ImageID> blurred_background {};
     bool icon_missing {};
     bool background_missing {};
+
+    // Futures cannot be moved around (for example when a hash table resizes), so they are allocated elsewhere
+    // and we have pointers to them.
+    Future<Optional<ImageBytes>>* loading_icon;
+    Future<Optional<LoadingBackgrounds>>* loading_backgrounds;
+
+    // Per-frame state.
+    Bitset<ToInt(ImageType::Count)> needs_reload {};
 };
 
-using LibraryImagesArray = DynamicArray<LibraryImages>;
+struct LibraryImagesTable {
+    ArenaAllocator arena {PageAllocator::Instance()};
+    HashTable<sample_lib::LibraryId, LibraryImages> table;
+};
 
-Optional<LibraryImages> LibraryImagesFromLibraryId(LibraryImagesArray& array,
-                                                   imgui::Context& imgui,
-                                                   sample_lib::LibraryIdRef const& library_id,
-                                                   sample_lib_server::Server& server,
-                                                   ArenaAllocator& scratch_arena,
-                                                   bool only_icon_needed);
+enum class LibraryImagesTypes : u8 {
+    Icon = 1 << 0,
+    Backgrounds = 1 << 1,
+    All = Icon | Backgrounds,
+};
+BITWISE_OPERATORS(LibraryImagesTypes)
 
-void InvalidateLibraryImages(LibraryImagesArray& array,
+// Very efficiently retrieves library images for a given library - starting any asynchronous loading if
+// needed. Use needed_types to trigger loading only for the images you need.
+LibraryImages GetLibraryImages(LibraryImagesTable& table,
+                               imgui::Context& imgui,
+                               sample_lib::LibraryIdRef const& library_id,
+                               sample_lib_server::Server& server,
+                               LibraryImagesTypes needed_types = LibraryImagesTypes::All);
+
+void BeginFrame(LibraryImagesTable& table, imgui::Context& imgui);
+void Shutdown(LibraryImagesTable& table);
+void InvalidateLibraryImages(LibraryImagesTable& table,
                              sample_lib::LibraryIdRef library_id,
                              graphics::DrawContext& ctx);

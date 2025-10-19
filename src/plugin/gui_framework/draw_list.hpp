@@ -383,7 +383,7 @@ struct DrawContext {
     }
 
     // TextureHandles can be invalidated between frames, use this method to check if your ID still has a
-    // coressponding texture.
+    // corresponding texture.
     Optional<TextureHandle> GetTextureFromImage(ImageID id) {
         auto const index = FindIf(textures, [id](IdAndTexture const& i) { return i.id == id; });
         if (!index) return k_nullopt;

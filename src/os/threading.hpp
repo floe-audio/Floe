@@ -243,6 +243,7 @@ enum class NumWaitingThreads { One, All };
 WaitResult WaitIfValueIsExpected(Atomic<u32>& value, u32 expected, Optional<u32> timeout_milliseconds = {});
 void WakeWaitingThreads(Atomic<u32>& value, NumWaitingThreads num_waiters);
 
+// Same as WaitIfValueIsExpected, but without spurious returns. Returns false if timed out.
 inline bool
 WaitIfValueIsExpectedStrong(Atomic<u32>& value, u32 expected, Optional<u32> timeout_milliseconds = {}) {
     while (value.Load(LoadMemoryOrder::Acquire) == expected)
@@ -589,4 +590,242 @@ class ScopedSpinLock {
 
   private:
     SpinLock& m_l;
+};
+
+// This is a low-overhead 'future' implementation that uses atomics and futexes. It's quite low-level but also
+// low-overhead and uncomplicated.
+//
+// It wraps a payload (Type) with the machinery for 2 threads to communicate about the filling of the payload:
+// you can wait for the result, cancel the operation, check if it's done, etc. For example, it might be used
+// by the UI thread and a worker thread to communicate about the result of file-read.
+//
+// It's designed for a single producer thread and a single consumer thread. It doesn't concern itself with
+// memory management. Typically, the consumer thread owns this object, and gives a reference to the producer
+// thread.
+//
+// Futures should almost always call Shutdown() before being destroyed.
+//
+// e.g.:
+//
+// Consumer thread:
+// if (future.IsInactive() && async_work_needed) {
+//     future.SetPending();
+//
+//     AddJobOnWorkerThread([&future, do_slow_work, cleanup_function]() mutable {
+//         DEFER { cleanup_function(); }; // Always clean-up.
+//         if (!future.TrySetRunning()) return; // Cancelled.
+//         future.SetResult(do_slow_work());
+//     });
+// }
+//
+// // Run periodically on the consumer thread:
+// if (auto const result = future.TryReleaseResult()) {
+//     // use result...
+// }
+//
+// // Consumer thread:
+// if (shutdown_requested) {
+//     future.Shutdown(); // Ensure no worker is using `future`.
+// }
+//
+template <TriviallyCopyable Type>
+struct Future {
+    using ValueType = Type;
+
+    enum class Status : u32 {
+        Inactive, // Unscheduled, no result.
+        Pending, // Scheduled to be filled but not started yet.
+        Running, // In progress.
+        Finished, // Completed, result is valid.
+    };
+    static constexpr u32 k_cancel_bit = 1u << 31;
+
+    // The working bit provides us with a safe way to ensure that the producer thread is done with this object
+    // without breaking the producer's ability to signal the consumer thread with a 'wake' call.
+    static constexpr u32 k_working_bit = 1u << 30;
+
+    static constexpr u32 k_status_mask = ~(k_cancel_bit | k_working_bit);
+
+    static bool IsInProgress(u32 s) {
+        return IsAnyOf(s & k_status_mask, Array {(u32)Status::Pending, (u32)Status::Running});
+    }
+    static bool IsCancelled(u32 s) { return s & k_cancel_bit; }
+    static bool IsFinished(u32 s) { return (s & k_status_mask) == (u32)Status::Finished; }
+    static bool IsInactive(u32 s) { return (s & k_status_mask) == (u32)Status::Inactive; }
+
+    // Thread-safe.
+    bool IsFinished() const { return IsFinished(status.Load(LoadMemoryOrder::Acquire)); }
+    bool HasResult() const { return IsFinished(); }
+    bool IsCancelled() const { return IsCancelled(status.Load(LoadMemoryOrder::Acquire)); }
+    bool IsInProgress() const { return IsInProgress(status.Load(LoadMemoryOrder::Acquire)); }
+    bool IsInactive() const { return IsInactive(status.Load(LoadMemoryOrder::Acquire)); }
+
+    // Consumer thread
+    Optional<Type> TryReleaseResult() {
+        if (IsFinished()) {
+            Type v = RawResult();
+            Reset();
+            return v;
+        } else
+            return {};
+    }
+
+    // Consumer thread
+    Type& Result() {
+        ASSERT(IsFinished());
+        return RawResult();
+    }
+
+    // Consumer thread
+    Type ReleaseResult() {
+        ASSERT(IsFinished());
+        Type v = RawResult();
+        Reset();
+        return v;
+    }
+
+    // Consumer thread
+    void Reset() {
+        ASSERT(!IsInProgress());
+        status.Store((u32)Status::Inactive, StoreMemoryOrder::Release);
+    }
+
+    // Consumer thread
+    bool WaitUntilFinished(Optional<u32> timeout_milliseconds = {}) {
+        while (true) {
+            auto const s = status.Load(LoadMemoryOrder::Acquire);
+
+            if (IsFinished(s) || IsInactive(s)) {
+                BusyWaitForWorkingBitClear();
+                return true;
+            }
+
+            if (WaitIfValueIsExpected(status, s, timeout_milliseconds) == WaitResult::TimedOut) return false;
+        }
+    }
+
+    // Consumer thread
+    bool Cancel() {
+        auto current = status.Load(LoadMemoryOrder::Acquire);
+        ASSERT(current != (u32)Status::Inactive, "Can't cancel an inactive future");
+
+        if (IsFinished(current)) return false;
+        if (IsCancelled(current)) return true;
+
+        auto const prev = status.FetchOr(k_cancel_bit, RmwMemoryOrder::AcquireRelease);
+        if (!(prev & k_cancel_bit)) {
+            // NOTE: if a producer thread was to call this, it would need to wake waiters here.
+            return true;
+        }
+
+        return false;
+    }
+
+    // Consumer thread
+    // Cancels, waits for finishing if needed and resets the status. Returns the value if there is one. Once
+    // this function returns, the producer thread is done with this Future (so long as it honours the Future
+    // API).
+    [[nodiscard]] Type* ShutdownAndRelease(Optional<u32> timeout_milliseconds = {}) {
+        auto const s = status.Load(LoadMemoryOrder::Acquire);
+        switch ((Status)(s & k_status_mask)) {
+            case Status::Finished:
+            case Status::Inactive:
+                if (s & k_working_bit) BusyWaitForWorkingBitClear();
+                return nullptr;
+
+            case Status::Pending:
+            case Status::Running: {
+                if (!(s & k_cancel_bit)) status.FetchOr(k_cancel_bit, RmwMemoryOrder::AcquireRelease);
+                if (!WaitUntilFinished(timeout_milliseconds)) Panic("Future::Shutdown timed out");
+                if (IsFinished()) {
+                    status.Store((u32)Status::Inactive, StoreMemoryOrder::Release);
+                    return &RawResult();
+                }
+                return nullptr;
+            }
+        }
+    }
+
+    // Producer thread.
+    // Returns true if we successfully set to running, false if we was cancelled.
+    // IMPORTANT: if this returns false, you must not touch this object again.
+    [[nodiscard]] bool TrySetRunning() {
+        while (true) {
+            auto current = status.Load(LoadMemoryOrder::Acquire);
+            ASSERT((current & k_status_mask) == (u32)Status::Pending);
+            ASSERT(current & k_working_bit);
+
+            if (current & k_cancel_bit) {
+                // We've been cancelled before we could start running. We set to Inactive instead of Finished
+                // because the Finished state suggests that there is a valid payload. We retain the cancel bit
+                // so that a reader can see what happened.
+                status.Store(k_cancel_bit | k_working_bit | (u32)Status::Inactive, StoreMemoryOrder::Release);
+
+                // We have set the new status, including the working bit. The working bit ensures we are safe
+                // to wake the waiters using the still-valid 'status' memory.
+                WakeWaitingThreads(status, NumWaitingThreads::All);
+
+                // We are done with this object now, we can clear the working bit meaning another thread can
+                // now free this memory if they choose.
+                status.FetchAnd(~k_working_bit, RmwMemoryOrder::Release);
+
+                return false;
+            }
+
+            if (status.CompareExchangeWeak(current,
+                                           (u32)Status::Running | k_working_bit,
+                                           RmwMemoryOrder::AcquireRelease,
+                                           LoadMemoryOrder::Acquire))
+                // We have successfully set to running and retained the working bit. The producer thread will
+                // continue its work.
+                return true;
+        }
+    }
+
+    // Producer/consumer thread. This is the first step in scheduling work.
+    void SetPending() {
+        ASSERT(IsInactive());
+        status.Store((u32)Status::Pending | k_working_bit, StoreMemoryOrder::Release);
+    }
+
+    // Producer thread. After this returns, you must not touch this object again.
+    void SetResult(Type const& v) {
+        RawResult() = v;
+
+        while (true) {
+            auto current = status.Load(LoadMemoryOrder::Acquire);
+            auto const s = (Status)(current & k_status_mask);
+            ASSERT(s == Status::Running);
+
+            // Try to exchange to finished, ensuring we retain the cancel bit. We might have been cancelled
+            // while running - we couldn't act on it, but we retain the information for the reader to see.
+            if (status.CompareExchangeWeak(current,
+                                           (current & k_cancel_bit) | (u32)Status::Finished,
+                                           RmwMemoryOrder::AcquireRelease,
+                                           LoadMemoryOrder::Acquire))
+                break;
+        }
+
+        WakeWaitingThreads(status, NumWaitingThreads::All);
+
+        // We are done touching status now, we can clear the working bit meaning another thread can now free
+        // this memory.
+        status.FetchAnd(~k_working_bit, RmwMemoryOrder::Release);
+    }
+
+    // Consumer thread. Private.
+    void BusyWaitForWorkingBitClear() {
+        while (status.Load(LoadMemoryOrder::Acquire) & k_working_bit) {
+            // Busy spin - this should be very brief.
+            SpinLoopPause();
+        }
+    }
+
+    // Private.
+    Type& RawResult() { return *(Type*)result_storage.data; }
+
+    ~Future() { ASSERT(!IsInProgress()); }
+
+    alignas(Type) Array<u8, sizeof(Type)> result_storage {};
+    Atomic<u32> status {(u32)Status::Inactive};
 };

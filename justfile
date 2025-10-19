@@ -46,7 +46,7 @@ patch-rpath:
     patch_file patchrpath "{{native_binary_dir}}/Floe.clap"
     patch_file patchrpath "{{native_binary_dir}}/Floe.vst3/Contents/x86_64-linux/Floe.so"
     patch_file patchinterpreter "{{native_binary_dir}}/tests"
-    patch_file patchinterpreter "{{native_binary_dir}}/docs_preprocessor"
+    patch_file patchinterpreter "{{native_binary_dir}}/docs_generator"
     patch_file patchinterpreter "{{native_binary_dir}}/VST3-Validator"
   fi
 
@@ -82,7 +82,7 @@ check-format:
 check-spelling:
   #!/usr/bin/env bash
   set -euo pipefail
-  output=$(fd . -e .md --exclude third_party_libs/ --exclude src/readme.md | xargs hunspell -l -d en_GB -p docs/ignored-spellings.dic | sort -u)
+  output=$(fd . -e .md -e .mdx --exclude third_party_libs/ | xargs hunspell -l -d en_GB -p ignored-spellings.dic | sort -u)
   echo "$output"
   test "$output" == ""
 
@@ -91,12 +91,12 @@ check-links:
   #!/usr/bin/env bash
   set -euxo pipefail
 
-  # If our website is being served locally (mdbook serve), we can check links against the local version by remapping
+  # If our website is being served locally (Docusaurus dev server), we can check links against the local version by remapping
   # floe.audio to localhost.
-  mdbook_localhost="http://localhost:3000"
+  docusaurus_localhost="http://localhost:3000"
   declare -a extra_args=()
-  if curl -s --head --request GET "$mdbook_localhost" | grep "200 OK" > /dev/null; then
-    extra_args=(--remap "https://floe.audio $mdbook_localhost")
+  if curl -s --head --request GET "$docusaurus_localhost" | grep "200 OK" > /dev/null; then
+    extra_args=(--remap "https://floe.audio $docusaurus_localhost")
   fi
   # For some reason creativecommons links return 403 via lychee, so we exclude them.
   lychee --exclude 'v%7B%7B#include' \
@@ -105,7 +105,7 @@ check-links:
          --exclude 'https://creativecommons.org/licenses/by-sa/4.0' \
          --exclude '==.*==' \
          "${extra_args[@]}" \
-         docs readme.md changelog.md
+         docs readme.md
 
 # install Compile DataBase (compile_commands.json)
 install-cbd arch_os_pair=native_arch_os_pair:
@@ -160,13 +160,64 @@ upload-errors:
     fi
   done
 
-# For some reason, on CI, the docs_preprocessor binary is not being found. This is a workaround.
-[unix]
-install-docs-preprocessor:
+project-items-json:
+  gh project item-list 1 --owner floe-audio --limit 100 --format json
+
+# Get project item ID for an issue number. All Floe Github issues are added to the project board automatically.
+project-item-id issue_number:
+  just project-items-json | jq -r ".items[] | select(.content.number == {{issue_number}}) | .id"
+
+# Our project board has a 'status' field for tracking our workflow. This command gets the status for an issue number.
+project-status issue_number:
+  just project-items-json | jq -r ".items[] | select(.content.number == {{issue_number}}) | .status // \"null\""
+
+# Set project board status for an issue number
+# Status options: "Up Next", "In Progress", "Done"
+project-set-status issue_number status:
   #!/usr/bin/env bash
-  set -x
-  sudo install "{{native_binary_dir_abs}}/docs_preprocessor" /usr/local/bin/ 2>&1 || { echo "Failed to install binary: $?"; exit 1; }
-  echo "Installation completed"
+  issue_id=$(just project-item-id {{issue_number}})
+  if [ -z "$issue_id" ]; then
+    echo "Error: Issue {{issue_number}} not found in project"
+    exit 1
+  fi
+  
+  # Map status names to option IDs
+  case "{{status}}" in
+    "Up Next") option_id="cabe1aa3" ;;
+    "In Progress") option_id="47fc9ee4" ;;
+    "Done") option_id="98236657" ;;
+    *) echo "Error: Invalid status '{{status}}'. Valid options: Up Next, In Progress, Done"; exit 1 ;;
+  esac
+  
+  gh project item-edit --id "$issue_id" --field-id "PVTSSF_lADOCkRkv84AkDXazgcUbLA" --single-select-option-id "$option_id" --project-id "PVT_kwDOCkRkv84AkDXa"
+
+# Get issues by status - returns issue numbers and titles
+project-issues-by-status status:
+  just project-items-json | jq '.items[] | select(.status == "{{status}}") | {number: .content.number, title: .title}'
+
+# Issues that have been solved, but not yet had a release are labelled "awaiting-release". This command
+# removes that label from all closed issues. It should be run after a release is made.
+release-cleanup:
+  #!/usr/bin/env bash
+  echo "Removing awaiting-release labels from released issues..."
+  gh issue list --label "awaiting-release" --state closed --json number \
+    --jq '.[].number' | while read issue_number; do
+    echo "Cleaning issue #$issue_number"
+    gh issue edit "$issue_number" --remove-label "awaiting-release"
+  done
+
+# Website development and build commands for Docusaurus
+website-dev:
+  #!/usr/bin/env bash
+  {{native_binary_dir}}/docs_generator > website/static/generated-data.json
+  cd website && npm run start
+
+website-build:
+  #!/usr/bin/env bash
+  # Generate static data first
+  {{native_binary_dir}}/docs_generator > website/static/generated-data.json
+  # Build Docusaurus site
+  cd website && npm run build
 
 # IMPROVE: (June 2024) cppcheck v2.14.0 and v2.14.1 thinks there are syntax errors in valid code. It could be a cppcheck bug or it could be an incompatibility in how we are using it. Regardless, we should try again in the future and see if it's fixed. If it works it should run alongside clang-tidy in CI, etc.
 # cppcheck arch_os_pair=native_arch_os_pair:
@@ -191,7 +242,12 @@ test-units:
   {{native_binary_dir}}/tests --log-level=debug --write-to-file
 
 test-pluginval: 
-  pluginval {{native_binary_dir}}/Floe.vst3
+  #!/usr/bin/env bash
+  args=""
+  if [[ "{{os()}}" == "linux" && ! -z "$CI" ]]; then
+    args="--skip-gui-tests"
+  fi
+  pluginval $args --validate {{native_binary_dir}}/Floe.vst3
 
 [macos]
 check-au-installed:
@@ -404,11 +460,16 @@ test-ci optimised="0":
   #!/usr/bin/env bash
   set -x
 
-  pushd docs
-  mdbook serve &
-  MDBOOK_PID=$!
-  sleep 2 # Wait a moment for the server to fully start
+  pushd website
+  npm run start &
+  DOCUSAURUS_PID=$!
   popd
+
+  # Start go-httpbin server for HTTP testing
+  go-httpbin -host 127.0.0.1 -port 8081 &
+  HTTPBIN_PID=$!
+
+  sleep 2 # Wait a moment for both servers to fully start
 
   if [[ "{{optimised}}" -eq 1 ]]; then
       just parallel "{{checks_ci_optimised}}"
@@ -418,9 +479,8 @@ test-ci optimised="0":
       return_code=$?
   fi
 
-  return_code=$?
-
-  kill $MDBOOK_PID
+  kill $DOCUSAURUS_PID
+  kill $HTTPBIN_PID
 
   exit $return_code
 
@@ -467,6 +527,25 @@ test-ci-windows:
   echo "| Command | Return-Code |" >> $GITHUB_STEP_SUMMARY
   echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
 
+  # Start go-httpbin server for HTTP testing
+  go run github.com/mccutchen/go-httpbin/v2/cmd/go-httpbin@latest -host 127.0.0.1 -port 8081 &
+  HTTPBIN_PID=$!
+
+  # Wait for server to be ready (poll with timeout)
+  echo "Waiting for go-httpbin server to start..."
+  for i in {1..30}; do
+    if curl -s --connect-timeout 1 http://127.0.0.1:8081/status >/dev/null 2>&1; then
+      echo "go-httpbin server is ready"
+      break
+    fi
+    if [ $i -eq 30 ]; then
+      echo "Timeout waiting for go-httpbin server to start"
+      kill $HTTPBIN_PID 2>/dev/null || true
+      exit 1
+    fi
+    sleep 1
+  done
+
   test() {
     local name="$1"
 
@@ -482,6 +561,11 @@ test-ci-windows:
   test test-windows-units
   test test-windows-vst3-val 
   test test-windows-clap-val
+
+  # Try to kill the go-httpbin server
+  kill $HTTPBIN_PID 2>/dev/null || true
+  # Fallback: kill any remaining go-httpbin processes
+  pkill -f "go-httpbin" 2>/dev/null || true
 
   if [[ ! -v $GITHUB_ACTIONS ]]; then
     cat {{cache_dir}}/test_ci_windows_summary.md
@@ -538,7 +622,7 @@ echo-latest-changes:
   #!/usr/bin/env bash
   # Extract text from the heading with the current version number until the next heading with exactly 2 hashes
   version=$(cat version.txt)
-  changes=$(sed -n "/^## $version/,/^## [^#]/ { /^## [^#]/!p }" changelog.md)
+  changes=$(sed -n "/^## $version/,/^## [^#]/ { /^## [^#]/!p }" website/docs/changelog.md)
   printf "%s" "$changes" # trim trailing newline
 
 [unix, no-cd]

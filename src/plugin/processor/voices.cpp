@@ -315,6 +315,7 @@ inline auto FastCos(ScalarOrVectorFloat auto x) {
 
 // SIMD version where 2 pan positions are processed at once.
 // The result is a vector of 4 floats: {left 1, right 1, left 2, right 2}.
+// Constant power pan law (AKA -3dB centre).
 inline f32x4 EqualPanGains2(f32x2 pan_pos) {
     auto const angle = pan_pos * (k_pi<f32> * 0.25f);
     auto const sinx = FastSin(angle);

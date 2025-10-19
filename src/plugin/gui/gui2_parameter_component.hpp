@@ -4,6 +4,7 @@
 #pragma once
 
 #include "gui_framework/gui_box_system.hpp"
+#include "gui_fwd.hpp"
 
 // Box-system version of gui_widget_compounds.hpp
 

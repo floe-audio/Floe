@@ -4,6 +4,7 @@
 
 #include "engine/engine.hpp"
 #include "gui/gui2_common_picker.hpp"
+#include "gui/gui2_confirmation_dialog_state.hpp"
 #include "gui/gui2_ir_picker_state.hpp"
 #include "gui/gui_library_images.hpp"
 #include "gui_framework/gui_box_system.hpp"
@@ -16,13 +17,15 @@ struct IrPickerContext {
     void Deinit() { sample_lib_server::ReleaseAll(libraries); }
 
     sample_lib_server::Server& sample_library_server;
-    LibraryImagesArray& library_images;
+    LibraryImagesTable& library_images;
     Engine& engine;
+    prefs::Preferences& prefs;
     Optional<graphics::ImageID>& unknown_library_icon;
     Notifications& notifications;
     persistent_store::Store& persistent_store;
+    ConfirmationDialogState& confirmation_dialog_state;
 
-    Span<sample_lib_server::RefCounted<sample_lib::Library>> libraries;
+    Span<sample_lib_server::ResourcePointer<sample_lib::Library>> libraries;
 };
 
 struct IrCursor {

@@ -83,33 +83,6 @@
           };
         };
 
-        # created using nix-init
-        mdbook-sitemap-generator = pkgs.buildGoModule rec {
-          pname = "mdbook-sitemap-generator";
-          version = "1.2.0";
-
-          src = pkgs.fetchFromGitHub {
-            owner = "loicsikidi";
-            repo = "mdbook-sitemap-generator";
-            rev = "v${version}";
-            hash = "sha256-CGj6sWgOzI2cimX7KE0TkXOR6KlTOk2ZbIb3c5X6TSk=";
-          };
-
-          vendorHash = "sha256-WUQW8EDJ7kT2CUZsNtlVUVwwqFRHkpkU6pFmx7/MDGg=";
-
-          ldflags = [
-            "-s"
-            "-w"
-          ];
-
-          meta = {
-            description = "Utility to generate a sitemap.xml file for an mdbook project";
-            homepage = "https://github.com/loicsikidi/mdbook-sitemap-generator";
-            license = pkgs.lib.licenses.asl20;
-            maintainers = with pkgs.lib.maintainers; [ ];
-            mainProgram = "mdbook-sitemap-generator";
-          };
-        };
 
         # created using nix-init
         pluginval = pkgs.stdenv.mkDerivation rec {
@@ -193,8 +166,6 @@
               pkgs.fd
               pkgs.just
               pkgs.reuse
-              pkgs.mdbook
-              mdbook-sitemap-generator
               pkgs.osslsigncode
               pkgs.wget
               pkgs.hunspell
@@ -203,6 +174,8 @@
               zigpkgs."0.14.0"
               pkgs-unstable.zls
               pkgs.sentry-cli
+              pkgs.go-httpbin # HTTP testing server
+              pkgs.nodejs_24 # For Docusaurus website development
 
               # dsymutil internally calls "lipo", so we have to make sure it's available under that name
               (pkgs.writeShellScriptBin "lipo" "llvm-lipo $@")

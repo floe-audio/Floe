@@ -117,36 +117,35 @@ RunFilePicker(FilePickerDialogOptions const& args, ArenaAllocator& arena, HWND p
     ASSERT(f);
     DEFER { f->Release(); };
 
-    if (args.default_path) {
-        ASSERT(args.default_path->size);
-        ASSERT(IsValidUtf8(*args.default_path));
-        ASSERT(path::IsAbsolute(*args.default_path));
+    if (args.default_folder) {
+        ASSERT(args.default_folder->size);
+        ASSERT(IsValidUtf8(*args.default_folder));
+        ASSERT(path::IsAbsolute(*args.default_folder));
 
         PathArena temp_path_arena {Malloc::Instance()};
 
-        if (auto const narrow_dir = path::Directory(*args.default_path)) {
-            auto dir = WidenAllocNullTerm(temp_path_arena, *narrow_dir).Value();
-            Replace(dir, L'/', L'\\');
-            IShellItem* item = nullptr;
-            // SHCreateItemFromParsingName can fail with ERROR_FILE_NOT_FOUND. We only set the default folder
-            // if it succeeds.
-            if (auto const hr = SHCreateItemFromParsingName(dir.data, nullptr, IID_PPV_ARGS(&item));
-                SUCCEEDED(hr)) {
-                ASSERT(item);
-                DEFER { item->Release(); };
+        auto wide_dir = WidenAllocNullTerm(temp_path_arena, *args.default_folder).Value();
+        Replace(wide_dir, L'/', L'\\');
+        IShellItem* item = nullptr;
+        // SHCreateItemFromParsingName can fail with ERROR_FILE_NOT_FOUND. We only set the default folder
+        // if it succeeds.
+        if (auto const hr = SHCreateItemFromParsingName(wide_dir.data, nullptr, IID_PPV_ARGS(&item));
+            SUCCEEDED(hr)) {
+            ASSERT(item);
+            DEFER { item->Release(); };
 
-                constexpr bool k_forced_default_folder = false;
-                if constexpr (k_forced_default_folder)
-                    f->SetFolder(item);
-                else
-                    f->SetDefaultFolder(item);
-            }
+            constexpr bool k_forced_default_folder = false;
+            if constexpr (k_forced_default_folder)
+                f->SetFolder(item);
+            else
+                f->SetDefaultFolder(item);
         }
+    }
 
-        if (args.type == FilePickerDialogOptions::Type::SaveFile) {
-            auto filename = path::Filename(*args.default_path);
-            f->SetFileName(WidenAllocNullTerm(temp_path_arena, filename).Value().data);
-        }
+    if (args.default_filename && args.type == FilePickerDialogOptions::Type::SaveFile) {
+        PathArena temp_path_arena {Malloc::Instance()};
+        auto wide_filename = WidenAllocNullTerm(temp_path_arena, *args.default_filename).Value();
+        f->SetFileName(wide_filename.data);
     }
 
     if (args.filters.size) {
@@ -364,6 +363,37 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePicker
     return k_success;
 }
 
+static Optional<KeyCode> WindowsVkToKeyCode(WPARAM vk) {
+    switch (vk) {
+        case VK_TAB: return KeyCode::Tab;
+        case VK_LEFT: return KeyCode::LeftArrow;
+        case VK_RIGHT: return KeyCode::RightArrow;
+        case VK_UP: return KeyCode::UpArrow;
+        case VK_DOWN: return KeyCode::DownArrow;
+        case VK_PRIOR: return KeyCode::PageUp; // Page Up
+        case VK_NEXT: return KeyCode::PageDown; // Page Down
+        case VK_HOME: return KeyCode::Home;
+        case VK_END: return KeyCode::End;
+        case VK_DELETE: return KeyCode::Delete;
+        case VK_BACK: return KeyCode::Backspace;
+        case VK_RETURN: return KeyCode::Enter;
+        case VK_ESCAPE: return KeyCode::Escape;
+        case VK_F1: return KeyCode::F1;
+        case VK_F2: return KeyCode::F2;
+        case VK_F3: return KeyCode::F3;
+        case VK_LSHIFT: return KeyCode::ShiftL;
+        case VK_RSHIFT: return KeyCode::ShiftR;
+        case 'A': return KeyCode::A;
+        case 'C': return KeyCode::C;
+        case 'V': return KeyCode::V;
+        case 'X': return KeyCode::X;
+        case 'Y': return KeyCode::Y;
+        case 'Z': return KeyCode::Z;
+        case 'F': return KeyCode::F;
+    }
+    return k_nullopt;
+}
+
 static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
     if (PanicOccurred()) return false;
 
@@ -407,32 +437,59 @@ static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
 
         ASSERT(g_is_logical_main_thread);
 
-        // We only want messages when wants_keyboard_input is true.
-        {
-            // WARNING: doing this is not part of Pugl's public API - it might break.
-            auto view = (PuglView*)GetWindowLongPtrW(msg.hwnd, GWLP_USERDATA);
+        // WARNING: doing this is not part of Pugl's public API - it might break.
+        auto view = (PuglView*)GetWindowLongPtrW(msg.hwnd, GWLP_USERDATA);
+        ASSERT(view);
+        auto& platform = *(GuiPlatform*)puglGetHandle(view);
 
-            auto& platform = *(GuiPlatform*)puglGetHandle(view);
+        // Determine if we want to consume the original message
+        bool const consume_original_message = ({
+            bool wants = false;
+            switch (msg.message) {
+                case WM_CHAR:
+                case WM_SYSCHAR: {
+                    // Character messages - only consume if we want text input
+                    wants = platform.last_result.wants_text_input;
+                    break;
+                }
+                case WM_KEYDOWN:
+                case WM_SYSKEYDOWN:
+                case WM_KEYUP:
+                case WM_SYSKEYUP: {
+                    // Key up/down messages - only consume if we want this specific key
+                    if (auto const key_code = WindowsVkToKeyCode(msg.wParam))
+                        wants = platform.last_result.wants_keyboard_keys.Get(ToInt(*key_code));
+                    break;
+                }
+            }
+            wants;
+        });
 
-            if (!platform.last_result.wants_keyboard_input) return false;
-        }
+        bool consume_char_message = false;
+        MSG peeked {};
 
         // "If the message is translated (that is, a character message is posted to the thread's message
         // queue), the return value is nonzero. If the message is WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, or
         // WM_SYSKEYUP, the return value is nonzero, regardless of the translation."
         if (TranslateMessage(&msg)) {
-            // We don't want the message in the message queue because it might reach other windows - we want
-            // to consume it for ourselves.
-            MSG peeked {};
-            if (PeekMessageW(&peeked, msg.hwnd, WM_CHAR, WM_DEADCHAR, PM_REMOVE) ||
-                PeekMessageW(&peeked, msg.hwnd, WM_SYSCHAR, WM_SYSDEADCHAR, PM_REMOVE)) {
-                SendMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
-                return true;
+            // Check if we want the character message that was generated. If we don't want it, leave it in the
+            // queue for the host.
+            if (platform.last_result.wants_text_input) {
+                // We check it and, if needed, remove it from queue using PM_REMOVE so host doesn't get it.
+                if (PeekMessageW(&peeked, msg.hwnd, WM_CHAR, WM_DEADCHAR, PM_REMOVE) ||
+                    PeekMessageW(&peeked, msg.hwnd, WM_SYSCHAR, WM_SYSDEADCHAR, PM_REMOVE)) {
+                    consume_char_message = true;
+                }
             }
         }
-        SendMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
 
-        return true;
+        // Send the messages we want to consume
+        if (consume_original_message) SendMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
+        if (consume_char_message) SendMessageW(msg.hwnd, peeked.message, peeked.wParam, peeked.lParam);
+
+        // Return true only if we consumed the original message (which will cause MessageHook to scrub it)
+        // Character message consumption is handled separately via PeekMessage removal
+        return consume_original_message;
     } catch (PanicException) {
         return false;
     }

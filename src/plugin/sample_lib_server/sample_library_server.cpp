@@ -56,7 +56,7 @@ struct PendingLibraryJobs {
             struct Args {
                 PathOrMemory path_or_memory;
                 sample_lib::FileFormat format;
-                LibrariesList& libraries;
+                LibrariesAtomicList& libraries;
             };
             struct Result {
                 ArenaAllocator arena {PageAllocator::Instance()};
@@ -70,7 +70,7 @@ struct PendingLibraryJobs {
         struct ScanFolder {
             struct Args {
                 detail::ScanFolder* folder;
-                LibrariesList& libraries;
+                LibrariesAtomicList& libraries;
             };
             struct Result {
                 ErrorCodeOr<void> outcome {};
@@ -102,7 +102,7 @@ struct PendingLibraryJobs {
 };
 
 static void ReadLibraryAsync(PendingLibraryJobs& pending_library_jobs,
-                             LibrariesList& lib_list,
+                             LibrariesAtomicList& lib_list,
                              PathOrMemory path_or_memory,
                              sample_lib::FileFormat format);
 
@@ -142,7 +142,7 @@ static void DoReadLibraryJob(PendingLibraryJobs::Job::ReadLibrary& job, ArenaAll
 static void DoScanFolderJob(PendingLibraryJobs::Job::ScanFolder& job,
                             ArenaAllocator& scratch_arena,
                             PendingLibraryJobs& pending_library_jobs,
-                            LibrariesList& lib_list) {
+                            LibrariesAtomicList& lib_list) {
     auto folder = job.args.folder;
     ASSERT(folder);
 
@@ -172,7 +172,7 @@ static void DoScanFolderJob(PendingLibraryJobs::Job::ScanFolder& job,
 
 // threadsafe
 static void AddAsyncJob(PendingLibraryJobs& pending_library_jobs,
-                        LibrariesList& lib_list,
+                        LibrariesAtomicList& lib_list,
                         PendingLibraryJobs::Job::DataUnion data) {
     ZoneNamed(add_job, true);
     PendingLibraryJobs::Job* job;
@@ -220,7 +220,7 @@ static void AddAsyncJob(PendingLibraryJobs& pending_library_jobs,
 
 // threadsafe
 static void ReadLibraryAsync(PendingLibraryJobs& pending_library_jobs,
-                             LibrariesList& lib_list,
+                             LibrariesAtomicList& lib_list,
                              PathOrMemory path_or_memory,
                              sample_lib::FileFormat format) {
     auto read_job = ({
@@ -485,7 +485,7 @@ static bool UpdateLibraryJobs(Server& server,
         });
 
         // we buffer these up so we don't spam the channels with notifications
-        DynamicArray<LibrariesList::Node*> libraries_that_changed {scratch_arena};
+        DynamicArray<LibrariesAtomicList::Node*> libraries_that_changed {scratch_arena};
 
         if (auto const outcome = PollDirectoryChanges(*watcher,
                                                       {
@@ -683,18 +683,21 @@ ListedAudioData::~ListedAudioData() {
     auto const s = state.Load(LoadMemoryOrder::Acquire);
     ASSERT(s == FileLoadingState::CompletedCancelled || s == FileLoadingState::CompletedWithError ||
            s == FileLoadingState::CompletedSucessfully);
+    ASSERT(ref_count.Load(LoadMemoryOrder::Relaxed) == 0);
     if (audio_data.interleaved_samples.size)
         AudioDataAllocator::Instance().Free(audio_data.interleaved_samples.ToByteSpan());
     library_ref_count.FetchSub(1, RmwMemoryOrder::Relaxed);
 }
 
 ListedInstrument::~ListedInstrument() {
+    ASSERT(ref_count.Load(LoadMemoryOrder::Relaxed) == 0);
     ZoneScoped;
     for (auto a : audio_data_set)
         a->ref_count.FetchSub(1, RmwMemoryOrder::Relaxed);
 }
 
 ListedImpulseResponse::~ListedImpulseResponse() {
+    ASSERT(ref_count.Load(LoadMemoryOrder::Relaxed) == 0);
     audio_data->ref_count.FetchSub(1, RmwMemoryOrder::Relaxed);
 }
 
@@ -796,7 +799,7 @@ static void TriggerReloadIfAudioIsCancelled(ListedAudioData& audio_data,
     }
 }
 
-static ListedAudioData* FetchOrCreateAudioData(LibrariesList::Node& lib_node,
+static ListedAudioData* FetchOrCreateAudioData(LibrariesAtomicList::Node& lib_node,
                                                sample_lib::LibraryPath path,
                                                ThreadPoolArgs thread_pool_args,
                                                u32 debug_inst_id) {
@@ -825,7 +828,7 @@ static ListedAudioData* FetchOrCreateAudioData(LibrariesList::Node& lib_node,
     return audio_data;
 }
 
-static ListedInstrument* FetchOrCreateInstrument(LibrariesList::Node& lib_node,
+static ListedInstrument* FetchOrCreateInstrument(LibrariesAtomicList::Node& lib_node,
                                                  sample_lib::Instrument const& inst,
                                                  ThreadPoolArgs thread_pool_args) {
     auto& lib = lib_node.value;
@@ -884,7 +887,7 @@ static ListedInstrument* FetchOrCreateInstrument(LibrariesList::Node& lib_node,
     return new_inst;
 }
 
-static ListedImpulseResponse* FetchOrCreateImpulseResponse(LibrariesList::Node& lib_node,
+static ListedImpulseResponse* FetchOrCreateImpulseResponse(LibrariesAtomicList::Node& lib_node,
                                                            sample_lib::ImpulseResponse const& ir,
                                                            ThreadPoolArgs thread_pool_args) {
     auto audio_data = FetchOrCreateAudioData(lib_node, ir.path, thread_pool_args, 999999);
@@ -1090,7 +1093,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
         ASSERT(library_id.name.size != 0);
         ASSERT(library_id.author.size != 0);
 
-        LibrariesList::Node* lib {};
+        LibrariesAtomicList::Node* lib {};
         if (auto l_ptr = server.libraries_by_id.Find(library_id)) lib = *l_ptr;
 
         auto const find_lib_error_id =
@@ -1270,8 +1273,8 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
             });
             if (num_completed == i->audio_data_set.size) {
                 pending_resource.LoadingPercent().Store(-1, StoreMemoryOrder::Relaxed);
-                pending_resource.state = Resource {
-                    RefCounted<sample_lib::LoadedInstrument> {i->inst, i->ref_count, &server.work_signaller}};
+                pending_resource.state =
+                    Resource {ResourcePointer<sample_lib::LoadedInstrument> {i->inst, i->ref_count}};
             } else {
                 f32 const percent = 100.0f * ((f32)num_completed / (f32)i->audio_data_set.size);
                 pending_resource.LoadingPercent().Store(RoundPositiveFloat(percent),
@@ -1323,10 +1326,9 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
             case FileLoadingState::CompletedSucessfully: {
                 error_notifications.RemoveError(audio_load_error_id);
                 pending_resource.state = Resource {
-                    RefCounted<sample_lib::LoadedIr> {
+                    ResourcePointer<sample_lib::LoadedIr> {
                         ir_ptr->ir,
                         ir_ptr->ref_count,
-                        &server.work_signaller,
                     },
                 };
                 break;
@@ -1389,7 +1391,26 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
 
             server.channels.Use([&](auto&) {
                 if (pending_resource.request.async_comms_channel.used.Load(LoadMemoryOrder::Acquire)) {
-                    result.Retain();
+                    // We always add results with a ref count of 1, we do that manually rather than call
+                    // Retain() because here we accept that ref count might be 0 here: something that is
+                    // disallowed in Retain().
+                    if (auto ref_count = ({
+                            Atomic<u32>* rc = nullptr;
+                            if (auto resource = pending_resource.state.TryGet<Resource>()) {
+                                switch (resource->tag) {
+                                    case LoadRequestType::Instrument:
+                                        rc = resource->Get<ResourcePointer<sample_lib::LoadedInstrument>>()
+                                                 .ref_count;
+                                        break;
+                                    case LoadRequestType::Ir:
+                                        rc = resource->Get<ResourcePointer<sample_lib::LoadedIr>>().ref_count;
+                                        break;
+                                }
+                            }
+                            rc;
+                        })) {
+                        ref_count->FetchAdd(1, RmwMemoryOrder::Relaxed);
+                    }
                     pending_resource.request.async_comms_channel.results.Push(result);
                     pending_resource.request.async_comms_channel.result_added_callback();
                 }
@@ -1534,7 +1555,7 @@ static void ServerThreadProc(Server& server) {
 
         DeleteUnusedScanFolders(server.scan_folders);
 
-        // We have completed all of the loading requests, but there might still be audio data that is in the
+        // We have completed all the loading requests, but there might still be audio data that is in the
         // thread pool. We need for them to finish before we potentially delete the memory that they rely on.
         pending_resources.thread_pool_jobs.WaitUntilZero();
 
@@ -1556,13 +1577,14 @@ inline String ToString(EmbeddedString s) { return {s.data, s.size}; }
 // not threadsafe
 static sample_lib::Library* BuiltinLibrary() {
     static constexpr String k_icon_path = "builtin-library-icon";
+    static constexpr String k_background_path = "builtin-library-background";
     static sample_lib::Library builtin_library {
         .name = sample_lib::k_builtin_library_id.name,
         .tagline = "Built-in IRs",
         .library_url = FLOE_HOMEPAGE_URL,
         .author = sample_lib::k_builtin_library_id.author,
         .minor_version = 1,
-        .background_image_path = k_nullopt,
+        .background_image_path = k_background_path,
         .icon_image_path = k_icon_path,
         .insts_by_name = {},
         .irs_by_name = {},
@@ -1572,6 +1594,9 @@ static sample_lib::Library* BuiltinLibrary() {
                                  sample_lib::LibraryPath path) -> ErrorCodeOr<Reader> {
             if (path == k_icon_path) {
                 auto data = EmbeddedIconImage();
+                return Reader::FromMemory({data.data, data.size});
+            } else if (path == k_background_path) {
+                auto data = EmbeddedDefaultBackground();
                 return Reader::FromMemory({data.data, data.size});
             }
 
@@ -1676,7 +1701,7 @@ Server::~Server() {
     end_thread.Store(true, StoreMemoryOrder::Release);
     work_signaller.Signal();
     thread.Join();
-    ASSERT(channels.Use([](auto& h) { return h.Empty(); }), "missing channel close");
+    ASSERT(channels.Use([](auto& c) { return c.Empty(); }), "missing channel close");
 
     scan_folders.folder_allocator.Clear();
 }
@@ -1790,21 +1815,23 @@ void SetExtraScanFolders(Server& server, Span<String const> extra_folders) {
     }
 }
 
-Span<RefCounted<sample_lib::Library>> AllLibrariesRetained(Server& server, ArenaAllocator& arena) {
+detail::LibrariesAtomicList& LibrariesList(Server& server) { return server.libraries; }
+
+Span<ResourcePointer<sample_lib::Library>> AllLibrariesRetained(Server& server, ArenaAllocator& arena) {
     // IMPROVE: is this slow to do at every request for a library?
     RequestScanningOfUnscannedFolders(server);
 
-    DynamicArray<RefCounted<sample_lib::Library>> result(arena);
+    DynamicArray<ResourcePointer<sample_lib::Library>> result(arena);
     for (auto& i : server.libraries) {
         if (i.TryRetain()) {
-            auto ref = RefCounted<sample_lib::Library>(*i.value.lib, i.reader_uses, nullptr);
+            auto ref = ResourcePointer<sample_lib::Library>(*i.value.lib, i.reader_uses);
             dyn::Append(result, ref);
         }
     }
     return result.ToOwnedSpan();
 }
 
-RefCounted<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::LibraryIdRef id) {
+ResourcePointer<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::LibraryIdRef id) {
     // IMPROVE: is this slow to do at every request for a library?
     RequestScanningOfUnscannedFolders(server);
 
@@ -1814,21 +1841,23 @@ RefCounted<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::
     if (!l) return {};
     auto& node = **l;
     if (!node.TryRetain()) return {};
-    return RefCounted<sample_lib::Library>(*node.value.lib, node.reader_uses, nullptr);
+    return ResourcePointer<sample_lib::Library>(*node.value.lib, node.reader_uses);
 }
 
-void LoadResult::ChangeRefCount(RefCountChange t) const {
+void LoadResult::ChangeRefCount(RefCountChange t) {
     if (auto resource_union = result.TryGet<Resource>()) {
         switch (resource_union->tag) {
             case LoadRequestType::Instrument:
-                resource_union->Get<RefCounted<sample_lib::LoadedInstrument>>().ChangeRefCount(t);
+                resource_union->Get<ResourcePointer<sample_lib::LoadedInstrument>>().ChangeRefCount(t);
                 break;
             case LoadRequestType::Ir:
-                resource_union->Get<RefCounted<sample_lib::LoadedIr>>().ChangeRefCount(t);
+                resource_union->Get<ResourcePointer<sample_lib::LoadedIr>>().ChangeRefCount(t);
                 break;
         }
     }
 }
+
+void LoadResult::ChangeRefCount(RefCountChange t) const { const_cast<LoadResult*>(this)->ChangeRefCount(t); }
 
 //=================================================
 //  _______        _
@@ -1989,7 +2018,8 @@ TEST_CASE(TestSampleLibraryServer) {
                                           .ir_name = String {builtin_ir.name.data, builtin_ir.name.size}},
                     .check_result =
                         [&](LoadResult const& r, LoadRequest const& request) {
-                            auto ir = ExtractSuccess<RefCounted<sample_lib::LoadedIr>>(tester, r, request);
+                            auto ir =
+                                ExtractSuccess<ResourcePointer<sample_lib::LoadedIr>>(tester, r, request);
                             REQUIRE(ir->audio_data);
                             CHECK(ir->audio_data->interleaved_samples.size);
                         },
@@ -1997,154 +2027,160 @@ TEST_CASE(TestSampleLibraryServer) {
         }
 
         SUBCASE("library and instrument") {
-            dyn::Append(
-                requests,
-                {
-                    .request =
-                        LoadRequestInstrumentIdWithLayer {
-                            .id =
-                                {
-                                    .library = {{.author = sample_lib::k_mdata_library_author,
-                                                 .name = "SharedFilesMdata"_s}},
-                                    .inst_name = "Groups And Refs"_s,
+            dyn::Append(requests,
+                        {
+                            .request =
+                                LoadRequestInstrumentIdWithLayer {
+                                    .id =
+                                        {
+                                            .library = {{.author = sample_lib::k_mdata_library_author,
+                                                         .name = "SharedFilesMdata"_s}},
+                                            .inst_name = "Groups And Refs"_s,
+                                        },
+                                    .layer_index = 0,
                                 },
-                            .layer_index = 0,
-                        },
-                    .check_result =
-                        [&](LoadResult const& r, LoadRequest const& request) {
-                            auto inst =
-                                ExtractSuccess<RefCounted<sample_lib::LoadedInstrument>>(tester, r, request);
-                            CHECK(inst->audio_datas.size);
-                        },
-                });
+                            .check_result =
+                                [&](LoadResult const& r, LoadRequest const& request) {
+                                    auto inst = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
+                                        tester,
+                                        r,
+                                        request);
+                                    CHECK(inst->audio_datas.size);
+                                },
+                        });
         }
 
         SUBCASE("library and instrument (lua)") {
-            dyn::Append(
-                requests,
-                {
-                    .request =
-                        LoadRequestInstrumentIdWithLayer {
-                            .id =
-                                {
-                                    .library = {{.author = "Tester"_s, .name = "Test Lua"_s}},
-                                    .inst_name = "Single Sample"_s,
+            dyn::Append(requests,
+                        {
+                            .request =
+                                LoadRequestInstrumentIdWithLayer {
+                                    .id =
+                                        {
+                                            .library = {{.author = "Tester"_s, .name = "Test Lua"_s}},
+                                            .inst_name = "Single Sample"_s,
+                                        },
+                                    .layer_index = 0,
                                 },
-                            .layer_index = 0,
-                        },
-                    .check_result =
-                        [&](LoadResult const& r, LoadRequest const& request) {
-                            auto inst =
-                                ExtractSuccess<RefCounted<sample_lib::LoadedInstrument>>(tester, r, request);
-                            CHECK(inst->audio_datas.size);
-                        },
-                });
+                            .check_result =
+                                [&](LoadResult const& r, LoadRequest const& request) {
+                                    auto inst = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
+                                        tester,
+                                        r,
+                                        request);
+                                    CHECK(inst->audio_datas.size);
+                                },
+                        });
         }
 
         SUBCASE("audio file shared across insts") {
-            dyn::Append(
-                requests,
-                {
-                    .request =
-                        LoadRequestInstrumentIdWithLayer {
-                            .id =
-                                {
-                                    .library = {{
-                                        .author = sample_lib::k_mdata_library_author,
-                                        .name = "SharedFilesMdata"_s,
-                                    }},
-                                    .inst_name = "Groups And Refs"_s,
+            dyn::Append(requests,
+                        {
+                            .request =
+                                LoadRequestInstrumentIdWithLayer {
+                                    .id =
+                                        {
+                                            .library = {{
+                                                .author = sample_lib::k_mdata_library_author,
+                                                .name = "SharedFilesMdata"_s,
+                                            }},
+                                            .inst_name = "Groups And Refs"_s,
+                                        },
+                                    .layer_index = 0,
                                 },
-                            .layer_index = 0,
-                        },
-                    .check_result =
-                        [&](LoadResult const& r, LoadRequest const& request) {
-                            auto i =
-                                ExtractSuccess<RefCounted<sample_lib::LoadedInstrument>>(tester, r, request);
-                            CHECK_EQ(i->instrument.name, "Groups And Refs"_s);
-                            CHECK_EQ(i->audio_datas.size, 4u);
-                            for (auto& d : i->audio_datas)
-                                CHECK_NEQ(d->interleaved_samples.size, 0u);
-                        },
-                });
-            dyn::Append(
-                requests,
-                {
-                    .request =
-                        LoadRequestInstrumentIdWithLayer {
-                            .id =
-                                {
-                                    .library = {{
-                                        .author = sample_lib::k_mdata_library_author,
-                                        .name = "SharedFilesMdata"_s,
-                                    }},
-                                    .inst_name = "Groups And Refs (copy)"_s,
+                            .check_result =
+                                [&](LoadResult const& r, LoadRequest const& request) {
+                                    auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
+                                        tester,
+                                        r,
+                                        request);
+                                    CHECK_EQ(i->instrument.name, "Groups And Refs"_s);
+                                    CHECK_EQ(i->audio_datas.size, 4u);
+                                    for (auto& d : i->audio_datas)
+                                        CHECK_NEQ(d->interleaved_samples.size, 0u);
                                 },
-                            .layer_index = 1,
-                        },
-                    .check_result =
-                        [&](LoadResult const& r, LoadRequest const& request) {
-                            auto i =
-                                ExtractSuccess<RefCounted<sample_lib::LoadedInstrument>>(tester, r, request);
-                            CHECK_EQ(i->instrument.name, "Groups And Refs (copy)"_s);
-                            CHECK_EQ(i->audio_datas.size, 4u);
-                            for (auto& d : i->audio_datas)
-                                CHECK_NEQ(d->interleaved_samples.size, 0u);
-                        },
-                });
-            dyn::Append(
-                requests,
-                {
-                    .request =
-                        LoadRequestInstrumentIdWithLayer {
-                            .id =
-                                {
-                                    .library = {{
-                                        .author = sample_lib::k_mdata_library_author,
-                                        .name = "SharedFilesMdata"_s,
-                                    }},
-                                    .inst_name = "Single Sample"_s,
+                        });
+            dyn::Append(requests,
+                        {
+                            .request =
+                                LoadRequestInstrumentIdWithLayer {
+                                    .id =
+                                        {
+                                            .library = {{
+                                                .author = sample_lib::k_mdata_library_author,
+                                                .name = "SharedFilesMdata"_s,
+                                            }},
+                                            .inst_name = "Groups And Refs (copy)"_s,
+                                        },
+                                    .layer_index = 1,
                                 },
-                            .layer_index = 2,
-                        },
-                    .check_result =
-                        [&](LoadResult const& r, LoadRequest const& request) {
-                            auto i =
-                                ExtractSuccess<RefCounted<sample_lib::LoadedInstrument>>(tester, r, request);
-                            CHECK_EQ(i->instrument.name, "Single Sample"_s);
-                            CHECK_EQ(i->audio_datas.size, 1u);
-                            for (auto& d : i->audio_datas)
-                                CHECK_NEQ(d->interleaved_samples.size, 0u);
-                        },
-                });
+                            .check_result =
+                                [&](LoadResult const& r, LoadRequest const& request) {
+                                    auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
+                                        tester,
+                                        r,
+                                        request);
+                                    CHECK_EQ(i->instrument.name, "Groups And Refs (copy)"_s);
+                                    CHECK_EQ(i->audio_datas.size, 4u);
+                                    for (auto& d : i->audio_datas)
+                                        CHECK_NEQ(d->interleaved_samples.size, 0u);
+                                },
+                        });
+            dyn::Append(requests,
+                        {
+                            .request =
+                                LoadRequestInstrumentIdWithLayer {
+                                    .id =
+                                        {
+                                            .library = {{
+                                                .author = sample_lib::k_mdata_library_author,
+                                                .name = "SharedFilesMdata"_s,
+                                            }},
+                                            .inst_name = "Single Sample"_s,
+                                        },
+                                    .layer_index = 2,
+                                },
+                            .check_result =
+                                [&](LoadResult const& r, LoadRequest const& request) {
+                                    auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
+                                        tester,
+                                        r,
+                                        request);
+                                    CHECK_EQ(i->instrument.name, "Single Sample"_s);
+                                    CHECK_EQ(i->audio_datas.size, 1u);
+                                    for (auto& d : i->audio_datas)
+                                        CHECK_NEQ(d->interleaved_samples.size, 0u);
+                                },
+                        });
         }
 
         SUBCASE("audio files shared within inst") {
-            dyn::Append(
-                requests,
-                {
-                    .request =
-                        LoadRequestInstrumentIdWithLayer {
-                            .id =
-                                {
-                                    .library = {{
-                                        .author = sample_lib::k_mdata_library_author,
-                                        .name = "SharedFilesMdata"_s,
-                                    }},
-                                    .inst_name = "Same Sample Twice"_s,
+            dyn::Append(requests,
+                        {
+                            .request =
+                                LoadRequestInstrumentIdWithLayer {
+                                    .id =
+                                        {
+                                            .library = {{
+                                                .author = sample_lib::k_mdata_library_author,
+                                                .name = "SharedFilesMdata"_s,
+                                            }},
+                                            .inst_name = "Same Sample Twice"_s,
+                                        },
+                                    .layer_index = 0,
                                 },
-                            .layer_index = 0,
-                        },
-                    .check_result =
-                        [&](LoadResult const& r, LoadRequest const& request) {
-                            auto i =
-                                ExtractSuccess<RefCounted<sample_lib::LoadedInstrument>>(tester, r, request);
-                            CHECK_EQ(i->instrument.name, "Same Sample Twice"_s);
-                            CHECK_EQ(i->audio_datas.size, 2u);
-                            for (auto& d : i->audio_datas)
-                                CHECK_NEQ(d->interleaved_samples.size, 0u);
-                        },
-                });
+                            .check_result =
+                                [&](LoadResult const& r, LoadRequest const& request) {
+                                    auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
+                                        tester,
+                                        r,
+                                        request);
+                                    CHECK_EQ(i->instrument.name, "Same Sample Twice"_s);
+                                    CHECK_EQ(i->audio_datas.size, 2u);
+                                    for (auto& d : i->audio_datas)
+                                        CHECK_NEQ(d->interleaved_samples.size, 0u);
+                                },
+                        });
         };
 
         SUBCASE("invalid lib+path") {

@@ -10,6 +10,7 @@
 #include "gui_effects.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
+#include "gui_framework/image.hpp"
 #include "gui_prefs.hpp"
 #include "gui_widget_helpers.hpp"
 #include "gui_window.hpp"
@@ -25,12 +26,11 @@ static void DoBlurredBackground(Gui* g,
     auto& imgui = g->imgui;
     auto const panel_rounding = LiveSize(imgui, UiSizeId::BlurredPanelRounding);
 
-    auto imgs = LibraryImagesFromLibraryId(g, library_id, false);
+    auto imgs = LibraryImagesFromLibraryId(g, library_id, LibraryImagesTypes::Backgrounds);
 
-    if (imgs && imgs->blurred_background) {
-        if (auto tex = g->frame_input.graphics_ctx->GetTextureFromImage(imgs->blurred_background)) {
-
-            auto const whole_uv = GetMaxUVToMaintainAspectRatio(*imgs->background, mid_panel_size);
+    if (imgs.blurred_background) {
+        if (auto tex = g->frame_input.graphics_ctx->GetTextureFromImage(imgs.blurred_background)) {
+            auto const whole_uv = GetMaxUVToMaintainAspectRatio(*imgs.background, mid_panel_size);
             auto const left_margin = r.x - window->parent_window->bounds.x;
             auto const top_margin = r.y - window->parent_window->bounds.y;
 
@@ -206,13 +206,15 @@ void MidPanel(Gui* g) {
                     .sample_library_server = g->shared_engine_systems.sample_library_server,
                     .library_images = g->library_images,
                     .engine = g->engine,
+                    .prefs = g->prefs,
                     .unknown_library_icon = UnknownLibraryIcon(g),
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,
+                    .confirmation_dialog_state = g->confirmation_dialog_state,
                 };
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };
-                LoadRandomInstrument(context, g->inst_picker_state[layer.index], false);
+                LoadRandomInstrument(context, g->inst_picker_state[layer.index]);
             }
         }
 
@@ -299,9 +301,11 @@ void MidPanel(Gui* g) {
                     .sample_library_server = g->shared_engine_systems.sample_library_server,
                     .library_images = g->library_images,
                     .engine = g->engine,
+                    .prefs = g->prefs,
                     .unknown_library_icon = UnknownLibraryIcon(g),
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,
+                    .confirmation_dialog_state = g->confirmation_dialog_state,
                 };
                 ir_context.Init(g->scratch_arena);
                 DEFER { ir_context.Deinit(); };

@@ -23,7 +23,7 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
                       .on_close = [&state]() { state.open = false; },
                   });
 
-    DoModalDivider(box_system, root, DividerType::Horizontal);
+    DoModalDivider(box_system, root, {.horizontal = true});
 
     auto const panel = DoBox(box_system,
                              {

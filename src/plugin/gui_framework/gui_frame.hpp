@@ -25,6 +25,7 @@ enum class KeyCode : u32 {
     Escape,
     A,
     C,
+    F,
     V,
     X,
     Y,
@@ -35,6 +36,19 @@ enum class KeyCode : u32 {
     ShiftL,
     ShiftR,
     Count,
+};
+
+constexpr auto k_navigation_keys = Array {
+    KeyCode::Tab,
+    KeyCode::LeftArrow,
+    KeyCode::RightArrow,
+    KeyCode::UpArrow,
+    KeyCode::DownArrow,
+    KeyCode::PageUp,
+    KeyCode::PageDown,
+    KeyCode::Home,
+    KeyCode::End,
+    KeyCode::Enter,
 };
 
 enum class ModifierKey : u32 {
@@ -48,10 +62,18 @@ enum class ModifierKey : u32 {
     Modifier = IS_MACOS ? Super : Ctrl,
 };
 
+#if IS_MACOS
+#define MODIFIER_KEY_NAME "Cmd"
+#else
+#define MODIFIER_KEY_NAME "Ctrl"
+#endif
+
 struct ModifierFlags {
     bool operator==(ModifierFlags const& other) const = default;
     bool Get(ModifierKey k) const { return flags & (1 << ToInt(k)); }
     void Set(ModifierKey k) { flags |= (1 << ToInt(k)); }
+    bool IsOnly(ModifierKey k) const { return flags == (1 << ToInt(k)); }
+    bool IsNone() const { return flags == 0; }
     u8 flags {};
 };
 
@@ -170,7 +192,8 @@ struct FilePickerDialogOptions {
         return {
             .type = type,
             .title = title.Clone(a, t),
-            .default_path = default_path.Clone(a, t),
+            .default_folder = default_folder.Clone(a, t),
+            .default_filename = default_filename.Clone(a, t),
             .filters = a.Clone(filters, t),
             .allow_multiple_selection = allow_multiple_selection,
         };
@@ -178,7 +201,8 @@ struct FilePickerDialogOptions {
 
     Type type {Type::OpenFile};
     String title {"Select File"};
-    Optional<String> default_path {}; // folder and file
+    Optional<String> default_folder {};
+    Optional<String> default_filename {};
     Span<FileFilter const> filters {};
     bool allow_multiple_selection {};
 };
@@ -186,14 +210,14 @@ struct FilePickerDialogOptions {
 // Fill this struct every frame to instruct the framework about the application's needs.
 struct GuiFrameResult {
     enum class UpdateRequest {
-        // 1. GUI will sleep until there's user iteraction or a timed wakeup fired
+        // 1. GUI will sleep until there's user interaction or a timed wakeup fired.
         Sleep,
 
-        // 2. GUI will update at the timer (normally 60Hz)
+        // 2. GUI will update at the timer (normally 60Hz).
         Animate,
 
         // 3. re-update the GUI instantly - as soon as the frame is done - use this sparingly for necessary
-        // layout changes
+        // layout changes.
         ImmediatelyUpdate,
     };
 
@@ -213,8 +237,8 @@ struct GuiFrameResult {
     // Must be valid until the next frame.
     Span<MouseTrackedRect> mouse_tracked_rects {};
 
-    bool wants_keyboard_input = false;
-    bool wants_just_arrow_keys = false;
+    bool wants_text_input = false;
+    Bitset<ToInt(KeyCode::Count)> wants_keyboard_keys {};
     bool wants_mouse_capture = false;
     bool wants_mouse_scroll = false;
     bool wants_all_left_clicks = false;

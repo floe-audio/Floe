@@ -21,7 +21,7 @@ struct RequestOptions {
     f32 timeout_seconds = 10.0f;
 };
 
-// blocking
+// These block until complete. They support HTTP and HTTPS.
 ErrorCodeOr<void> HttpsGet(String url, Writer writer, RequestOptions options = {});
 ErrorCodeOr<void>
 HttpsPost(String url, String body, Optional<Writer> response_writer, RequestOptions options = {});
