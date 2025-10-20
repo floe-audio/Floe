@@ -39,13 +39,11 @@ jobs:
             .floe-cache
 
       - run: just build -Dtargets=native
+      - run: just build -Dtargets=native -Dsanitize-thread
       - run: |
           just install-au 0
           killall -9 AudioComponentRegistrar || true
       - run: just test-ci 0
-      - run: |
-          just build -Dsanitize-thread
-          just test-units
 
       - name: Upload errors
         if: '!cancelled()'
@@ -129,12 +127,10 @@ jobs:
         run: just build -Dtargets=mac_x86
 
       - if: '!cancelled()'
-        run: just test-ci 0
+        run: just build -Dtargets=native -Dsanitize-thread
 
       - if: '!cancelled()'
-        run: |
-          just build -Dsanitize-thread
-          just test-units
+        run: just test-ci 0
 
       - if: '!cancelled()'
         name: Upload coverage reports

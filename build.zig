@@ -1175,7 +1175,8 @@ pub fn build(b: *std.Build) void {
             .use_as_default = target.query.eql(target_for_compile_commands.query),
         };
 
-        const install_subfolder_string = b.dupe(archAndOsPair(target.result).slice());
+        // Separate output directory when thread sanitizer is enabled to avoid overwriting default binaries
+        const install_subfolder_string = b.fmt("{s}{s}", .{ archAndOsPair(target.result).slice(), if (sanitize_thread) "-tsan" else "" });
         const install_dir = std.Build.InstallDir{ .custom = install_subfolder_string };
         const install_subfolder = std.Build.Step.InstallArtifact.Options.Dir{
             .override = install_dir,

@@ -242,6 +242,9 @@ test-clap-val:
 test-units: 
   {{native_binary_dir}}/tests --log-level=debug --write-to-file
 
+test-units-tsan:
+  {{native_binary_dir}}-tsan/tests --log-level=debug --write-to-file
+
 test-pluginval: 
   #!/usr/bin/env bash
   args=""
@@ -410,6 +413,7 @@ checks_level_1 := checks_level_0 + replace(
 checks_ci := replace(
   "
     test-units
+    test-units-tsan
     test-clap-val
     test-vst3-val
   " +
