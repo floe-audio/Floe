@@ -45,6 +45,14 @@ TEST_CASE(TestVersion) {
     check_string_parsing("1.0.0-alpha+abcdef", {1, 0, 0});
     check_string_parsing("1.0.0-alpha+2.2.0", {1, 0, 0});
 
+    check_string_parsing("1.0.0-beta", {1, 0, 0});
+    check_string_parsing("1.2.3.alpha.4", {1, 2, 3});
+    check_string_parsing("1.2.3.rc.5", {1, 2, 3});
+
+    check_string_parsing("1.0.0-beta.1", {1, 0, 0, 1});
+    check_string_parsing("2.5.10-beta.255", {2, 5, 10, 255});
+    check_string_parsing("0.1.0-beta.0", {0, 1, 0, 0});
+
     {
         u32 prev_version = 0;
         u16 maj = 0;
@@ -65,6 +73,41 @@ TEST_CASE(TestVersion) {
     }
 
     CHECK(PackVersionIntoU32(1, 1, 2) < PackVersionIntoU32(1, 2, 0));
+
+    // Test that invalid beta patterns are ignored (not treated as errors)
+    check_string_parsing("1.0.0-beta.", {1, 0, 0});
+    check_string_parsing("1.0.0-beta.a", {1, 0, 0});
+    check_string_parsing("1.0.0-beta.256", {1, 0, 0});
+    check_string_parsing("1.0.0-beta.1.2", {1, 0, 0});
+
+    // Test beta version formatting
+    CHECK(fmt::Format(tester.scratch_arena, "{}", Version {1, 0, 0, 1}) == "1.0.0-beta.1"_s);
+    CHECK(fmt::Format(tester.scratch_arena, "{}", Version {2, 5, 10, 255}) == "2.5.10-beta.255"_s);
+    CHECK(fmt::Format(tester.scratch_arena, "{}", Version {1, 0, 0}) == "1.0.0"_s);
+
+    // Test beta version comparisons - beta < release
+    CHECK(Version {1, 0, 0, 1} < Version {1, 0, 0});
+    CHECK(Version {1, 0, 0, 255} < Version {1, 0, 0});
+    CHECK(!(Version {1, 0, 0} < Version {1, 0, 0, 1}));
+
+    // Test beta version comparisons - beta ordering
+    CHECK(Version {1, 0, 0, 1} < Version {1, 0, 0, 2});
+    CHECK(Version {1, 0, 0, 0} < Version {1, 0, 0, 1});
+    CHECK(Version {1, 0, 0, 254} < Version {1, 0, 0, 255});
+
+    // Test equality with beta versions
+    CHECK(Version {1, 0, 0, 1} == Version {1, 0, 0, 1});
+    CHECK(Version {1, 0, 0} == Version {1, 0, 0});
+    CHECK(!(Version {1, 0, 0, 1} == Version {1, 0, 0}));
+    CHECK(!(Version {1, 0, 0} == Version {1, 0, 0, 1}));
+    CHECK(!(Version {1, 0, 0, 1} == Version {1, 0, 0, 2}));
+
+    // Test complex version ordering with beta
+    CHECK(Version {1, 0, 0, 1} < Version {1, 0, 1});
+    CHECK(Version {1, 0, 0, 255} < Version {1, 0, 1, 0});
+    CHECK(Version {1, 0, 0, 1} < Version {1, 1, 0, 0});
+    CHECK(Version {0, 9, 9, 255} < Version {1, 0, 0, 0});
+
     return k_success;
 }
 

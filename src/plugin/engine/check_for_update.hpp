@@ -10,12 +10,12 @@ namespace check_for_update {
 constexpr Version k_no_version = Version {0u};
 
 struct State {
-    // Atomic doesn't like a 24-bit value so we pad it to 32-bits.
+    // Atomic doesn't like a 6-byte value so we pad it to 8 bytes.
     struct PaddedVersion {
         Version version = k_no_version;
-        u8 unused_padding {0};
+        u16 unused_padding {0};
     };
-    static_assert(sizeof(PaddedVersion) == 4, "padding might be wrong");
+    static_assert(sizeof(PaddedVersion) == 8, "padding might be wrong");
 
     enum class StateEnum { Inactive, ShouldCheck, Checked };
 
