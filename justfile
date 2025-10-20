@@ -433,10 +433,6 @@ checks_ci := replace(
     test-pluginval-au
     test-auval
     "
-  } else {
-    "
-    test-pluginval
-    "
   }, "\n", " ")
 
 checks_ci_optimised := replace(
@@ -450,10 +446,6 @@ checks_ci_optimised := replace(
     test-pluginval
     test-pluginval-au
     test-auval
-    "
-  } else {
-    "
-    test-pluginval
     "
   }, "\n", " ")
 
