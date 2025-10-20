@@ -46,7 +46,6 @@ static ErrorCodeOr<void> WriteLuaSectionValues(json::WriteContext& ctx,
     return k_success;
 }
 
-
 static ErrorCodeOr<void> WriteLuaData(json::WriteContext& ctx) {
     ArenaAllocator scratch {PageAllocator::Instance()};
     DynamicArray<char> buffer {scratch};
@@ -217,7 +216,9 @@ static ErrorCodeOr<void> WriteGithubReleaseData(json::WriteContext& ctx) {
             TRY(json::WriteKeyObjectBegin(ctx, String(name)));
             TRY(json::WriteKeyValue(ctx, "name", asset.name));
             TRY(json::WriteKeyValue(ctx, "url", asset.url));
-            TRY(json::WriteKeyValue(ctx, "size", fmt::Format(scratch, "{} MB", Max(1uz, asset.size / 1024 / 1024))));
+            TRY(json::WriteKeyValue(ctx,
+                                    "size",
+                                    fmt::Format(scratch, "{} MB", Max(1uz, asset.size / 1024 / 1024))));
             TRY(json::WriteObjectEnd(ctx));
         }
     }
@@ -257,7 +258,7 @@ static ErrorCodeOr<void> WriteParameterData(json::WriteContext& ctx) {
     });
 
     TRY(json::WriteKeyArrayBegin(ctx, "parameters"));
-    
+
     for (auto const& p : descriptors) {
         TRY(json::WriteObjectBegin(ctx));
         TRY(json::WriteKeyValue(ctx, "module", p->ModuleString()));
@@ -266,7 +267,7 @@ static ErrorCodeOr<void> WriteParameterData(json::WriteContext& ctx) {
         TRY(json::WriteKeyValue(ctx, "description", p->tooltip));
         TRY(json::WriteObjectEnd(ctx));
     }
-    
+
     TRY(json::WriteArrayEnd(ctx));
     return k_success;
 }
@@ -275,14 +276,14 @@ static ErrorCodeOr<void> WriteEffectsData(json::WriteContext& ctx) {
     ArenaAllocator scratch {PageAllocator::Instance()};
 
     TRY(json::WriteKeyArrayBegin(ctx, "effects"));
-    
+
     for (auto const& e : k_effect_info) {
         TRY(json::WriteObjectBegin(ctx));
         TRY(json::WriteKeyValue(ctx, "name", e.name));
         TRY(json::WriteKeyValue(ctx, "description", e.description));
         TRY(json::WriteObjectEnd(ctx));
     }
-    
+
     TRY(json::WriteArrayEnd(ctx));
     TRY(json::WriteKeyValue(ctx, "effects-count", fmt::IntToString(k_num_effect_types)));
     return k_success;
