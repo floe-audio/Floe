@@ -28,12 +28,9 @@ jobs:
       - uses: Hanaasagi/zig-action-cache@master
 
       - run: just build
+      - run: just website-generate
 
-      - name: Generate static data
-        run: |
-          zig-out/x86_64-linux/docs_generator > website/static/generated-data.json
-
-      - name: Generate API files
+      - name: Add /api/v1/version route (the plugin fetches this)
         run: |
           mkdir -p website/static/api/v1
           version=$(cat version.txt)

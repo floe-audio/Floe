@@ -97,6 +97,7 @@ check-links:
   if curl -s --head --request GET "$docusaurus_localhost" | grep "200 OK" > /dev/null; then
     extra_args=(--remap "https://floe.audio $docusaurus_localhost" --base "$docusaurus_localhost")
   fi
+
   # For some reason creativecommons links return 403 via lychee, so we exclude them.
   lychee --exclude 'https://creativecommons.org/licenses/by/2.0' \
          --exclude 'https://creativecommons.org/licenses/by/4.0' \
@@ -203,17 +204,20 @@ release-cleanup:
     gh issue edit "$issue_number" --remove-label "awaiting-release"
   done
 
+# Generated the static JSON that the website uses
+website-generate:
+  #!/usr/bin/env bash
+  {{native_binary_dir}}/docs_generator > website/static/generated-data.json
+
 # Website development and build commands for Docusaurus
 website-dev:
   #!/usr/bin/env bash
-  {{native_binary_dir}}/docs_generator > website/static/generated-data.json
+  just website-generate
   cd website && npm run start
 
 website-build:
   #!/usr/bin/env bash
-  # Generate static data first
-  {{native_binary_dir}}/docs_generator > website/static/generated-data.json
-  # Build Docusaurus site
+  just website-generate
   cd website && npm run build
 
 # IMPROVE: (June 2024) cppcheck v2.14.0 and v2.14.1 thinks there are syntax errors in valid code. It could be a cppcheck bug or it could be an incompatibility in how we are using it. Regardless, we should try again in the future and see if it's fixed. If it works it should run alongside clang-tidy in CI, etc.
@@ -457,6 +461,8 @@ test-ci optimised="0":
   #!/usr/bin/env bash
   set -x
 
+  # Start our website so check-links fully works
+  just website-generate
   pushd website
   npm run start &
   DOCUSAURUS_PID=$!
