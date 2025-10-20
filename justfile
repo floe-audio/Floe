@@ -91,21 +91,18 @@ check-links:
   #!/usr/bin/env bash
   set -euxo pipefail
 
-  # If our website is being served locally (Docusaurus dev server), we can check links against the local version by remapping
-  # floe.audio to localhost.
+  # If our website is being served locally (Docusaurus dev server), we can check links against the local version.
   docusaurus_localhost="http://localhost:3000"
   declare -a extra_args=()
   if curl -s --head --request GET "$docusaurus_localhost" | grep "200 OK" > /dev/null; then
-    extra_args=(--remap "https://floe.audio $docusaurus_localhost")
+    extra_args=(--remap "https://floe.audio $docusaurus_localhost" --base "$docusaurus_localhost")
   fi
   # For some reason creativecommons links return 403 via lychee, so we exclude them.
-  lychee --exclude 'v%7B%7B#include' \
-         --exclude 'https://creativecommons.org/licenses/by/2.0' \
+  lychee --exclude 'https://creativecommons.org/licenses/by/2.0' \
          --exclude 'https://creativecommons.org/licenses/by/4.0' \
          --exclude 'https://creativecommons.org/licenses/by-sa/4.0' \
-         --exclude '==.*==' \
          "${extra_args[@]}" \
-         docs readme.md
+         website readme.md
 
 # install Compile DataBase (compile_commands.json)
 install-cbd arch_os_pair=native_arch_os_pair:
