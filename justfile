@@ -433,7 +433,7 @@ checks_ci := replace(
     test-pluginval-au
     test-auval
     "
-  }, "\n", " ")
+  } else {""}, "\n", " ")
 
 checks_ci_optimised := replace(
   "
@@ -447,7 +447,7 @@ checks_ci_optimised := replace(
     test-pluginval-au
     test-auval
     "
-  }, "\n", " ")
+  } else {""}, "\n", " ")
 
 [unix]
 test level="0": (parallel if level == "0" { checks_level_0 } else { checks_level_1 })
