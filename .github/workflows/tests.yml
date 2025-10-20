@@ -39,7 +39,6 @@ jobs:
             .floe-cache
 
       - run: just build -Dtargets=native
-      - run: just install-docs-preprocessor
       - run: |
           just install-au 0
           killall -9 AudioComponentRegistrar || true
@@ -128,9 +127,6 @@ jobs:
 
       - if: '!cancelled()'
         run: just build -Dtargets=mac_x86
-
-      - if: '!cancelled()'
-        run: just install-docs-preprocessor
 
       - if: '!cancelled()'
         run: just test-ci 0
