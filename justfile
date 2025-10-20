@@ -460,6 +460,7 @@ test-ci optimised="0":
   # Start our website so check-links fully works
   just website-generate
   pushd website
+  npm ci
   npm run start &
   DOCUSAURUS_PID=$!
   popd
