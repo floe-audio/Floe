@@ -15,6 +15,9 @@
 #define TEST_REGISTER_FUNCTIONS                                                                              \
     X(RegisterAlgorithmTests)                                                                                \
     X(RegisterAllocatorTests)                                                                                \
+    X(RegisterAtomicQueueTests)                                                                              \
+    X(RegisterAtomicRefListTests)                                                                            \
+    X(RegisterAtomicSwapBufferTests)                                                                         \
     X(RegisterAudioFileTests)                                                                                \
     X(RegisterAudioUtilsTests)                                                                               \
     X(RegisterAutosaveTests)                                                                                 \
@@ -22,6 +25,7 @@
     X(RegisterBoundedListTests)                                                                              \
     X(RegisterChecksumFileTests)                                                                             \
     X(RegisterCircularBufferTests)                                                                           \
+    X(RegisterCliArgParseTests)                                                                              \
     X(RegisterDynamicArrayTests)                                                                             \
     X(RegisterErrorCodeTests)                                                                                \
     X(RegisterFolderNodeTests)                                                                               \

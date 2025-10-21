@@ -3074,6 +3074,9 @@ pub fn build(b: *std.Build) void {
                     "src/foundation/utils/version.cpp",
                     "src/foundation/utils/writer.cpp",
                     "src/tests/tests_main.cpp",
+                    "src/utils/thread_extra/atomic_queue.cpp",
+                    "src/utils/thread_extra/atomic_ref_list.cpp",
+                    "src/utils/thread_extra/atomic_swap_buffer.cpp",
                 },
                 .flags = FlagsBuilder.init(&build_context, target, .{
                     .full_diagnostics = true,
