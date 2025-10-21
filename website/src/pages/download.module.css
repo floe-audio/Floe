@@ -109,6 +109,10 @@
   padding-left: 1.2rem;
 }
 
+.additionalDownloads p {
+  margin: 0;
+}
+
 .additionalDownloads li {
   margin-bottom: 0.5rem;
 }

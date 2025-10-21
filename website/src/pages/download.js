@@ -40,7 +40,7 @@ function AdditionalDownloads({ os }) {
         <div className={styles.additionalDownloads}>
             <h4>Additional Downloads</h4>
 
-            <h5>Manual Installation (Advanced)</h5>
+            <h5>Manual Installation (Advanced):</h5>
             <ul>
                 {os === 'windows' && (
                     <li>
@@ -83,6 +83,9 @@ function AdditionalDownloads({ os }) {
             <ul>
                 <li>Coming soon.</li>
             </ul>
+
+            <h5>Download Archive</h5>
+            <p>Find all versions on the <a href="https://github.com/floe-audio/Floe/releases" target="_blank" rel="noopener noreferrer">GitHub releases page</a>; download links are under the <em>Assets</em> sections.</p>
         </div>
     );
 }
