@@ -14,8 +14,8 @@ PUBLIC constexpr u8 ExtractPatchFromPackedVersion(u32 packed) { return packed & 
 
 // Not full semantic version spec.
 // Major, minor, patch, and beta are tracked. Build metadata is ignored (text after the + symbol). For
-// pre-release, we support the specific syntax -beta.X for beta versions (e.g., 1.0.0-beta.1). All other
-// pre-release syntax after major.minor.patch is ignored unless the conform exactly to the beta format.
+// pre-release, we support the specific syntax -beta.X (e.g., 1.0.0-beta.1). All other pre-release syntax
+// after major.minor.patch is ignored unless it conforms exactly to our beta format.
 struct Version {
     constexpr Version() = default;
     constexpr Version(u8 mj, u8 mn, u8 p) : major(mj), minor(mn), patch(p) {}
