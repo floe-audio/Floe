@@ -683,7 +683,7 @@ void Context::Begin(WindowSettings settings) {
             window = window->parent_window;
         }
         if (final_window) {
-            f32 const pixels_per_line = final_window->style.pixels_per_line >= 0
+            f32 const pixels_per_line = final_window->style.pixels_per_line > 0
                                             ? final_window->style.pixels_per_line
                                             : VwToPixels(20);
             f32 const lines = -frame_input.mouse_scroll_delta_in_lines;
