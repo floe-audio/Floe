@@ -238,7 +238,7 @@ static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, 
 
         if (TextButton(box_system,
                        button_box,
-                       {.text = "Website & Manual", .tooltip = (String)FLOE_HOMEPAGE_URL}))
+                       {.text = "Website & Documentation", .tooltip = (String)FLOE_HOMEPAGE_URL}))
             OpenUrlInBrowser(FLOE_HOMEPAGE_URL);
 
         if (TextButton(box_system,
