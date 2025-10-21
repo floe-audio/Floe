@@ -45,8 +45,8 @@ function HeroSection() {
                         </Link>
                         <Link
                             className="button button--outline button--lg"
-                            to="/docs/introduction">
-                            Read the Manual
+                            to="/docs/getting-started/quick-start-guide">
+                            Quick Start Guide
                         </Link>
                     </div>
                 </div>
@@ -213,7 +213,7 @@ export default function Home() {
                                     <FontAwesomeIcon icon={faSeedling} />
                                 </div>
                                 <h3><em>Complete</em> but not <em>completed</em></h3>
-                                <p>Floe already contains all the essential parts of a great product, but it's built for continuous refinement and expansion over time. We have ambitious goals for the project while maintaining a commitment to backwards compatibility.</p>
+                                <p>Floe already contains all the essential parts of a great product, but it's built for continuous refinement and expansion over time. We have ambitious goals for the project while maintaining a commitment to backwards compatibility. Help us along the way by giving us your feedback.</p>
                             </div>
 
                             <div className={styles.highlightItem}>

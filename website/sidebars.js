@@ -9,6 +9,13 @@ const sidebars = {
         'introduction',
         {
             type: 'category',
+            label: 'Getting Started',
+            items: [
+                'getting-started/quick-start-guide',
+            ],
+        },
+        {
+            type: 'category',
             label: 'Installation',
             items: [
                 'installation/requirements',
