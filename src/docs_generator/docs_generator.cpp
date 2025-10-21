@@ -144,7 +144,7 @@ struct GithubRelease {
     ArenaList<Asset> assets {};
 };
 
-static json::EventCallbackFixedSize<32> ReleaseJsonParser(GithubRelease& release, ArenaAllocator& arena) {
+static json::EventCallback ReleaseJsonParser(GithubRelease& release, ArenaAllocator& arena) {
     auto handle_asset_object = [&arena, &release](json::EventHandlerStack&, json::Event const& event) {
         if (event.type == json::EventType::HandlingStarted) {
             *release.assets.PrependUninitialised(arena) = {};
@@ -165,15 +165,17 @@ static json::EventCallbackFixedSize<32> ReleaseJsonParser(GithubRelease& release
         return false;
     };
 
-    return [handle_asset_array, &release](json::EventHandlerStack& handler_stack, json::Event const& event) {
-        if (json::SetIfMatchingRef(event, "tag_name", release.version_string)) {
-            release.version_string = TrimStartIfMatches(release.version_string, "v"_s);
-            release.version = ParseVersionString(release.version_string);
-            return true;
-        }
-        if (json::SetIfMatchingArray(handler_stack, event, "assets", handle_asset_array)) return true;
-        return false;
-    };
+    return json::EventCallback(
+        [handle_asset_array, &release](json::EventHandlerStack& handler_stack, json::Event const& event) {
+            if (json::SetIfMatchingRef(event, "tag_name", release.version_string)) {
+                release.version_string = TrimStartIfMatches(release.version_string, "v"_s);
+                release.version = ParseVersionString(release.version_string);
+                return true;
+            }
+            if (json::SetIfMatchingArray(handler_stack, event, "assets", handle_asset_array)) return true;
+            return false;
+        },
+        arena);
 }
 
 enum class GithubReleaseEndpoint {

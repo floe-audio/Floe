@@ -89,6 +89,11 @@ h2, h3, h4, h5, h6 {
   border-radius: 8px;
 }
 
+/* exclude navbar images from rounded corners */
+.theme-layout-navbar img {
+  border-radius: 0;
+}
+
 /* Prevent text color change on outline button hover */
 .button--outline:hover {
   color: var(--ifm-color-primary) !important;

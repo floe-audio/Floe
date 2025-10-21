@@ -79,10 +79,89 @@ function AdditionalDownloads({ os }) {
                 )}
             </ul>
 
-            <h5>Beta Releases</h5>
-            <ul>
-                <li>Coming soon.</li>
-            </ul>
+            <h5>
+                Floe Beta
+                {data["latest-beta-release"] && (
+                    <> — v{data["latest-beta-release"].version}</>
+                )}
+            </h5>
+            {data["latest-beta-release"] ? (
+                <>
+                    <p className={styles.betaDescription}>Help us test new features ahead of the full release. <a href="/docs/about-the-project/beta-testing">Learn more</a></p>
+                    <ul>
+                    {os === 'windows' && (
+                        <>
+                            {data["latest-beta-release"]["Floe-Installer-Windows"] && (
+                                <li>
+                                    <a href={data["latest-beta-release"]["Floe-Installer-Windows"].url} data-umami-event="Download Beta Windows Installer">
+                                        {data["latest-beta-release"]["Floe-Installer-Windows"].name}
+                                    </a> ({data["latest-beta-release"]["Floe-Installer-Windows"].size})
+                                </li>
+                            )}
+                            {data["latest-beta-release"]["Floe-Manual-Install-Windows"] && (
+                                <li>
+                                    <a href={data["latest-beta-release"]["Floe-Manual-Install-Windows"].url} data-umami-event="Download Beta Windows Manual Install">
+                                        {data["latest-beta-release"]["Floe-Manual-Install-Windows"].name}
+                                    </a> ({data["latest-beta-release"]["Floe-Manual-Install-Windows"].size})
+                                </li>
+                            )}
+                        </>
+                    )}
+                    {os === 'macos' && (
+                        <>
+                            {data["latest-beta-release"]["Floe-Installer-macOS-Apple-Silicon"] && (
+                                <li>
+                                    <a href={data["latest-beta-release"]["Floe-Installer-macOS-Apple-Silicon"].url} data-umami-event="Download Beta macOS Apple Silicon Installer">
+                                        {data["latest-beta-release"]["Floe-Installer-macOS-Apple-Silicon"].name}
+                                    </a> ({data["latest-beta-release"]["Floe-Installer-macOS-Apple-Silicon"].size})
+                                </li>
+                            )}
+                            {data["latest-beta-release"]["Floe-Installer-macOS-Intel"] && (
+                                <li>
+                                    <a href={data["latest-beta-release"]["Floe-Installer-macOS-Intel"].url} data-umami-event="Download Beta macOS Intel Installer">
+                                        {data["latest-beta-release"]["Floe-Installer-macOS-Intel"].name}
+                                    </a> ({data["latest-beta-release"]["Floe-Installer-macOS-Intel"].size})
+                                </li>
+                            )}
+                            {data["latest-beta-release"]["Floe-Manual-Install-macOS-Apple-Silicon"] && (
+                                <li>
+                                    <a href={data["latest-beta-release"]["Floe-Manual-Install-macOS-Apple-Silicon"].url} data-umami-event="Download Beta macOS Apple Silicon Manual Install">
+                                        {data["latest-beta-release"]["Floe-Manual-Install-macOS-Apple-Silicon"].name}
+                                    </a> ({data["latest-beta-release"]["Floe-Manual-Install-macOS-Apple-Silicon"].size})
+                                </li>
+                            )}
+                            {data["latest-beta-release"]["Floe-Manual-Install-macOS-Intel"] && (
+                                <li>
+                                    <a href={data["latest-beta-release"]["Floe-Manual-Install-macOS-Intel"].url} data-umami-event="Download Beta macOS Intel Manual Install">
+                                        {data["latest-beta-release"]["Floe-Manual-Install-macOS-Intel"].name}
+                                    </a> ({data["latest-beta-release"]["Floe-Manual-Install-macOS-Intel"].size})
+                                </li>
+                            )}
+                        </>
+                    )}
+                    {os === 'linux' && (
+                        <>
+                            {data["latest-beta-release"]["Floe-CLAP-Linux"] && (
+                                <li>
+                                    <a href={data["latest-beta-release"]["Floe-CLAP-Linux"].url} data-umami-event="Download Beta Linux CLAP">
+                                        {data["latest-beta-release"]["Floe-CLAP-Linux"].name}
+                                    </a> ({data["latest-beta-release"]["Floe-CLAP-Linux"].size})
+                                </li>
+                            )}
+                            {data["latest-beta-release"]["Floe-VST3-Linux"] && (
+                                <li>
+                                    <a href={data["latest-beta-release"]["Floe-VST3-Linux"].url} data-umami-event="Download Beta Linux VST3">
+                                        {data["latest-beta-release"]["Floe-VST3-Linux"].name}
+                                    </a> ({data["latest-beta-release"]["Floe-VST3-Linux"].size})
+                                </li>
+                            )}
+                        </>
+                    )}
+                    </ul>
+                </>
+            ) : (
+                <p>No beta versions are currently available. <a href="/docs/about-the-project/beta-testing">Learn more</a></p>
+            )}
 
             <h5>Download Archive</h5>
             <p>Find all versions on the <a href="https://github.com/floe-audio/Floe/releases" target="_blank" rel="noopener noreferrer">GitHub releases page</a>; download links are under the <em>Assets</em> sections.</p>

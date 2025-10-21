@@ -6,7 +6,7 @@ description: A detailed changelog of all versions of Floe
 ---
 
 <!--
-SPDX-FileCopyrightText: 2018-2024 Sam Windell
+SPDX-FileCopyrightText: 2018-2025 Sam Windell
 SPDX-License-Identifier: GPL-3.0-or-later
 
 IMPORTANT: Our release process expects this file to contain heading that exactly match the released version numbers. 

@@ -113,6 +113,10 @@
   margin: 0;
 }
 
+.betaDescription {
+  margin-bottom: 0.5rem !important;
+}
+
 .additionalDownloads li {
   margin-bottom: 0.5rem;
 }

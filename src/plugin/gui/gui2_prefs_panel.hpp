@@ -615,6 +615,7 @@ static void GeneralPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCo
             Setting(box_system, context, options_rhs_column, SettingDescriptor(autosave_setting));
 
         Setting(box_system, context, options_rhs_column, check_for_update::CheckAllowedPrefDescriptor());
+        Setting(box_system, context, options_rhs_column, check_for_update::CheckBetaPrefDescriptor());
     }
 }
 

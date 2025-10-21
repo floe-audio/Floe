@@ -20,7 +20,8 @@ struct State {
     enum class StateEnum { Inactive, ShouldCheck, Checked };
 
     Atomic<StateEnum> state = StateEnum::Inactive;
-    Atomic<PaddedVersion> latest_version {};
+    Atomic<PaddedVersion> latest_version {}; // stable version
+    Atomic<PaddedVersion> latest_version_edge {}; // latest regardless of stable/beta
     Atomic<bool> checking_allowed {false};
 };
 
@@ -46,6 +47,7 @@ void FetchLatestIfNeeded(State& state);
 
 // Main thread. Use with prefs::SetValue, prefs::GetValue.
 prefs::Descriptor CheckAllowedPrefDescriptor();
+prefs::Descriptor CheckBetaPrefDescriptor();
 
 // Run from background thread. Can be polled, it will only check once.
 void CheckForUpdateIfNeeded(State& state);

@@ -63,6 +63,7 @@ const sidebars = {
                 'about-the-project/mirage',
                 'about-the-project/roadmap',
                 'about-the-project/sponsorship',
+                'about-the-project/beta-testing',
             ],
         },
         'changelog',

@@ -30,13 +30,30 @@ jobs:
       - run: just build
       - run: just website-generate
 
-      - name: Add /api/v1/version route (the plugin fetches this)
+      - name: Add /api/v1/version route
         run: |
           mkdir -p website/static/api/v1
-          version=$(cat version.txt)
+          
+          # Get latest stable release (exclude prereleases)
+          latest_stable=$(gh release list --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // ""' | sed 's/^v//')
+          
+          # Get latest release regardless of prerelease status
+          latest_edge=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // ""' | sed 's/^v//')
+          
+          # Fallback to version.txt if no releases found
+          if [ -z "$latest_stable" ]; then
+            latest_stable=$(cat version.txt)
+          fi
+          if [ -z "$latest_edge" ]; then
+            latest_edge=$(cat version.txt)
+          fi
+          
           cat > website/static/api/v1/version << EOF
-          latest=$version
+          latest=$latest_stable
+          edge=$latest_edge
           EOF
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Node.js dependencies
         run: |
