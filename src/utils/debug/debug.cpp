@@ -7,6 +7,7 @@
 
 #include "debug.hpp"
 
+#include <math.h> // powf test
 #include <signal.h>
 #include <stdlib.h> // EXIT_FAILURE
 #include <unwind.h>
@@ -14,6 +15,7 @@
 #include "foundation/foundation.hpp"
 #include "os/filesystem.hpp"
 #include "os/misc.hpp"
+#include "tests/framework.hpp"
 #include "utils/debug_info/debug_info.h"
 #include "utils/logger/logger.hpp"
 
@@ -606,4 +608,85 @@ bool IsAddressInCurrentModule(usize address) {
     auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
     if (!state || state->failed_init_error) return false;
     return IsAddressInCurrentModule(state->state, address);
+}
+
+TEST_CASE(TestHasAddressesInCurrentModule) {
+    CHECK(IsAddressInCurrentModule((uintptr)&TestHasAddressesInCurrentModule));
+    CHECK(!IsAddressInCurrentModule(0));
+    CHECK(!IsAddressInCurrentModule(LargestRepresentableValue<usize>()));
+
+    auto addrs = Array {0uz, 0};
+    CHECK(!HasAddressesInCurrentModule(addrs));
+
+    addrs[0] = CALL_SITE_PROGRAM_COUNTER;
+    CHECK(HasAddressesInCurrentModule(addrs));
+
+    // This doesn't work on Windows, perhaps because we're using mingw which means it actually is in the
+    // current module?
+    if constexpr (!IS_WINDOWS) CHECK(!IsAddressInCurrentModule((uintptr)&powf));
+
+    return k_success;
+}
+
+TEST_CASE(TestStacktrace) {
+    SUBCASE("stacktrace 1") {
+        auto f = [&]() {
+            auto str = CurrentStacktraceString(tester.scratch_arena,
+                                               {
+                                                   .ansi_colours = true,
+                                               });
+            tester.log.Debug("\n{}", str);
+        };
+        f();
+    }
+
+    SUBCASE("stacktrace 2") {
+        auto f = [&]() {
+            auto str = CurrentStacktraceString(tester.scratch_arena);
+            tester.log.Debug("\n{}", str);
+        };
+        f();
+    }
+
+    SUBCASE("stacktrace 3") {
+        auto f = [&]() {
+            auto o = CurrentStacktrace(StacktraceFrames {1});
+            if (!o.HasValue())
+                LOG_WARNING("Failed to get stacktrace");
+            else {
+                auto str = StacktraceString(o.Value(), tester.scratch_arena);
+                tester.log.Debug("\n{}", str);
+            }
+        };
+        f();
+    }
+
+    SUBCASE("stacktrace 4") {
+        auto f = [&]() {
+            auto o = CurrentStacktrace(ProgramCounter {CALL_SITE_PROGRAM_COUNTER});
+            if (!o.HasValue())
+                LOG_WARNING("Failed to get stacktrace");
+            else {
+                auto str = StacktraceString(o.Value(), tester.scratch_arena);
+                tester.log.Debug("\n{}", str);
+            }
+        };
+        f();
+    }
+
+    SUBCASE("stacktrace 5") {
+        bool stacktrace_has_this_function = false;
+        constexpr String k_this_function = __FUNCTION__;
+        CurrentStacktraceToCallback([&](FrameInfo const& frame) {
+            if (ContainsSpan(frame.function_name, k_this_function)) stacktrace_has_this_function = true;
+        });
+        CHECK(stacktrace_has_this_function);
+    }
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterDebugTests) {
+    REGISTER_TEST(TestHasAddressesInCurrentModule);
+    REGISTER_TEST(TestStacktrace);
 }

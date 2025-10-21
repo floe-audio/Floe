@@ -9,12 +9,10 @@
 
 #include "common_infrastructure/global.hpp"
 
-#include "os_tests.hpp"
-#include "utils_tests.hpp"
-
 #define TEST_REGISTER_FUNCTIONS                                                                              \
     X(RegisterAlgorithmTests)                                                                                \
     X(RegisterAllocatorTests)                                                                                \
+    X(RegisterAssertFTests)                                                                                  \
     X(RegisterAtomicQueueTests)                                                                              \
     X(RegisterAtomicRefListTests)                                                                            \
     X(RegisterAtomicSwapBufferTests)                                                                         \
@@ -26,8 +24,11 @@
     X(RegisterChecksumFileTests)                                                                             \
     X(RegisterCircularBufferTests)                                                                           \
     X(RegisterCliArgParseTests)                                                                              \
+    X(RegisterDebugTests)                                                                                    \
     X(RegisterDynamicArrayTests)                                                                             \
     X(RegisterErrorCodeTests)                                                                                \
+    X(RegisterErrorNotificationsTests)                                                                       \
+    X(RegisterFilesystemTests)                                                                               \
     X(RegisterFolderNodeTests)                                                                               \
     X(RegisterFormatTests)                                                                                   \
     X(RegisterFunctionQueueTests)                                                                            \
@@ -35,6 +36,8 @@
     X(RegisterGeometryTests)                                                                                 \
     X(RegisterHashTableTests)                                                                                \
     X(RegisterHostingTests)                                                                                  \
+    X(RegisterJsonReaderTests)                                                                               \
+    X(RegisterJsonWriterTests)                                                                               \
     X(RegisterLayerProcessorTests)                                                                           \
     X(RegisterLayoutTests)                                                                                   \
     X(RegisterLibraryLuaTests)                                                                               \
@@ -43,8 +46,8 @@
     X(RegisterLogRingBufferTests)                                                                            \
     X(RegisterMathsTests)                                                                                    \
     X(RegisterMemoryTests)                                                                                   \
+    X(RegisterMiscTests)                                                                                     \
     X(RegisterOptionalTests)                                                                                 \
-    X(RegisterOsTests)                                                                                       \
     X(RegisterPackageFormatTests)                                                                            \
     X(RegisterPackageInstallationTests)                                                                      \
     X(RegisterParamDescriptorTests)                                                                          \
@@ -58,9 +61,11 @@
     X(RegisterStateCodingTests)                                                                              \
     X(RegisterStringTests)                                                                                   \
     X(RegisterTaggedUnionTests)                                                                              \
-    X(RegisterUtilsTests)                                                                                    \
+    X(RegisterThreadPoolTests)                                                                               \
+    X(RegisterThreadingTests)                                                                                \
     X(RegisterVersionTests)                                                                                  \
     X(RegisterVolumeFadeTests)                                                                               \
+    X(RegisterWebTests)                                                                                      \
     X(RegisterWriterTests)
 
 #define WINDOWS_FP_TEST_REGISTER_FUNCTIONS X(RegisterWindowsSpecificTests)

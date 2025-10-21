@@ -4,6 +4,7 @@
 #include "threading.hpp"
 
 #include "foundation/foundation.hpp"
+#include "tests/framework.hpp"
 #include "utils/debug/tracy_wrapped.hpp"
 
 thread_local DynamicArrayBounded<char, k_max_thread_name_size> g_thread_name {};
@@ -82,3 +83,158 @@ Optional<String> GetThreadLocalThreadName() {
 }
 
 } // namespace detail
+
+TEST_CASE(TestFuture) {
+    SUBCASE("future lifecycle states") {
+        Future<int> future;
+
+        // Initially inactive
+        CHECK(future.IsInactive());
+        CHECK(!future.IsFinished());
+        CHECK(!future.IsInProgress());
+        CHECK(!future.IsCancelled());
+
+        // Set to pending
+        future.SetPending();
+        CHECK(!future.IsInactive());
+        CHECK(future.IsInProgress());
+        CHECK(!future.IsFinished());
+
+        // Simulate TrySetRunning success
+        CHECK(future.TrySetRunning());
+        CHECK(future.IsInProgress());
+        CHECK(!future.IsFinished());
+
+        // Set result
+        future.SetResult(123);
+        CHECK(!future.IsInProgress());
+        CHECK(future.IsFinished());
+        CHECK(future.HasResult());
+        CHECK_EQ(future.Result(), 123);
+
+        // Reset back to inactive
+        future.Reset();
+        CHECK(future.IsInactive());
+        CHECK(!future.IsFinished());
+    }
+
+    SUBCASE("future cancellation before running") {
+        Future<int> future;
+        future.SetPending();
+
+        CHECK(future.Cancel());
+        CHECK(future.IsCancelled());
+        CHECK(future.IsInProgress());
+
+        // TrySetRunning should fail
+        CHECK(!future.TrySetRunning());
+        CHECK(future.IsCancelled());
+        CHECK(future.IsInactive());
+    }
+
+    SUBCASE("future cancellation after finishing") {
+        Future<int> future;
+        future.SetPending();
+        CHECK(future.TrySetRunning());
+        future.SetResult(456);
+
+        // Cancel after finishing should return false
+        CHECK(!future.Cancel());
+        CHECK(future.IsFinished());
+        CHECK_EQ(future.Result(), 456);
+    }
+
+    SUBCASE("multiple cancel calls") {
+        Future<int> future;
+        future.SetPending();
+
+        CHECK(future.Cancel());
+        CHECK(future.IsCancelled());
+
+        // Second cancel should still return true (already cancelled)
+        CHECK(future.Cancel());
+        CHECK(future.IsCancelled());
+
+        CHECK(!future.TrySetRunning());
+
+        CHECK(!future.ShutdownAndRelease());
+    }
+
+    return k_success;
+}
+
+TEST_CASE(TestCallOnce) {
+    CallOnceFlag flag {};
+    int i = 0;
+    CHECK(!flag.Called());
+    CallOnce(flag, [&]() { i = 1; });
+    CHECK(flag.Called());
+    CHECK_EQ(i, 1);
+    CallOnce(flag, [&]() { i = 2; });
+    CHECK_EQ(i, 1);
+    return k_success;
+}
+
+int g_global_int = 0;
+
+TEST_CASE(TestThread) {
+    Thread thread;
+    REQUIRE(!thread.Joinable());
+
+    thread.Start(
+        []() {
+            g_global_int = 1;
+            SleepThisThread(1);
+        },
+        "test-thread");
+
+    REQUIRE(thread.Joinable());
+    thread.Join();
+
+    REQUIRE(g_global_int == 1);
+    return k_success;
+}
+
+TEST_CASE(TestMutex) {
+    Mutex m;
+    m.Lock();
+    m.TryLock();
+    m.Unlock();
+    return k_success;
+}
+
+TEST_CASE(TestFutex) {
+    SUBCASE("basic wait and wake") {
+        for (auto const wake_mode : Array {NumWaitingThreads::One, NumWaitingThreads::All}) {
+            Atomic<u32> atomic {0};
+
+            Thread thread;
+            thread.Start(
+                [&]() {
+                    SleepThisThread(1);
+                    atomic.Store(1, StoreMemoryOrder::Release);
+                    WakeWaitingThreads(atomic, wake_mode);
+                },
+                "thread");
+
+            auto const timed_out = !WaitIfValueIsExpectedStrong(atomic, 0, {});
+            CHECK(!timed_out);
+
+            thread.Join();
+        }
+    }
+
+    SUBCASE("timeout when not woken") {
+        Atomic<u32> atomic {0};
+        CHECK(!WaitIfValueIsExpectedStrong(atomic, 0, 1u));
+    }
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterThreadingTests) {
+    REGISTER_TEST(TestFuture);
+    REGISTER_TEST(TestCallOnce);
+    REGISTER_TEST(TestThread);
+    REGISTER_TEST(TestMutex);
+    REGISTER_TEST(TestFutex);
+}
