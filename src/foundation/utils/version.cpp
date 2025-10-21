@@ -45,13 +45,17 @@ TEST_CASE(TestVersion) {
     check_string_parsing("1.0.0-alpha+abcdef", {1, 0, 0});
     check_string_parsing("1.0.0-alpha+2.2.0", {1, 0, 0});
 
+    // Unsupported pre-releases are ignored.
     check_string_parsing("1.0.0-beta", {1, 0, 0});
     check_string_parsing("1.2.3.alpha.4", {1, 2, 3});
     check_string_parsing("1.2.3.rc.5", {1, 2, 3});
 
+    // Valid betas are parsed.
     check_string_parsing("1.0.0-beta.1", {1, 0, 0, 1});
     check_string_parsing("2.5.10-beta.255", {2, 5, 10, 255});
     check_string_parsing("0.1.0-beta.0", {0, 1, 0, 0});
+    check_string_parsing("0.1.0-beta.0+e39ef3c", {0, 1, 0, 0}); // Build metadata ignored.
+    check_string_parsing("0.1.0-beta.0+", {0, 1, 0, 0}); // Build metadata ignored.
 
     {
         u32 prev_version = 0;
@@ -79,6 +83,7 @@ TEST_CASE(TestVersion) {
     check_string_parsing("1.0.0-beta.a", {1, 0, 0});
     check_string_parsing("1.0.0-beta.256", {1, 0, 0});
     check_string_parsing("1.0.0-beta.1.2", {1, 0, 0});
+    check_string_parsing("1.0.0-beta.1.2+e39ef3c", {1, 0, 0});
 
     // Test beta version formatting
     CHECK(fmt::Format(tester.scratch_arena, "{}", Version {1, 0, 0, 1}) == "1.0.0-beta.1"_s);
