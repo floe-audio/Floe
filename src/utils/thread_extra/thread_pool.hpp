@@ -7,6 +7,8 @@
 #include "os/threading.hpp"
 #include "utils/debug/tracy_wrapped.hpp"
 
+enum class JobPriority : u8 { High = 0, Normal = 1, Low = 2 };
+
 struct ThreadPool {
     using FunctionType = FunctionQueue<>::Function;
 
@@ -35,13 +37,13 @@ struct ThreadPool {
         m_thread_stop_requested.Store(false, StoreMemoryOrder::Release);
     }
 
-    void AddJob(FunctionType f) {
+    void AddJob(FunctionType f, JobPriority priority = JobPriority::Normal) {
         ZoneScoped;
         ASSERT(f);
         ASSERT(m_workers.size > 0);
         {
             ScopedMutexLock const lock(m_mutex);
-            m_job_queue.Push(f);
+            m_job_queues[ToInt(priority)].Push(f);
         }
         m_cond_var.WakeOne();
     }
@@ -49,7 +51,7 @@ struct ThreadPool {
     // The caller owns the future and is responsible for ensuring it outlives the async task.
     // The cleanup function is always called, regardless of whether the task completed successfully or was
     // cancelled.
-    void Async(auto& future, auto&& function, auto&& cleanup) {
+    void Async(auto& future, auto&& function, auto&& cleanup, JobPriority priority = JobPriority::Normal) {
         ZoneScoped;
         ASSERT(m_workers.size > 0);
 
@@ -60,14 +62,22 @@ struct ThreadPool {
 
         future.SetPending();
 
-        AddJob([&future, f = Move(function), cleanup = Move(cleanup)]() mutable {
-            DEFER { cleanup(); }; // Always clean-up.
-            if (!future.TrySetRunning()) return;
-            future.SetResult(f());
-        });
+        AddJob(
+            [&future, f = Move(function), cleanup = Move(cleanup)]() mutable {
+                DEFER { cleanup(); }; // Always clean-up.
+                if (!future.TrySetRunning()) return;
+                future.SetResult(f());
+            },
+            priority);
     }
 
   private:
+    static bool AllQueuesEmpty(Array<FunctionQueue<>, 3>& queues) {
+        for (auto& queue : queues)
+            if (!queue.Empty()) return false;
+        return true;
+    }
+
     static void WorkerProc(ThreadPool* thread_pool) {
         ZoneScoped;
         ArenaAllocatorWithInlineStorage<4000> scratch_arena {Malloc::Instance()};
@@ -75,10 +85,15 @@ struct ThreadPool {
             Optional<FunctionQueue<>::Function> f {};
             {
                 ScopedMutexLock lock(thread_pool->m_mutex);
-                while (thread_pool->m_job_queue.Empty() &&
+                while (AllQueuesEmpty(thread_pool->m_job_queues) &&
                        !thread_pool->m_thread_stop_requested.Load(LoadMemoryOrder::Acquire))
                     thread_pool->m_cond_var.Wait(lock);
-                f = thread_pool->m_job_queue.TryPop(scratch_arena);
+
+                // Check queues in priority order: High, Normal, Low
+                for (auto& queue : thread_pool->m_job_queues) {
+                    f = queue.TryPop(scratch_arena);
+                    if (f) break;
+                }
             }
             if (f) (*f)();
 
@@ -87,9 +102,11 @@ struct ThreadPool {
         }
     }
 
-    DynamicArray<Thread> m_workers {PageAllocator::Instance()};
+    DynamicArray<Thread> m_workers {Malloc::Instance()};
     Atomic<bool> m_thread_stop_requested {};
     Mutex m_mutex {};
     ConditionVariable m_cond_var {};
-    FunctionQueue<> m_job_queue {.arena = PageAllocator::Instance()};
+    Array<FunctionQueue<>, 3> m_job_queues {FunctionQueue<> {.arena = Malloc::Instance()},
+                                            FunctionQueue<> {.arena = Malloc::Instance()},
+                                            FunctionQueue<> {.arena = Malloc::Instance()}};
 };

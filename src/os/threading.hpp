@@ -603,7 +603,7 @@ class ScopedSpinLock {
 // memory management. Typically, the consumer thread owns this object, and gives a reference to the producer
 // thread.
 //
-// Futures should almost always call Shutdown() before being destroyed.
+// Futures should almost always call ShutdownAndRelease() before being destroyed.
 //
 // e.g.:
 //
@@ -706,10 +706,9 @@ struct Future {
 
     // Consumer thread
     bool Cancel() {
-        auto current = status.Load(LoadMemoryOrder::Acquire);
-        ASSERT(current != (u32)Status::Inactive, "Can't cancel an inactive future");
+        auto const current = status.Load(LoadMemoryOrder::Acquire);
 
-        if (IsFinished(current)) return false;
+        if (IsInactive(current) || IsFinished(current)) return false;
         if (IsCancelled(current)) return true;
 
         auto const prev = status.FetchOr(k_cancel_bit, RmwMemoryOrder::AcquireRelease);

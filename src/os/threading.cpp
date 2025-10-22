@@ -160,6 +160,26 @@ TEST_CASE(TestFuture) {
         CHECK(!future.ShutdownAndRelease());
     }
 
+    SUBCASE("waiting") {
+        Future<int> future;
+        Thread thread;
+
+        future.SetPending();
+
+        thread.Start(
+            [&future]() {
+                ASSERT(future.TrySetRunning());
+                SleepThisThread(20);
+                future.SetResult(100);
+            },
+            "future-thread");
+        DEFER { thread.Join(); };
+
+        CHECK(future.WaitUntilFinished(2000u));
+        CHECK(future.IsFinished());
+        CHECK_EQ(future.Result(), 100);
+    }
+
     return k_success;
 }
 

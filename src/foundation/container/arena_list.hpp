@@ -67,7 +67,7 @@ struct ArenaList {
     void RemoveIf(FunctionType&& should_remove_value) {
         SinglyLinkedListRemoveIf(
             first,
-            [&should_remove_value](Node const& node) { return should_remove_value(node.data); },
+            [&should_remove_value](Node& node) { return should_remove_value(node.data); },
             [this](Node* node) { Delete(node); });
     }
 
