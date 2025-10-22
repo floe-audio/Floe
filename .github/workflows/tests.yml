@@ -57,6 +57,13 @@ jobs:
           if-no-files-found: ignore
           path: ~/Library/Logs/Floe/*
 
+      - if: '!cancelled()'
+        name: Upload test results
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
+
   # IMPROVE: do this on all platforms
   test-optimised:
     runs-on: ubuntu-latest
@@ -94,6 +101,13 @@ jobs:
           name: logs-linux-optimised
           if-no-files-found: ignore
           path: ~/.local/state/Floe/Logs/*
+
+      - if: '!cancelled()'
+        name: Upload test results
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
 
   linux-compile-and-test:
     runs-on: ubuntu-latest
@@ -140,6 +154,15 @@ jobs:
           directory: .floe-cache/coverage-out/tests
           verbose: true
           fail_ci_if_error: true
+
+      # "Codecov automatically scans for files matching the *junit.xml pattern". We are expecting files 
+      # like these in the floe-cache directory.
+      - if: '!cancelled()'
+        name: Upload test results
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
 
       # IMPORTANT(upload-artifact): 
       #  1. If multiple paths are provided as input, the least common ancestor of all the search paths will be used as the 
@@ -215,6 +238,13 @@ jobs:
           name: logs-windows
           if-no-files-found: ignore
           path: ~/AppData/Local/Floe/Logs/*
+
+      - if: '!cancelled()'
+        name: Upload test results
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
   
   notify:
     # We run this for main/develop, and also for PRs that are not from forks; in other words, PRs originating from Floe devs.

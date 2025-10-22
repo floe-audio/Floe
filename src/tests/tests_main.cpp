@@ -110,6 +110,7 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
         LogLevel,
         Repeats,
         WriteToFile,
+        JUnitXmlOutputPath,
         Count,
     };
 
@@ -146,6 +147,14 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
             .required = false,
             .num_values = 0,
         },
+        {
+            .id = (u32)CommandLineArgId::JUnitXmlOutputPath,
+            .key = "junit-xml-output-path",
+            .description = "Path to write JUnit XML test results to",
+            .value_type = "path",
+            .required = false,
+            .num_values = 1,
+        },
     });
 
     ArenaAllocatorWithInlineStorage<1000> arena {PageAllocator::Instance()};
@@ -178,7 +187,9 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
 #endif
 #undef X
 
-    return RunAllTests(tester, cli_args[ToInt(CommandLineArgId::Filter)].values);
+    return RunAllTests(tester,
+                       cli_args[ToInt(CommandLineArgId::Filter)].values,
+                       cli_args[ToInt(CommandLineArgId::JUnitXmlOutputPath)].Value());
 }
 
 int main(int argc, char** argv) {

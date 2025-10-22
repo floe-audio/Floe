@@ -1208,6 +1208,7 @@ pub fn build(b: *std.Build) void {
             .style = .blank,
         }, .{
             .PRODUCTION_BUILD = build_context.build_mode == .production,
+            .OPTIMISED_BUILD = build_context.optimise != .Debug,
             .RUNTIME_SAFETY_CHECKS_ON = build_context.optimise == .Debug or build_context.optimise == .ReleaseSafe,
             .FLOE_VERSION_STRING = floe_version_string,
             .FLOE_VERSION_HASH = floe_version_hash,

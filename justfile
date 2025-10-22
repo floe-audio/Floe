@@ -240,10 +240,10 @@ test-clap-val:
   clap-validator validate {{clap_val_args}} {{native_binary_dir}}/Floe.clap
 
 test-units: 
-  {{native_binary_dir}}/tests --log-level=debug --write-to-file
+  {{native_binary_dir}}/tests --log-level=debug --write-to-file --junit-xml-output-path={{cache_dir}}/results.junit.xml
 
 test-units-tsan:
-  {{native_binary_dir}}-tsan/tests --log-level=debug --write-to-file
+  {{native_binary_dir}}-tsan/tests --log-level=debug --write-to-file --junit-xml-output-path={{cache_dir}}/results-tsan.junit.xml
 
 test-pluginval: 
   #!/usr/bin/env bash
@@ -332,7 +332,7 @@ test-windows-installer:
 [linux, windows]
 test-windows-units:
   set -x
-  {{run_windows_program}} zig-out/x86_64-windows/tests.exe --log-level=debug
+  {{run_windows_program}} zig-out/x86_64-windows/tests.exe --log-level=debug --write-to-file --junit-xml-output-path={{cache_dir}}/results.junit.xml
 
 [linux, windows]
 test-windows-vst3-val:
