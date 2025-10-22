@@ -18,7 +18,14 @@ struct ThreadPool {
         ZoneScoped;
         ASSERT_EQ(m_workers.size, 0u);
         ASSERT(pool_name.size < k_max_thread_name_size - 4u);
-        if (!num_threads) num_threads = Min(Max(CachedSystemStats().num_logical_cpus / 2u, 1u), 4u);
+        if (!num_threads) {
+            auto const cpus = (s16)CachedSystemStats().num_logical_cpus;
+            s16 t = (cpus / 4) * 3; // 75% of CPUs.
+            if (t + 2 > cpus) t = cpus - 2; // Leave at least 2 CPUs free.
+            if (t < 1) t = 1; // At least 1 thread.
+            ASSERT(t < 9000);
+            num_threads = (u32)t;
+        }
 
         dyn::Resize(m_workers, *num_threads);
         for (auto [i, w] : Enumerate(m_workers)) {
