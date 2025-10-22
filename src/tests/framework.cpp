@@ -223,11 +223,11 @@ static ErrorCodeOr<void> WriteJUnitXmlTestResults(Tester& tester, Writer writer,
         TRY(writer.WriteChars(fmt::Format(tester.scratch_arena,
                                           "      <property name=\"version\" value=\"{}\" />\n",
                                           FLOE_VERSION_STRING)));
-        
+
         // Add system information
         auto const os_info = GetOsInfo();
         auto const system_stats = CachedSystemStats();
-        
+
         TRY(writer.WriteChars(fmt::Format(tester.scratch_arena,
                                           "      <property name=\"os_name\" value=\"{}\" />\n",
                                           EscapeXmlAttribute(tester.scratch_arena, os_info.name))));
@@ -237,9 +237,10 @@ static ErrorCodeOr<void> WriteJUnitXmlTestResults(Tester& tester, Writer writer,
                                               EscapeXmlAttribute(tester.scratch_arena, os_info.version))));
         }
         if (os_info.pretty_name.size) {
-            TRY(writer.WriteChars(fmt::Format(tester.scratch_arena,
-                                              "      <property name=\"os_pretty_name\" value=\"{}\" />\n",
-                                              EscapeXmlAttribute(tester.scratch_arena, os_info.pretty_name))));
+            TRY(writer.WriteChars(
+                fmt::Format(tester.scratch_arena,
+                            "      <property name=\"os_pretty_name\" value=\"{}\" />\n",
+                            EscapeXmlAttribute(tester.scratch_arena, os_info.pretty_name))));
         }
         TRY(writer.WriteChars(fmt::Format(tester.scratch_arena,
                                           "      <property name=\"arch\" value=\"{}\" />\n",
@@ -248,52 +249,53 @@ static ErrorCodeOr<void> WriteJUnitXmlTestResults(Tester& tester, Writer writer,
                                           "      <property name=\"cpu_count\" value=\"{}\" />\n",
                                           system_stats.num_logical_cpus)));
         if (system_stats.cpu_name.size) {
-            TRY(writer.WriteChars(fmt::Format(tester.scratch_arena,
-                                              "      <property name=\"cpu_name\" value=\"{}\" />\n",
-                                              EscapeXmlAttribute(tester.scratch_arena, system_stats.cpu_name))));
+            TRY(writer.WriteChars(
+                fmt::Format(tester.scratch_arena,
+                            "      <property name=\"cpu_name\" value=\"{}\" />\n",
+                            EscapeXmlAttribute(tester.scratch_arena, system_stats.cpu_name))));
         }
-        
+
         // Add build and runtime configuration flags
-        constexpr bool thread_sanitizer = 
+        constexpr bool k_thread_sanitizer =
 #if __has_feature(thread_sanitizer)
             true;
 #else
             false;
 #endif
-        
-        constexpr bool production_build = 
+
+        constexpr bool k_production_build =
 #if PRODUCTION_BUILD
             true;
 #else
             false;
 #endif
-        
-        constexpr bool optimised_build = 
+
+        constexpr bool k_optimised_build =
 #if OPTIMISED_BUILD
             true;
 #else
             false;
 #endif
-        
-        constexpr bool runtime_safety_checks = 
+
+        constexpr bool k_runtime_safety_checks =
 #if RUNTIME_SAFETY_CHECKS_ON
             true;
 #else
             false;
 #endif
-        
+
         TRY(writer.WriteChars(fmt::Format(tester.scratch_arena,
                                           "      <property name=\"thread_sanitizer\" value=\"{}\" />\n"
                                           "      <property name=\"valgrind\" value=\"{}\" />\n"
                                           "      <property name=\"production_build\" value=\"{}\" />\n"
                                           "      <property name=\"optimised_build\" value=\"{}\" />\n"
                                           "      <property name=\"runtime_safety_checks\" value=\"{}\" />\n",
-                                          thread_sanitizer,
+                                          k_thread_sanitizer,
                                           (bool)RUNNING_ON_VALGRIND,
-                                          production_build,
-                                          optimised_build,
-                                          runtime_safety_checks)));
-        
+                                          k_production_build,
+                                          k_optimised_build,
+                                          k_runtime_safety_checks)));
+
         TRY(writer.WriteChars("    </properties>\n"));
 
         // Write test cases
@@ -348,19 +350,6 @@ int RunAllTests(Tester& tester, Span<String> filter_patterns, Optional<String> j
         if (tester.temp_folder)
             auto _ = Delete(*tester.temp_folder, {.type = DeleteOptions::Type::DirectoryRecursively});
     };
-
-    Optional<File> junit_xml_file {};
-    if (junit_xml_output_path) {
-        auto file_outcome = OpenFile(*junit_xml_output_path, FileMode::Write());
-        if (file_outcome.HasError()) {
-            tester.log.Error("Failed to open JUnit XML output file {}: {}",
-                             *junit_xml_output_path,
-                             file_outcome.Error());
-            return 1;
-        }
-
-        junit_xml_file = file_outcome.ReleaseValue();
-    }
 
     TestResults test_results {};
 
@@ -516,15 +505,20 @@ int RunAllTests(Tester& tester, Span<String> filter_patterns, Optional<String> j
         tester.log.Info("Result: " ANSI_COLOUR_SET_FOREGROUND_RED "Failure");
     }
 
-    if (junit_xml_file) {
-        BufferedWriter<Kb(4)> buffered_writer {junit_xml_file->Writer()};
+    if (junit_xml_output_path) {
+        auto file = TRY_OR(OpenFile(*junit_xml_output_path, FileMode::Write()), {
+            tester.log.Error("Failed to open JUnit XML output file {}: {}", *junit_xml_output_path, error);
+            return 1;
+        });
+
+        BufferedWriter<Kb(4)> buffered_writer {file.Writer()};
         auto writer = buffered_writer.Writer();
         DEFER { buffered_writer.FlushReset(); };
-        auto outcome = WriteJUnitXmlTestResults(tester, writer, test_results);
-        if (outcome.HasError()) {
-            tester.log.Error("Failed to write JUnit XML test results: {}", outcome.Error());
+
+        TRY_OR(WriteJUnitXmlTestResults(tester, writer, test_results), {
+            tester.log.Error("Failed to write JUnit XML test results: {}", error);
             return 1;
-        }
+        });
     }
 
     return num_failed ? 1 : 0;
