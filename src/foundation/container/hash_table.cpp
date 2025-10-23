@@ -73,7 +73,6 @@ TEST_CASE(TestHashTable) {
             for (auto i : Range(insertions)) {
                 auto const result = tab.FindOrInsertGrowIfNeeded(a, i, i * 2);
                 CHECK(result.inserted);
-                tester.log.Debug("Inserted '{}', capacity: {}", i, tab.Capacity());
             }
             CHECK_EQ(tab.size, insertions);
             for (auto i : Range(insertions))
