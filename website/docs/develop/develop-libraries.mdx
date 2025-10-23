@@ -192,3 +192,17 @@ Floe blurs the line between a sampler and a sample-based synthesizer. It has lot
 If your sample is a single continuous sound, then don't include a fade-in or fade-out in the sample. Floe has a GUI for volume envelopes that offer more control: they can be adjusted to any value, automated by the DAW, and they are independent of the playback speed of the sample. If you have a sample that is stretched across a keyboard range, it will be sped-up or slowed-down in order to be the correct pitch. If there's a volume fade, then the speed of the fade will change depending on the pitch of the voice. This is not normally a desirable effect.
 
 If your sound has important timbral variation over time, then don't cut that away. Only if the sound is a constant tone should you remove the fade in/out.
+
+## Background images
+
+Floe allows libraries to have a custom background image that appear behind the interface when the library is loaded. These images are configured in your [Lua script](/docs/develop/library-lua-scripts) through Floe's `new_library` function.
+
+Floe accepts any image. It uses "cover" scaling with top-left positioning — in other words, it scales up the image (maintaining its aspect ratio) until it covers the entire background of Floe. However, for optimal results consider these characteristics:
+
+- Roughly 16:9 aspect ratio to match the plugin GUI proportions
+- Approximately 1500 pixels wide as a starting point (consider high-DPI displays)
+- Consistent colour palettes and brightness levels throughout the image
+- Darker or mid-tone images rather than bright ones for better text readability
+- Avoid dramatic contrasts between very dark and very bright regions
+
+The most critical consideration is interface readability. Since Floe's knobs, buttons, and text render on top of your background image, the image needs consistent tones to ensure controls remain clearly visible. While some variation is acceptable, remember that interface legibility is paramount.
