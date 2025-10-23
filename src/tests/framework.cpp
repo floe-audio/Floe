@@ -284,6 +284,9 @@ static ErrorCodeOr<void> WriteJUnitXmlTestResults(Tester& tester, Writer writer,
             false;
 #endif
 
+        // Separate line otherwise we get clang-tidy warnings.
+        auto const running_on_valgrind = (bool)RUNNING_ON_VALGRIND;
+
         TRY(writer.WriteChars(fmt::Format(tester.scratch_arena,
                                           "      <property name=\"thread_sanitizer\" value=\"{}\" />\n"
                                           "      <property name=\"valgrind\" value=\"{}\" />\n"
@@ -291,7 +294,7 @@ static ErrorCodeOr<void> WriteJUnitXmlTestResults(Tester& tester, Writer writer,
                                           "      <property name=\"optimised_build\" value=\"{}\" />\n"
                                           "      <property name=\"runtime_safety_checks\" value=\"{}\" />\n",
                                           k_thread_sanitizer,
-                                          (bool)RUNNING_ON_VALGRIND,
+                                          running_on_valgrind,
                                           k_production_build,
                                           k_optimised_build,
                                           k_runtime_safety_checks)));
