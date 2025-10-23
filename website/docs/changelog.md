@@ -35,6 +35,7 @@ For instance: 0.0.1. Don't change the headings.
 - New concept of 'preset packs' - a folder of presets can be tagged as a pack and given more metadata such as a description. To create one add `floe-preset-pack.ini` to a folder of presets.
 - Press escape on the keyboard to close panels
 - Increase threads for loading audio up to 75% of CPU cores instead of maximum of 4.
+- Fix silent output in Ableton Live 10
 
 ## 1.0.6
 - Add Reset Audio Engine to the menu for stopping all sound and voices
