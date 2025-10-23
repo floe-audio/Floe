@@ -248,7 +248,8 @@ test-units-tsan:
 test-pluginval: 
   #!/usr/bin/env bash
   args=""
-  if [[ "{{os()}}" == "linux" && ! -z "$CI" ]]; then
+  if [[ "{{os()}}" == "linux" && -z "$DISPLAY" ]]; then
+    echo "WARNING: No X11 display server detected, skipping GUI tests in pluginval"
     args="--skip-gui-tests"
   fi
   pluginval $args --validate {{native_binary_dir}}/Floe.vst3
@@ -527,6 +528,14 @@ test-ci-windows:
   echo "| Command | Return-Code |" >> $GITHUB_STEP_SUMMARY
   echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
 
+  # If on Linux, and there is no X11 display server running, we start one with xvfb.
+  XVFB_PID=""
+  if [[ "{{os()}}" == "linux" && -z "$DISPLAY" ]]; then
+    sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
+    XVFB_PID=$!
+    export DISPLAY=:99
+  fi
+
   # Start go-httpbin server for HTTP testing
   go run github.com/mccutchen/go-httpbin/v2/cmd/go-httpbin@latest -host 127.0.0.1 -port 8081 &
   HTTPBIN_PID=$!
@@ -566,6 +575,11 @@ test-ci-windows:
   kill $HTTPBIN_PID 2>/dev/null || true
   # Fallback: kill any remaining go-httpbin processes
   pkill -f "go-httpbin" 2>/dev/null || true
+
+  # Try to kill the Xvfb server if it was started
+  if [[ -n "$XVFB_PID" ]]; then
+    sudo kill $XVFB_PID 2>/dev/null || true
+  fi
 
   if [[ ! -v $GITHUB_ACTIONS ]]; then
     cat {{cache_dir}}/test_ci_windows_summary.md
