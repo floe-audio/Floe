@@ -221,7 +221,7 @@ static ErrorCodeOr<void> WriteJUnitXmlTestResults(Tester& tester, Writer writer,
         // Write properties
         TRY(writer.WriteChars("    <properties>\n"));
         TRY(writer.WriteChars(fmt::Format(tester.scratch_arena,
-                                          "      <property name=\"version\" value=\"{}\" />\n",
+                                          "      <property name=\"floe_version\" value=\"{}\" />\n",
                                           FLOE_VERSION_STRING)));
 
         // Add system information
