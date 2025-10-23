@@ -62,9 +62,12 @@ LogRingBuffer::Snapshot LogRingBuffer::TakeSnapshot() {
     mutex.Lock();
     DEFER { mutex.Unlock(); };
 
+    auto const size = write - read;
+    if (size == 0) return {};
+
     Snapshot snapshot {};
 
-    dyn::Resize(snapshot.buffer, write - read);
+    dyn::Resize(snapshot.buffer, CheckedCast<usize>(size));
 
     // We copy it so that there is no ring-buffer wrap-around issues.
     u32 out_index = 0;
