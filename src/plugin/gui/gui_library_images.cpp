@@ -80,31 +80,6 @@ static Optional<ImageBytes> ImagePixelsFromLibrary(sample_lib::LibraryIdRef cons
 
 inline Allocator& ImageBytesAllocator() { return PageAllocator::Instance(); }
 
-/*
- * In the worker thread, the crash is when calling the future SetResult()
- *
- *[crash] (vst3) invalid permissions for mapped object (thread: 6108983296)
-[1] 1154607c0 ???:-1:-1: __ZN6FutureI8OptionalIN13LibraryImages18LoadingBackgroundsEEE9SetResultERKS3_
-[2] 11545f06f ???:-1:-1:
-__ZZN10ThreadPool5AsyncI6FutureI8OptionalIN13LibraryImages18LoadingBackgroundsEEEZL20AsyncLoadBackgroundsRKN10sample_lib12LibraryIdRefERKN5imgui7ContextERS6_bbRN17sample_lib_server6ServerERS_E3$_0ZL20AsyncLoadBackgroundsSA_SE_SF_bbSI_SJ_E3$_1EEvRT_OT0_OT1_ENUlvE_clEv
-[3] 11545eebf ???:-1:-1:
-__ZZN18TrivialFunctionRefIFvvEEC1IZN10ThreadPool5AsyncI6FutureI8OptionalIN13LibraryImages18LoadingBackgroundsEEEZL20AsyncLoadBackgroundsRKN10sample_lib12LibraryIdRefERKN5imgui7ContextERSA_bbRN17sample_lib_server6ServerERS3_E3$_0ZL20AsyncLoadBackgroundsSE_SI_SJ_bbSM_SN_E3$_1EEvRT_OT0_OT1_EUlvE_Qaaaant4SameIS_IFSQ_DpT0_EETL0__E21FunctionWithSignatureIS12_SQ_SY_Eoo15FunctionPointerIu7__decayIS12_EE17TriviallyCopyableIS12_EEERKSQ_ENKUlPvE_clES16_
-[4] 11545ee3f ???:-1:-1:
-__ZZN18TrivialFunctionRefIFvvEEC1IZN10ThreadPool5AsyncI6FutureI8OptionalIN13LibraryImages18LoadingBackgroundsEEEZL20AsyncLoadBackgroundsRKN10sample_lib12LibraryIdRefERKN5imgui7ContextERSA_bbRN17sample_lib_server6ServerERS3_E3$_0ZL20AsyncLoadBackgroundsSE_SI_SJ_bbSM_SN_E3$_1EEvRT_OT0_OT1_EUlvE_Qaaaant4SameIS_IFSQ_DpT0_EETL0__E21FunctionWithSignatureIS12_SQ_SY_Eoo15FunctionPointerIu7__decayIS12_EE17TriviallyCopyableIS12_EEERKSQ_ENUlPvE_8__invokeES16_
-[5] 114eac0ef ???:-1:-1: __ZNK18TrivialFunctionRefIFvvEEclEv
-[6] 114f46eeb ???:-1:-1: __ZN10ThreadPool10WorkerProcEPS_
-[7] 114f46a27 ???:-1:-1: __ZZN10ThreadPool4InitE4SpanIKcE8OptionalIjEENKUlvE_clEv
-[8] 114f469bf ???:-1:-1:
-__ZZN24TrivialFixedSizeFunctionILm256EFvvEE3SetIZN10ThreadPool4InitE4SpanIKcE8OptionalIjEEUlvE_Qaaaant4SameIS_IXT_EFT0_DpT1_EETL0__E21FunctionWithSignatureISG_SA_SC_E17TriviallyCopyableISG_EEEvRKT_ENKUlPvE_clESK_
-[9] 114f4693f ???:-1:-1:
-__ZZN24TrivialFixedSizeFunctionILm256EFvvEE3SetIZN10ThreadPool4InitE4SpanIKcE8OptionalIjEEUlvE_Qaaaant4SameIS_IXT_EFT0_DpT1_EETL0__E21FunctionWithSignatureISG_SA_SC_E17TriviallyCopyableISG_EEEvRKT_ENUlPvE_8__invokeESK_
-[10] 115b6927b ???:-1:-1: __ZNK24TrivialFixedSizeFunctionILm256EFvvEEclEv
-[11] 115b6908f ???:-1:-1: __ZN6Thread15ThreadStartData11StartThreadEv
-[12] 115b6672f ???:-1:-1: __ZL15ThreadStartProcPv
-[13] 193b2bc0b ???:-1:-1: ???
-[14] 193b26b7f ???:-1:-1: ???
-*/
-
 static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
                           imgui::Context const& imgui,
                           Future<Optional<ImageBytes>>& result,
