@@ -85,6 +85,9 @@ jobs:
           cache-directories: |
             .floe-cache
 
+      - name: Install OpenGL dependencies
+        run: sudo apt-get install -y libglx-mesa0 libgl1 x11-xserver-utils
+
       - if: '!cancelled()'
         run: just build -Dbuild-mode=performance_profiling
 
@@ -129,6 +132,9 @@ jobs:
         with:
           cache-directories: |
             .floe-cache
+
+      - name: Install OpenGL dependencies
+        run: sudo apt-get install -y libglx-mesa0 libgl1 x11-xserver-utils
 
       - if: '!cancelled()'
         run: just build -Dtargets=native
