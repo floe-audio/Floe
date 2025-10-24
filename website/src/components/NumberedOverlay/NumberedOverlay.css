@@ -1,0 +1,28 @@
+/* SPDX-FileCopyrightText: 2025 Sam Windell */
+/* SPDX-License-Identifier: MIT */
+
+.numbered-overlay-container {
+    position: relative;
+    display: inline-block;
+}
+
+.numbered-overlay-container img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+.numbered-overlay-badge {
+    position: absolute;
+    background: #ff4444;
+    color: white;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+    z-index: 10;
+}
