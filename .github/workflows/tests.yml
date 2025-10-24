@@ -20,6 +20,8 @@ env:
   # Headless Linux CI lacks hardware OpenGL and X11 display. These force Mesa software rendering, used alongside Xvfb - a virtual X11 server that we start before our tests.
   LIBGL_ALWAYS_SOFTWARE: 1
   MESA_LOADER_DRIVER_OVERRIDE: llvmpipe
+  # Mesa packages needed for headless OpenGL in Linux CI
+  MESA_PACKAGES: libgl1-mesa-dri libgl1-mesa-dev libglu1-mesa libglx-mesa0 libglx-dev x11-xserver-utils libx11-dev
 
 jobs:
   mac-compile-and-test:
@@ -89,7 +91,7 @@ jobs:
             .floe-cache
 
       - name: Install Mesa OpenGL libraries for software rendering in headless environment
-        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri libglu1-mesa
+        run: sudo apt-get update && sudo apt-get install -y ${{ env.MESA_PACKAGES }}
 
       - if: '!cancelled()'
         run: just build -Dbuild-mode=performance_profiling
@@ -137,7 +139,7 @@ jobs:
             .floe-cache
 
       - name: Install Mesa OpenGL libraries for software rendering in headless environment
-        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri libglu1-mesa
+        run: sudo apt-get update && sudo apt-get install -y ${{ env.MESA_PACKAGES }}
 
       - if: '!cancelled()'
         run: just build -Dtargets=native
