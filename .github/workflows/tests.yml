@@ -17,6 +17,8 @@ on:
 env:
   SENTRY_DSN: ${{ secrets.SENTRY_DSN_DEVELOPMENT }}
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  LIBGL_ALWAYS_SOFTWARE: 1
+  MESA_LOADER_DRIVER_OVERRIDE: llvmpipe
 
 jobs:
   mac-compile-and-test:
@@ -86,7 +88,7 @@ jobs:
             .floe-cache
 
       - name: Install OpenGL dependencies
-        run: sudo apt-get install -y libglx-mesa0 libgl1 x11-xserver-utils
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri libglu1-mesa
 
       - if: '!cancelled()'
         run: just build -Dbuild-mode=performance_profiling
@@ -134,7 +136,7 @@ jobs:
             .floe-cache
 
       - name: Install OpenGL dependencies
-        run: sudo apt-get install -y libglx-mesa0 libgl1 x11-xserver-utils
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri libglu1-mesa
 
       - if: '!cancelled()'
         run: just build -Dtargets=native
