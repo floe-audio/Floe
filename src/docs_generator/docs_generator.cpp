@@ -388,12 +388,19 @@ static ErrorCodeOr<void> WriteEffectsData(json::WriteContext& ctx) {
 
 static ErrorCodeOr<void> WriteCCMappingData(json::WriteContext& ctx) {
     ArenaAllocator scratch {PageAllocator::Instance()};
-    DynamicArray<char> text {scratch};
+    
+    TRY(json::WriteKeyArrayBegin(ctx, "default-cc-mappings"));
+    
     for (auto const& map : k_default_cc_to_param_mapping) {
         auto const& desc = k_param_descriptors[ToInt(map.param)];
-        fmt::Append(text, "- CC {}: {} ({})\n", map.cc, desc.name, desc.ModuleString(" › "));
+        TRY(json::WriteObjectBegin(ctx));
+        TRY(json::WriteKeyValue(ctx, "cc", map.cc));
+        TRY(json::WriteKeyValue(ctx, "name", desc.name));
+        TRY(json::WriteKeyValue(ctx, "module", desc.ModuleString(" › ")));
+        TRY(json::WriteObjectEnd(ctx));
     }
-    TRY(json::WriteKeyValue(ctx, "default-cc-mappings", String(text)));
+    
+    TRY(json::WriteArrayEnd(ctx));
     return k_success;
 }
 

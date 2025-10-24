@@ -33,7 +33,12 @@ You can make the MIDI CC mapping more permanent by right clicking on a 'MIDI lea
 ## Default MIDI CC mappings
 
 Floe sets some default MIDI CC mappings for you. You can turn this off in the preferences. The default mappings are:
-{data["default-cc-mappings"]}
+
+<ul>
+{data["default-cc-mappings"].map((mapping, index) => (
+  <li key={index}>CC {mapping.cc}: {mapping.name} ({mapping.module})</li>
+))}
+</ul>
 
 ## Sustain Pedal
 
