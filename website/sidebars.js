@@ -20,24 +20,18 @@ const sidebars = {
             items: [
                 'installation/requirements',
                 'installation/download-and-install-floe',
+                'installation/install-packages',
                 'installation/updating',
                 'installation/uninstalling',
             ],
         },
         {
             type: 'category',
-            label: 'Packages',
-            items: [
-                'packages/about-packages',
-                'packages/install-packages',
-            ],
-        },
-        {
-            type: 'category',
             label: 'Usage',
             items: [
-                'usage/sample-libraries',
-                'usage/presets',
+                'usage/components',
+                'usage/folders',
+                'usage/picker-panels',
                 'usage/layers',
                 'usage/effects',
                 'usage/key-ranges',

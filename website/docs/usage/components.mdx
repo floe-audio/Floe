@@ -1,0 +1,62 @@
+---
+id: components
+title: Components
+hide_table_of_contents: true
+description: Information about the various components that make up Floe
+---
+
+<!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: CC-BY-SA-4.0
+-->
+
+Since Floe is sample-based, its uses various components to manage all the audio content.
+
+This overview may help you understand how things fit together.
+
+## Packages
+A package is the portable distribution container used by Floe. It's exclusively used as the format for **downloading and installing content**. It's a Zip file with a specific internal structure. Packages are installed using Floe's _Install package_ button (or manually).
+
+Within a package, there can be:
+- Samples Libraries
+- Presets/Preset Banks
+
+Typically, a package contains one sample library, and a bank of factory presets for the library.
+
+But alternatively, a package could also contain only presets, or a collection of sample libraries, or any combination.
+
+Floe doesn't remember packages after installation; they're just a means to get content onto your computer.
+
+## Sample Libraries
+Sample libraries are collections of mapped, playable sounds along with images, tags, and other metadata. Without sample libraries, Floe is empty.
+
+Sample libraries often have a theme or focus, such as 'Music Box Suite' — multisampled music box instruments, or 'Lost Reveries' — a collection of ambient single-sample ambient tones.
+
+A sample library can contain:
+- Instruments
+- Impulse Responses
+
+Sample libraries are not loaded directly; instead you load the instruments into Floe's layers, or impulse responses into Floe's convolution reverb. However, you can view your installed libraries by clicking the <FAIcon icon="fa-solid fa-info-circle" /> info button on Floe's main window.
+
+Libraries typically focus on instruments, however, sometimes a sample library exclusively contains impulse responses for use in the convolution reverb - expanding the options for sound design.
+
+At a technical level, Floe sample libraries are open, portable folders of audio files and configuration files developed with Floe's [developer tools](/docs/develop/develop-libraries). You have full access to the audio files if you wish.
+
+## Instruments
+An instrument is a playable sound source. It might be something like 'Upright Piano' or 'Ambient Drone'. It might be a single sample that loops, or a multisampled instrument with many samples mapped across the keyboard along with velocity layers and round robins.
+
+Instruments are loaded into any of Floe's [3 layers](/docs/usage/layers) using a powerful _[picker panel](/docs/usage/picker-panels)_ which lets you easily find instruments across all your installed libraries. A layer that has no instrument loaded will say 'None' instead of the instrument name - click this to open the picker.
+
+## Impulse Responses
+An impulse response (or IR) is a sample that determines the character of the convolution reverb. These are selected on the convolution reverb effect.
+
+IRs can be chosen using a _[picker panel](/docs/usage/picker-panels)_ similar to the instrument picker, allowing you to easily find the right IR to shape your sound.
+
+## Presets
+A preset is a full production-ready setup of all of Floe's instruments and parameters, along with a name, description, and tags.
+
+A preset bank is a collection of presets given a name and organised into categories.
+
+Presets typically only use instruments and impulse responses from a single sample library. However, using any installed instruments and impulse responses is supported.
+
+At a technical level, presets are just portable files (`.floe-preset`) arranged into folders on your computer. You can rename and organise them as you wish - Floe will automatically detect changes in its [preset folders](/docs/usage/folders).

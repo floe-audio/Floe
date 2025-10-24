@@ -1,46 +1,16 @@
 ---
-id: sample-libraries
-title: Sample Libraries
+id: folders
+title: Folders
 hide_table_of_contents: true
-description: Information about Floe sample libraries
+description: TODO
 ---
 
 <!--
 SPDX-FileCopyrightText: 2025 Sam Windell
-SPDX-License-Identifier: MIT
+SPDX-License-Identifier: CC-BY-SA-4.0
 -->
 
-Floe is an engine that requires _Floe sample libraries_ to make sound. This page describes Floe's sample library format and how to manage your libraries.
-
-Related pages:
-- [Available libraries](/packages)
-- [How to install libraries](/docs/packages/install-packages)
-- [Develop your own libraries](/docs/develop/develop-libraries) (programming required)
-
-_Floe also supports the legacy [Mirage](/docs/about-the-project/mirage) library format_.
-
-## Custom open format
-
-Floe sample libraries use a custom, open format consisting of a folder of audio files and a file in the [Lua](https://en.wikipedia.org/wiki/Lua_(programming_language)) programming language called `floe.lua`. 
-
-The format supports both multisampled and single-sample instruments, as well as comprehensive tagging and categorisation features.
-
-Access to the audio files gives you the freedom to use a library's sounds in other software too.
-
-> Openness is a key goal of Floe sample libraries. 
-> 
-> There's no proprietary file formats. There's just FLAC, WAV and Lua. By using widely-used file formats we ensure the longevity of libraries.
-
-
-## Portable
-
-Sample libraries are just normal folders. They don't reference anything outside their folder, meaning they totally portable; you can move libraries to other locations, or even to other computers/operating systems due to their cross-platform nature.
-
-
-## View installed libraries
-
-You can view your installed libraries by clicking the <FAIcon icon="fa-solid fa-info-circle" /> info button on Floe's main window.
-
+TODO: explain how to manage folders for libraries and presets
 
 ## Library folders
 
@@ -64,3 +34,12 @@ Here's that process in more detail:
 1. Under 'Folders', click on the <FAIcon icon="fa-solid fa-external-link" /> link button for the folder that you want to move libraries out of. A File Explorer/Finder window will open.
 1. Use File Explorer/Finder to move the libraries to your desired new location (libraries are folders — typically with this naming pattern: 'Developer - Library-name').
 1. Go back into Floe, and add the new location by clicking the 'Add Folder' button. Remember, Floe will find libraries inside subfolders as well as the top-level, so select the "Floe Libraries" folder (or whatever name you chose), instead of the individual library folders.
+
+## Preset folders
+
+![Folder Preferences GUI](/images/folder-preferences.png)
+
+Floe automatically scans for presets in a set of folders - including subfolders. This works in the exact same way as your [library folders](/docs/usage/sample-libraries).
+
+Presets are tiny files and so there's typically no need to move then to an external hard-drive.
+
