@@ -458,15 +458,6 @@ test-ci optimised="0":
   #!/usr/bin/env bash
   set -x
 
-  # If on Linux, and there is no X11 display server running, we start one with xvfb.
-  # This situation is quite common on headless CI servers.
-  XVFB_PID=""
-  if [[ "{{os()}}" == "linux" && -z "$DISPLAY" ]]; then
-    sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
-    XVFB_PID=$!
-    export DISPLAY=:99
-  fi
-
   # Start our website so check-links fully works
   just website-generate
   pushd website
@@ -491,10 +482,6 @@ test-ci optimised="0":
 
   kill $DOCUSAURUS_PID
   kill $HTTPBIN_PID
-  # Try to kill the Xvfb server if it was started
-  if [[ -n "$XVFB_PID" ]]; then
-    sudo kill $XVFB_PID 2>/dev/null || true
-  fi
 
   exit $return_code
 

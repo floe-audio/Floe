@@ -733,73 +733,76 @@ TEST_CASE(TestHostingClap) {
                     }
 
                     SUBCASE("gui basic") {
-                        // On Linux, we need a X11 display server (not guaranteed on CI).
-                        if constexpr (IS_LINUX)
-                            CHECK(GetEnvironmentVariable("DISPLAY", tester.scratch_arena));
+                        // On CI machines, X11 is rarely available and so opening a GUI will fail. We got
+                        // quite far using xvfb and Mesa software renderer setups but never sucessfully got it
+                        // working reliably.
+                        if (!(IS_LINUX && !GetEnvironmentVariable("DISPLAY", tester.scratch_arena))) {
+                            // Create pugl world for hosting the CLAP GUI
+                            PuglWorld* world = puglNewWorld(PUGL_PROGRAM, 0);
+                            REQUIRE(world);
+                            DEFER { puglFreeWorld(world); };
 
-                        // Create pugl world for hosting the CLAP GUI
-                        PuglWorld* world = puglNewWorld(PUGL_PROGRAM, 0);
-                        REQUIRE(world);
-                        DEFER { puglFreeWorld(world); };
+                            REQUIRE(puglSetWorldString(world, PUGL_CLASS_NAME, "FloeGuiTest") ==
+                                    PUGL_SUCCESS);
 
-                        REQUIRE(puglSetWorldString(world, PUGL_CLASS_NAME, "FloeGuiTest") == PUGL_SUCCESS);
+                            // Set up the floe host extension with the pugl world
+                            test_host.floe_host_ext.pugl_world = world;
 
-                        // Set up the floe host extension with the pugl world
-                        test_host.floe_host_ext.pugl_world = world;
+                            PuglView* view = puglNewView(world);
+                            REQUIRE(view);
+                            DEFER { puglFreeView(view); };
 
-                        PuglView* view = puglNewView(world);
-                        REQUIRE(view);
-                        DEFER { puglFreeView(view); };
+                            // Configure the view
+                            REQUIRE(puglSetViewString(view, PUGL_WINDOW_TITLE, "Floe GUI Test") ==
+                                    PUGL_SUCCESS);
+                            REQUIRE(puglSetBackend(view, puglStubBackend()) == PUGL_SUCCESS);
 
-                        // Configure the view
-                        REQUIRE(puglSetViewString(view, PUGL_WINDOW_TITLE, "Floe GUI Test") == PUGL_SUCCESS);
-                        REQUIRE(puglSetBackend(view, puglStubBackend()) == PUGL_SUCCESS);
+                            bool quit = false;
+                            puglSetHandle(view, &quit);
+                            REQUIRE(puglSetEventFunc(view, OnGuiTestEvent) == PUGL_SUCCESS);
 
-                        bool quit = false;
-                        puglSetHandle(view, &quit);
-                        REQUIRE(puglSetEventFunc(view, OnGuiTestEvent) == PUGL_SUCCESS);
+                            // Get the CLAP GUI extension
+                            auto gui = (clap_plugin_gui const*)plugin->get_extension(plugin, CLAP_EXT_GUI);
+                            REQUIRE(gui);
 
-                        // Get the CLAP GUI extension
-                        auto gui = (clap_plugin_gui const*)plugin->get_extension(plugin, CLAP_EXT_GUI);
-                        REQUIRE(gui);
+                            // Create the CLAP GUI
+                            REQUIRE(gui->create(plugin, k_supported_gui_api, false));
+                            DEFER { gui->destroy(plugin); };
 
-                        // Create the CLAP GUI
-                        REQUIRE(gui->create(plugin, k_supported_gui_api, false));
-                        DEFER { gui->destroy(plugin); };
+                            // Get the GUI size from CLAP
+                            u32 clap_width;
+                            u32 clap_height;
+                            REQUIRE(gui->get_size(plugin, &clap_width, &clap_height));
 
-                        // Get the GUI size from CLAP
-                        u32 clap_width;
-                        u32 clap_height;
-                        REQUIRE(gui->get_size(plugin, &clap_width, &clap_height));
+                            // Set the pugl view size to match CLAP's requirements
+                            REQUIRE(puglSetSizeHint(view, PUGL_DEFAULT_SIZE, clap_width, clap_height) ==
+                                    PUGL_SUCCESS);
 
-                        // Set the pugl view size to match CLAP's requirements
-                        REQUIRE(puglSetSizeHint(view, PUGL_DEFAULT_SIZE, clap_width, clap_height) ==
-                                PUGL_SUCCESS);
+                            // Realize the pugl view
+                            REQUIRE(puglRealize(view) == PUGL_SUCCESS);
 
-                        // Realize the pugl view
-                        REQUIRE(puglRealize(view) == PUGL_SUCCESS);
+                            // Set the CLAP GUI's parent to our pugl view
+                            clap_window const clap_window = {
+                                .api = k_supported_gui_api,
+                                .ptr = (void*)puglGetNativeView(view),
+                            };
+                            REQUIRE(gui->set_parent(plugin, &clap_window));
 
-                        // Set the CLAP GUI's parent to our pugl view
-                        clap_window const clap_window = {
-                            .api = k_supported_gui_api,
-                            .ptr = (void*)puglGetNativeView(view),
-                        };
-                        REQUIRE(gui->set_parent(plugin, &clap_window));
+                            // Show both the pugl view and CLAP GUI
+                            REQUIRE(puglShow(view, PUGL_SHOW_RAISE) == PUGL_SUCCESS);
+                            REQUIRE(gui->show(plugin));
 
-                        // Show both the pugl view and CLAP GUI
-                        REQUIRE(puglShow(view, PUGL_SHOW_RAISE) == PUGL_SUCCESS);
-                        REQUIRE(gui->show(plugin));
+                            // Run a couple of updates to pump messages
+                            for (auto _ : Range(5)) {
+                                if (test_host.callback_requested.Exchange(false, RmwMemoryOrder::Relaxed))
+                                    plugin->on_main_thread(plugin);
 
-                        // Run a couple of updates to pump messages
-                        for (auto _ : Range(5)) {
-                            if (test_host.callback_requested.Exchange(false, RmwMemoryOrder::Relaxed))
-                                plugin->on_main_thread(plugin);
+                                auto status = puglUpdate(world, 0.010);
+                                CHECK(status == PUGL_SUCCESS || status == PUGL_FAILURE);
+                            }
 
-                            auto status = puglUpdate(world, 0.010);
-                            CHECK(status == PUGL_SUCCESS || status == PUGL_FAILURE);
+                            // Our DEFERs will close and clean everything up.
                         }
-
-                        // Our DEFERs will close and clean everything up.
                     }
                 }
             }
