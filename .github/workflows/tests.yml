@@ -17,6 +17,7 @@ on:
 env:
   SENTRY_DSN: ${{ secrets.SENTRY_DSN_DEVELOPMENT }}
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # Headless Linux CI lacks hardware OpenGL and X11 display. These force Mesa software rendering, used alongside Xvfb - a virtual X11 server that we start before our tests.
   LIBGL_ALWAYS_SOFTWARE: 1
   MESA_LOADER_DRIVER_OVERRIDE: llvmpipe
 
@@ -87,7 +88,7 @@ jobs:
           cache-directories: |
             .floe-cache
 
-      - name: Install OpenGL dependencies
+      - name: Install Mesa OpenGL libraries for software rendering in headless environment
         run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri libglu1-mesa
 
       - if: '!cancelled()'
@@ -135,7 +136,7 @@ jobs:
           cache-directories: |
             .floe-cache
 
-      - name: Install OpenGL dependencies
+      - name: Install Mesa OpenGL libraries for software rendering in headless environment
         run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dri libglu1-mesa
 
       - if: '!cancelled()'
