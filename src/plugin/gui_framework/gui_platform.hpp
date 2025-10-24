@@ -745,7 +745,7 @@ static void HandlePostUpdateRequests(GuiPlatform& platform) {
                       }));
     }
 
-    if (platform.last_result.wants_text_input) {
+    if (platform.last_result.wants_text_input || platform.last_result.wants_keyboard_keys.AnyValuesSet()) {
         if (!puglHasFocus(platform.view)) {
             auto const result = puglGrabFocus(platform.view);
             if (result != PUGL_SUCCESS) LogWarning(ModuleName::Gui, "failed to grab focus: {}", result);
