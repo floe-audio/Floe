@@ -4,12 +4,12 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
-constexpr auto k_metadata_filename = "floe-preset-pack.ini"_s;
+constexpr auto k_metadata_filename = "floe-preset-bank.ini"_s;
 
-struct PresetPackInfo {
+struct PresetBank {
     u64 id {};
     String subtitle {};
     u16 minor_version {};
 };
 
-PresetPackInfo ParsePresetPackInfoFile(String file_data, ArenaAllocator& arena);
+PresetBank ParsePresetBankFile(String file_data, ArenaAllocator& arena);

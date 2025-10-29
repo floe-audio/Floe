@@ -1,10 +1,10 @@
 // Copyright 2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "preset_pack_info.hpp"
+#include "preset_bank_info.hpp"
 
-PresetPackInfo ParsePresetPackInfoFile(String file_data, ArenaAllocator& arena) {
-    PresetPackInfo pack {};
+PresetBank ParsePresetBankFile(String file_data, ArenaAllocator& arena) {
+    PresetBank bank {};
 
     for (auto line : SplitIterator {.whole = file_data, .token = '\n', .skip_consecutive = true}) {
         line = WhitespaceStripped(line);
@@ -20,18 +20,18 @@ PresetPackInfo ParsePresetPackInfoFile(String file_data, ArenaAllocator& arena) 
         if (value_str.size == 0) continue;
 
         if (key == "subtitle"_s) {
-            pack.subtitle = arena.Clone(value_str);
+            bank.subtitle = arena.Clone(value_str);
         } else if (key == "minor_version"_s) {
             usize num_chars_read = {};
             if (auto const v = ParseInt(value_str, ParseIntBase::Decimal, &num_chars_read, false);
                 v && num_chars_read == value_str.size &&
-                *v <= LargestRepresentableValue<decltype(pack.minor_version)>()) {
-                pack.minor_version = (decltype(pack.minor_version))*v;
+                *v <= LargestRepresentableValue<decltype(bank.minor_version)>()) {
+                bank.minor_version = (decltype(bank.minor_version))*v;
             }
         } else if (key == "id"_s) {
-            pack.id = Hash(value_str);
+            bank.id = Hash(value_str);
         }
     }
 
-    return pack;
+    return bank;
 }
