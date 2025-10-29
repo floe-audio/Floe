@@ -1941,6 +1941,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                               .font_size = k_picker_item_height * 0.9f,
                               .text_colours = Splat(style::Colour::Subtext0),
                               .background_fill_auto_hot_active_overlay = true,
+                              .tooltip = "Clear search"_s,
                               .behaviour = Behaviour::Button,
                           })
                         .button_fired) {
@@ -2129,6 +2130,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                   .font_size = k_picker_item_height * 0.9f,
                                   .text_colours = Splat(style::Colour::Subtext0),
                                   .background_fill_auto_hot_active_overlay = true,
+                                  .tooltip = "Clear search"_s,
                                   .behaviour = Behaviour::Button,
                               })
                             .button_fired) {
@@ -2236,6 +2238,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                       .contents_align = layout::Alignment::Middle,
                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                   },
+                                  .tooltip = "Remove filter"_s,
                                   .behaviour = Behaviour::Button,
                               });
                     // Text
@@ -2248,7 +2251,6 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                               .size_from_text = true,
                               .font = FontType::Heading3,
                           });
-                    // 'x' icon using font awesome
                     DoBox(box_system,
                           {
                               .parent = button,
