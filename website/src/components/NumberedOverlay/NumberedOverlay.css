@@ -26,3 +26,28 @@
     font-size: 14px;
     z-index: 10;
 }
+
+.numbered-overlay-box {
+    position: absolute;
+    border: 2px solid #ff4444;
+    border-radius: 4px;
+    z-index: 5;
+}
+
+.numbered-overlay-box-number {
+    position: absolute;
+    top: -14px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #ff4444;
+    color: white;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+    z-index: 10;
+}

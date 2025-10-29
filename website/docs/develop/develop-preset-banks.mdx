@@ -10,11 +10,44 @@ SPDX-FileCopyrightText: 2025 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
 -->
 
-Floe's preset management is based around simple files stored in folders.
+Floe's preset management is based around the familiar idea of files and folders on your computer.
 
-Developing preset banks is simply a matter of saving preset files into a folder and then packaging them into a [Floe Package](/docs/develop/packaging).
+Presets are saved as individual files using the <FAIcon icon="fa-solid fa-floppy-disk" /> save button at the top of Floe's UI. These files can be freely renamed and put into subfolders; this is how categories and hierarchies are created in the preset browser.
 
-Best practices for presets:
+## Preset Banks
+
+A _preset bank_ is small, optional, extension to this concept. By creating a `floe-preset-bank.ini` inside a folder of presets, it becomes a preset bank, where the entire tree of presets in the folder and all its subfolders become more easily identifiable and can feature metadata such as a subtitle and ID. 
+
+The preset bank file is a simple INI text file with the following fields - all are optional:
+
+```ini
+; A short and descriptive name for the preset bank.
+subtitle = My Preset Bank Name
+
+; Any kind of unique identifier. Typically you might use a reverse 
+; domain style string. Used so Floe can identify the bank uniquely.
+id = com.myname.mypresetbank
+
+; A version number - just a single integer. When installing a 
+; package, Floe can use this alongside the ID to determine if a bank 
+; can be updated rather than installed to a new location. Versioning
+; is only designed for simple additions/fixes. If you make major
+; changes, it's probably better to create a new preset bank, 
+; "My Bank 2", with a new ID.
+minor_version = 1
+```
+
+You can create this INI file with any text editor such as Notepad or TextEdit. You just need to type in the various `field = value` with new lines between them.
+
+## Packaging
+
+Once you've created your folder of presets and (optionally) added a `floe-preset-bank.ini` file, you can ZIP it up for distribution.
+
+Read about packaging on the [packaging](/docs/develop/packaging) page.
+
+Essentially, rename your bank folder to something like `My Preset Bank`. Next, put that into a folder called `Presets`. Next, put `Presets` into another folder `My Preset Bank - Floe Package`, then right-click and ZIP that folder. You should now have a ZIP called `My Preset Bank - Floe Package.zip` with a subfolder `Presets` and you bank folder inside that. The resulting ZIP file will contain the structure that _Floe packages_ requires (Presets subfolder at the top level). Test your package by trying to install it using Floe's _Install package_ button. Refer to the packaging page for more details if needed.
+
+## Best Practices
 - Make presets all feel the same volume: the master peak meter on Floe's GUI should just be the yellow zone when the preset is played at its fullest.
 - Give each preset a unique, descriptive name suggesting its tone or usage. Don't use all capital letters. Don't include a 'type' prefix such as "PAD - " or "LD - ".
 - Add as many tags as is relevant to the preset. Read more about tags on the [tags and folders](/docs/develop/tags-and-folders) page.

@@ -9,3 +9,102 @@ description: TODO
 SPDX-FileCopyrightText: 2025 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
 -->
+
+import NumberedOverlay from '@site/src/components/NumberedOverlay';
+
+One of Floe's core goals is to provide a fast and fluid way to find and load sounds across large sound pools: the _pickers_ are the main way to do this.
+
+You may spend a lot of time with the pickers. They're used in several places on the interface:
+- Presets
+- Instruments for each layer
+- Impulse responses for the Convolution Reverb effect
+
+They all largely work the same way, with some minor differences depending on context.
+
+<video width="100%" controls>
+  <source src="/images/picker-panel-usage.mp4" type="video/mp4" />
+  Your browser does not support the video tag.
+</video>
+
+## Filter and result design
+
+The fundamental design is a two-panel layout: filters on the left, and results on the right (loadable items).
+
+Similar to if you were shopping online for t-shirts: you might use filters to narrow down the results by size, colour, price range, etc., and then browse the results that match your criteria. 
+
+The same principle applies here, except we use filters such as library, tag, or folder to instantly narrow down results of presets, instruments, or impulse responses.
+
+By default, we start simple - you can only select one filter at a time; if you click on another filter, it replaces the existing one. You can change to a multi-select mode using the <FAIcon icon="fa-solid fa-ellipsis-vertical" /> menu in the top-right.
+
+When no filters are applied, all items are shown in the results list.
+
+<NumberedOverlay
+    src="/images/picker-panel.png"
+    alt="Picker Panel"
+    overlays={[
+    ]}
+    boxes={[
+        { number: 1, top: "12%", left: "0.5%", width: "44.2%", height: "87.8%" },
+        { number: 2, top: "12%", left: "46%", width: "53.5%", height: "87.8%" },
+    ]}
+/>
+
+- **1**: filters panel: filters to narrow down the results. Here we can see filters for libraries (Celtic Harp, Dulictone, Lost Reveries, etc.) and folders within those libraries (Core, Extras, Mic Options, etc.).
+- **2**: the results list, showing items that match the current filter settings. Click these to load them.
+- **Search libraries/tags**: filters search box: type here to narrow down the available filters.
+- **Search instruments**: results search box: type here to filter the results list by name.
+- **Favourites**: on each item in the results list you can click the <FAIcon icon="fa-regular fa-star" /> star that appear on the right when you hover over an item. This adds it to your favourites list, which can be accessed using the _Favourites_ button.
+- **Left/right arrows** <FAIcon icon="fa-solid fa-caret-left" /><FAIcon icon="fa-solid fa-caret-right" />: navigate to the previous/next item in the results list.
+- **Random icon** <FAIcon icon="fa-solid fa-shuffle" />: load a random item from the results list.
+- **Location arrow** <FAIcon icon="fa-solid fa-location-arrow" />: scroll to the currently loaded item in the results list.
+- **Menu icon** <FAIcon icon="fa-solid fa-ellipsis-vertical" />: open the menu to change between single/multi select modes.
+- **Unload instrument**: unload the currently selected item. You can also click again on the loaded item in the results list to unload it.
+
+## Filter button types
+Filters come in 2 main styles: cards and buttons. Whilst they look quite different, they function in the same way - they narrow down the list of results on the right panel. The difference is that cards are larger, contain more information, and can house a tree structure of sub-items.
+
+### Filter cards
+Cards are used for sample libraries in the instrument and IR pickers, and for preset banks in the preset picker.
+
+<NumberedOverlay
+    src="/images/filter-card.png"
+    alt="Picker Filter Card"
+    overlays={[
+    ]}
+    boxes={[
+        { number: 1, top: "2%", left: "2%", width: "96%", height: "28%" },
+        { number: 2, top: "31%", left: "2%", width: "96%", height: "67%" },
+    ]}
+/>
+
+Cards are made up of two sections, the _header_ (**1**) and the _body_ (**2**). 
+
+Click on the header (**1**) to select the entire sample library or preset bank: 
+![Filter card all selected](/images/filter-card-all-selected.png)
+
+Alternatively, click on individual items in the body (**2**) to select specific folders within the library or bank:
+![Filter card single item selected](/images/filter-card-body-item-selected.png)
+
+Items in the body are hierarchical, if you select a parent folder, all child folders are also selected.
+
+### Filter buttons
+The other type of filter buttons are simple buttons used for tags, authors and other flat lists.
+
+![Filter button](/images/filter-button.png)
+
+## Multi-select mode
+By default, the pickers are in single-select mode: clicking on a filter replaces the existing selection.
+
+Use the <FAIcon icon="fa-solid fa-ellipsis-vertical" /> menu in the top-right to switch to multi-select mode.
+
+![](/images/picker-menu.png)
+
+- **AND** mode means that all selected filters must be matched for an item to appear in the results list. The more filters you select, the narrower the results become.
+- **OR** mode means that items matching any of the selected filters will appear in the results list. The more filters you select, the broader the results become.
+
+![](/images/picker-multi-select.png)
+
+TODO: explain the numbers in brackets next to filter items.
+
+
+## Keyboard navigation
