@@ -276,6 +276,7 @@ struct LibraryFilters {
     FilterCardOptions const* additional_pseudo_card {};
     FilterItemInfo const* additional_pseudo_card_info {};
     ThreadsafeErrorNotifications& error_notifications;
+    Notifications& notifications;
     ConfirmationDialogState& confirmation_dialog_state;
 };
 

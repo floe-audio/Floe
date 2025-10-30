@@ -1237,16 +1237,30 @@ static void DoLibraryRightClickMenu(GuiBoxSystem& box_system,
 
                     library_filters.confirmation_dialog_state.callback =
                         [&error_notifications = library_filters.error_notifications,
+                         &gui_notifications = library_filters.notifications,
                          cloned_path](ConfirmationDialogResult result) {
                             DEFER { Malloc::Instance().Free(cloned_path.ToByteSpan()); };
                             if (result == ConfirmationDialogResult::Ok) {
                                 ArenaAllocatorWithInlineStorage<Kb(1)> scratch_arena {Malloc::Instance()};
                                 auto const outcome = TrashFileOrDirectory(cloned_path, scratch_arena);
-                                auto const error_id = HashMultiple(Array {"library-delete"_s, cloned_path});
+                                auto const id = HashMultiple(Array {"library-delete"_s, cloned_path});
 
                                 if (outcome.HasValue()) {
-                                    error_notifications.RemoveError(error_id);
-                                } else if (auto item = error_notifications.BeginWriteError(error_id)) {
+                                    error_notifications.RemoveError(id);
+                                    *gui_notifications.FindOrAppendUninitalisedOverwrite(id) = {
+                                        .get_diplay_info =
+                                            [p = DynamicArrayBounded<char, 200>(path::Filename(cloned_path))](
+                                                ArenaAllocator&) {
+                                                return NotificationDisplayInfo {
+                                                    .title = "Library Deleted",
+                                                    .message = p,
+                                                    .dismissable = true,
+                                                    .icon = NotificationDisplayInfo::IconType::Success,
+                                                };
+                                            },
+                                        .id = id,
+                                    };
+                                } else if (auto item = error_notifications.BeginWriteError(id)) {
                                     DEFER { error_notifications.EndWriteError(*item); };
                                     item->title = "Failed to send library to trash"_s;
                                     item->error_code = outcome.Error();
