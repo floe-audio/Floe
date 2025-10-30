@@ -496,13 +496,15 @@ void Destroy(RecursiveIterator& it);
 ErrorCodeOr<Optional<Entry>> Next(Iterator& it, ArenaAllocator& result_arena);
 ErrorCodeOr<Optional<Entry>> Next(RecursiveIterator& it, ArenaAllocator& result_arena);
 
-inline MutableString FullPath(auto& iterator, Entry const& entry, ArenaAllocator& arena) {
-    auto result =
-        arena.AllocateExactSizeUninitialised<char>(iterator.base_path.size + 1 + entry.subpath.size);
+inline MutableString
+FullPath(auto& iterator, Entry const& entry, ArenaAllocator& arena, bool null_terminate = false) {
+    auto result = arena.AllocateExactSizeUninitialised<char>(iterator.base_path.size + 1 +
+                                                             entry.subpath.size + (null_terminate ? 1 : 0));
     usize write_pos = 0;
     WriteAndIncrement(write_pos, result, iterator.base_path);
     WriteAndIncrement(write_pos, result, path::k_dir_separator);
     WriteAndIncrement(write_pos, result, entry.subpath);
+    if (null_terminate) WriteAndIncrement(write_pos, result, '\0');
     return result;
 }
 
