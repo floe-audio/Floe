@@ -74,7 +74,11 @@ static bool ShouldSkipInstrument(InstPickerContext const& context,
             else if (common_state.filter_mode == FilterMode::Single)
                 return true;
         } else {
-            if (common_state.filter_mode == FilterMode::MultipleOr) return false;
+            if (common_state.filter_mode == FilterMode::MultipleOr)
+                return false;
+            else if (common_state.filter_mode == FilterMode::MultipleAnd &&
+                     common_state.selected_library_hashes.hashes.size != 1)
+                return true;
         }
     }
 
@@ -523,7 +527,7 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
     };
 
     FilterItemInfo const waveform_info = {
-        .num_used_in_items_lists = ToInt(WaveformType::Count),
+        .num_used_in_items_lists = state.common_state.HasFilters() ? 0 : ToInt(WaveformType::Count),
         .total_available = ToInt(WaveformType::Count),
     };
 

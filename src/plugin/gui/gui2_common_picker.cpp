@@ -654,7 +654,7 @@ Box DoFilterTreeButton(GuiBoxSystem& box_system,
     using namespace filter_card_box;
     auto const scoped_tooltips = ScopedEnableTooltips(box_system, true);
 
-    auto const num_used = info.total_available;
+    auto const num_used = NumUsedForFilter(info, options.common.filter_mode);
 
     auto const button_outer = DoBox(box_system,
                                     {
@@ -708,13 +708,16 @@ Box DoFilterTreeButton(GuiBoxSystem& box_system,
                   .behaviour = Behaviour::Button,
               });
 
+    auto const text_cols =
+        num_used != 0 ? Splat(style::Colour::DarkModeText) : Splat(style::Colour::DarkModeOverlay2);
+
     DoBox(box_system,
           {
               .parent = button,
               .text = options.common.text,
               .size_from_text = false,
               .font = FontType::Body,
-              .text_colours = Splat(style::Colour::DarkModeText),
+              .text_colours = text_cols,
               .text_overflow = TextOverflowType::ShowDotsOnRight,
               .parent_dictates_hot_and_active = true,
               .layout {
@@ -725,10 +728,10 @@ Box DoFilterTreeButton(GuiBoxSystem& box_system,
     DoBox(box_system,
           {
               .parent = button,
-              .text = fmt::FormatInline<16>("({})"_s, num_used),
+              .text = fmt::FormatInline<16>("({})"_s, info.total_available),
               .size_from_text = true,
               .font = FontType::Heading3,
-              .text_colours = Splat(style::Colour::DarkModeText),
+              .text_colours = text_cols,
               .text_align_y = TextAlignY::Centre,
               .parent_dictates_hot_and_active = true,
               .round_background_corners = 0b1111,
@@ -759,7 +762,7 @@ Box DoFilterCard(GuiBoxSystem& box_system,
     auto const scoped_tooltips = ScopedEnableTooltips(box_system, true);
     bool const is_selected = options.common.is_selected;
 
-    auto const num_used = info.total_available;
+    auto const num_used = NumUsedForFilter(info, options.common.filter_mode);
 
     auto const card_outer = DoBox(box_system,
                                   {
@@ -911,6 +914,12 @@ Box DoFilterCard(GuiBoxSystem& box_system,
                                          .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                      },
                                  });
+
+    auto const title_text_colours =
+        num_used != 0 ? Splat(style::Colour::DarkModeText) : Splat(style::Colour::DarkModeOverlay2);
+    auto const subtitle_text_colours =
+        num_used != 0 ? Splat(style::Colour::DarkModeSubtext1) : Splat(style::Colour::DarkModeOverlay2);
+
     DoBox(box_system,
           {
               .parent = title_box,
@@ -918,25 +927,17 @@ Box DoFilterCard(GuiBoxSystem& box_system,
               .wrap_width = k_wrap_to_parent,
               .size_from_text = true,
               .font = FontType::Heading2,
-              .text_colours {
-                  .base = style::Colour::DarkModeText,
-                  .hot = style::Colour::DarkModeText,
-                  .active = style::Colour::DarkModeText,
-              },
+              .text_colours = title_text_colours,
               .parent_dictates_hot_and_active = true,
           });
 
     DoBox(box_system,
           {
               .parent = title_box,
-              .text = fmt::FormatInline<32>("({})"_s, num_used),
+              .text = fmt::FormatInline<32>("({})"_s, info.total_available),
               .size_from_text = true,
               .font = FontType::Heading3,
-              .text_colours {
-                  .base = style::Colour::DarkModeSubtext1,
-                  .hot = style::Colour::DarkModeText,
-                  .active = style::Colour::DarkModeText,
-              },
+              .text_colours = subtitle_text_colours,
               .parent_dictates_hot_and_active = true,
           });
 
@@ -947,11 +948,7 @@ Box DoFilterCard(GuiBoxSystem& box_system,
               .wrap_width = k_wrap_to_parent,
               .size_from_text = true,
               .font = FontType::Heading3,
-              .text_colours {
-                  .base = style::Colour::DarkModeSubtext1,
-                  .hot = style::Colour::DarkModeSubtext0,
-                  .active = style::Colour::DarkModeSubtext0,
-              },
+              .text_colours = subtitle_text_colours,
               .parent_dictates_hot_and_active = true,
               .layout {
                   // When there's no LHS border, add a bit of padding so that the text won't jump to
@@ -1589,6 +1586,16 @@ static String FilterModeText(FilterMode mode) {
     PanicIfReached();
 }
 
+static String FilterModeTextAbbreviated(FilterMode mode) {
+    switch (mode) {
+        case FilterMode::Single: return "One";
+        case FilterMode::MultipleAnd: return "AND";
+        case FilterMode::MultipleOr: return "OR";
+        case FilterMode::Count: break;
+    }
+    PanicIfReached();
+}
+
 static String FilterModeDescription(FilterMode mode) {
     switch (mode) {
         case FilterMode::Single: return "Only one filter can be selected at a time.";
@@ -1868,7 +1875,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
                                                .contents_padding = {.lr = k_picker_spacing},
                                                .contents_gap = k_picker_spacing,
-                                               .contents_direction = layout::Direction::Column,
+                                               .contents_direction = layout::Direction::Row,
                                                .contents_align = layout::Alignment::Start,
                                                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                            },
@@ -1948,6 +1955,37 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                     dyn::Append(box_system.state->deferred_actions,
                                 [&s = context.state.filter_search]() { dyn::Clear(s); });
                 }
+            }
+
+            if (context.state.filter_mode != FilterMode::Single) {
+                auto const indicator_box =
+                    DoBox(box_system,
+                          {
+                              .parent = lhs_top,
+                              .font = FontType::Body,
+                              .border_colours = Splat(style::Colour::Overlay0),
+                              .round_background_corners = 0b1111,
+                              .layout {
+                                  .size = {layout::k_hug_contents, layout::k_fill_parent},
+                                  .contents_padding = {.lr = k_picker_spacing / 2},
+                                  .contents_align = layout::Alignment::Middle,
+                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                              },
+                              .tooltip = FunctionRef<String()> {[&]() -> String {
+                                  return fmt::Format(box_system.arena,
+                                                     "Multi-select mode on with \"{}\" behaviour"_s,
+                                                     FilterModeTextAbbreviated(context.state.filter_mode));
+                              }},
+                          });
+
+                DoBox(box_system,
+                      {
+                          .parent = indicator_box,
+                          .text = FilterModeTextAbbreviated(context.state.filter_mode),
+                          .size_from_text = true,
+                          .font = FontType::Body,
+                          .text_colours = Splat(style::Colour::Subtext0),
+                      });
             }
         }
 
@@ -2205,7 +2243,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                         DoBox(box_system,
                               BoxConfig {
                                   .parent = container,
-                                  .text = mode == FilterMode::MultipleOr ? "OR"_s : "AND",
+                                  .text = FilterModeTextAbbreviated(mode),
                                   .size_from_text = true,
                                   .size_from_text_preserve_height = true,
                                   .font = FontType::Heading3,
