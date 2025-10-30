@@ -63,7 +63,11 @@ static bool ShouldSkipIr(IrPickerContext const& context,
             else if (state.common_state.filter_mode == FilterMode::Single)
                 return true;
         } else {
-            if (state.common_state.filter_mode == FilterMode::MultipleOr) return false;
+            if (state.common_state.filter_mode == FilterMode::MultipleOr)
+                return false;
+            else if (state.common_state.filter_mode == FilterMode::MultipleAnd &&
+                     state.common_state.selected_library_hashes.hashes.size != 1)
+                return true;
         }
     }
 
