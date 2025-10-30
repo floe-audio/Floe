@@ -156,7 +156,7 @@ LibraryCheckExistingInstallation(Component const& component,
 // preset system will ignore duplicate files by checking their checksums.
 //
 // We take this approach because there is no reason to overwrite preset files. Preset files are tiny. If
-// there's a 'version 2' of a preset pack, then it might as well be installed alongside version 1.
+// there's a 'version 2' of a preset bank, then it might as well be installed alongside version 1.
 static ErrorCodeOr<ExistingInstalledComponent>
 PresetsCheckExistingInstallation(Component const& component,
                                  Span<String const> presets_folders,

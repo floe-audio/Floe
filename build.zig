@@ -1741,7 +1741,7 @@ pub fn build(b: *std.Build) void {
                     path ++ "/paths.cpp",
                     path ++ "/persistent_store.cpp",
                     path ++ "/preferences.cpp",
-                    path ++ "/preset_pack_info.cpp",
+                    path ++ "/preset_bank_info.cpp",
                     path ++ "/sample_library/audio_file.cpp",
                     path ++ "/sample_library/sample_library.cpp",
                     path ++ "/sample_library/sample_library_lua.cpp",

@@ -32,7 +32,7 @@ For instance: 0.0.1. Don't change the headings.
   - Clearer design throughout
 - Background-load images so the GUI stays responsive
 - Uninstall libraries and presets by right-clicking them in the picker panels
-- New concept of 'preset packs' - a folder of presets can be tagged as a pack and given more metadata such as a description. To create one add `floe-preset-pack.ini` to a folder of presets.
+- New concept of 'preset banks' - a folder of presets can be tagged as a bank and given more metadata such as a description. To create one add `floe-preset-bank.ini` to a folder of presets.
 - Press escape on the keyboard to close panels
 - Increase threads for loading audio up to 75% of CPU cores instead of maximum of 4.
 - Fix silent output in Ableton Live 10

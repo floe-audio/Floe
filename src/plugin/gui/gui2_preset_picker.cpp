@@ -19,7 +19,7 @@ inline prefs::Key FavouriteItemKey() { return "favourite-preset"_s; }
 static FolderNode const* FindFolderByHash(PresetPickerContext const& context, u64 folder_hash) {
     FolderNode const* result = nullptr;
 
-    for (auto root : context.presets_snapshot.preset_packs) {
+    for (auto root : context.presets_snapshot.preset_banks) {
         ForEachNode((FolderNode*)root, [&](FolderNode const* node) {
             if (result) return;
             if (node->Hash() == folder_hash) result = node;
@@ -395,13 +395,13 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
             .button_fired) {
         if (({
                 bool has_child_pack = false;
-                auto root_pack = PresetPackInfoForNode(*folder);
+                auto root_pack = PresetBankForNode(*folder);
                 ForEachNode((FolderNode*)folder, [&](FolderNode const* node) {
                     if (has_child_pack) return;
                     if (node == folder) return;
-                    auto pack = PresetPackInfoForNode(*node);
-                    if (!pack) return;
-                    if (root_pack != pack) has_child_pack = true;
+                    auto bank = PresetBankForNode(*node);
+                    if (!bank) return;
+                    if (root_pack != bank) has_child_pack = true;
                 });
                 has_child_pack;
             })) {
@@ -410,7 +410,7 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
                 DEFER { context.engine.error_notifications.EndWriteError(*item); };
                 item->title = "Cannot to delete preset folder"_s;
                 item->message =
-                    "This folder contains one or more preset packs as subfolders. Please delete them first."_s;
+                    "This folder contains one or more preset banks as subfolders. Please delete them first."_s;
             }
         } else if (auto const folder_path = FolderPath(folder, box_system.arena)) {
             auto cloned_path = Malloc::Instance().Clone(*folder_path);
@@ -732,7 +732,7 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
     FilterItemInfo favourites_info {};
 
     for (auto const& [folder_index, folder] : Enumerate(context.presets_snapshot.folders)) {
-        auto const folder_pack = ContainingPresetPackInfo(&folder->node);
+        auto const folder_pack = ContainingPresetBank(&folder->node);
         for (auto const& preset : folder->folder->presets) {
             bool const skip = ShouldSkipPreset(context, state, *folder, preset);
 
@@ -781,7 +781,7 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
 
             for (auto f = &folder->node; f; f = f->parent) {
                 auto& i = folders.FindOrInsertGrowIfNeeded(box_system.arena, f, {}).element.data;
-                if (ContainingPresetPackInfo(f) != folder_pack) break;
+                if (ContainingPresetBank(f) != folder_pack) break;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
             }
@@ -810,7 +810,7 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
             .filters_col_width = 320,
             .item_type_name = "preset",
             .rhs_do_items = [&](GuiBoxSystem& box_system) { PresetPickerItems(box_system, context, state); },
-            .filter_search_placeholder_text = "Search preset packs/tags",
+            .filter_search_placeholder_text = "Search preset banks/tags",
             .item_search_placeholder_text = "Search presets",
             .on_load_previous = [&]() { LoadAdjacentPreset(context, state, SearchDirection::Backward); },
             .on_load_next = [&]() { LoadAdjacentPreset(context, state, SearchDirection::Forward); },
@@ -879,7 +879,7 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
                                 .sample_library_server = context.sample_library_server,
                                 .subtext = ({
                                     String s {};
-                                    if (auto const m = PresetPackInfoForNode(*folder))
+                                    if (auto const m = PresetBankForNode(*folder))
                                         s = m->subtitle;
                                     else
                                         s = "Preset folder";
@@ -894,7 +894,7 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
                             });
                     };
 
-                    for (auto const folder : context.presets_snapshot.preset_packs) {
+                    for (auto const folder : context.presets_snapshot.preset_banks) {
                         auto const info = folders.Find(folder);
                         if (!info) continue;
                         do_card(folder, *info);
