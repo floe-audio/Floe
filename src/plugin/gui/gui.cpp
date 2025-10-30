@@ -444,6 +444,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
                     sample_lib_server::AllLibrariesRetained(g->shared_engine_systems.sample_library_server,
                                                             g->scratch_arena),
                 .error_notifications = g->engine.error_notifications,
+                .notifications = g->notifications,
                 .confirmation_dialog_state = g->confirmation_dialog_state,
             };
             DEFER { sample_lib_server::ReleaseAll(context.libraries); };

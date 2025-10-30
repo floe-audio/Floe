@@ -6,6 +6,7 @@
 #include "utils/error_notifications.hpp"
 
 #include "engine/check_for_update.hpp"
+#include "gui/gui2_notifications.hpp"
 #include "gui2_common_modal_panel.hpp"
 #include "gui2_confirmation_dialog_state.hpp"
 #include "gui2_info_panel_state.hpp"
@@ -21,6 +22,7 @@ struct InfoPanelContext {
     prefs::Preferences& prefs;
     Span<sample_lib_server::ResourcePointer<sample_lib::Library>> libraries;
     ThreadsafeErrorNotifications& error_notifications;
+    Notifications& notifications;
     ConfirmationDialogState& confirmation_dialog_state;
 };
 
@@ -168,16 +170,30 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
 
                 context.confirmation_dialog_state.callback = [&error_notifications =
                                                                   context.error_notifications,
+                                                              &gui_notifications = context.notifications,
                                                               cloned_path](ConfirmationDialogResult result) {
                     DEFER { Malloc::Instance().Free(cloned_path.ToByteSpan()); };
                     if (result == ConfirmationDialogResult::Ok) {
                         ArenaAllocatorWithInlineStorage<Kb(1)> scratch_arena {Malloc::Instance()};
                         auto const outcome = TrashFileOrDirectory(cloned_path, scratch_arena);
-                        auto const error_id = HashMultiple(Array {"library-delete"_s, cloned_path});
+                        auto const id = HashMultiple(Array {"library-delete"_s, cloned_path});
 
                         if (outcome.HasValue()) {
-                            error_notifications.RemoveError(error_id);
-                        } else if (auto item = error_notifications.BeginWriteError(error_id)) {
+                            error_notifications.RemoveError(id);
+                            *gui_notifications.FindOrAppendUninitalisedOverwrite(id) = {
+                                .get_diplay_info =
+                                    [p = DynamicArrayBounded<char, 200>(path::Filename(cloned_path))](
+                                        ArenaAllocator&) {
+                                        return NotificationDisplayInfo {
+                                            .title = "Library Deleted",
+                                            .message = p,
+                                            .dismissable = true,
+                                            .icon = NotificationDisplayInfo::IconType::Success,
+                                        };
+                                    },
+                                .id = id,
+                            };
+                        } else if (auto item = error_notifications.BeginWriteError(id)) {
                             DEFER { error_notifications.EndWriteError(*item); };
                             item->title = "Failed to send library to trash"_s;
                             item->error_code = outcome.Error();

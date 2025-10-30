@@ -592,6 +592,7 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
                     .additional_pseudo_card = &waveform_card,
                     .additional_pseudo_card_info = &waveform_info,
                     .error_notifications = context.engine.error_notifications,
+                    .notifications = context.notifications,
                     .confirmation_dialog_state = context.confirmation_dialog_state,
                 };
                 f;

@@ -8,6 +8,7 @@
 #include "engine/engine.hpp"
 #include "engine/favourite_items.hpp"
 #include "gui/gui2_common_modal_panel.hpp"
+#include "gui/gui2_notifications.hpp"
 #include "gui2_common_picker.hpp"
 #include "gui_framework/gui_box_system.hpp"
 #include "preset_server/preset_server.hpp"
@@ -424,16 +425,30 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
 
             context.confirmation_dialog_state.callback = [&error_notifications =
                                                               context.engine.error_notifications,
+                                                          &gui_notifications = context.notifications,
                                                           cloned_path](ConfirmationDialogResult result) {
                 DEFER { Malloc::Instance().Free(cloned_path.ToByteSpan()); };
                 if (result == ConfirmationDialogResult::Ok) {
                     ArenaAllocatorWithInlineStorage<Kb(1)> scratch_arena {Malloc::Instance()};
                     auto const outcome = TrashFileOrDirectory(cloned_path, scratch_arena);
-                    auto const error_id = HashMultiple(Array {"preset-folder-delete"_s, cloned_path});
+                    auto const id = HashMultiple(Array {"preset-folder-delete"_s, cloned_path});
 
                     if (outcome.HasValue()) {
-                        error_notifications.RemoveError(error_id);
-                    } else if (auto item = error_notifications.BeginWriteError(error_id)) {
+                        error_notifications.RemoveError(id);
+                        *gui_notifications.FindOrAppendUninitalisedOverwrite(id) = {
+                            .get_diplay_info =
+                                [p = DynamicArrayBounded<char, 200>(path::Filename(cloned_path))](
+                                    ArenaAllocator&) {
+                                    return NotificationDisplayInfo {
+                                        .title = "Preset Folder Deleted",
+                                        .message = p,
+                                        .dismissable = true,
+                                        .icon = NotificationDisplayInfo::IconType::Success,
+                                    };
+                                },
+                            .id = id,
+                        };
+                    } else if (auto item = error_notifications.BeginWriteError(id)) {
                         DEFER { error_notifications.EndWriteError(*item); };
                         item->title = "Failed to send preset folder to trash"_s;
                         item->error_code = outcome.Error();
@@ -823,6 +838,7 @@ void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, Pres
                     .library_authors = library_authors,
                     .unknown_library_icon = context.unknown_library_icon,
                     .error_notifications = context.engine.error_notifications,
+                    .notifications = context.notifications,
                     .confirmation_dialog_state = context.confirmation_dialog_state,
                 },
             .tags_filters =

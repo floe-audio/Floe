@@ -442,6 +442,7 @@ void DoIrPickerPopup(GuiBoxSystem& box_system, IrPickerContext& context, IrPicke
                     .resource_type = sample_lib::ResourceType::Ir,
                     .folders = folders,
                     .error_notifications = context.engine.error_notifications,
+                    .notifications = context.notifications,
                     .confirmation_dialog_state = context.confirmation_dialog_state,
                 },
             .tags_filters =
