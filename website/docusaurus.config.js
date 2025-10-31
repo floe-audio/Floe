@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 
 import { themes as prismThemes } from "prism-react-renderer";
+import versionsConfig from "./versions-config.js";
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
@@ -55,21 +56,7 @@ const config = {
                     sidebarPath: "./sidebars.js",
                     routeBasePath: "docs",
                     sidebarCollapsed: false,
-                    lastVersion: "stable",
-                    versions: {
-                        current: {
-                            label: "Beta",
-                            path: "beta",
-                            banner: "unreleased",
-                            badge: true,
-                            noIndex: true,
-                        },
-                        stable: {
-                            label: "Stable",
-                            path: "/",
-                            badge: false,
-                        },
-                    },
+                    ...versionsConfig,
                 },
                 blog: {
                     showReadingTime: true,

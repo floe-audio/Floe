@@ -220,6 +220,29 @@ website-build:
   just website-generate
   cd website && npm run build
 
+website-set-stable-version:
+  #!/usr/bin/env bash
+  
+  rm -f website/versions.json
+  rm -rf website/versioned_sidebars
+  rm -rf website/versioned_docs
+
+  # docusaurus docs:version does not allow overwriting an existing version.
+  # We workaround this by deleting the existing stable version. But if we
+  # were to now run docs:version stable, it errors because as part of its 
+  # process it partly builds the site (to get the sidebars, etc) and finds
+  # references to the versions that we just deleted. So we temporarily 
+  # remove all references.
+  cp website/versions-config.js website/versions-config.js.backup
+  echo "export default {};" > website/versions-config.js
+
+  pushd website 
+  npm run docusaurus docs:version stable
+  popd
+  
+  # Restore original config
+  mv website/versions-config.js.backup website/versions-config.js
+
 # IMPROVE: (June 2024) cppcheck v2.14.0 and v2.14.1 thinks there are syntax errors in valid code. It could be a cppcheck bug or it could be an incompatibility in how we are using it. Regardless, we should try again in the future and see if it's fixed. If it works it should run alongside clang-tidy in CI, etc.
 # cppcheck arch_os_pair=native_arch_os_pair:
 #   # IMPROVE: use --check-level=exhaustive?
