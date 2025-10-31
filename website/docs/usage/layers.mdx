@@ -46,7 +46,7 @@ A permanent fixture on each layer are the top controls, which provide quick acce
   ]}
 />
 
-- **1**: the _instrument_ selector: click this to open the [picker panel](/docs/key-concepts/picker-panels) and select a new instrument for this layer - or unload the current one. You can also right-click and choose 'Unload' from the menu.
+- **1**: the _instrument_ selector: click this to open the [picker panel](../key-concepts/picker-panels) and select a new instrument for this layer - or unload the current one. You can also right-click and choose 'Unload' from the menu.
 - **2**: instrument navigation: left/right arrows to quickly switch between instruments, and a randomise button to load a random instrument. These buttons are based on the current filter settings in the picker panel. For example, if you have selected the 'Distant Signals' sample library on the picker's filters, the navigation buttons will only cycle through instruments from that library.
 - **3**: mute/solo buttons: buttons to mute or solo this layer. Soloing a layer automatically mutes the other two layers.
 - **Volume**: adjust the layer's output volume.
@@ -69,10 +69,10 @@ The main tab contains the core sample playback and volume envelope controls for 
   ]}
 />
 
-- **1**: sample controls: this is a multi-use control that displays the waveform and voice markers, but also provides an overlay for sample-start, looping, and reverse indication. Please visit the [looping](/docs/usage/looping) page for further about the loop controls. Below the waveform is a caption: _multisample_ or _single sample_; this is determined by the instrument loaded in this layer. An instrument that is made up of multiple samples has a representative waveform image, whereas a single-sample instrument shows the actual waveform of the sample. When you play a note, you will see red voice markers track across the waveform.
+- **1**: sample controls: this is a multi-use control that displays the waveform and voice markers, but also provides an overlay for sample-start, looping, and reverse indication. Please visit the [looping](./looping) page for further about the loop controls. Below the waveform is a caption: _multisample_ or _single sample_; this is determined by the instrument loaded in this layer. An instrument that is made up of multiple samples has a representative waveform image, whereas a single-sample instrument shows the actual waveform of the sample. When you play a note, you will see red voice markers track across the waveform.
 - **2**: sample start position: adjust where in the sample playback starts, this is expressed as a percentage of the sample's total length. Remember that if the instrument is a multisample, this control affects all samples in the instrument and the waveform is just a representation. It's typically a good idea to add a small attack using the volume envelope to avoid clicks if you change the sample start position.
 - **Reverse**: toggle to play the sample(s) in reverse.
-- **3**: loop mode: select the looping mode for this layer. Visit the [looping](/docs/usage/looping) page for full details.
+- **3**: loop mode: select the looping mode for this layer. Visit the [looping](./looping) page for full details.
 - **Volume Envelope on/off**: typically it's best to leave the volume envelope enabled, but in some situations you can turn it off to allow samples to play unaltered in their entirety.
 - **4**: volume envelope ADSR: this UI element has 3 draggable points representing Attack, Decay+Sustain, and Release. Use these to shape this layer's voices volume over time. As with all controls, hold `shift` for fine adjustments.
 
@@ -140,5 +140,5 @@ The Play tab contains MIDI and playback behavior settings for this layer.
 - **Pitch Bend Range**: set the pitch range in semitones for the MIDI pitch wheel.
 - **Keytrack**: when enabled, tunes the sound to match the key played. When disabled, the sound always plays at its root pitch regardless of the MIDI note. This is not typically useful if the instrument is multi-sampled.
 - **Monophonic**: when enabled, only allows one voice of this layer to play at a time (monophonic behavior) - any preceeding note is ended, triggering it's volume envelope Release section. When disabled, multiple voices can play simultaneously (polyphonic behavior).
-- **Range** and **Key Fade**: visit the [key ranges](/docs/usage/key-ranges) page for full details about these settings.
-- **Velocity to volume curve**: graphical control showing how MIDI velocity affects the layer's volume. The curve can be adjusted to create different velocity response characteristics. Visit the [MIDI](/docs/usage/midi) page for full details about editing velocity curves.
+- **Range** and **Key Fade**: visit the [key ranges](./key-ranges) page for full details about these settings.
+- **Velocity to volume curve**: graphical control showing how MIDI velocity affects the layer's volume. The curve can be adjusted to create different velocity response characteristics. Visit the [MIDI](./midi) page for full details about editing velocity curves.
