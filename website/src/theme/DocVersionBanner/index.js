@@ -33,7 +33,7 @@ function UnreleasedVersionLabel({ siteTitle, versionMetadata }) {
                 versionLabel: <b>{versionMetadata.label}</b>,
             }}>
             {
-                'This is documentation for {siteTitle} {versionLabel} version.'
+                'This is documentation for {siteTitle} {versionLabel} releases.'
             }
         </Translate>
     );
@@ -82,7 +82,7 @@ function LatestVersionSuggestionLabel({ versionLabel, to, onClick }) {
                 ),
             }}>
             {
-                'Use the {latestVersionLink} documentation for regular Floe releases.'
+                'Switch to {latestVersionLink} for the standard release version.'
             }
         </Translate>
     );
