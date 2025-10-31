@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // This file contains Docusaurus version configuration that can be temporarily
-// replaced during the `just website-set-stable-version` process. The justfile
+// replaced during the `just website-promote-beta-to-stable` process. The justfile
 // recipe needs to create a new "stable" version, but Docusaurus fails if the
 // config references a "stable" version that doesn't exist yet (after the rm commands
 // clear the versioned files). The script temporarily replaces this file with an

@@ -220,7 +220,7 @@ website-build:
   just website-generate
   cd website && npm run build
 
-website-set-stable-version:
+website-promote-beta-to-stable:
   #!/usr/bin/env bash
   
   rm -f website/versions.json
