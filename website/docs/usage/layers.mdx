@@ -98,7 +98,7 @@ Each voice belonging to this layer can be processed by a filter to shape its fre
 
 ## EQ Tab
 
-Each layer includes a simple 2-band equalizer to sculpt the frequency content of the audio.
+Each layer includes a simple 2-band equaliser to sculpt the frequency content of the audio.
 
 <NumberedOverlay
   src="/images/layer-eq.png"
@@ -132,13 +132,13 @@ The Low Frequency Oscillator (LFO) can modulate various parameters to add moveme
 
 ## Play Tab
 
-The Play tab contains MIDI and playback behavior settings for this layer.
+The Play tab contains MIDI and playback behaviour settings for this layer.
 
 ![Layer MIDI](/images/layer-play.png)
 
 - **Transpose**: transpose the mapping of samples by the given semitone offset. This is particularly useful for multi-sampled instruments as it triggers different samples rather than algorithmically pitch-shifting the audio (which is what layer's top control _pitch_ does).
 - **Pitch Bend Range**: set the pitch range in semitones for the MIDI pitch wheel.
 - **Keytrack**: when enabled, tunes the sound to match the key played. When disabled, the sound always plays at its root pitch regardless of the MIDI note. This is not typically useful if the instrument is multi-sampled.
-- **Monophonic**: when enabled, only allows one voice of this layer to play at a time (monophonic behavior) - any preceeding note is ended, triggering it's volume envelope Release section. When disabled, multiple voices can play simultaneously (polyphonic behavior).
+- **Monophonic**: when enabled, only allows one voice of this layer to play at a time (monophonic behaviour) - any preceding note is ended, triggering it's volume envelope Release section. When disabled, multiple voices can play simultaneously (polyphonic behaviour).
 - **Range** and **Key Fade**: visit the [key ranges](./key-ranges) page for full details about these settings.
 - **Velocity to volume curve**: graphical control showing how MIDI velocity affects the layer's volume. The curve can be adjusted to create different velocity response characteristics. Visit the [MIDI](./midi) page for full details about editing velocity curves.
