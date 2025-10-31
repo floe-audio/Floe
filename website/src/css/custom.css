@@ -94,6 +94,10 @@ h2, h3, h4, h5, h6 {
   border-radius: 0;
 }
 
+.theme-doc-version-badge {
+    margin-bottom: 1em;
+}
+
 /* Prevent text color change on outline button hover */
 .button--outline:hover {
   color: var(--ifm-color-primary) !important;

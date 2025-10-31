@@ -19,6 +19,12 @@ Creating sample libraries for Floe **requires programming knowledge**. While Flo
 
 In the future, we're looking at tools that convert/generate Floe Lua scripts to allow non-programmers to create libraries.
 
+:::note
+
+We made these tools for our own use and are sharing them with the community. Consider contributing or [sponsorship](../about-the-project/sponsorship) if you'd like to see further investment in this area.
+
+:::
+
 ### What you'll need
 - Basic programming concepts (variables, functions, loops) or willingness to learn
 - Familiarity with text editors (Sublime Text, VS Code, etc.)
@@ -78,7 +84,7 @@ There's only one essential part of a Floe sample library: the `floe.lua` file. T
 
 The rest of the structure are conventions that are recommended but not required:
 - **Licence**: Sample libraries are recommended to have a file called Licence that describes the terms-of-use of the library. It can be any format: PDF, TXT, etc.
-- **About**: A file that describes the library. Any file format. Information about a library is useful for when someone might not have Floe's GUI available. Use this document to explain what the library contains, website links and any other information that might be useful. Floe's [packager tool](/docs/develop/packaging#packager-command-line-tool) can automatically generate this file.
+- **About**: A file that describes the library. Any file format. Information about a library is useful for when someone might not have Floe's GUI available. Use this document to explain what the library contains, website links and any other information that might be useful. Floe's [packager tool](./packaging#packager-command-line-tool) can automatically generate this file.
 - **Library folder name**: The folder containing the `floe.lua` file should be named: "Developer - Library Name".
 - **Subfolders**: Subfolders are up to the developer. We recommend 'Samples' for audio files and 'Images' for images. These can have any number of subfolders. Your `floe.lua` file can reference any file in these subfolders.
 
@@ -87,7 +93,7 @@ The rest of the structure are conventions that are recommended but not required:
 
 The `floe.lua` file is the most important part of a library. It's a script that maps and configures the audio files into playable instruments, written in the Lua {data["lua-version"]} programming language.
 
-This file uses [Floe's Lua functions](/docs/develop/library-lua-scripts) to create the library, create instruments, and add regions and impulse responses. It can reference any file in the library using relative paths.
+This file uses [Floe's Lua functions](./library-lua-scripts) to create the library, create instruments, and add regions and impulse responses. It can reference any file in the library using relative paths.
 
 Here's a made-up example of a `floe.lua` file:
 <CodeBlock language="lua">
@@ -98,11 +104,11 @@ Here's a made-up example of a `floe.lua` file:
 
 ## How to get started
 
-1. Create a new folder in one of Floe's [sample library folders](/docs/usage/sample-libraries). We recommend naming it 'Author Name - Library Name'.
+1. Create a new folder in one of Floe's [sample library folders](../key-concepts/folders). We recommend naming it 'Author Name - Library Name'.
 1. Create a file in that folder called `my-library.floe.lua`.
 1. Create a subfolder called `Samples` and put your audio files in there.
 1. Open the Lua file in your text editor. If you're not already familiar with an editor, then Sublime Text or Visual Studio Code are reasonable choices.
-1. Use the `floe.new_library()` function to create your library, filling in all the fields marked `[required]` in the [Floe's Lua reference](/docs/develop/library-lua-scripts).
+1. Use the `floe.new_library()` function to create your library, filling in all the fields marked `[required]` in the [Floe's Lua reference](./library-lua-scripts).
 1. Use `floe.new_instrument()` to create an instrument, and then add regions to it using `floe.add_region()`, again, filling in the fields that are documented.
 1. At the end of the file, return the library object you just created: `return library`.
 1. Floe automatically detects whenever any library file changes and will tell you if there's any errors. If a library is correctly configured, it will instantly appear in Floe.
@@ -195,7 +201,7 @@ If your sound has important timbral variation over time, then don't cut that awa
 
 ## Background images
 
-Floe allows libraries to have a custom background image that appear behind the interface when the library is loaded. These images are configured in your [Lua script](/docs/develop/library-lua-scripts) through Floe's `new_library` function.
+Floe allows libraries to have a custom background image that appear behind the interface when the library is loaded. These images are configured in your [Lua script](./library-lua-scripts) through Floe's `new_library` function.
 
 Floe accepts any image. It uses "cover" scaling with top-left positioning — in other words, it scales up the image (maintaining its aspect ratio) until it covers the entire background of Floe. However, for optimal results consider these characteristics:
 

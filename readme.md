@@ -53,6 +53,8 @@ Thorough continuous testing and deployment is also a priority. We want to provid
 
 Some parts of the codebase need some love (I'm looking at you GUI and audio processing). We're working on it.
 
+Floe's website is in the `website` folder and it's built with Docusaurus. We have 2 release channels: **stable** and **beta**. We use Docusaurus' versioning feature to maintain separate documentation for each channel. `website/docs` contains the beta documentation, and `website/versioned_docs/version-stable` contains the stable documentation. We use the command `just website-promote-beta-to-stable` to promote the beta website to stable.
+
 ## Discussion
 Feel free to use the discussions on GitHub for questions, feedback, and ideas. Report bugs to the Github issue tracker. Also, FrozenPlain has a Floe section on their [forum](https://forum.frozenplain.com).
 

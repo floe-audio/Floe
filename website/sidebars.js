@@ -5,8 +5,7 @@
 
 // @type {import('@docusaurus/plugin-content-docs').SidebarsConfig}
 const sidebars = {
-    tutorialSidebar: [
-        'introduction',
+    sidebar: [
         {
             type: 'category',
             label: 'Getting Started',
@@ -18,36 +17,43 @@ const sidebars = {
             type: 'category',
             label: 'Installation',
             items: [
-                'installation/requirements',
                 'installation/download-and-install-floe',
-                'installation/updating',
+                'installation/install-packages',
                 'installation/uninstalling',
             ],
         },
         {
             type: 'category',
-            label: 'Packages',
+            label: 'Key Concepts',
             items: [
-                'packages/about-packages',
-                'packages/install-packages',
+                'key-concepts/components',
+                'key-concepts/picker-panels',
+                'key-concepts/folders',
+                'key-concepts/general-usage',
             ],
         },
         {
             type: 'category',
             label: 'Usage',
             items: [
-                'usage/sample-libraries',
-                'usage/presets',
                 'usage/layers',
                 'usage/effects',
                 'usage/key-ranges',
+                'usage/randomisation',
                 'usage/midi',
                 'usage/looping',
-                'usage/parameters',
                 'usage/macros',
-                'usage/autosave',
-                'usage/attribution',
-                'usage/error-reporting',
+            ],
+        },
+        {
+            type: 'category',
+            label: 'Reference',
+            items: [
+                'reference/parameters',
+                'reference/attribution',
+                'reference/autosave',
+                'reference/error-reporting',
+                'reference/file-locations',
             ],
         },
         {
@@ -67,10 +73,10 @@ const sidebars = {
             type: 'category',
             label: 'About the Project',
             items: [
-                'about-the-project/mirage',
-                'about-the-project/roadmap',
                 'about-the-project/sponsorship',
                 'about-the-project/beta-testing',
+                'about-the-project/roadmap',
+                'about-the-project/mirage',
             ],
         },
         'changelog',

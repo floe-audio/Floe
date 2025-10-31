@@ -12,7 +12,7 @@ SPDX-FileCopyrightText = "2024 Sam Windell"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
 [[annotations]]
-path = ["website/static/package-database.json", "website/static/CNAME"]
+path = ["website/static/package-database.json", "website/static/CNAME", "website/package-lock.json", "website/package.json", "website/versions.json", "website/versioned_sidebars/version-stable-sidebars.json"]
 SPDX-FileCopyrightText = "2024-2025 Sam Windell"
 SPDX-License-Identifier = "MIT"
 
@@ -22,7 +22,7 @@ SPDX-FileCopyrightText = "2025 Sam Windell"
 SPDX-License-Identifier = "CC-BY-SA-4.0"
 
 [[annotations]]
-path = ["**.lock", "build_resources/**.lock", "version.txt", "website/package-lock.json", "website/package.json"]
+path = ["**.lock", "build_resources/**.lock", "version.txt", ".github/FUNDING.yml"]
 SPDX-FileCopyrightText = "2024 Sam Windell"
 SPDX-License-Identifier = "CC0-1.0"
 
