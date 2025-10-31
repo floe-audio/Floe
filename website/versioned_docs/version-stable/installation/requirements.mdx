@@ -1,0 +1,45 @@
+---
+id: requirements
+title: Requirements
+hide_table_of_contents: true
+description: System requirements and compatible plugin hosts for Floe
+---
+
+<!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: CC-BY-SA-4.0
+-->
+
+import data from "@site/static/generated-data.json";
+
+### <FAIcon icon="fa-brands fa-windows" /> Windows
+On Windows, Floe is available in the CLAP and VST3 formats. We recommend using the CLAP version where possible. Requirements:
+
+- {data["min-windows-version"]} or later
+- 64-bit computer
+- x86-64 processor with SSE2 support (almost all processors in a Windows PC since ~2006 have this)
+- 64-bit CLAP or VST3 host
+
+### <FAIcon icon="fa-brands fa-apple" /> macOS
+On macOS, Floe is available in the CLAP, VST3 and AU (v2) formats. We recommend using the CLAP version where possible. Requirements:
+
+- {data["min-macos-version"]} or later
+- Apple Silicon or Intel
+- CLAP, AU (v2) or VST3 host
+
+### <FAIcon icon="fa-brands fa-linux" /> Linux
+On Linux, Floe is available in the CLAP and VST3 formats. We recommend using the CLAP version where possible. The requirements are quite minimal and you might find you already have everything you need. Requirements:
+
+- x86-64 processor
+- A reasonably recent distribution with glibc 2.29 or later
+- libcurl, OpenGL, X11 and GLX libraries installed
+- `zenity` and `xdg-open` installed
+
+### Plugin Hosts (DAWs)
+Here are some examples of plugin hosts that can run Floe. There are many more than this.
+- **CLAP** hosts on Windows & macOS: Reaper, Bitwig, FL Studio (2024 or newer) and Studio One Pro (v7 or newer).
+- **VST3** hosts on Windows & macOS: Cubase, Ableton Live, Reason, and more.
+- **AU** hosts on macOS include: Logic Pro, GarageBand, and more.
+
+### Not supported
+Just for clarity: no 'standalone' application and no AAX (Pro Tools) support. We hope to expand Floe's compatibility in the future.

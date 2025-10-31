@@ -1,0 +1,36 @@
+---
+id: parameters
+title: Parameters
+hide_table_of_contents: true
+description: A list of all parameters in Floe
+---
+
+<!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: CC-BY-SA-4.0
+-->
+
+import data from "@site/static/generated-data.json";
+
+For reference, here is a list of all parameters in Floe.
+
+<table>
+  <thead>
+    <tr>
+      <th>Module</th>
+      <th>Name</th>
+      <th>ID</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    {data.parameters.map((param, index) => (
+      <tr key={index}>
+        <td>{param.module}</td>
+        <td>{param.name}</td>
+        <td>{param.id}</td>
+        <td>{param.description}</td>
+      </tr>
+    ))}
+  </tbody>
+</table>

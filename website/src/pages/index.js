@@ -10,7 +10,7 @@ import Heading from '@theme/Heading';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faGem, faSeedling, faMusic, faLayerGroup } from '@fortawesome/free-solid-svg-icons';
 import PackageCard from '../components/PackageCard';
-import packageDatabase from '../../static/package-database.json';
+import packageDatabase from '@site/static/package-database.json';
 import styles from './index.module.css';
 
 function HeroSection() {
