@@ -280,8 +280,10 @@ static ErrorCodeOr<void> WriteGithubReleaseData(json::WriteContext& ctx) {
         }
     }
 
+    TRY(json::WriteKeyValue(ctx, "latest-any-release-version", latest_release.version_string));
+
     if (latest_release.version->beta) {
-        TRY(json::WriteKeyObjectBegin(ctx, "latest-beta-release"));
+        TRY(json::WriteKeyObjectBegin(ctx, "latest-beta-release-version"));
         TRY(json::WriteKeyValue(ctx, "version", latest_release.version_string));
         TRY(WriteGithubReleaseData(ctx, latest_release, scratch));
         TRY(json::WriteObjectEnd(ctx));
@@ -325,7 +327,7 @@ static ErrorCodeOr<void> WriteGithubReleaseData(json::WriteContext& ctx) {
     }
 
     {
-        TRY(json::WriteKeyValue(ctx, "latest-release-version", latest_release.version_string));
+        TRY(json::WriteKeyValue(ctx, "latest-stable-release-version", latest_release.version_string));
         TRY(WriteGithubReleaseData(ctx, latest_release, scratch));
     }
 
@@ -388,9 +390,9 @@ static ErrorCodeOr<void> WriteEffectsData(json::WriteContext& ctx) {
 
 static ErrorCodeOr<void> WriteCCMappingData(json::WriteContext& ctx) {
     ArenaAllocator scratch {PageAllocator::Instance()};
-    
+
     TRY(json::WriteKeyArrayBegin(ctx, "default-cc-mappings"));
-    
+
     for (auto const& map : k_default_cc_to_param_mapping) {
         auto const& desc = k_param_descriptors[ToInt(map.param)];
         TRY(json::WriteObjectBegin(ctx));
@@ -399,7 +401,7 @@ static ErrorCodeOr<void> WriteCCMappingData(json::WriteContext& ctx) {
         TRY(json::WriteKeyValue(ctx, "module", desc.ModuleString(" › ")));
         TRY(json::WriteObjectEnd(ctx));
     }
-    
+
     TRY(json::WriteArrayEnd(ctx));
     return k_success;
 }

@@ -10,26 +10,34 @@ SPDX-FileCopyrightText: 2025 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
 -->
 
+import data from '@site/static/generated-data.json';
+
 # Beta Testing
 
-Beta releases give you early access to new features and improvements before they're included in stable releases. While betas are tested, they may not be as stable as official releases and could contain bugs or incomplete features.
+Beta releases give you early access to new features and improvements before they're included in stable releases.
 
-:::info
+While betas are tested, they may not be as stable as official releases and could contain bugs or incomplete features.
 
+:::important
 On the docs website, change the version selector (top right) from 'Stable' to 'Beta' to see documentation for beta features.
+::: 
 
-:::
-
-Floe is an independent project, and your feedback helps us improve the software. If you encounter issues or have suggestions while using a beta, we'd love to hear from you.
+## Current status
+{data["latest-beta-release-version"] ? (<>There is a Floe beta version live: {data["latest-beta-release-version"]}. This is newer than the latest stable release, {data["latest-stable-release-version"]}.</>) : (<>There are no beta versions available. The latest stable release, {data["latest-stable-release-version"]}, is the newest possible version of Floe.</>)}
 
 ## Feedback
+Floe is an independent project, and your feedback helps us improve the software. If you encounter issues or have suggestions, we'd love to hear from you.
+
+For beta testing feedback in particular, we often post about the specifics that we're looking for on the [blog](/blog) page.
+
 There's many ways to provide feedback, please choose one that suits you best:
 - Open a [GitHub Discussion](https://github.com/floe-audio/Floe/discussions). You will need a GitHub account to do this.
 - Report bugs or issues on the [GitHub Issues page](https://github.com/floe-audio/Floe/issues).
 - Use the built-in 'Send Feedback' form in Floe itself (we're aware the text input is a bit clunky right now - it's on the roadmap).
 - Reach out to Sam via email.
+- Post on [FrozenPlain's forum](https://forum.frozenplain.com/t/floe) in the Floe section.
 
-Take a look at the [blog](/blog) page - we sometimes post about beta releases there.
+Please look at our [blog](/blog) page — we sometimes post about testing we want help with.
 
 ## How Beta Downloads Work
 
@@ -43,6 +51,6 @@ Beta releases install just like stable releases and will overwrite any existing 
 
 Version numbers indicate release order: for example, v1.0.0-beta.2 is newer than v1.0.0-beta.1, but both are preview versions that come before the final v1.0.0 release.
 
-## Beta Update Notifications
+## Always Stay Updated
 
-By default, Floe only checks for stable release updates. You can enable beta update notifications in the preferences panel by checking the option to receive latest-version checks for beta releases instead of just stable ones.
+Always have the latest version of Floe - including beta features - by enabling _Include beta version when checking for updates_ in the preferences panel. This way, Floe will let you know when there's a new version available, whether it's stable or beta.

@@ -29,7 +29,7 @@ function CurrentVersionInfo() {
     return (
         <p style={{ textAlign: 'center', margin: '2rem 0' }}>
             <em>
-                Current version: v{data["latest-release-version"]} • <a href="/docs/installation/download-and-install-floe#requirements">Requirements</a> • <a href="/docs/installation/download-and-install-floe">Installation Help</a>
+                Current version: v{data["latest-stable-release-version"]} • <a href="/docs/installation/download-and-install-floe#requirements">Requirements</a> • <a href="/docs/installation/download-and-install-floe">Installation Help</a>
             </em>
         </p>
     );
@@ -81,78 +81,78 @@ function AdditionalDownloads({ os }) {
 
             <h5>
                 Floe Beta
-                {data["latest-beta-release"] && (
-                    <> — v{data["latest-beta-release"].version}</>
+                {data["latest-beta-release-version"] && (
+                    <> — v{data["latest-beta-release-version"].version}</>
                 )}
             </h5>
-            {data["latest-beta-release"] ? (
+            {data["latest-beta-release-version"] ? (
                 <>
                     <p className={styles.betaDescription}>Help us test new features ahead of the full release. <a href="/docs/about-the-project/beta-testing">Learn more</a></p>
                     <ul>
                         {os === 'windows' && (
                             <>
-                                {data["latest-beta-release"]["Floe-Installer-Windows"] && (
+                                {data["latest-beta-release-version"]["Floe-Installer-Windows"] && (
                                     <li>
-                                        <a href={data["latest-beta-release"]["Floe-Installer-Windows"].url} data-umami-event="Download Beta Windows Installer">
-                                            {data["latest-beta-release"]["Floe-Installer-Windows"].name}
-                                        </a> ({data["latest-beta-release"]["Floe-Installer-Windows"].size})
+                                        <a href={data["latest-beta-release-version"]["Floe-Installer-Windows"].url} data-umami-event="Download Beta Windows Installer">
+                                            {data["latest-beta-release-version"]["Floe-Installer-Windows"].name}
+                                        </a> ({data["latest-beta-release-version"]["Floe-Installer-Windows"].size})
                                     </li>
                                 )}
-                                {data["latest-beta-release"]["Floe-Manual-Install-Windows"] && (
+                                {data["latest-beta-release-version"]["Floe-Manual-Install-Windows"] && (
                                     <li>
-                                        <a href={data["latest-beta-release"]["Floe-Manual-Install-Windows"].url} data-umami-event="Download Beta Windows Manual Install">
-                                            {data["latest-beta-release"]["Floe-Manual-Install-Windows"].name}
-                                        </a> ({data["latest-beta-release"]["Floe-Manual-Install-Windows"].size})
+                                        <a href={data["latest-beta-release-version"]["Floe-Manual-Install-Windows"].url} data-umami-event="Download Beta Windows Manual Install">
+                                            {data["latest-beta-release-version"]["Floe-Manual-Install-Windows"].name}
+                                        </a> ({data["latest-beta-release-version"]["Floe-Manual-Install-Windows"].size})
                                     </li>
                                 )}
                             </>
                         )}
                         {os === 'macos' && (
                             <>
-                                {data["latest-beta-release"]["Floe-Installer-macOS-Apple-Silicon"] && (
+                                {data["latest-beta-release-version"]["Floe-Installer-macOS-Apple-Silicon"] && (
                                     <li>
-                                        <a href={data["latest-beta-release"]["Floe-Installer-macOS-Apple-Silicon"].url} data-umami-event="Download Beta macOS Apple Silicon Installer">
-                                            {data["latest-beta-release"]["Floe-Installer-macOS-Apple-Silicon"].name}
-                                        </a> ({data["latest-beta-release"]["Floe-Installer-macOS-Apple-Silicon"].size})
+                                        <a href={data["latest-beta-release-version"]["Floe-Installer-macOS-Apple-Silicon"].url} data-umami-event="Download Beta macOS Apple Silicon Installer">
+                                            {data["latest-beta-release-version"]["Floe-Installer-macOS-Apple-Silicon"].name}
+                                        </a> ({data["latest-beta-release-version"]["Floe-Installer-macOS-Apple-Silicon"].size})
                                     </li>
                                 )}
-                                {data["latest-beta-release"]["Floe-Installer-macOS-Intel"] && (
+                                {data["latest-beta-release-version"]["Floe-Installer-macOS-Intel"] && (
                                     <li>
-                                        <a href={data["latest-beta-release"]["Floe-Installer-macOS-Intel"].url} data-umami-event="Download Beta macOS Intel Installer">
-                                            {data["latest-beta-release"]["Floe-Installer-macOS-Intel"].name}
-                                        </a> ({data["latest-beta-release"]["Floe-Installer-macOS-Intel"].size})
+                                        <a href={data["latest-beta-release-version"]["Floe-Installer-macOS-Intel"].url} data-umami-event="Download Beta macOS Intel Installer">
+                                            {data["latest-beta-release-version"]["Floe-Installer-macOS-Intel"].name}
+                                        </a> ({data["latest-beta-release-version"]["Floe-Installer-macOS-Intel"].size})
                                     </li>
                                 )}
-                                {data["latest-beta-release"]["Floe-Manual-Install-macOS-Apple-Silicon"] && (
+                                {data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Apple-Silicon"] && (
                                     <li>
-                                        <a href={data["latest-beta-release"]["Floe-Manual-Install-macOS-Apple-Silicon"].url} data-umami-event="Download Beta macOS Apple Silicon Manual Install">
-                                            {data["latest-beta-release"]["Floe-Manual-Install-macOS-Apple-Silicon"].name}
-                                        </a> ({data["latest-beta-release"]["Floe-Manual-Install-macOS-Apple-Silicon"].size})
+                                        <a href={data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Apple-Silicon"].url} data-umami-event="Download Beta macOS Apple Silicon Manual Install">
+                                            {data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Apple-Silicon"].name}
+                                        </a> ({data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Apple-Silicon"].size})
                                     </li>
                                 )}
-                                {data["latest-beta-release"]["Floe-Manual-Install-macOS-Intel"] && (
+                                {data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Intel"] && (
                                     <li>
-                                        <a href={data["latest-beta-release"]["Floe-Manual-Install-macOS-Intel"].url} data-umami-event="Download Beta macOS Intel Manual Install">
-                                            {data["latest-beta-release"]["Floe-Manual-Install-macOS-Intel"].name}
-                                        </a> ({data["latest-beta-release"]["Floe-Manual-Install-macOS-Intel"].size})
+                                        <a href={data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Intel"].url} data-umami-event="Download Beta macOS Intel Manual Install">
+                                            {data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Intel"].name}
+                                        </a> ({data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Intel"].size})
                                     </li>
                                 )}
                             </>
                         )}
                         {os === 'linux' && (
                             <>
-                                {data["latest-beta-release"]["Floe-CLAP-Linux"] && (
+                                {data["latest-beta-release-version"]["Floe-CLAP-Linux"] && (
                                     <li>
-                                        <a href={data["latest-beta-release"]["Floe-CLAP-Linux"].url} data-umami-event="Download Beta Linux CLAP">
-                                            {data["latest-beta-release"]["Floe-CLAP-Linux"].name}
-                                        </a> ({data["latest-beta-release"]["Floe-CLAP-Linux"].size})
+                                        <a href={data["latest-beta-release-version"]["Floe-CLAP-Linux"].url} data-umami-event="Download Beta Linux CLAP">
+                                            {data["latest-beta-release-version"]["Floe-CLAP-Linux"].name}
+                                        </a> ({data["latest-beta-release-version"]["Floe-CLAP-Linux"].size})
                                     </li>
                                 )}
-                                {data["latest-beta-release"]["Floe-VST3-Linux"] && (
+                                {data["latest-beta-release-version"]["Floe-VST3-Linux"] && (
                                     <li>
-                                        <a href={data["latest-beta-release"]["Floe-VST3-Linux"].url} data-umami-event="Download Beta Linux VST3">
-                                            {data["latest-beta-release"]["Floe-VST3-Linux"].name}
-                                        </a> ({data["latest-beta-release"]["Floe-VST3-Linux"].size})
+                                        <a href={data["latest-beta-release-version"]["Floe-VST3-Linux"].url} data-umami-event="Download Beta Linux VST3">
+                                            {data["latest-beta-release-version"]["Floe-VST3-Linux"].name}
+                                        </a> ({data["latest-beta-release-version"]["Floe-VST3-Linux"].size})
                                     </li>
                                 )}
                             </>
