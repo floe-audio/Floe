@@ -155,12 +155,12 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
     auto const keyboard = g->engine.processor.notes_currently_held.GetBlockwise();
     auto const& voices_per_midi_key = g->engine.processor.voice_pool.voices_per_midi_note_for_gui;
 
-    auto const col_black_key = style::Col(style::Colour::DarkModeBackground0);
-    auto const col_black_key_outline = style::Col(style::Colour::DarkModeBackground0);
-    auto const col_black_key_hover = style::Col(style::Colour::DarkModeBackground1);
+    auto const col_black_key = style::Col(style::Colour::Background0 | style::Colour::DarkMode);
+    auto const col_black_key_outline = style::Col(style::Colour::Background0 | style::Colour::DarkMode);
+    auto const col_black_key_hover = style::Col(style::Colour::Background1 | style::Colour::DarkMode);
     auto const col_black_key_down = style::Col(style::Colour::Highlight);
-    auto const col_white_key = style::Col(style::Colour::DarkModeText);
-    auto const col_white_key_hover = style::Col(style::Colour::DarkModeSubtext1);
+    auto const col_white_key = style::Col(style::Colour::Text | style::Colour::DarkMode);
+    auto const col_white_key_hover = style::Col(style::Colour::Subtext1 | style::Colour::DarkMode);
     auto const col_white_key_down = style::Col(style::Colour::Highlight);
 
     auto const layout = KeyboardLayout::Create(r.x, r.w, starting_octave);
@@ -224,12 +224,13 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
             auto text_r = key_r;
             text_r.y += key_r.h - text_height;
             text_r.h = text_height;
-            g->imgui.graphics->AddTextJustified(text_r,
-                                                "C3",
-                                                style::Col(style::Colour::DarkModeBackground2),
-                                                TextJustification::Centred,
-                                                TextOverflowType::AllowOverflow,
-                                                0.8f);
+            g->imgui.graphics->AddTextJustified(
+                text_r,
+                "C3",
+                style::Col(style::Colour::Background2 | style::Colour::DarkMode),
+                TextJustification::Centred,
+                TextOverflowType::AllowOverflow,
+                0.8f);
         }
     }
     imgui.PopID();
@@ -325,7 +326,7 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
         imgui.graphics->AddText(font,
                                 font->font_size,
                                 imgui.WindowPosToScreenPos({options.start_pos.x + text_pad_x, y_pos}),
-                                style::Col(style::Colour::DarkModeText),
+                                style::Col(style::Colour::Text | style::Colour::DarkMode),
                                 "Key Ranges",
                                 0.0f);
         y_pos += font->font_size + text_gap;
@@ -366,12 +367,13 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
                                               "Layer {}  |  {}",
                                               layer_idx + 1,
                                               g->engine.Layer(layer_idx).InstName());
-                imgui.graphics->AddTextJustified(text_r,
-                                                 layer_text,
-                                                 style::Col(style::Colour::DarkModeSubtext1),
-                                                 TextJustification::Left,
-                                                 TextOverflowType::AllowOverflow,
-                                                 1.0f);
+                imgui.graphics->AddTextJustified(
+                    text_r,
+                    layer_text,
+                    style::Col(style::Colour::Subtext1 | style::Colour::DarkMode),
+                    TextJustification::Left,
+                    TextOverflowType::AllowOverflow,
+                    1.0f);
             }
 
             y_pos += text_height + text_gap;
@@ -586,12 +588,13 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
                                            .w = clipped_end_x - clipped_start_x,
                                            .h = capsule_height};
 
-                        imgui.graphics->AddTextJustified(range_text_r,
-                                                         named_range.name,
-                                                         style::Col(style::Colour::DarkModeText),
-                                                         TextJustification::Centred,
-                                                         TextOverflowType::ShowDotsOnRight,
-                                                         1.0f);
+                        imgui.graphics->AddTextJustified(
+                            range_text_r,
+                            named_range.name,
+                            style::Col(style::Colour::Text | style::Colour::DarkMode),
+                            TextJustification::Centred,
+                            TextOverflowType::ShowDotsOnRight,
+                            1.0f);
                     }
                 }
             }
@@ -678,10 +681,11 @@ static void TopDisplay(Gui* g, Rect r, s32 starting_octave, Rect keyboard_rect) 
                 .pad_bottom_right = {0, enlarged_window_padding},
                 .draw_routine_popup_background =
                     [](IMGUI_DRAW_WINDOW_BG_ARGS) {
-                        imgui.graphics->AddRectFilled(window->unpadded_bounds.Min(),
-                                                      window->unpadded_bounds.Max(),
-                                                      style::Col(style::Colour::DarkModeBackground1),
-                                                      LiveSize(imgui, UiSizeId::CornerRounding));
+                        imgui.graphics->AddRectFilled(
+                            window->unpadded_bounds.Min(),
+                            window->unpadded_bounds.Max(),
+                            style::Col(style::Colour::Background1 | style::Colour::DarkMode),
+                            LiveSize(imgui, UiSizeId::CornerRounding));
                     },
             },
             popup_id,

@@ -137,7 +137,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
     auto const root_size = box_system.imgui.PixelsToVw(box_system.imgui.Size());
     auto root = DoBox(box_system,
                       {
-                          .background_fill_colours = {style::Colour::DarkModeBackground0},
+                          .background_fill_colours = {style::Colour::Background0 | style::Colour::DarkMode},
                           .layout {
                               .size = root_size,
                               .contents_padding = {.lr = style::k_spacing},
@@ -176,22 +176,23 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                                       ? String {InstanceId(g->engine.autosave_state)}
                                       : ""_s),
               .size_from_text = true,
-              .text_colours = {style::Colour::DarkModeSubtext0},
+              .text_colours = {style::Colour::Subtext0 | style::Colour::DarkMode},
           });
 
-    auto preset_box = DoBox(box_system,
-                            {
-                                .parent = root,
-                                .background_fill_colours = {style::Colour::DarkModeSurface0},
-                                .round_background_corners = 0b1111,
-                                .layout {
-                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                    .contents_padding = {.l = 7, .r = 4, .tb = 2},
-                                    .contents_direction = layout::Direction::Row,
-                                    .contents_align = layout::Alignment::Start,
-                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                },
-                            });
+    auto preset_box =
+        DoBox(box_system,
+              {
+                  .parent = root,
+                  .background_fill_colours = {style::Colour::Surface0 | style::Colour::DarkMode},
+                  .round_background_corners = 0b1111,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .contents_padding = {.l = 7, .r = 4, .tb = 2},
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Start,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+              });
 
     auto preset_box_left = DoBox(
         box_system,
@@ -230,7 +231,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                                   StateChangedSinceLastSnapshot(g->engine) ? " (modified)"_s : ""_s),
               .text_colours =
                   {
-                      .base = style::Colour::DarkModeText,
+                      .base = style::Colour::Text | style::Colour::DarkMode,
                       .hot = style::Colour::Highlight,
                       .active = style::Colour::Highlight,
                   },
@@ -249,9 +250,9 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                           : "No description"_s,
               .font = FontType::BodyItalic,
               .text_colours {
-                  .base = style::Colour::DarkModeSubtext0,
-                  .hot = style::Colour::DarkModeSubtext1,
-                  .active = style::Colour::DarkModeSubtext1,
+                  .base = style::Colour::Subtext0 | style::Colour::DarkMode,
+                  .hot = style::Colour::Subtext1 | style::Colour::DarkMode,
+                  .active = style::Colour::Subtext1 | style::Colour::DarkMode,
               },
               .text_overflow = TextOverflowType::ShowDotsOnRight,
               .parent_dictates_hot_and_active = true,
@@ -265,7 +266,8 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                                     String tooltip,
                                     f32 font_scale,
                                     f32 padding_x,
-                                    style::Colour colour = style::Colour::DarkModeSubtext1) {
+                                    style::Colour colour =
+                                        style::Colour::Subtext1 | style::Colour::DarkMode) {
         // We use a wrapper so that the interactable area is larger and touches the adjacent buttons.
         auto const button = DoBox(box_system,
                                   {

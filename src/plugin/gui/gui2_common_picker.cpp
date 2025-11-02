@@ -546,8 +546,8 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                                                  ? Splat(style::Colour::Highlight)
                                                  : Colours {
                                                     .base = style::Colour::Background2,
-                                                    .hot = style::Colour::DarkModeOverlay0,
-                                                    .active = style::Colour::DarkModeOverlay0,
+                                                    .hot = style::Colour::Overlay0 | style::Colour::DarkMode,
+                                                    .active = style::Colour::Overlay0 | style::Colour::DarkMode,
                                                  },
                   .background_fill_alpha = (u8)255,
                   .background_fill_auto_hot_active_overlay = true,
@@ -675,41 +675,41 @@ Box DoFilterTreeButton(GuiBoxSystem& box_system,
               });
     }
 
-    auto const button =
-        DoBox(box_system,
-              {
-                  .parent = button_outer,
-                  .background_fill_colours {
-                      .base = options.common.is_selected ? style::Colour::Highlight : style::Colour::None,
-                      .hot = options.common.is_selected ? style::Colour::HighlightBright
-                                                        : style::Colour::DarkModeOverlay0,
-                      .active = options.common.is_selected ? style::Colour::HighlightBright
-                                                           : style::Colour::DarkModeOverlay0,
-                  },
-                  .background_fill_alpha = 45,
-                  .background_fill_auto_hot_active_overlay = false,
-                  .round_background_corners = 0b1111,
-                  .round_background_fully = false,
-                  .layout {
-                      .size {
-                          layout::k_fill_parent,
-                          k_picker_item_height,
-                      },
-                      .contents_padding {
-                          .l = k_outer_pad + (options.indent * k_tree_indent),
-                          .r = k_outer_pad,
-                      },
-                      .contents_align = layout::Alignment::Start,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-                  .tooltip = options.common.tooltip,
-                  .tooltip_avoid_window_id = state.picker_id,
-                  .tooltip_show_left_or_right = true,
-                  .behaviour = Behaviour::Button,
-              });
+    auto const button = DoBox(
+        box_system,
+        {
+            .parent = button_outer,
+            .background_fill_colours {
+                .base = options.common.is_selected ? style::Colour::Highlight : style::Colour::None,
+                .hot = options.common.is_selected ? style::Colour::HighlightBright
+                                                  : style::Colour::Overlay0 | style::Colour::DarkMode,
+                .active = options.common.is_selected ? style::Colour::HighlightBright
+                                                     : style::Colour::Overlay0 | style::Colour::DarkMode,
+            },
+            .background_fill_alpha = 45,
+            .background_fill_auto_hot_active_overlay = false,
+            .round_background_corners = 0b1111,
+            .round_background_fully = false,
+            .layout {
+                .size {
+                    layout::k_fill_parent,
+                    k_picker_item_height,
+                },
+                .contents_padding {
+                    .l = k_outer_pad + (options.indent * k_tree_indent),
+                    .r = k_outer_pad,
+                },
+                .contents_align = layout::Alignment::Start,
+                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+            },
+            .tooltip = options.common.tooltip,
+            .tooltip_avoid_window_id = state.picker_id,
+            .tooltip_show_left_or_right = true,
+            .behaviour = Behaviour::Button,
+        });
 
-    auto const text_cols =
-        num_used != 0 ? Splat(style::Colour::DarkModeText) : Splat(style::Colour::DarkModeOverlay2);
+    auto const text_cols = num_used != 0 ? Splat(style::Colour::Text | style::Colour::DarkMode)
+                                         : Splat(style::Colour::Overlay2 | style::Colour::DarkMode);
 
     DoBox(box_system,
           {
@@ -796,19 +796,20 @@ Box DoFilterCard(GuiBoxSystem& box_system,
         }
     }
 
-    auto const base_background = DoBox(box_system,
-                                       {
-                                           .parent = card_outer,
-                                           .background_fill_colours = {style::Colour::DarkModeBackground2},
-                                           .background_tex = background_image1,
-                                           .background_tex_alpha = 180,
-                                           .background_tex_fill_mode = BackgroundTexFillMode::Cover,
-                                           .round_background_corners = 0b1111,
-                                           .layout {
-                                               .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                               .contents_direction = layout::Direction::Row,
-                                           },
-                                       });
+    auto const base_background =
+        DoBox(box_system,
+              {
+                  .parent = card_outer,
+                  .background_fill_colours = {style::Colour::Background2 | style::Colour::DarkMode},
+                  .background_tex = background_image1,
+                  .background_tex_alpha = 180,
+                  .background_tex_fill_mode = BackgroundTexFillMode::Cover,
+                  .round_background_corners = 0b1111,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .contents_direction = layout::Direction::Row,
+                  },
+              });
 
     auto const card = DoBox(box_system,
                             {
@@ -847,32 +848,32 @@ Box DoFilterCard(GuiBoxSystem& box_system,
                                         },
                                     });
 
-    auto const card_top =
-        DoBox(box_system,
-              {
-                  .parent = card_content,
-                  .background_fill_colours {
-                      .base = options.common.is_selected ? style::Colour::Highlight : style::Colour::None,
-                      .hot = options.common.is_selected ? style::Colour::HighlightBright
-                                                        : style::Colour::DarkModeOverlay2,
-                      .active = options.common.is_selected ? style::Colour::HighlightBright
-                                                           : style::Colour::DarkModeOverlay2,
-                  },
-                  .background_fill_alpha = 25,
-                  .round_background_corners = !is_selected ? 0b1111u : 0b0110,
-                  .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
-                      .contents_padding = {.lrtb = k_outer_pad},
-                      .contents_gap = k_outer_pad,
-                      .contents_direction = layout::Direction::Row,
-                      .contents_align = layout::Alignment::Start,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-                  .tooltip = options.common.tooltip,
-                  .tooltip_avoid_window_id = state.picker_id,
-                  .tooltip_show_left_or_right = true,
-                  .behaviour = Behaviour::Button,
-              });
+    auto const card_top = DoBox(
+        box_system,
+        {
+            .parent = card_content,
+            .background_fill_colours {
+                .base = options.common.is_selected ? style::Colour::Highlight : style::Colour::None,
+                .hot = options.common.is_selected ? style::Colour::HighlightBright
+                                                  : style::Colour::Overlay2 | style::Colour::DarkMode,
+                .active = options.common.is_selected ? style::Colour::HighlightBright
+                                                     : style::Colour::Overlay2 | style::Colour::DarkMode,
+            },
+            .background_fill_alpha = 25,
+            .round_background_corners = !is_selected ? 0b1111u : 0b0110,
+            .layout {
+                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                .contents_padding = {.lrtb = k_outer_pad},
+                .contents_gap = k_outer_pad,
+                .contents_direction = layout::Direction::Row,
+                .contents_align = layout::Alignment::Start,
+                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+            },
+            .tooltip = options.common.tooltip,
+            .tooltip_avoid_window_id = state.picker_id,
+            .tooltip_show_left_or_right = true,
+            .behaviour = Behaviour::Button,
+        });
 
     if (options.right_click_menu)
         DoRightClickMenuForBox(box_system,
@@ -915,10 +916,11 @@ Box DoFilterCard(GuiBoxSystem& box_system,
                                      },
                                  });
 
-    auto const title_text_colours =
-        num_used != 0 ? Splat(style::Colour::DarkModeText) : Splat(style::Colour::DarkModeOverlay2);
-    auto const subtitle_text_colours =
-        num_used != 0 ? Splat(style::Colour::DarkModeSubtext1) : Splat(style::Colour::DarkModeOverlay2);
+    auto const title_text_colours = num_used != 0 ? Splat(style::Colour::Text | style::Colour::DarkMode)
+                                                  : Splat(style::Colour::Overlay2 | style::Colour::DarkMode);
+    auto const subtitle_text_colours = num_used != 0
+                                           ? Splat(style::Colour::Subtext1 | style::Colour::DarkMode)
+                                           : Splat(style::Colour::Overlay2 | style::Colour::DarkMode);
 
     DoBox(box_system,
           {
@@ -977,23 +979,24 @@ Box DoFilterCard(GuiBoxSystem& box_system,
         HandleFilterButtonClick(box_system, state, options.common);
 
     if (options.folder && options.folder->first_child) {
-        auto const folder_box = DoBox(box_system,
-                                      {
-                                          .parent = card_content,
-                                          .background_fill_colours =
-                                              {
-                                                  .base = style::Colour::DarkModeBackground0,
-                                                  .hot = style::Colour::DarkModeOverlay1,
-                                                  .active = style::Colour::DarkModeOverlay1,
-                                              },
-                                          .background_fill_alpha = 150,
-                                          .round_background_corners = 0b0011,
-                                          .layout {
-                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                              .contents_padding = {.tb = 3},
-                                              .contents_direction = layout::Direction::Column,
-                                          },
-                                      });
+        auto const folder_box =
+            DoBox(box_system,
+                  {
+                      .parent = card_content,
+                      .background_fill_colours =
+                          {
+                              .base = style::Colour::Background0 | style::Colour::DarkMode,
+                              .hot = style::Colour::Overlay1 | style::Colour::DarkMode,
+                              .active = style::Colour::Overlay1 | style::Colour::DarkMode,
+                          },
+                      .background_fill_alpha = 150,
+                      .round_background_corners = 0b0011,
+                      .layout {
+                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                          .contents_padding = {.tb = 3},
+                          .contents_direction = layout::Direction::Column,
+                      },
+                  });
 
         // Do the folder children, not the root folder.
         for (auto* child = options.folder->first_child; child; child = child->next) {

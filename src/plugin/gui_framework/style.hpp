@@ -102,51 +102,41 @@ enum class Colour : u8 {
     Subtext1,
     Text,
 
-    DarkModeBackground0,
-    DarkModeBackground1,
-    DarkModeBackground2,
-    DarkModeSurface0,
-    DarkModeSurface1,
-    DarkModeSurface2,
-    DarkModeOverlay0,
-    DarkModeOverlay1,
-    DarkModeOverlay2,
-    DarkModeSubtext0,
-    DarkModeSubtext1,
-    DarkModeText,
-
     Count,
+
+    DarkMode = 1 << NumBitsNeededToStore(Count),
 };
+constexpr Colour operator|(Colour a, Colour b) { return Colour(ToInt(a) | ToInt(b)); }
+constexpr Colour operator&(Colour a, Colour b) { return Colour(ToInt(a) & ToInt(b)); }
 
 constexpr usize k_colour_bits = NumBitsNeededToStore(ToInt(Colour::Count));
 constexpr u32 k_highlight_hue = 47;
 
 constexpr auto k_colours = [] {
-    Array<u32, ToInt(Colour::Count)> result {};
+    Array<u32, 255> result {};
 
-    // Automatically generate light-mode tints from dark to light.
+    // Automatically generate tints.
     for (auto const col_index : Range<u32>(ToInt(Colour::Background0), ToInt(Colour::Text) + 1)) {
         constexpr auto k_size = ToInt(Colour::Text) - ToInt(Colour::Background0) + 1;
         auto const pos = (f32)(col_index - ToInt(Colour::Background0)) / (f32)(k_size - 1);
 
         auto const h = (u32)LinearInterpolate(pos, 200.0f, 210.0f);
-        auto const s = (u32)LinearInterpolate(constexpr_math::Powf(pos, 0.4f), 21.0f, 8.0f);
-        auto const l = (u32)LinearInterpolate(constexpr_math::Powf(pos, 1.2f), 96.0f, 28.0f);
-        auto const a = 100u;
-        result[col_index] = Hsla(h, s, l, a);
-    }
 
-    // Automatically generate dark-mode tints from light to dark.
-    for (auto const col_index :
-         Range<u32>(ToInt(Colour::DarkModeBackground0), ToInt(Colour::DarkModeText) + 1)) {
-        constexpr auto k_size = ToInt(Colour::DarkModeText) - ToInt(Colour::DarkModeBackground0) + 1;
-        auto const pos = (f32)(col_index - ToInt(Colour::DarkModeBackground0)) / (f32)(k_size - 1);
+        // Light mode
+        {
+            auto const s = (u32)LinearInterpolate(constexpr_math::Powf(pos, 0.4f), 21.0f, 8.0f);
+            auto const l = (u32)LinearInterpolate(constexpr_math::Powf(pos, 1.2f), 96.0f, 28.0f);
+            auto const a = 100u;
+            result[col_index] = Hsla(h, s, l, a);
+        }
 
-        auto const h = (u32)LinearInterpolate(pos, 200.0f, 210.0f);
-        auto const s = (u32)LinearInterpolate(constexpr_math::Powf(pos, 1.2f), 3.0f, 6.0f);
-        auto const l = (u32)LinearInterpolate(constexpr_math::Powf(pos, 1.35f), 12.0f, 86.0f);
-        auto const a = 100u;
-        result[col_index] = Hsla(h, s, l, a);
+        // Dark mode
+        {
+            auto const s = (u32)LinearInterpolate(constexpr_math::Powf(pos, 1.2f), 3.0f, 6.0f);
+            auto const l = (u32)LinearInterpolate(constexpr_math::Powf(pos, 1.35f), 12.0f, 86.0f);
+            auto const a = 100u;
+            result[col_index | ToInt(Colour::DarkMode)] = Hsla(h, s, l, a);
+        }
     }
 
     // Check that text is readable on all backgrounds.
@@ -155,7 +145,7 @@ constexpr auto k_colours = [] {
             if (Contrast(result[ToInt(bg)], result[ToInt(fg)]) < 4.5f) throw "";
     }
 
-    // manually set the rest
+    // Manually set the rest.
     for (auto const i : Range(ToInt(Colour::Count))) {
         switch (Colour(i)) {
             case Colour::None: result[i] = 0; break;
@@ -165,33 +155,7 @@ constexpr auto k_colours = [] {
             case Colour::Highlight: result[i] = Hsla(k_highlight_hue, 93, 78, 100); break;
             case Colour::HighlightBright: result[i] = Hsla(k_highlight_hue, 100, 85, 100); break;
 
-            case Colour::Background0:
-            case Colour::Background1:
-            case Colour::Background2:
-            case Colour::Surface0:
-            case Colour::Surface1:
-            case Colour::Surface2:
-            case Colour::Overlay0:
-            case Colour::Overlay1:
-            case Colour::Overlay2:
-            case Colour::Subtext0:
-            case Colour::Subtext1:
-            case Colour::Text: break;
-
-            case Colour::DarkModeBackground0:
-            case Colour::DarkModeBackground1:
-            case Colour::DarkModeBackground2:
-            case Colour::DarkModeSurface0:
-            case Colour::DarkModeSurface1:
-            case Colour::DarkModeSurface2:
-            case Colour::DarkModeOverlay0:
-            case Colour::DarkModeOverlay1:
-            case Colour::DarkModeOverlay2:
-            case Colour::DarkModeSubtext0:
-            case Colour::DarkModeSubtext1:
-            case Colour::DarkModeText: break;
-
-            case Colour::Count: break;
+            default: break;
         }
     }
     return result;

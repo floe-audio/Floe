@@ -266,10 +266,11 @@ static void DoResizeCorner(Gui* g) {
     imgui.graphics->AddTriangleFilled(r.TopRight(),
                                       r.BottomRight(),
                                       r.BottomLeft(),
-                                      style::Col(style::Colour::DarkModeBackground0));
+                                      style::Col(style::Colour::Background0 | style::Colour::DarkMode));
 
     auto const line_col =
-        style::Col(imgui.IsHotOrActive(id) ? style::Colour::DarkModeText : style::Colour::DarkModeOverlay2);
+        style::Col(imgui.IsHotOrActive(id) ? style::Colour::Text | style::Colour::DarkMode
+                                           : style::Colour::Overlay2 | style::Colour::DarkMode);
     auto const line_gap = LiveSize(imgui, UiSizeId::WindowResizeCornerLineGap);
     imgui.graphics->AddLine(r.TopRight() + f32x2 {0, line_gap},
                             r.BottomLeft() + f32x2 {line_gap, 0},

@@ -904,11 +904,11 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
         if (path::Equal(entry.subpath, k_metadata_filename)) {
             if (!preset_folder)
                 preset_folder = CreatePresetFolder(server, scan_folder.path, subfolder_of_scan_folder);
-            preset_folder->preset_bank_info = TRY_OR(
-                ReadPresetBankFile(path::Join(scratch_arena, Array {absolute_folder, entry.subpath}),
-                                       preset_folder->arena,
-                                       scratch_arena),
-                continue);
+            preset_folder->preset_bank_info =
+                TRY_OR(ReadPresetBankFile(path::Join(scratch_arena, Array {absolute_folder, entry.subpath}),
+                                          preset_folder->arena,
+                                          scratch_arena),
+                       continue);
             continue;
         }
 
