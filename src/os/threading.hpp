@@ -634,8 +634,8 @@ struct Future {
 
     enum class Status : u32 {
         Inactive, // Unscheduled, no result.
-        Pending, // Scheduled to be filled but not started yet.
-        Running, // In progress.
+        Pending, // Scheduled to be filled but not started yet. Consumer must not read result.
+        Running, // In progress. Consumer must not read result.
         Finished, // Completed, result is valid.
     };
     static constexpr u32 k_cancel_bit = 1u << 31;
@@ -746,7 +746,7 @@ struct Future {
     }
 
     // Producer thread.
-    // Returns true if we successfully set to running, false if we was cancelled.
+    // Returns true if we successfully set to running, false if we were cancelled.
     // IMPORTANT: if this returns false, you must not touch this object again.
     [[nodiscard]] bool TrySetRunning() {
         while (true) {

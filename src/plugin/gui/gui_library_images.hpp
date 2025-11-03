@@ -35,7 +35,10 @@ struct LibraryImages {
 };
 
 struct LibraryImagesTable {
-    ArenaAllocator arena {PageAllocator::Instance()};
+    // Memory for library images is never freed until Shutdown. We do free the pixel data and GPU resources,
+    // but the Futures and table is never freed - they are small and very infrequently changing - simplifying
+    // lifetime management.
+    ArenaAllocator arena {PageAllocator::Instance()}; // Never reset.
     HashTable<sample_lib::LibraryId, LibraryImages> table;
 };
 

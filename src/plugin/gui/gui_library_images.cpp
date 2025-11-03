@@ -190,6 +190,8 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
                                sample_lib::LibraryIdRef const& lib_id,
                                sample_lib_server::Server& server,
                                LibraryImagesTypes needed_types) {
+    ASSERT(g_is_logical_main_thread);
+
     auto e = table.table.FindOrInsertGrowIfNeeded(table.arena, lib_id, {});
     auto& images = e.element.data;
 
@@ -239,6 +241,7 @@ void InvalidateLibraryImages(LibraryImagesTable& table,
                              sample_lib::LibraryIdRef library_id,
                              graphics::DrawContext& ctx) {
     ASSERT(g_is_logical_main_thread);
+
     if (auto imgs = table.table.Find(library_id)) {
         imgs->icon_missing = false;
         imgs->background_missing = false;
@@ -249,6 +252,8 @@ void InvalidateLibraryImages(LibraryImagesTable& table,
 }
 
 void Shutdown(LibraryImagesTable& table) {
+    ASSERT(g_is_logical_main_thread);
+
     for (auto [_, imgs, _] : table.table) {
         if (imgs.loading_icon) {
             if (auto const bytes_opt_ptr = imgs.loading_icon->ShutdownAndRelease(10000u)) {
@@ -268,6 +273,8 @@ void Shutdown(LibraryImagesTable& table) {
 }
 
 void BeginFrame(LibraryImagesTable& table, imgui::Context& imgui) {
+    ASSERT(g_is_logical_main_thread);
+
     for (auto [_, imgs, _] : table.table) {
         if (imgs.loading_icon) {
             if (auto const result = imgs.loading_icon->TryReleaseResult()) {
