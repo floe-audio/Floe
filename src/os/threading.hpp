@@ -659,6 +659,8 @@ struct Future {
     bool IsCancelled() const { return IsCancelled(status.Load(LoadMemoryOrder::Acquire)); }
     bool IsInProgress() const { return IsInProgress(status.Load(LoadMemoryOrder::Acquire)); }
     bool IsInactive() const { return IsInactive(status.Load(LoadMemoryOrder::Acquire)); }
+    // Use with the static Is* functions:
+    u32 AcquireStatus() const { return status.Load(LoadMemoryOrder::Acquire); }
 
     // Consumer thread
     Optional<Type> TryReleaseResult() {

@@ -93,9 +93,10 @@ void StartFrame(WaveformImagesTable& table, graphics::DrawContext& graphics) {
     for (auto [_, waveform, _] : table.table) {
         waveform.used = false;
 
+        // Consume any finished loading operations.
         if (waveform.loading_pixels) {
             if (auto const result = waveform.loading_pixels->TryReleaseResult()) {
-                waveform.image_id = CreateImageIdChecked(graphics, *result);
+                waveform.image_id = CreateImageIdChecked(graphics, *result); // Create GPU resource.
                 result->Free(PixelsAllocator());
             }
         }
@@ -126,9 +127,8 @@ void EndFrame(WaveformImagesTable& table, graphics::DrawContext& graphics) {
     });
 
     table.loading_pixels.RemoveIf([](WaveformImage::FuturePixels& future) {
-        auto const status = future.status.Load(LoadMemoryOrder::Acquire);
-        using F = WaveformImage::FuturePixels;
-        if (!F::IsInProgress(status) && F::IsCancelled(status)) {
+        auto const status = future.AcquireStatus();
+        if (!future.IsInProgress(status) && future.IsCancelled(status)) {
             if (auto const result = future.TryReleaseResult()) result->Free(PixelsAllocator());
             return true;
         }
