@@ -249,7 +249,6 @@ struct BoxConfig {
     Colours background_fill_colours = Splat(style::Colour::None);
     BackgroundShape background_shape
         : NumBitsNeededToStore(ToInt(BackgroundShape::Count)) = BackgroundShape::Rectangle;
-    u8 background_fill_alpha = 255;
     bool32 background_fill_auto_hot_active_overlay : 1 = false;
     bool32 drop_shadow : 1 = false;
     graphics::ImageID const* background_tex {};
@@ -328,8 +327,7 @@ Optional<Rect> BoxRect(GuiBoxSystem& box_system, Box const& box);
 struct DrawTextInputConfig {
     style::Colour text_col = style::Colour::Text;
     style::Colour cursor_col = style::Colour::Text;
-    style::Colour selection_col = style::Colour::Highlight;
-    f32 selection_colour_alpha = 0.5f;
+    style::Colour selection_col = style::Colour::Highlight | style::Colour::Alpha50;
 };
 
 void DrawTextInput(GuiBoxSystem& box_system, Box const& box, DrawTextInputConfig const& config = {});

@@ -403,7 +403,7 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                       {
                           .text_col = style::Colour::Text | style::Colour::DarkMode,
                           .cursor_col = style::Colour::Text | style::Colour::DarkMode,
-                          .selection_col = style::Colour::Highlight,
+                          .selection_col = style::Colour::Highlight | style::Colour::Alpha50,
                       });
         if (label.text_input_result &&
             (label.text_input_result->enter_pressed || label.text_input_result->buffer_changed)) {

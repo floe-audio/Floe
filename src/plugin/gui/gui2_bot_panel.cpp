@@ -79,7 +79,7 @@ static Optional<s64> OctaveDragger(GuiBoxSystem& box_system, Box const parent, s
                   {
                       .text_col = style::Colour::Text | style::Colour::DarkMode,
                       .cursor_col = style::Colour::Text | style::Colour::DarkMode,
-                      .selection_col = style::Colour::Highlight,
+                      .selection_col = style::Colour::Highlight | style::Colour::Alpha50,
                   });
 
     return new_value;

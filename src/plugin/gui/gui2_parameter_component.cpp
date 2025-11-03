@@ -284,7 +284,7 @@ Box DoParameterComponent(Gui* g,
                           {
                               .text_col = style::Colour::Text | style::Colour::DarkMode,
                               .cursor_col = style::Colour::Text | style::Colour::DarkMode,
-                              .selection_col = style::Colour::Highlight,
+                              .selection_col = style::Colour::Highlight | style::Colour::Alpha50,
                           });
         }
     }

@@ -362,7 +362,7 @@ PUBLIC Box TextInput(GuiBoxSystem& builder, Box parent, TextInputOptions const& 
                   {
                       .text_col = style::Colour::Text,
                       .cursor_col = style::Colour::Text,
-                      .selection_col = style::Colour::Highlight,
+                      .selection_col = style::Colour::Highlight | style::Colour::Alpha50,
                   });
 
     return box;
