@@ -440,21 +440,24 @@ static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
             }
 
             // The new component is installed, let's try to trash the old folder.
-            String folder_in_trash {};
-            if (auto o = TrashFileOrDirectory(new_name, scratch_arena); o.HasValue()) {
-                folder_in_trash = o.Value();
-            } else {
+            if (auto const o = TrashFileOrDirectory(new_name, scratch_arena); o.HasError()) {
+                ErrorCodeOr<void> error = o.Error();
+
                 if (o.Error() == FilesystemError::NotSupported) {
                     // Trash is not supported, so just delete the old folder.
-                    auto const delete_outcome = Delete(new_name,
-                                                       {
-                                                           .type = DeleteOptions::Type::DirectoryRecursively,
-                                                           .fail_if_not_exists = false,
-                                                       });
-                    if (delete_outcome.HasError()) o = delete_outcome.Error();
+                    if (auto const delete_outcome =
+                            Delete(new_name,
+                                   {
+                                       .type = DeleteOptions::Type::DirectoryRecursively,
+                                       .fail_if_not_exists = false,
+                                   });
+                        delete_outcome.HasError())
+                        error = delete_outcome.Error();
+                    else
+                        error = k_success;
                 }
 
-                if (o.HasError()) {
+                if (error.HasError()) {
                     // Try to undo the rename
                     auto const _ = Rename(new_name, resolved_destination_path);
 
