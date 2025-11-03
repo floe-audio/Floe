@@ -85,7 +85,7 @@ TEST_CASE(TestAsync) {
         // Do the work
         do_work.Store(true, StoreMemoryOrder::Release);
 
-        CHECK_EQ(*future.ShutdownAndRelease(), 999);
+        CHECK_EQ(*future.ShutdownAndRelease(10000u), 999);
         CHECK(future.IsInactive());
     }
 
