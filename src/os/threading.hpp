@@ -730,6 +730,10 @@ struct Future {
         auto const s = status.Load(LoadMemoryOrder::Acquire);
         switch ((Status)(s & k_status_mask)) {
             case Status::Finished:
+                if (s & k_working_bit) BusyWaitForWorkingBitClear();
+                status.Store((u32)Status::Inactive, StoreMemoryOrder::Release);
+                return &RawResult();
+
             case Status::Inactive:
                 if (s & k_working_bit) BusyWaitForWorkingBitClear();
                 return nullptr;
