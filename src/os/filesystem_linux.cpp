@@ -85,6 +85,8 @@ static Optional<String> TrashDir(ArenaAllocator& arena) {
     // $XDG_DATA_HOME/Trash".
     if (auto const xdg_data_home = secure_getenv("XDG_DATA_HOME"))
         return path::Join(arena, Array {(String)FromNullTerminated(xdg_data_home), "Trash"_s});
+    else
+        LogDebug(ModuleName::Filesystem, "XDG_DATA_HOME not set");
 
     // We also check a fallback, though this isn't in the spec.
     if (char const* home = secure_getenv("HOME")) {
@@ -97,6 +99,8 @@ static Optional<String> TrashDir(ArenaAllocator& arena) {
             path.RemoveSuffix(1); // Remove null terminator.
             return path;
         }
+    } else {
+        LogDebug(ModuleName::Filesystem, "HOME not set");
     }
 
     return k_nullopt;

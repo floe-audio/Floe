@@ -1400,7 +1400,12 @@ TEST_CASE(TestFilesystemApi) {
         SUBCASE("file") {
             auto const filename = tests::TempFilename(tester);
             TRY(WriteFile(filename, "data"_s));
-            auto trashed_file = TRY(TrashFileOrDirectory(filename, tester.scratch_arena));
+            auto const o = TrashFileOrDirectory(filename, tester.scratch_arena);
+            if (o.HasError() && o.Error() == FilesystemError::NotSupported) {
+                tester.log.Info("Trash not supported on this platform, skipping test");
+                return k_success;
+            }
+            auto const trashed_file = o.Value();
             tester.log.Debug("File in trash: {}", trashed_file);
             CHECK(GetFileType(filename).HasError());
         }
@@ -1410,7 +1415,12 @@ TEST_CASE(TestFilesystemApi) {
             TRY(CreateDirectory(folder, {.create_intermediate_directories = false}));
             auto const subfile = path::Join(tester.scratch_arena, Array {folder, "subfile.txt"});
             TRY(WriteFile(subfile, "data"_s));
-            auto trashed_folder = TRY(TrashFileOrDirectory(folder, tester.scratch_arena));
+            auto const o = TrashFileOrDirectory(folder, tester.scratch_arena);
+            if (o.HasError() && o.Error() == FilesystemError::NotSupported) {
+                tester.log.Info("Trash not supported on this platform, skipping test");
+                return k_success;
+            }
+            auto const trashed_folder = o.Value();
             tester.log.Debug("Folder in trash: {}", trashed_folder);
         }
     }
