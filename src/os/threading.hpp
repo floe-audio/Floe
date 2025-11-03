@@ -801,7 +801,7 @@ struct Future {
             // Try to exchange to finished, ensuring we retain the cancel bit. We might have been cancelled
             // while running - we couldn't act on it, but we retain the information for the reader to see.
             if (status.CompareExchangeWeak(current,
-                                           (current & k_cancel_bit) | (u32)Status::Finished,
+                                           (u32)Status::Finished | k_working_bit | (current & k_cancel_bit),
                                            RmwMemoryOrder::AcquireRelease,
                                            LoadMemoryOrder::Acquire))
                 break;
