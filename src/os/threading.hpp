@@ -793,8 +793,10 @@ struct Future {
 
         while (true) {
             auto current = status.Load(LoadMemoryOrder::Acquire);
-            auto const s = (Status)(current & k_status_mask);
-            ASSERT(s == Status::Running);
+
+            // We should only be here if TrySetRunning succeeded.
+            ASSERT((Status)(current & k_status_mask) == Status::Running);
+            ASSERT(current & k_working_bit);
 
             // Try to exchange to finished, ensuring we retain the cancel bit. We might have been cancelled
             // while running - we couldn't act on it, but we retain the information for the reader to see.
@@ -808,7 +810,8 @@ struct Future {
         WakeWaitingThreads(status, NumWaitingThreads::All);
 
         // We are done touching status now, we can clear the working bit meaning another thread can now free
-        // this memory.
+        // this memory. It doesn't matter if the consumer thread has decided to change the status to Inactive
+        // (such as via TryReleaseResult), we are doing a harmless clear of the working bit.
         status.FetchAnd(~k_working_bit, RmwMemoryOrder::Release);
     }
 
