@@ -74,10 +74,16 @@ Optional<graphics::ImageID> GetWaveformImage(WaveformImagesTable& table,
     waveform.used = true;
 
     if (!graphics.ImageIdIsValid(waveform.image_id)) {
+        bool need_start_loading = false;
         if (!waveform.loading_pixels) {
             waveform.loading_pixels = table.loading_pixels.Prepend(table.arena);
-            CreateWaveformImageAsync(*waveform.loading_pixels, source, inst, size, thread_pool);
+            need_start_loading = true;
+        } else if (waveform.loading_pixels->IsInactive()) {
+            need_start_loading = true;
         }
+
+        if (need_start_loading)
+            CreateWaveformImageAsync(*waveform.loading_pixels, source, inst, size, thread_pool);
     }
 
     return waveform.image_id;
