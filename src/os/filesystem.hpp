@@ -396,7 +396,8 @@ ErrorCodeOr<void> CreateDirectory(String path, CreateDirectoryOptions options = 
 #define TRASH_NAME "Trash"
 #endif
 
-// Returns the path to the trashed file or directory which you can use to restore it.
+// Returns the path to the trashed file or directory which you can use to restore it. May return NotSupported
+// if the trash isn't available.
 ErrorCodeOr<String> TrashFileOrDirectory(String path, Allocator& a);
 
 struct DeleteOptions {
