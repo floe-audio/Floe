@@ -461,7 +461,7 @@ static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
                     // Try to undo the rename
                     auto const _ = Rename(new_name, resolved_destination_path);
 
-                    return o.Error();
+                    return error.Error();
                 }
             }
         } else {
