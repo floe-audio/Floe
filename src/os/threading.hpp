@@ -643,8 +643,8 @@ struct Future {
     // thread can check for the presense of this bit and cancel work if needed.
     static constexpr u32 k_cancel_bit = 1u << 31;
 
-    // The working bit/cleared is set by the producer thread. The presense of this bit signifies that the
-    // producer is still using the object and the consumer must not delete the object.
+    // The working bit is set/cleared by the producer thread. The presence of this bit signifies that the
+    // producer is still using the Future and the consumer must not delete it.
     static constexpr u32 k_working_bit = 1u << 30;
 
     static constexpr u32 k_status_mask = ~(k_cancel_bit | k_working_bit);
