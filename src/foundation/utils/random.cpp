@@ -8,7 +8,7 @@ constexpr int k_num_rand_test_repititions = 200;
 TEST_CASE(TestRandomIntGeneratorUnsigned) {
     SUBCASE("unsigned") {
         RandomIntGenerator<unsigned int> generator;
-        auto seed = (u64)NanosecondsSinceEpoch();
+        auto seed = RandomSeed();
 
         SUBCASE("Correct generation in range 0 to 3 with repeating last value allowed") {
             constexpr unsigned int k_max_val = 3;
@@ -44,7 +44,7 @@ TEST_CASE(TestRandomIntGeneratorUnsigned) {
     }
     SUBCASE("signed") {
         RandomIntGenerator<int> generator;
-        auto seed = (u64)NanosecondsSinceEpoch();
+        auto seed = RandomSeed();
 
         SUBCASE("Correct generation in range -10 to 10 with repeating last value allowed") {
             constexpr int k_max_val = 10;
@@ -66,7 +66,7 @@ TEST_CASE(TestRandomIntGeneratorUnsigned) {
     }
     SUBCASE("move object") {
         RandomIntGenerator<int> generator;
-        auto seed = (u64)NanosecondsSinceEpoch();
+        auto seed = RandomSeed();
 
         constexpr int k_max_val = 10;
         {
@@ -95,7 +95,7 @@ TEST_CASE(TestRandomIntGeneratorUnsigned) {
 template <typename T>
 TEST_CASE(TestRandomFloatGenerator) {
     RandomFloatGenerator<T> generator;
-    auto seed = (u64)NanosecondsSinceEpoch();
+    auto seed = RandomSeed();
 
     SUBCASE("random values are in a correct range") {
         auto test = [&](bool allow_repititions) {

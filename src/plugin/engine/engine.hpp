@@ -64,7 +64,7 @@ struct Engine : ProcessorListener {
     AudioProcessor processor {host, *this, shared_engine_systems.prefs};
     PluginInstanceMessages& plugin_instance_messages;
 
-    u64 random_seed = (u64)NanosecondsSinceEpoch();
+    u64 random_seed = RandomSeed();
 
     Atomic<bool> update_gui = false;
     AutosaveState autosave_state {};

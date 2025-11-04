@@ -131,7 +131,7 @@ TEST_CASE(TestAllocatorTypes) {
             if (align_index == ArraySize(alignments)) align_index = 0;
         }
 
-        auto seed = (u64)NanosecondsSinceEpoch();
+        auto seed = RandomSeed();
         RandomIntGenerator<usize> rand_gen;
         usize index = 0;
         for (auto _ : Range(ArraySize(sizes) * 5)) {

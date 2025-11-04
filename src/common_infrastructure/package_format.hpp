@@ -292,7 +292,7 @@ WriterAddPresetsFolder(mz_zip_archive& zip,
 struct PackageReader {
     Reader& zip_file_reader;
     mz_zip_archive zip {};
-    u64 seed = (u64)NanosecondsSinceEpoch();
+    u64 seed = RandomSeed();
     Optional<ErrorCode> read_callback_error {}; // we need a way to pass out the error from the read callback
 };
 

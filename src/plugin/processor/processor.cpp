@@ -268,7 +268,7 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
 
     RandomIntGenerator<int> int_gen;
     RandomFloatGenerator<f32> float_gen;
-    auto seed = (u64)NanosecondsSinceEpoch();
+    auto seed = RandomSeed();
     RandomNormalDistribution normal_dist {0.5, 0.20};
     RandomNormalDistribution normal_dist_strong {0.5, 0.10};
 
