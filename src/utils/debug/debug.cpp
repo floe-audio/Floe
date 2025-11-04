@@ -400,8 +400,13 @@ Optional<String> InitStacktraceState() {
             CreateSelfModuleInfo(state->failed_init_error->data, state->failed_init_error->Capacity());
         if (state->state)
             state->failed_init_error.Clear();
-        else
-            state->failed_init_error->size = NullTerminatedSize(state->failed_init_error->data);
+        else {
+            usize size = 0;
+            for (; size < state->failed_init_error->Capacity(); ++size)
+                if (state->failed_init_error->data[size] == '\0') break;
+            ASSERT(size < state->failed_init_error->Capacity(), "not null-terminated error message");
+            state->failed_init_error->size = size;
+        }
 
         g_backtrace_state.Store(state, StoreMemoryOrder::Release);
     });
