@@ -26,10 +26,10 @@ static void ShutdownTracy() {
 static u32 g_tracy_init = 0;
 
 void GlobalInit(GlobalInitOptions options) {
-#if __has_feature(thread_sanitizer)
-    // Very unstable to run Valgrind with ThreadSanitizer.
-    if (RUNNING_ON_VALGRIND) __builtin_abort();
-#endif
+    if constexpr (k_running_with_thread_sanitizer) {
+        // Very unstable to run Valgrind with ThreadSanitizer.
+        if (RUNNING_ON_VALGRIND) __builtin_abort();
+    }
 
     if (g_tracy_init++ == 0) StartupTracy();
 

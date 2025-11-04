@@ -98,6 +98,12 @@ constexpr auto k_endianness = Endianness::Little;
 constexpr auto k_endianness = Endianness::Big;
 #endif
 
+#if __has_feature(thread_sanitizer)
+constexpr bool k_running_with_thread_sanitizer = true;
+#else
+constexpr bool k_running_with_thread_sanitizer = false;
+#endif
+
 // ==========================================================================================================
 struct SourceLocation {
     static SourceLocation Current(char const* file = __builtin_FILE(),

@@ -358,6 +358,7 @@ int RunAllTests(Tester& tester, Span<String> filter_patterns, Optional<String> j
 
     tester.log.Info("Running tests ...");
     tester.log.Info("Valgrind: {}", RUNNING_ON_VALGRIND);
+    tester.log.Info("Thread Sanitizer: {}", k_running_with_thread_sanitizer);
     tester.log.Info("Repeat tests: {}", tester.repeat_tests);
 
     Stopwatch const overall_stopwatch;
