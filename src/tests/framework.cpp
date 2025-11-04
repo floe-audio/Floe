@@ -360,6 +360,10 @@ int RunAllTests(Tester& tester, Span<String> filter_patterns, Optional<String> j
     tester.log.Info("Valgrind: {}", RUNNING_ON_VALGRIND);
     tester.log.Info("Thread Sanitizer: {}", k_running_with_thread_sanitizer);
     tester.log.Info("Repeat tests: {}", tester.repeat_tests);
+    tester.log.Info("Writing to log file: {}", tester.log.file.HasValue());
+    tester.log.Info("Filter patterns: {}", filter_patterns);
+    tester.log.Info("JUnitXML output path: {}",
+                    junit_xml_output_path.HasValue() ? *junit_xml_output_path : "none"_s);
 
     Stopwatch const overall_stopwatch;
 
