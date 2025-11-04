@@ -638,10 +638,13 @@ struct Future {
         Running, // In progress. Consumer must not read result.
         Finished, // Completed, result is valid.
     };
+
+    // The cancel bit is set/cleared by the consumer thread. The producer never changes it. The producer
+    // thread can check for the presense of this bit and cancel work if needed.
     static constexpr u32 k_cancel_bit = 1u << 31;
 
-    // The working bit provides us with a safe way to ensure that the producer thread is done with this object
-    // without breaking the producer's ability to signal the consumer thread with a 'wake' call.
+    // The working bit/cleared is set by the producer thread. The presense of this bit signifies that the
+    // producer is still using the object and the consumer must not delete the object.
     static constexpr u32 k_working_bit = 1u << 30;
 
     static constexpr u32 k_status_mask = ~(k_cancel_bit | k_working_bit);
@@ -662,7 +665,7 @@ struct Future {
     // Use with the static Is* functions:
     u32 AcquireStatus() const { return status.Load(LoadMemoryOrder::Acquire); }
 
-    // Consumer thread
+    // Consumer thread. Extracts the result if finished, resets the Future to Inactive.
     Optional<Type> TryReleaseResult() {
         if (IsFinished()) {
             Type v = RawResult();
@@ -692,13 +695,13 @@ struct Future {
         status.Store((u32)Status::Inactive, StoreMemoryOrder::Release);
     }
 
-    // Consumer thread
+    // Consumer thread. Returns false if timed out.
     bool WaitUntilFinished(Optional<u32> timeout_milliseconds = {}) {
         while (true) {
             auto const s = status.Load(LoadMemoryOrder::Acquire);
 
             if (IsFinished(s) || IsInactive(s)) {
-                BusyWaitForWorkingBitClear();
+                if (s & k_working_bit) BusyWaitForWorkingBitClear();
                 return true;
             }
 
@@ -706,7 +709,7 @@ struct Future {
         }
     }
 
-    // Consumer thread
+    // Consumer thread. Doesn't wait, just sets the cancel bit. Returns true if we successfully cancelled,
     bool Cancel() {
         auto const current = status.Load(LoadMemoryOrder::Acquire);
 
@@ -764,7 +767,7 @@ struct Future {
                 // We've been cancelled before we could start running. We set to Inactive instead of Finished
                 // because the Finished state suggests that there is a valid payload. We retain the cancel bit
                 // so that a reader can see what happened.
-                status.Store(k_cancel_bit | k_working_bit | (u32)Status::Inactive, StoreMemoryOrder::Release);
+                status.Store((u32)Status::Inactive | k_cancel_bit | k_working_bit, StoreMemoryOrder::Release);
 
                 // We have set the new status, including the working bit. The working bit ensures we are safe
                 // to wake the waiters using the still-valid 'status' memory.

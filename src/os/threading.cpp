@@ -180,6 +180,115 @@ TEST_CASE(TestFuture) {
         CHECK_EQ(future.Result(), 100);
     }
 
+    SUBCASE("stress test") {
+        Future<u32> future;
+        Thread producer;
+        Atomic<u32> consumer_round_ready {(u32)-1};
+        Atomic<u32> producer_round_ready {(u32)-1};
+        constexpr u32 k_num_rounds = 2000;
+
+        auto const random_pause = [](auto& seed) {
+            if (RandomIntInRange(seed, 0, 3) != 0) return;
+
+            switch (RandomIntInRange(seed, 0, 3)) {
+                case 0:
+                case 1: YieldThisThread(); break;
+                case 2: SleepThisThread(RandomIntInRange(seed, 0, 2)); break;
+                case 3: SpinLoopPause(); break;
+            }
+        };
+
+        producer.Start(
+            [&]() {
+                auto seed = RandomSeed();
+
+                for (auto const round : Range(k_num_rounds)) {
+                    // Wait for consumer to be ready for this round
+                    while (consumer_round_ready.Load(LoadMemoryOrder::Acquire) != round)
+                        WaitIfValueIsExpected(consumer_round_ready,
+                                              consumer_round_ready.Load(LoadMemoryOrder::Relaxed),
+                                              1000u);
+
+                    // Signal producer ready
+                    producer_round_ready.Store(round, StoreMemoryOrder::Release);
+                    WakeWaitingThreads(producer_round_ready, NumWaitingThreads::All);
+
+                    random_pause(seed);
+
+                    if (future.TrySetRunning()) {
+                        ASSERT(future.IsInProgress());
+                        ASSERT(!future.IsFinished());
+
+                        random_pause(seed); // Work simulation
+
+                        future.SetResult(round);
+                        // We cannot touch the future at this point.
+                    } else {
+                        // Was cancelled - future should be inactive with cancel bit.
+                        // We cannot touch the future at this point.
+                    }
+                }
+            },
+            "producer");
+
+        auto seed = RandomSeed();
+
+        for (auto const round : Range(k_num_rounds)) {
+            CHECK(future.IsInactive());
+            future.SetPending();
+
+            // Signal consumer ready
+            consumer_round_ready.Store(round, StoreMemoryOrder::Release);
+            WakeWaitingThreads(consumer_round_ready, NumWaitingThreads::All);
+
+            // Wait for producer to be ready for this round
+            while (producer_round_ready.Load(LoadMemoryOrder::Acquire) != round)
+                WaitIfValueIsExpected(producer_round_ready,
+                                      producer_round_ready.Load(LoadMemoryOrder::Relaxed),
+                                      1000u);
+
+            random_pause(seed);
+
+            switch (RandomIntInRange(seed, 0, 2)) {
+                case 0: { // Cancel
+                    auto const cancelled = future.Cancel();
+                    if (cancelled) CHECK(future.IsCancelled());
+
+                    CHECK(future.WaitUntilFinished(5000u));
+                    if (cancelled) CHECK(future.IsCancelled());
+                    if (future.IsInactive()) {
+                        // Fine, the producer was cancelled before starting.
+                    } else if (future.IsFinished()) {
+                        // Didn't manage to change before producer set result, but still safe.
+                        REQUIRE(future.HasResult());
+                        CHECK(future.Result() == round);
+                        future.Reset();
+                    }
+
+                    break;
+                }
+                case 1: { // Wait for result
+                    CHECK(future.WaitUntilFinished(5000u));
+
+                    // Should have correctly completed.
+                    REQUIRE(future.HasResult());
+                    CHECK(future.Result() == round);
+                    future.Reset();
+
+                    break;
+                }
+                case 2: { // ShutdownAndRelease
+                    if (auto const result = future.ShutdownAndRelease()) CHECK(*result == round);
+
+                    CHECK(future.IsInactive());
+                    break;
+                }
+            }
+        }
+
+        producer.Join();
+    }
+
     return k_success;
 }
 
