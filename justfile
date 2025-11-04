@@ -406,7 +406,7 @@ valgrind:
     {{native_binary_dir}}/tests \
     --log-level=debug \
     --write-to-file \
-    --filter=*Hash*
+    --filter=*
 
 checks_level_0 := replace( 
   "
