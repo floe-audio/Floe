@@ -335,27 +335,26 @@ DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptio
     }
 
     auto const favourite_toggled =
-        !!DoBox(
-              box_system,
-              {
-                  .parent = container,
-                  .text = ICON_FA_STAR,
-                  .font = FontType::Icons,
-                  .font_size = style::k_font_icons_size * 0.7f,
-                  .text_colours =
-                      {
-                          .base = options.is_favourite ? style::Colour::Highlight400
-                                  : item.is_hot        ? style::Colour::Overlay0
-                                                       : style::Colour::None,
-                          .hot = options.is_favourite ? style::Colour::Surface0 : style::Colour::Subtext0,
-                          .active = options.is_favourite ? style::Colour::Surface0 : style::Colour::Subtext0,
-                      },
-                  .text_align_y = TextAlignY::Centre,
-                  .layout {
-                      .size = {24, layout::k_fill_parent},
-                  },
-                  .behaviour = Behaviour::Button,
-              })
+        !!DoBox(box_system,
+                {
+                    .parent = container,
+                    .text = ICON_FA_STAR,
+                    .font = FontType::Icons,
+                    .font_size = style::k_font_icons_size * 0.7f,
+                    .text_colours =
+                        {
+                            .base = options.is_favourite ? style::Colour::Highlight400
+                                    : item.is_hot        ? style::Colour::Surface2
+                                                         : style::Colour::None,
+                            .hot = style::Colour::Highlight200,
+                            .active = style::Colour::Highlight200,
+                        },
+                    .text_align_y = TextAlignY::Centre,
+                    .layout {
+                        .size = {24, layout::k_fill_parent},
+                    },
+                    .behaviour = Behaviour::Button,
+                })
               .button_fired;
 
     auto const fired_via_keyboard = key_nav::DoItem(box_system,
