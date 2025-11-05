@@ -547,12 +547,12 @@ static void ProcessWithState(tests::Tester& tester,
 }
 
 TEST_CASE(TestHostingClap) {
-#if __has_feature(thread_sanitizer)
-    // The CLAP plugin does not have tsan instrumentation since it's a shared library aren't supported by
-    // tsan. There's no point in testing it in this environment. Additionally, it might not exist since when
-    // tsan is enabled we don't build shared libs.
-    return k_success;
-#endif
+    if constexpr (k_running_with_thread_sanitizer) {
+        // The CLAP plugin does not have tsan instrumentation since it's a shared library aren't supported by
+        // tsan. There's no point in testing it in this environment. Additionally, it might not exist since
+        // when tsan is enabled we don't build shared libs.
+        return k_success;
+    }
 
     struct Fixture {
         [[maybe_unused]] Fixture(tests::Tester&) {}
