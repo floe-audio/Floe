@@ -7,7 +7,6 @@
 
 #include "common_infrastructure/tags.hpp"
 
-#include "engine/favourite_items.hpp"
 #include "gui/gui2_common_modal_panel.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_tips.hpp"
@@ -545,8 +544,8 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                                                  ? Splat(style::Colour::Highlight)
                                                  : Colours {
                                                     .base = style::Colour::Background2,
-                                                    .hot = style::Colour::Overlay0 | style::Colour::DarkMode,
-                                                    .active = style::Colour::Overlay0 | style::Colour::DarkMode,
+                                                    .hot = style::Colour::Surface1,
+                                                    .active = style::Colour::Surface1,
                                                  },
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
