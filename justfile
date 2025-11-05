@@ -43,11 +43,16 @@ patch-rpath:
       $command $file
     }
 
-    patch_file patchrpath "{{native_binary_dir}}/Floe.clap"
-    patch_file patchrpath "{{native_binary_dir}}/Floe.vst3/Contents/x86_64-linux/Floe.so"
-    patch_file patchinterpreter "{{native_binary_dir}}/tests"
-    patch_file patchinterpreter "{{native_binary_dir}}/docs_generator"
-    patch_file patchinterpreter "{{native_binary_dir}}/VST3-Validator"
+    if [[ -d "{{native_binary_dir}}" ]]; then
+      patch_file patchrpath "{{native_binary_dir}}/Floe.clap"
+      patch_file patchrpath "{{native_binary_dir}}/Floe.vst3/Contents/x86_64-linux/Floe.so"
+      patch_file patchinterpreter "{{native_binary_dir}}/tests"
+      patch_file patchinterpreter "{{native_binary_dir}}/docs_generator"
+      patch_file patchinterpreter "{{native_binary_dir}}/VST3-Validator"
+    fi
+    if [[ -d "{{native_binary_dir}}-tsan" ]]; then
+      patch_file patchinterpreter "{{native_binary_dir}}-tsan/tests"
+    fi
   fi
 
 # This fetches logos too which may be not be GPL licenced.
