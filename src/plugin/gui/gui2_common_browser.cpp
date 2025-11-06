@@ -772,9 +772,9 @@ Box DoFilterCard(GuiBoxSystem& box_system,
                                       },
                                   });
 
-    graphics::ImageID const* background_image1 {};
-    graphics::ImageID const* background_image2 {};
-    graphics::ImageID const* icon {};
+    Optional<graphics::ImageID> background_image1 {};
+    Optional<graphics::ImageID> background_image2 {};
+    Optional<graphics::ImageID> icon {};
     bool has_icon = false;
     if (options.library_id) {
         auto imgs = GetLibraryImages(options.library_images,
@@ -786,10 +786,10 @@ Box DoFilterCard(GuiBoxSystem& box_system,
         if (box_system.InputAndRenderPass()) {
             if (box_system.imgui.IsRectVisible(
                     box_system.imgui.WindowRectToScreenRect(*BoxRect(box_system, card_outer)))) {
-                background_image1 = imgs.blurred_background.NullableValue();
-                background_image2 = imgs.background.NullableValue();
-                icon = imgs.icon.NullableValue();
-                if (!icon) icon = options.unknown_library_icon.NullableValue();
+                background_image1 = imgs.blurred_background;
+                background_image2 = imgs.background;
+                icon = imgs.icon;
+                if (!icon) icon = options.unknown_library_icon;
             }
         }
     }
@@ -799,7 +799,7 @@ Box DoFilterCard(GuiBoxSystem& box_system,
               {
                   .parent = card_outer,
                   .background_fill_colours = {style::Colour::Background2 | style::Colour::DarkMode},
-                  .background_tex = background_image1,
+                  .background_tex = background_image1.NullableValue(),
                   .background_tex_alpha = 180,
                   .background_tex_fill_mode = BackgroundTexFillMode::Cover,
                   .round_background_corners = 0b1111,
@@ -812,7 +812,7 @@ Box DoFilterCard(GuiBoxSystem& box_system,
     auto const card = DoBox(box_system,
                             {
                                 .parent = base_background,
-                                .background_tex = background_image2,
+                                .background_tex = background_image2.NullableValue(),
                                 .background_tex_alpha = 15,
                                 .background_tex_fill_mode = BackgroundTexFillMode::Cover,
                                 .round_background_corners = 0b1111,
@@ -886,7 +886,7 @@ Box DoFilterCard(GuiBoxSystem& box_system,
         DoBox(box_system,
               {
                   .parent = card_top,
-                  .background_tex = icon,
+                  .background_tex = icon.NullableValue(),
                   .layout {
                       .size = 28,
                   },
@@ -1370,6 +1370,12 @@ static void DoBrowserLibraryFilters(GuiBoxSystem& box_system,
             } else {
                 if (section.Do(box_system) == BrowserSection::State::Collapsed) break;
 
+                auto const imgs = GetLibraryImages(library_filters.library_images,
+                                                   box_system.imgui,
+                                                   lib_id,
+                                                   context.sample_library_server,
+                                                   LibraryImagesTypes::Icon);
+
                 button = DoFilterButton(
                     box_system,
                     context.state,
@@ -1404,11 +1410,6 @@ static void DoBrowserLibraryFilters(GuiBoxSystem& box_system,
                         .icon = ({
                             graphics::ImageID const* tex =
                                 library_filters.unknown_library_icon.NullableValue();
-                            auto imgs = GetLibraryImages(library_filters.library_images,
-                                                         box_system.imgui,
-                                                         lib_id,
-                                                         context.sample_library_server,
-                                                         LibraryImagesTypes::Icon);
                             if (imgs.icon) tex = imgs.icon.NullableValue();
                             tex;
                         }),
