@@ -114,7 +114,7 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event);
 static void LogIfSlow(Stopwatch& stopwatch, String message);
 inline FloeClapExtensionHost const* CustomFloeHost(clap_host const& host);
 
-// Due to the way Windows, Linux and macOS handle file pickers, we have this design:
+// Due to the way Windows, Linux and macOS handle file browsers, we have this design:
 // - This function may or may not block, depending on the platform.
 // - Either way, it will at some point fill GuiFrameInput::file_picker_results with the selected file paths
 //   for the application to consume on its next frame.

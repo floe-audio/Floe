@@ -11,13 +11,13 @@
 #include "gui/gui2_confirmation_dialog_state.hpp"
 #include "gui/gui2_feedback_panel_state.hpp"
 #include "gui/gui2_info_panel_state.hpp"
-#include "gui/gui2_inst_picker_state.hpp"
-#include "gui/gui2_ir_picker_state.hpp"
+#include "gui/gui2_inst_browser_state.hpp"
+#include "gui/gui2_ir_browser_state.hpp"
 #include "gui/gui2_library_dev_panel.hpp"
 #include "gui/gui2_macros.hpp"
 #include "gui/gui2_notifications.hpp"
 #include "gui/gui2_prefs_panel_state.hpp"
-#include "gui/gui2_preset_picker.hpp"
+#include "gui/gui2_preset_browser.hpp"
 #include "gui/gui2_save_preset_panel.hpp"
 #include "gui/gui_library_images.hpp"
 #include "gui/gui_modal_windows.hpp"
@@ -55,10 +55,10 @@ struct Gui {
     ConfirmationDialogState confirmation_dialog_state {};
     Notifications notifications {};
     FilePickerState file_picker_state {.data = FilePickerStateType::None};
-    Array<InstPickerState, k_num_layers> inst_picker_state {};
-    IrPickerState ir_picker_state {};
+    Array<InstBrowserState, k_num_layers> inst_browser_state {};
+    IrBrowserState ir_browser_state {};
     SavePresetPanelState save_preset_panel_state {};
-    PresetPickerState preset_picker_state {};
+    PresetBrowserState preset_browser_state {};
     LibraryDevPanelState library_dev_panel_state {};
     bool show_new_version_indicator {};
     BottomPanelState bottom_panel_state {};

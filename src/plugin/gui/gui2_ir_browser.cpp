@@ -1,14 +1,14 @@
 // Copyright 2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui2_ir_picker.hpp"
+#include "gui2_ir_browser.hpp"
 
 #include "engine/favourite_items.hpp"
-#include "gui2_common_picker.hpp"
+#include "gui2_common_browser.hpp"
 
 inline prefs::Key FavouriteIr() { return "favourite-ir"_s; }
 
-static Optional<IrCursor> CurrentCursor(IrPickerContext const& context, sample_lib::IrId const& ir_id) {
+static Optional<IrCursor> CurrentCursor(IrBrowserContext const& context, sample_lib::IrId const& ir_id) {
     for (auto const [lib_index, l] : Enumerate(context.libraries)) {
         if (l->Id() != ir_id.library) continue;
         for (auto const [ir_index, i] : Enumerate(l->sorted_irs))
@@ -23,8 +23,8 @@ static bool IrMatchesSearch(sample_lib::ImpulseResponse const& ir, String search
     return false;
 }
 
-static bool ShouldSkipIr(IrPickerContext const& context,
-                         IrPickerState const& state,
+static bool ShouldSkipIr(IrBrowserContext const& context,
+                         IrBrowserState const& state,
                          sample_lib::ImpulseResponse const& ir) {
     if (state.common_state.search.size && !IrMatchesSearch(ir, state.common_state.search)) return true;
 
@@ -106,8 +106,8 @@ static bool ShouldSkipIr(IrPickerContext const& context,
     return false;
 }
 
-static Optional<IrCursor> IterateIr(IrPickerContext const& context,
-                                    IrPickerState const& state,
+static Optional<IrCursor> IterateIr(IrBrowserContext const& context,
+                                    IrBrowserState const& state,
                                     IrCursor cursor,
                                     SearchDirection direction,
                                     bool first) {
@@ -166,14 +166,14 @@ static Optional<IrCursor> IterateIr(IrPickerContext const& context,
     return k_nullopt;
 }
 
-static void LoadIr(IrPickerContext const& context, IrPickerState& state, IrCursor const& cursor) {
+static void LoadIr(IrBrowserContext const& context, IrBrowserState& state, IrCursor const& cursor) {
     auto const& lib = *context.libraries[cursor.lib_index];
     auto const& ir = *lib.sorted_irs[cursor.ir_index];
     LoadConvolutionIr(context.engine, sample_lib::IrId {lib.Id(), ir.name});
     state.scroll_to_show_selected = true;
 }
 
-void LoadAdjacentIr(IrPickerContext const& context, IrPickerState& state, SearchDirection direction) {
+void LoadAdjacentIr(IrBrowserContext const& context, IrBrowserState& state, SearchDirection direction) {
     auto const ir_id = context.engine.processor.convo.ir_id;
 
     if (ir_id) {
@@ -186,7 +186,7 @@ void LoadAdjacentIr(IrPickerContext const& context, IrPickerState& state, Search
     }
 }
 
-void LoadRandomIr(IrPickerContext const& context, IrPickerState& state) {
+void LoadRandomIr(IrBrowserContext const& context, IrBrowserState& state) {
     auto const first =
         IterateIr(context, state, {.lib_index = 0, .ir_index = 0}, SearchDirection::Forward, true);
     if (!first) return;
@@ -213,11 +213,11 @@ void LoadRandomIr(IrPickerContext const& context, IrPickerState& state) {
     LoadIr(context, state, cursor);
 }
 
-void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerState& state) {
-    auto const root = DoPickerItemsRoot(box_system);
+void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrowserState& state) {
+    auto const root = DoBrowserItemsRoot(box_system);
 
     Optional<FolderNode*> previous_folder {};
-    Optional<PickerSection> folder_section {};
+    Optional<BrowserSection> folder_section {};
 
     auto const first =
         IterateIr(context, state, {.lib_index = 0, .ir_index = 0}, SearchDirection::Forward, true);
@@ -234,7 +234,7 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
 
         if (new_folder) {
             previous_folder = folder;
-            folder_section = PickerSection {
+            folder_section = BrowserSection {
                 .state = state.common_state,
                 .id = folder->Hash(),
                 .parent = root,
@@ -247,46 +247,46 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
         auto const is_current = context.engine.processor.convo.ir_id == ir_id;
         auto const is_favourite = IsFavourite(context.prefs, FavouriteIr(), ir_hash);
 
-        if (folder_section->Do(box_system).tag != PickerSection::State::Collapsed) {
+        if (folder_section->Do(box_system).tag != BrowserSection::State::Collapsed) {
             auto const item =
-                DoPickerItem(box_system,
-                             state.common_state,
-                             {
-                                 .parent = folder_section->Do(box_system).Get<Box>(),
-                                 .text = ir.name,
-                                 .tooltip = FunctionRef<String()>([&]() -> String {
-                                     DynamicArray<char> buffer {box_system.arena};
+                DoBrowserItem(box_system,
+                              state.common_state,
+                              {
+                                  .parent = folder_section->Do(box_system).Get<Box>(),
+                                  .text = ir.name,
+                                  .tooltip = FunctionRef<String()>([&]() -> String {
+                                      DynamicArray<char> buffer {box_system.arena};
 
-                                     fmt::Append(buffer, "{}. Tags: ", ir.name);
-                                     if (ir.tags.size) {
-                                         for (auto const& [tag, _] : ir.tags)
-                                             fmt::Append(buffer, "{}, ", tag);
-                                         dyn::Pop(buffer, 2);
-                                     } else {
-                                         dyn::AppendSpan(buffer, "none");
-                                     }
+                                      fmt::Append(buffer, "{}. Tags: ", ir.name);
+                                      if (ir.tags.size) {
+                                          for (auto const& [tag, _] : ir.tags)
+                                              fmt::Append(buffer, "{}, ", tag);
+                                          dyn::Pop(buffer, 2);
+                                      } else {
+                                          dyn::AppendSpan(buffer, "none");
+                                      }
 
-                                     return buffer.ToOwnedSpan();
-                                 }),
-                                 .item_id = ir_hash,
-                                 .is_current = is_current,
-                                 .is_favourite = is_favourite,
-                                 .is_tab_item = new_folder,
-                                 .icons = ({
-                                     if (&lib != previous_library) {
-                                         previous_library = &lib;
-                                         auto const imgs = GetLibraryImages(context.library_images,
-                                                                            box_system.imgui,
-                                                                            lib.Id(),
-                                                                            context.sample_library_server,
-                                                                            LibraryImagesTypes::Icon);
-                                         lib_icon = imgs.icon ? imgs.icon : context.unknown_library_icon;
-                                     }
-                                     decltype(PickerItemOptions::icons) {lib_icon};
-                                 }),
-                                 .notifications = context.notifications,
-                                 .store = context.persistent_store,
-                             });
+                                      return buffer.ToOwnedSpan();
+                                  }),
+                                  .item_id = ir_hash,
+                                  .is_current = is_current,
+                                  .is_favourite = is_favourite,
+                                  .is_tab_item = new_folder,
+                                  .icons = ({
+                                      if (&lib != previous_library) {
+                                          previous_library = &lib;
+                                          auto const imgs = GetLibraryImages(context.library_images,
+                                                                             box_system.imgui,
+                                                                             lib.Id(),
+                                                                             context.sample_library_server,
+                                                                             LibraryImagesTypes::Icon);
+                                          lib_icon = imgs.icon ? imgs.icon : context.unknown_library_icon;
+                                      }
+                                      decltype(BrowserItemOptions::icons) {lib_icon};
+                                  }),
+                                  .notifications = context.notifications,
+                                  .store = context.persistent_store,
+                              });
 
             if (is_current &&
                 box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
@@ -319,7 +319,7 @@ void IrPickerItems(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerS
     }
 }
 
-void DoIrPickerPopup(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerState& state) {
+void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrowserState& state) {
     if (!state.common_state.open) return;
 
     auto& ir_id = context.engine.processor.convo.ir_id;
@@ -386,7 +386,7 @@ void DoIrPickerPopup(GuiBoxSystem& box_system, IrPickerContext& context, IrPicke
         }
     }
 
-    DoPickerPopup(
+    DoBrowserPopup(
         box_system,
         {
             .sample_library_server = context.sample_library_server,
@@ -394,14 +394,14 @@ void DoIrPickerPopup(GuiBoxSystem& box_system, IrPickerContext& context, IrPicke
             .store = context.persistent_store,
             .state = state.common_state,
         },
-        PickerPopupOptions {
+        BrowserPopupOptions {
             .title = "Impulse Response",
             .height = 600,
             .rhs_width = 210,
             .filters_col_width = 210,
             .item_type_name = "impulse response",
             .rhs_top_button =
-                PickerPopupOptions::Button {
+                BrowserPopupOptions::Button {
                     // .text =
                     //     fmt::Format(box_system.arena, "Unload {}", ir_id ? (String)ir_id->ir_name :
                     //     "IR"_s),
@@ -425,7 +425,7 @@ void DoIrPickerPopup(GuiBoxSystem& box_system, IrPickerContext& context, IrPicke
                                     state.common_state.open = false;
                                 }).CloneObject(box_system.arena),
                 },
-            .rhs_do_items = [&](GuiBoxSystem& box_system) { IrPickerItems(box_system, context, state); },
+            .rhs_do_items = [&](GuiBoxSystem& box_system) { IrBrowserItems(box_system, context, state); },
             .filter_search_placeholder_text = "Search libraries/tags",
             .item_search_placeholder_text = "Search IRs",
             .on_load_previous = [&]() { LoadAdjacentIr(context, state, SearchDirection::Backward); },

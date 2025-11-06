@@ -3,19 +3,22 @@
 #pragma once
 
 #include "engine/engine.hpp"
-#include "gui/gui2_common_picker.hpp"
+#include "gui/gui2_common_browser.hpp"
 #include "gui/gui2_confirmation_dialog_state.hpp"
-#include "gui/gui2_ir_picker_state.hpp"
+#include "gui/gui2_inst_browser_state.hpp"
 #include "gui/gui_library_images.hpp"
 #include "gui_framework/gui_box_system.hpp"
+#include "processor/layer_processor.hpp"
 
-struct IrPickerContext {
+// Ephemeral
+struct InstBrowserContext {
     void Init(ArenaAllocator& arena) {
         libraries = sample_lib_server::AllLibrariesRetained(sample_library_server, arena);
         Sort(libraries, [](auto const& a, auto const& b) { return a->name < b->name; });
     }
     void Deinit() { sample_lib_server::ReleaseAll(libraries); }
 
+    LayerProcessor& layer;
     sample_lib_server::Server& sample_library_server;
     LibraryImagesTable& library_images;
     Engine& engine;
@@ -28,14 +31,10 @@ struct IrPickerContext {
     Span<sample_lib_server::ResourcePointer<sample_lib::Library>> libraries;
 };
 
-struct IrCursor {
-    bool operator==(IrCursor const& o) const = default;
-    usize lib_index;
-    usize ir_index;
-};
+void LoadAdjacentInstrument(InstBrowserContext const& context,
+                            InstBrowserState& state,
+                            SearchDirection direction);
 
-void LoadAdjacentIr(IrPickerContext const& context, IrPickerState& state, SearchDirection direction);
+void LoadRandomInstrument(InstBrowserContext const& context, InstBrowserState& state);
 
-void LoadRandomIr(IrPickerContext const& context, IrPickerState& state);
-
-void DoIrPickerPopup(GuiBoxSystem& box_system, IrPickerContext& context, IrPickerState& state);
+void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, InstBrowserState& state);

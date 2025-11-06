@@ -15,7 +15,7 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 1.1.0-beta.1
-- **Picker panel UI overhaul** (instruments, presets, IRs)
+- **Browser UI overhaul** (instruments, presets, IRs)
   - Full keyboard arrow navigation, enter to select, CTRL+F/CMD+F to focus search box, page up/down, home/end, CTRL+up/down to jump sections
   - Search for libraries, preset-packs and tags
   - Favourites system - tag items as for easy access
@@ -31,7 +31,7 @@ For instance: 0.0.1. Don't change the headings.
   - New [blog](https://floe.audio/blog) section for news and updates
   - Clearer design throughout
 - Background-load images so the GUI stays responsive
-- Uninstall libraries and presets by right-clicking them in the picker panels
+- Uninstall libraries and presets by right-clicking them in the browsers
 - New concept of 'preset banks' - a folder of presets can be tagged as a bank and given more metadata such as a description. To create one add `floe-preset-bank.ini` to a folder of presets.
 - Press escape on the keyboard to close panels
 - Increase threads for loading audio up to 75% of CPU cores instead of maximum of 4.
@@ -119,11 +119,11 @@ For instance: 0.0.1. Don't change the headings.
 - Add new algorithms to distortion: foldback, rectifier and ring-modulator
 - Fix LFO and delay time not updating with the tempo
 - Reduce pops and clicks with high-frequency LFOs, sharp changes in ADSR and some parameter changes
-- GUI: improve picker panels behaviour:
+- GUI: improve browsers behaviour:
     - Background darkens when panel is open
     - New close button on the top right
     - Remove unnecessary padding around the picker content
-    - Single-click loads an item, double-click loads and closes the picker panel
+    - Single-click loads an item, double-click loads and closes the browser
     - Add right-click menu on libraries with option to open the library folder
     - Add right-click menu to presets and preset folders with option to open the folder, or delete the preset
 - Improve menus:
@@ -139,7 +139,7 @@ For instance: 0.0.1. Don't change the headings.
 - Work-around CLAP Studio One not using the correct threads
 - GUI: right-click menu for the IR picker with 'unload IR' option
 - GUI: don't show markers on ADSR when it's inactive
-- GUI: Instrument pickers now have their own stat for filters (libraries, tags, etc.) allowing for more flexibility particularly with the randomise buttons
+- GUI: Instrument browsers now have their own stat for filters (libraries, tags, etc.) allowing for more flexibility particularly with the randomise buttons
 - GUI: remove option to show/hide the keyboard. It's not often used, and coming soon are new features that only make sense with the keyboard shown.
 - Fix crash when changing tabs on the 'Legal' tab of the Info panel
 - Fix presets picker not showing nesting of folder on Windows
@@ -147,9 +147,9 @@ For instance: 0.0.1. Don't change the headings.
 
 ## 0.10.3-beta
 - Sample library creation: add 'fade_in_frames' to add_region
-- GUI: remove the status panel from the picker panels, instead, items show a tooltip when hovered for a moment. This make the picker panels less cluttered and fixes the issue where the text would be too long to fit in the status panel.
-- GUI: make sections in the picker panel collapsible
-- GUI: improve the layout of the picker panel filters
+- GUI: remove the status panel from the browsers, instead, items show a tooltip when hovered for a moment. This make the browsers less cluttered and fixes the issue where the text would be too long to fit in the status panel.
+- GUI: make sections in the browser collapsible
+- GUI: improve the layout of the browser filters
 
 ## 0.10.2-beta
 - Fix issue where layer volume would be automatically MIDI learned
@@ -158,11 +158,11 @@ For instance: 0.0.1. Don't change the headings.
 ## 0.10.1-beta
 - Replace 'Reset all parameters' option with 'Reset State' which also clears things such as instruments.
 - Fix crash with floe-package when using relative paths
-- Fix possible error with installing/opening preset-picker
+- Fix possible error with installing/opening preset-browser
 - Fix a set of possible rare errors
 
 ## 0.10.0-beta
-- Picker panels:
+- Browsers:
     - Add filters for folders (tree view)
     - Put tags into categories and add icons
     - Add 2 filter modes: match-all and match-any, allowing for more powerful filtering. Every filter button has a label showing the number of matching items that dynamically updates as you change the filters.

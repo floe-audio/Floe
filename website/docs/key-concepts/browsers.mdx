@@ -1,6 +1,6 @@
 ---
-id: picker-panels
-title: Picker Panels
+id: browsers
+title: Browsers
 hide_table_of_contents: true
 description: TODO
 ---
@@ -12,9 +12,9 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 import NumberedOverlay from '@site/src/components/NumberedOverlay';
 
-One of Floe's core goals is to provide a fast and fluid way to find and load sounds across large sound pools: the _pickers_ are the main way to do this.
+One of Floe's core goals is to provide a fast and fluid way to find and load sounds across large sound pools: the _browsers_ are the main way to do this.
 
-You may spend a lot of time with the pickers. They're used in several places on the interface:
+You may spend a lot of time with the browsers. They're used in several places on the interface:
 - Presets
 - Instruments for each layer
 - Impulse responses for the Convolution Reverb effect
@@ -22,7 +22,7 @@ You may spend a lot of time with the pickers. They're used in several places on 
 They all largely work the same way, with some minor differences depending on context.
 
 <video width="100%" controls>
-  <source src="/images/picker-panel-usage.mp4" type="video/mp4" />
+  <source src="/images/browser-usage.mp4" type="video/mp4" />
   Your browser does not support the video tag.
 </video>
 
@@ -39,8 +39,8 @@ By default, we start simple - you can only select one filter at a time; if you c
 When no filters are applied, all items are shown in the results list.
 
 <NumberedOverlay
-    src="/images/picker-panel.png"
-    alt="Picker Panel"
+    src="/images/browser.png"
+    alt="Browser Panel"
     overlays={[
         { number: 3, top: "20%", left: "39.3%" },
     ]}
@@ -71,13 +71,13 @@ Simple filter buttons are small and pill-shaped, used for tags, authors and othe
 ## Filter cards
 Additionally, Floe has filter _cards_. They look quite different from the pill-shaped buttons, but they actually function mostly in the same way, they just offer more information and house a tree-like structure of folders (also just a type of filter button).
 
-Cards are used for _sample libraries_ in the instrument and IR pickers, and for _preset banks_ in the preset picker.
+Cards are used for _sample libraries_ in the instrument and IR browsers, and for _preset banks_ in the preset browser.
 
 Cards are made up of two sections, the _header_ (**1**) and the _body_ (**2**). Both sections can be clicked.
 
 <NumberedOverlay
     src="/images/filter-card.png"
-    alt="Picker Filter Card"
+    alt="Browser Filter Card"
     overlays={[
     ]}
     boxes={[
@@ -114,11 +114,11 @@ You can often right-click on filter cards to bring up additional options.
 
 ## Multi-select mode
 
-By default, the pickers are in single-select mode: clicking on a new filter replaces the existing filter.
+By default, the browsers are in single-select mode: clicking on a new filter replaces the existing filter.
 
 Use the <FAIcon icon="fa-solid fa-ellipsis-vertical" /> menu in the top-right to switch to multi-select mode.
 
-![](/images/picker-menu.png)
+![](/images/browser-menu.png)
 
 - **AND** mode means that all selected filters must be matched for an item to appear in the results list. The more filters you select, the narrower the results become.
 - **OR** mode means that items matching any of the selected filters will appear in the results list. The more filters you select, the broader the results become.
@@ -128,8 +128,8 @@ Also on this menu is _Show Primary Filter Section Header_. It toggles whether th
 ### Example OR mode
 
 <NumberedOverlay
-    src="/images/picker-multi-select-or.png"
-    alt="Picker Multi Select"
+    src="/images/browser-multi-select-or.png"
+    alt="Browser Multi Select"
     overlays={[
         { number: 1, top: "1.4%", left: "92.5%" },
         { number: 2, top: "5%", left: "39.7%" },
@@ -146,8 +146,8 @@ Also on this menu is _Show Primary Filter Section Header_. It toggles whether th
 ### Example AND mode
 
 <NumberedOverlay
-    src="/images/picker-multi-select-and.png"
-    alt="Picker Multi Select"
+    src="/images/browser-multi-select-and.png"
+    alt="Browser Multi Select"
     overlays={[
     ]}
     boxes={[
@@ -166,11 +166,11 @@ This greying-out behaviour allows you to more effectively narrow down your searc
 We're aware that some DAWs, such as Reason, Ableton Live and Ardour, are interfering with Floe's keyboard input. We're working on solutions to this.
 :::
 
-The pickers support keyboard navigation using the arrow keys and enter. 
+The browsers support keyboard navigation using the arrow keys and enter. 
 
 The focused item is denoted by a blue outline box. This box is initially hidden but becomes visible when you press any arrow key.
 
-![Picker keyboard navigation](/images/picker-keyboard-nav.png)
+![Browser keyboard navigation](/images/browser-keyboard-nav.png)
 
 - Up/down arrows to move the selection in the results list.
 - Enter/return to 'click' the currently highlighted item.

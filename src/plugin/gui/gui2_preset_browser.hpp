@@ -6,7 +6,7 @@
 
 #include "common_infrastructure/preferences.hpp"
 
-#include "gui/gui2_common_picker.hpp"
+#include "gui/gui2_common_browser.hpp"
 #include "gui/gui2_confirmation_dialog_state.hpp"
 #include "gui/gui_fwd.hpp"
 #include "preset_server/preset_server.hpp"
@@ -15,7 +15,7 @@ struct GuiBoxSystem;
 struct PresetServer;
 
 // Ephemeral
-struct PresetPickerContext {
+struct PresetBrowserContext {
     void Init(ArenaAllocator& arena) {
         if (init++) return;
         libraries = sample_lib_server::AllLibrariesRetained(sample_library_server, arena);
@@ -44,7 +44,7 @@ struct PresetPickerContext {
 };
 
 // Persistent
-struct PresetPickerState {
+struct PresetBrowserState {
     SelectedHashes selected_author_hashes {"Author"};
     bool scroll_to_show_selected = false;
 
@@ -52,15 +52,15 @@ struct PresetPickerState {
     // the other types of selected_* filters.
     SelectedHashes selected_preset_types {"Preset Type"};
 
-    CommonPickerState common_state {
+    CommonBrowserState common_state {
         .other_selected_hashes = Array {&selected_author_hashes, &selected_preset_types},
     };
 };
 
-void LoadAdjacentPreset(PresetPickerContext const& context,
-                        PresetPickerState& state,
+void LoadAdjacentPreset(PresetBrowserContext const& context,
+                        PresetBrowserState& state,
                         SearchDirection direction);
 
-void LoadRandomPreset(PresetPickerContext const& context, PresetPickerState& state);
+void LoadRandomPreset(PresetBrowserContext const& context, PresetBrowserState& state);
 
-void DoPresetPicker(GuiBoxSystem& box_system, PresetPickerContext& context, PresetPickerState& state);
+void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, PresetBrowserState& state);

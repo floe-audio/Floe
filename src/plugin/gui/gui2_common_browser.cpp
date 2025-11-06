@@ -1,7 +1,7 @@
 // Copyright 2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui2_common_picker.hpp"
+#include "gui2_common_browser.hpp"
 
 #include "os/filesystem.hpp"
 
@@ -21,7 +21,7 @@ bool RootNodeLessThan(FolderNode const* const& a,
 
 static prefs::Descriptor ShowPrimaryFilterSectionHeaderDescriptor() {
     return {
-        .key = "picker-show-primary-filter-section-header"_s,
+        .key = "browser-show-primary-filter-section-header"_s,
         .value_requirements = prefs::ValueType::Bool,
         .default_value = false,
     };
@@ -36,7 +36,7 @@ bool MatchesFilterSearch(String filter_text, String search_text) {
 constexpr auto k_right_click_menu_popup_id = (imgui::Id)SourceLocationHash();
 
 void DoRightClickMenuForBox(GuiBoxSystem& box_system,
-                            CommonPickerState& state,
+                            CommonBrowserState& state,
                             Box const& box,
                             u64 item_hash,
                             RightClickMenuState::Function const& do_menu) {
@@ -52,12 +52,12 @@ void DoRightClickMenuForBox(GuiBoxSystem& box_system,
 
 namespace key_nav {
 
-constexpr u32 k_num_items_in_page = PickerKeyboardNavigation::ItemHistory::k_max_items;
+constexpr u32 k_num_items_in_page = BrowserKeyboardNavigation::ItemHistory::k_max_items;
 
 static bool g_show_focus_rectangles = false;
 
 static void
-FocusPanel(PickerKeyboardNavigation& nav, PickerKeyboardNavigation::Panel panel, bool always_select_first) {
+FocusPanel(BrowserKeyboardNavigation& nav, BrowserKeyboardNavigation::Panel panel, bool always_select_first) {
     nav.focused_panel = panel;
     nav.panel_state = {};
     if (always_select_first || !nav.focused_items[ToInt(nav.focused_panel)])
@@ -66,11 +66,11 @@ FocusPanel(PickerKeyboardNavigation& nav, PickerKeyboardNavigation::Panel panel,
     g_show_focus_rectangles = true;
 }
 
-static void FocusItem(PickerKeyboardNavigation& nav, PickerKeyboardNavigation::Panel panel, u64 item_id) {
+static void FocusItem(BrowserKeyboardNavigation& nav, BrowserKeyboardNavigation::Panel panel, u64 item_id) {
     nav.temp_focused_items[ToInt(panel)] = item_id;
 }
 
-static void BeginFrame(imgui::Context& imgui, PickerKeyboardNavigation& nav, imgui::Id panel_id) {
+static void BeginFrame(imgui::Context& imgui, BrowserKeyboardNavigation& nav, imgui::Id panel_id) {
     nav.focused_items = nav.temp_focused_items;
     nav.temp_focused_items = {};
     nav.panel_just_focused = false;
@@ -102,21 +102,21 @@ static void BeginFrame(imgui::Context& imgui, PickerKeyboardNavigation& nav, img
         nav.input.page_down_presses = CheckedCast<u8>(key_events(KeyCode::PageDown));
         nav.input.page_up_presses = CheckedCast<u8>(key_events(KeyCode::PageUp));
 
-        if (nav.input != PickerKeyboardNavigation::Input {}) g_show_focus_rectangles = true;
+        if (nav.input != BrowserKeyboardNavigation::Input {}) g_show_focus_rectangles = true;
 
         // There's only 2 panels so right/left or tab/shift-tab do the same thing since we wrap around.
-        static_assert(ToInt(PickerKeyboardNavigation::Panel::Count) == 2 + 1);
+        static_assert(ToInt(BrowserKeyboardNavigation::Panel::Count) == 2 + 1);
         for (auto const _ : Range(key_events(KeyCode::Tab) + key_events(KeyCode::RightArrow) +
                                   key_events(KeyCode::LeftArrow))) {
             switch (nav.focused_panel) {
-                case PickerKeyboardNavigation::Panel::None:
-                case PickerKeyboardNavigation::Panel::Filters:
-                    FocusPanel(nav, PickerKeyboardNavigation::Panel::Items, false);
+                case BrowserKeyboardNavigation::Panel::None:
+                case BrowserKeyboardNavigation::Panel::Filters:
+                    FocusPanel(nav, BrowserKeyboardNavigation::Panel::Items, false);
                     break;
-                case PickerKeyboardNavigation::Panel::Items:
-                    FocusPanel(nav, PickerKeyboardNavigation::Panel::Filters, false);
+                case BrowserKeyboardNavigation::Panel::Items:
+                    FocusPanel(nav, BrowserKeyboardNavigation::Panel::Filters, false);
                     break;
-                case PickerKeyboardNavigation::Panel::Count: PanicIfReached();
+                case BrowserKeyboardNavigation::Panel::Count: PanicIfReached();
             }
         }
 
@@ -129,7 +129,7 @@ static void BeginFrame(imgui::Context& imgui, PickerKeyboardNavigation& nav, img
     }
 }
 
-static void EndFrame(imgui::Context& imgui, PickerKeyboardNavigation& nav, imgui::Id panel_id) {
+static void EndFrame(imgui::Context& imgui, BrowserKeyboardNavigation& nav, imgui::Id panel_id) {
     if (imgui.IsKeyboardFocus(panel_id)) {
         auto const key_events = [&](KeyCode key) {
             return imgui.frame_input.Key(key).presses_or_repeats.size;
@@ -154,7 +154,7 @@ struct ItemArgs {
     Box const& box; // Box for button firing.
     Box const* box_for_scrolling; // Use a different box for scrolling into view.
     Optional<Rect> rect_for_drawing; // Use a different rectangle for drawing.
-    PickerKeyboardNavigation::Panel panel;
+    BrowserKeyboardNavigation::Panel panel;
     imgui::Id const& panel_id;
     u64 id;
     bool is_selected;
@@ -169,7 +169,7 @@ static void DrawFocusBox(GuiBoxSystem& box_system, Rect relative_rect) {
                                        2);
 }
 
-static bool DoItem(GuiBoxSystem& box_system, PickerKeyboardNavigation& nav, ItemArgs const& args) {
+static bool DoItem(GuiBoxSystem& box_system, BrowserKeyboardNavigation& nav, ItemArgs const& args) {
     if (!box_system.InputAndRenderPass()) return {};
 
     auto const panel_index = ToInt(args.panel);
@@ -263,8 +263,8 @@ static bool DoItem(GuiBoxSystem& box_system, PickerKeyboardNavigation& nav, Item
 
 } // namespace key_nav
 
-PickerItemResult
-DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptions const& options) {
+BrowserItemResult
+DoBrowserItem(GuiBoxSystem& box_system, CommonBrowserState& state, BrowserItemOptions const& options) {
     auto const scoped_tooltips = ScopedEnableTooltips(box_system, true);
 
     auto const container = DoBox(box_system,
@@ -288,7 +288,7 @@ DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptio
                 .contents_direction = layout::Direction::Row,
             },
             .tooltip = options.tooltip,
-            .tooltip_avoid_window_id = state.picker_id,
+            .tooltip_avoid_window_id = state.browser_id,
             .tooltip_show_left_or_right = true,
             .behaviour = Behaviour::Button,
             .ignore_double_click = true,
@@ -302,7 +302,7 @@ DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptio
                   .background_tex = tex.NullableValue(),
                   .layout {
                       .size = style::k_library_icon_standard_size,
-                      .margins = {.r = k_picker_spacing / 2},
+                      .margins = {.r = k_browser_spacing / 2},
                   },
               });
     }
@@ -327,10 +327,9 @@ DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptio
     }
 
     if (item.is_hot) {
-        ShowTipIfNeeded(
-            options.notifications,
-            options.store,
-            "You can double-click on items on picker panels to load the item and close the panel."_s);
+        ShowTipIfNeeded(options.notifications,
+                        options.store,
+                        "You can double-click on items on browsers to load the item and close the panel."_s);
     }
 
     auto const favourite_toggled =
@@ -360,8 +359,8 @@ DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptio
                                                     state.keyboard_navigation,
                                                     {
                                                         .box = item,
-                                                        .panel = PickerKeyboardNavigation::Panel::Items,
-                                                        .panel_id = state.picker_id,
+                                                        .panel = BrowserKeyboardNavigation::Panel::Items,
+                                                        .panel_id = state.browser_id,
                                                         .id = options.item_id,
                                                         .is_selected = options.is_current,
                                                         .is_tab_item = options.is_tab_item,
@@ -370,12 +369,12 @@ DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptio
     return {item, favourite_toggled, item.button_fired || fired_via_keyboard};
 }
 
-Box DoPickerItemsRoot(GuiBoxSystem& box_system) {
+Box DoBrowserItemsRoot(GuiBoxSystem& box_system) {
     return DoBox(box_system,
                  {
                      .layout {
                          .size = box_system.imgui.PixelsToVw(box_system.imgui.Size()),
-                         .contents_gap = k_picker_spacing,
+                         .contents_gap = k_browser_spacing,
                          .contents_direction = layout::Direction::Column,
                          .contents_align = layout::Alignment::Start,
                          .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -384,7 +383,7 @@ Box DoPickerItemsRoot(GuiBoxSystem& box_system) {
 }
 
 static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
-                                      CommonPickerState& state,
+                                      CommonBrowserState& state,
                                       Box const& parent,
                                       u8& indent,
                                       FolderNode const* folder,
@@ -456,10 +455,10 @@ static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
 }
 
 static void HandleFilterButtonClick(GuiBoxSystem& box_system,
-                                    CommonPickerState& state,
+                                    CommonBrowserState& state,
                                     FilterButtonCommonOptions const& options,
                                     bool single_exclusive_mode_for_and = false) {
-    state.keyboard_navigation.focused_panel = PickerKeyboardNavigation::Panel::Filters;
+    state.keyboard_navigation.focused_panel = BrowserKeyboardNavigation::Panel::Filters;
     dyn::Append(box_system.state->deferred_actions,
                 [&hashes = options.hashes,
                  &state = state,
@@ -527,7 +526,7 @@ static NumUsedForFilterString NumUsedForFilterString(GuiBoxSystem& box_system, u
 }
 
 Box DoFilterButton(GuiBoxSystem& box_system,
-                   CommonPickerState& state,
+                   CommonBrowserState& state,
                    FilterItemInfo const& info,
                    FilterButtonOptions const& options) {
     auto const scoped_tooltips = ScopedEnableTooltips(box_system, true);
@@ -553,9 +552,9 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                   .layout {
                       .size {
                           layout::k_hug_contents,
-                          k_picker_item_height,
+                          k_browser_item_height,
                       },
-                      .margins = {.b = options.no_bottom_margin ? 0 : k_picker_spacing / 2},
+                      .margins = {.b = options.no_bottom_margin ? 0 : k_browser_spacing / 2},
                       .contents_padding {
                           .l = !options.icon ? lr_spacing : 0,
                           .r = lr_spacing,
@@ -564,7 +563,7 @@ Box DoFilterButton(GuiBoxSystem& box_system,
                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                   },
                   .tooltip = options.common.tooltip,
-                        .tooltip_avoid_window_id = state.picker_id,
+                        .tooltip_avoid_window_id = state.browser_id,
                         .tooltip_show_left_or_right = true,
                   .behaviour = Behaviour::Button,
               });
@@ -600,7 +599,7 @@ Box DoFilterButton(GuiBoxSystem& box_system,
               .layout =
                   {
                       .size = f32x2 {999},
-                      .margins = {.l = options.icon ? 0 : k_picker_spacing / 2},
+                      .margins = {.l = options.icon ? 0 : k_browser_spacing / 2},
                   },
           });
 
@@ -645,7 +644,7 @@ constexpr f32 k_tree_indent = 10;
 } // namespace filter_card_box
 
 Box DoFilterTreeButton(GuiBoxSystem& box_system,
-                       CommonPickerState& state,
+                       CommonBrowserState& state,
                        FilterItemInfo const& info,
                        FilterTreeButtonOptions const& options) {
     using namespace filter_card_box;
@@ -692,7 +691,7 @@ Box DoFilterTreeButton(GuiBoxSystem& box_system,
             .layout {
                 .size {
                     layout::k_fill_parent,
-                    k_picker_item_height,
+                    k_browser_item_height,
                 },
                 .contents_padding {
                     .l = k_outer_pad + (options.indent * k_tree_indent),
@@ -702,7 +701,7 @@ Box DoFilterTreeButton(GuiBoxSystem& box_system,
                 .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
             },
             .tooltip = options.common.tooltip,
-            .tooltip_avoid_window_id = state.picker_id,
+            .tooltip_avoid_window_id = state.browser_id,
             .tooltip_show_left_or_right = true,
             .behaviour = Behaviour::Button,
         });
@@ -741,8 +740,8 @@ Box DoFilterTreeButton(GuiBoxSystem& box_system,
                                                     {
                                                         .box = button,
                                                         .rect_for_drawing = BoxRect(box_system, button_outer),
-                                                        .panel = PickerKeyboardNavigation::Panel::Filters,
-                                                        .panel_id = state.picker_id,
+                                                        .panel = BrowserKeyboardNavigation::Panel::Filters,
+                                                        .panel_id = state.browser_id,
                                                         .id = options.common.clicked_hash,
                                                         .is_selected = options.common.is_selected,
                                                         .is_tab_item = false,
@@ -754,7 +753,7 @@ Box DoFilterTreeButton(GuiBoxSystem& box_system,
 }
 
 Box DoFilterCard(GuiBoxSystem& box_system,
-                 CommonPickerState& state,
+                 CommonBrowserState& state,
                  FilterItemInfo const& info,
                  FilterCardOptions const& options) {
     using namespace filter_card_box;
@@ -768,7 +767,7 @@ Box DoFilterCard(GuiBoxSystem& box_system,
                                       .parent = options.common.parent,
                                       .layout {
                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                          .margins = {.b = k_picker_spacing},
+                                          .margins = {.b = k_browser_spacing},
                                           .contents_direction = layout::Direction::Row,
                                       },
                                   });
@@ -871,7 +870,7 @@ Box DoFilterCard(GuiBoxSystem& box_system,
                 .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
             },
             .tooltip = options.common.tooltip,
-            .tooltip_avoid_window_id = state.picker_id,
+            .tooltip_avoid_window_id = state.browser_id,
             .tooltip_show_left_or_right = true,
             .behaviour = Behaviour::Button,
         });
@@ -969,8 +968,8 @@ Box DoFilterCard(GuiBoxSystem& box_system,
                             .rect_for_drawing = BoxRect(box_system, card_top).Transform([&](Rect r) {
                                 return r.ExpandLeft(is_selected ? k_selection_left_border_width : 0);
                             }),
-                            .panel = PickerKeyboardNavigation::Panel::Filters,
-                            .panel_id = state.picker_id,
+                            .panel = BrowserKeyboardNavigation::Panel::Filters,
+                            .panel_id = state.browser_id,
                             .id = options.common.clicked_hash,
                             .is_selected = options.common.is_selected,
                             .is_tab_item = true,
@@ -1015,7 +1014,7 @@ Box DoFilterCard(GuiBoxSystem& box_system,
     return card_top;
 }
 
-PickerSection::Result PickerSection::Do(GuiBoxSystem& box_system) {
+BrowserSection::Result BrowserSection::Do(GuiBoxSystem& box_system) {
     if (!init) {
         is_collapsed = Contains(state.collapsed_filter_headers, id);
         init = true;
@@ -1038,8 +1037,8 @@ PickerSection::Result PickerSection::Do(GuiBoxSystem& box_system) {
                   .layout =
                       {
                           .size = {layout::k_fill_parent, layout::k_hug_contents},
-                          .contents_padding = {.l = subsection ? k_picker_spacing / 2 : 0},
-                          .contents_gap = f32x2 {0, bigger_contents_gap ? k_picker_spacing * 1.5f : 0},
+                          .contents_padding = {.l = subsection ? k_browser_spacing / 2 : 0},
+                          .contents_gap = f32x2 {0, bigger_contents_gap ? k_browser_spacing * 1.5f : 0},
                           .contents_direction = layout::Direction::Column,
                           .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                       },
@@ -1053,13 +1052,13 @@ PickerSection::Result PickerSection::Do(GuiBoxSystem& box_system) {
                       .background_fill_auto_hot_active_overlay = true,
                       .layout {
                           .size = {layout::k_fill_parent, layout::k_hug_contents},
-                          .contents_gap = k_picker_spacing / 2,
+                          .contents_gap = k_browser_spacing / 2,
                           .contents_direction = layout::Direction::Row,
                           .contents_align = layout::Alignment::Start,
                           .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                       },
                       .tooltip = folder ? TooltipString {"Folder"_s} : k_nullopt,
-                      .tooltip_avoid_window_id = state.picker_id,
+                      .tooltip_avoid_window_id = state.browser_id,
                       .tooltip_show_left_or_right = true,
                       .behaviour = Behaviour::Button,
                   });
@@ -1149,7 +1148,7 @@ PickerSection::Result PickerSection::Do(GuiBoxSystem& box_system) {
                           .font = FontType::Heading3,
                           .parent_dictates_hot_and_active = true,
                           .layout {
-                              .margins = {.b = k_picker_spacing / 2},
+                              .margins = {.b = k_browser_spacing / 2},
                           },
                       });
             }
@@ -1170,7 +1169,7 @@ PickerSection::Result PickerSection::Do(GuiBoxSystem& box_system) {
                           .parent = container,
                           .layout {
                               .size = {layout::k_fill_parent, layout::k_hug_contents},
-                              .contents_gap = k_picker_spacing / 2,
+                              .contents_gap = k_browser_spacing / 2,
                               .contents_direction = layout::Direction::Row,
                               .contents_multiline = true,
                               .contents_align = layout::Alignment::Start,
@@ -1180,7 +1179,7 @@ PickerSection::Result PickerSection::Do(GuiBoxSystem& box_system) {
 }
 
 static void DoLibraryRightClickMenu(GuiBoxSystem& box_system,
-                                    PickerPopupContext& context,
+                                    BrowserPopupContext& context,
                                     RightClickMenuState const& menu_state,
                                     LibraryFilters const& library_filters) {
     auto const root = DoBox(box_system,
@@ -1279,7 +1278,7 @@ static void DoLibraryRightClickMenu(GuiBoxSystem& box_system,
     }
 }
 
-bool ShowPrimaryFilterSectionHeader(CommonPickerState const& state,
+bool ShowPrimaryFilterSectionHeader(CommonBrowserState const& state,
                                     prefs::Preferences const& preferences,
                                     u64 section_heading_id) {
     bool v = true;
@@ -1291,16 +1290,16 @@ bool ShowPrimaryFilterSectionHeader(CommonPickerState const& state,
     return v;
 }
 
-static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
-                                   PickerPopupContext& context,
-                                   Box const& parent,
-                                   LibraryFilters const& library_filters,
-                                   u8& sections) {
+static void DoBrowserLibraryFilters(GuiBoxSystem& box_system,
+                                    BrowserPopupContext& context,
+                                    Box const& parent,
+                                    LibraryFilters const& library_filters,
+                                    u8& sections) {
     if (library_filters.libraries.size) {
-        PickerSection section = {
+        BrowserSection section = {
             .state = context.state,
             .num_sections_rendered = &sections,
-            .id = context.picker_id ^ HashComptime("libraries-section"),
+            .id = context.browser_id ^ HashComptime("libraries-section"),
             .parent = parent,
             .heading = !library_filters.card_view ||
                                ShowPrimaryFilterSectionHeader(context.state, context.preferences, section.id)
@@ -1326,7 +1325,7 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
 
                 auto const is_selected = context.state.selected_library_hashes.Contains(lib_hash);
 
-                if (section.Do(box_system) == PickerSection::State::Collapsed) break;
+                if (section.Do(box_system) == BrowserSection::State::Collapsed) break;
 
                 button =
                     DoFilterCard(box_system,
@@ -1369,7 +1368,7 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
                                      .folder = folder,
                                  });
             } else {
-                if (section.Do(box_system) == PickerSection::State::Collapsed) break;
+                if (section.Do(box_system) == BrowserSection::State::Collapsed) break;
 
                 button = DoFilterButton(
                     box_system,
@@ -1430,7 +1429,7 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
         if (library_filters.additional_pseudo_card) {
             auto options = *library_filters.additional_pseudo_card;
             if (MatchesFilterSearch(options.common.text, context.state.filter_search) &&
-                section.Do(box_system) != PickerSection::State::Collapsed) {
+                section.Do(box_system) != BrowserSection::State::Collapsed) {
                 options.common.parent = section.Do(box_system).Get<Box>();
 
                 DoFilterCard(box_system,
@@ -1447,16 +1446,16 @@ static void DoPickerLibraryFilters(GuiBoxSystem& box_system,
     }
 }
 
-static void DoPickerLibraryAuthorFilters(GuiBoxSystem& box_system,
-                                         PickerPopupContext& context,
-                                         Box const& parent,
-                                         LibraryFilters const& library_filters,
-                                         u8& sections) {
+static void DoBrowserLibraryAuthorFilters(GuiBoxSystem& box_system,
+                                          BrowserPopupContext& context,
+                                          Box const& parent,
+                                          LibraryFilters const& library_filters,
+                                          u8& sections) {
     if (library_filters.library_authors.size) {
-        PickerSection section = {
+        BrowserSection section = {
             .state = context.state,
             .num_sections_rendered = &sections,
-            .id = context.picker_id ^ HashComptime("library-authors-section"),
+            .id = context.browser_id ^ HashComptime("library-authors-section"),
             .parent = parent,
             .heading = "LIBRARY AUTHORS"_s,
             .multiline_contents = true,
@@ -1464,7 +1463,7 @@ static void DoPickerLibraryAuthorFilters(GuiBoxSystem& box_system,
 
         for (auto const [author, author_info, author_hash] : library_filters.library_authors) {
             if (!MatchesFilterSearch(author, context.state.filter_search)) continue;
-            if (section.Do(box_system) == PickerSection::State::Collapsed) break;
+            if (section.Do(box_system) == BrowserSection::State::Collapsed) break;
             auto const is_selected = context.state.selected_library_author_hashes.Contains(author_hash);
             DoFilterButton(box_system,
                            context.state,
@@ -1484,11 +1483,11 @@ static void DoPickerLibraryAuthorFilters(GuiBoxSystem& box_system,
     }
 }
 
-void DoPickerTagsFilters(GuiBoxSystem& box_system,
-                         PickerPopupContext& context,
-                         Box const& parent,
-                         TagsFilters const& tags_filters,
-                         u8& sections) {
+void DoBrowserTagsFilters(GuiBoxSystem& box_system,
+                          BrowserPopupContext& context,
+                          Box const& parent,
+                          TagsFilters const& tags_filters,
+                          u8& sections) {
     if (!tags_filters.tags.size) return;
 
     OrderedHashTable<TagCategory, OrderedHashTable<TagType, FilterItemInfo>> standard_tags {};
@@ -1504,10 +1503,10 @@ void DoPickerTagsFilters(GuiBoxSystem& box_system,
         }
     }
 
-    PickerSection tags_section {
+    BrowserSection tags_section {
         .state = context.state,
         .num_sections_rendered = &sections,
-        .id = context.picker_id ^ HashComptime("tags-section"),
+        .id = context.browser_id ^ HashComptime("tags-section"),
         .parent = parent,
         .heading = "TAGS",
         .multiline_contents = false,
@@ -1517,9 +1516,9 @@ void DoPickerTagsFilters(GuiBoxSystem& box_system,
     for (auto [category, tags_for_category, category_hash] : standard_tags) {
         auto const category_info = Tags(category);
 
-        PickerSection inner_section {
+        BrowserSection inner_section {
             .state = context.state,
-            .id = context.picker_id ^ HashComptime("tags-section") ^ category_hash,
+            .id = context.browser_id ^ HashComptime("tags-section") ^ category_hash,
             .parent = {}, // IMPORTANT: set later
             .heading = category_info.name,
             .icon = category_info.font_awesome_icon,
@@ -1532,10 +1531,10 @@ void DoPickerTagsFilters(GuiBoxSystem& box_system,
             auto const tag_info = GetTagInfo(tag);
             if (!MatchesFilterSearch(tag_info.name, context.state.filter_search)) continue;
 
-            if (tags_section.Do(box_system) == PickerSection::State::Collapsed) break;
+            if (tags_section.Do(box_system) == BrowserSection::State::Collapsed) break;
             // We now have the outer section. We can give it to the inner section.
             inner_section.parent = tags_section.Do(box_system).Get<Box>();
-            if (inner_section.Do(box_system) == PickerSection::State::Collapsed) break;
+            if (inner_section.Do(box_system) == BrowserSection::State::Collapsed) break;
 
             auto const tag_hash = Hash(tag_info.name);
             auto const is_selected = context.state.selected_tags_hashes.Contains(tag_hash);
@@ -1557,9 +1556,9 @@ void DoPickerTagsFilters(GuiBoxSystem& box_system,
     }
 
     if (non_standard_tags.size) {
-        PickerSection inner_section {
+        BrowserSection inner_section {
             .state = context.state,
-            .id = context.picker_id ^ HashComptime("tags-section-uncategorised"),
+            .id = context.browser_id ^ HashComptime("tags-section-uncategorised"),
             .parent = {}, // IMPORTANT: set later
             .heading = "UNCATEGORISED",
             .multiline_contents = true,
@@ -1569,10 +1568,10 @@ void DoPickerTagsFilters(GuiBoxSystem& box_system,
         for (auto const [name, filter_item_info, _] : non_standard_tags) {
             if (!MatchesFilterSearch(name, context.state.filter_search)) continue;
 
-            if (tags_section.Do(box_system) == PickerSection::State::Collapsed) break;
+            if (tags_section.Do(box_system) == BrowserSection::State::Collapsed) break;
             // We now have the outer section. We can give it to the inner section.
             inner_section.parent = tags_section.Do(box_system).Get<Box>();
-            if (inner_section.Do(box_system) == PickerSection::State::Collapsed) break;
+            if (inner_section.Do(box_system) == BrowserSection::State::Collapsed) break;
 
             auto const is_selected = context.state.selected_tags_hashes.Contains(Hash(name));
             DoFilterButton(box_system,
@@ -1623,7 +1622,7 @@ static String FilterModeDescription(FilterMode mode) {
     PanicIfReached();
 }
 
-static void DoMoreOptionsMenu(GuiBoxSystem& box_system, PickerPopupContext& context) {
+static void DoMoreOptionsMenu(GuiBoxSystem& box_system, BrowserPopupContext& context) {
     auto const root = DoBox(box_system,
                             {
                                 .layout {
@@ -1669,9 +1668,9 @@ static void DoMoreOptionsMenu(GuiBoxSystem& box_system, PickerPopupContext& cont
     }
 }
 
-static void DoPickerPopupInternal(GuiBoxSystem& box_system,
-                                  PickerPopupContext& context,
-                                  PickerPopupOptions const& options) {
+static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
+                                   BrowserPopupContext& context,
+                                   BrowserPopupOptions const& options) {
     auto const root = DoBox(box_system,
                             {
                                 .layout {
@@ -1688,7 +1687,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                       .parent = root,
                       .layout {
                           .size = {layout::k_fill_parent, layout::k_hug_contents},
-                          .contents_padding = {.lrtb = k_picker_spacing},
+                          .contents_padding = {.lrtb = k_browser_spacing},
                           .contents_direction = layout::Direction::Row,
                           .contents_align = layout::Alignment::Start,
                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -1713,7 +1712,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                            .parent = title_container,
                                            .layout {
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                               .contents_padding = {.lr = k_picker_spacing * 2},
+                                               .contents_padding = {.lr = k_browser_spacing * 2},
                                                .contents_align = layout::Alignment::End,
                                                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                            },
@@ -1725,7 +1724,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                                      .parent = rhs_top,
                                                      .layout {
                                                          .size = layout::k_hug_contents,
-                                                         .margins = {.r = k_picker_spacing * 2},
+                                                         .margins = {.r = k_browser_spacing * 2},
                                                      },
                                                  });
 
@@ -1777,7 +1776,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                     dyn::Append(box_system.state->deferred_actions, [&fn = btn->on_fired]() { fn(); });
             }
 
-            for (auto const& btn : ArrayT<PickerPopupOptions::Button>({
+            for (auto const& btn : ArrayT<BrowserPopupOptions::Button>({
                      {
                          .text = ICON_FA_CARET_LEFT,
                          .tooltip = fmt::Format(box_system.arena, "Load previous {}", options.item_type_name),
@@ -1877,8 +1876,8 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                    .parent = main_section,
                                    .layout {
                                        .size = {options.filters_col_width, layout::k_fill_parent},
-                                       .contents_padding = {.t = k_picker_spacing},
-                                       .contents_gap = k_picker_spacing,
+                                       .contents_padding = {.t = k_browser_spacing},
+                                       .contents_gap = k_browser_spacing,
                                        .contents_direction = layout::Direction::Column,
                                        .contents_align = layout::Alignment::Start,
                                    },
@@ -1890,8 +1889,8 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                            .parent = lhs,
                                            .layout {
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                               .contents_padding = {.lr = k_picker_spacing},
-                                               .contents_gap = k_picker_spacing,
+                                               .contents_padding = {.lr = k_browser_spacing},
+                                               .contents_gap = k_browser_spacing,
                                                .contents_direction = layout::Direction::Row,
                                                .contents_align = layout::Alignment::Start,
                                                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -1907,7 +1906,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                           .round_background_corners = 0b1111,
                           .layout {
                               .size = {layout::k_fill_parent, layout::k_hug_contents},
-                              .contents_padding = {.lr = k_picker_spacing / 2},
+                              .contents_padding = {.lr = k_browser_spacing / 2},
                               .contents_direction = layout::Direction::Row,
                               .contents_align = layout::Alignment::Start,
                               .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -1920,7 +1919,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                       .text = ICON_FA_MAGNIFYING_GLASS,
                       .size_from_text = true,
                       .font = FontType::Icons,
-                      .font_size = k_picker_item_height * 0.8f,
+                      .font_size = k_browser_item_height * 0.8f,
                       .text_colours = {style::Colour::Subtext0},
                   });
 
@@ -1931,7 +1930,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                           .text = (String)context.state.filter_search,
                           .round_background_corners = 0b1111,
                           .layout {
-                              .size = {layout::k_fill_parent, k_picker_item_height},
+                              .size = {layout::k_fill_parent, k_browser_item_height},
                           },
                           .tooltip = "Search filters"_s,
                           .behaviour = Behaviour::TextInput,
@@ -1962,7 +1961,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                               .text = ICON_FA_XMARK,
                               .size_from_text = true,
                               .font = FontType::Icons,
-                              .font_size = k_picker_item_height * 0.9f,
+                              .font_size = k_browser_item_height * 0.9f,
                               .text_colours = Splat(style::Colour::Subtext0),
                               .background_fill_auto_hot_active_overlay = true,
                               .tooltip = "Clear search"_s,
@@ -1984,7 +1983,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                               .round_background_corners = 0b1111,
                               .layout {
                                   .size = {layout::k_hug_contents, layout::k_fill_parent},
-                                  .contents_padding = {.lr = k_picker_spacing / 2},
+                                  .contents_padding = {.lr = k_browser_spacing / 2},
                                   .contents_align = layout::Alignment::Middle,
                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                               },
@@ -2013,7 +2012,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                     [&](GuiBoxSystem& box_system) {
                         if (!options.library_filters && !options.tags_filters) return;
 
-                        auto const root = DoPickerItemsRoot(box_system);
+                        auto const root = DoBrowserItemsRoot(box_system);
 
                         u8 num_lhs_sections = 0;
 
@@ -2021,25 +2020,25 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                             options.do_extra_filters_top(box_system, root, num_lhs_sections);
 
                         if (options.library_filters)
-                            DoPickerLibraryFilters(box_system,
-                                                   context,
-                                                   root,
-                                                   *options.library_filters,
-                                                   num_lhs_sections);
+                            DoBrowserLibraryFilters(box_system,
+                                                    context,
+                                                    root,
+                                                    *options.library_filters,
+                                                    num_lhs_sections);
 
                         if (options.tags_filters)
-                            DoPickerTagsFilters(box_system,
-                                                context,
-                                                root,
-                                                *options.tags_filters,
-                                                num_lhs_sections);
+                            DoBrowserTagsFilters(box_system,
+                                                 context,
+                                                 root,
+                                                 *options.tags_filters,
+                                                 num_lhs_sections);
 
                         if (options.library_filters)
-                            DoPickerLibraryAuthorFilters(box_system,
-                                                         context,
-                                                         root,
-                                                         *options.library_filters,
-                                                         num_lhs_sections);
+                            DoBrowserLibraryAuthorFilters(box_system,
+                                                          context,
+                                                          root,
+                                                          *options.library_filters,
+                                                          num_lhs_sections);
 
                         if (options.do_extra_filters_bottom)
                             options.do_extra_filters_bottom(box_system, root, num_lhs_sections);
@@ -2056,8 +2055,8 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                   .layout_id,
                         .imgui_id = box_system.imgui.GetID("filters"),
                         .flags = imgui::WindowFlags_ScrollbarInsidePadding | imgui::WindowFlags_NoScrollbarX,
-                        .padding = {.lr = k_picker_spacing},
-                        .line_height_for_scroll_wheel = k_picker_item_height,
+                        .padding = {.lr = k_browser_spacing},
+                        .line_height_for_scroll_wheel = k_browser_item_height,
                         .debug_name = "filters",
                     },
             });
@@ -2071,8 +2070,8 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                    .parent = main_section,
                                    .layout {
                                        .size = {options.rhs_width, layout::k_fill_parent},
-                                       .contents_padding = {.t = k_picker_spacing},
-                                       .contents_gap = k_picker_spacing,
+                                       .contents_padding = {.t = k_browser_spacing},
+                                       .contents_gap = k_browser_spacing,
                                        .contents_direction = layout::Direction::Column,
                                        .contents_align = layout::Alignment::Start,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -2085,8 +2084,8 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                            .parent = rhs,
                                            .layout {
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                               .contents_padding = {.lr = k_picker_spacing},
-                                               .contents_gap = k_picker_spacing,
+                                               .contents_padding = {.lr = k_browser_spacing},
+                                               .contents_gap = k_browser_spacing,
                                                .contents_direction = layout::Direction::Column,
                                                .contents_align = layout::Alignment::Start,
                                                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -2099,7 +2098,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                           .parent = rhs_top,
                           .layout {
                               .size = {layout::k_fill_parent, layout::k_hug_contents},
-                              .contents_gap = k_picker_spacing / 2,
+                              .contents_gap = k_browser_spacing / 2,
                               .contents_direction = layout::Direction::Row,
                           },
                       });
@@ -2113,7 +2112,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                               .round_background_corners = 0b1111,
                               .layout {
                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                  .contents_padding = {.lr = k_picker_spacing / 2},
+                                  .contents_padding = {.lr = k_browser_spacing / 2},
                                   .contents_direction = layout::Direction::Row,
                                   .contents_align = layout::Alignment::Start,
                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -2126,7 +2125,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                           .text = ICON_FA_MAGNIFYING_GLASS,
                           .size_from_text = true,
                           .font = FontType::Icons,
-                          .font_size = k_picker_item_height * 0.8f,
+                          .font_size = k_browser_item_height * 0.8f,
                           .text_colours = {style::Colour::Subtext0},
                       });
 
@@ -2137,7 +2136,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                               .text = (String)context.state.search,
                               .round_background_corners = 0b1111,
                               .layout {
-                                  .size = {layout::k_fill_parent, k_picker_item_height},
+                                  .size = {layout::k_fill_parent, k_browser_item_height},
                               },
                               .tooltip = "Search (" MODIFIER_KEY_NAME "+F to focus)"_s,
                               .behaviour = Behaviour::TextInput,
@@ -2170,7 +2169,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                         box_system.imgui.frame_input.Key(KeyCode::Tab).presses.size) {
                         box_system.imgui.SetTextInputFocus(0, {}, false);
                         key_nav::FocusPanel(context.state.keyboard_navigation,
-                                            PickerKeyboardNavigation::Panel::Items,
+                                            BrowserKeyboardNavigation::Panel::Items,
                                             true);
                     }
                 }
@@ -2182,7 +2181,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                   .text = ICON_FA_XMARK,
                                   .size_from_text = true,
                                   .font = FontType::Icons,
-                                  .font_size = k_picker_item_height * 0.9f,
+                                  .font_size = k_browser_item_height * 0.9f,
                                   .text_colours = Splat(style::Colour::Subtext0),
                                   .background_fill_auto_hot_active_overlay = true,
                                   .tooltip = "Clear search"_s,
@@ -2195,7 +2194,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                 }
 
                 // CTRL+F focuses the search box.
-                if (box_system.InputAndRenderPass() && box_system.imgui.IsKeyboardFocus(context.picker_id)) {
+                if (box_system.InputAndRenderPass() && box_system.imgui.IsKeyboardFocus(context.browser_id)) {
                     box_system.imgui.frame_output.wants_keyboard_keys.Set(ToInt(KeyCode::F));
                     for (auto const& e : box_system.imgui.frame_input.Key(KeyCode::F).presses) {
                         if (e.modifiers.IsOnly(ModifierKey::Modifier)) {
@@ -2244,7 +2243,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                               .parent = rhs_top,
                               .layout {
                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                  .contents_gap = k_picker_spacing / 2,
+                                  .contents_gap = k_browser_spacing / 2,
                                   .contents_direction = layout::Direction::Row,
                                   .contents_multiline = true,
                                   .contents_align = layout::Alignment::Start,
@@ -2268,7 +2267,7 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                   .text_colours = {style::Colour::Subtext0},
                                   .text_align_y = TextAlignY::Centre,
                                   .layout {
-                                      .size = {1, k_picker_item_height + (k_picker_spacing / 2)},
+                                      .size = {1, k_browser_item_height + (k_browser_spacing / 2)},
                                   },
                               });
                     } else {
@@ -2285,8 +2284,8 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                   .round_background_corners = 0b1111,
                                   .round_background_fully = true,
                                   .layout {
-                                      .size = {layout::k_hug_contents, k_picker_item_height},
-                                      .margins {.b = k_picker_spacing / 2},
+                                      .size = {layout::k_hug_contents, k_browser_item_height},
+                                      .margins {.b = k_browser_spacing / 2},
                                       .contents_padding {.lr = style::k_spacing / 2},
                                       .contents_gap = style::k_spacing / 2,
                                       .contents_direction = layout::Direction::Row,
@@ -2363,8 +2362,8 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
                                   .layout_id,
                         .imgui_id = box_system.imgui.GetID("rhs"),
                         .flags = imgui::WindowFlags_ScrollbarInsidePadding | imgui::WindowFlags_NoScrollbarX,
-                        .padding = {.lr = k_picker_spacing},
-                        .line_height_for_scroll_wheel = k_picker_item_height,
+                        .padding = {.lr = k_browser_spacing},
+                        .line_height_for_scroll_wheel = k_browser_item_height,
                         .debug_name = "rhs",
                     },
             });
@@ -2385,20 +2384,22 @@ static void DoPickerPopupInternal(GuiBoxSystem& box_system,
              });
 }
 
-void DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext context, PickerPopupOptions const& options) {
-    context.picker_id = (imgui::Id)Hash(options.title);
-    context.state.picker_id = context.picker_id;
+void DoBrowserPopup(GuiBoxSystem& box_system,
+                    BrowserPopupContext context,
+                    BrowserPopupOptions const& options) {
+    context.browser_id = (imgui::Id)Hash(options.title);
+    context.state.browser_id = context.browser_id;
 
-    key_nav::BeginFrame(box_system.imgui, context.state.keyboard_navigation, context.picker_id);
+    key_nav::BeginFrame(box_system.imgui, context.state.keyboard_navigation, context.browser_id);
 
     RunPanel(
         box_system,
         Panel {
-            .run = [&](GuiBoxSystem& box_system) { DoPickerPopupInternal(box_system, context, options); },
+            .run = [&](GuiBoxSystem& box_system) { DoBrowserPopupInternal(box_system, context, options); },
             .data =
                 ModalPanel {
                     .r = context.state.absolute_button_rect,
-                    .imgui_id = context.picker_id,
+                    .imgui_id = context.browser_id,
                     .on_close = [&state = context.state.open]() { state = false; },
                     .close_on_click_outside = true,
                     .darken_background = true,
@@ -2409,5 +2410,5 @@ void DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext context, PickerP
                 },
         });
 
-    key_nav::EndFrame(box_system.imgui, context.state.keyboard_navigation, context.picker_id);
+    key_nav::EndFrame(box_system.imgui, context.state.keyboard_navigation, context.browser_id);
 }

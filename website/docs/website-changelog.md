@@ -16,7 +16,7 @@ These are the changes made to the Floe website.
 - Massively expand and improve documentation: 
   - Key Concepts section 
   - More information about folders
-  - Picker panels
+  - Browsers
   - All layer parameters 
   - Randomisation
   - File locations

@@ -1,10 +1,10 @@
 // Copyright 2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui2_inst_picker.hpp"
+#include "gui2_inst_browser.hpp"
 
 #include "engine/favourite_items.hpp"
-#include "gui2_common_picker.hpp"
+#include "gui2_common_browser.hpp"
 
 constexpr sample_lib::LibraryIdRef k_waveform_library_id = {.author = FLOE_VENDOR, .name = "Waveforms"};
 
@@ -16,7 +16,7 @@ struct InstrumentCursor {
     usize inst_index;
 };
 
-static Optional<InstrumentCursor> CurrentCursor(InstPickerContext const& context,
+static Optional<InstrumentCursor> CurrentCursor(InstBrowserContext const& context,
                                                 sample_lib::InstrumentId const& inst_id) {
     for (auto const [lib_index, l] : Enumerate(context.libraries)) {
         if (l->Id() != inst_id.library) continue;
@@ -32,8 +32,8 @@ static bool InstMatchesSearch(sample_lib::Instrument const& inst, String search)
     return false;
 }
 
-static bool ShouldSkipInstrument(InstPickerContext const& context,
-                                 InstPickerState const& state,
+static bool ShouldSkipInstrument(InstBrowserContext const& context,
+                                 InstBrowserState const& state,
                                  sample_lib::Instrument const& inst) {
     auto& common_state = state.common_state;
 
@@ -116,8 +116,8 @@ static bool ShouldSkipInstrument(InstPickerContext const& context,
     return false;
 }
 
-static Optional<InstrumentCursor> IterateInstrument(InstPickerContext const& context,
-                                                    InstPickerState const& state,
+static Optional<InstrumentCursor> IterateInstrument(InstBrowserContext const& context,
+                                                    InstBrowserState const& state,
                                                     InstrumentCursor cursor,
                                                     SearchDirection direction,
                                                     bool first) {
@@ -177,8 +177,8 @@ static Optional<InstrumentCursor> IterateInstrument(InstPickerContext const& con
     return k_nullopt;
 }
 
-static void LoadInstrument(InstPickerContext const& context,
-                           InstPickerState& state,
+static void LoadInstrument(InstBrowserContext const& context,
+                           InstBrowserState& state,
                            InstrumentCursor const& cursor,
                            bool scroll) {
     auto const& lib = *context.libraries[cursor.lib_index];
@@ -192,8 +192,8 @@ static void LoadInstrument(InstPickerContext const& context,
     if (scroll) state.scroll_to_show_selected = true;
 }
 
-void LoadAdjacentInstrument(InstPickerContext const& context,
-                            InstPickerState& state,
+void LoadAdjacentInstrument(InstBrowserContext const& context,
+                            InstBrowserState& state,
                             SearchDirection direction) {
     switch (context.layer.instrument_id.tag) {
         case InstrumentType::WaveformSynth: {
@@ -232,7 +232,7 @@ void LoadAdjacentInstrument(InstPickerContext const& context,
     }
 }
 
-void LoadRandomInstrument(InstPickerContext const& context, InstPickerState& state) {
+void LoadRandomInstrument(InstBrowserContext const& context, InstBrowserState& state) {
     auto const first =
         IterateInstrument(context, state, {.lib_index = 0, .inst_index = 0}, SearchDirection::Forward, true);
     if (!first) return;
@@ -259,10 +259,10 @@ void LoadRandomInstrument(InstPickerContext const& context, InstPickerState& sta
     LoadInstrument(context, state, cursor, true);
 }
 
-static void InstPickerWaveformItems(GuiBoxSystem& box_system,
-                                    InstPickerContext& context,
-                                    InstPickerState& state,
-                                    Box const root) {
+static void InstBrowserWaveformItems(GuiBoxSystem& box_system,
+                                     InstBrowserContext& context,
+                                     InstBrowserState& state,
+                                     Box const root) {
     auto const container = DoBox(box_system,
                                  {
                                      .parent = root,
@@ -297,7 +297,7 @@ static void InstPickerWaveformItems(GuiBoxSystem& box_system,
         auto const is_current = waveform_type == context.layer.instrument_id.TryGetOpt<WaveformType>();
         auto const is_favourite = IsFavourite(context.prefs, FavouriteItemKey(), inst_hash);
 
-        auto const item = DoPickerItem(
+        auto const item = DoBrowserItem(
             box_system,
             common_state,
             {
@@ -328,15 +328,15 @@ static void InstPickerWaveformItems(GuiBoxSystem& box_system,
     }
 }
 
-static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context, InstPickerState& state) {
+static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& context, InstBrowserState& state) {
     auto& common_state = state.common_state;
 
-    auto const root = DoPickerItemsRoot(box_system);
+    auto const root = DoBrowserItemsRoot(box_system);
 
-    DEFER { InstPickerWaveformItems(box_system, context, state, root); };
+    DEFER { InstBrowserWaveformItems(box_system, context, state, root); };
 
     Optional<FolderNode*> previous_folder {};
-    Optional<PickerSection> folder_section {};
+    Optional<BrowserSection> folder_section {};
 
     auto const first =
         IterateInstrument(context, state, {.lib_index = 0, .inst_index = 0}, SearchDirection::Forward, true);
@@ -354,7 +354,7 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
         if (new_folder) {
             previous_folder = folder;
 
-            folder_section = PickerSection {
+            folder_section = BrowserSection {
                 .state = common_state,
                 .id = folder->Hash(),
                 .parent = root,
@@ -362,7 +362,7 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
             };
         }
 
-        if (folder_section->Do(box_system).tag != PickerSection::State::Collapsed) {
+        if (folder_section->Do(box_system).tag != BrowserSection::State::Collapsed) {
             auto const inst_id = sample_lib::InstrumentId {lib.Id(), inst.name};
             auto const inst_hash = sample_lib::InstHash(inst);
             auto const is_current = context.layer.instrument_id == inst_id;
@@ -371,51 +371,51 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
             // TODO: a Panic was hit here where the GUI changed between layout and render passes while
             // updating a floe.lua file. It's rare though.
             auto const item =
-                DoPickerItem(box_system,
-                             common_state,
-                             {
-                                 .parent = folder_section->Do(box_system).Get<Box>(),
-                                 .text = inst.name,
-                                 .tooltip = FunctionRef<String()>([&]() -> String {
-                                     DynamicArray<char> buf {box_system.arena};
-                                     fmt::Append(buf,
-                                                 "{} from {} by {}.\n\n",
-                                                 inst.name,
-                                                 inst.library.name,
-                                                 inst.library.author);
+                DoBrowserItem(box_system,
+                              common_state,
+                              {
+                                  .parent = folder_section->Do(box_system).Get<Box>(),
+                                  .text = inst.name,
+                                  .tooltip = FunctionRef<String()>([&]() -> String {
+                                      DynamicArray<char> buf {box_system.arena};
+                                      fmt::Append(buf,
+                                                  "{} from {} by {}.\n\n",
+                                                  inst.name,
+                                                  inst.library.name,
+                                                  inst.library.author);
 
-                                     if (inst.description) fmt::Append(buf, "{}", inst.description);
+                                      if (inst.description) fmt::Append(buf, "{}", inst.description);
 
-                                     fmt::Append(buf, "\n\nTags: ");
-                                     if (inst.tags.size == 0)
-                                         fmt::Append(buf, "None");
-                                     else {
-                                         for (auto const [t, _] : inst.tags)
-                                             fmt::Append(buf, "{}, ", t);
-                                         dyn::Pop(buf, 2);
-                                     }
+                                      fmt::Append(buf, "\n\nTags: ");
+                                      if (inst.tags.size == 0)
+                                          fmt::Append(buf, "None");
+                                      else {
+                                          for (auto const [t, _] : inst.tags)
+                                              fmt::Append(buf, "{}, ", t);
+                                          dyn::Pop(buf, 2);
+                                      }
 
-                                     return buf.ToOwnedSpan();
-                                 }),
-                                 .item_id = inst_hash,
-                                 .is_current = is_current,
-                                 .is_favourite = is_favourite,
-                                 .is_tab_item = new_folder,
-                                 .icons = ({
-                                     if (&lib != previous_library) {
-                                         previous_library = &lib;
-                                         auto const imgs = GetLibraryImages(context.library_images,
-                                                                            box_system.imgui,
-                                                                            lib.Id(),
-                                                                            context.sample_library_server,
-                                                                            LibraryImagesTypes::Icon);
-                                         lib_icon = imgs.icon ? imgs.icon : context.unknown_library_icon;
-                                     }
-                                     decltype(PickerItemOptions::icons) {lib_icon};
-                                 }),
-                                 .notifications = context.notifications,
-                                 .store = context.persistent_store,
-                             });
+                                      return buf.ToOwnedSpan();
+                                  }),
+                                  .item_id = inst_hash,
+                                  .is_current = is_current,
+                                  .is_favourite = is_favourite,
+                                  .is_tab_item = new_folder,
+                                  .icons = ({
+                                      if (&lib != previous_library) {
+                                          previous_library = &lib;
+                                          auto const imgs = GetLibraryImages(context.library_images,
+                                                                             box_system.imgui,
+                                                                             lib.Id(),
+                                                                             context.sample_library_server,
+                                                                             LibraryImagesTypes::Icon);
+                                          lib_icon = imgs.icon ? imgs.icon : context.unknown_library_icon;
+                                      }
+                                      decltype(BrowserItemOptions::icons) {lib_icon};
+                                  }),
+                                  .notifications = context.notifications,
+                                  .store = context.persistent_store,
+                              });
 
             if (is_current &&
                 box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
@@ -448,7 +448,7 @@ static void InstPickerItems(GuiBoxSystem& box_system, InstPickerContext& context
     }
 }
 
-void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, InstPickerState& state) {
+void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, InstBrowserState& state) {
     if (!state.common_state.open) return;
 
     HashTable<String, FilterItemInfo> tags {};
@@ -533,7 +533,7 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
 
     // IMPORTANT: we create the options struct inside the call so that lambdas and values from
     // statement-expressions live long enough.
-    DoPickerPopup(
+    DoBrowserPopup(
         box_system,
         {
             .sample_library_server = context.sample_library_server,
@@ -541,7 +541,7 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
             .store = context.persistent_store,
             .state = state.common_state,
         },
-        PickerPopupOptions {
+        BrowserPopupOptions {
             .title = fmt::Format(box_system.arena, "Layer {} Instrument", context.layer.index + 1),
             .height = ({
                 auto const window_height = box_system.imgui.frame_input.window_size.height;
@@ -553,7 +553,7 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
             .filters_col_width = 250,
             .item_type_name = "instrument",
             .rhs_top_button =
-                PickerPopupOptions::Button {
+                BrowserPopupOptions::Button {
                     .text = fmt::Format(
                         box_system.arena,
                         "Unload {}",
@@ -572,7 +572,7 @@ void DoInstPickerPopup(GuiBoxSystem& box_system, InstPickerContext& context, Ins
                                     state.common_state.open = false;
                                 }).CloneObject(box_system.arena),
                 },
-            .rhs_do_items = [&](GuiBoxSystem& box_system) { InstPickerItems(box_system, context, state); },
+            .rhs_do_items = [&](GuiBoxSystem& box_system) { InstBrowserItems(box_system, context, state); },
             .show_search = true,
             .filter_search_placeholder_text = "Search libraries/tags",
             .item_search_placeholder_text = "Search instruments",

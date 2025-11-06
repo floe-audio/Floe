@@ -17,8 +17,8 @@
 #include "gui/gui2_confirmation_dialog.hpp"
 #include "gui/gui2_feedback_panel.hpp"
 #include "gui/gui2_info_panel.hpp"
-#include "gui/gui2_inst_picker.hpp"
-#include "gui/gui2_ir_picker.hpp"
+#include "gui/gui2_inst_browser.hpp"
+#include "gui/gui2_ir_browser.hpp"
 #include "gui/gui2_notifications.hpp"
 #include "gui/gui2_package_install.hpp"
 #include "gui/gui2_prefs_panel.hpp"
@@ -465,7 +465,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
             for (auto& layer_obj : g->engine.processor.layer_processors) {
                 imgui.PushID(layer_obj.index);
                 DEFER { imgui.PopID(); };
-                InstPickerContext context {
+                InstBrowserContext context {
                     .layer = layer_obj,
                     .sample_library_server = g->shared_engine_systems.sample_library_server,
                     .library_images = g->library_images,
@@ -479,13 +479,13 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };
 
-                auto& state = g->inst_picker_state[layer_obj.index];
-                DoInstPickerPopup(g->box_system, context, state);
+                auto& state = g->inst_browser_state[layer_obj.index];
+                DoInstBrowserPopup(g->box_system, context, state);
             }
         }
 
         {
-            PresetPickerContext context {
+            PresetBrowserContext context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
@@ -496,11 +496,11 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .persistent_store = g->shared_engine_systems.persistent_store,
                 .confirmation_dialog_state = g->confirmation_dialog_state,
             };
-            DoPresetPicker(g->box_system, context, g->preset_picker_state);
+            DoPresetBrowser(g->box_system, context, g->preset_browser_state);
         }
 
         {
-            IrPickerContext context {
+            IrBrowserContext context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
@@ -513,7 +513,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
 
-            DoIrPickerPopup(g->box_system, context, g->ir_picker_state);
+            DoIrBrowserPopup(g->box_system, context, g->ir_browser_state);
         }
 
         DoNotifications(g->box_system, g->notifications);

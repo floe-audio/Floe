@@ -4,9 +4,9 @@
 #include "foundation/foundation.hpp"
 #include "os/misc.hpp"
 
-#include "gui2_common_picker.hpp"
+#include "gui2_common_browser.hpp"
 
-struct IrPickerState {
-    CommonPickerState common_state;
+struct IrBrowserState {
+    CommonBrowserState common_state;
     bool scroll_to_show_selected = false;
 };

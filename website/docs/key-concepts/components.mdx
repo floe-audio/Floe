@@ -46,7 +46,7 @@ Sample libraries can contain thousands of audio files and can be many gigabytes 
 
 An instrument is a playable sound source. It might be something like 'Upright Piano' or 'Ambient Drone'. It might be a single sample that loops, or a multisampled instrument with many samples mapped across the keyboard along with velocity layers and round robins.
 
-Instruments are loaded into any of Floe's 3 [layers](../usage/layers) using a powerful _[picker panel](./picker-panels)_ which lets you easily find instruments across all your installed libraries. A layer that has no instrument loaded will say 'None' instead of the instrument name - click this to open the picker.
+Instruments are loaded into any of Floe's 3 [layers](../usage/layers) using a powerful _[browser](./browsers)_ which lets you easily find instruments across all your installed libraries. A layer that has no instrument loaded will say 'None' instead of the instrument name - click this to open the browser.
 
 Instruments are provided via sample libraries, developed using Floe's open developer tools.
 
@@ -54,7 +54,7 @@ Instruments are provided via sample libraries, developed using Floe's open devel
 
 An impulse response (or IR) is a sample that determines the character of the convolution reverb. These are selected on the convolution reverb effect found on Floe's effects rack.
 
-IRs can be chosen using a _[picker panel](./picker-panels)_, allowing you to easily find the right IR to colour the sound.
+IRs can be chosen using a _[browser](./browsers)_, allowing you to easily find the right IR to colour the sound.
 
 IRs are provided by some sample libraries, although Floe does have a built-in set of IRs that can be used without installing any additional libraries.
 
@@ -62,11 +62,11 @@ IRs are provided via sample libraries, developed using Floe's open developer too
 
 ## Presets
 
-A preset is a full production-ready setup of all of Floe's parameters and options, along with a name, description, and tags. It's a snapshot of Floe's state ready to be loaded using the preset [picker](./picker-panels).
+A preset is a full production-ready setup of all of Floe's parameters and options, along with a name, description, and tags. It's a snapshot of Floe's state ready to be loaded using the preset [browser](./browsers).
 
 Presets typically only use instruments and impulse responses from a single sample library. However, using any installed instruments and impulse responses is supported. You can have presets that blend sounds from completely different libraries.
 
-You can save presets using the <FAIcon icon="fa-solid fa-floppy-disk" /> save button at the top of Floe's window. This puts the current state of Floe into a preset file to be loaded later. At a technical level, presets are just portable files (`.floe-preset`) arranged into folders on your computer. You can rename and organise them as you wish using your usual file browser (Finder, File Explorer, etc.) - Floe automatically detects changes in its [preset folders](./folders) and immediately displays the new hierarchy on the preset picker. The name of the preset file is the name you see in Floe's preset picker. The description and tags are stored inside the preset file itself and can only be edited by using Floe to save over the preset.
+You can save presets using the <FAIcon icon="fa-solid fa-floppy-disk" /> save button at the top of Floe's window. This puts the current state of Floe into a preset file to be loaded later. At a technical level, presets are just portable files (`.floe-preset`) arranged into folders on your computer. You can rename and organise them as you wish using your usual file browser (Finder, File Explorer, etc.) - Floe automatically detects changes in its [preset folders](./folders) and immediately displays the new hierarchy on the preset browser. The name of the preset file is the name you see in Floe's preset browser. The description and tags are stored inside the preset file itself and can only be edited by using Floe to save over the preset.
 
 A _preset bank_ is a small extension to Floe's preset system. Some folders are marked as 'banks' and contain some more [metadata](../develop/develop-preset-packs) such as a description and version. 'Music Box Suite Factory Presets' is a preset bank, for example. (Floe also automatically identifies some well-known factory preset banks that existed before the banks system was added, even without a metadata file present.)
 

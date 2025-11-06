@@ -15,7 +15,7 @@
 //
 // We can use this for things like:
 // - Default preset for new instances
-// - Store GUI state (e.g. window positions, sizes, picker filters, etc.)
+// - Store GUI state (e.g. window positions, sizes, browser filters, etc.)
 
 namespace persistent_store {
 

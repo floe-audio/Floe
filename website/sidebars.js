@@ -27,7 +27,7 @@ const sidebars = {
             label: 'Key Concepts',
             items: [
                 'key-concepts/components',
-                'key-concepts/picker-panels',
+                'key-concepts/browsers',
                 'key-concepts/folders',
                 'key-concepts/general-usage',
             ],

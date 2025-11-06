@@ -15,8 +15,8 @@
 
 struct Notifications;
 
-constexpr auto k_picker_item_height = 20.0f;
-constexpr auto k_picker_spacing = 8.0f;
+constexpr auto k_browser_item_height = 20.0f;
+constexpr auto k_browser_spacing = 8.0f;
 
 constexpr auto k_untagged_tag_name = "<untagged>"_s;
 
@@ -86,7 +86,7 @@ struct SelectedHashes {
     DynamicArrayBounded<SelectedHash, 16> hashes {};
 };
 
-struct PickerKeyboardNavigation {
+struct BrowserKeyboardNavigation {
     enum class Panel : u8 {
         None,
         Filters,
@@ -152,7 +152,7 @@ struct PickerKeyboardNavigation {
     Input input {};
 };
 
-struct CommonPickerState {
+struct CommonBrowserState {
     auto AllHashes() {
         DynamicArrayBounded<SelectedHashes*, 7> all_hashes;
         static_assert(decltype(all_hashes)::Capacity() >= (4 + decltype(other_selected_hashes)::Capacity()));
@@ -165,7 +165,7 @@ struct CommonPickerState {
         return all_hashes;
     }
 
-    auto AllHashes() const { return const_cast<CommonPickerState*>(this)->AllHashes(); }
+    auto AllHashes() const { return const_cast<CommonBrowserState*>(this)->AllHashes(); }
 
     bool HasFilters() const {
         if (favourites_only) return true;
@@ -200,7 +200,7 @@ struct CommonPickerState {
     }
 
     bool open {};
-    Rect absolute_button_rect {}; // Absolute rectangle of the button that opened the picker.
+    Rect absolute_button_rect {}; // Absolute rectangle of the button that opened the browser.
     SelectedHashes selected_library_hashes {"Library"};
     SelectedHashes selected_library_author_hashes {"Library Author"};
     SelectedHashes selected_tags_hashes {"Tag"};
@@ -212,17 +212,17 @@ struct CommonPickerState {
     DynamicArrayBounded<SelectedHashes*, 3> other_selected_hashes {};
     FilterMode filter_mode = FilterMode::Single;
     RightClickMenuState right_click_menu_state {};
-    PickerKeyboardNavigation keyboard_navigation {};
-    imgui::Id picker_id; // TODO: this is emphemeral, mirror
+    BrowserKeyboardNavigation keyboard_navigation {};
+    imgui::Id browser_id; // TODO: this is emphemeral, mirror
 };
 
 // Ephemeral
-struct PickerPopupContext {
+struct BrowserPopupContext {
     sample_lib_server::Server& sample_library_server;
     prefs::Preferences& preferences;
     persistent_store::Store& store;
-    CommonPickerState& state;
-    imgui::Id picker_id;
+    CommonBrowserState& state;
+    imgui::Id browser_id;
 };
 
 struct FilterItemInfo {
@@ -282,7 +282,7 @@ struct LibraryFilters {
 
 // IMPORTANT: we use FunctionRef here, you need to make sure the lifetime of the functions outlives the
 // options.
-struct PickerPopupOptions {
+struct BrowserPopupOptions {
     struct Button {
         String text {};
         String tooltip {};
@@ -322,11 +322,11 @@ struct PickerPopupOptions {
     FilterItemInfo const& favourites_filter_info;
 };
 
-Box DoPickerItemsRoot(GuiBoxSystem& box_system);
+Box DoBrowserItemsRoot(GuiBoxSystem& box_system);
 
-struct PickerItemsSectionOptions {};
+struct BrowserItemsSectionOptions {};
 
-struct PickerSection {
+struct BrowserSection {
     enum class State : u8 {
         Collapsed,
         Box,
@@ -338,7 +338,7 @@ struct PickerSection {
     // NormalBoxUninitialised, any subsequent calls will return a valid Box.
     Result Do(GuiBoxSystem& box_system);
 
-    CommonPickerState& state;
+    CommonBrowserState& state;
     u8* num_sections_rendered; // Optional.
     u64 id;
     ::Box parent;
@@ -359,7 +359,7 @@ struct PickerSection {
     u8 is_box_init : 1 = 0;
 };
 
-struct PickerItemOptions {
+struct BrowserItemOptions {
     Box parent;
     String text;
     TooltipString tooltip = k_nullopt;
@@ -372,14 +372,14 @@ struct PickerItemOptions {
     persistent_store::Store& store;
 };
 
-struct PickerItemResult {
+struct BrowserItemResult {
     Box box;
     bool favourite_toggled;
     bool fired; // Either clicked or navigated to with the keyboard.
 };
 
-PickerItemResult
-DoPickerItem(GuiBoxSystem& box_system, CommonPickerState& state, PickerItemOptions const& options);
+BrowserItemResult
+DoBrowserItem(GuiBoxSystem& box_system, CommonBrowserState& state, BrowserItemOptions const& options);
 
 struct FilterButtonOptions {
     FilterButtonCommonOptions common;
@@ -395,29 +395,31 @@ struct FilterTreeButtonOptions {
 };
 
 Box DoFilterButton(GuiBoxSystem& box_system,
-                   CommonPickerState& state,
+                   CommonBrowserState& state,
                    FilterItemInfo const& info,
                    FilterButtonOptions const& options);
 
 Box DoFilterTreeButton(GuiBoxSystem& box_system,
-                       CommonPickerState& state,
+                       CommonBrowserState& state,
                        FilterItemInfo const& info,
                        FilterTreeButtonOptions const& options);
 
 Box DoFilterCard(GuiBoxSystem& box_system,
-                 CommonPickerState& state,
+                 CommonBrowserState& state,
                  FilterItemInfo const& info,
                  FilterCardOptions const& options);
 
-void DoPickerPopup(GuiBoxSystem& box_system, PickerPopupContext context, PickerPopupOptions const& options);
+void DoBrowserPopup(GuiBoxSystem& box_system,
+                    BrowserPopupContext context,
+                    BrowserPopupOptions const& options);
 
 void DoRightClickMenuForBox(GuiBoxSystem& box_system,
-                            CommonPickerState& state,
+                            CommonBrowserState& state,
                             Box const& box,
                             u64 item_hash,
                             RightClickMenuState::Function const& do_menu);
 
-bool ShowPrimaryFilterSectionHeader(CommonPickerState const& state,
+bool ShowPrimaryFilterSectionHeader(CommonBrowserState const& state,
                                     prefs::Preferences const& preferences,
                                     u64 section_heading_id);
 

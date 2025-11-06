@@ -4,8 +4,8 @@
 #include <IconsFontAwesome6.h>
 
 #include "gui.hpp"
-#include "gui/gui2_inst_picker.hpp"
-#include "gui/gui2_ir_picker.hpp"
+#include "gui/gui2_inst_browser.hpp"
+#include "gui/gui2_ir_browser.hpp"
 #include "gui/gui_button_widgets.hpp"
 #include "gui_effects.hpp"
 #include "gui_framework/colours.hpp"
@@ -201,7 +201,7 @@ void MidPanel(Gui* g) {
         // randomise button
         if (do_randomise_button("Load random instruments for all 3 layers")) {
             for (auto& layer : engine.processor.layer_processors) {
-                InstPickerContext context {
+                InstBrowserContext context {
                     .layer = layer,
                     .sample_library_server = g->shared_engine_systems.sample_library_server,
                     .library_images = g->library_images,
@@ -214,7 +214,7 @@ void MidPanel(Gui* g) {
                 };
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };
-                LoadRandomInstrument(context, g->inst_picker_state[layer.index]);
+                LoadRandomInstrument(context, g->inst_browser_state[layer.index]);
             }
         }
 
@@ -297,7 +297,7 @@ void MidPanel(Gui* g) {
         if (do_randomise_button("Randomise all of the effects")) {
             RandomiseAllEffectParameterValues(engine.processor);
             {
-                IrPickerContext ir_context {
+                IrBrowserContext ir_context {
                     .sample_library_server = g->shared_engine_systems.sample_library_server,
                     .library_images = g->library_images,
                     .engine = g->engine,
@@ -309,7 +309,7 @@ void MidPanel(Gui* g) {
                 };
                 ir_context.Init(g->scratch_arena);
                 DEFER { ir_context.Deinit(); };
-                LoadRandomIr(ir_context, g->ir_picker_state);
+                LoadRandomIr(ir_context, g->ir_browser_state);
             }
         }
 

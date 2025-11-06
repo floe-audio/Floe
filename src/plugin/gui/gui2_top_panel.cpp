@@ -8,8 +8,8 @@
 #include "engine/engine.hpp"
 #include "gui.hpp"
 #include "gui/gui2_common_modal_panel.hpp"
-#include "gui/gui2_inst_picker.hpp"
-#include "gui/gui2_ir_picker.hpp"
+#include "gui/gui2_inst_browser.hpp"
+#include "gui/gui2_ir_browser.hpp"
 #include "gui/gui2_parameter_component.hpp"
 #include "gui_framework/gui_box_system.hpp"
 #include "gui_modal_windows.hpp"
@@ -56,7 +56,7 @@ static void DoDotsMenu(Gui* g) {
             .button_fired) {
         RandomiseAllParameterValues(g->engine.processor);
         for (auto& layer : g->engine.processor.layer_processors) {
-            InstPickerContext context {
+            InstBrowserContext context {
                 .layer = layer,
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
@@ -69,10 +69,10 @@ static void DoDotsMenu(Gui* g) {
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
-            LoadRandomInstrument(context, g->inst_picker_state[layer.index]);
+            LoadRandomInstrument(context, g->inst_browser_state[layer.index]);
         }
         {
-            IrPickerContext ir_context {
+            IrBrowserContext ir_context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
@@ -84,7 +84,7 @@ static void DoDotsMenu(Gui* g) {
             };
             ir_context.Init(g->scratch_arena);
             DEFER { ir_context.Deinit(); };
-            LoadRandomIr(ir_context, g->ir_picker_state);
+            LoadRandomIr(ir_context, g->ir_browser_state);
         }
     }
 
@@ -216,8 +216,8 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
         });
 
     if (preset_box_left.button_fired) {
-        g->preset_picker_state.common_state.open = true;
-        g->preset_picker_state.common_state.absolute_button_rect =
+        g->preset_browser_state.common_state.open = true;
+        g->preset_browser_state.common_state.absolute_button_rect =
             g->imgui.WindowRectToScreenRect(*BoxRect(box_system, preset_box_left));
     }
     if (preset_box_left.is_hot) StartScanningIfNeeded(g->engine.shared_engine_systems.preset_server);
@@ -304,7 +304,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                            1.0f,
                            3);
         if (preset_next.button_fired) {
-            PresetPickerContext context {
+            PresetBrowserContext context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
@@ -318,7 +318,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
 
-            LoadAdjacentPreset(context, g->preset_picker_state, SearchDirection::Backward);
+            LoadAdjacentPreset(context, g->preset_browser_state, SearchDirection::Backward);
         }
         if (preset_next.is_hot) StartScanningIfNeeded(g->engine.shared_engine_systems.preset_server);
     }
@@ -331,7 +331,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                            1.0f,
                            3);
         if (preset_prev.button_fired) {
-            PresetPickerContext context {
+            PresetBrowserContext context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
@@ -345,7 +345,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
 
-            LoadAdjacentPreset(context, g->preset_picker_state, SearchDirection::Forward);
+            LoadAdjacentPreset(context, g->preset_browser_state, SearchDirection::Forward);
         }
         if (preset_prev.is_hot) StartScanningIfNeeded(g->engine.shared_engine_systems.preset_server);
     }
@@ -358,7 +358,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                            0.9f,
                            3);
         if (preset_random.button_fired) {
-            PresetPickerContext context {
+            PresetBrowserContext context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
@@ -372,7 +372,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
 
-            LoadRandomPreset(context, g->preset_picker_state);
+            LoadRandomPreset(context, g->preset_browser_state);
         }
         if (preset_random.is_hot) StartScanningIfNeeded(g->engine.shared_engine_systems.preset_server);
     }

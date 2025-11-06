@@ -3,9 +3,9 @@
 
 #pragma once
 
-#include "gui2_common_picker.hpp"
+#include "gui2_common_browser.hpp"
 
-struct InstPickerState {
-    CommonPickerState common_state {};
+struct InstBrowserState {
+    CommonBrowserState common_state {};
     bool scroll_to_show_selected = false;
 };
