@@ -7,7 +7,7 @@ description: A detailed changelog of all versions of Floe
 
 <!--
 SPDX-FileCopyrightText: 2018-2025 Sam Windell
-SPDX-License-Identifier: GPL-3.0-or-later
+SPDX-License-Identifier: CC-BY-SA-4.0
 
 IMPORTANT: Our release process expects this file to contain heading that exactly match the released version numbers. 
 For instance: 0.0.1. Don't change the headings.
@@ -16,26 +16,21 @@ For instance: 0.0.1. Don't change the headings.
 # Changelog
 ## 1.1.0-beta.1
 - **Picker panel UI overhaul** (instruments, presets, IRs)
+  - Filtering mode is now 'one' mode by default, and alternate modes for 'AND' or 'OR' filtering are selected in the 3-dots menu
+  - New 'cards' on left panel for libraries or preset-packs
   - Full keyboard arrow navigation, enter to select, CTRL+F/CMD+F to focus search box, page up/down, home/end, CTRL+up/down to jump sections
   - Search for libraries, preset-packs and tags
-  - Favourites system - tag items as for easy access
-  - New 'cards' on left panel for libraries or preset-packs
-  - Filtering mode is now 'one' mode by default, and alternate modes for 'AND' or 'OR' filtering are selected in the 3-dots menu
+  - Favourites system - 'star' items as for easy access later
   - Scrollbars are less intrusive and only appear when needed
   - Header is more compact leaving more space for the content
   - Tooltips no longer get in the way of the picker items
-- **New floe.audio website**:
-  - New page to easily [browse all packages](https://floe.audio/packages/)
-  - Completely redesigned homepage to better explain Floe
-  - Simpler [download page](https://floe.audio/download)
-  - New [blog](https://floe.audio/blog) section for news and updates
-  - Clearer design throughout
-- Background-load images so the GUI stays responsive
-- Uninstall libraries and presets by right-clicking them in the picker panels
+- Load images in a background thread so the GUI stays responsive
+- Uninstall libraries and presets by right-clicking them in the picker panels. Or use the Info panel uninstall libraries.
 - New concept of 'preset banks' - a folder of presets can be tagged as a bank and given more metadata such as a description. To create one add `floe-preset-bank.ini` to a folder of presets.
 - Press escape on the keyboard to close panels
 - Increase threads for loading audio up to 75% of CPU cores instead of maximum of 4.
 - Fix silent output in Ableton Live 10
+- Fix rare startup crash (#179)
 
 ## 1.0.6
 - Add Reset Audio Engine to the menu for stopping all sound and voices

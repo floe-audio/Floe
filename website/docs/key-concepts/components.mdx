@@ -64,12 +64,10 @@ IRs are provided via sample libraries, developed using Floe's open developer too
 
 A preset is a full production-ready setup of all of Floe's parameters and options, along with a name, description, and tags. It's a snapshot of Floe's state ready to be loaded using the preset [picker](./picker-panels).
 
-A _preset bank_ is a collection of presets given a name and organised into categories. Such as 'Distant Signals Factory Presets'.
-
 Presets typically only use instruments and impulse responses from a single sample library. However, using any installed instruments and impulse responses is supported. You can have presets that blend sounds from completely different libraries.
 
 You can save presets using the <FAIcon icon="fa-solid fa-floppy-disk" /> save button at the top of Floe's window. This puts the current state of Floe into a preset file to be loaded later. At a technical level, presets are just portable files (`.floe-preset`) arranged into folders on your computer. You can rename and organise them as you wish using your usual file browser (Finder, File Explorer, etc.) - Floe automatically detects changes in its [preset folders](./folders) and immediately displays the new hierarchy on the preset picker. The name of the preset file is the name you see in Floe's preset picker. The description and tags are stored inside the preset file itself and can only be edited by using Floe to save over the preset.
 
-Presets are tiny files - typically just a few kilobytes in size. Even whole banks of presets take up very little disk space.
+A _preset bank_ is a small extension to Floe's preset system. Some folders are marked as 'banks' and contain some more [metadata](../develop/develop-preset-packs) such as a description and version. 'Music Box Suite Factory Presets' is a preset bank, for example. (Floe also automatically identifies some well-known factory preset banks that existed before the banks system was added, even without a metadata file present.)
 
-Preset _banks_ are also just folders of preset files, except they have an accompanying [metadata file](../develop/develop-preset-packs).
+Presets are tiny files - typically just a few kilobytes in size. Even whole banks of presets take up very little disk space.

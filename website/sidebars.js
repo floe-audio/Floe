@@ -80,6 +80,7 @@ const sidebars = {
             ],
         },
         'changelog',
+        'website-changelog',
     ],
 };
 

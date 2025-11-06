@@ -10,7 +10,7 @@ SPDX-FileCopyrightText: 2025 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
 -->
 
-Floe's preset management is based around the familiar idea of files and folders on your computer.
+Floe's preset management is open; it's just based on the files and folders on your computer.
 
 Presets are saved as individual files using the <FAIcon icon="fa-solid fa-floppy-disk" /> save button at the top of Floe's UI. These files can be freely renamed and put into subfolders; this is how categories and hierarchies are created in the preset browser.
 
@@ -39,13 +39,15 @@ minor_version = 1
 
 You can create this INI file with any text editor such as Notepad or TextEdit. You just need to type in the various `field = value` with new lines between them.
 
+A side note for the particularly discerning user: Floe automatically identifies some well-known factory preset folders as preset banks even without the metadata file present. This is because some banks were created before the preset bank feature was added. We chose to enrich them with metadata retroactively.
+
 ## Packaging
 
-Once you've created your folder of presets and (optionally) added a `floe-preset-bank.ini` file, you can ZIP it up for distribution.
+Once you've created your folder of presets and added a `floe-preset-bank.ini` file (optional but recommended), you can ZIP it up for distribution.
 
 Read about packaging on the [packaging](./packaging) page.
 
-Essentially, rename your bank folder to something like `My Preset Bank`. Next, put that into a folder called `Presets`. Next, put `Presets` into another folder `My Preset Bank - Floe Package`, then right-click and ZIP that folder. You should now have a ZIP called `My Preset Bank - Floe Package.zip` with a subfolder `Presets` and you bank folder inside that. The resulting ZIP file will contain the structure that _Floe packages_ requires (Presets subfolder at the top level). Test your package by trying to install it using Floe's _Install package_ button. Refer to the packaging page for more details if needed.
+Use the packager command-line tool, or alternatively package it manually. To manually package your bank first rename your bank folder to something like `My Preset Bank`. Next, put that into a folder called `Presets`. Next, put `Presets` into another folder `My Preset Bank - Floe Package`, then right-click and ZIP that folder. You should now have a ZIP called `My Preset Bank - Floe Package.zip` with a subfolder `Presets` and you bank folder inside that. The resulting ZIP file will contain the structure that _Floe packages_ requires (Presets subfolder at the top level). Test your package by trying to install it using Floe's _Install package_ button. Refer to the packaging page for more details if needed.
 
 ## Best Practices
 - Make presets all feel the same volume: the master peak meter on Floe's GUI should just be the yellow zone when the preset is played at its fullest.
