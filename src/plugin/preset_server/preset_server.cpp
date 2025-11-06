@@ -487,7 +487,6 @@ struct FoldersAggregateInfo {
     // packs that existed before the Floe update and fill in the metadata for them.
     static PresetBank const* KnownPresetBank(FolderNode const* node) {
         auto const hash = FolderContentsHash(node);
-        LogDebug(ModuleName::PresetServer, "FolderContentsHash: {} -> {}", node->name, hash);
         switch (hash) {
             case 17797709789825583399ull: {
                 static constexpr PresetBank k_metadata {
@@ -708,14 +707,8 @@ struct FoldersAggregateInfo {
                 // by again walking up the tree, this time looking for the topmost parent that has a
                 // PresetFolder; we will put the metadata there.
                 DynamicArrayBounded<FolderNode*, k_max_nested_folders> lineage {};
-                DynamicArrayBounded<char, 512> lineage_str {};
-                for (auto n = node; n; n = n->parent) {
+                for (auto n = node; n; n = n->parent)
                     dyn::Append(lineage, n);
-                    if (lineage_str.size) dyn::AppendSpan(lineage_str, " > ");
-                    dyn::AppendSpan(lineage_str, n->name);
-                }
-
-                LogDebug(ModuleName::PresetServer, "Folder {} lineage: {}", node->name, lineage_str);
 
                 // Walk back down the lineage looking for a PresetFolder, we use the topmost one we find.
                 for (usize i = lineage.size; i-- > 0;) {
