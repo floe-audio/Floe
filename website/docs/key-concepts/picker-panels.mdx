@@ -156,13 +156,19 @@ Also on this menu is _Show Primary Filter Section Header_. It toggles whether th
 
 When in AND mode, Floe helps you identify which filters are relevant by greying-out filters that wouldn't result in any matches if selected.
 
-In the image above, the tag _tonal percussion_ is selected, resulting in a long list of items on the right. You can see some of the filters are greyed-out, such as the library _Wraith_ and the tag _synthesized_, whereas the library _Music Box Suite_ still shows bright text, as does the tag _acoustic_. If you were to select a greyed-out filter as well as the existing _tonal percussion_ tag, there would be no items in the results list. For example, if you selected _tonal percussion_ AND _synthesized_, no instruments are tagged with both. 
+In the image above, the tag _tonal percussion_ is selected, resulting in a long list of items on the right. On the left panel, you can see some of the filters are greyed-out, such as the library _Wraith_ and the tag _synthesized_, whereas the library _Music Box Suite_ still shows bright text, as does the tag _acoustic_. This greying-out behaviour shows you when the AND combination would result in 0 matching results. For example, if you selected _tonal percussion_ AND _synthesized_, no instruments are tagged with both; the results list would be empty.
 
 This greying-out behaviour allows you to more effectively narrow down your search without reaching dead ends all the time. It only applies in AND mode.
 
 ## Keyboard navigation
 
-The pickers support keyboard navigation using the arrow keys and enter. By default, the blue outline denoting the focused element is hidden, but becomes visible when you press any arrow key.
+:::warning
+We're aware that some DAWs, such as Reason, Ableton Live and Ardour, are interfering with Floe's keyboard input. We're working on solutions to this.
+:::
+
+The pickers support keyboard navigation using the arrow keys and enter. 
+
+The focused item is denoted by a blue outline box. This box is initially hidden but becomes visible when you press any arrow key.
 
 ![Picker keyboard navigation](/images/picker-keyboard-nav.png)
 
