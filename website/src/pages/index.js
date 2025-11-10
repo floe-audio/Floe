@@ -8,7 +8,7 @@ import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faGem, faSeedling, faMusic, faLayerGroup } from '@fortawesome/free-solid-svg-icons';
+import { faGem, faSeedling, faMusic, faBalanceScale } from '@fortawesome/free-solid-svg-icons';
 import PackageCard from '../components/PackageCard';
 import packageDatabase from '@site/static/package-database.json';
 import styles from './index.module.css';
@@ -80,16 +80,20 @@ function OpenSourceSection() {
             <div className="container">
                 <Heading as="h2">Why open-source?</Heading>
                 <p>
-                    Floe is built as open-source software, meaning its code is freely available for anyone to see, modify, and improve (it's GPL licensed).
+                    Floe is built as open-source software (GPL licensed), meaning its code is freely available for anyone to see and improve. This isn't solely a technical choice — it reflects our values while simultaneously offering real benefits for your music-making workflow.
                 </p>
+
                 <p>
-                    While this might seem like a technical detail, it offers some potentially very valuable benefits:
+                    <strong>Your tools won't disappear.</strong> Open source means Floe can keep working on future computers indefinitely — any developer can maintain it. You'll never lose access to your creative workflow because of business decisions or discontinued products.
                 </p>
-                <ul className={styles.benefitsList}>
-                    <li>Any developer can pick it up and keep it running on future systems, ensuring longevity</li>
-                    <li>If you need a specific feature, you could hire a developer to create your own customised version</li>
-                    <li>Most importantly, open-source transparency builds trust — you or any community developer can verify that the program genuinely serves meaningful music creation rather than employing dubious business tactics</li>
-                </ul>
+
+                <p>
+                    <strong>Better development through collaboration.</strong> Musicians and developers worldwide can contribute improvements, fix issues, and add features that benefit everyone. This collective approach helps Floe evolve faster and serve real creative needs.
+                </p>
+
+                <p>
+                    <strong>Aligned incentives.</strong> Being open source means we can't rely on lock-in or artificial limitations—if we did, developers could fork the code or users could switch. We succeed only by making Floe genuinely useful for your music, which keeps our interests aligned with yours rather than opposed to them.
+                </p>
             </div>
         </section>
     );
@@ -100,7 +104,7 @@ export default function Home() {
     return (
         <>
             <Layout
-                title="The Sample Library Platform"
+                title="Floe: Sample Library Platform"
                 description="Floe empowers you to find the perfect sound across all your libraries, perform with expressive control, and transform samples beyond their natural boundaries. Free, open-source audio plugin for Windows, macOS and Linux."
                 wrapperClassName="homepage-layout">
                 <HeroSection />
@@ -205,7 +209,7 @@ export default function Home() {
                                     <FontAwesomeIcon icon={faGem} />
                                 </div>
                                 <h3>Professional-grade indie software</h3>
-                                <p>Floe is a passion project by Sam Windell, a developer & sound-designer who also runs sample library company <a href="https://www.frozenplain.com">FrozenPlain</a>. Shaped by direct feedback from professional composers for film and television, it offers a curated, streamlined approach focused on what matters: performance, simplicity, and usability.</p>
+                                <p>Floe is a passion project by Sam Windell, a developer & sound-designer who also runs sample library company <a href="https://www.frozenplain.com">FrozenPlain</a>. Built on the proven architecture of FrozenPlain's Mirage, used in professional productions for years, Floe is the next evolution. It offers a curated, streamlined approach focused on what matters: performance, simplicity, and usability.</p>
                             </div>
 
                             <div className={styles.highlightItem}>
@@ -226,10 +230,10 @@ export default function Home() {
 
                             <div className={styles.highlightItem}>
                                 <div className={styles.iconContainer}>
-                                    <FontAwesomeIcon icon={faLayerGroup} />
+                                    <FontAwesomeIcon icon={faBalanceScale} />
                                 </div>
-                                <h3>Built on a solid foundation</h3>
-                                <p>Built on the proven architecture of FrozenPlain's Mirage, used in professional productions for years, Floe is the next evolution, designed with careful attention to reliability and performance.</p>
+                                <h3>Sustainable and honest business model</h3>
+                                <p>Floe follows a proven model used by professional platforms: the plugin is free, while sample libraries are often paid products. This approach lets us sustain development of a powerful, open-source tool trusted by the community, while offering advanced libraries through partners like FrozenPlain.</p>
                             </div>
                         </div>
                     </div>
