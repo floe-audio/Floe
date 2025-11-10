@@ -722,7 +722,7 @@ struct FoldersAggregateInfo {
             if (miscellaneous_packs.size) {
                 static constexpr PresetBank k_miscellaneous_info {
                     .id = HashComptime("misc"),
-                    .subtitle = "Miscellaneous Presets"_s,
+                    .subtitle = ""_s,
                 };
                 auto const node = FirstCommonAncestor(miscellaneous_packs, scratch_arena);
                 auto listing = node->user_data.As<PresetFolderListing>();
