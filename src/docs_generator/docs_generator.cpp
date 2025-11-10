@@ -184,7 +184,6 @@ enum class GithubReleaseEndpoint {
 };
 
 static ErrorCodeOr<String> GetGitHubReleaseJson(ArenaAllocator& arena, GithubReleaseEndpoint endpoint) {
-
     // The GitHub API has rate limiting that we can sometimes hit during documentation generation. We
     // work-around this by using a cached response if available.
 
@@ -214,11 +213,11 @@ static ErrorCodeOr<String> GetGitHubReleaseJson(ArenaAllocator& arena, GithubRel
     if (cached_response) {
         json_data = *cached_response;
     } else {
-        Span<String> headers {};
-        if (auto const token = GetEnvironmentVariable("GITHUB_TOKEN"_s, arena)) {
-            headers = arena.AllocateExactSizeUninitialised<String>(1);
-            headers[0] = fmt::Format(arena, "Authorization: Bearer {}", *token);
-        }
+        DynamicArrayBounded<String, 1> headers {};
+
+        // If we have a GitHub token in the environment, use it to increase our rate limit.
+        if (auto const token = GetEnvironmentVariable("GITHUB_TOKEN"_s, arena))
+            dyn::Append(headers, fmt::Format(arena, "Authorization: Bearer {}", *token));
 
         DynamicArray<char> data {arena};
         TRY(HttpsGet(({
