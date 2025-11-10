@@ -7,6 +7,7 @@
 
 #include "common_infrastructure/tags.hpp"
 
+#include "gui/gui2_actions.hpp"
 #include "gui/gui2_common_modal_panel.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_tips.hpp"
@@ -1225,54 +1226,11 @@ static void DoLibraryRightClickMenu(GuiBoxSystem& box_system,
             DEFER { lib.Release(); };
 
             if (lib) {
-                auto const library_dir = path::Directory(lib->path);
-                if (library_dir) {
-                    auto cloned_path = Malloc::Instance().Clone(*library_dir);
-
-                    dyn::AssignFitInCapacity(library_filters.confirmation_dialog_state.title,
-                                             "Delete Library");
-                    fmt::Assign(
-                        library_filters.confirmation_dialog_state.body_text,
-                        "Are you sure you want to delete the library '{}'?\n\nThis will move the library folder and all its contents to the {}. You can restore it from there if needed.",
-                        lib->name,
-                        TRASH_NAME);
-
-                    library_filters.confirmation_dialog_state.callback =
-                        [&error_notifications = library_filters.error_notifications,
-                         &gui_notifications = library_filters.notifications,
-                         cloned_path](ConfirmationDialogResult result) {
-                            DEFER { Malloc::Instance().Free(cloned_path.ToByteSpan()); };
-                            if (result == ConfirmationDialogResult::Ok) {
-                                ArenaAllocatorWithInlineStorage<Kb(1)> scratch_arena {Malloc::Instance()};
-                                auto const outcome = TrashFileOrDirectory(cloned_path, scratch_arena);
-                                auto const id = HashMultiple(Array {"library-delete"_s, cloned_path});
-
-                                if (outcome.HasValue()) {
-                                    error_notifications.RemoveError(id);
-                                    *gui_notifications.FindOrAppendUninitalisedOverwrite(id) = {
-                                        .get_diplay_info =
-                                            [p = DynamicArrayBounded<char, 200>(path::Filename(cloned_path))](
-                                                ArenaAllocator&) {
-                                                return NotificationDisplayInfo {
-                                                    .title = "Library Deleted",
-                                                    .message = p,
-                                                    .dismissable = true,
-                                                    .icon = NotificationDisplayInfo::IconType::Success,
-                                                };
-                                            },
-                                        .id = id,
-                                    };
-                                } else if (auto item = error_notifications.BeginWriteError(id)) {
-                                    DEFER { error_notifications.EndWriteError(*item); };
-                                    item->title = "Failed to send library to trash"_s;
-                                    item->error_code = outcome.Error();
-                                }
-                            }
-                        };
-
-                    library_filters.confirmation_dialog_state.open = true;
-                    context.state.open = false;
-                }
+                UninstallSampleLibrary(*lib,
+                                       library_filters.confirmation_dialog_state,
+                                       library_filters.error_notifications,
+                                       library_filters.notifications);
+                context.state.open = false;
             }
         }
     }
