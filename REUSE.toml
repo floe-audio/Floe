@@ -17,7 +17,7 @@ SPDX-FileCopyrightText = "2024-2025 Sam Windell"
 SPDX-License-Identifier = "MIT"
 
 [[annotations]]
-path = ["website/static/images/*"]
+path = ["website/static/images/*", "website/static/images/blog/*"]
 SPDX-FileCopyrightText = "2025 Sam Windell"
 SPDX-License-Identifier = "CC-BY-SA-4.0"
 

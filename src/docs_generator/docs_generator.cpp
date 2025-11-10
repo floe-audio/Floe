@@ -178,26 +178,12 @@ static json::EventCallback ReleaseJsonParser(GithubRelease& release, ArenaAlloca
         arena);
 }
 
-enum class GithubReleaseEndpoint {
-    LatestRelease,
-    ListReleases,
-};
-
-static ErrorCodeOr<String> GetGitHubReleaseJson(ArenaAllocator& arena, GithubReleaseEndpoint endpoint) {
+static ErrorCodeOr<String> GetGitHubReleaseJson(ArenaAllocator& arena) {
     // The GitHub API has rate limiting that we can sometimes hit during documentation generation. We
     // work-around this by using a cached response if available.
 
-    auto const cached_response_filename = ({
-        String filename {};
-        switch (endpoint) {
-            case GithubReleaseEndpoint::LatestRelease: filename = "latest-release.json"; break;
-            case GithubReleaseEndpoint::ListReleases: filename = "list-releases.json"; break;
-        }
-        filename;
-    });
-
     auto const cached_response_path =
-        path::Join(arena, Array {String(FLOE_PROJECT_CACHE_PATH), cached_response_filename});
+        path::Join(arena, Array {String(FLOE_PROJECT_CACHE_PATH), "list-releases.json"});
 
     auto const cached_response = ({
         Optional<String> response = {};
@@ -220,18 +206,7 @@ static ErrorCodeOr<String> GetGitHubReleaseJson(ArenaAllocator& arena, GithubRel
             dyn::Append(headers, fmt::Format(arena, "Authorization: Bearer {}", *token));
 
         DynamicArray<char> data {arena};
-        TRY(HttpsGet(({
-                         String s;
-                         switch (endpoint) {
-                             case GithubReleaseEndpoint::LatestRelease:
-                                 s = "https://api.github.com/repos/floe-audio/Floe/releases/latest";
-                                 break;
-                             case GithubReleaseEndpoint::ListReleases:
-                                 s = "https://api.github.com/repos/floe-audio/Floe/releases";
-                                 break;
-                         }
-                         s;
-                     }),
+        TRY(HttpsGet("https://api.github.com/repos/floe-audio/Floe/releases",
                      dyn::WriterFor(data),
                      {.headers = headers}));
         json_data = data.ToOwnedSpan();
@@ -266,68 +241,74 @@ WriteGithubReleaseData(json::WriteContext& ctx, GithubRelease const& release, Ar
 static ErrorCodeOr<void> WriteGithubReleaseData(json::WriteContext& ctx) {
     ArenaAllocator scratch {PageAllocator::Instance()};
 
-    auto const latest_json_data = TRY(GetGitHubReleaseJson(scratch, GithubReleaseEndpoint::LatestRelease));
+    // Get all releases from the list endpoint
+    auto const list_json_data = TRY(GetGitHubReleaseJson(scratch));
 
-    GithubRelease latest_release {};
-    {
-        auto const o = json::Parse(latest_json_data, ReleaseJsonParser(latest_release, scratch), scratch, {});
+    DynamicArray<GithubRelease> releases {scratch};
+    auto const o = json::Parse(list_json_data,
+                               [&](json::EventHandlerStack& handler_stack, json::Event const& event) {
+                                   if (event.type == json::EventType::ObjectStart) {
+                                       dyn::Append(releases, {});
+                                       dyn::Emplace(handler_stack,
+                                                    ReleaseJsonParser(Last(releases), scratch),
+                                                    handler_stack.allocator);
+                                       Last(handler_stack).HandleEvent(handler_stack, event);
+                                       return true;
+                                   }
+                                   return false;
+                               },
+                               scratch,
+                               {});
 
-        if (o.HasError()) return ErrorCode {CommonError::InvalidFileFormat};
-        if (!latest_release.version) {
-            LogError(ModuleName::Main, "Failed to parse github release version: {}\n", latest_json_data);
-            return ErrorCode {CommonError::InvalidFileFormat};
-        }
+    if (o.HasError()) return ErrorCode {CommonError::InvalidFileFormat};
+    if (releases.size == 0) {
+        LogError(ModuleName::Main, "No releases found in github releases: {}\n", list_json_data);
+        return ErrorCode {CommonError::InvalidFileFormat};
     }
 
-    TRY(json::WriteKeyValue(ctx, "latest-any-release-version", latest_release.version_string));
+    // Find the latest release (first in the list, whether beta or stable)
+    Optional<GithubRelease> latest_any_release {};
+    for (auto const& r : releases) {
+        if (r.version) {
+            latest_any_release = r;
+            break;
+        }
+    }
+    if (!latest_any_release) {
+        LogError(ModuleName::Main,
+                 "Failed to find any valid release in github releases: {}\n",
+                 list_json_data);
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
 
-    if (latest_release.version->beta) {
+    TRY(json::WriteKeyValue(ctx, "latest-any-release-version", latest_any_release->version_string));
+
+    // If the latest release is a beta, write it as the latest beta
+    if (latest_any_release->version->beta) {
         TRY(json::WriteKeyObjectBegin(ctx, "latest-beta-release-version"));
-        TRY(json::WriteKeyValue(ctx, "version", latest_release.version_string));
-        TRY(WriteGithubReleaseData(ctx, latest_release, scratch));
+        TRY(json::WriteKeyValue(ctx, "version", latest_any_release->version_string));
+        TRY(WriteGithubReleaseData(ctx, *latest_any_release, scratch));
         TRY(json::WriteObjectEnd(ctx));
+    }
 
-        DynamicArray<GithubRelease> releases {scratch};
-
-        auto const list_json_data = TRY(GetGitHubReleaseJson(scratch, GithubReleaseEndpoint::ListReleases));
-
-        auto const o = json::Parse(list_json_data,
-                                   [&](json::EventHandlerStack& handler_stack, json::Event const& event) {
-                                       if (event.type == json::EventType::ObjectStart) {
-                                           dyn::Append(releases, {});
-                                           dyn::Emplace(handler_stack,
-                                                        ReleaseJsonParser(Last(releases), scratch),
-                                                        handler_stack.allocator);
-                                           Last(handler_stack).HandleEvent(handler_stack, event);
-                                           return true;
-                                       }
-                                       return false;
-                                   },
-                                   scratch,
-                                   {});
-
-        if (o.HasError()) return ErrorCode {CommonError::InvalidFileFormat};
-
-        Optional<GithubRelease> non_beta_release {};
-        for (auto const& r : releases) {
-            if (r.version && !r.version->beta) {
-                non_beta_release = r;
-                break;
-            }
+    // Find the latest stable (non-beta) release
+    Optional<GithubRelease> latest_stable_release {};
+    for (auto const& r : releases) {
+        if (r.version && !r.version->beta) {
+            latest_stable_release = r;
+            break;
         }
-        if (!non_beta_release) {
-            LogError(ModuleName::Main,
-                     "Failed to find non-beta release in github releases: {}\n",
-                     list_json_data);
-            return ErrorCode {CommonError::InvalidFileFormat};
-        }
-
-        latest_release = *non_beta_release;
+    }
+    if (!latest_stable_release) {
+        LogError(ModuleName::Main,
+                 "Failed to find non-beta release in github releases: {}\n",
+                 list_json_data);
+        return ErrorCode {CommonError::InvalidFileFormat};
     }
 
     {
-        TRY(json::WriteKeyValue(ctx, "latest-stable-release-version", latest_release.version_string));
-        TRY(WriteGithubReleaseData(ctx, latest_release, scratch));
+        TRY(json::WriteKeyValue(ctx, "latest-stable-release-version", latest_stable_release->version_string));
+        TRY(WriteGithubReleaseData(ctx, *latest_stable_release, scratch));
     }
 
     return k_success;
