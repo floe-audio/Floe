@@ -45,7 +45,7 @@ We extensively use Github issues to track work. Use `gh` to query and manage iss
 
 - **Priority labels**: `priority/urgent` (blocking users or critical bug - ship ASAP), `priority/high` (significant impact - next release), `priority/medium` (valuable improvement - plan soon), `priority/low` (nice-to-have - when capacity allows)
 - **Effort labels**: `effort/small` (~1-4 hours), `effort/medium` (~0.5-1 day), `effort/large` (~2-3 days), `effort/extra-large` (~1 week or needs breakdown)
-- `awaiting-release` - for issues fixed but not yet released. Issues should be closed and tagged with this label.
+- `awaiting-release` - for issues fixed but not yet released, they're tagged with this then closed when the release occurs
 - `needs-repro` - needs investigation work to reproduce the issue
 - `needs-design` - needs thinking and design before beginning writing code
 

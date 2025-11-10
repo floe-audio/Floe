@@ -177,7 +177,7 @@ jobs:
           release: floe@${{ env.VERSION }}
 
       - name: Clean up awaiting-release labels
-        run: just release-cleanup
+        run: just close-released-issues ${{ env.VERSION }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

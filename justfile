@@ -198,16 +198,60 @@ project-set-status issue_number status:
 project-issues-by-status status:
   just project-items-json | jq '.items[] | select(.status == "{{status}}") | {number: .content.number, title: .title}'
 
-# Issues that have been solved, but not yet had a release are labelled "awaiting-release". This command
-# removes that label from all closed issues. It should be run after a release is made.
-release-cleanup:
+# Issues that have been solved, but not yet had a release are labelled "awaiting-release". This command closes
+# issues with that label, adds a comment about the release, and removes the label. It should be run after a 
+# release is made.
+close-released-issues version:
   #!/usr/bin/env bash
-  echo "Removing awaiting-release labels from released issues..."
-  gh issue list --label "awaiting-release" --state closed --json number \
-    --jq '.[].number' | while read issue_number; do
-    echo "Cleaning issue #$issue_number"
-    gh issue edit "$issue_number" --remove-label "awaiting-release"
-  done
+  set -uo pipefail
+  
+  echo "Processing issues fixed in release {{version}}..."
+  
+  issues=$(gh issue list --label "awaiting-release" --state open --json number --jq '.[].number')
+  list_result=$?
+  
+  if [ $list_result -ne 0 ]; then
+    echo "⚠️  Warning: Failed to fetch issue list" >&2
+    exit 0
+  fi
+  
+  if [ -z "$issues" ]; then
+    echo "No issues awaiting release"
+    exit 0
+  fi
+  
+  count=$(echo "$issues" | wc -l)
+  echo "Found $count issue(s) to process"
+  
+  success=0
+  failed=0
+  
+  while read -r issue_number; do
+    if [ -n "$issue_number" ]; then
+      echo "Processing issue #$issue_number"
+      gh issue comment "$issue_number" --body "This issue has been resolved and is now available in release {{version}}: https://floe.audio/download"
+      if [ $? -ne 0 ]; then
+        echo "  ⚠️  Warning: Failed to comment on #$issue_number" >&2
+      fi
+      
+      gh issue edit "$issue_number" --remove-label "awaiting-release"
+      if [ $? -ne 0 ]; then
+        echo "  ⚠️  Warning: Failed to remove label from #$issue_number" >&2
+        ((failed++)) || true
+        continue
+      fi
+      
+      gh issue close "$issue_number" --reason completed
+      if [ $? -ne 0 ]; then
+        echo "  ⚠️  Warning: Failed to close issue #$issue_number" >&2
+        ((failed++)) || true
+      else
+        ((success++)) || true
+      fi
+    fi
+  done < <(echo "$issues")
+  
+  echo "Completed: $success succeeded, $failed encountered warnings"
 
 # Generated the static JSON that the website uses
 website-generate:
