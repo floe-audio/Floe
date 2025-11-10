@@ -80,10 +80,232 @@ ErrorCodeOr<MutableString> AbsolutePath(Allocator& a, String path) {
 
 ErrorCodeOr<MutableString> CanonicalizePath(Allocator& a, String path) { return AbsolutePath(a, path); }
 
-ErrorCodeOr<String> TrashFileOrDirectory(String path, Allocator&) {
-    // IMPROVE: try to work out the trash directory from the environment and use that
-    TRY(Delete(path, {.type = DeleteOptions::Type::Any, .fail_if_not_exists = true}));
-    return path;
+static Optional<String> TrashDir(ArenaAllocator& arena) {
+    // "For every user  [2]_ a “home trash” directory MUST be available. Its name and location are
+    // $XDG_DATA_HOME/Trash".
+    if (auto const xdg_data_home = secure_getenv("XDG_DATA_HOME"))
+        return path::Join(arena, Array {(String)FromNullTerminated(xdg_data_home), "Trash"_s});
+    else
+        LogDebug(ModuleName::Filesystem, "XDG_DATA_HOME not set");
+
+    // We also check a fallback, though this isn't in the spec.
+    if (char const* home = secure_getenv("HOME")) {
+        auto path = path::Join(arena, Array {FromNullTerminated(home), ".local/share/Trash\0"_s});
+
+        // We only accept the fallback if it already exists as a directory.
+        struct ::stat info;
+        auto r = ::stat(path.data, &info);
+        if (r == 0 && (info.st_mode & S_IFMT) == S_IFDIR) {
+            path.RemoveSuffix(1); // Remove null terminator.
+            return path;
+        }
+    } else {
+        LogDebug(ModuleName::Filesystem, "HOME not set");
+    }
+
+    return k_nullopt;
+}
+
+// We follow Trash Specification v1.0.
+// https://cgit.freedesktop.org/xdg/xdg-specs/tree/trash/index.rst
+ErrorCodeOr<String> TrashFileOrDirectory(String path, Allocator& allocator) {
+    ASSERT(path.size);
+    ASSERT(path::IsAbsolute(path));
+
+    PathArena temp_path_arena {Malloc::Instance()};
+
+    auto const trash_dir = TrashDir(temp_path_arena);
+    if (!trash_dir) return ErrorCode {FilesystemError::NotSupported};
+
+    // "A trash directory contains two subdirectories, named **info** and **files**."
+    auto const files_dir = (String)path::Join(temp_path_arena, Array {*trash_dir, "files"_s});
+    auto const info_dir = (String)path::Join(temp_path_arena, Array {*trash_dir, "info"_s});
+
+    // "A “home trash” directory SHOULD be automatically created for any new user. If this directory is needed
+    // for a trashing operation but does not exist, the implementation SHOULD automatically create it, without
+    // any warnings or delays."
+    TRY(CreateDirectory(*trash_dir, {.create_intermediate_directories = true, .fail_if_exists = false}));
+    TRY(CreateDirectory(files_dir, {.create_intermediate_directories = false, .fail_if_exists = false}));
+    TRY(CreateDirectory(info_dir, {.create_intermediate_directories = false, .fail_if_exists = false}));
+
+    auto seed = RandomSeed();
+    constexpr usize k_attempts = 100;
+
+    for (auto const _ : Range(k_attempts)) {
+        auto const original_basename = path::Filename(path);
+
+        // "The **$trash/files** directory contains the files and directories that were trashed. When a file
+        // or directory is trashed, it MUST be moved into this directory  [5]_. The names of files in this
+        // directory are to be determined by the implementation; the only limitation is that they must be
+        // unique within the directory."
+        auto const unique_name =
+            fmt::Format(temp_path_arena,
+                        "{}_{}",
+                        original_basename,
+                        fmt::IntToString(RandomU64(seed), {.base = fmt::IntToStringOptions::Base::Base32}));
+        auto const trashed_path = (String)path::Join(temp_path_arena, Array {files_dir, unique_name});
+
+        // The **$trash/info** directory contains an “information file” for every file and directory in
+        // $trash/files. This file MUST have exactly the same name as the file or directory in $trash/files,
+        // plus the extension “.trashinfo”
+        auto const info_path = fmt::Format(temp_path_arena, "{}/{}.trashinfo\0", info_dir, unique_name);
+
+        // When trashing a file or directory, the implementation MUST create the corresponding file in
+        // $trash/info first. Moreover, it MUST try to do this in an atomic fashion, so that if two processes
+        // try to trash files with the same filename this will result in two different trash files. On
+        // Unix-line systems this is done by generating a filename, and then opening with O_EXCL. If that
+        // succeeds the creation was atomic (at least on the same machine), if it fails you need to pick
+        // another filename.
+        {
+            auto const info_fd = open(info_path.data, O_WRONLY | O_CREAT | O_EXCL, 0600);
+            if (info_fd == -1) {
+                if (errno == EEXIST) continue;
+                return FilesystemErrnoErrorCode(errno, "failed to create .trashinfo file");
+            }
+            DEFER { close(info_fd); };
+
+            DynamicArray<char> info_content {temp_path_arena};
+            {
+                info_content.Reserve(path.size + 128);
+                dyn::AppendSpan(info_content, "[Trash Info]\n");
+
+                // The key “Path” contains the original location of the file/directory, as either an absolute
+                // pathname (starting with the slash character “/”) or a relative pathname (starting with any
+                // other character). A relative pathname is to be from the directory in which the trash
+                // directory resides (for example, from $XDG_DATA_HOME for the “home trash” directory); it
+                // MUST not include a “..” directory, and for files not “under” that directory, absolute
+                // pathnames must be used. The system SHOULD support absolute pathnames only in the “home
+                // trash” directory, not in the directories under $topdir.
+                //
+                // The value type for this key is “string”; it SHOULD store the file name as the sequence of
+                // bytes produced by the file system, with characters escaped as in URLs (as defined by `RFC
+                // 2396 <http://www.faqs.org/rfcs/rfc2396.html>`__, section 2).
+
+                dyn::AppendSpan(info_content, "Path="_s);
+                for (auto const c : path) {
+                    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+                        c == '-' || c == '_' || c == '.' || c == '~' || c == '/') {
+                        dyn::Append(info_content, c);
+                    } else {
+                        fmt::Append(info_content, "%{02X}", (u8)c);
+                    }
+                }
+
+                // The key “DeletionDate” contains the date and time when the file/directory was trashed. The
+                // date and time are to be in the YYYY-MM-DDThh:mm:ss format (see `RFC 3339
+                // <http://www.faqs.org/rfcs/rfc3339.html>`__). The time zone should be the user's (or
+                // filesystem's) local time. The value type for this key is “string”.
+                auto const time_now = LocalTimeNow();
+                fmt::Append(info_content,
+                            "\nDeletionDate={04}-{02}-{02}T{02}:{02}:{02}\n",
+                            time_now.year,
+                            time_now.months_since_jan + 1,
+                            time_now.day_of_month,
+                            time_now.hour,
+                            time_now.minute,
+                            time_now.second);
+            }
+
+            if (write(info_fd, info_content.data, info_content.size) != (ssize_t)info_content.size)
+                return FilesystemErrnoErrorCode(errno, "failed to write .trashinfo file");
+        }
+
+        // Now move the actual item to trash/files
+        auto const path_nt = NullTerminated(path, temp_path_arena);
+        auto const trashed_path_nt = NullTerminated(trashed_path, temp_path_arena);
+        if (rename(path_nt, trashed_path_nt) == 0) {
+            // Success. Return the path in the trash.
+            return trashed_path.Clone(allocator);
+        } else {
+            bool success = false;
+            DEFER {
+                if (!success) remove(info_path.data);
+            };
+
+            if (errno != EXDEV) return FilesystemErrnoErrorCode(errno, "failed to move file to trash");
+
+            // We take the spec-compliant approach of trying to copy the file if we can't move it due to it
+            // being on a different filesystem.
+            //
+            // "The implementation MAY also support trashing files from the rest of the system (including
+            // other partitions, shared network resources, and removable devices) into the “home trash”
+            // directory . This is a “failsafe” method: trashing works for all file locations, the user can
+            // not fill up any space except the home directory, and as other users generally do not have
+            // access to it, no security issues arise.
+            //
+            // However, this solution leads to costly file copying (between partitions, over the network, from
+            // a removable device, etc.) A delay instead of a quick “delete” operation can be unpleasant to
+            // users."
+
+            // Copy to a temp file first in case something goes wrong during the copy.
+            auto const temp_dir = (String)TRY(TemporaryDirectoryOnSameFilesystemAs(path, temp_path_arena));
+            DEFER {
+                auto _ =
+                    Delete(temp_dir,
+                           {.type = DeleteOptions::Type::DirectoryRecursively, .fail_if_not_exists = false});
+            };
+
+            switch (TRY(GetFileType(path))) {
+                case FileType::File: {
+                    auto const temp_file_path_nt = fmt::Format(temp_path_arena, "{}/trashedfile\0", temp_dir);
+                    TRY(CopyFile(path_nt, temp_file_path_nt.data));
+
+                    // Now move the temp file to the trashed location.
+                    if (rename(temp_file_path_nt.data, trashed_path_nt) != 0)
+                        return FilesystemErrnoErrorCode(errno, "failed to move copied file to trash");
+
+                    break;
+                }
+                case FileType::Directory: {
+                    auto it =
+                        TRY(dir_iterator::RecursiveCreate(temp_path_arena,
+                                                          path,
+                                                          {.get_file_size = false, .skip_dot_files = false}));
+                    DEFER { dir_iterator::Destroy(it); };
+
+                    ArenaAllocator inner_arena {PageAllocator::Instance()};
+                    while (auto const entry = TRY(dir_iterator::Next(it, temp_path_arena))) {
+                        inner_arena.ResetCursorAndConsolidateRegions();
+
+                        auto const full_destination_nt =
+                            fmt::Format(inner_arena, "{}/{}\0", temp_dir, entry->subpath);
+                        auto const full_destination =
+                            full_destination_nt.SubSpan(0, full_destination_nt.size - 1);
+
+                        switch (entry->type) {
+                            case FileType::Directory: {
+                                TRY(CreateDirectory(
+                                    full_destination,
+                                    {.create_intermediate_directories = true, .fail_if_exists = false}));
+                                break;
+                            }
+                            case FileType::File: {
+                                TRY(CreateDirectory(
+                                    *path::Directory(full_destination),
+                                    {.create_intermediate_directories = true, .fail_if_exists = false}));
+
+                                TRY(CopyFile(dir_iterator::FullPath(it, *entry, inner_arena, true).data,
+                                             full_destination_nt.data));
+                            }
+                        }
+                    }
+
+                    // Now move the temp directory to the trashed location.
+                    if (rename(NullTerminated(temp_dir, inner_arena), trashed_path_nt) != 0)
+                        return FilesystemErrnoErrorCode(errno, "failed to move copied directory to trash");
+
+                    break;
+                }
+            }
+
+            // Finally, delete the original item.
+            TRY(Delete(path, {.type = DeleteOptions::Type::Any, .fail_if_not_exists = false}));
+            success = true;
+        }
+    }
+
+    // We have tried too many times to find a unique filename.
+    return ErrorCode(FilesystemError::FolderContainsTooManyFiles);
 }
 
 ErrorCodeOr<void> Delete(String path, DeleteOptions options) {
@@ -202,7 +424,7 @@ ErrorCodeOr<MutableString> TemporaryDirectoryOnSameFilesystemAs(String path, All
     else
         base_path = TRY(FindMountPoint(path_nt, temp_path_allocator));
 
-    auto seed = (u64)NanosecondsSinceEpoch();
+    auto seed = RandomSeed();
     auto const result =
         path::Join(a, Array {base_path, UniqueFilename(k_temporary_directory_prefix, "", seed)});
     TRY(CreateDirectory(result, {.create_intermediate_directories = true, .fail_if_exists = false}));

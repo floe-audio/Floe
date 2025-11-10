@@ -80,21 +80,6 @@ static Optional<ImageBytes> ImagePixelsFromLibrary(sample_lib::LibraryIdRef cons
 
 inline Allocator& ImageBytesAllocator() { return PageAllocator::Instance(); }
 
-static void FreeLoadingBytes(Future<Optional<ImageBytes>>& future) {
-    if (auto const bytes_opt_ptr = future.ShutdownAndRelease(10000u)) {
-        if (auto const bytes_optional = *bytes_opt_ptr) bytes_optional->Free(ImageBytesAllocator());
-    }
-}
-
-static void FreeLoadingBytes(Future<Optional<LibraryImages::LoadingBackgrounds>>& future) {
-    if (auto const bgs_ptr = future.ShutdownAndRelease(10000u)) {
-        if (auto const bgs = *bgs_ptr) {
-            if (bgs->background) bgs->background->Free(ImageBytesAllocator());
-            if (bgs->blurred_background) bgs->blurred_background->Free(ImageBytesAllocator());
-        }
-    }
-}
-
 static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
                           imgui::Context const& imgui,
                           Future<Optional<ImageBytes>>& result,
@@ -193,7 +178,8 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryIdRef const& lib_id_ref,
         },
         []() {
             // no cleanup
-        });
+        },
+        JobPriority::High);
 }
 
 constexpr auto k_background_type_bits =
@@ -204,32 +190,47 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
                                sample_lib::LibraryIdRef const& lib_id,
                                sample_lib_server::Server& server,
                                LibraryImagesTypes needed_types) {
+    ASSERT(g_is_logical_main_thread);
+
     auto e = table.table.FindOrInsertGrowIfNeeded(table.arena, lib_id, {});
     auto& images = e.element.data;
 
-    if (e.inserted) {
-        images.loading_icon = table.arena.New<Future<Optional<ImageBytes>>>();
-        images.loading_backgrounds = table.arena.New<Future<Optional<LibraryImages::LoadingBackgrounds>>>();
-        images.needs_reload.SetAll();
-    }
+    if (e.inserted) images.needs_reload.SetAll();
 
     if ((needed_types & LibraryImagesTypes::Icon) &&
         images.needs_reload.Get(ToInt(LibraryImages::ImageType::Icon))) {
-        FreeLoadingBytes(*images.loading_icon);
-        AsyncLoadIcon(lib_id, imgui, *images.loading_icon, server, server.thread_pool);
+        bool load = false;
+        if (!images.loading_icon) {
+            images.loading_icon = table.arena.New<LibraryImages::FutureIcon>();
+            load = true;
+        } else if (images.loading_icon->IsInactive()) {
+            load = true;
+        }
+
+        if (load) AsyncLoadIcon(lib_id, imgui, *images.loading_icon, server, server.thread_pool);
+
         images.needs_reload.Clear(ToInt(LibraryImages::ImageType::Icon));
     }
 
     if ((needed_types & LibraryImagesTypes::Backgrounds) &&
         images.needs_reload.AnySetInSpan(k_background_type_bits)) {
-        FreeLoadingBytes(*images.loading_backgrounds);
-        AsyncLoadBackgrounds(lib_id,
-                             imgui,
-                             *images.loading_backgrounds,
-                             images.needs_reload.Get(ToInt(LibraryImages::ImageType::Background)),
-                             images.needs_reload.Get(ToInt(LibraryImages::ImageType::BlurredBackground)),
-                             server,
-                             server.thread_pool);
+        bool load = false;
+        if (!images.loading_backgrounds) {
+            images.loading_backgrounds = table.arena.New<LibraryImages::FutureBackgrounds>();
+            load = true;
+        } else if (images.loading_backgrounds->IsInactive()) {
+            load = true;
+        }
+
+        if (load)
+            AsyncLoadBackgrounds(lib_id,
+                                 imgui,
+                                 *images.loading_backgrounds,
+                                 images.needs_reload.Get(ToInt(LibraryImages::ImageType::Background)),
+                                 images.needs_reload.Get(ToInt(LibraryImages::ImageType::BlurredBackground)),
+                                 server,
+                                 server.thread_pool);
+
         images.needs_reload.ClearBits(k_background_type_bits);
     }
 
@@ -240,6 +241,7 @@ void InvalidateLibraryImages(LibraryImagesTable& table,
                              sample_lib::LibraryIdRef library_id,
                              graphics::DrawContext& ctx) {
     ASSERT(g_is_logical_main_thread);
+
     if (auto imgs = table.table.Find(library_id)) {
         imgs->icon_missing = false;
         imgs->background_missing = false;
@@ -250,38 +252,58 @@ void InvalidateLibraryImages(LibraryImagesTable& table,
 }
 
 void Shutdown(LibraryImagesTable& table) {
+    ASSERT(g_is_logical_main_thread);
+
     for (auto [_, imgs, _] : table.table) {
-        FreeLoadingBytes(*imgs.loading_icon);
-        FreeLoadingBytes(*imgs.loading_backgrounds);
+        if (imgs.loading_icon) {
+            if (auto const bytes_opt_ptr = imgs.loading_icon->ShutdownAndRelease(10000u)) {
+                if (auto const bytes_optional = *bytes_opt_ptr) bytes_optional->Free(ImageBytesAllocator());
+            }
+        }
+
+        if (imgs.loading_backgrounds) {
+            if (auto const bgs_ptr = imgs.loading_backgrounds->ShutdownAndRelease(10000u)) {
+                if (auto const bgs = *bgs_ptr) {
+                    if (bgs->background) bgs->background->Free(ImageBytesAllocator());
+                    if (bgs->blurred_background) bgs->blurred_background->Free(ImageBytesAllocator());
+                }
+            }
+        }
     }
 }
 
 void BeginFrame(LibraryImagesTable& table, imgui::Context& imgui) {
+    ASSERT(g_is_logical_main_thread);
+
     for (auto [_, imgs, _] : table.table) {
-        if (auto const result = imgs.loading_icon->TryReleaseResult()) {
-            auto const icon_pixels = *result;
-            if (icon_pixels) {
-                imgs.icon = CreateImageIdChecked(*imgui.frame_input.graphics_ctx, *icon_pixels);
-                icon_pixels->Free(ImageBytesAllocator());
-            } else
-                imgs.icon_missing = true;
+        if (imgs.loading_icon) {
+            if (auto const result = imgs.loading_icon->TryReleaseResult()) {
+                auto const icon_pixels = *result;
+                if (icon_pixels) {
+                    imgs.icon = CreateImageIdChecked(*imgui.frame_input.graphics_ctx, *icon_pixels);
+                    icon_pixels->Free(ImageBytesAllocator());
+                } else
+                    imgs.icon_missing = true;
+            }
         }
 
-        if (auto const result = imgs.loading_backgrounds->TryReleaseResult()) {
-            auto const backgrounds = *result;
-            if (backgrounds) {
-                if (backgrounds->background) {
-                    imgs.background =
-                        CreateImageIdChecked(*imgui.frame_input.graphics_ctx, *backgrounds->background);
-                    backgrounds->background->Free(ImageBytesAllocator());
+        if (imgs.loading_backgrounds) {
+            if (auto const result = imgs.loading_backgrounds->TryReleaseResult()) {
+                auto const backgrounds = *result;
+                if (backgrounds) {
+                    if (backgrounds->background) {
+                        imgs.background =
+                            CreateImageIdChecked(*imgui.frame_input.graphics_ctx, *backgrounds->background);
+                        backgrounds->background->Free(ImageBytesAllocator());
+                    }
+                    if (backgrounds->blurred_background) {
+                        imgs.blurred_background = CreateImageIdChecked(*imgui.frame_input.graphics_ctx,
+                                                                       *backgrounds->blurred_background);
+                        backgrounds->blurred_background->Free(ImageBytesAllocator());
+                    }
+                } else {
+                    imgs.background_missing = true;
                 }
-                if (backgrounds->blurred_background) {
-                    imgs.blurred_background = CreateImageIdChecked(*imgui.frame_input.graphics_ctx,
-                                                                   *backgrounds->blurred_background);
-                    backgrounds->blurred_background->Free(ImageBytesAllocator());
-                }
-            } else {
-                imgs.background_missing = true;
             }
         }
 
@@ -291,10 +313,10 @@ void BeginFrame(LibraryImagesTable& table, imgui::Context& imgui) {
             imgs.needs_reload.ClearAll();
             auto& graphics = *imgui.frame_input.graphics_ctx;
 
-            if (!graphics.ImageIdIsValid(imgs.icon) && !imgs.icon_missing && imgs.loading_icon->IsInactive())
+            if (!graphics.ImageIdIsValid(imgs.icon) && !imgs.icon_missing)
                 imgs.needs_reload.Set(ToInt(LibraryImages::ImageType::Icon));
 
-            if (!imgs.background_missing && imgs.loading_backgrounds->IsInactive()) {
+            if (!imgs.background_missing) {
                 if (!graphics.ImageIdIsValid(imgs.background))
                     imgs.needs_reload.Set(ToInt(LibraryImages::ImageType::Background));
                 if (!graphics.ImageIdIsValid(imgs.blurred_background))

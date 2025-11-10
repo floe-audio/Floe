@@ -268,7 +268,7 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
 
     RandomIntGenerator<int> int_gen;
     RandomFloatGenerator<f32> float_gen;
-    auto seed = (u64)NanosecondsSinceEpoch();
+    auto seed = RandomSeed();
     RandomNormalDistribution normal_dist {0.5, 0.20};
     RandomNormalDistribution normal_dist_strong {0.5, 0.10};
 
@@ -1745,15 +1745,23 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
 
     //
     // ======================================================================================================
-    if (process.audio_outputs->channel_count == 2 && process.audio_outputs->data32 &&
-        (((uintptr)process.audio_outputs->data32 % alignof(f32*)) == 0) && process.audio_outputs->data32[0] &&
-        process.audio_outputs->data32[1]) {
-        static_assert(sizeof(f32x2) == (sizeof(f32) * 2));
-        auto interleaved_outputs = (f32 const*)output.data;
-        CopyInterleavedToSeparateChannels(process.audio_outputs->data32[0] + frame_index,
-                                          process.audio_outputs->data32[1] + frame_index,
-                                          interleaved_outputs,
-                                          sub_block_size);
+    if (process.audio_outputs->channel_count == 2 && process.audio_outputs->data32) {
+        // On Windows Ableton Live 10, dereferencing process.audio_outputs->data32 (such as
+        // process.audio_outputs->data32[0]) is an unaligned memory access and crashes when the undefined
+        // behaviour sanitizer is enabled. This is the workaround. The extra cast to (void*) is needed for
+        // some reason, despite it simply being an arg to memcpy.
+        f32* dest[2];
+        for (auto i : Range(2))
+            __builtin_memcpy_inline(&dest[i], (void*)&process.audio_outputs->data32[i], sizeof(f32*));
+
+        if (dest[0] && dest[1]) {
+            static_assert(sizeof(f32x2) == (sizeof(f32) * 2));
+            auto interleaved_outputs = (f32 const*)output.data;
+            CopyInterleavedToSeparateChannels(dest[0] + frame_index,
+                                              dest[1] + frame_index,
+                                              interleaved_outputs,
+                                              sub_block_size);
+        }
     }
 
     return result;

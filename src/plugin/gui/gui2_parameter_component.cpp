@@ -282,9 +282,9 @@ Box DoParameterComponent(Gui* g,
             DrawTextInput(builder,
                           container,
                           {
-                              .text_col = style::Colour::DarkModeText,
-                              .cursor_col = style::Colour::DarkModeText,
-                              .selection_col = style::Colour::Highlight,
+                              .text_col = style::Colour::Text | style::Colour::DarkMode,
+                              .cursor_col = style::Colour::Text | style::Colour::DarkMode,
+                              .selection_col = style::Colour::Highlight | style::Colour::Alpha50,
                           });
         }
     }
@@ -294,8 +294,8 @@ Box DoParameterComponent(Gui* g,
               {
                   .parent = container,
                   .text = options.override_label.size ? options.override_label : param.info.gui_label,
-                  .text_colours = {options.greyed_out ? style::Colour::DarkModeOverlay0
-                                                      : style::Colour::DarkModeText},
+                  .text_colours = {options.greyed_out ? style::Colour::Overlay0 | style::Colour::DarkMode
+                                                      : style::Colour::Text | style::Colour::DarkMode},
                   .text_align_x = TextAlignX::Centre,
                   .text_align_y = TextAlignY::Centre,
                   .layout {

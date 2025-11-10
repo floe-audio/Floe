@@ -9,34 +9,64 @@
 
 #include "common_infrastructure/global.hpp"
 
-#include "foundation_tests.hpp"
-#include "os_tests.hpp"
-#include "utils_tests.hpp"
-
 #define TEST_REGISTER_FUNCTIONS                                                                              \
+    X(RegisterAlgorithmTests)                                                                                \
+    X(RegisterAllocatorTests)                                                                                \
+    X(RegisterAssertFTests)                                                                                  \
+    X(RegisterAtomicQueueTests)                                                                              \
+    X(RegisterAtomicRefListTests)                                                                            \
+    X(RegisterAtomicSwapBufferTests)                                                                         \
     X(RegisterAudioFileTests)                                                                                \
     X(RegisterAudioUtilsTests)                                                                               \
     X(RegisterAutosaveTests)                                                                                 \
+    X(RegisterBitsetTests)                                                                                   \
+    X(RegisterBoundedListTests)                                                                              \
     X(RegisterChecksumFileTests)                                                                             \
+    X(RegisterCircularBufferTests)                                                                           \
+    X(RegisterCliArgParseTests)                                                                              \
+    X(RegisterDebugTests)                                                                                    \
+    X(RegisterDynamicArrayTests)                                                                             \
+    X(RegisterErrorCodeTests)                                                                                \
+    X(RegisterErrorNotificationsTests)                                                                       \
+    X(RegisterFilesystemTests)                                                                               \
     X(RegisterFolderNodeTests)                                                                               \
-    X(RegisterFoundationTests)                                                                               \
+    X(RegisterFormatTests)                                                                                   \
+    X(RegisterFunctionQueueTests)                                                                            \
+    X(RegisterFunctionTests)                                                                                 \
+    X(RegisterGeometryTests)                                                                                 \
+    X(RegisterHashTableTests)                                                                                \
     X(RegisterHostingTests)                                                                                  \
+    X(RegisterJsonReaderTests)                                                                               \
+    X(RegisterJsonWriterTests)                                                                               \
     X(RegisterLayerProcessorTests)                                                                           \
     X(RegisterLayoutTests)                                                                                   \
     X(RegisterLibraryLuaTests)                                                                               \
     X(RegisterLibraryMdataTests)                                                                             \
+    X(RegisterLinkedListTests)                                                                               \
     X(RegisterLogRingBufferTests)                                                                            \
-    X(RegisterOsTests)                                                                                       \
+    X(RegisterMathsTests)                                                                                    \
+    X(RegisterMemoryTests)                                                                                   \
+    X(RegisterMiscTests)                                                                                     \
+    X(RegisterOptionalTests)                                                                                 \
     X(RegisterPackageFormatTests)                                                                            \
     X(RegisterPackageInstallationTests)                                                                      \
     X(RegisterParamDescriptorTests)                                                                          \
+    X(RegisterPathPoolTests)                                                                                 \
+    X(RegisterPathTests)                                                                                     \
     X(RegisterPersistentStoreTests)                                                                          \
     X(RegisterPreferencesTests)                                                                              \
+    X(RegisterRandomTests)                                                                                   \
     X(RegisterSampleLibraryServerTests)                                                                      \
     X(RegisterSentryTests)                                                                                   \
     X(RegisterStateCodingTests)                                                                              \
-    X(RegisterUtilsTests)                                                                                    \
-    X(RegisterVolumeFadeTests)
+    X(RegisterStringTests)                                                                                   \
+    X(RegisterTaggedUnionTests)                                                                              \
+    X(RegisterThreadPoolTests)                                                                               \
+    X(RegisterThreadingTests)                                                                                \
+    X(RegisterVersionTests)                                                                                  \
+    X(RegisterVolumeFadeTests)                                                                               \
+    X(RegisterWebTests)                                                                                      \
+    X(RegisterWriterTests)
 
 #define WINDOWS_FP_TEST_REGISTER_FUNCTIONS X(RegisterWindowsSpecificTests)
 
@@ -80,6 +110,7 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
         LogLevel,
         Repeats,
         WriteToFile,
+        JUnitXmlOutputPath,
         Count,
     };
 
@@ -116,6 +147,14 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
             .required = false,
             .num_values = 0,
         },
+        {
+            .id = (u32)CommandLineArgId::JUnitXmlOutputPath,
+            .key = "junit-xml-output-path",
+            .description = "Path to write JUnit XML test results to",
+            .value_type = "path",
+            .required = false,
+            .num_values = 1,
+        },
     });
 
     ArenaAllocatorWithInlineStorage<1000> arena {PageAllocator::Instance()};
@@ -148,7 +187,9 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
 #endif
 #undef X
 
-    return RunAllTests(tester, cli_args[ToInt(CommandLineArgId::Filter)].values);
+    return RunAllTests(tester,
+                       cli_args[ToInt(CommandLineArgId::Filter)].values,
+                       cli_args[ToInt(CommandLineArgId::JUnitXmlOutputPath)].Value());
 }
 
 int main(int argc, char** argv) {

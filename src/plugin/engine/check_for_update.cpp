@@ -18,7 +18,10 @@ constexpr auto k_ignore_updates_until_after_key = "ignore-updates-until-after"_s
 
 Optional<NewVersion> NewerVersionAvailable(State& state, prefs::Preferences const& prefs) {
     if (!state.checking_allowed.Load(LoadMemoryOrder::Acquire)) return k_nullopt;
-    auto const latest = state.latest_version.Load(LoadMemoryOrder::Acquire);
+
+    auto const latest =
+        (prefs::GetBool(prefs, CheckBetaPrefDescriptor()) ? state.latest_version_edge : state.latest_version)
+            .Load(LoadMemoryOrder::Acquire);
     if (latest.version == k_no_version) return k_nullopt;
     if (latest.version <= k_current_version) return k_nullopt;
 
@@ -74,6 +77,9 @@ void CheckForUpdateIfNeeded(State& state) {
         if (key == "latest"_s) {
             if (auto const version = ParseVersionString(value); version)
                 state.latest_version.Store({*version, 0}, StoreMemoryOrder::Release);
+        } else if (key == "edge"_s) {
+            if (auto const version = ParseVersionString(value); version)
+                state.latest_version_edge.Store({*version, 0}, StoreMemoryOrder::Release);
         }
     }
 }
@@ -92,6 +98,18 @@ prefs::Descriptor CheckAllowedPrefDescriptor() {
         .default_value = true,
         .gui_label = "Check for updates"_s,
         .long_description = "Check if there's a new version of Floe available at startup"_s,
+    };
+}
+
+prefs::Descriptor CheckBetaPrefDescriptor() {
+    ASSERT(g_is_logical_main_thread);
+    return {
+        .key = "check-for-beta-updates"_s,
+        .value_requirements = prefs::ValueType::Bool,
+        .default_value = false,
+        .gui_label = "Include beta versions when checking for updates"_s,
+        .long_description =
+            "When checking for updates, include beta versions in addition to stable releases"_s,
     };
 }
 

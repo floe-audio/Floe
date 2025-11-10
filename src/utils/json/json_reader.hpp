@@ -55,6 +55,10 @@ using EventCallbackRef = TrivialFunctionRef<bool(EventHandlerStack& handler_stac
 
 using EventCallback = TrivialAllocatedFunction<bool(EventHandlerStack& handler_stack, Event const& event)>;
 
+template <usize k_size>
+using EventCallbackFixedSize =
+    TrivialFixedSizeFunction<k_size, bool(EventHandlerStack& handler_stack, Event const& event)>;
+
 class EventHandler {
   public:
     EventHandler(EventCallbackRef callback, Allocator& a) : m_handle_event_callback(callback, a) {

@@ -140,6 +140,14 @@ jobs:
         run: |
           export VERSION=$(cat version.txt)
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          
+          # Check if version is a prerelease (contains - followed by prerelease identifier)
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-.+ ]]; then
+            echo "PRERELEASE=true" >> $GITHUB_ENV
+          else
+            echo "PRERELEASE=false" >> $GITHUB_ENV
+          fi
+          
           just echo-latest-changes > latest_changes.md
 
           mkdir -p "$RELEASE_ARTIFACTS_FOLDER"
@@ -156,7 +164,7 @@ jobs:
           artifacts: "${{ env.RELEASE_ARTIFACTS_FOLDER }}/*"
           name: Release v${{ env.VERSION }}
           tag: v${{ env.VERSION }}
-          draft: false
+          prerelease: ${{ env.PRERELEASE }}
           bodyFile: latest_changes.md
 
       - name: Create Sentry release
@@ -169,7 +177,7 @@ jobs:
           release: floe@${{ env.VERSION }}
 
       - name: Clean up awaiting-release labels
-        run: just release-cleanup
+        run: just close-released-issues ${{ env.VERSION }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

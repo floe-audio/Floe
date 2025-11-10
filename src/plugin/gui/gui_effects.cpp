@@ -12,7 +12,7 @@
 
 #include "engine/engine.hpp"
 #include "gui.hpp"
-#include "gui/gui2_ir_picker.hpp"
+#include "gui/gui2_ir_browser.hpp"
 #include "gui/gui_dragger_widgets.hpp"
 #include "gui/gui_menu.hpp"
 #include "gui_framework/colours.hpp"
@@ -170,11 +170,11 @@ static void DoImpulseResponseMenu(Gui* g, layout::Id lay_id) {
     DoIrSelectorRightClickMenu(g, r);
 
     if (buttons::Button(g, id, r, ir_name, buttons::InstSelectorPopupButton(g->imgui, {}))) {
-        g->ir_picker_state.common_state.open = true;
-        g->ir_picker_state.common_state.absolute_button_rect = g->imgui.WindowRectToScreenRect(r);
+        g->ir_browser_state.common_state.open = true;
+        g->ir_browser_state.common_state.absolute_button_rect = g->imgui.WindowRectToScreenRect(r);
     }
 
-    IrPickerContext context {
+    IrBrowserContext context {
         .sample_library_server = g->shared_engine_systems.sample_library_server,
         .library_images = g->library_images,
         .engine = g->engine,
@@ -192,15 +192,15 @@ static void DoImpulseResponseMenu(Gui* g, layout::Id lay_id) {
     auto const right_id = id + 4;
     auto const random_id = id + 8;
     if (buttons::Button(g, left_id, rect_prev, ICON_FA_CARET_LEFT, button_style))
-        LoadAdjacentIr(context, g->ir_picker_state, SearchDirection::Backward);
+        LoadAdjacentIr(context, g->ir_browser_state, SearchDirection::Backward);
     if (buttons::Button(g, right_id, rect_next, ICON_FA_CARET_RIGHT, button_style))
-        LoadAdjacentIr(context, g->ir_picker_state, SearchDirection::Forward);
+        LoadAdjacentIr(context, g->ir_browser_state, SearchDirection::Forward);
     if (buttons::Button(g,
                         random_id,
                         rect_rand,
                         ICON_FA_SHUFFLE,
                         buttons::IconButton(g->imgui).WithRandomiseIconScaling()))
-        LoadRandomIr(context, g->ir_picker_state);
+        LoadRandomIr(context, g->ir_browser_state);
 
     Tooltip(g, left_id, rect_prev, "Previous IR.\n\nThis is based on the currently selected filters."_s);
     Tooltip(g, right_id, rect_next, "Next IR.\n\nThis is based on the currently selected filters."_s);

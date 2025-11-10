@@ -285,7 +285,7 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                                         g->box_system.imgui.overlay_graphics.AddCircleFilled(
                                             r.Centre(),
                                             r.w * 0.5f,
-                                            style::Col(style::Colour::DarkModeBackground0),
+                                            style::Col(style::Colour::Background0 | style::Colour::DarkMode),
                                             12);
                                         g->box_system.imgui.overlay_graphics.AddTextJustified(
                                             r,
@@ -379,17 +379,17 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                                  {
                                      .parent = container,
                                      .text = g->engine.macro_names[macro_index],
-                                     .text_colours = Splat(style::Colour::DarkModeText),
+                                     .text_colours = Splat(style::Colour::Text | style::Colour::DarkMode),
                                      .text_overflow = TextOverflowType::ShowDotsOnRight,
                                      .background_fill_colours {
                                          .base = style::Colour::None,
-                                         .hot = style::Colour::DarkModeBackground0,
-                                         .active = style::Colour::DarkModeBackground0,
+                                         .hot = style::Colour::Background0 | style::Colour::DarkMode,
+                                         .active = style::Colour::Background0 | style::Colour::DarkMode,
                                      },
                                      .border_colours {
                                          .base = style::Colour::None,
-                                         .hot = style::Colour::DarkModeOverlay1,
-                                         .active = style::Colour::DarkModeSubtext0,
+                                         .hot = style::Colour::Overlay1 | style::Colour::DarkMode,
+                                         .active = style::Colour::Subtext0 | style::Colour::DarkMode,
                                      },
                                      .round_background_corners = 0b1111,
                                      .layout {
@@ -401,9 +401,9 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
         DrawTextInput(box_system,
                       label,
                       {
-                          .text_col = style::Colour::DarkModeText,
-                          .cursor_col = style::Colour::DarkModeText,
-                          .selection_col = style::Colour::Highlight,
+                          .text_col = style::Colour::Text | style::Colour::DarkMode,
+                          .cursor_col = style::Colour::Text | style::Colour::DarkMode,
+                          .selection_col = style::Colour::Highlight | style::Colour::Alpha50,
                       });
         if (label.text_input_result &&
             (label.text_input_result->enter_pressed || label.text_input_result->buffer_changed)) {
@@ -468,9 +468,10 @@ void MacroAddDestinationRegion(Gui* g, Rect rel_r, ParamIndex param_index) {
         g->imgui.overlay_graphics.context->PushFont(g->fonts[ToInt(FontType::Icons)]);
         DEFER { g->imgui.overlay_graphics.context->PopFont(); };
 
-        g->imgui.overlay_graphics.AddCircleFilled(r.Centre(),
-                                                  g->imgui.overlay_graphics.context->CurrentFontSize() * 0.4f,
-                                                  style::Col(style::Colour::DarkModeBackground0));
+        g->imgui.overlay_graphics.AddCircleFilled(
+            r.Centre(),
+            g->imgui.overlay_graphics.context->CurrentFontSize() * 0.4f,
+            style::Col(style::Colour::Background0 | style::Colour::DarkMode));
 
         g->imgui.overlay_graphics.AddTextJustified(
             r,

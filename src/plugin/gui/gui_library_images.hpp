@@ -14,6 +14,9 @@ struct LibraryImages {
         Optional<ImageBytes> blurred_background {};
     };
 
+    using FutureIcon = Future<Optional<ImageBytes>>;
+    using FutureBackgrounds = Future<Optional<LibraryImages::LoadingBackgrounds>>;
+
     enum class ImageType : u8 { Icon, Background, BlurredBackground, Count };
 
     Optional<graphics::ImageID> icon {};
@@ -24,15 +27,18 @@ struct LibraryImages {
 
     // Futures cannot be moved around (for example when a hash table resizes), so they are allocated elsewhere
     // and we have pointers to them.
-    Future<Optional<ImageBytes>>* loading_icon;
-    Future<Optional<LoadingBackgrounds>>* loading_backgrounds;
+    FutureIcon* loading_icon;
+    FutureBackgrounds* loading_backgrounds;
 
     // Per-frame state.
     Bitset<ToInt(ImageType::Count)> needs_reload {};
 };
 
 struct LibraryImagesTable {
-    ArenaAllocator arena {PageAllocator::Instance()};
+    // Memory for library images is never freed until Shutdown. We do free the pixel data and GPU resources,
+    // but the Futures and table is never freed - they are small and very infrequently changing - simplifying
+    // lifetime management.
+    ArenaAllocator arena {PageAllocator::Instance()}; // Never reset.
     HashTable<sample_lib::LibraryId, LibraryImages> table;
 };
 

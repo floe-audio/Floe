@@ -14,32 +14,9 @@ struct WaveformImage {
     FuturePixels* loading_pixels {};
 };
 
-struct WaveformPixelsFutureAllocator {
-    struct Node : WaveformImage::FuturePixels {
-        Node* next {nullptr};
-    };
-
-    WaveformImage::FuturePixels* Allocate(ArenaAllocator& a) {
-        if (free_list) {
-            auto* n = free_list;
-            free_list = free_list->next;
-            return n;
-        }
-        return a.New<Node>();
-    }
-
-    void Free(WaveformImage::FuturePixels* f) {
-        auto* n = (Node*)f;
-        n->next = free_list;
-        free_list = n;
-    }
-
-    Node* free_list {};
-};
-
 struct WaveformImagesTable {
     ArenaAllocator arena {PageAllocator::Instance()};
-    WaveformPixelsFutureAllocator future_allocator {};
+    ArenaList<WaveformImage::FuturePixels> loading_pixels;
     HashTable<u64, WaveformImage> table;
 };
 

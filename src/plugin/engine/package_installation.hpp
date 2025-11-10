@@ -156,7 +156,7 @@ LibraryCheckExistingInstallation(Component const& component,
 // preset system will ignore duplicate files by checking their checksums.
 //
 // We take this approach because there is no reason to overwrite preset files. Preset files are tiny. If
-// there's a 'version 2' of a preset pack, then it might as well be installed alongside version 1.
+// there's a 'version 2' of a preset bank, then it might as well be installed alongside version 1.
 static ErrorCodeOr<ExistingInstalledComponent>
 PresetsCheckExistingInstallation(Component const& component,
                                  Span<String const> presets_folders,
@@ -440,14 +440,29 @@ static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
             }
 
             // The new component is installed, let's try to trash the old folder.
-            String folder_in_trash {};
-            if (auto const o = TrashFileOrDirectory(new_name, scratch_arena); o.HasValue()) {
-                folder_in_trash = o.Value();
-            } else {
-                // Try to undo the rename
-                auto const _ = Rename(new_name, resolved_destination_path);
+            if (auto const o = TrashFileOrDirectory(new_name, scratch_arena); o.HasError()) {
+                ErrorCodeOr<void> error = o.Error();
 
-                return o.Error();
+                if (o.Error() == FilesystemError::NotSupported) {
+                    // Trash is not supported, so just delete the old folder.
+                    if (auto const delete_outcome =
+                            Delete(new_name,
+                                   {
+                                       .type = DeleteOptions::Type::DirectoryRecursively,
+                                       .fail_if_not_exists = false,
+                                   });
+                        delete_outcome.HasError())
+                        error = delete_outcome.Error();
+                    else
+                        error = k_success;
+                }
+
+                if (error.HasError()) {
+                    // Try to undo the rename
+                    auto const _ = Rename(new_name, resolved_destination_path);
+
+                    return error.Error();
+                }
             }
         } else {
             return rename_o.Error();

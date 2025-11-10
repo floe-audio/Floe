@@ -37,3 +37,141 @@
    fun:__libc_start_main@@GLIBC_2.34
    fun:(below main)
 }
+
+# X11/Xlib suppressions for pugl windowing library
+{
+   x11_window_property_leak
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:XGetWindowProperty
+   fun:getAtomProperty
+   fun:getCurrentViewStyleFlags
+   ...
+   fun:puglUpdate
+}
+
+# NVIDIA GLX driver suppressions
+{
+   nvidia_glx_choosefbconfig_leak
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:calloc
+   obj:*/libGLX_nvidia.so*
+   ...
+   fun:glXChooseFBConfig
+}
+
+{
+   nvidia_glx_context_leak
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   obj:*/libnvidia-glcore.so*
+   ...
+   fun:glXDestroyContext
+}
+
+# DBus leaks from NVIDIA driver initialization
+{
+   nvidia_dbus_initialization_leak
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:calloc
+   fun:dbus_message_new_empty_header
+   ...
+   obj:*/libnvidia-glcore.so*
+   ...
+   fun:glXChooseFBConfig
+}
+
+# NVIDIA GLX driver uninitialized value suppressions during initialization
+{
+   nvidia_rindex_cond
+   Memcheck:Cond
+   fun:rindex
+   obj:*/libnvidia-glcore.so*
+   ...
+   fun:__glXInit
+}
+
+{
+   nvidia_strlen_value8
+   Memcheck:Value8
+   fun:strlen
+   fun:_IO_str_init_static_internal
+   fun:sscanf
+   obj:*/libnvidia-glcore.so*
+   ...
+   fun:__glXInit
+}
+
+{
+   nvidia_strlen_cond
+   Memcheck:Cond
+   fun:strlen
+   fun:_IO_str_init_static_internal
+   fun:sscanf
+   obj:*/libnvidia-glcore.so*
+   ...
+   fun:__glXInit
+}
+
+{
+   nvidia_vfscanf_cond
+   Memcheck:Cond
+   fun:__vfscanf_internal
+   fun:sscanf
+   obj:*/libnvidia-glcore.so*
+   ...
+   fun:__glXInit
+}
+
+{
+   nvidia_vfscanf_value8
+   Memcheck:Value8
+   fun:__vfscanf_internal
+   fun:sscanf
+   obj:*/libnvidia-glcore.so*
+   ...
+   fun:__glXInit
+}
+
+{
+   nvidia_io_sputbackc_cond
+   Memcheck:Cond
+   fun:_IO_sputbackc
+   fun:__vfscanf_internal
+   fun:sscanf
+   obj:*/libnvidia-glcore.so*
+   ...
+   fun:__glXInit
+}
+
+{
+   nvidia_io_sputbackc_value8
+   Memcheck:Value8
+   fun:_IO_sputbackc
+   fun:__vfscanf_internal
+   fun:sscanf
+   obj:*/libnvidia-glcore.so*
+   ...
+   fun:__glXInit
+}
+
+# NVIDIA GLX driver all uninitialized values during initialization
+{
+   nvidia_glx_all_uninit_cond
+   Memcheck:Cond
+   obj:*/libnvidia-glcore.so*
+   ...
+   fun:__glXInit
+}
+
+{
+   nvidia_glx_all_uninit_value8
+   Memcheck:Value8
+   obj:*/libnvidia-glcore.so*
+   ...
+   fun:__glXInit
+}

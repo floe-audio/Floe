@@ -198,8 +198,14 @@ struct Tester {
                 DEFER { buffered_writer.FlushReset(); };
                 write(writer, false);
             }
+
+            if (output_buffer) {
+                auto writer = dyn::WriterFor(*output_buffer);
+                write(writer, false);
+            }
         }
 
+        DynamicArray<char>* output_buffer = nullptr; // Optional.
         Optional<File> file;
         Tester& tester;
         LogLevel max_level_allowed = LogLevel::Info;
@@ -209,7 +215,7 @@ struct Tester {
     TestLogger log {*this};
     ArenaAllocator scratch_arena {PageAllocator::Instance()};
     FixedSizeAllocator<Kb(8)> capture_buffer {&PageAllocator::Instance()};
-    u64 random_seed = (u64)NanosecondsSinceEpoch();
+    u64 random_seed = RandomSeed();
 
     // private
     ArenaAllocator arena {PageAllocator::Instance()};
@@ -219,7 +225,7 @@ struct Tester {
     usize subcases_current_max_level {};
     bool should_reenter {};
     TestCase* current_test_case {};
-    usize num_assertions = 0;
+    usize current_test_num_assertions = 0;
     usize num_warnings = 0;
     Optional<String> temp_folder {};
     Optional<String> test_files_folder {};
@@ -232,7 +238,7 @@ struct Tester {
 };
 
 void RegisterTest(Tester& tester, TestFunction f, String title);
-int RunAllTests(Tester& tester, Span<String> filter_patterns);
+int RunAllTests(Tester& tester, Span<String> filter_patterns, Optional<String> junit_xml_output_path);
 void Check(Tester& tester,
            bool expression,
            String message,

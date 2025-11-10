@@ -43,11 +43,16 @@ patch-rpath:
       $command $file
     }
 
-    patch_file patchrpath "{{native_binary_dir}}/Floe.clap"
-    patch_file patchrpath "{{native_binary_dir}}/Floe.vst3/Contents/x86_64-linux/Floe.so"
-    patch_file patchinterpreter "{{native_binary_dir}}/tests"
-    patch_file patchinterpreter "{{native_binary_dir}}/docs_generator"
-    patch_file patchinterpreter "{{native_binary_dir}}/VST3-Validator"
+    if [[ -d "{{native_binary_dir}}" ]]; then
+      patch_file patchrpath "{{native_binary_dir}}/Floe.clap"
+      patch_file patchrpath "{{native_binary_dir}}/Floe.vst3/Contents/x86_64-linux/Floe.so"
+      patch_file patchinterpreter "{{native_binary_dir}}/tests"
+      patch_file patchinterpreter "{{native_binary_dir}}/docs_generator"
+      patch_file patchinterpreter "{{native_binary_dir}}/VST3-Validator"
+    fi
+    if [[ -d "{{native_binary_dir}}-tsan" ]]; then
+      patch_file patchinterpreter "{{native_binary_dir}}-tsan/tests"
+    fi
   fi
 
 # This fetches logos too which may be not be GPL licenced.
@@ -91,21 +96,19 @@ check-links:
   #!/usr/bin/env bash
   set -euxo pipefail
 
-  # If our website is being served locally (Docusaurus dev server), we can check links against the local version by remapping
-  # floe.audio to localhost.
+  # If our website is being served locally (Docusaurus dev server), we can check links against the local version.
   docusaurus_localhost="http://localhost:3000"
   declare -a extra_args=()
   if curl -s --head --request GET "$docusaurus_localhost" | grep "200 OK" > /dev/null; then
-    extra_args=(--remap "https://floe.audio $docusaurus_localhost")
+    extra_args=(--remap "https://floe.audio $docusaurus_localhost" --base "$docusaurus_localhost")
   fi
+
   # For some reason creativecommons links return 403 via lychee, so we exclude them.
-  lychee --exclude 'v%7B%7B#include' \
-         --exclude 'https://creativecommons.org/licenses/by/2.0' \
+  lychee --exclude 'https://creativecommons.org/licenses/by/2.0' \
          --exclude 'https://creativecommons.org/licenses/by/4.0' \
          --exclude 'https://creativecommons.org/licenses/by-sa/4.0' \
-         --exclude '==.*==' \
          "${extra_args[@]}" \
-         docs readme.md
+         website readme.md
 
 # install Compile DataBase (compile_commands.json)
 install-cbd arch_os_pair=native_arch_os_pair:
@@ -195,29 +198,99 @@ project-set-status issue_number status:
 project-issues-by-status status:
   just project-items-json | jq '.items[] | select(.status == "{{status}}") | {number: .content.number, title: .title}'
 
-# Issues that have been solved, but not yet had a release are labelled "awaiting-release". This command
-# removes that label from all closed issues. It should be run after a release is made.
-release-cleanup:
+# Issues that have been solved, but not yet had a release are labelled "awaiting-release". This command closes
+# issues with that label, adds a comment about the release, and removes the label. It should be run after a 
+# release is made.
+close-released-issues version:
   #!/usr/bin/env bash
-  echo "Removing awaiting-release labels from released issues..."
-  gh issue list --label "awaiting-release" --state closed --json number \
-    --jq '.[].number' | while read issue_number; do
-    echo "Cleaning issue #$issue_number"
-    gh issue edit "$issue_number" --remove-label "awaiting-release"
-  done
+  set -uo pipefail
+  
+  echo "Processing issues fixed in release {{version}}..."
+  
+  issues=$(gh issue list --label "awaiting-release" --state open --json number --jq '.[].number')
+  list_result=$?
+  
+  if [ $list_result -ne 0 ]; then
+    echo "⚠️  Warning: Failed to fetch issue list" >&2
+    exit 0
+  fi
+  
+  if [ -z "$issues" ]; then
+    echo "No issues awaiting release"
+    exit 0
+  fi
+  
+  count=$(echo "$issues" | wc -l)
+  echo "Found $count issue(s) to process"
+  
+  success=0
+  failed=0
+  
+  while read -r issue_number; do
+    if [ -n "$issue_number" ]; then
+      echo "Processing issue #$issue_number"
+      gh issue comment "$issue_number" --body "This issue has been resolved and is now available in release {{version}}: https://floe.audio/download"
+      if [ $? -ne 0 ]; then
+        echo "  ⚠️  Warning: Failed to comment on #$issue_number" >&2
+      fi
+      
+      gh issue edit "$issue_number" --remove-label "awaiting-release"
+      if [ $? -ne 0 ]; then
+        echo "  ⚠️  Warning: Failed to remove label from #$issue_number" >&2
+        ((failed++)) || true
+        continue
+      fi
+      
+      gh issue close "$issue_number" --reason completed
+      if [ $? -ne 0 ]; then
+        echo "  ⚠️  Warning: Failed to close issue #$issue_number" >&2
+        ((failed++)) || true
+      else
+        ((success++)) || true
+      fi
+    fi
+  done < <(echo "$issues")
+  
+  echo "Completed: $success succeeded, $failed encountered warnings"
+
+# Generated the static JSON that the website uses
+website-generate:
+  #!/usr/bin/env bash
+  {{native_binary_dir}}/docs_generator > website/static/generated-data.json
 
 # Website development and build commands for Docusaurus
 website-dev:
   #!/usr/bin/env bash
-  {{native_binary_dir}}/docs_generator > website/static/generated-data.json
+  just website-generate
   cd website && npm run start
 
 website-build:
   #!/usr/bin/env bash
-  # Generate static data first
-  {{native_binary_dir}}/docs_generator > website/static/generated-data.json
-  # Build Docusaurus site
+  just website-generate
   cd website && npm run build
+
+website-promote-beta-to-stable:
+  #!/usr/bin/env bash
+  
+  rm -f website/versions.json
+  rm -rf website/versioned_sidebars
+  rm -rf website/versioned_docs
+
+  # docusaurus docs:version does not allow overwriting an existing version.
+  # We workaround this by deleting the existing stable version. But if we
+  # were to now run docs:version stable, it errors because as part of its 
+  # process it partly builds the site (to get the sidebars, etc) and finds
+  # references to the versions that we just deleted. So we temporarily 
+  # remove all references.
+  cp website/versions-config.js website/versions-config.js.backup
+  echo "export default {};" > website/versions-config.js
+
+  pushd website 
+  npm run docusaurus docs:version stable
+  popd
+  
+  # Restore original config
+  mv website/versions-config.js.backup website/versions-config.js
 
 # IMPROVE: (June 2024) cppcheck v2.14.0 and v2.14.1 thinks there are syntax errors in valid code. It could be a cppcheck bug or it could be an incompatibility in how we are using it. Regardless, we should try again in the future and see if it's fixed. If it works it should run alongside clang-tidy in CI, etc.
 # cppcheck arch_os_pair=native_arch_os_pair:
@@ -239,12 +312,16 @@ test-clap-val:
   clap-validator validate {{clap_val_args}} {{native_binary_dir}}/Floe.clap
 
 test-units: 
-  {{native_binary_dir}}/tests --log-level=debug --write-to-file
+  {{native_binary_dir}}/tests --log-level=debug --write-to-file --junit-xml-output-path={{cache_dir}}/results.junit.xml
+
+test-units-tsan:
+  {{native_binary_dir}}-tsan/tests --log-level=debug --write-to-file --junit-xml-output-path={{cache_dir}}/results-tsan.junit.xml
 
 test-pluginval: 
   #!/usr/bin/env bash
   args=""
-  if [[ "{{os()}}" == "linux" && ! -z "$CI" ]]; then
+  if [[ "{{os()}}" == "linux" && -z "$DISPLAY" ]]; then
+    echo "WARNING: No X11 display server detected, skipping GUI tests in pluginval"
     args="--skip-gui-tests"
   fi
   pluginval $args --validate {{native_binary_dir}}/Floe.vst3
@@ -328,7 +405,7 @@ test-windows-installer:
 [linux, windows]
 test-windows-units:
   set -x
-  {{run_windows_program}} zig-out/x86_64-windows/tests.exe --log-level=debug
+  {{run_windows_program}} zig-out/x86_64-windows/tests.exe --log-level=debug --write-to-file --junit-xml-output-path={{cache_dir}}/results.junit.xml
 
 [linux, windows]
 test-windows-vst3-val:
@@ -378,7 +455,7 @@ valgrind:
     {{native_binary_dir}}/tests \
     --log-level=debug \
     --write-to-file \
-    --filter=*Hash*
+    --filter=*
 
 checks_level_0 := replace( 
   "
@@ -409,6 +486,7 @@ checks_level_1 := checks_level_0 + replace(
 checks_ci := replace(
   "
     test-units
+    test-units-tsan
     test-clap-val
     test-vst3-val
   " +
@@ -428,11 +506,7 @@ checks_ci := replace(
     test-pluginval-au
     test-auval
     "
-  } else {
-    "
-    test-pluginval
-    "
-  }, "\n", " ")
+  } else {""}, "\n", " ")
 
 checks_ci_optimised := replace(
   "
@@ -446,11 +520,7 @@ checks_ci_optimised := replace(
     test-pluginval-au
     test-auval
     "
-  } else {
-    "
-    test-pluginval
-    "
-  }, "\n", " ")
+  } else {""}, "\n", " ")
 
 [unix]
 test level="0": (parallel if level == "0" { checks_level_0 } else { checks_level_1 })
@@ -460,7 +530,10 @@ test-ci optimised="0":
   #!/usr/bin/env bash
   set -x
 
+  # Start our website so check-links fully works
+  just website-generate
   pushd website
+  npm ci
   npm run start &
   DOCUSAURUS_PID=$!
   popd
@@ -533,12 +606,12 @@ test-ci-windows:
 
   # Wait for server to be ready (poll with timeout)
   echo "Waiting for go-httpbin server to start..."
-  for i in {1..30}; do
+  for i in {1..90}; do
     if curl -s --connect-timeout 1 http://127.0.0.1:8081/status >/dev/null 2>&1; then
       echo "go-httpbin server is ready"
       break
     fi
-    if [ $i -eq 30 ]; then
+    if [ $i -eq 90 ]; then
       echo "Timeout waiting for go-httpbin server to start"
       kill $HTTPBIN_PID 2>/dev/null || true
       exit 1

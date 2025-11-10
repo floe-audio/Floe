@@ -231,6 +231,15 @@ struct TrivialAllocatedFunction<ReturnType(Args...)> {
 
     constexpr operator bool() const { return invoke_function != nullptr; }
 
+    // Convertible to the ref type
+    constexpr operator TrivialFunctionRef<ReturnType(Args...)>() const {
+        TrivialFunctionRef<ReturnType(Args...)> result;
+        result.invoke_function = invoke_function;
+        result.function_object = function_object;
+        result.function_object_size = function_object_size;
+        return result;
+    }
+
     Span<u8> AllocatedSpan() const { return {(u8*)function_object, function_object_size}; }
 
     ReturnType (*invoke_function)(void*, Args...) = nullptr;

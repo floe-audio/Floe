@@ -29,16 +29,10 @@ static void CreateWaveformImageAsync(WaveformImage::FuturePixels& future,
             auto const bytes = CreateWaveformImage(source, size, PixelsAllocator(), scratch_arena);
             return {.rgba = bytes.data, .size = size};
         },
-        [inst_ref]() mutable {
+        [inst_ref]() mutable { // Capture by value the RefCounted handle.
             if (inst_ref) inst_ref.Release();
-        });
-}
-
-static void FreeWaveform(WaveformImage& waveform, WaveformPixelsFutureAllocator& allocator) {
-    if (auto image_bytes = waveform.loading_pixels->ShutdownAndRelease(10000u))
-        image_bytes->Free(PixelsAllocator());
-
-    allocator.Free(waveform.loading_pixels);
+        },
+        JobPriority::High);
 }
 
 Optional<graphics::ImageID> GetWaveformImage(WaveformImagesTable& table,
@@ -79,10 +73,18 @@ Optional<graphics::ImageID> GetWaveformImage(WaveformImagesTable& table,
     auto& waveform = e.element.data;
     waveform.used = true;
 
-    if (e.inserted) waveform.loading_pixels = table.future_allocator.Allocate(table.arena);
+    if (!graphics.ImageIdIsValid(waveform.image_id)) {
+        bool need_start_loading = false;
+        if (!waveform.loading_pixels) {
+            waveform.loading_pixels = table.loading_pixels.Prepend(table.arena);
+            need_start_loading = true;
+        } else if (waveform.loading_pixels->IsInactive()) {
+            need_start_loading = true;
+        }
 
-    if (!graphics.ImageIdIsValid(waveform.image_id) && waveform.loading_pixels->IsInactive())
-        CreateWaveformImageAsync(*waveform.loading_pixels, source, inst, size, thread_pool);
+        if (need_start_loading)
+            CreateWaveformImageAsync(*waveform.loading_pixels, source, inst, size, thread_pool);
+    }
 
     return waveform.image_id;
 }
@@ -91,9 +93,12 @@ void StartFrame(WaveformImagesTable& table, graphics::DrawContext& graphics) {
     for (auto [_, waveform, _] : table.table) {
         waveform.used = false;
 
-        if (auto const result = waveform.loading_pixels->TryReleaseResult()) {
-            waveform.image_id = CreateImageIdChecked(graphics, *result);
-            result->Free(PixelsAllocator());
+        // Consume any finished loading operations.
+        if (waveform.loading_pixels) {
+            if (auto const result = waveform.loading_pixels->TryReleaseResult()) {
+                waveform.image_id = CreateImageIdChecked(graphics, *result); // Create GPU resource.
+                result->Free(PixelsAllocator());
+            }
         }
     }
 }
@@ -105,7 +110,26 @@ void EndFrame(WaveformImagesTable& table, graphics::DrawContext& graphics) {
                 graphics.DestroyImageID(*waveform.image_id);
                 waveform.image_id = k_nullopt;
             }
-            FreeWaveform(waveform, table.future_allocator);
+            if (waveform.loading_pixels) {
+                if (auto const result = waveform.loading_pixels->TryReleaseResult()) {
+                    // If there's a result, we can completely free the future and its resources.
+                    result->Free(PixelsAllocator());
+                    table.loading_pixels.Remove(waveform.loading_pixels);
+                } else {
+                    // If there's no result, we cancel without waiting or freeing. We leave it in the
+                    // loading_pixels list though so that we can try again to free it at a later time.
+                    waveform.loading_pixels->Cancel();
+                }
+            }
+            return true;
+        }
+        return false;
+    });
+
+    table.loading_pixels.RemoveIf([](WaveformImage::FuturePixels& future) {
+        auto const status = future.AcquireStatus();
+        if (!future.IsInProgress(status) && future.IsCancelled(status)) {
+            if (auto const result = future.TryReleaseResult()) result->Free(PixelsAllocator());
             return true;
         }
         return false;
@@ -113,7 +137,8 @@ void EndFrame(WaveformImagesTable& table, graphics::DrawContext& graphics) {
 }
 
 void Shutdown(WaveformImagesTable& table) {
-    for (auto [_, waveform, _] : table.table)
-        FreeWaveform(waveform, table.future_allocator);
+    for (auto& pixels : table.loading_pixels)
+        if (auto image_bytes = pixels.ShutdownAndRelease(10000u)) image_bytes->Free(PixelsAllocator());
+    table.loading_pixels.Clear();
     table.table.DeleteAll();
 }

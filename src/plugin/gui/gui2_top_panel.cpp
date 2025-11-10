@@ -8,8 +8,8 @@
 #include "engine/engine.hpp"
 #include "gui.hpp"
 #include "gui/gui2_common_modal_panel.hpp"
-#include "gui/gui2_inst_picker.hpp"
-#include "gui/gui2_ir_picker.hpp"
+#include "gui/gui2_inst_browser.hpp"
+#include "gui/gui2_ir_browser.hpp"
 #include "gui/gui2_parameter_component.hpp"
 #include "gui_framework/gui_box_system.hpp"
 #include "gui_modal_windows.hpp"
@@ -56,7 +56,7 @@ static void DoDotsMenu(Gui* g) {
             .button_fired) {
         RandomiseAllParameterValues(g->engine.processor);
         for (auto& layer : g->engine.processor.layer_processors) {
-            InstPickerContext context {
+            InstBrowserContext context {
                 .layer = layer,
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
@@ -69,10 +69,10 @@ static void DoDotsMenu(Gui* g) {
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
-            LoadRandomInstrument(context, g->inst_picker_state[layer.index]);
+            LoadRandomInstrument(context, g->inst_browser_state[layer.index]);
         }
         {
-            IrPickerContext ir_context {
+            IrBrowserContext ir_context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
                 .engine = g->engine,
@@ -84,7 +84,7 @@ static void DoDotsMenu(Gui* g) {
             };
             ir_context.Init(g->scratch_arena);
             DEFER { ir_context.Deinit(); };
-            LoadRandomIr(ir_context, g->ir_picker_state);
+            LoadRandomIr(ir_context, g->ir_browser_state);
         }
     }
 
@@ -137,7 +137,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
     auto const root_size = box_system.imgui.PixelsToVw(box_system.imgui.Size());
     auto root = DoBox(box_system,
                       {
-                          .background_fill_colours = {style::Colour::DarkModeBackground0},
+                          .background_fill_colours = {style::Colour::Background0 | style::Colour::DarkMode},
                           .layout {
                               .size = root_size,
                               .contents_padding = {.lr = style::k_spacing},
@@ -176,22 +176,23 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                                       ? String {InstanceId(g->engine.autosave_state)}
                                       : ""_s),
               .size_from_text = true,
-              .text_colours = {style::Colour::DarkModeSubtext0},
+              .text_colours = {style::Colour::Subtext0 | style::Colour::DarkMode},
           });
 
-    auto preset_box = DoBox(box_system,
-                            {
-                                .parent = root,
-                                .background_fill_colours = {style::Colour::DarkModeSurface0},
-                                .round_background_corners = 0b1111,
-                                .layout {
-                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                    .contents_padding = {.l = 7, .r = 4, .tb = 2},
-                                    .contents_direction = layout::Direction::Row,
-                                    .contents_align = layout::Alignment::Start,
-                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                },
-                            });
+    auto preset_box =
+        DoBox(box_system,
+              {
+                  .parent = root,
+                  .background_fill_colours = {style::Colour::Surface0 | style::Colour::DarkMode},
+                  .round_background_corners = 0b1111,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .contents_padding = {.l = 7, .r = 4, .tb = 2},
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Start,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+              });
 
     auto preset_box_left = DoBox(
         box_system,
@@ -215,8 +216,8 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
         });
 
     if (preset_box_left.button_fired) {
-        g->preset_picker_state.common_state.open = true;
-        g->preset_picker_state.common_state.absolute_button_rect =
+        g->preset_browser_state.common_state.open = true;
+        g->preset_browser_state.common_state.absolute_button_rect =
             g->imgui.WindowRectToScreenRect(*BoxRect(box_system, preset_box_left));
     }
     if (preset_box_left.is_hot) StartScanningIfNeeded(g->engine.shared_engine_systems.preset_server);
@@ -230,7 +231,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                                   StateChangedSinceLastSnapshot(g->engine) ? " (modified)"_s : ""_s),
               .text_colours =
                   {
-                      .base = style::Colour::DarkModeText,
+                      .base = style::Colour::Text | style::Colour::DarkMode,
                       .hot = style::Colour::Highlight,
                       .active = style::Colour::Highlight,
                   },
@@ -249,9 +250,9 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                           : "No description"_s,
               .font = FontType::BodyItalic,
               .text_colours {
-                  .base = style::Colour::DarkModeSubtext0,
-                  .hot = style::Colour::DarkModeSubtext1,
-                  .active = style::Colour::DarkModeSubtext1,
+                  .base = style::Colour::Subtext0 | style::Colour::DarkMode,
+                  .hot = style::Colour::Subtext1 | style::Colour::DarkMode,
+                  .active = style::Colour::Subtext1 | style::Colour::DarkMode,
               },
               .text_overflow = TextOverflowType::ShowDotsOnRight,
               .parent_dictates_hot_and_active = true,
@@ -265,7 +266,8 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                                     String tooltip,
                                     f32 font_scale,
                                     f32 padding_x,
-                                    style::Colour colour = style::Colour::DarkModeSubtext1) {
+                                    style::Colour colour =
+                                        style::Colour::Subtext1 | style::Colour::DarkMode) {
         // We use a wrapper so that the interactable area is larger and touches the adjacent buttons.
         auto const button = DoBox(box_system,
                                   {
@@ -302,7 +304,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                            1.0f,
                            3);
         if (preset_next.button_fired) {
-            PresetPickerContext context {
+            PresetBrowserContext context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
@@ -316,7 +318,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
 
-            LoadAdjacentPreset(context, g->preset_picker_state, SearchDirection::Backward);
+            LoadAdjacentPreset(context, g->preset_browser_state, SearchDirection::Backward);
         }
         if (preset_next.is_hot) StartScanningIfNeeded(g->engine.shared_engine_systems.preset_server);
     }
@@ -329,7 +331,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                            1.0f,
                            3);
         if (preset_prev.button_fired) {
-            PresetPickerContext context {
+            PresetBrowserContext context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
@@ -343,7 +345,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
 
-            LoadAdjacentPreset(context, g->preset_picker_state, SearchDirection::Forward);
+            LoadAdjacentPreset(context, g->preset_browser_state, SearchDirection::Forward);
         }
         if (preset_prev.is_hot) StartScanningIfNeeded(g->engine.shared_engine_systems.preset_server);
     }
@@ -356,7 +358,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                            0.9f,
                            3);
         if (preset_random.button_fired) {
-            PresetPickerContext context {
+            PresetBrowserContext context {
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .preset_server = g->shared_engine_systems.preset_server,
                 .library_images = g->library_images,
@@ -370,7 +372,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
 
-            LoadRandomPreset(context, g->preset_picker_state);
+            LoadRandomPreset(context, g->preset_browser_state);
         }
         if (preset_random.is_hot) StartScanningIfNeeded(g->engine.shared_engine_systems.preset_server);
     }

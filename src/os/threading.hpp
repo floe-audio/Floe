@@ -603,7 +603,7 @@ class ScopedSpinLock {
 // memory management. Typically, the consumer thread owns this object, and gives a reference to the producer
 // thread.
 //
-// Futures should almost always call Shutdown() before being destroyed.
+// Futures should almost always call ShutdownAndRelease() before being destroyed.
 //
 // e.g.:
 //
@@ -634,14 +634,17 @@ struct Future {
 
     enum class Status : u32 {
         Inactive, // Unscheduled, no result.
-        Pending, // Scheduled to be filled but not started yet.
-        Running, // In progress.
+        Pending, // Scheduled to be filled but not started yet. Consumer must not read result.
+        Running, // In progress. Consumer must not read result.
         Finished, // Completed, result is valid.
     };
+
+    // The cancel bit is set/cleared by the consumer thread. The producer never changes it. The producer
+    // thread can check for the presense of this bit and cancel work if needed.
     static constexpr u32 k_cancel_bit = 1u << 31;
 
-    // The working bit provides us with a safe way to ensure that the producer thread is done with this object
-    // without breaking the producer's ability to signal the consumer thread with a 'wake' call.
+    // The working bit is set/cleared by the producer thread. The presence of this bit signifies that the
+    // producer is still using the Future and the consumer must not delete it.
     static constexpr u32 k_working_bit = 1u << 30;
 
     static constexpr u32 k_status_mask = ~(k_cancel_bit | k_working_bit);
@@ -659,8 +662,10 @@ struct Future {
     bool IsCancelled() const { return IsCancelled(status.Load(LoadMemoryOrder::Acquire)); }
     bool IsInProgress() const { return IsInProgress(status.Load(LoadMemoryOrder::Acquire)); }
     bool IsInactive() const { return IsInactive(status.Load(LoadMemoryOrder::Acquire)); }
+    // Use with the static Is* functions:
+    u32 AcquireStatus() const { return status.Load(LoadMemoryOrder::Acquire); }
 
-    // Consumer thread
+    // Consumer thread. Extracts the result if finished, resets the Future to Inactive.
     Optional<Type> TryReleaseResult() {
         if (IsFinished()) {
             Type v = RawResult();
@@ -690,13 +695,13 @@ struct Future {
         status.Store((u32)Status::Inactive, StoreMemoryOrder::Release);
     }
 
-    // Consumer thread
+    // Consumer thread. Returns false if timed out.
     bool WaitUntilFinished(Optional<u32> timeout_milliseconds = {}) {
         while (true) {
             auto const s = status.Load(LoadMemoryOrder::Acquire);
 
             if (IsFinished(s) || IsInactive(s)) {
-                BusyWaitForWorkingBitClear();
+                if (s & k_working_bit) BusyWaitForWorkingBitClear();
                 return true;
             }
 
@@ -704,12 +709,11 @@ struct Future {
         }
     }
 
-    // Consumer thread
+    // Consumer thread. Doesn't wait, just sets the cancel bit. Returns true if we successfully cancelled,
     bool Cancel() {
-        auto current = status.Load(LoadMemoryOrder::Acquire);
-        ASSERT(current != (u32)Status::Inactive, "Can't cancel an inactive future");
+        auto const current = status.Load(LoadMemoryOrder::Acquire);
 
-        if (IsFinished(current)) return false;
+        if (IsInactive(current) || IsFinished(current)) return false;
         if (IsCancelled(current)) return true;
 
         auto const prev = status.FetchOr(k_cancel_bit, RmwMemoryOrder::AcquireRelease);
@@ -729,6 +733,10 @@ struct Future {
         auto const s = status.Load(LoadMemoryOrder::Acquire);
         switch ((Status)(s & k_status_mask)) {
             case Status::Finished:
+                if (s & k_working_bit) BusyWaitForWorkingBitClear();
+                status.Store((u32)Status::Inactive, StoreMemoryOrder::Release);
+                return &RawResult();
+
             case Status::Inactive:
                 if (s & k_working_bit) BusyWaitForWorkingBitClear();
                 return nullptr;
@@ -747,7 +755,7 @@ struct Future {
     }
 
     // Producer thread.
-    // Returns true if we successfully set to running, false if we was cancelled.
+    // Returns true if we successfully set to running, false if we were cancelled.
     // IMPORTANT: if this returns false, you must not touch this object again.
     [[nodiscard]] bool TrySetRunning() {
         while (true) {
@@ -759,7 +767,7 @@ struct Future {
                 // We've been cancelled before we could start running. We set to Inactive instead of Finished
                 // because the Finished state suggests that there is a valid payload. We retain the cancel bit
                 // so that a reader can see what happened.
-                status.Store(k_cancel_bit | k_working_bit | (u32)Status::Inactive, StoreMemoryOrder::Release);
+                status.Store((u32)Status::Inactive | k_cancel_bit | k_working_bit, StoreMemoryOrder::Release);
 
                 // We have set the new status, including the working bit. The working bit ensures we are safe
                 // to wake the waiters using the still-valid 'status' memory.
@@ -794,13 +802,15 @@ struct Future {
 
         while (true) {
             auto current = status.Load(LoadMemoryOrder::Acquire);
-            auto const s = (Status)(current & k_status_mask);
-            ASSERT(s == Status::Running);
+
+            // We should only be here if TrySetRunning succeeded.
+            ASSERT((Status)(current & k_status_mask) == Status::Running);
+            ASSERT(current & k_working_bit);
 
             // Try to exchange to finished, ensuring we retain the cancel bit. We might have been cancelled
             // while running - we couldn't act on it, but we retain the information for the reader to see.
             if (status.CompareExchangeWeak(current,
-                                           (current & k_cancel_bit) | (u32)Status::Finished,
+                                           (u32)Status::Finished | k_working_bit | (current & k_cancel_bit),
                                            RmwMemoryOrder::AcquireRelease,
                                            LoadMemoryOrder::Acquire))
                 break;
@@ -809,7 +819,8 @@ struct Future {
         WakeWaitingThreads(status, NumWaitingThreads::All);
 
         // We are done touching status now, we can clear the working bit meaning another thread can now free
-        // this memory.
+        // this memory. It doesn't matter if the consumer thread has decided to change the status to Inactive
+        // (such as via TryReleaseResult), we are doing a harmless clear of the working bit.
         status.FetchAnd(~k_working_bit, RmwMemoryOrder::Release);
     }
 

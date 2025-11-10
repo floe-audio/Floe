@@ -33,7 +33,7 @@ static bool IconButton(GuiBoxSystem& box_system,
               .font = FontType::Icons,
               .font_size = style::k_font_icons_size * font_scale,
               .text_colours {
-                  .base = style::Colour::DarkModeSubtext1,
+                  .base = style::Colour::Subtext1 | style::Colour::DarkMode,
                   .hot = style::Colour::Highlight,
                   .active = style::Colour::Highlight,
               },
@@ -77,9 +77,9 @@ static Optional<s64> OctaveDragger(GuiBoxSystem& box_system, Box const parent, s
     DrawTextInput(box_system,
                   box,
                   {
-                      .text_col = style::Colour::DarkModeText,
-                      .cursor_col = style::Colour::DarkModeText,
-                      .selection_col = style::Colour::Highlight,
+                      .text_col = style::Colour::Text | style::Colour::DarkMode,
+                      .cursor_col = style::Colour::Text | style::Colour::DarkMode,
+                      .selection_col = style::Colour::Highlight | style::Colour::Alpha50,
                   });
 
     return new_value;
@@ -89,33 +89,35 @@ static void DoBotPanel(Gui* g) {
     auto& box_system = g->box_system;
     auto const root_size = box_system.imgui.PixelsToVw(box_system.imgui.Size());
 
-    auto const root = DoBox(box_system,
-                            {
-                                .background_fill_colours = {style::Colour::DarkModeBackground0},
-                                .layout {
-                                    .size = root_size,
-                                    .contents_gap = 0,
-                                    .contents_direction = layout::Direction::Row,
-                                    .contents_align = layout::Alignment::Start,
-                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                },
-                            });
+    auto const root =
+        DoBox(box_system,
+              {
+                  .background_fill_colours = {style::Colour::Background0 | style::Colour::DarkMode},
+                  .layout {
+                      .size = root_size,
+                      .contents_gap = 0,
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Start,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+              });
 
     {
-        constexpr auto k_border_col = style::Colour::DarkModeBackground2;
+        constexpr auto k_border_col = style::Colour::Background2 | style::Colour::DarkMode;
         constexpr auto k_top_bot_margin = 2.0f;
 
-        auto const tabs = DoBox(box_system,
-                                {
-                                    .parent = root,
-                                    .background_fill_colours = {style::Colour::DarkModeBackground1},
-                                    .layout {
-                                        .size = {layout::k_hug_contents, layout::k_fill_parent},
-                                        .contents_direction = layout::Direction::Column,
-                                        .contents_align = layout::Alignment::Start,
-                                        .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                    },
-                                });
+        auto const tabs =
+            DoBox(box_system,
+                  {
+                      .parent = root,
+                      .background_fill_colours = {style::Colour::Background1 | style::Colour::DarkMode},
+                      .layout {
+                          .size = {layout::k_hug_contents, layout::k_fill_parent},
+                          .contents_direction = layout::Direction::Column,
+                          .contents_align = layout::Alignment::Start,
+                          .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                      },
+                  });
 
         if (auto const rel_r = BoxRect(box_system, tabs)) {
             auto const r = box_system.imgui.GetRegisteredAndConvertedRect(*rel_r);
@@ -131,8 +133,9 @@ static void DoBotPanel(Gui* g) {
                       {
                           .parent = tabs,
                           .background_fill_colours =
-                              Splat(type == g->bottom_panel_state.type ? style::Colour::DarkModeBackground0
-                                                                       : style::Colour::None),
+                              Splat(type == g->bottom_panel_state.type
+                                        ? style::Colour::Background0 | style::Colour::DarkMode
+                                        : style::Colour::None),
                           .border_colours = Splat(k_border_col),
                           .border_edges = type == g->bottom_panel_state.type ? (u32)0b0101 : 0b0000,
                           .layout {
@@ -163,8 +166,9 @@ static void DoBotPanel(Gui* g) {
                           }(),
                       .size_from_text = true,
                       .text_colours {
-                          .base = type == g->bottom_panel_state.type ? style::Colour::Highlight
-                                                                     : style::Colour::DarkModeText,
+                          .base = type == g->bottom_panel_state.type
+                                      ? style::Colour::Highlight
+                                      : style::Colour::Text | style::Colour::DarkMode,
                           .hot = style::Colour::Highlight,
                           .active = style::Colour::Highlight,
                       },

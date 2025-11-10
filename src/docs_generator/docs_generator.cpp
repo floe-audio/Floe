@@ -46,7 +46,6 @@ static ErrorCodeOr<void> WriteLuaSectionValues(json::WriteContext& ctx,
     return k_success;
 }
 
-
 static ErrorCodeOr<void> WriteLuaData(json::WriteContext& ctx) {
     ArenaAllocator scratch {PageAllocator::Instance()};
     DynamicArray<char> buffer {scratch};
@@ -133,15 +132,76 @@ static ErrorCodeOr<void> WriteVersionData(json::WriteContext& ctx) {
     return k_success;
 }
 
-static ErrorCodeOr<void> WriteGithubReleaseData(json::WriteContext& ctx) {
-    ArenaAllocator scratch {PageAllocator::Instance()};
+struct GithubRelease {
+    struct Asset {
+        String name;
+        usize size;
+        String url;
+    };
 
-    auto const cached_reponse_path =
-        path::Join(scratch, Array {String(FLOE_PROJECT_CACHE_PATH), "latest-release.json"});
+    String version_string {};
+    Optional<Version> version {};
+    ArenaList<Asset> assets {};
+};
+
+static json::EventCallback ReleaseJsonParser(GithubRelease& release, ArenaAllocator& arena) {
+    auto handle_asset_object = [&arena, &release](json::EventHandlerStack&, json::Event const& event) {
+        if (event.type == json::EventType::HandlingStarted) {
+            *release.assets.PrependUninitialised(arena) = {};
+            return true;
+        }
+
+        if (json::SetIfMatchingRef(event, "name", release.assets.first->data.name)) return true;
+        if (json::SetIfMatching(event, "size", release.assets.first->data.size)) return true;
+        if (json::SetIfMatchingRef(event, "browser_download_url", release.assets.first->data.url))
+            return true;
+
+        return false;
+    };
+
+    auto handle_asset_array = [handle_asset_object](json::EventHandlerStack& handler_stack,
+                                                    json::Event const& event) {
+        if (json::SetIfMatchingObject(handler_stack, event, "", handle_asset_object)) return true;
+        return false;
+    };
+
+    return json::EventCallback(
+        [handle_asset_array, &release](json::EventHandlerStack& handler_stack, json::Event const& event) {
+            if (json::SetIfMatchingRef(event, "tag_name", release.version_string)) {
+                release.version_string = TrimStartIfMatches(release.version_string, "v"_s);
+                release.version = ParseVersionString(release.version_string);
+                return true;
+            }
+            if (json::SetIfMatchingArray(handler_stack, event, "assets", handle_asset_array)) return true;
+            return false;
+        },
+        arena);
+}
+
+enum class GithubReleaseEndpoint {
+    LatestRelease,
+    ListReleases,
+};
+
+static ErrorCodeOr<String> GetGitHubReleaseJson(ArenaAllocator& arena, GithubReleaseEndpoint endpoint) {
+    // The GitHub API has rate limiting that we can sometimes hit during documentation generation. We
+    // work-around this by using a cached response if available.
+
+    auto const cached_response_filename = ({
+        String filename {};
+        switch (endpoint) {
+            case GithubReleaseEndpoint::LatestRelease: filename = "latest-release.json"; break;
+            case GithubReleaseEndpoint::ListReleases: filename = "list-releases.json"; break;
+        }
+        filename;
+    });
+
+    auto const cached_response_path =
+        path::Join(arena, Array {String(FLOE_PROJECT_CACHE_PATH), cached_response_filename});
 
     auto const cached_response = ({
         Optional<String> response = {};
-        auto const o = ReadEntireFile(cached_reponse_path, scratch);
+        auto const o = ReadEntireFile(cached_response_path, arena);
         if (o.HasError()) {
             if (o.Error() != FilesystemError::PathDoesNotExist) return o.Error();
         } else
@@ -150,85 +210,124 @@ static ErrorCodeOr<void> WriteGithubReleaseData(json::WriteContext& ctx) {
     });
 
     String json_data {};
-
     if (cached_response) {
         json_data = *cached_response;
     } else {
-        Span<String> headers {};
-        if (auto const token = GetEnvironmentVariable("GITHUB_TOKEN"_s, scratch)) {
-            headers = scratch.AllocateExactSizeUninitialised<String>(1);
-            headers[0] = fmt::Format(scratch, "Authorization: Bearer {}", *token);
-        }
+        DynamicArrayBounded<String, 1> headers {};
 
-        DynamicArray<char> data {scratch};
-        TRY(HttpsGet("https://api.github.com/repos/floe-audio/Floe/releases/latest",
+        // If we have a GitHub token in the environment, use it to increase our rate limit.
+        if (auto const token = GetEnvironmentVariable("GITHUB_TOKEN"_s, arena))
+            dyn::Append(headers, fmt::Format(arena, "Authorization: Bearer {}", *token));
+
+        DynamicArray<char> data {arena};
+        TRY(HttpsGet(({
+                         String s;
+                         switch (endpoint) {
+                             case GithubReleaseEndpoint::LatestRelease:
+                                 s = "https://api.github.com/repos/floe-audio/Floe/releases/latest";
+                                 break;
+                             case GithubReleaseEndpoint::ListReleases:
+                                 s = "https://api.github.com/repos/floe-audio/Floe/releases";
+                                 break;
+                         }
+                         s;
+                     }),
                      dyn::WriterFor(data),
                      {.headers = headers}));
         json_data = data.ToOwnedSpan();
-        TRY(WriteFile(cached_reponse_path, json_data));
+        TRY(WriteFile(cached_response_path, json_data));
     }
 
-    String latest_release_version {};
-    struct Asset {
-        String name;
-        usize size;
-        String url;
-    };
-    ArenaList<Asset> assets {};
+    return json_data;
+}
 
-    auto const handle_asset_object = [&](json::EventHandlerStack&, json::Event const& event) {
-        if (event.type == json::EventType::HandlingStarted) {
-            *assets.PrependUninitialised(scratch) = {};
-            return true;
-        }
+static ErrorCodeOr<void>
+WriteGithubReleaseData(json::WriteContext& ctx, GithubRelease const& release, ArenaAllocator& scratch) {
+    DynamicArrayBounded<char, 250> name {};
+    for (auto& asset : release.assets) {
+        // Generate base key name
+        dyn::Assign(name, asset.name);
+        dyn::Replace(name, fmt::Join(scratch, Array {"-v"_s, release.version_string}), ""_s);
+        name.size -= path::Extension(name).size;
 
-        if (json::SetIfMatchingRef(event, "name", assets.first->data.name)) return true;
-        if (json::SetIfMatching(event, "size", assets.first->data.size)) return true;
-        if (json::SetIfMatchingRef(event, "browser_download_url", assets.first->data.url)) return true;
-
-        return false;
-    };
-
-    auto const handle_assets_array = [&](json::EventHandlerStack& handler_stack, json::Event const& event) {
-        if (SetIfMatchingObject(handler_stack, event, "", handle_asset_object)) return true;
-        return false;
-    };
-
-    auto const handle_root_object = [&](json::EventHandlerStack& handler_stack, json::Event const& event) {
-        json::SetIfMatchingRef(event, "tag_name", latest_release_version);
-        if (SetIfMatchingArray(handler_stack, event, "assets", handle_assets_array)) return true;
-        return false;
-    };
-
-    auto const o = json::Parse(json_data, handle_root_object, scratch, {});
-
-    if (o.HasError()) return ErrorCode {CommonError::InvalidFileFormat};
-
-    {
-        DynamicArrayBounded<char, 250> name {};
-        for (auto& asset : assets) {
-            // Generate base key name
-            dyn::Assign(name, asset.name);
-            dyn::Replace(name, latest_release_version, ""_s);
-            dyn::Replace(name, "--"_s, "-"_s);
-            name.size -= path::Extension(name).size;
-
-            // Write as object with name, url, and size fields
-            TRY(json::WriteKeyObjectBegin(ctx, String(name)));
-            TRY(json::WriteKeyValue(ctx, "name", asset.name));
-            TRY(json::WriteKeyValue(ctx, "url", asset.url));
-            TRY(json::WriteKeyValue(ctx, "size", fmt::Format(scratch, "{} MB", Max(1uz, asset.size / 1024 / 1024))));
-            TRY(json::WriteObjectEnd(ctx));
-        }
+        // Write as object with name, url, and size fields
+        TRY(json::WriteKeyObjectBegin(ctx, String(name)));
+        TRY(json::WriteKeyValue(ctx, "name", asset.name));
+        TRY(json::WriteKeyValue(ctx, "url", asset.url));
+        TRY(json::WriteKeyValue(ctx,
+                                "size",
+                                fmt::Format(scratch, "{} MB", Max(1uz, asset.size / 1024 / 1024))));
+        TRY(json::WriteObjectEnd(ctx));
     }
 
+    return k_success;
+}
+
+static ErrorCodeOr<void> WriteGithubReleaseData(json::WriteContext& ctx) {
+    ArenaAllocator scratch {PageAllocator::Instance()};
+
+    auto const latest_json_data = TRY(GetGitHubReleaseJson(scratch, GithubReleaseEndpoint::LatestRelease));
+
+    GithubRelease latest_release {};
     {
-        if (StartsWith(latest_release_version, 'v')) latest_release_version.RemovePrefix(1);
-        if (latest_release_version.size == 0) {
-            LogError(ModuleName::Main, "Failed to parse github release version: {}\n", json_data);
+        auto const o = json::Parse(latest_json_data, ReleaseJsonParser(latest_release, scratch), scratch, {});
+
+        if (o.HasError()) return ErrorCode {CommonError::InvalidFileFormat};
+        if (!latest_release.version) {
+            LogError(ModuleName::Main, "Failed to parse github release version: {}\n", latest_json_data);
             return ErrorCode {CommonError::InvalidFileFormat};
         }
-        TRY(json::WriteKeyValue(ctx, "latest-release-version", latest_release_version));
+    }
+
+    TRY(json::WriteKeyValue(ctx, "latest-any-release-version", latest_release.version_string));
+
+    if (latest_release.version->beta) {
+        TRY(json::WriteKeyObjectBegin(ctx, "latest-beta-release-version"));
+        TRY(json::WriteKeyValue(ctx, "version", latest_release.version_string));
+        TRY(WriteGithubReleaseData(ctx, latest_release, scratch));
+        TRY(json::WriteObjectEnd(ctx));
+
+        DynamicArray<GithubRelease> releases {scratch};
+
+        auto const list_json_data = TRY(GetGitHubReleaseJson(scratch, GithubReleaseEndpoint::ListReleases));
+
+        auto const o = json::Parse(list_json_data,
+                                   [&](json::EventHandlerStack& handler_stack, json::Event const& event) {
+                                       if (event.type == json::EventType::ObjectStart) {
+                                           dyn::Append(releases, {});
+                                           dyn::Emplace(handler_stack,
+                                                        ReleaseJsonParser(Last(releases), scratch),
+                                                        handler_stack.allocator);
+                                           Last(handler_stack).HandleEvent(handler_stack, event);
+                                           return true;
+                                       }
+                                       return false;
+                                   },
+                                   scratch,
+                                   {});
+
+        if (o.HasError()) return ErrorCode {CommonError::InvalidFileFormat};
+
+        Optional<GithubRelease> non_beta_release {};
+        for (auto const& r : releases) {
+            if (r.version && !r.version->beta) {
+                non_beta_release = r;
+                break;
+            }
+        }
+        if (!non_beta_release) {
+            LogError(ModuleName::Main,
+                     "Failed to find non-beta release in github releases: {}\n",
+                     list_json_data);
+            return ErrorCode {CommonError::InvalidFileFormat};
+        }
+
+        latest_release = *non_beta_release;
+    }
+
+    {
+        TRY(json::WriteKeyValue(ctx, "latest-stable-release-version", latest_release.version_string));
+        TRY(WriteGithubReleaseData(ctx, latest_release, scratch));
     }
 
     return k_success;
@@ -257,7 +356,7 @@ static ErrorCodeOr<void> WriteParameterData(json::WriteContext& ctx) {
     });
 
     TRY(json::WriteKeyArrayBegin(ctx, "parameters"));
-    
+
     for (auto const& p : descriptors) {
         TRY(json::WriteObjectBegin(ctx));
         TRY(json::WriteKeyValue(ctx, "module", p->ModuleString()));
@@ -266,7 +365,7 @@ static ErrorCodeOr<void> WriteParameterData(json::WriteContext& ctx) {
         TRY(json::WriteKeyValue(ctx, "description", p->tooltip));
         TRY(json::WriteObjectEnd(ctx));
     }
-    
+
     TRY(json::WriteArrayEnd(ctx));
     return k_success;
 }
@@ -275,14 +374,14 @@ static ErrorCodeOr<void> WriteEffectsData(json::WriteContext& ctx) {
     ArenaAllocator scratch {PageAllocator::Instance()};
 
     TRY(json::WriteKeyArrayBegin(ctx, "effects"));
-    
+
     for (auto const& e : k_effect_info) {
         TRY(json::WriteObjectBegin(ctx));
         TRY(json::WriteKeyValue(ctx, "name", e.name));
         TRY(json::WriteKeyValue(ctx, "description", e.description));
         TRY(json::WriteObjectEnd(ctx));
     }
-    
+
     TRY(json::WriteArrayEnd(ctx));
     TRY(json::WriteKeyValue(ctx, "effects-count", fmt::IntToString(k_num_effect_types)));
     return k_success;
@@ -290,12 +389,19 @@ static ErrorCodeOr<void> WriteEffectsData(json::WriteContext& ctx) {
 
 static ErrorCodeOr<void> WriteCCMappingData(json::WriteContext& ctx) {
     ArenaAllocator scratch {PageAllocator::Instance()};
-    DynamicArray<char> text {scratch};
+
+    TRY(json::WriteKeyArrayBegin(ctx, "default-cc-mappings"));
+
     for (auto const& map : k_default_cc_to_param_mapping) {
         auto const& desc = k_param_descriptors[ToInt(map.param)];
-        fmt::Append(text, "- CC {}: {} ({})\n", map.cc, desc.name, desc.ModuleString(" › "));
+        TRY(json::WriteObjectBegin(ctx));
+        TRY(json::WriteKeyValue(ctx, "cc", map.cc));
+        TRY(json::WriteKeyValue(ctx, "name", desc.name));
+        TRY(json::WriteKeyValue(ctx, "module", desc.ModuleString(" › ")));
+        TRY(json::WriteObjectEnd(ctx));
     }
-    TRY(json::WriteKeyValue(ctx, "default-cc-mappings", String(text)));
+
+    TRY(json::WriteArrayEnd(ctx));
     return k_success;
 }
 

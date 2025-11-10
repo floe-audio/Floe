@@ -560,7 +560,6 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                         : 0;
 
                 u32 col_u32 = style::Col(background_fill);
-                if (col_u32) col_u32 = colours::WithAlpha(col_u32, config.background_fill_alpha);
                 if (config.background_fill_auto_hot_active_overlay) {
                     if (is_hot)
                         col_u32 = col_u32 ? style::BlendColours(col_u32, style::k_auto_hot_white_overlay)
@@ -774,8 +773,7 @@ void DrawTextInput(GuiBoxSystem& builder, Box const& box, DrawTextInputConfig co
 
     if (input_result->HasSelection()) {
         imgui::TextInputResult::SelectionIterator it {*builder.imgui.graphics->context};
-        auto const selection_col =
-            colours::ChangeAlpha(style::Col(config.selection_col), config.selection_colour_alpha);
+        auto const selection_col = style::Col(config.selection_col);
         while (auto const r = input_result->NextSelectionRect(it))
             builder.imgui.graphics->AddRectFilled(*r, selection_col);
     }

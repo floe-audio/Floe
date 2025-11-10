@@ -126,8 +126,6 @@ PUBLIC ImageBytes ShrinkImageIfNeeded(ImageBytes image,
                               0,
                               STBIR_RGBA);
 
-    allocator.Free(image.Bytes());
-
     return result;
 }
 

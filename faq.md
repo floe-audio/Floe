@@ -36,7 +36,7 @@ Floe provides a streamlined solution to finding, performing and transforming sam
 
 ### What exactly is Floe?
 
-Floe is an audio plugin (CLAP, VST3, AU) for Windows, macOS and Linux that loads and plays sample libraries in the Floe format. It's a ROMpler or sample-based synthesiser more than a traditional sampler. It's the _platform_ for hosting (and creating) virtual instrument products — typically consisting of sample-based instruments and preset packs.
+Floe is an audio plugin (CLAP, VST3, AU) for Windows, macOS and Linux that loads and plays sample libraries in the Floe format. It's a ROMpler or sample-based synthesiser more than a traditional sampler. It's the _platform_ for hosting (and creating) virtual instrument products — typically consisting of sample-based instruments and preset banks.
 
 ### What differentiates Floe from other sample library host for music-makers?
 

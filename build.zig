@@ -1175,7 +1175,8 @@ pub fn build(b: *std.Build) void {
             .use_as_default = target.query.eql(target_for_compile_commands.query),
         };
 
-        const install_subfolder_string = b.dupe(archAndOsPair(target.result).slice());
+        // Separate output directory when thread sanitizer is enabled to avoid overwriting default binaries
+        const install_subfolder_string = b.fmt("{s}{s}", .{ archAndOsPair(target.result).slice(), if (sanitize_thread) "-tsan" else "" });
         const install_dir = std.Build.InstallDir{ .custom = install_subfolder_string };
         const install_subfolder = std.Build.Step.InstallArtifact.Options.Dir{
             .override = install_dir,
@@ -1207,6 +1208,7 @@ pub fn build(b: *std.Build) void {
             .style = .blank,
         }, .{
             .PRODUCTION_BUILD = build_context.build_mode == .production,
+            .OPTIMISED_BUILD = build_context.optimise != .Debug,
             .RUNTIME_SAFETY_CHECKS_ON = build_context.optimise == .Debug or build_context.optimise == .ReleaseSafe,
             .FLOE_VERSION_STRING = floe_version_string,
             .FLOE_VERSION_HASH = floe_version_hash,
@@ -1739,7 +1741,7 @@ pub fn build(b: *std.Build) void {
                     path ++ "/paths.cpp",
                     path ++ "/persistent_store.cpp",
                     path ++ "/preferences.cpp",
-                    path ++ "/preset_pack_info.cpp",
+                    path ++ "/preset_bank_info.cpp",
                     path ++ "/sample_library/audio_file.cpp",
                     path ++ "/sample_library/sample_library.cpp",
                     path ++ "/sample_library/sample_library_lua.cpp",
@@ -1811,13 +1813,13 @@ pub fn build(b: *std.Build) void {
                     plugin_path ++ "/engine/shared_engine_systems.cpp",
                     plugin_path ++ "/gui/gui.cpp",
                     plugin_path ++ "/gui/gui2_bot_panel.cpp",
-                    plugin_path ++ "/gui/gui2_common_picker.cpp",
-                    plugin_path ++ "/gui/gui2_inst_picker.cpp",
-                    plugin_path ++ "/gui/gui2_ir_picker.cpp",
+                    plugin_path ++ "/gui/gui2_common_browser.cpp",
+                    plugin_path ++ "/gui/gui2_inst_browser.cpp",
+                    plugin_path ++ "/gui/gui2_ir_browser.cpp",
                     plugin_path ++ "/gui/gui2_library_dev_panel.cpp",
                     plugin_path ++ "/gui/gui2_macros.cpp",
                     plugin_path ++ "/gui/gui2_parameter_component.cpp",
-                    plugin_path ++ "/gui/gui2_preset_picker.cpp",
+                    plugin_path ++ "/gui/gui2_preset_browser.cpp",
                     plugin_path ++ "/gui/gui2_save_preset_panel.cpp",
                     plugin_path ++ "/gui/gui2_top_panel.cpp",
                     plugin_path ++ "/gui/gui_button_widgets.cpp",
@@ -3049,8 +3051,38 @@ pub fn build(b: *std.Build) void {
             });
             tests.addCSourceFiles(.{
                 .files = &.{
-                    "src/tests/tests_main.cpp",
                     "src/common_infrastructure/final_binary_type.cpp",
+                    "src/foundation/container/bitset.cpp",
+                    "src/foundation/container/bounded_list.cpp",
+                    "src/foundation/container/circular_buffer.cpp",
+                    "src/foundation/container/dynamic_array.cpp",
+                    "src/foundation/container/function.cpp",
+                    "src/foundation/container/function_queue.cpp",
+                    "src/foundation/container/hash_table.cpp",
+                    "src/foundation/container/optional.cpp",
+                    "src/foundation/container/path_pool.cpp",
+                    "src/foundation/container/tagged_union.cpp",
+                    "src/foundation/error/assert_f.cpp",
+                    "src/foundation/error/error_code.cpp",
+                    "src/foundation/memory/allocators.cpp",
+                    "src/foundation/utils/algorithm.cpp",
+                    "src/foundation/utils/format.cpp",
+                    "src/foundation/utils/geometry.cpp",
+                    "src/foundation/utils/linked_list.cpp",
+                    "src/foundation/utils/maths.cpp",
+                    "src/foundation/utils/memory.cpp",
+                    "src/foundation/utils/path.cpp",
+                    "src/foundation/utils/random.cpp",
+                    "src/foundation/utils/version.cpp",
+                    "src/foundation/utils/writer.cpp",
+                    "src/tests/tests_main.cpp",
+                    "src/utils/error_notifications.cpp",
+                    "src/utils/json/json_reader.cpp",
+                    "src/utils/json/json_writer.cpp",
+                    "src/utils/thread_extra/atomic_queue.cpp",
+                    "src/utils/thread_extra/atomic_ref_list.cpp",
+                    "src/utils/thread_extra/atomic_swap_buffer.cpp",
+                    "src/utils/thread_extra/thread_pool.cpp",
                 },
                 .flags = FlagsBuilder.init(&build_context, target, .{
                     .full_diagnostics = true,

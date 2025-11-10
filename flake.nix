@@ -4,7 +4,6 @@
 {
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
-    nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils = {
       url = "github:numtide/flake-utils";
     };
@@ -15,7 +14,6 @@
     {
       self,
       nixpkgs,
-      nixpkgs-unstable,
       flake-utils,
       zig,
     }:
@@ -23,7 +21,6 @@
       system:
       let
         pkgs = import nixpkgs { inherit system; };
-        pkgs-unstable = import nixpkgs-unstable { inherit system; };
         zigpkgs = zig.packages.${system};
 
         nativeBinSubdir = "zig-out/${builtins.replaceStrings [ "darwin" ] [ "macos" ] system}";
@@ -82,7 +79,6 @@
             };
           };
         };
-
 
         # created using nix-init
         pluginval = pkgs.stdenv.mkDerivation rec {
@@ -172,7 +168,7 @@
               pkgs.hunspellDicts.en_GB-ise
               pkgs.lychee # link checker
               zigpkgs."0.14.0"
-              pkgs-unstable.zls
+              pkgs.zls
               pkgs.sentry-cli
               pkgs.go-httpbin # HTTP testing server
               pkgs.nodejs_24 # For Docusaurus website development

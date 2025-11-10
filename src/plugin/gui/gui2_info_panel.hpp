@@ -6,6 +6,8 @@
 #include "utils/error_notifications.hpp"
 
 #include "engine/check_for_update.hpp"
+#include "gui/gui2_actions.hpp"
+#include "gui/gui2_notifications.hpp"
 #include "gui2_common_modal_panel.hpp"
 #include "gui2_confirmation_dialog_state.hpp"
 #include "gui2_info_panel_state.hpp"
@@ -21,6 +23,7 @@ struct InfoPanelContext {
     prefs::Preferences& prefs;
     Span<sample_lib_server::ResourcePointer<sample_lib::Library>> libraries;
     ThreadsafeErrorNotifications& error_notifications;
+    Notifications& notifications;
     ConfirmationDialogState& confirmation_dialog_state;
 };
 
@@ -156,38 +159,11 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
                     .text = "Uninstall",
                     .tooltip = (String)fmt::Assign(buffer, "Send library '{}' to {}", lib->name, TRASH_NAME),
                 })) {
-            if (auto const dir = path::Directory(lib->path)) {
-                auto cloned_path = Malloc::Instance().Clone(*dir);
-
-                dyn::AssignFitInCapacity(context.confirmation_dialog_state.title, "Delete Library");
-                fmt::Assign(
-                    context.confirmation_dialog_state.body_text,
-                    "Are you sure you want to delete the library '{}'?\n\nThis will move the library folder and all its contents to the {}. You can restore it from there if needed.",
-                    lib->name,
-                    TRASH_NAME);
-
-                context.confirmation_dialog_state.callback = [&error_notifications =
-                                                                  context.error_notifications,
-                                                              cloned_path](ConfirmationDialogResult result) {
-                    DEFER { Malloc::Instance().Free(cloned_path.ToByteSpan()); };
-                    if (result == ConfirmationDialogResult::Ok) {
-                        ArenaAllocatorWithInlineStorage<Kb(1)> scratch_arena {Malloc::Instance()};
-                        auto const outcome = TrashFileOrDirectory(cloned_path, scratch_arena);
-                        auto const error_id = HashMultiple(Array {"library-delete"_s, cloned_path});
-
-                        if (outcome.HasValue()) {
-                            error_notifications.RemoveError(error_id);
-                        } else if (auto item = error_notifications.BeginWriteError(error_id)) {
-                            DEFER { error_notifications.EndWriteError(*item); };
-                            item->title = "Failed to send library to trash"_s;
-                            item->error_code = outcome.Error();
-                        }
-                    }
-                };
-
-                context.confirmation_dialog_state.open = true;
-                state.open = false;
-            }
+            UninstallSampleLibrary(*lib,
+                                   context.confirmation_dialog_state,
+                                   context.error_notifications,
+                                   context.notifications);
+            state.open = false;
         }
     }
 
@@ -238,7 +214,7 @@ static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, 
 
         if (TextButton(box_system,
                        button_box,
-                       {.text = "Website & Manual", .tooltip = (String)FLOE_HOMEPAGE_URL}))
+                       {.text = "Website & Documentation", .tooltip = (String)FLOE_HOMEPAGE_URL}))
             OpenUrlInBrowser(FLOE_HOMEPAGE_URL);
 
         if (TextButton(box_system,

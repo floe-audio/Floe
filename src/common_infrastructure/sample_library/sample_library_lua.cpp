@@ -1498,7 +1498,7 @@ struct TableFields<Library> {
                 return {
                     .name = "background_image_path",
                     .description_sentence =
-                        "Path relative to this script for the background image. It should be a jpg or png.",
+                        "Path relative to this script for the background image. It should be a jpg or png. Look at Floe's 'Develop Libraries' docs for recommended specs.",
                     .example = "Images/background.jpg",
                     .lua_type = LUA_TSTRING,
                     .required = false,

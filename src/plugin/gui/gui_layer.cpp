@@ -9,7 +9,7 @@
 #include "engine/loop_modes.hpp"
 #include "gui.hpp"
 #include "gui/gui_menu.hpp"
-#include "gui2_inst_picker.hpp"
+#include "gui2_inst_browser.hpp"
 #include "gui_button_widgets.hpp"
 #include "gui_curve_map.hpp"
 #include "gui_dragger_widgets.hpp"
@@ -76,8 +76,8 @@ static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
     DoInstSelectorRightClickMenu(g, r, layer);
 
     if (buttons::Button(g, imgui_id, r, inst_name, buttons::InstSelectorPopupButton(g->imgui, icon_tex))) {
-        g->inst_picker_state[layer].common_state.open = true;
-        g->inst_picker_state[layer].common_state.absolute_button_rect = g->imgui.WindowRectToScreenRect(r);
+        g->inst_browser_state[layer].common_state.open = true;
+        g->inst_browser_state[layer].common_state.absolute_button_rect = g->imgui.WindowRectToScreenRect(r);
     }
 
     Tooltip(
@@ -1017,7 +1017,7 @@ void Draw(Gui* g,
                             selector_left_r,
                             ICON_FA_CARET_LEFT,
                             buttons::IconButton(g->imgui))) {
-            InstPickerContext context {
+            InstBrowserContext context {
                 .layer = *layer,
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
@@ -1030,14 +1030,14 @@ void Draw(Gui* g,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
-            LoadAdjacentInstrument(context, g->inst_picker_state[layer->index], SearchDirection::Backward);
+            LoadAdjacentInstrument(context, g->inst_browser_state[layer->index], SearchDirection::Backward);
         }
         if (buttons::Button(g,
                             selector_right_id,
                             selector_right_r,
                             ICON_FA_CARET_RIGHT,
                             buttons::IconButton(g->imgui))) {
-            InstPickerContext context {
+            InstBrowserContext context {
                 .layer = *layer,
                 .sample_library_server = g->shared_engine_systems.sample_library_server,
                 .library_images = g->library_images,
@@ -1050,7 +1050,7 @@ void Draw(Gui* g,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
-            LoadAdjacentInstrument(context, g->inst_picker_state[layer->index], SearchDirection::Forward);
+            LoadAdjacentInstrument(context, g->inst_browser_state[layer->index], SearchDirection::Forward);
         }
         {
             auto rand_id = g->imgui.GetID("Rand");
@@ -1060,7 +1060,7 @@ void Draw(Gui* g,
                                 rand_r,
                                 ICON_FA_SHUFFLE,
                                 buttons::IconButton(g->imgui).WithRandomiseIconScaling())) {
-                InstPickerContext context {
+                InstBrowserContext context {
                     .layer = *layer,
                     .sample_library_server = g->shared_engine_systems.sample_library_server,
                     .library_images = g->library_images,
@@ -1073,7 +1073,7 @@ void Draw(Gui* g,
                 };
                 context.Init(g->scratch_arena);
                 DEFER { context.Deinit(); };
-                LoadRandomInstrument(context, g->inst_picker_state[layer->index]);
+                LoadRandomInstrument(context, g->inst_browser_state[layer->index]);
             }
             Tooltip(g,
                     rand_id,

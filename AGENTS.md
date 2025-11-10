@@ -7,7 +7,7 @@ This is the Floe repository, an audio plugin written in C++ and built using the 
 
 Floe, at it's core, is a CLAP plugin, a modern alternative to APIs such as VST3. CLAP is documented in the C header files that make up its interface. See the dependencies section below for where to find the CLAP source code.
 
-Additionally, this repository contains Floe's website in the subdirectory `website/`, built using Docusaurus.
+Additionally, this repository contains Floe's website in the subdirectory `website/`, built using Docusaurus. We have 2 release channels: **stable** and **beta**. We use Docusaurus' versioning feature to maintain separate documentation for each channel. `website/docs` contains the beta documentation, and `website/versioned_docs/version-stable` contains the stable documentation. We use the command justfile recipe `website-promote-beta-to-stable` to promote the beta website to stable.
 
 # Commands
 Building is done inside a Nix flake shell. You can use `nix develop` to enter the shell. Or to run a command inside a shell (normally recommended), use `nix develop --command <command>`. All these commands should be prefixed with `nix develop --command` if you're not already in the shell:
@@ -45,7 +45,7 @@ We extensively use Github issues to track work. Use `gh` to query and manage iss
 
 - **Priority labels**: `priority/urgent` (blocking users or critical bug - ship ASAP), `priority/high` (significant impact - next release), `priority/medium` (valuable improvement - plan soon), `priority/low` (nice-to-have - when capacity allows)
 - **Effort labels**: `effort/small` (~1-4 hours), `effort/medium` (~0.5-1 day), `effort/large` (~2-3 days), `effort/extra-large` (~1 week or needs breakdown)
-- `awaiting-release` - for issues fixed but not yet released. Issues should be closed and tagged with this label.
+- `awaiting-release` - for issues fixed but not yet released, they're tagged with this then closed when the release occurs
 - `needs-repro` - needs investigation work to reproduce the issue
 - `needs-design` - needs thinking and design before beginning writing code
 
