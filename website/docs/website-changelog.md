@@ -20,7 +20,7 @@ These are the changes made to the Floe website.
   - All layer parameters 
   - Randomisation
   - File locations
-- Added separate documentation for stable and beta versions of Floe - choose your version using the dropdown at the top of the [docs page](/docs).
+- Added separate documentation for stable and beta versions of Floe - choose your version using the dropdown at the top of the docs.
 
 ## October 4th 2025
 Entirely redesigned website.
