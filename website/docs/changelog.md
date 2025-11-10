@@ -31,6 +31,7 @@ For instance: 0.0.1. Don't change the headings.
 - Increase threads for loading audio up to 75% of CPU cores instead of maximum of 4.
 - Fix silent output in Ableton Live 10
 - Fix rare startup crash (#179)
+- Add 'Include beta version when checking for updates' preference
 
 ## 1.0.6
 - Add Reset Audio Engine to the menu for stopping all sound and voices
