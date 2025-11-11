@@ -134,6 +134,13 @@
   padding: 4rem 0;
 }
 
+.coreAspectsSection h2 {
+  font-size: 2.25rem;
+  margin-bottom: 2.5rem;
+  text-align: center;
+  color: var(--ifm-heading-color);
+}
+
 .sectionHeading {
   font-size: 2.5rem;
   text-align: center;
@@ -195,6 +202,65 @@
   line-height: 1.7;
   color: var(--ifm-color-content);
   text-align: left;
+}
+
+/* Core Values Section */
+.coreValuesSection {
+  padding: 4rem 0;
+}
+
+.coreValuesSection h2 {
+  font-size: 2.25rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  color: var(--ifm-heading-color);
+}
+
+.coreValuesGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 3.5rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.coreValueItem {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 0rem;
+  transition: all 0.3s ease;
+}
+
+.coreValueItem:hover {
+  transform: translateY(-4px);
+}
+
+
+.coreValueContent {
+  flex: 1;
+}
+
+.coreValueItem h3 {
+  font-size: 1.5rem;
+  margin-bottom: 0.75rem;
+  margin-top: 0rem;
+  color: var(--ifm-heading-color);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.coreValueItem p {
+  line-height: 1.6;
+  color: var(--ifm-color-content);
+  margin: 0;
+}
+
+.coreValueIcon {
+  font-size: 3rem;
+  color: var(--ifm-color-primary);
+  opacity: 0.8;
+  flex-shrink: 0;
 }
 
 /* Ecosystem Section */
@@ -332,6 +398,13 @@
 /* Highlight Section */
 .highlightSection {
   padding: 4rem 0;
+}
+
+.highlightSection h2 {
+  font-size: 2.25rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  color: var(--ifm-heading-color);
 }
 
 .highlightGrid {
@@ -489,6 +562,20 @@
   
   .highlightGrid {
     grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+  
+  .coreValueItem {
+    flex-direction: column !important;
+    text-align: center !important;
+    gap: 1rem;
+  }
+  
+  .coreValueItem:hover {
+    transform: translateY(-4px) !important;
+  }
+  
+  .coreValuesGrid {
     gap: 2rem;
   }
   

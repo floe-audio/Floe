@@ -78,7 +78,7 @@ function OpenSourceSection() {
     return (
         <section className={styles.openSourceSection}>
             <div className="container">
-                <Heading as="h2">Why open-source?</Heading>
+                <Heading as="h2">Protected creative freedom</Heading>
                 <p>
                     Floe is built as open-source software (GPL licensed), meaning its code is freely available for anyone to see and improve. This isn't solely a technical choice — it reflects our values while simultaneously offering real benefits for your music-making workflow.
                 </p>
@@ -92,7 +92,7 @@ function OpenSourceSection() {
                 </p>
 
                 <p>
-                    <strong>Aligned incentives.</strong> Being open source means we can't rely on lock-in or artificial limitations—if we did, developers could fork the code or users could switch. We succeed only by making Floe genuinely useful for your music, which keeps our interests aligned with yours rather than opposed to them.
+                    <strong>Aligned incentives.</strong> Being open source means we can't rely on lock-in or artificial limitations — if we did, developers could fork the code or users could switch. We succeed only by making Floe genuinely useful for your music, which keeps our interests aligned with yours rather than opposed to them.
                 </p>
             </div>
         </section>
@@ -104,7 +104,7 @@ export default function Home() {
     return (
         <>
             <Layout
-                title="Floe: Sample Library Platform"
+                title="Sample Library Platform"
                 description="Floe empowers you to find the perfect sound across all your libraries, perform with expressive control, and transform samples beyond their natural boundaries. Free, open-source audio plugin for Windows, macOS and Linux."
                 wrapperClassName="homepage-layout">
                 <HeroSection />
@@ -123,6 +123,8 @@ export default function Home() {
                 {/* Three key aspects: Find, Perform, Transform */}
                 <section className={styles.coreAspectsSection}>
                     <div className="container">
+                        <Heading as="h2">Floe's Workflow</Heading>
+
                         <div className={styles.aspectsGrid}>
                             <div className={styles.aspectItem}>
                                 <div className={styles.aspectImageContainer}>
@@ -151,7 +153,7 @@ export default function Home() {
                                 <div className={styles.aspectContent}>
                                     <h3>Perform</h3>
                                     <p>
-                                        Every library shares the same intuitive interface. Velocity, modulation, and pitch bend work as expected. Comprehensive preset systems and macro controls put sound customization at your fingertips, letting you shape sounds with ease.
+                                        Expressively play sample-based instruments: velocity, modulation, and pitch bend work as expected. Use MIDI controllers, DAW automation and Floe's macro knobs to further create lively performances.
                                     </p>
                                 </div>
                             </div>
@@ -167,7 +169,66 @@ export default function Home() {
                                 <div className={styles.aspectContent}>
                                     <h3>Transform</h3>
                                     <p>
-                                        Take sounds beyond their natural boundaries. Layer instruments across libraries, sculpt with loop and crossfade controls that bridge multisampling and synthesis, then process through built-in effects. Start with rich timbres and shape from there.
+                                        Take sounds beyond their natural boundaries. Layer instruments across libraries, sculpt with loop and crossfade controls that bridge multisampling and synthesis, then process through built-in effects.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Core Values section */}
+                <section className={styles.coreValuesSection}>
+                    <div className="container">
+                        <Heading as="h2">Key Benefits</Heading>
+
+                        <div className={styles.coreValuesGrid}>
+                            <div className={styles.coreValueItem}>
+                                <div className={styles.coreValueIcon}>🎛️</div>
+                                <div className={styles.coreValueContent}>
+                                    <h3>Layer across libraries</h3>
+                                    <p>
+                                        Break free from single-library limitations. Floe's 3-layer architecture lets you blend instruments from completely different sample libraries, creating rich, complex textures.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className={styles.coreValueItem}>
+                                <div className={styles.coreValueIcon}>🎚️</div>
+                                <div className={styles.coreValueContent}>
+                                    <h3>Sample-based synthesis, not just playback</h3>
+                                    <p>
+                                        More than a sample player — Floe features synthesis capabilities with filters, envelopes, LFOs, and crossfade controls. Take sounds beyond their natural boundaries, creating textures impossible with the original recordings.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className={styles.coreValueItem}>
+                                <div className={styles.coreValueIcon}>🔊</div>
+                                <div className={styles.coreValueContent}>
+                                    <h3>Professional effects rack</h3>
+                                    <p>
+                                        Shape your sound with 10 high-quality effects in customizable order, including pro-standard reverb and delay. Each layer processes individually before flowing through the shared effects chain.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className={styles.coreValueItem}>
+                                <div className={styles.coreValueIcon}>📁</div>
+                                <div className={styles.coreValueContent}>
+                                    <h3>Works with your workflow</h3>
+                                    <p>
+                                        Flexible folder management adapts to your organization, supports external drives, and instantly detects changes. No rigid requirements — Floe allows you to manage files your way.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className={styles.coreValueItem}>
+                                <div className={styles.coreValueIcon}>🎵</div>
+                                <div className={styles.coreValueContent}>
+                                    <h3>No accounts, no subscriptions, no interruptions</h3>
+                                    <p>
+                                        Focus entirely on your creative process. Floe works offline, respects your privacy, and never interrupts your workflow with authentication prompts or payment reminders.
                                     </p>
                                 </div>
                             </div>
@@ -203,6 +264,8 @@ export default function Home() {
 
                 <section className={styles.highlightSection}>
                     <div className="container">
+                        <Heading as="h2">About Floe</Heading>
+
                         <div className={styles.highlightGrid}>
                             <div className={styles.highlightItem}>
                                 <div className={styles.iconContainer}>
@@ -216,8 +279,8 @@ export default function Home() {
                                 <div className={styles.iconContainer}>
                                     <FontAwesomeIcon icon={faSeedling} />
                                 </div>
-                                <h3><em>Complete</em> but not <em>completed</em></h3>
-                                <p>Floe already contains all the essential parts of a great product, but it's built for continuous refinement and expansion over time. We have ambitious goals for the project while maintaining a commitment to backwards compatibility. Help us along the way by giving us your feedback.</p>
+                                <h3>Built for evolution</h3>
+                                <p>Floe's architecture is designed for extensibility and growth. Every feature addition maintains backward compatibility with your existing DAW projects, libraries, and presets, ensuring your creative investments remain protected as the platform evolves.</p>
                             </div>
 
                             <div className={styles.highlightItem}>
@@ -232,8 +295,8 @@ export default function Home() {
                                 <div className={styles.iconContainer}>
                                     <FontAwesomeIcon icon={faBalanceScale} />
                                 </div>
-                                <h3>Sustainable and honest business model</h3>
-                                <p>Floe follows a proven model used by professional platforms: the plugin is free, while sample libraries are often paid products. This approach lets us sustain development of a powerful, open-source tool trusted by the community, while offering advanced libraries through partners like FrozenPlain.</p>
+                                <h3>Sustainable business</h3>
+                                <p>The plugin is free, sample libraries vary by creator — some free, some paid. This established industry model sustains ongoing development through paid library partnerships while keeping the core platform accessible to everyone.</p>
                             </div>
                         </div>
                     </div>
