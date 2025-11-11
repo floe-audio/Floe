@@ -1,0 +1,202 @@
+# Copyright 2024 Sam Windell
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+env:
+  SENTRY_DSN: ${{ secrets.SENTRY_DSN_PRODUCTION }}
+
+jobs:
+  build-windows:
+    runs-on: ubuntu-latest # NOTE: we don't actually use Windows
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      WINDOWS_CODESIGN_CERT_PFX: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX }}
+      WINDOWS_CODESIGN_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/flakehub-cache-action@main
+      - uses: nicknovitski/nix-develop@v1.1.0
+      - uses: Hanaasagi/zig-action-cache@master
+
+      - run: |
+          just build-release windows
+
+      - run: just windows-prepare-release
+
+      - name: 'get release dir from just'
+        run: |
+          export RELEASE_DIR=$(just --evaluate release_files_dir)
+          echo "RELEASE_DIR=${RELEASE_DIR}" >> $GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-windows
+          if-no-files-found: error
+          path: ${{ env.RELEASE_DIR }}
+
+  build-linux:
+    runs-on: ubuntu-22.04 
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/flakehub-cache-action@main
+      - uses: nicknovitski/nix-develop@v1.1.0
+      - uses: Hanaasagi/zig-action-cache@master
+
+      - run: |
+          just build-release linux
+
+      - run: just linux-prepare-release
+
+      - name: 'get release dir from just'
+        run: |
+          export RELEASE_DIR=$(just --evaluate release_files_dir)
+          echo "RELEASE_DIR=${RELEASE_DIR}" >> $GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-linux
+          if-no-files-found: error
+          path: ${{ env.RELEASE_DIR }}
+
+  build-macos:
+    runs-on: macos-14
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/flakehub-cache-action@main
+      - uses: nicknovitski/nix-develop@v1.1.0
+      - uses: Hanaasagi/zig-action-cache@master
+
+      - run: |
+          just build-release mac_arm
+          just build-release mac_x86
+
+      - uses: apple-actions/import-codesign-certs@v3
+        with: 
+          p12-file-base64: ${{ secrets.MACOS_DEV_CERTS_P12 }}
+          p12-password: ${{ secrets.MACOS_DEV_CERTS_P12_PASSWORD }}
+
+      - run: just macos-prepare-release
+        env:
+          MACOS_DEV_ID_INSTALLER_NAME: ${{ secrets.MACOS_DEV_ID_INSTALLER_NAME }}
+          MACOS_DEV_ID_APP_NAME: ${{ secrets.MACOS_DEV_ID_APP_NAME }}
+          MACOS_NOTARIZATION_USERNAME: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
+          MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
+          MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
+
+      - name: 'get release dir from just'
+        run: |
+          export RELEASE_DIR=$(just --evaluate release_files_dir)
+          echo "RELEASE_DIR=${RELEASE_DIR}" >> $GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-macos
+          if-no-files-found: error
+          path: ${{ env.RELEASE_DIR }}
+
+  deploy:
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write # Allow workflow dispatch for website deployment
+      issues: write # Allow commenting, labeling, and closing issues
+    env:
+      RELEASE_ARTIFACTS_FOLDER: release_artifacts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: taiki-e/install-action@just
+
+      - name: 'Set Env'
+        run: |
+          export VERSION=$(cat version.txt)
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          
+          # Check if version is a prerelease (contains - followed by prerelease identifier)
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-.+ ]]; then
+            echo "PRERELEASE=true" >> $GITHUB_ENV
+          else
+            echo "PRERELEASE=false" >> $GITHUB_ENV
+          fi
+          
+          just echo-latest-changes > latest_changes.md
+
+          mkdir -p "$RELEASE_ARTIFACTS_FOLDER"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: final-*
+          path: ${{ env.RELEASE_ARTIFACTS_FOLDER }}
+          merge-multiple: true
+
+      - uses: ncipollo/release-action@v1
+        with:
+          artifactErrorsFailBuild: true
+          artifacts: "${{ env.RELEASE_ARTIFACTS_FOLDER }}/*"
+          name: Release v${{ env.VERSION }}
+          tag: v${{ env.VERSION }}
+          prerelease: ${{ env.PRERELEASE }}
+          bodyFile: latest_changes.md
+
+      - name: Create Sentry release
+        uses: getsentry/action-release@v3
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        with:
+          release: floe@${{ env.VERSION }}
+
+      - name: Clean up awaiting-release labels
+        run: just close-released-issues ${{ env.VERSION }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trigger website deployment
+        if: success()
+        run: |
+          gh workflow run deploy-website.yml --ref main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - if: '!cancelled()'
+        run: |
+          icon=""
+          if [ "${{ job.status }}" == "success" ]; then
+            icon="✅"
+          else
+            icon="❌"
+          fi
+          status="$icon Floe release v${{ env.VERSION }}: ${{ job.status }}"
+          curl -d "$status" "ntfy.sh/${{ secrets.NTFY_RELEASE_URL }}"
+

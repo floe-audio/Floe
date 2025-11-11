@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?><?xml-stylesheet type="text/xsl" href="rss.xsl"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+    <channel>
+        <title>Floe Blog</title>
+        <link>https://floe.audio/blog</link>
+        <description>Floe Blog</description>
+        <lastBuildDate>Thu, 06 Nov 2025 00:00:00 GMT</lastBuildDate>
+        <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
+        <generator>https://github.com/jpmonette/feed</generator>
+        <language>en</language>
+        <item>
+            <title><![CDATA[v1.1 Beta: Improved Browsers]]></title>
+            <link>https://floe.audio/blog/first-beta-1-1-0</link>
+            <guid>https://floe.audio/blog/first-beta-1-1-0</guid>
+            <pubDate>Thu, 06 Nov 2025 00:00:00 GMT</pubDate>
+            <description><![CDATA[Try the new beta release of Floe 1.1 with overhauled browsers and expanded documentation.]]></description>
+            <content:encoded><![CDATA[<p>We've overhauled the browser panels for a more streamlined experience and expanded the documentation. Download the beta now and give us your feedback.</p>
+<h2 class="anchor anchorWithStickyNavbar_LWe7" id="about-the-update">About the update<a href="https://floe.audio/blog/first-beta-1-1-0#about-the-update" class="hash-link" aria-label="Direct link to About the update" title="Direct link to About the update" translate="no">​</a></h2>
+<p>Floe version 1.1 focuses on fixing the most common pain-points that users have reported:</p>
+<ul>
+<li>The unintuitiveness of the presets, instruments, and impulse response browsers</li>
+<li>Unclear documentation and installation instructions</li>
+</ul>
+<p>We're happy to report that we've made significant improvements in both these areas, as detailed in the sections below.</p>
+<h2 class="anchor anchorWithStickyNavbar_LWe7" id="try-it-today">Try it today<a href="https://floe.audio/blog/first-beta-1-1-0#try-it-today" class="hash-link" aria-label="Direct link to Try it today" title="Direct link to Try it today" translate="no">​</a></h2>
+<p>These changes are available today as a beta version ahead of the stable version that will follow later. Give <strong>1.1.0-beta.1</strong> a try by downloading it from the <a href="https://floe.audio/download">Floe downloads page</a>.</p>
+<p>Read all about our beta testing process on the <a href="https://floe.audio/docs/about-the-project/beta-testing">beta testing information page</a>.</p>
+<p>Please be aware that beta releases have a higher chance to contain bugs. They're not typically recommended for use in production projects. However, you can easily switch between stable and beta versions by installing the desired version over the top of your existing installation. Your settings, libraries, and presets will always be preserved.</p>
+<h2 class="anchor anchorWithStickyNavbar_LWe7" id="wed-love-your-feedback">We'd love your feedback<a href="https://floe.audio/blog/first-beta-1-1-0#wed-love-your-feedback" class="hash-link" aria-label="Direct link to We'd love your feedback" title="Direct link to We'd love your feedback" translate="no">​</a></h2>
+<p>Your input is crucial to help us refine these new features before the stable release. Here are some specific areas where your feedback would be especially valuable:</p>
+<ul>
+<li>Load Floe and try to load a preset using the new browser - did this feel easier than before?</li>
+<li>Try filtering the presets list to something specific (a preset bank, tag or folder) - did the behaviour of using the left panel to select filters and seeing the result on the right panel make sense?</li>
+<li>Try to find multi-select filtering, either AND or OR modes - was it easy to find, and did it work as you expected?</li>
+<li>Try navigating the browsers using only your keyboard - were you able to do everything you wanted?</li>
+<li>Does the new feature to mark an item as a 'favourite' provide value to you?</li>
+</ul>
+<p>Furthermore, it would be good to know if the 'uninstall' function for libraries and preset banks worked as expected for you.</p>
+<p>We have a dedicated Github discussion where you can share your thoughts: <a href="https://github.com/floe-audio/Floe/discussions/217" target="_blank" rel="noopener noreferrer">Feedback for Floe 1.1.0-beta.1</a>. Alternatively, you can reach out via email, social media, or <a href="https://forum.frozenplain.com/t/floe" target="_blank" rel="noopener noreferrer">FrozenPlain's forum</a>.</p>
+<h2 class="anchor anchorWithStickyNavbar_LWe7" id="whats-new-in-110-beta1">What's new in 1.1.0-beta.1<a href="https://floe.audio/blog/first-beta-1-1-0#whats-new-in-110-beta1" class="hash-link" aria-label="Direct link to What's new in 1.1.0-beta.1" title="Direct link to What's new in 1.1.0-beta.1" translate="no">​</a></h2>
+<h3 class="anchor anchorWithStickyNavbar_LWe7" id="browser-overhaul">Browser overhaul<a href="https://floe.audio/blog/first-beta-1-1-0#browser-overhaul" class="hash-link" aria-label="Direct link to Browser overhaul" title="Direct link to Browser overhaul" translate="no">​</a></h3>
+<p>The browsers for presets, instruments, and impulse responses have been redesigned for a much smoother and more intuitive experience.</p>
+<p>See the new <a href="https://floe.audio/docs/beta/key-concepts/browsers">comprehensive usage page for the browsers</a> that explains all the features in detail.</p>
+<p>Before:
+<img decoding="async" loading="lazy" alt="Old browser UI" src="https://floe.audio/assets/images/inst-browser-1.0.0-a66b1a34cd7bedb1c5332ec29c7515fa.png" width="814" height="828" class="img_ev3q"></p>
+<p>After:
+<img decoding="async" loading="lazy" alt="New browser UI" src="https://floe.audio/assets/images/browser-multi-select-or-4a8395df092149499fb48c41c5b8fe07.png" width="901" height="923" class="img_ev3q"></p>
+<p>Key improvements include:</p>
+<ul>
+<li>New 'cards' for sample libraries and preset banks. Cards show more information at a glance, they have unique visuals, and contain the associated folder hierarchy.</li>
+<li>The default mode for filters is now single-select, simplifying the common case for most users. Multi-select mode for 'Match All' and 'Match Any' are still available via a menu, and now called 'OR' and 'AND' modes.</li>
+<li>Selected filters now show as little pill-shaped tags above the results, making it easy to see and remove active filters.</li>
+<li>Full keyboard navigation support: use arrow keys and enter, along with home, end, page up, and page down, CTRL/CMD + up/down to jump sections, and tab to shift focus between the filter area and results.</li>
+<li>More compact layout overall. And for instruments, the separate tabs for Floe, Mirage or Waveforms have been combined into a single view.</li>
+</ul>
+<h3 class="anchor anchorWithStickyNavbar_LWe7" id="favourites">Favourites<a href="https://floe.audio/blog/first-beta-1-1-0#favourites" class="hash-link" aria-label="Direct link to Favourites" title="Direct link to Favourites" translate="no">​</a></h3>
+<p>The new browsers support favouriting presets, instruments, and impulse responses. Simply click on the star icon on any item, and then use the <em>Favourites</em> filter to quickly access your preferred items.</p>
+<h3 class="anchor anchorWithStickyNavbar_LWe7" id="uninstall-libraries-and-presets">Uninstall libraries and presets<a href="https://floe.audio/blog/first-beta-1-1-0#uninstall-libraries-and-presets" class="hash-link" aria-label="Direct link to Uninstall libraries and presets" title="Direct link to Uninstall libraries and presets" translate="no">​</a></h3>
+<p>You can now uninstall sample libraries and preset banks directly from within Floe. In the browsers, right-click on any library card or preset bank card to see the <em>Uninstall</em> option. For libraries, you can also uninstall them from the Info panel.</p>
+<p>Our expanded <a href="https://floe.audio/docs/beta/installation/uninstalling">uninstalling documentation</a> explains the process in detail.</p>
+<h3 class="anchor anchorWithStickyNavbar_LWe7" id="other-changes">Other changes<a href="https://floe.audio/blog/first-beta-1-1-0#other-changes" class="hash-link" aria-label="Direct link to Other changes" title="Direct link to Other changes" translate="no">​</a></h3>
+<ul>
+<li>Bug fixes</li>
+<li>Faster loading of audio data</li>
+<li>Faster loading of background images</li>
+<li>New concept of Preset Banks</li>
+</ul>
+<p>See further details in the <a href="https://floe.audio/docs/beta/changelog">changelog</a>.</p>
+<h2 class="anchor anchorWithStickyNavbar_LWe7" id="expanded-documentation">Expanded documentation<a href="https://floe.audio/blog/first-beta-1-1-0#expanded-documentation" class="hash-link" aria-label="Direct link to Expanded documentation" title="Direct link to Expanded documentation" translate="no">​</a></h2>
+<p>Along with the beta release, we've massively improved the documentation for Floe. We've filled in gaps and added new sections that guide you through key concepts alongside the existing reference material. These documentation improvements are often related to Floe's beta features and so are only visible in the <em>Beta</em> rather than <em>Stable</em> documentation (the dropdown in the top-right corner of the website).</p>
+<ul>
+<li><a href="https://floe.audio/docs/beta/key-concepts/components">Components</a>: understand key parts of Floe such as packages, libraries, and presets.</li>
+<li><a href="https://floe.audio/docs/beta/key-concepts/folders">Folders</a>: expanded and improved explanations of Floe's folders for libraries and presets.</li>
+<li><a href="https://floe.audio/docs/beta/key-concepts/general-usage">Core usage tips</a>: tips and general usage tips for using Floe effectively.</li>
+<li><a href="https://floe.audio/docs/beta/reference/file-locations">File locations</a>: detailed information about where Floe stores its files on your system.</li>
+<li><a href="https://floe.audio/docs/beta/usage/layers">Layer parameters</a>: added documentation for all layer parameters.</li>
+<li><a href="https://floe.audio/docs/beta/usage/randomisation">Randomisation</a>: new documentation explaining how randomisation works in Floe.</li>
+<li><a href="https://floe.audio/docs/beta/installation/install-packages">Improved 'Install packages' documentation</a>: new video and further info.</li>
+</ul>
+<h2 class="anchor anchorWithStickyNavbar_LWe7" id="beta-vs-stable">Beta vs stable<a href="https://floe.audio/blog/first-beta-1-1-0#beta-vs-stable" class="hash-link" aria-label="Direct link to Beta vs stable" title="Direct link to Beta vs stable" translate="no">​</a></h2>
+<p>We have added infrastructure to release beta versions of Floe alongside stable releases:</p>
+<ul>
+<li>On the website, there's now the ability to switch between stable and beta documentation using a dropdown in the top right corner.</li>
+<li>There's a new option on Floe's preferences for <em>Include beta version when checking for updates</em>, which allows users to receive notifications about beta releases.</li>
+<li>The <a href="https://floe.audio/docs/beta/about-the-project/beta-testing">beta testing information page</a> has been expanded to explain all the details.</li>
+</ul>]]></content:encoded>
+        </item>
+        <item>
+            <title><![CDATA[New Website, Better Discovery]]></title>
+            <link>https://floe.audio/blog/new-website</link>
+            <guid>https://floe.audio/blog/new-website</guid>
+            <pubDate>Tue, 14 Oct 2025 00:00:00 GMT</pubDate>
+            <description><![CDATA[We've launched a new website for Floe with improved navigation, a dedicated packages directory, and a blog section to keep you updated on development.]]></description>
+            <content:encoded><![CDATA[<p>Welcome to the new website with improved navigation, a dedicated packages directory, and this blog section. The redesigned site makes it easier to discover content and stay updated on Floe's development.</p>
+<p>Whilst the primary motivation for this redesign was infrastructure for enabling beta releases of Floe for better user testing, it also provided an opportunity to improve many other aspects.</p>
+<h2 class="anchor anchorWithStickyNavbar_LWe7" id="key-additions">Key additions<a href="https://floe.audio/blog/new-website#key-additions" class="hash-link" aria-label="Direct link to Key additions" title="Direct link to Key additions" translate="no">​</a></h2>
+<p>The <a href="https://floe.audio/">homepage</a> now does a better job explaining what Floe is and why someone might want to use it.</p>
+<p>The <a href="https://floe.audio/docs/getting-started/quick-start-guide">documentation</a> remains comprehensive but is now part of a more cohesive overall experience.</p>
+<p>We've also enhanced our <a href="https://floe.audio/packages">packages directory</a> showcasing available Floe libraries and content. This page represents a big step in growing the potential for Floe as a platform. Whether you want to download a single library or explore many different creators' work, having a central place to discover quality content makes the whole experience more straightforward.</p>
+<p>As a slight aside: the packages page highlights both community contributions and professional libraries. For those interested selling sample libraries, FrozenPlain offers partnerships that handle the business side of selling sample libraries - payment processing, marketing, and distribution - so creators can focus on making great content.</p>
+<p>This <a href="https://floe.audio/blog">new blog section</a> will be used to share updates on Floe's development.</p>
+<p>Finally, the <a href="https://floe.audio/download">download</a> page has been simplified to focus on what matters most, with more detailed instructions moved to the documentation.</p>
+<h2 class="anchor anchorWithStickyNavbar_LWe7" id="looking-ahead">Looking ahead<a href="https://floe.audio/blog/new-website#looking-ahead" class="hash-link" aria-label="Direct link to Looking ahead" title="Direct link to Looking ahead" translate="no">​</a></h2>
+<p>We're working on significant improvements to Floe itself. The browser (where you browse and select sounds) is getting major updates based on user feedback. We're also developing a beta release system that will make it easier for users to access new features as they're developed, and I'm personally working on new sample library content for FrozenPlain.</p>
+<h2 class="anchor anchorWithStickyNavbar_LWe7" id="technical-details">Technical details<a href="https://floe.audio/blog/new-website#technical-details" class="hash-link" aria-label="Direct link to Technical details" title="Direct link to Technical details" translate="no">​</a></h2>
+<p>For those curious about the behind-the-scenes work: we migrated from mdbook to Docusaurus to better support both documentation and interactive website features.</p>
+<p>The old system struggled with dynamic elements like our download page that automatically detects your operating system and shows the right download links. Docusaurus gives us the flexibility to build these user-friendly features using the full, industry-standard power of React, while keeping documentation simple to maintain in markdown format.</p>]]></content:encoded>
+        </item>
+    </channel>
+</rss>

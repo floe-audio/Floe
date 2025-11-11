@@ -1,0 +1,80 @@
+# Copyright 2025 Sam Windell
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+name: Deploy Website
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/flakehub-cache-action@main
+      - uses: nicknovitski/nix-develop@v1.2.1
+      - uses: Hanaasagi/zig-action-cache@master
+
+      - run: just build
+      - run: just website-generate
+
+      - name: Add /api/v1/version route
+        run: |
+          mkdir -p website/static/api/v1
+          
+          # Get latest stable release (exclude prereleases)
+          latest_stable=$(gh release list --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // ""' | sed 's/^v//')
+          
+          # Get latest release regardless of prerelease status
+          latest_edge=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // ""' | sed 's/^v//')
+          
+          # Fallback to version.txt if no releases found
+          if [ -z "$latest_stable" ]; then
+            latest_stable=$(cat version.txt)
+          fi
+          if [ -z "$latest_edge" ]; then
+            latest_edge=$(cat version.txt)
+          fi
+          
+          cat > website/static/api/v1/version << EOF
+          latest=$latest_stable
+          edge=$latest_edge
+          EOF
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Node.js dependencies
+        run: |
+          cd website
+          npm ci
+
+      - name: Build Docusaurus site
+        run: just website-build
+
+      - name: Deploy GitHub Pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git worktree add gh-pages
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          cd gh-pages
+          # Delete the ref to avoid keeping history.
+          git update-ref -d refs/heads/gh-pages
+          rm -rf *
+          mv ../website/build/* .
+          git add .
+          git commit -m "Deploy $GITHUB_SHA to gh-pages"
+          git push --force --set-upstream origin gh-pages
