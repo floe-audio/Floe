@@ -127,6 +127,7 @@ jobs:
     permissions:
       contents: write
       actions: write # Allow workflow dispatch for website deployment
+      issues: write # Allow commenting, labeling, and closing issues
     env:
       RELEASE_ARTIFACTS_FOLDER: release_artifacts
     steps:
