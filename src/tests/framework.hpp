@@ -135,17 +135,6 @@ struct Tester {
     struct TestLogger {
         TestLogger(Tester& tester) : tester(tester) {}
 
-        void InitLogFile() {
-            InitLogFolderIfNeeded();
-            if (auto f = LogFolder()) {
-                PathArena path_arena {Malloc::Instance()};
-                auto seed = RandomSeed();
-                auto const path = path::Join(path_arena, Array {*f, UniqueFilename("test-", "", seed)});
-                auto o = OpenFile(path, FileMode::Write());
-                if (o.HasValue()) file.Emplace(o.ReleaseValue());
-            }
-        }
-
         template <typename... Args>
         void Debug(String format, Args const&... args) {
             Log(LogLevel::Debug, format, args...);
@@ -192,13 +181,6 @@ struct Tester {
                 write(writer, true);
             }
 
-            if (file) {
-                BufferedWriter<Kb(4)> buffered_writer {file->Writer()};
-                auto writer = buffered_writer.Writer();
-                DEFER { buffered_writer.FlushReset(); };
-                write(writer, false);
-            }
-
             if (output_buffer) {
                 auto writer = dyn::WriterFor(*output_buffer);
                 write(writer, false);
@@ -206,7 +188,6 @@ struct Tester {
         }
 
         DynamicArray<char>* output_buffer = nullptr; // Optional.
-        Optional<File> file;
         Tester& tester;
         LogLevel max_level_allowed = LogLevel::Info;
     };

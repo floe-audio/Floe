@@ -182,6 +182,7 @@
               pkgs.kcov
               pkgs.patchelf
               pkgs.valgrind
+              pkgs.wineWowPackages.minimal
 
               # These following 2 'patch' utilities ensure that we can run the binaries that we build regardless of the system outside of
               # this nix devshell. For example on Ubuntu CI machines we don't have to manage what dependencies are

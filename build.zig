@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Notes on compiling/cross-compiling:
@@ -23,397 +23,324 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const floe_description = "Sample library engine";
-const floe_copyright = "Sam Windell";
-const floe_vendor = "Floe Audio";
-const floe_clap_id = "com.floe-audio.floe";
-const floe_homepage_url = "https://floe.audio";
-const floe_manual_url = "https://floe.audio";
-const floe_download_url = "https://floe.audio/installation/download-and-install-floe.html";
-const floe_changelog_url = "https://floe.audio/changelog.html";
-const floe_source_code_url = "https://github.com/floe-audio/Floe";
-const floe_au_factory_function = "FloeAuV2";
-const min_macos_version = "11.0.0"; // use 3-part version for plist
-const min_windows_version = "win10";
-
-const floe_cache_relative = ".floe-cache";
-
-const embed_files_workaround = true;
-const clap_only = false;
-
-const ConcatCompileCommandsStep = struct {
-    step: std.Build.Step,
-    target: std.Build.ResolvedTarget,
-    use_as_default: bool,
-};
-
-fn archAndOsPair(target: std.Target) std.BoundedArray(u8, 32) {
-    var result = std.BoundedArray(u8, 32).init(0) catch @panic("OOM");
-    std.fmt.format(
-        result.writer(),
-        "{s}-{s}",
-        .{ @tagName(target.cpu.arch), @tagName(target.os.tag) },
-    ) catch @panic("OOM");
-    return result;
-}
-
-fn compileCommandsDirForTarget(b: *std.Build, target: std.Target) ![]u8 {
-    return b.pathJoin(&.{
-        b.build_root.path.?,
-        floe_cache_relative,
-        b.fmt("compile_commands_{s}", .{archAndOsPair(target).slice()}),
-    });
-}
-
-fn compileCommandsFileForTarget(b: *std.Build, target: std.Target) ![]u8 {
-    return b.fmt(
-        "{s}.json",
-        .{compileCommandsDirForTarget(b, target) catch @panic("OOM")},
-    );
-}
-
-fn tryCopyCompileCommandsForTargetFileToDefault(b: *std.Build, target: std.Target) void {
-    const generic_out_path = b.pathJoin(&.{
-        b.build_root.path.?,
-        floe_cache_relative,
-        "compile_commands.json",
-    });
-    const out_path = compileCommandsFileForTarget(b, target) catch @panic("OOM");
-    std.fs.copyFileAbsolute(out_path, generic_out_path, .{ .override_mode = null }) catch {};
-}
-
-fn tryConcatCompileCommands(step: *std.Build.Step) !void {
-    const self: *ConcatCompileCommandsStep = @fieldParentPtr("step", step);
-    const b = step.owner;
-
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-
-    const CompileFragment = struct {
-        directory: []u8,
-        file: []u8,
-        output: []u8,
-        arguments: [][]u8,
-    };
-
-    var compile_commands = std.ArrayList(CompileFragment).init(arena.allocator());
-    const compile_commands_dir = try compileCommandsDirForTarget(b, self.target.result);
-
-    {
-        const maybe_dir = std.fs.openDirAbsolute(compile_commands_dir, .{ .iterate = true });
-        if (maybe_dir != std.fs.Dir.OpenError.FileNotFound) {
-            var dir = try maybe_dir;
-            defer dir.close();
-            var dir_it = dir.iterate();
-            while (try dir_it.next()) |entry| {
-                const read_file = try dir.openFile(entry.name, .{ .mode = std.fs.File.OpenMode.read_only });
-                defer read_file.close();
-
-                const file_contents = try read_file.readToEndAlloc(arena.allocator(), 1024 * 1024 * 1024);
-                defer arena.allocator().free(file_contents);
-
-                var trimmed_json = std.mem.trimRight(u8, file_contents, "\n\r \t");
-                if (std.mem.endsWith(u8, trimmed_json, ",")) {
-                    trimmed_json = trimmed_json[0 .. trimmed_json.len - 1];
-                }
-
-                var parsed_data = try std.json.parseFromSlice(
-                    CompileFragment,
-                    arena.allocator(),
-                    trimmed_json,
-                    .{},
-                );
-
-                var already_present = false;
-                for (compile_commands.items) |command| {
-                    if (std.mem.eql(u8, command.file, parsed_data.value.file)) {
-                        already_present = true;
-                        break;
-                    }
-                }
-                if (!already_present) {
-                    var args = std.ArrayList([]u8).fromOwnedSlice(arena.allocator(), parsed_data.value.arguments);
-
-                    var to_remove = std.ArrayList(u32).init(arena.allocator());
-                    var index: u32 = 0;
-                    for (args.items) |arg| {
-                        // clangd doesn't like this flag
-                        if (std.mem.eql(u8, arg, "--no-default-config"))
-                            try to_remove.append(index);
-
-                        // clang-tidy doesn't like this flag being there
-                        if (std.mem.eql(u8, arg, "-ftime-trace"))
-                            try to_remove.append(index);
-
-                        // windows WSL clangd doesn't like this flag being there
-                        if (std.mem.eql(u8, arg, "-fsanitize=thread"))
-                            try to_remove.append(index);
-
-                        // clang-tidy doesn't like this
-                        if (std.mem.eql(u8, arg, "-ObjC++"))
-                            try to_remove.append(index);
-
-                        index = index + 1;
-                    }
-
-                    // clang-tidy doesn't like this when cross-compiling macos, it's a sequence we need to look for and remove, it's no good just removing the '+pan' by itself
-                    index = 0;
-                    for (args.items) |arg| {
-                        if (std.mem.eql(u8, arg, "-Xclang")) {
-                            if (index + 3 < args.items.len) {
-                                if (std.mem.eql(u8, args.items[index + 1], "-target-feature") and
-                                    std.mem.eql(u8, args.items[index + 2], "-Xclang") and
-                                    std.mem.eql(u8, args.items[index + 3], "+pan"))
-                                {
-                                    try to_remove.append(index);
-                                    try to_remove.append(index + 1);
-                                    try to_remove.append(index + 2);
-                                    try to_remove.append(index + 3);
-                                }
-                            }
-                        }
-                        index = index + 1;
-                    }
-
-                    var num_removed: u32 = 0;
-                    for (to_remove.items) |i| {
-                        _ = args.orderedRemove(i - num_removed);
-                        num_removed = num_removed + 1;
-                    }
-
-                    parsed_data.value.arguments = try args.toOwnedSlice();
-
-                    try compile_commands.append(parsed_data.value);
-                }
-            }
-        }
-    }
-
-    if (compile_commands.items.len != 0) {
-        const out_path = compileCommandsFileForTarget(b, self.target.result) catch @panic("OOM");
-
-        const maybe_file = std.fs.openFileAbsolute(out_path, .{});
-        if (maybe_file != std.fs.File.OpenError.FileNotFound) {
-            const f = try maybe_file;
-            defer f.close();
-
-            const file_contents = try f.readToEndAlloc(arena.allocator(), 1024 * 1024 * 1024);
-            defer arena.allocator().free(file_contents);
-
-            const existing_compile_commands = try std.json.parseFromSlice(
-                []CompileFragment,
-                arena.allocator(),
-                file_contents,
-                .{},
-            );
-
-            for (existing_compile_commands.value) |existing_c| {
-                var is_replaced_by_newer = false;
-                for (compile_commands.items) |new_c| {
-                    if (std.mem.eql(u8, new_c.file, existing_c.file)) {
-                        is_replaced_by_newer = true;
-                        break;
-                    }
-                }
-
-                if (!is_replaced_by_newer) {
-                    try compile_commands.append(existing_c);
-                }
-            }
-        }
-
-        var out_f = try std.fs.createFileAbsolute(out_path, .{});
-        defer out_f.close();
-        var buffered_writer: std.io.BufferedWriter(
-            20 * 1024,
-            @TypeOf(out_f.writer()),
-        ) = .{ .unbuffered_writer = out_f.writer() };
-
-        try std.json.stringify(compile_commands.items, .{}, buffered_writer.writer());
-        try buffered_writer.flush();
-
-        try std.fs.deleteTreeAbsolute(compile_commands_dir);
-
-        if (self.use_as_default) {
-            tryCopyCompileCommandsForTargetFileToDefault(b, self.target.result);
-        }
-    }
-}
-
-fn concatCompileCommands(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
-    _ = options;
-
-    tryConcatCompileCommands(step) catch |err| {
-        std.debug.print("failed to concatenate compile commands: {any}\n", .{err});
-    };
-}
+const std_extras = @import("src/build/std_extras.zig");
+const constants = @import("src/build/constants.zig");
+const ConcatCompileCommandsStep = @import("src/build/ConcatCompileCommandsStep.zig");
 
 const PostInstallStep = struct {
     step: std.Build.Step,
     make_macos_bundle: bool,
     compile_step: *std.Build.Step.Compile,
     context: *BuildContext,
+
+    fn create(b: *std.Build, options: struct {
+        build_context: *BuildContext,
+        compile_step: *std.Build.Step.Compile,
+        make_macos_bundle: bool,
+    }) *PostInstallStep {
+        var post_install_step = b.allocator.create(PostInstallStep) catch @panic("OOM");
+        post_install_step.* = PostInstallStep{
+            .step = std.Build.Step.init(.{
+                .id = std.Build.Step.Id.custom,
+                .name = b.fmt("{s} post install config", .{options.compile_step.name}),
+                .owner = b,
+                .makeFn = make,
+            }),
+            .make_macos_bundle = options.make_macos_bundle,
+            .context = options.build_context,
+            .compile_step = options.compile_step,
+        };
+        post_install_step.step.dependOn(&options.compile_step.step);
+        post_install_step.step.dependOn(b.getInstallStep());
+        return post_install_step;
+    }
+
+    fn handleMacosBinaryConfig(
+        context: *BuildContext,
+        step: *std.Build.Step,
+        make_macos_bundle: bool,
+        path: []const u8,
+        bundle_name: []const u8,
+        version: ?std.SemanticVersion,
+    ) !void {
+        var b = step.owner;
+
+        var final_binary_path: ?[]const u8 = null;
+        if (make_macos_bundle) {
+            const working_dir = std.fs.path.dirname(path).?;
+            var dir = try std.fs.openDirAbsolute(working_dir, .{});
+            defer dir.close();
+
+            var bundle_extension_no_dot = std.fs.path.extension(bundle_name);
+            std.debug.assert(bundle_extension_no_dot.len != 0);
+            bundle_extension_no_dot = bundle_extension_no_dot[1..bundle_extension_no_dot.len];
+
+            const is_au = std.mem.count(u8, bundle_name, ".component") == 1;
+
+            try dir.deleteTree(bundle_name);
+            try dir.makePath(b.pathJoin(&.{ bundle_name, "Contents", "MacOS" }));
+
+            const exe_name = std.fs.path.stem(bundle_name);
+            final_binary_path = b.pathJoin(&.{ working_dir, bundle_name, "Contents", "MacOS", exe_name });
+            {
+                var dest_dir = try dir.openDir(b.pathJoin(&.{ bundle_name, "Contents", "MacOS" }), .{});
+                defer dest_dir.close();
+                try dir.copyFile(std.fs.path.basename(path), dest_dir, exe_name, .{});
+            }
+
+            {
+                const pkg_info_file = try dir.createFile(
+                    b.pathJoin(&.{ bundle_name, "Contents", "PkgInfo" }),
+                    .{},
+                );
+                defer pkg_info_file.close();
+                try pkg_info_file.writeAll("BNDL????");
+            }
+
+            {
+                const pkg_info_file = try dir.createFile(
+                    b.pathJoin(&.{ bundle_name, "Contents", "Info.plist" }),
+                    .{},
+                );
+                defer pkg_info_file.close();
+
+                try std.fmt.format(pkg_info_file.writer(),
+                    \\<?xml version="1.0" encoding="UTF-8"?>
+                    \\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+                    \\<plist version="1.0">
+                    \\    <dict>
+                    \\        <key>CFBundleDevelopmentRegion</key>
+                    \\        <string>English</string>
+                    \\        <key>CFBundleExecutable</key>
+                    \\        <string>{[executable_name]s}</string>
+                    \\        <key>CFBundleIdentifier</key>
+                    \\        <string>{[bundle_identifier]s}</string>
+                    \\        <key>CFBundleInfoDictionaryVersion</key>
+                    \\        <string>6.0</string>
+                    \\        <key>CFBundleName</key>
+                    \\        <string>{[bundle_name]s}</string>
+                    \\        <key>CFBundleSignature</key>
+                    \\        <string>????</string>
+                    \\        <key>CFBundlePackageType</key>
+                    \\        <string>BNDL</string>
+                    \\        <key>CFBundleShortVersionString</key>
+                    \\        <string>{[major]d}.{[minor]d}.{[patch]d}</string>
+                    \\        <key>CFBundleVersion</key>
+                    \\        <string>{[major]d}.{[minor]d}.{[patch]d}</string>
+                    \\        <key>NSPrincipalClass</key>
+                    \\        <string/>
+                    \\        <key>CFBundleSupportedPlatforms</key>
+                    \\        <array>
+                    \\            <string>MacOSX</string>
+                    \\        </array>
+                    \\        <key>NSHighResolutionCapable</key>
+                    \\        <true />
+                    \\        <key>NSHumanReadableCopyright</key>
+                    \\        <string>Copyright {[copyright]s}</string>
+                    \\        <key>LSMinimumSystemVersion</key>
+                    \\        <string>{[min_macos_version]s}</string>
+                    \\{[audio_unit_dict]s}
+                    \\    </dict>
+                    \\</plist>
+                , .{
+                    .executable_name = exe_name,
+                    .bundle_identifier = b.fmt("{s}.{s}", .{ constants.floe_clap_id, bundle_extension_no_dot }),
+                    .bundle_name = bundle_name,
+                    .major = if (version != null) version.?.major else 1,
+                    .minor = if (version != null) version.?.minor else 0,
+                    .patch = if (version != null) version.?.patch else 0,
+                    .copyright = constants.floe_copyright,
+                    .min_macos_version = constants.min_macos_version,
+
+                    // factoryFunction has 'Factory' appended to it because that's what the AUSDK_COMPONENT_ENTRY macro adds.
+                    // name uses the format Author: Name because otherwise Logic shows the developer as the 4-character manufacturer code.
+                    .audio_unit_dict = if (is_au)
+                        b.fmt(
+                            \\        <key>AudioComponents</key>
+                            \\        <array>
+                            \\            <dict>
+                            \\                <key>name</key>
+                            \\                <string>{[vendor]s}: Floe</string>
+                            \\                <key>description</key>
+                            \\                <string>{[description]s}</string>
+                            \\                <key>factoryFunction</key>
+                            \\                <string>{[factory_function]s}Factory</string>
+                            \\                <key>manufacturer</key>
+                            \\                <string>floA</string>
+                            \\                <key>subtype</key>
+                            \\                <string>FLOE</string>
+                            \\                <key>type</key>
+                            \\                <string>aumu</string>
+                            \\                <key>version</key>
+                            \\                <integer>{[version_packed]d}</integer>
+                            \\                <key>sandboxSafe</key>
+                            \\                <true/>
+                            \\                <key>resourceUsage</key>
+                            \\                <dict>
+                            \\                    <key>network.client</key>
+                            \\                    <true/>
+                            \\                    <key>temporary-exception.files.all.read-write</key>
+                            \\                    <true/>
+                            \\                </dict>
+                            \\                <key>tags</key>
+                            \\                <array>
+                            \\                  <string>Instrument</string>
+                            \\                  <string>Synthesizer</string>
+                            \\                  <string>Stereo</string>
+                            \\                </array>
+                            \\            </dict>
+                            \\        </array>
+                        , .{
+                            .vendor = constants.floe_vendor,
+                            .description = constants.floe_description,
+                            .factory_function = constants.floe_au_factory_function,
+                            .version_packed = if (version != null) (version.?.major << 16) | (version.?.minor << 8) | version.?.patch else 0,
+                        })
+                    else
+                        "",
+                });
+            }
+
+            if (builtin.os.tag == .macos and is_au) {
+                // We need to install the AU so that things like auval can find it.
+                const home_dir = b.graph.env_map.get("HOME") orelse {
+                    return step.fail("HOME environment variable not found, cannot install AU", .{});
+                };
+
+                const au_install_dir = b.pathJoin(&.{ home_dir, "Library", "Audio", "Plug-Ins", "Components" });
+                const au_install_path = b.pathJoin(&.{ au_install_dir, bundle_name });
+                const au_bundle_path = b.pathJoin(&.{ working_dir, bundle_name });
+
+                // Remove existing installation
+                // std.fs.deleteTreeAbsolute(au_install_path) catch |err| switch (err) {
+                //     error.FileNotFound => {}, // OK if it doesn't exist
+                //     else => {
+                //         return step.fail("Failed to remove existing AU installation: {}", .{err});
+                //     },
+                // };
+
+                // Install new AU bundle
+                std_extras.copyDirRecursive(au_bundle_path, au_install_path, b.allocator) catch |err| {
+                    return step.fail("Failed to install AU bundle: {}", .{err});
+                };
+
+                // We need to make sure that the audio component service is aware of the new AU. Unfortunately, it
+                // doesn't do this automatically sometimes and if we were to run auval right now it might say it's
+                // uninstalled. We need to kill the service so that auval will rescan for installed AUs. The command
+                // on the terminal to do this is: killall -9 AudioComponentRegistrar. That is, send SIGKILL to the
+                // process named AudioComponentRegistrar.
+                _ = std.process.Child.run(.{
+                    .allocator = b.allocator,
+                    .argv = &.{ "killall", "-9", "AudioComponentRegistrar" },
+                }) catch |err| {
+                    std.debug.print("Warning: Failed to restart AudioComponentRegistrar: {any}\n", .{err});
+                };
+            }
+        } else {
+            final_binary_path = path;
+        }
+
+        if (context.optimise != .ReleaseFast) {
+            // Generate dSYM for debugging.
+            _ = try step.evalChildProcess(&.{ "dsymutil", final_binary_path.? });
+        }
+    }
+
+    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
+        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        defer arena.deinit();
+
+        const self: *PostInstallStep = @fieldParentPtr("step", step);
+        _ = options;
+        var path = self.compile_step.installed_path.?;
+
+        switch (self.compile_step.rootModuleTarget().os.tag) {
+            .windows => {
+                var out_filename = self.compile_step.out_filename;
+
+                const dll_types_to_remove = [_][]const u8{ "clap", "vst3" };
+                for (dll_types_to_remove) |t| {
+                    const suffix = try std.fmt.allocPrint(arena.allocator(), ".{s}.dll", .{t});
+                    if (std.mem.endsWith(u8, path, suffix)) {
+                        const new_path = try std.fmt.allocPrint(
+                            arena.allocator(),
+                            "{s}.{s}",
+                            .{ path[0 .. path.len - suffix.len], t },
+                        );
+                        try std.fs.renameAbsolute(path, new_path);
+                        path = new_path;
+
+                        std.debug.assert(std.mem.endsWith(u8, out_filename, suffix));
+                        out_filename = try std.fmt.allocPrint(
+                            arena.allocator(),
+                            "{s}.{s}",
+                            .{ out_filename[0 .. out_filename.len - suffix.len], t },
+                        );
+                    }
+                }
+            },
+            .macos => {
+                try handleMacosBinaryConfig(
+                    self.context,
+                    step,
+                    self.make_macos_bundle,
+                    path,
+                    self.compile_step.name,
+                    self.compile_step.version,
+                );
+            },
+            .linux => {
+                const working_dir = std.fs.path.dirname(path).?;
+                var dir = try std.fs.openDirAbsolute(working_dir, .{});
+                defer dir.close();
+                const filename = std.fs.path.basename(path);
+
+                const needs_patch = blk: {
+                    const in_nix_shell = step.owner.graph.env_map.get("IN_NIX_SHELL") != null;
+                    const is_nixos = blk2: {
+                        std.fs.accessAbsolute("/etc/NIXOS", .{}) catch |err| switch (err) {
+                            error.FileNotFound => break :blk2 false,
+                            else => break :blk2 true,
+                        };
+                        break :blk2 true;
+                    };
+                    break :blk in_nix_shell and !is_nixos;
+                };
+
+                if (std.mem.indexOf(u8, filename, "Floe.clap.so") != null) {
+                    try dir.rename(filename, "Floe.clap");
+                    if (needs_patch) {
+                        const full_path = try dir.realpathAlloc(step.owner.allocator, "Floe.clap");
+                        _ = try step.evalChildProcess(&.{ "patchrpath", full_path });
+                    }
+                } else if (std.mem.indexOf(u8, filename, "Floe.vst3.so") != null) {
+                    const subdir = "Floe.vst3/Contents/x86_64-linux";
+                    try dir.makePath(subdir);
+                    const file = subdir ++ "/Floe.so";
+                    try dir.rename(filename, file);
+                    if (needs_patch) {
+                        const full_path = try dir.realpathAlloc(step.owner.allocator, file);
+                        _ = try step.evalChildProcess(&.{ "patchrpath", full_path });
+                    }
+                } else {
+                    if (needs_patch) {
+                        const full_path = try dir.realpathAlloc(step.owner.allocator, filename);
+                        _ = try step.evalChildProcess(&.{ "patchinterpreter", full_path });
+                    }
+                }
+            },
+            else => {
+                unreachable;
+            },
+        }
+    }
 };
 
-fn postInstallMacosBinary(
-    context: *BuildContext,
-    step: *std.Build.Step,
-    make_macos_bundle: bool,
-    path: []const u8,
-    bundle_name: []const u8,
-    version: ?std.SemanticVersion,
-) !void {
-    var b = step.owner;
-
-    var final_binary_path: ?[]const u8 = null;
-    if (make_macos_bundle) {
-        const working_dir = std.fs.path.dirname(path).?;
-        var dir = try std.fs.openDirAbsolute(working_dir, .{});
-        defer dir.close();
-
-        var bundle_extension_no_dot = std.fs.path.extension(bundle_name);
-        std.debug.assert(bundle_extension_no_dot.len != 0);
-        bundle_extension_no_dot = bundle_extension_no_dot[1..bundle_extension_no_dot.len];
-
-        try dir.deleteTree(bundle_name);
-        try dir.makePath(b.pathJoin(&.{ bundle_name, "Contents", "MacOS" }));
-
-        const exe_name = std.fs.path.stem(bundle_name);
-        final_binary_path = b.pathJoin(&.{ working_dir, bundle_name, "Contents", "MacOS", exe_name });
-        {
-            var dest_dir = try dir.openDir(b.pathJoin(&.{ bundle_name, "Contents", "MacOS" }), .{});
-            defer dest_dir.close();
-            try dir.copyFile(std.fs.path.basename(path), dest_dir, exe_name, .{});
-        }
-
-        {
-            const pkg_info_file = try dir.createFile(
-                b.pathJoin(&.{ bundle_name, "Contents", "PkgInfo" }),
-                .{},
-            );
-            defer pkg_info_file.close();
-            try pkg_info_file.writeAll("BNDL????");
-        }
-
-        {
-            const pkg_info_file = try dir.createFile(
-                b.pathJoin(&.{ bundle_name, "Contents", "Info.plist" }),
-                .{},
-            );
-            defer pkg_info_file.close();
-
-            try std.fmt.format(pkg_info_file.writer(),
-                \\<?xml version="1.0" encoding="UTF-8"?>
-                \\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-                \\<plist version="1.0">
-                \\    <dict>
-                \\        <key>CFBundleDevelopmentRegion</key>
-                \\        <string>English</string>
-                \\        <key>CFBundleExecutable</key>
-                \\        <string>{[executable_name]s}</string>
-                \\        <key>CFBundleIdentifier</key>
-                \\        <string>{[bundle_identifier]s}</string>
-                \\        <key>CFBundleInfoDictionaryVersion</key>
-                \\        <string>6.0</string>
-                \\        <key>CFBundleName</key>
-                \\        <string>{[bundle_name]s}</string>
-                \\        <key>CFBundleSignature</key>
-                \\        <string>????</string>
-                \\        <key>CFBundlePackageType</key>
-                \\        <string>BNDL</string>
-                \\        <key>CFBundleShortVersionString</key>
-                \\        <string>{[major]d}.{[minor]d}.{[patch]d}</string>
-                \\        <key>CFBundleVersion</key>
-                \\        <string>{[major]d}.{[minor]d}.{[patch]d}</string>
-                \\        <key>NSPrincipalClass</key>
-                \\        <string/>
-                \\        <key>CFBundleSupportedPlatforms</key>
-                \\        <array>
-                \\            <string>MacOSX</string>
-                \\        </array>
-                \\        <key>NSHighResolutionCapable</key>
-                \\        <true />
-                \\        <key>NSHumanReadableCopyright</key>
-                \\        <string>Copyright {[copyright]s}</string>
-                \\        <key>LSMinimumSystemVersion</key>
-                \\        <string>{[min_macos_version]s}</string>
-                \\{[audio_unit_dict]s}
-                \\    </dict>
-                \\</plist>
-            , .{
-                .executable_name = exe_name,
-                .bundle_identifier = b.fmt("{s}.{s}", .{ floe_clap_id, bundle_extension_no_dot }),
-                .bundle_name = bundle_name,
-                .major = if (version != null) version.?.major else 1,
-                .minor = if (version != null) version.?.minor else 0,
-                .patch = if (version != null) version.?.patch else 0,
-                .copyright = floe_copyright,
-                .min_macos_version = min_macos_version,
-
-                // factoryFunction has 'Factory' appended to it because that's what the AUSDK_COMPONENT_ENTRY macro adds.
-                // name uses the format Author: Name because otherwise Logic shows the developer as the 4-character manufacturer code.
-                .audio_unit_dict = if (std.mem.count(u8, bundle_name, ".component") == 1)
-                    b.fmt(
-                        \\        <key>AudioComponents</key>
-                        \\        <array>
-                        \\            <dict>
-                        \\                <key>name</key>
-                        \\                <string>{[vendor]s}: Floe</string>
-                        \\                <key>description</key>
-                        \\                <string>{[description]s}</string>
-                        \\                <key>factoryFunction</key>
-                        \\                <string>{[factory_function]s}Factory</string>
-                        \\                <key>manufacturer</key>
-                        \\                <string>floA</string>
-                        \\                <key>subtype</key>
-                        \\                <string>FLOE</string>
-                        \\                <key>type</key>
-                        \\                <string>aumu</string>
-                        \\                <key>version</key>
-                        \\                <integer>{[version_packed]d}</integer>
-                        \\                <key>sandboxSafe</key>
-                        \\                <true/>
-                        \\                <key>resourceUsage</key>
-                        \\                <dict>
-                        \\                    <key>network.client</key>
-                        \\                    <true/>
-                        \\                    <key>temporary-exception.files.all.read-write</key>
-                        \\                    <true/>
-                        \\                </dict>
-                        \\                <key>tags</key>
-                        \\                <array>
-                        \\                  <string>Instrument</string>
-                        \\                  <string>Synthesizer</string>
-                        \\                  <string>Stereo</string>
-                        \\                </array>
-                        \\            </dict>
-                        \\        </array>
-                    , .{
-                        .vendor = floe_vendor,
-                        .description = floe_description,
-                        .factory_function = floe_au_factory_function,
-                        .version_packed = if (version != null) (version.?.major << 16) | (version.?.minor << 8) | version.?.patch else 0,
-                    })
-                else
-                    "",
-            });
-        }
-    } else {
-        final_binary_path = path;
-    }
-
-    if (context.optimise != .ReleaseFast) {
-        _ = try step.evalChildProcess(&.{ "dsymutil", final_binary_path.? });
-    }
-}
-
-const Win32EmbedInfo = struct {
+fn addWin32EmbedInfo(step: *std.Build.Step.Compile, info: struct {
     name: []const u8,
     description: []const u8,
     icon_path: ?std.Build.LazyPath,
-};
-
-fn addWin32EmbedInfo(step: *std.Build.Step.Compile, info: Win32EmbedInfo) !void {
+}) !void {
     if (step.rootModuleTarget().os.tag != .windows) return;
 
     const b = step.step.owner;
@@ -454,8 +381,8 @@ fn addWin32EmbedInfo(step: *std.Build.Step.Compile, info: Win32EmbedInfo) !void 
         .description = info.description,
         .name = info.name,
         .this_year = 1970 + @divTrunc(std.time.timestamp(), 60 * 60 * 24 * 365),
-        .copyright = floe_copyright,
-        .vendor = floe_vendor,
+        .copyright = constants.floe_copyright,
+        .vendor = constants.floe_vendor,
     });
 
     var rc_include_paths: std.BoundedArray(std.Build.LazyPath, 1) = .{};
@@ -474,199 +401,136 @@ fn addWin32EmbedInfo(step: *std.Build.Step.Compile, info: Win32EmbedInfo) !void 
     });
 }
 
-fn performPostInstallConfig(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-
-    const self: *PostInstallStep = @fieldParentPtr("step", step);
-    _ = options;
-    var path = self.compile_step.installed_path.?;
-
-    switch (self.compile_step.rootModuleTarget().os.tag) {
-        .windows => {
-            var out_filename = self.compile_step.out_filename;
-
-            const dll_types_to_remove = [_][]const u8{ "clap", "vst3" };
-            for (dll_types_to_remove) |t| {
-                const suffix = try std.fmt.allocPrint(arena.allocator(), ".{s}.dll", .{t});
-                if (std.mem.endsWith(u8, path, suffix)) {
-                    const new_path = try std.fmt.allocPrint(
-                        arena.allocator(),
-                        "{s}.{s}",
-                        .{ path[0 .. path.len - suffix.len], t },
-                    );
-                    try std.fs.renameAbsolute(path, new_path);
-                    path = new_path;
-
-                    std.debug.assert(std.mem.endsWith(u8, out_filename, suffix));
-                    out_filename = try std.fmt.allocPrint(
-                        arena.allocator(),
-                        "{s}.{s}",
-                        .{ out_filename[0 .. out_filename.len - suffix.len], t },
-                    );
-                }
-            }
-        },
-        .macos => {
-            try postInstallMacosBinary(
-                self.context,
-                step,
-                self.make_macos_bundle,
-                path,
-                self.compile_step.name,
-                self.compile_step.version,
-            );
-        },
-        .linux => {
-            const working_dir = std.fs.path.dirname(path).?;
-            var dir = try std.fs.openDirAbsolute(working_dir, .{});
-            defer dir.close();
-            const filename = std.fs.path.basename(path);
-
-            if (std.mem.indexOf(u8, filename, "Floe.clap.so") != null) {
-                try dir.rename(filename, "Floe.clap");
-            } else if (std.mem.indexOf(u8, filename, "Floe.vst3.so") != null) {
-                const subdir = "Floe.vst3/Contents/x86_64-linux";
-                try dir.makePath(subdir);
-                try dir.rename(filename, subdir ++ "/Floe.so");
-            }
-        },
-        else => {
-            unreachable;
-        },
-    }
-}
-
 pub const WindowsCodeSignStep = struct {
     step: std.Build.Step,
     file_path: []const u8,
     description: []const u8,
     context: *BuildContext,
+
+    pub fn create(
+        context: *BuildContext,
+        target: std.Build.ResolvedTarget,
+        file_path: []const u8,
+        description: []const u8,
+    ) ?*std.Build.Step {
+        if (context.build_mode != .production) return null;
+        if (target.result.os.tag != .windows) return null;
+
+        const cs_step = context.b.allocator.create(WindowsCodeSignStep) catch @panic("OOM");
+        cs_step.* = WindowsCodeSignStep{
+            .step = std.Build.Step.init(.{
+                .id = std.Build.Step.Id.custom,
+                .name = "Windows code signing",
+                .owner = context.b,
+                .makeFn = make,
+            }),
+            .file_path = context.b.dupe(file_path),
+            .description = context.b.dupe(description),
+            .context = context,
+        };
+
+        return &cs_step.step;
+    }
+
+    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
+        const self: *WindowsCodeSignStep = @fieldParentPtr("step", step);
+        _ = options;
+
+        const b = self.context.b;
+
+        // Get absolute paths
+        const abs_file = b.pathFromRoot(self.file_path);
+        const cache_path = b.pathFromRoot(constants.floe_cache_relative);
+
+        // Create the cert file directory if needed
+        const cert_dir = std.fs.path.dirname(cache_path);
+        if (cert_dir) |dir| {
+            try std.fs.cwd().makePath(dir);
+        }
+
+        // Get environment variables
+        const cert_pfx = b.graph.env_map.get("WINDOWS_CODESIGN_CERT_PFX") orelse {
+            std.log.err("missing WINDOWS_CODESIGN_CERT_PFX environment variable", .{});
+            return error.MissingEnvironmentVariable;
+        };
+
+        if (cert_pfx.len == 0) {
+            std.log.err("WINDOWS_CODESIGN_CERT_PFX environment variable is empty", .{});
+            return error.MissingEnvironmentVariable;
+        }
+
+        const cert_password = b.graph.env_map.get("WINDOWS_CODESIGN_CERT_PFX_PASSWORD") orelse {
+            std.log.err("missing WINDOWS_CODESIGN_CERT_PFX_PASSWORD environment variable", .{});
+            return error.MissingEnvironmentVariable;
+        };
+
+        // Create cert file if it doesn't exist
+        const cert_file_path = try std.fs.path.join(
+            b.allocator,
+            &[_][]const u8{ cache_path, "windows-codesign-cert.pfx" },
+        );
+        defer b.allocator.free(cert_file_path);
+
+        var found_cert = true;
+        std.fs.accessAbsolute(cert_file_path, .{}) catch {
+            found_cert = false;
+        };
+        if (!found_cert) {
+            // Decode base64 encoded certificate and write to file
+            const size = try std.base64.standard.Decoder.calcSizeForSlice(cert_pfx);
+            const decoded = try b.allocator.alloc(u8, size);
+            defer b.allocator.free(decoded);
+
+            try std.base64.standard.Decoder.decode(decoded, cert_pfx);
+
+            var file = try std.fs.createFileAbsolute(cert_file_path, .{});
+            defer file.close();
+
+            try file.writeAll(decoded);
+        }
+
+        // Create the signed output path
+        const signed_path = try std.fmt.allocPrint(b.allocator, "{s}.signed", .{abs_file});
+        defer b.allocator.free(signed_path);
+
+        // Execute osslsigncode
+        const result = try std.process.Child.run(.{
+            .allocator = b.allocator,
+            .argv = &[_][]const u8{
+                "osslsigncode",
+                "sign",
+                "-pkcs12",
+                cert_file_path,
+                "-pass",
+                cert_password,
+                "-n",
+                self.description,
+                "-i",
+                constants.floe_homepage_url,
+                "-t",
+                "http://timestamp.sectigo.com",
+                "-in",
+                abs_file,
+                "-out",
+                signed_path,
+            },
+        });
+        defer {
+            b.allocator.free(result.stdout);
+            b.allocator.free(result.stderr);
+        }
+
+        if (result.term.Exited != 0) {
+            std.log.err("osslsigncode failed: {s}", .{result.stderr});
+            return error.SigningFailed;
+        }
+
+        // Move the signed file to the original location
+        try std.fs.renameAbsolute(signed_path, abs_file);
+
+        std.log.info("Successfully code signed {s}", .{abs_file});
+    }
 };
-
-pub fn addWindowsCodeSignStep(
-    context: *BuildContext,
-    target: std.Build.ResolvedTarget,
-    file_path: []const u8,
-    description: []const u8,
-) ?*std.Build.Step {
-    if (context.build_mode != .production) return null;
-    if (target.result.os.tag != .windows) return null;
-
-    const cs_step = context.b.allocator.create(WindowsCodeSignStep) catch @panic("OOM");
-    cs_step.* = WindowsCodeSignStep{
-        .step = std.Build.Step.init(.{
-            .id = std.Build.Step.Id.custom,
-            .name = "Windows code signing",
-            .owner = context.b,
-            .makeFn = performWindowsCodeSign,
-        }),
-        .file_path = context.b.dupe(file_path),
-        .description = context.b.dupe(description),
-        .context = context,
-    };
-
-    return &cs_step.step;
-}
-
-fn performWindowsCodeSign(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
-    const self: *WindowsCodeSignStep = @fieldParentPtr("step", step);
-    _ = options;
-
-    const b = self.context.b;
-
-    // Get absolute paths
-    const abs_file = b.pathFromRoot(self.file_path);
-    const cache_path = b.pathFromRoot(floe_cache_relative);
-
-    // Create the cert file directory if needed
-    const cert_dir = std.fs.path.dirname(cache_path);
-    if (cert_dir) |dir| {
-        try std.fs.cwd().makePath(dir);
-    }
-
-    // Get environment variables
-    const cert_pfx = b.graph.env_map.get("WINDOWS_CODESIGN_CERT_PFX") orelse {
-        std.log.err("missing WINDOWS_CODESIGN_CERT_PFX environment variable", .{});
-        return error.MissingEnvironmentVariable;
-    };
-
-    if (cert_pfx.len == 0) {
-        std.log.err("WINDOWS_CODESIGN_CERT_PFX environment variable is empty", .{});
-        return error.MissingEnvironmentVariable;
-    }
-
-    const cert_password = b.graph.env_map.get("WINDOWS_CODESIGN_CERT_PFX_PASSWORD") orelse {
-        std.log.err("missing WINDOWS_CODESIGN_CERT_PFX_PASSWORD environment variable", .{});
-        return error.MissingEnvironmentVariable;
-    };
-
-    // Create cert file if it doesn't exist
-    const cert_file_path = try std.fs.path.join(
-        b.allocator,
-        &[_][]const u8{ cache_path, "windows-codesign-cert.pfx" },
-    );
-    defer b.allocator.free(cert_file_path);
-
-    var found_cert = true;
-    std.fs.accessAbsolute(cert_file_path, .{}) catch {
-        found_cert = false;
-    };
-    if (!found_cert) {
-        // Decode base64 encoded certificate and write to file
-        const size = try std.base64.standard.Decoder.calcSizeForSlice(cert_pfx);
-        const decoded = try b.allocator.alloc(u8, size);
-        defer b.allocator.free(decoded);
-
-        try std.base64.standard.Decoder.decode(decoded, cert_pfx);
-
-        var file = try std.fs.createFileAbsolute(cert_file_path, .{});
-        defer file.close();
-
-        try file.writeAll(decoded);
-    }
-
-    // Create the signed output path
-    const signed_path = try std.fmt.allocPrint(b.allocator, "{s}.signed", .{abs_file});
-    defer b.allocator.free(signed_path);
-
-    // Execute osslsigncode
-    const result = try std.process.Child.run(.{
-        .allocator = b.allocator,
-        .argv = &[_][]const u8{
-            "osslsigncode",
-            "sign",
-            "-pkcs12",
-            cert_file_path,
-            "-pass",
-            cert_password,
-            "-n",
-            self.description,
-            "-i",
-            floe_homepage_url,
-            "-t",
-            "http://timestamp.sectigo.com",
-            "-in",
-            abs_file,
-            "-out",
-            signed_path,
-        },
-    });
-    defer {
-        b.allocator.free(result.stdout);
-        b.allocator.free(result.stderr);
-    }
-
-    if (result.term.Exited != 0) {
-        std.log.err("osslsigncode failed: {s}", .{result.stderr});
-        return error.SigningFailed;
-    }
-
-    // Move the signed file to the original location
-    try std.fs.renameAbsolute(signed_path, abs_file);
-
-    std.log.info("Successfully code signed {s}", .{abs_file});
-}
 
 const BuildMode = enum {
     development,
@@ -678,8 +542,7 @@ const BuildContext = struct {
     b: *std.Build,
     enable_tracy: bool,
     build_mode: BuildMode,
-    master_step: *std.Build.Step,
-    test_step: *std.Build.Step,
+    compile_all_step: *std.Build.Step,
     optimise: std.builtin.OptimizeMode,
     dep_floe_logos: ?*std.Build.Dependency,
     dep_xxhash: *std.Build.Dependency,
@@ -701,21 +564,21 @@ const BuildContext = struct {
     dep_vst3_sdk: *std.Build.Dependency,
 };
 
-const FlagsBuilderOptions = struct {
-    ubsan: bool = false,
-    add_compile_commands: bool = true,
-    full_diagnostics: bool = false,
-    cpp: bool = false,
-    objcpp: bool = false,
-};
-
 const FlagsBuilder = struct {
     flags: std.ArrayList([]const u8),
+
+    const Options = struct {
+        ubsan: bool = false,
+        add_compile_commands: bool = true,
+        full_diagnostics: bool = false,
+        cpp: bool = false,
+        objcpp: bool = false,
+    };
 
     pub fn init(
         context: *BuildContext,
         target: std.Build.ResolvedTarget,
-        options: FlagsBuilderOptions,
+        options: Options,
     ) FlagsBuilder {
         var result = FlagsBuilder{
             .flags = std.ArrayList([]const u8).init(context.b.allocator),
@@ -732,7 +595,7 @@ const FlagsBuilder = struct {
         self: *FlagsBuilder,
         context: *BuildContext,
         target: std.Build.ResolvedTarget,
-        options: FlagsBuilderOptions,
+        options: Options,
     ) !void {
         if (options.full_diagnostics) {
             try self.flags.appendSlice(&.{
@@ -878,8 +741,7 @@ const FlagsBuilder = struct {
 
         if (options.add_compile_commands) {
             try self.flags.append("-gen-cdb-fragment-path");
-            // IMPROVE: will this error if the path contains a space?
-            try self.flags.append(try compileCommandsDirForTarget(context.b, target.result));
+            try self.flags.append(ConcatCompileCommandsStep.cdbFragmentsDir(context.b, target.result));
         }
 
         if (target.result.os.tag == .windows) {
@@ -903,7 +765,7 @@ const FlagsBuilder = struct {
     }
 };
 
-fn applyUniversalSettings(context: *BuildContext, step: *std.Build.Step.Compile) void {
+fn applyUniversalSettings(context: *BuildContext, step: *std.Build.Step.Compile, compile_commands: *ConcatCompileCommandsStep) void {
     var b = context.b;
     // NOTE (May 2025, Zig 0.14): LTO on Windows results in debug_info generation that fails to parse with Zig's
     // Dwarf parser (InvalidDebugInfo). We've previously had issues on macOS too. So we disable it for now.
@@ -946,6 +808,8 @@ fn applyUniversalSettings(context: *BuildContext, step: *std.Build.Step.Compile)
         step.addLibraryPath(.{ .cwd_relative = b.pathJoin(&.{ sdk_root.?, "/usr/lib" }) });
         step.addFrameworkPath(.{ .cwd_relative = b.pathJoin(&.{ sdk_root.?, "/System/Library/Frameworks" }) });
     }
+
+    compile_commands.step.dependOn(&step.step);
 }
 
 fn getTargets(b: *std.Build, user_given_target_presets: ?[]const u8) !std.ArrayList(std.Build.ResolvedTarget) {
@@ -1009,7 +873,7 @@ fn getTargets(b: *std.Build, user_given_target_presets: ?[]const u8) !std.ArrayL
                     cpu_features = if (builtin.cpu.arch == .x86_64) x86_cpu else "native";
                 },
                 .x86_64_windows => {
-                    arch_os_abi = "x86_64-windows." ++ min_windows_version;
+                    arch_os_abi = "x86_64-windows." ++ constants.min_windows_version;
                     cpu_features = x86_cpu;
                 },
                 .x86_64_linux => {
@@ -1017,11 +881,11 @@ fn getTargets(b: *std.Build, user_given_target_presets: ?[]const u8) !std.ArrayL
                     cpu_features = x86_cpu;
                 },
                 .x86_64_macos => {
-                    arch_os_abi = "x86_64-macos." ++ min_macos_version;
+                    arch_os_abi = "x86_64-macos." ++ constants.min_macos_version;
                     cpu_features = apple_x86_cpu;
                 },
                 .aarch64_macos => {
-                    arch_os_abi = "aarch64-macos." ++ min_macos_version;
+                    arch_os_abi = "aarch64-macos." ++ constants.min_macos_version;
                     cpu_features = apple_arm_cpu;
                 },
             }
@@ -1115,12 +979,32 @@ pub fn build(b: *std.Build) void {
         "Fetch Floe logos from online - these may have a different licence to the rest of Floe",
     ) orelse false;
 
+    const clap_val = b.step("test-clap-val", "Test using clap-validator");
+    const test_vst3_validator = b.step("test-vst3-val", "Run VST3 Validator on built VST3 plugin");
+    const pluginval_au = b.step("test-pluginval-au", "Test AU using pluginval");
+    const auval = b.step("test-auval", "Test AU using auval");
+    var test_step = b.step("test", "Run unit tests");
+    const coverage = b.step("test-coverage", "Generate code coverage report");
+    const pluginval = b.step("test-pluginval", "Test using pluginval");
+    const valgrind = b.step("test-valgrind", "Test using Valgrind");
+    const clang_tidy = b.step("clang-tidy", "Run clang-tidy on source files");
+
+    const all_tests = b.step("test-all", "Test using all tests");
+    all_tests.dependOn(clap_val);
+    all_tests.dependOn(test_vst3_validator);
+    all_tests.dependOn(pluginval_au);
+    all_tests.dependOn(auval);
+    all_tests.dependOn(test_step);
+    all_tests.dependOn(coverage);
+    all_tests.dependOn(pluginval);
+    all_tests.dependOn(valgrind);
+    all_tests.dependOn(clang_tidy);
+
     var build_context: BuildContext = .{
         .b = b,
         .enable_tracy = enable_tracy,
         .build_mode = build_mode,
-        .master_step = b.step("compile", "Compile all"),
-        .test_step = b.step("test", "Run tests"),
+        .compile_all_step = b.step("compile", "Compile all"),
         .optimise = switch (build_mode) {
             .development => std.builtin.OptimizeMode.Debug,
             .performance_profiling, .production => std.builtin.OptimizeMode.ReleaseSafe,
@@ -1151,32 +1035,23 @@ pub fn build(b: *std.Build) void {
     const user_given_target_presets = b.option([]const u8, "targets", "Target operating system");
 
     // ignore any error
-    b.build_root.handle.makeDir(floe_cache_relative) catch {};
+    b.build_root.handle.makeDir(constants.floe_cache_relative) catch {};
 
     // const install_dir = b.install_path; // zig-out
 
     const targets = getTargets(b, user_given_target_presets) catch @panic("OOM");
 
-    // If we're building for multiple targets at the same time, we need to choose one that gets to be the final compile_commands.json.
+    // If we're building for multiple targets at the same time, we need to choose one that gets to be the final compile_commands.json. We just say the first one.
     const target_for_compile_commands = targets.items[0];
     // We'll try installing the desired compile_commands.json version here in case any previous build already created it.
-    tryCopyCompileCommandsForTargetFileToDefault(b, target_for_compile_commands.result);
+    ConcatCompileCommandsStep.trySetCdb(b, target_for_compile_commands.result);
 
     for (targets.items) |target| {
-        var join_compile_commands = b.allocator.create(ConcatCompileCommandsStep) catch @panic("OOM");
-        join_compile_commands.* = ConcatCompileCommandsStep{
-            .step = std.Build.Step.init(.{
-                .id = std.Build.Step.Id.custom,
-                .name = "Concatenate compile_commands JSON",
-                .owner = b,
-                .makeFn = concatCompileCommands,
-            }),
-            .target = target,
-            .use_as_default = target.query.eql(target_for_compile_commands.query),
-        };
+        var join_compile_commands = ConcatCompileCommandsStep.create(b, target, target.query.eql(target_for_compile_commands.query));
+        build_context.compile_all_step.dependOn(&join_compile_commands.step);
 
         // Separate output directory when thread sanitizer is enabled to avoid overwriting default binaries
-        const install_subfolder_string = b.fmt("{s}{s}", .{ archAndOsPair(target.result).slice(), if (sanitize_thread) "-tsan" else "" });
+        const install_subfolder_string = b.fmt("{s}{s}", .{ std_extras.archAndOsPair(target.result).slice(), if (sanitize_thread) "-tsan" else "" });
         const install_dir = std.Build.InstallDir{ .custom = install_subfolder_string };
         const install_subfolder = std.Build.Step.InstallArtifact.Options.Dir{
             .override = install_dir,
@@ -1202,7 +1077,7 @@ pub fn build(b: *std.Build) void {
         const floe_version = std.SemanticVersion.parse(floe_version_string.?) catch @panic("invalid version");
         const floe_version_hash = std.hash.Fnv1a_32.hash(floe_version_string.?);
 
-        const windows_ntddi_version: i64 = @intFromEnum(std.Target.Os.WindowsVersion.parse(min_windows_version) catch @panic("invalid win ver"));
+        const windows_ntddi_version: i64 = @intFromEnum(std.Target.Os.WindowsVersion.parse(constants.min_windows_version) catch @panic("invalid win ver"));
 
         const build_config_step = b.addConfigHeader(.{
             .style = .blank,
@@ -1212,23 +1087,23 @@ pub fn build(b: *std.Build) void {
             .RUNTIME_SAFETY_CHECKS_ON = build_context.optimise == .Debug or build_context.optimise == .ReleaseSafe,
             .FLOE_VERSION_STRING = floe_version_string,
             .FLOE_VERSION_HASH = floe_version_hash,
-            .FLOE_DESCRIPTION = floe_description,
-            .FLOE_HOMEPAGE_URL = floe_homepage_url,
-            .FLOE_MANUAL_URL = floe_manual_url,
-            .FLOE_DOWNLOAD_URL = floe_download_url,
-            .FLOE_CHANGELOG_URL = floe_changelog_url,
-            .FLOE_SOURCE_CODE_URL = floe_source_code_url,
+            .FLOE_DESCRIPTION = constants.floe_description,
+            .FLOE_HOMEPAGE_URL = constants.floe_homepage_url,
+            .FLOE_MANUAL_URL = constants.floe_manual_url,
+            .FLOE_DOWNLOAD_URL = constants.floe_download_url,
+            .FLOE_CHANGELOG_URL = constants.floe_changelog_url,
+            .FLOE_SOURCE_CODE_URL = constants.floe_source_code_url,
             .FLOE_PROJECT_ROOT_PATH = b.build_root.path.?,
-            .FLOE_PROJECT_CACHE_PATH = b.pathJoin(&.{ b.build_root.path.?, floe_cache_relative }),
-            .FLOE_VENDOR = floe_vendor,
-            .FLOE_CLAP_ID = floe_clap_id,
+            .FLOE_PROJECT_CACHE_PATH = b.pathJoin(&.{ b.build_root.path.?, constants.floe_cache_relative }),
+            .FLOE_VENDOR = constants.floe_vendor,
+            .FLOE_CLAP_ID = constants.floe_clap_id,
             .IS_WINDOWS = target.result.os.tag == .windows,
             .IS_MACOS = target.result.os.tag == .macos,
             .IS_LINUX = target.result.os.tag == .linux,
             .OS_DISPLAY_NAME = b.fmt("{s}", .{@tagName(target.result.os.tag)}),
             .ARCH_DISPLAY_NAME = b.fmt("{s}", .{@tagName(target.result.cpu.arch)}),
             .MIN_WINDOWS_NTDDI_VERSION = windows_ntddi_version,
-            .MIN_MACOS_VERSION = min_macos_version,
+            .MIN_MACOS_VERSION = constants.min_macos_version,
             .SENTRY_DSN = b.graph.env_map.get("SENTRY_DSN"),
         });
 
@@ -1289,7 +1164,7 @@ pub fn build(b: *std.Build) void {
                 },
             }
             tracy.linkLibCpp();
-            applyUniversalSettings(&build_context, tracy);
+            applyUniversalSettings(&build_context, tracy, join_compile_commands);
         }
 
         const vitfx = b.addStaticLibrary(.{
@@ -1412,7 +1287,7 @@ pub fn build(b: *std.Build) void {
             pugl.root_module.addCMacro("PUGL_DISABLE_DEPRECATED", "1");
             pugl.root_module.addCMacro("PUGL_STATIC", "1");
 
-            applyUniversalSettings(&build_context, pugl);
+            applyUniversalSettings(&build_context, pugl, join_compile_commands);
         }
 
         var debug_info_module_options = module_options;
@@ -1528,8 +1403,7 @@ pub fn build(b: *std.Build) void {
             library.linkLibrary(tracy);
             library.addObject(debug_info_lib);
             library.addObject(stb_sprintf);
-            join_compile_commands.step.dependOn(&library.step);
-            applyUniversalSettings(&build_context, library);
+            applyUniversalSettings(&build_context, library, join_compile_commands);
         }
 
         var stb_image = b.addObject(.{
@@ -1693,7 +1567,7 @@ pub fn build(b: *std.Build) void {
             });
             fft_convolver.linkLibCpp();
             fft_convolver.addIncludePath(build_context.dep_pffft.path(""));
-            applyUniversalSettings(&build_context, fft_convolver);
+            applyUniversalSettings(&build_context, fft_convolver, join_compile_commands);
         }
 
         const common_infrastructure = b.addStaticLibrary(.{
@@ -1765,12 +1639,11 @@ pub fn build(b: *std.Build) void {
             common_infrastructure.addIncludePath(b.path(path));
             common_infrastructure.linkLibrary(library);
             common_infrastructure.linkLibrary(miniz);
-            applyUniversalSettings(&build_context, common_infrastructure);
-            join_compile_commands.step.dependOn(&common_infrastructure.step);
+            applyUniversalSettings(&build_context, common_infrastructure, join_compile_commands);
         }
 
         var embedded_files: ?*std.Build.Step.Compile = null;
-        if (!embed_files_workaround) {
+        if (!constants.embed_files_workaround) {
             var emdedded_files_module_options = module_options;
             emdedded_files_module_options.root_source_file = b.path("build_resources/embedded_files.zig");
             embedded_files = b.addObject(.{
@@ -1917,7 +1790,7 @@ pub fn build(b: *std.Build) void {
             plugin.linkLibrary(library);
             plugin.linkLibrary(common_infrastructure);
             plugin.linkLibrary(fft_convolver);
-            if (embed_files_workaround) {
+            if (constants.embed_files_workaround) {
                 plugin.addCSourceFile(.{
                     .file = b.dependency("embedded_files_workaround", .{}).path("embedded_files.cpp"),
                 });
@@ -1930,11 +1803,10 @@ pub fn build(b: *std.Build) void {
             plugin.addIncludePath(b.path("src/plugin/gui/live_edit_defs"));
             plugin.linkLibrary(vitfx);
             plugin.linkLibrary(miniz);
-            applyUniversalSettings(&build_context, plugin);
-            join_compile_commands.step.dependOn(&plugin.step);
+            applyUniversalSettings(&build_context, plugin, join_compile_commands);
         }
 
-        if (!clap_only and build_context.build_mode != .production) {
+        if (!constants.clap_only and build_context.build_mode != .production) {
             var docs_generator = b.addExecutable(.{
                 .name = "docs_generator",
                 .root_module = b.createModule(module_options),
@@ -1954,12 +1826,18 @@ pub fn build(b: *std.Build) void {
             docs_generator.linkLibrary(common_infrastructure);
             docs_generator.addIncludePath(b.path("src"));
             docs_generator.addConfigHeader(build_config_step);
-            join_compile_commands.step.dependOn(&docs_generator.step);
-            applyUniversalSettings(&build_context, docs_generator);
+            applyUniversalSettings(&build_context, docs_generator, join_compile_commands);
             b.getInstallStep().dependOn(&b.addInstallArtifact(docs_generator, .{ .dest_dir = install_subfolder }).step);
+
+            const docs_generator_post_install_step = PostInstallStep.create(b, .{
+                .build_context = &build_context,
+                .compile_step = docs_generator,
+                .make_macos_bundle = false,
+            });
+            build_context.compile_all_step.dependOn(&docs_generator_post_install_step.step);
         }
 
-        if (!clap_only) {
+        if (!constants.clap_only) {
             var packager = b.addExecutable(.{
                 .name = "floe-packager",
                 .root_module = b.createModule(module_options),
@@ -1981,22 +1859,21 @@ pub fn build(b: *std.Build) void {
             packager.addIncludePath(b.path("src"));
             packager.addConfigHeader(build_config_step);
             packager.linkLibrary(miniz);
-            if (embed_files_workaround) {
+            if (constants.embed_files_workaround) {
                 packager.addCSourceFile(.{
                     .file = b.dependency("embedded_files_workaround", .{}).path("embedded_files.cpp"),
                 });
             } else {
                 packager.addObject(embedded_files.?);
             }
-            join_compile_commands.step.dependOn(&packager.step);
-            applyUniversalSettings(&build_context, packager);
+            applyUniversalSettings(&build_context, packager, join_compile_commands);
             const packager_install_artifact_step = b.addInstallArtifact(
                 packager,
                 .{ .dest_dir = install_subfolder },
             );
             b.getInstallStep().dependOn(&packager_install_artifact_step.step);
 
-            const sign_step = addWindowsCodeSignStep(
+            const sign_step = WindowsCodeSignStep.create(
                 &build_context,
                 target,
                 b.getInstallPath(install_dir, packager.out_filename),
@@ -2005,11 +1882,11 @@ pub fn build(b: *std.Build) void {
             if (sign_step) |s| {
                 s.dependOn(&packager.step);
                 s.dependOn(b.getInstallStep());
-                build_context.master_step.dependOn(s);
+                build_context.compile_all_step.dependOn(s);
             }
         }
 
-        if (!clap_only) {
+        if (!constants.clap_only) {
             var preset_editor = b.addExecutable(.{
                 .name = "preset-editor",
                 .root_module = b.createModule(module_options),
@@ -2031,15 +1908,14 @@ pub fn build(b: *std.Build) void {
             preset_editor.addIncludePath(b.path("src"));
             preset_editor.addConfigHeader(build_config_step);
             preset_editor.linkLibrary(miniz);
-            if (embed_files_workaround) {
+            if (constants.embed_files_workaround) {
                 preset_editor.addCSourceFile(.{
                     .file = b.dependency("embedded_files_workaround", .{}).path("embedded_files.cpp"),
                 });
             } else {
                 preset_editor.addObject(embedded_files.?);
             }
-            join_compile_commands.step.dependOn(&preset_editor.step);
-            applyUniversalSettings(&build_context, preset_editor);
+            applyUniversalSettings(&build_context, preset_editor, join_compile_commands);
             const preset_editor_install_artifact_step = b.addInstallArtifact(
                 preset_editor,
                 .{ .dest_dir = install_subfolder },
@@ -2050,12 +1926,14 @@ pub fn build(b: *std.Build) void {
         }
 
         var clap_final_step: ?*std.Build.Step = null;
+        var clap_compile_step: ?*std.Build.Step.Compile = null;
         if (!sanitize_thread) {
             const clap = b.addSharedLibrary(.{
                 .name = "Floe.clap",
                 .root_module = b.createModule(module_options),
                 .version = floe_version,
             });
+            clap_compile_step = clap;
             clap.addCSourceFiles(.{
                 .files = &.{
                     "src/plugin/plugin/plugin_entry.cpp",
@@ -2073,30 +1951,20 @@ pub fn build(b: *std.Build) void {
             clap.linkLibrary(plugin);
             const clap_install_artifact_step = b.addInstallArtifact(clap, .{ .dest_dir = install_subfolder });
             b.getInstallStep().dependOn(&clap_install_artifact_step.step);
-            applyUniversalSettings(&build_context, clap);
+            applyUniversalSettings(&build_context, clap, join_compile_commands);
             addWin32EmbedInfo(clap, .{
                 .name = "Floe CLAP",
-                .description = floe_description,
+                .description = constants.floe_description,
                 .icon_path = null,
             }) catch @panic("OOM");
-            join_compile_commands.step.dependOn(&clap.step);
 
-            var clap_post_install_step = b.allocator.create(PostInstallStep) catch @panic("OOM");
-            clap_post_install_step.* = PostInstallStep{
-                .step = std.Build.Step.init(.{
-                    .id = std.Build.Step.Id.custom,
-                    .name = "Post install config",
-                    .owner = b,
-                    .makeFn = performPostInstallConfig,
-                }),
-                .make_macos_bundle = true,
-                .context = &build_context,
+            const clap_post_install_step = PostInstallStep.create(b, .{
+                .build_context = &build_context,
                 .compile_step = clap,
-            };
-            clap_post_install_step.step.dependOn(&clap.step);
-            clap_post_install_step.step.dependOn(b.getInstallStep());
+                .make_macos_bundle = true,
+            });
 
-            const sign_step = addWindowsCodeSignStep(
+            const sign_step = WindowsCodeSignStep.create(
                 &build_context,
                 target,
                 b.getInstallPath(install_dir, clap.name),
@@ -2104,16 +1972,16 @@ pub fn build(b: *std.Build) void {
             );
             if (sign_step) |s| {
                 s.dependOn(&clap_post_install_step.step);
-                build_context.master_step.dependOn(s);
+                build_context.compile_all_step.dependOn(s);
                 clap_final_step = s;
             } else {
-                build_context.master_step.dependOn(&clap_post_install_step.step);
+                build_context.compile_all_step.dependOn(&clap_post_install_step.step);
                 clap_final_step = &clap_post_install_step.step;
             }
         }
 
         // standalone is for development-only at the moment
-        if (!clap_only and build_context.build_mode != .production) {
+        if (!constants.clap_only and build_context.build_mode != .production) {
             const miniaudio = b.addStaticLibrary(.{
                 .name = "miniaudio",
                 .root_module = b.createModule(module_options),
@@ -2129,7 +1997,6 @@ pub fn build(b: *std.Build) void {
                 miniaudio.addIncludePath(build_context.dep_miniaudio.path(""));
                 switch (target.result.os.tag) {
                     .macos => {
-                        applyUniversalSettings(&build_context, miniaudio);
                         miniaudio.linkFramework("CoreAudio");
                     },
                     .windows => {
@@ -2142,6 +2009,7 @@ pub fn build(b: *std.Build) void {
                         unreachable;
                     },
                 }
+                applyUniversalSettings(&build_context, miniaudio, join_compile_commands);
             }
 
             const portmidi = b.addStaticLibrary(.{
@@ -2174,7 +2042,6 @@ pub fn build(b: *std.Build) void {
                         });
                         portmidi.linkFramework("CoreAudio");
                         portmidi.linkFramework("CoreMIDI");
-                        applyUniversalSettings(&build_context, portmidi);
                     },
                     .windows => {
                         portmidi.addCSourceFiles(.{
@@ -2209,6 +2076,7 @@ pub fn build(b: *std.Build) void {
                 portmidi.linkLibC();
                 portmidi.addIncludePath(build_context.dep_portmidi.path("porttime"));
                 portmidi.addIncludePath(build_context.dep_portmidi.path("pm_common"));
+                applyUniversalSettings(&build_context, portmidi, join_compile_commands);
             }
 
             const floe_standalone = b.addExecutable(.{
@@ -2240,24 +2108,14 @@ pub fn build(b: *std.Build) void {
                 floe_standalone,
                 .{ .dest_dir = install_subfolder },
             ).step);
-            join_compile_commands.step.dependOn(&floe_standalone.step);
-            applyUniversalSettings(&build_context, floe_standalone);
+            applyUniversalSettings(&build_context, floe_standalone, join_compile_commands);
 
-            var post_install_step = b.allocator.create(PostInstallStep) catch @panic("OOM");
-            post_install_step.* = PostInstallStep{
-                .step = std.Build.Step.init(.{
-                    .id = std.Build.Step.Id.custom,
-                    .name = "Post install config",
-                    .owner = b,
-                    .makeFn = performPostInstallConfig,
-                }),
-                .make_macos_bundle = false,
-                .context = &build_context,
+            const post_install_step = PostInstallStep.create(b, .{
+                .build_context = &build_context,
                 .compile_step = floe_standalone,
-            };
-            post_install_step.step.dependOn(&floe_standalone.step);
-            post_install_step.step.dependOn(b.getInstallStep());
-            build_context.master_step.dependOn(&post_install_step.step);
+                .make_macos_bundle = false,
+            });
+            build_context.compile_all_step.dependOn(&post_install_step.step);
         }
 
         const vst3_sdk = b.addStaticLibrary(.{
@@ -2268,7 +2126,7 @@ pub fn build(b: *std.Build) void {
             .name = "VST3-Validator",
             .root_module = b.createModule(module_options),
         });
-        if (!clap_only) {
+        if (!constants.clap_only) {
             var flags = FlagsBuilder.init(&build_context, target, .{
                 .ubsan = false,
             });
@@ -2342,7 +2200,7 @@ pub fn build(b: *std.Build) void {
 
                 vst3_sdk.addIncludePath(build_context.dep_vst3_sdk.path(""));
                 vst3_sdk.linkLibCpp();
-                applyUniversalSettings(&build_context, vst3_sdk);
+                applyUniversalSettings(&build_context, vst3_sdk, join_compile_commands);
             }
 
             {
@@ -2443,20 +2301,23 @@ pub fn build(b: *std.Build) void {
                 vst3_validator.linkLibCpp();
                 vst3_validator.linkLibrary(vst3_sdk);
                 vst3_validator.linkLibrary(library); // for ubsan runtime
-                applyUniversalSettings(&build_context, vst3_validator);
+                applyUniversalSettings(&build_context, vst3_validator, join_compile_commands);
                 b.getInstallStep().dependOn(&b.addInstallArtifact(
                     vst3_validator,
                     .{ .dest_dir = install_subfolder },
                 ).step);
 
-                // const run_tests = b.addRunArtifact(vst3_validator);
-                // run_tests.addArg(b.pathJoin(&.{ install_dir, install_subfolder_string, "Floe.vst3" }));
-                // build_context.test_step.dependOn(&run_tests.step);
+                const vst3_validator_post_install_step = PostInstallStep.create(b, .{
+                    .build_context = &build_context,
+                    .compile_step = vst3_validator,
+                    .make_macos_bundle = false,
+                });
+                build_context.compile_all_step.dependOn(&vst3_validator_post_install_step.step);
             }
         }
 
         var vst3_final_step: ?*std.Build.Step = null;
-        if (!clap_only and !sanitize_thread) {
+        if (!constants.clap_only and !sanitize_thread) {
             const vst3 = b.addSharedLibrary(.{
                 .name = "Floe.vst3",
                 .version = floe_version,
@@ -2575,28 +2436,20 @@ pub fn build(b: *std.Build) void {
 
             const vst3_install_artifact_step = b.addInstallArtifact(vst3, .{ .dest_dir = install_subfolder });
             b.getInstallStep().dependOn(&vst3_install_artifact_step.step);
-            applyUniversalSettings(&build_context, vst3);
+            applyUniversalSettings(&build_context, vst3, join_compile_commands);
             addWin32EmbedInfo(vst3, .{
                 .name = "Floe VST3",
-                .description = floe_description,
+                .description = constants.floe_description,
                 .icon_path = null,
             }) catch @panic("OOM");
 
-            var vst3_post_install_step = b.allocator.create(PostInstallStep) catch @panic("OOM");
-            vst3_post_install_step.* = PostInstallStep{
-                .step = std.Build.Step.init(.{
-                    .id = std.Build.Step.Id.custom,
-                    .name = "Post install config",
-                    .owner = b,
-                    .makeFn = performPostInstallConfig,
-                }),
-                .make_macos_bundle = true,
-                .context = &build_context,
+            const vst3_post_install_step = PostInstallStep.create(b, .{
+                .build_context = &build_context,
                 .compile_step = vst3,
-            };
-            vst3_post_install_step.step.dependOn(b.getInstallStep());
+                .make_macos_bundle = true,
+            });
 
-            const sign_step = addWindowsCodeSignStep(
+            const sign_step = WindowsCodeSignStep.create(
                 &build_context,
                 target,
                 b.getInstallPath(install_dir, vst3.name),
@@ -2604,15 +2457,26 @@ pub fn build(b: *std.Build) void {
             );
             if (sign_step) |s| {
                 s.dependOn(&vst3_post_install_step.step);
-                build_context.master_step.dependOn(s);
+                build_context.compile_all_step.dependOn(s);
                 vst3_final_step = s;
             } else {
-                build_context.master_step.dependOn(&vst3_post_install_step.step);
+                build_context.compile_all_step.dependOn(&vst3_post_install_step.step);
                 vst3_final_step = &vst3_post_install_step.step;
+            }
+
+            // Test VST3
+            {
+                const run_tests = std_extras.createCommandWithStdoutToStderr(b, target, "run VST3-Validator");
+                run_tests.addArtifactArg(vst3_validator);
+                run_tests.addArg(b.getInstallPath(install_dir, vst3.name));
+                run_tests.step.dependOn(vst3_final_step.?);
+                run_tests.expectExitCode(0);
+
+                test_vst3_validator.dependOn(&run_tests.step);
             }
         }
 
-        if (!clap_only and target.result.os.tag == .macos and !sanitize_thread) {
+        if (!constants.clap_only and target.result.os.tag == .macos and !sanitize_thread) {
             const au_sdk = b.addStaticLibrary(.{
                 .name = "AU",
                 .root_module = b.createModule(module_options),
@@ -2640,7 +2504,7 @@ pub fn build(b: *std.Build) void {
                 });
                 au_sdk.addIncludePath(build_context.dep_au_sdk.path("include"));
                 au_sdk.linkLibCpp();
-                applyUniversalSettings(&build_context, au_sdk);
+                applyUniversalSettings(&build_context, au_sdk, join_compile_commands);
             }
 
             {
@@ -2706,7 +2570,7 @@ pub fn build(b: *std.Build) void {
 
                 {
                     const file = b.build_root.handle.createFile(
-                        b.pathJoin(&.{ floe_cache_relative, "generated_entrypoints.hxx" }),
+                        b.pathJoin(&.{ constants.floe_cache_relative, "generated_entrypoints.hxx" }),
                         .{ .truncate = true },
                     ) catch @panic("could not create file");
                     defer file.close();
@@ -2725,15 +2589,15 @@ pub fn build(b: *std.Build) void {
                         \\ }};
                         \\ AUSDK_COMPONENT_ENTRY(ausdk::AUMusicDeviceFactory, {[factory_function]s});
                     , .{
-                        .factory_function = floe_au_factory_function,
+                        .factory_function = constants.floe_au_factory_function,
                         .clap_name = "Floe",
-                        .clap_id = floe_clap_id,
+                        .clap_id = constants.floe_clap_id,
                     })) catch @panic("could not write to file");
                 }
 
                 {
                     const file = b.build_root.handle.createFile(
-                        b.pathJoin(&.{ floe_cache_relative, "generated_cocoaclasses.hxx" }),
+                        b.pathJoin(&.{ constants.floe_cache_relative, "generated_cocoaclasses.hxx" }),
                         .{ .truncate = true },
                     ) catch @panic("could not create file");
                     defer file.close();
@@ -2760,7 +2624,7 @@ pub fn build(b: *std.Build) void {
                         \\ }}
                     , .{
                         .name = b.fmt("Floe{d}", .{floe_version_hash}),
-                        .clap_id = floe_clap_id,
+                        .clap_id = constants.floe_clap_id,
                     })) catch @panic("could not write to file");
                 }
 
@@ -2769,7 +2633,7 @@ pub fn build(b: *std.Build) void {
                 au.addIncludePath(build_context.dep_clap_wrapper.path("include"));
                 au.addIncludePath(build_context.dep_clap_wrapper.path("libs/fmt"));
                 au.addIncludePath(build_context.dep_clap_wrapper.path("src"));
-                au.addIncludePath(b.path(floe_cache_relative));
+                au.addIncludePath(b.path(constants.floe_cache_relative));
                 au.linkLibCpp();
 
                 au.linkLibrary(plugin);
@@ -2782,26 +2646,45 @@ pub fn build(b: *std.Build) void {
 
                 const au_install_artifact_step = b.addInstallArtifact(au, .{ .dest_dir = install_subfolder });
                 b.getInstallStep().dependOn(&au_install_artifact_step.step);
-                applyUniversalSettings(&build_context, au);
+                applyUniversalSettings(&build_context, au, join_compile_commands);
 
-                var au_post_install_step = b.allocator.create(PostInstallStep) catch @panic("OOM");
-                au_post_install_step.* = PostInstallStep{
-                    .step = std.Build.Step.init(.{
-                        .id = std.Build.Step.Id.custom,
-                        .name = "Post install config",
-                        .owner = b,
-                        .makeFn = performPostInstallConfig,
-                    }),
-                    .make_macos_bundle = true,
-                    .context = &build_context,
+                const au_post_install_step = PostInstallStep.create(b, .{
+                    .build_context = &build_context,
                     .compile_step = au,
-                };
-                au_post_install_step.step.dependOn(b.getInstallStep());
-                build_context.master_step.dependOn(&au_post_install_step.step);
+                    .make_macos_bundle = true,
+                });
+                build_context.compile_all_step.dependOn(&au_post_install_step.step);
+
+                // Pluginval AU
+                {
+                    // Pluginval puts all of it's output in stdout, not stderr.
+                    const run = std_extras.createCommandWithStdoutToStderr(b, target, "run pluginval AU");
+
+                    run.addArgs(&.{
+                        "pluginval",
+                        "--validate",
+                        b.getInstallPath(install_dir, "Floe.component"),
+                    });
+
+                    run.step.dependOn(&au_post_install_step.step);
+                    run.expectExitCode(0);
+
+                    pluginval_au.dependOn(&run.step);
+                }
+
+                // auval
+                {
+                    const run_auval = std_extras.createCommandWithStdoutToStderr(b, target, "run auval");
+                    run_auval.addArgs(&.{ "auval", "-v", "aumu", "FLOE", "floA" });
+                    run_auval.step.dependOn(&au_post_install_step.step);
+                    run_auval.expectExitCode(0);
+
+                    auval.dependOn(&run_auval.step);
+                }
             }
         }
 
-        if (!clap_only and target.result.os.tag == .windows) {
+        if (!constants.clap_only and target.result.os.tag == .windows) {
             const installer_path = "src/windows_installer";
 
             {
@@ -2813,7 +2696,7 @@ pub fn build(b: *std.Build) void {
                         description: []const u8,
                     ) []const u8 {
                         const manifest_path = builder.pathJoin(&.{
-                            floe_cache_relative,
+                            constants.floe_cache_relative,
                             builder.fmt(
                                 "{s}.manifest",
                                 .{name},
@@ -2874,7 +2757,7 @@ pub fn build(b: *std.Build) void {
                             \\ </asmv3:application>
                             \\ </assembly>
                         , .{
-                            .id = floe_clap_id,
+                            .id = constants.floe_clap_id,
                             .name = name,
                             .description = description,
                             .execution_level = if (require_admin) "requireAdministrator" else "asInvoker",
@@ -2926,16 +2809,15 @@ pub fn build(b: *std.Build) void {
                 win_uninstaller.linkLibrary(library);
                 win_uninstaller.linkLibrary(miniz);
                 win_uninstaller.linkLibrary(common_infrastructure);
-                applyUniversalSettings(&build_context, win_uninstaller);
-                join_compile_commands.step.dependOn(&win_uninstaller.step);
+                applyUniversalSettings(&build_context, win_uninstaller, join_compile_commands);
 
                 const uninstall_artifact_step = b.addInstallArtifact(
                     win_uninstaller,
                     .{ .dest_dir = install_subfolder },
                 );
-                build_context.master_step.dependOn(&uninstall_artifact_step.step);
+                build_context.compile_all_step.dependOn(&uninstall_artifact_step.step);
 
-                const uninstall_sign_step = addWindowsCodeSignStep(
+                const uninstall_sign_step = WindowsCodeSignStep.create(
                     &build_context,
                     target,
                     b.getInstallPath(install_dir, win_uninstaller.out_filename),
@@ -3014,7 +2896,7 @@ pub fn build(b: *std.Build) void {
                 win_installer.linkLibrary(library);
                 win_installer.linkLibrary(miniz);
                 win_installer.linkLibrary(common_infrastructure);
-                applyUniversalSettings(&build_context, win_installer);
+                applyUniversalSettings(&build_context, win_installer, join_compile_commands);
 
                 // everything needs to be installed before we compile the installer because it needs to embed the
                 // plugins
@@ -3027,9 +2909,8 @@ pub fn build(b: *std.Build) void {
                 }
 
                 const artifact_step = b.addInstallArtifact(win_installer, .{ .dest_dir = install_subfolder });
-                join_compile_commands.step.dependOn(&win_installer.step);
 
-                const installer_sign_step = addWindowsCodeSignStep(
+                const installer_sign_step = WindowsCodeSignStep.create(
                     &build_context,
                     target,
                     b.getInstallPath(install_dir, win_installer.out_filename),
@@ -3037,18 +2918,20 @@ pub fn build(b: *std.Build) void {
                 );
                 if (installer_sign_step) |s| {
                     s.dependOn(&artifact_step.step);
-                    build_context.master_step.dependOn(s);
+                    build_context.compile_all_step.dependOn(s);
                 } else {
-                    build_context.master_step.dependOn(&artifact_step.step);
+                    build_context.compile_all_step.dependOn(&artifact_step.step);
                 }
             }
         }
 
-        if (!clap_only and build_context.build_mode != .production) {
+        var tests_compile_step: ?*std.Build.Step.Compile = null;
+        if (!constants.clap_only and build_context.build_mode != .production) {
             const tests = b.addExecutable(.{
                 .name = "tests",
                 .root_module = b.createModule(module_options),
             });
+            tests_compile_step = tests;
             tests.addCSourceFiles(.{
                 .files = &.{
                     "src/common_infrastructure/final_binary_type.cpp",
@@ -3094,32 +2977,528 @@ pub fn build(b: *std.Build) void {
             tests.addConfigHeader(build_config_step);
             tests.linkLibrary(plugin);
             b.getInstallStep().dependOn(&b.addInstallArtifact(tests, .{ .dest_dir = install_subfolder }).step);
-            applyUniversalSettings(&build_context, tests);
-            join_compile_commands.step.dependOn(&tests.step);
+            applyUniversalSettings(&build_context, tests, join_compile_commands);
 
-            var post_install_step = b.allocator.create(PostInstallStep) catch @panic("OOM");
-            post_install_step.* = PostInstallStep{
-                .step = std.Build.Step.init(.{
-                    .id = std.Build.Step.Id.custom,
-                    .name = "Post install config",
-                    .owner = b,
-                    .makeFn = performPostInstallConfig,
-                }),
-                .make_macos_bundle = false,
-                .context = &build_context,
+            const post_install_step = PostInstallStep.create(b, .{
+                .build_context = &build_context,
                 .compile_step = tests,
-            };
-            post_install_step.step.dependOn(&tests.step);
-            post_install_step.step.dependOn(b.getInstallStep());
-            build_context.master_step.dependOn(&post_install_step.step);
+                .make_macos_bundle = false,
+            });
+            build_context.compile_all_step.dependOn(&post_install_step.step);
 
-            const run_tests = b.addRunArtifact(tests);
-            build_context.test_step.dependOn(&run_tests.step);
+            // Run tests
+            {
+                const run_tests = b.addRunArtifact(tests);
+                run_tests.addArgs(&.{
+                    "--log-level=debug",
+                    b.fmt("--junit-xml-output-path={s}/results{s}.junit.xml", .{
+                        b.pathFromRoot(constants.floe_cache_relative),
+                        if (sanitize_thread) "-tsan" else "",
+                    }),
+                });
+                run_tests.expectExitCode(0);
+
+                const capture_std_streams = false;
+
+                if (capture_std_streams) {
+                    const test_results_dir = "test_results";
+                    test_step.dependOn(&b.addInstallFile(
+                        run_tests.captureStdErr(),
+                        b.fmt(test_results_dir ++ "/tests{s}-stderr.txt", .{if (sanitize_thread) "-tsan" else ""}),
+                    ).step);
+                    test_step.dependOn(&b.addInstallFile(
+                        run_tests.captureStdOut(),
+                        b.fmt(test_results_dir ++ "/tests{s}-stdout.txt", .{if (sanitize_thread) "-tsan" else ""}),
+                    ).step);
+                } else {
+                    test_step.dependOn(&run_tests.step);
+                }
+            }
+
+            // Coverage tests
+            if (builtin.os.tag == .linux) {
+                const run_coverage = b.addSystemCommand(&.{
+                    "kcov",
+                    b.fmt("--include-pattern={s}", .{b.pathFromRoot("src")}),
+                    b.fmt("{s}/coverage-out", .{constants.floe_cache_relative}),
+                });
+                run_coverage.addArtifactArg(tests_compile_step.?);
+                run_coverage.expectExitCode(0);
+                coverage.dependOn(&run_coverage.step);
+            }
         }
 
-        build_context.master_step.dependOn(&join_compile_commands.step);
+        // Clap Validator test
+        if (clap_compile_step != null) {
+            const run = std_extras.createCommandWithStdoutToStderr(b, target, "run clap-validator");
+            if (target.result.os.tag == .windows) {
+                run.addFileArg(std_extras.fetch(b, .{
+                    .url = "https://github.com/free-audio/clap-validator/releases/download/0.3.2/clap-validator-0.3.2-windows.zip",
+                    .file_name = "clap-validator.exe",
+                    .hash = "N-V-__8AAACYMwAKpkDTKEWrhJhUyBs1LxycLWN8iFpe5p6r",
+                }));
+            } else {
+                run.addArg("clap-validator");
+            }
+            run.addArgs(&.{
+                "validate",
+                "--test-filter",
+                ".*(process|param|state-reproducibility-flush).*",
+                "--invert-filter",
+            });
+            run.addArtifactArg(clap_compile_step.?);
+            run.expectExitCode(0);
+
+            clap_val.dependOn(&run.step);
+        }
+
+        // Pluginval test
+        if (vst3_final_step != null) {
+            // Pluginval puts all of it's output in stdout, not stderr.
+            const run = std_extras.createCommandWithStdoutToStderr(b, target, "run pluginval");
+
+            if (target.result.os.tag == .windows) {
+                // On Windows, we use a downloaded binary.
+                run.addFileArg(std_extras.fetch(b, .{
+                    .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_Windows.zip",
+                    .file_name = "pluginval.exe",
+                    .hash = "N-V-__8AAABcNACEKUY1SsEfHGFybDSKUo4JGhYN5bgZ146c",
+                }));
+            } else {
+                // On macOS and Linux, we assume pluginval is available in the path. We typically have a debug build
+                // of pluginval available in our Nix shell environment. Having a custom built debug version can
+                // help diagnose plugin issues.
+                run.addArg("pluginval");
+            }
+
+            // In headless environments such as CI, GUI tests always fail on Linux so we skip them.
+            if (builtin.os.tag == .linux and b.graph.env_map.get("DISPLAY") == null) {
+                run.addArg("--skip-gui-tests");
+            }
+
+            run.addArgs(&.{
+                "--validate",
+                b.getInstallPath(install_dir, "Floe.vst3"),
+            });
+            run.expectExitCode(0);
+
+            run.step.dependOn(vst3_final_step.?);
+            pluginval.dependOn(&run.step);
+        }
+
+        // Valgrind test
+        if (tests_compile_step != null and !sanitize_thread) {
+            const run = b.addSystemCommand(&.{
+                "valgrind",
+                "--leak-check=full",
+                "--fair-sched=yes",
+                "--num-callers=25",
+                "--gen-suppressions=all",
+                b.fmt("--suppressions={s}", .{b.pathFromRoot("valgrind.supp")}),
+                "--error-exitcode=1",
+                "--exit-on-first-error=no",
+            });
+            run.addArtifactArg(tests_compile_step.?);
+            run.addArgs(&.{
+                "--log-level=debug",
+                b.fmt("--junit-xml-output-path={s}/results-valgrind.junit.xml", .{
+                    b.pathFromRoot(constants.floe_cache_relative),
+                }),
+            });
+            run.expectExitCode(0);
+
+            valgrind.dependOn(&run.step);
+        }
+
+        // clang-tidy
+        {
+            const clang_tidy_step = ClangTidyStep.create(b, target);
+            clang_tidy_step.step.dependOn(&join_compile_commands.step);
+            clang_tidy.dependOn(&clang_tidy_step.step);
+        }
     }
 
-    build_context.master_step.dependOn(b.getInstallStep());
-    b.default_step = build_context.master_step;
+    {
+        const reuse = b.step("check-reuse", "Check compliance with Reuse licensing spec");
+        const run = std_extras.createCommandWithStdoutToStderr(b, null, "run reuse");
+        run.addArgs(&.{ "reuse", "lint" });
+        reuse.dependOn(&run.step);
+        all_tests.dependOn(reuse);
+    }
+
+    {
+        const check_format = b.step("check-format", "Check code formatting with clang-format");
+        const check_format_step = CheckFormatStep.create(b);
+        check_format.dependOn(&check_format_step.step);
+        all_tests.dependOn(check_format);
+    }
+
+    {
+        const check_spelling = b.step("check-spelling", "Check spelling with hunspell");
+        const check_spelling_step = CheckSpellingStep.create(b);
+        check_spelling.dependOn(&check_spelling_step.step);
+        all_tests.dependOn(check_spelling);
+    }
+
+    {
+        const check_links = b.step("check-links", "Check links with lychee");
+        const check_links_step = CheckLinksStep.create(b);
+        check_links.dependOn(&check_links_step.step);
+        all_tests.dependOn(check_links);
+    }
+
+    {
+        const format = b.step("format", "Format code with clang-format");
+        const format_step = FormatStep.create(b);
+        format.dependOn(&format_step.step);
+        all_tests.dependOn(format);
+    }
+
+    build_context.compile_all_step.dependOn(b.getInstallStep());
+    b.default_step = build_context.compile_all_step;
 }
+
+const CheckFormatStep = struct {
+    step: std.Build.Step,
+    builder: *std.Build,
+
+    pub fn create(builder: *std.Build) *CheckFormatStep {
+        const self = builder.allocator.create(CheckFormatStep) catch @panic("OOM");
+        self.* = CheckFormatStep{
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .name = "check-format",
+                .owner = builder,
+                .makeFn = make,
+            }),
+            .builder = builder,
+        };
+        return self;
+    }
+
+    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
+        _ = options;
+        const self: *CheckFormatStep = @fieldParentPtr("step", step);
+
+        const source_files = try std_extras.findSourceFiles(self.builder.allocator, .{
+            .dir_path = "src",
+            .extensions = &.{ ".cpp", ".hpp", ".h", ".mm" },
+            .exclude_folders = &.{},
+        });
+
+        var args = std.ArrayList([]const u8).init(self.builder.allocator);
+
+        try args.append("clang-format");
+        try args.append("--dry-run");
+        try args.append("--Werror");
+
+        for (source_files) |file| {
+            const full_path = self.builder.pathJoin(&.{ "src", file });
+            try args.append(full_path);
+        }
+
+        _ = try step.evalChildProcess(args.items);
+    }
+};
+
+const FormatStep = struct {
+    step: std.Build.Step,
+    builder: *std.Build,
+
+    pub fn create(builder: *std.Build) *FormatStep {
+        const self = builder.allocator.create(FormatStep) catch @panic("OOM");
+        self.* = FormatStep{
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .name = "clang-format",
+                .owner = builder,
+                .makeFn = make,
+            }),
+            .builder = builder,
+        };
+        return self;
+    }
+
+    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
+        _ = options;
+        const self: *FormatStep = @fieldParentPtr("step", step);
+
+        const source_files = try std_extras.findSourceFiles(self.builder.allocator, .{
+            .dir_path = "src",
+            .extensions = &.{ ".cpp", ".hpp", ".h", ".mm" },
+            .exclude_folders = &.{},
+        });
+
+        var args = std.ArrayList([]const u8).init(self.builder.allocator);
+
+        try args.append("clang-format");
+        try args.append("-i");
+
+        for (source_files) |file| {
+            const full_path = self.builder.pathJoin(&.{ "src", file });
+            try args.append(full_path);
+        }
+
+        _ = try step.evalChildProcess(args.items);
+    }
+};
+
+const ClangTidyStep = struct {
+    step: std.Build.Step,
+    builder: *std.Build,
+    target: std.Build.ResolvedTarget,
+
+    pub fn create(builder: *std.Build, target: std.Build.ResolvedTarget) *ClangTidyStep {
+        const self = builder.allocator.create(ClangTidyStep) catch @panic("OOM");
+        self.* = ClangTidyStep{
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .name = "clang-tidy",
+                .owner = builder,
+                .makeFn = make,
+            }),
+            .builder = builder,
+            .target = target,
+        };
+        return self;
+    }
+
+    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
+        const self: *ClangTidyStep = @fieldParentPtr("step", step);
+
+        var args = std.ArrayList([]const u8).init(self.builder.allocator);
+
+        try args.append("clang-tidy");
+
+        // We specify the config file because we don't want clang-tidy to go automatically looking for it and
+        // sometimes find .clang-tidy files in third-party libraries that are incompatible with our version
+        // of clang-tidy.
+        try args.append("--config-file=.clang-tidy");
+
+        // We specify the build root so that we get the correct cdb for the target.
+        try args.append("-p");
+        try args.append(ConcatCompileCommandsStep.cdbDirPath(self.builder, self.target.result));
+
+        // We get all the source files that we compiled by reading the cdb ourselves and selecting our files.
+        // This ensures we only check files that were actually compiled.
+
+        // Read the entire compile_commands.json file
+        const cdb_contents = try std.fs.cwd().readFileAlloc(
+            self.builder.allocator,
+            ConcatCompileCommandsStep.cdbFilePath(self.builder, self.target.result),
+            1024 * 1024 * 10,
+        ); // 10MB max
+        defer self.builder.allocator.free(cdb_contents);
+
+        // Parse JSON to extract file paths
+        const parsed = try std.json.parseFromSlice(
+            []ConcatCompileCommandsStep.CompileFragment,
+            self.builder.allocator,
+            cdb_contents,
+            .{},
+        );
+        defer parsed.deinit();
+
+        // Get absolute path to our src directory
+        const src_dir = self.builder.pathFromRoot("src");
+
+        // Extract source files that are in our src/ directory and add them to clang-tidy args
+        for (parsed.value) |compile_cmd| {
+            const rel_path = std.fs.path.relative(self.builder.allocator, src_dir, compile_cmd.file) catch continue;
+            defer self.builder.allocator.free(rel_path);
+
+            // If relative path doesn't start with "..", the file is within src/
+            if (!std.mem.startsWith(u8, rel_path, "..")) {
+                try args.append(compile_cmd.file);
+            }
+        }
+
+        const run_result = std.process.Child.run(.{
+            .allocator = self.builder.allocator,
+            .argv = args.items,
+            .progress_node = options.progress_node,
+        }) catch |err| {
+            return step.fail("failed to run clang-tidy: {s}", .{@errorName(err)});
+        };
+        defer self.builder.allocator.free(run_result.stdout);
+        defer self.builder.allocator.free(run_result.stderr);
+
+        // Print stdout (clang-tidy doesn't typically output to stdout, but just in case)
+        if (run_result.stdout.len > 0) {
+            std.debug.print("{s}", .{run_result.stdout});
+        }
+
+        if (run_result.stderr.len > 0) {
+            std.debug.print("{s}", .{run_result.stderr});
+        }
+
+        switch (run_result.term) {
+            .Exited => |code| {
+                if (code != 0) {
+                    return step.fail("clang-tidy exited with error code {d}", .{code});
+                }
+            },
+            .Signal, .Stopped, .Unknown => {
+                return step.fail("clang-tidy terminated unexpectedly", .{});
+            },
+        }
+    }
+};
+
+const CheckSpellingStep = struct {
+    step: std.Build.Step,
+    builder: *std.Build,
+
+    pub fn create(builder: *std.Build) *CheckSpellingStep {
+        const self = builder.allocator.create(CheckSpellingStep) catch @panic("OOM");
+        self.* = CheckSpellingStep{
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .name = "check-spelling",
+                .owner = builder,
+                .makeFn = make,
+            }),
+            .builder = builder,
+        };
+        return self;
+    }
+
+    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
+        _ = options;
+        const self: *CheckSpellingStep = @fieldParentPtr("step", step);
+
+        const markdown_files = try std_extras.findSourceFiles(self.builder.allocator, .{
+            .dir_path = ".",
+            .extensions = &.{ ".md", ".mdx" },
+            .exclude_folders = &.{"third_party_libs"},
+            .respect_gitignore = true,
+        });
+
+        if (markdown_files.len == 0) {
+            return;
+        }
+
+        // hunspell doesn't do anything fancy at all, it just checks each word for spelling. It means we get lots of
+        // false positives, but I think it's still worth it. We can just add words to ignored-spellings.dic.
+        // In vim, use :sort u to remove duplicates.
+        var args = std.ArrayList([]const u8).init(self.builder.allocator);
+        try args.append("hunspell");
+        try args.append("-l");
+        try args.append("-d");
+        try args.append("en_GB");
+        try args.append("-p");
+        try args.append("ignored-spellings.dic");
+
+        for (markdown_files) |file| {
+            try args.append(file);
+        }
+
+        const result = try step.evalChildProcess(args.items);
+
+        if (result.len > 0) {
+            var unique_words = std.StringHashMap(void).init(self.builder.allocator);
+            defer unique_words.deinit();
+
+            var line_iter = std.mem.splitScalar(u8, result, '\n');
+            while (line_iter.next()) |line| {
+                const trimmed = std.mem.trim(u8, line, " \t\r\n");
+                if (trimmed.len > 0) {
+                    const owned_line = try self.builder.allocator.dupe(u8, trimmed);
+                    try unique_words.put(owned_line, {});
+                }
+            }
+
+            var sorted_lines = std.ArrayList([]const u8).init(self.builder.allocator);
+            var word_iterator = unique_words.keyIterator();
+            while (word_iterator.next()) |word| {
+                try sorted_lines.append(word.*);
+            }
+
+            std.sort.pdq([]const u8, sorted_lines.items, {}, struct {
+                fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+                    return std.mem.order(u8, a, b) == .lt;
+                }
+            }.lessThan);
+
+            for (sorted_lines.items) |line| {
+                std.debug.print("Spelling error in {s}\n", .{line});
+            }
+
+            return error.SpellingErrors;
+        }
+    }
+};
+
+const CheckLinksStep = struct {
+    step: std.Build.Step,
+    builder: *std.Build,
+
+    pub fn create(builder: *std.Build) *CheckLinksStep {
+        const self = builder.allocator.create(CheckLinksStep) catch @panic("OOM");
+        self.* = CheckLinksStep{
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .name = "check-links",
+                .owner = builder,
+                .makeFn = make,
+            }),
+            .builder = builder,
+        };
+        return self;
+    }
+
+    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
+        _ = options;
+        const self: *CheckLinksStep = @fieldParentPtr("step", step);
+
+        const docusaurus_localhost = "http://localhost:3000";
+
+        var args = std.ArrayList([]const u8).init(self.builder.allocator);
+        defer args.deinit();
+
+        try args.append("lychee");
+
+        // For some reason creativecommons links return 403 via lychee, so we exclude them.
+        try args.append("--exclude");
+        try args.append("https://creativecommons.org/licenses/by/2.0");
+        try args.append("--exclude");
+        try args.append("https://creativecommons.org/licenses/by/4.0");
+        try args.append("--exclude");
+        try args.append("https://creativecommons.org/licenses/by-sa/4.0");
+
+        // If our website is being served locally (Docusaurus dev server), we can check links against the
+        // local version.
+        {
+            var client = std.http.Client{ .allocator = self.builder.allocator };
+            defer client.deinit();
+
+            var response_body = std.ArrayList(u8).init(self.builder.allocator);
+            defer response_body.deinit();
+
+            var localhost_running = false;
+            if (client.fetch(.{
+                .location = .{ .url = docusaurus_localhost },
+                .method = .HEAD,
+                .response_storage = .{ .dynamic = &response_body },
+            })) |fetch_result| {
+                if (fetch_result.status == .ok) {
+                    localhost_running = true;
+                }
+            } else |_| {
+                localhost_running = false;
+            }
+
+            if (localhost_running) {
+                try args.append("--remap");
+                try args.append("https://floe.audio " ++ docusaurus_localhost);
+                try args.append("--base");
+                try args.append(docusaurus_localhost);
+            }
+        }
+
+        try args.append("website");
+        try args.append("readme.md");
+
+        _ = try step.evalChildProcess(args.items);
+    }
+};

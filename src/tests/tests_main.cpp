@@ -109,7 +109,6 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
         Filter,
         LogLevel,
         Repeats,
-        WriteToFile,
         JUnitXmlOutputPath,
         Count,
     };
@@ -140,14 +139,6 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
             .num_values = 1,
         },
         {
-            .id = (u32)CommandLineArgId::WriteToFile,
-            .key = "write-to-file",
-            .description = "Write log output to a file as well as to the console",
-            .value_type = "",
-            .required = false,
-            .num_values = 0,
-        },
-        {
             .id = (u32)CommandLineArgId::JUnitXmlOutputPath,
             .key = "junit-xml-output-path",
             .description = "Path to write JUnit XML test results to",
@@ -176,8 +167,6 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
         }
         tester.repeat_tests = (u16)*parsed_int;
     }
-
-    if (cli_args[ToInt(CommandLineArgId::WriteToFile)].was_provided) tester.log.InitLogFile();
 
     // Register the test functions
 #define X(fn) fn(tester);

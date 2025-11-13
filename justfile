@@ -312,10 +312,10 @@ test-clap-val:
   clap-validator validate {{clap_val_args}} {{native_binary_dir}}/Floe.clap
 
 test-units: 
-  {{native_binary_dir}}/tests --log-level=debug --write-to-file --junit-xml-output-path={{cache_dir}}/results.junit.xml
+  {{native_binary_dir}}/tests --log-level=debug --junit-xml-output-path={{cache_dir}}/results.junit.xml
 
 test-units-tsan:
-  {{native_binary_dir}}-tsan/tests --log-level=debug --write-to-file --junit-xml-output-path={{cache_dir}}/results-tsan.junit.xml
+  {{native_binary_dir}}-tsan/tests --log-level=debug --junit-xml-output-path={{cache_dir}}/results-tsan.junit.xml
 
 test-pluginval: 
   #!/usr/bin/env bash
