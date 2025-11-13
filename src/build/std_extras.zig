@@ -204,7 +204,10 @@ pub fn createCommandWithStdoutToStderr(
                 run.addFileArg(bash_wrapper);
                 run.addArg("wine64");
             } else {
-                @panic("Unsupported host OS for Windows target");
+                // It's probably not going to work, but we can try natively. At any rate, we are deferring the
+                // error to later when the actual command is run (which might never happen).
+                run.addArg("bash");
+                run.addFileArg(bash_wrapper);
             }
         } else {
             // macOS or Linux - use system pluginval
@@ -275,4 +278,40 @@ pub fn fetch(b: *std.Build, options: struct {
         copy_from_cache.addArg(hash);
     }
     return result;
+}
+
+// Loads environment variables from a .env file into the build graph's env_map.
+// Based on https://github.com/zigster64/dotenv.zig
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2024 Scribe of the Ziggurat
+pub fn loadEnvFile(b: *std.Build) !void {
+    var file = b.build_root.handle.openFile(".env", .{}) catch {
+        return;
+    };
+    defer file.close();
+
+    var buf_reader = std.io.bufferedReader(file.reader());
+    var in_stream = buf_reader.reader();
+    var buf: [1024]u8 = undefined;
+
+    while (try in_stream.readUntilDelimiterOrEof(&buf, '\n')) |line| {
+        // ignore commented out lines
+        if (line.len > 0 and line[0] == '#') {
+            continue;
+        }
+        // split into KEY and Value
+        if (std.mem.indexOf(u8, line, "=")) |index| {
+            const key = line[0..index];
+            var value = line[index + 1 ..];
+
+            // If the value starts and ends with quotes, remove them
+            if (value.len >= 2 and ((value[0] == '"' and value[value.len - 1] == '"') or
+                (value[0] == '\'' and value[value.len - 1] == '\'')))
+            {
+                value = value[1 .. value.len - 1];
+            }
+
+            try b.graph.env_map.put(key, value);
+        }
+    }
 }
