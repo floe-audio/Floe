@@ -121,14 +121,79 @@ fn runEchoLatestChanges(allocator: std.mem.Allocator) !void {
     }
 }
 
-var std_stream_mutex: std.Thread.Mutex = .{};
+const CiTask = struct {
+    args: []const []const u8,
+    term: std.process.Child.Term,
+    stdout: []u8,
+    stderr: []u8,
+};
 
-fn runProcess(args: []const []const u8) void {
+const CiReport = struct {
+    mutex: std.Thread.Mutex,
+    arena: std.heap.ArenaAllocator,
+    tasks: std.ArrayListUnmanaged(CiTask),
+
+    pub fn print(report: *CiReport) void {
+        for (report.tasks.items) |task| {
+            switch (task.term) {
+                .Exited => |code| {
+                    if (code != 0) {
+                        std.debug.print("[stdout]\n{s}\n", .{task.stdout});
+                        std.debug.print("[stderr]\n{s}\n", .{task.stderr});
+                    }
+                },
+                .Signal, .Stopped, .Unknown => {
+                    std.debug.print("[stdout]\n{s}\n", .{task.stdout});
+                    std.debug.print("[stderr]\n{s}\n", .{task.stderr});
+                },
+            }
+        }
+
+        // Summary: args and exit code
+        std.debug.print("\n=== CI Summary ===\n", .{});
+        for (report.tasks.items) |task| {
+            switch (task.term) {
+                .Exited => |code| {
+                    std.debug.print("Command: ", .{});
+                    for (task.args, 0..) |arg, i| {
+                        if (i != 0) std.debug.print(" ", .{});
+                        std.debug.print("{s}", .{arg});
+                    }
+                    std.debug.print(" => Exit code: {d}\n", .{code});
+                },
+                .Signal, .Stopped, .Unknown => {
+                    std.debug.print("Command: ", .{});
+                    for (task.args, 0..) |arg, i| {
+                        if (i != 0) std.debug.print(" ", .{});
+                        std.debug.print("{s}", .{arg});
+                    }
+                    std.debug.print(" => Terminated by signal, stopped or unknown\n", .{});
+                },
+            }
+        }
+    }
+};
+
+// Args are assumed to be static data.
+fn runZigBuild(ci_report: *CiReport, args: []const []const u8) void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer _ = arena.deinit();
     const allocator = arena.allocator();
 
-    var child = std.process.Child.init(args, allocator);
+    const zig_exe = std.process.getEnvVarOwned(allocator, "ZIG_EXE") catch |err| {
+        std.debug.print("Environment variable ZIG_EXE not set: {any}\n", .{err});
+        return;
+    };
+
+    var child = std.process.Child.init(blk: {
+        const full_args = allocator.alloc([]const u8, args.len + 2) catch @panic("OOM");
+        full_args[0] = zig_exe;
+        full_args[1] = "build";
+        for (args, 0..) |arg, i| {
+            full_args[i + 2] = arg;
+        }
+        break :blk full_args;
+    }, allocator);
 
     child.stdin_behavior = .Ignore;
     child.stdout_behavior = .Pipe;
@@ -146,82 +211,87 @@ fn runProcess(args: []const []const u8) void {
     errdefer {
         _ = child.kill() catch {};
     }
-    child.collectOutput(allocator, &stdout, &stderr, 200 * 1024) catch |err| {
+    child.collectOutput(allocator, &stdout, &stderr, 20 * 1024 * 1024) catch |err| {
         std.debug.print("Failed to collect output: {any}\n", .{err});
         return;
     };
+
     const result = child.wait() catch |err| {
         std.debug.print("Failed to wait for process: {any}\n", .{err});
         return;
     };
 
-    // TODO: probably put these into files and at the end of the CI, print out
-    // the files if there were errors.
-    // TODO: build GITHUB_STEP_SUMMARY
-    if (stdout.items.len > 0) {
-        std_stream_mutex.lock();
-        defer std_stream_mutex.unlock();
-        std.io.getStdErr().writer().print("{s}", .{stdout.items}) catch {};
+    {
+        ci_report.mutex.lock();
+        defer ci_report.mutex.unlock();
+        const ci_allocator = ci_report.arena.allocator();
+        const task = CiTask{
+            .args = args,
+            .term = result,
+            .stdout = ci_allocator.dupe(u8, stdout.items) catch @panic("OOM"),
+            .stderr = ci_allocator.dupe(u8, stderr.items) catch @panic("OOM"),
+        };
+        ci_report.tasks.append(ci_allocator, task) catch @panic("OOM");
     }
-    if (stderr.items.len > 0) {
-        std_stream_mutex.lock();
-        defer std_stream_mutex.unlock();
-        std.io.getStdErr().writer().print("{s}", .{stderr.items}) catch {};
-    }
-
-    // print result
-    std.debug.print("return code: {d}\n", .{result.Exited});
 }
 
 fn runCi(allocator: std.mem.Allocator) !void {
-    const zig_exe = try std.process.getEnvVarOwned(allocator, "ZIG_EXE");
+    var ci_report: CiReport = .{
+        .mutex = .{},
+        .arena = std.heap.ArenaAllocator.init(allocator),
+        .tasks = std.ArrayListUnmanaged(CiTask).empty,
+    };
 
     // Parallel for speed.
     var wg: std.Thread.WaitGroup = .{};
 
-    wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "test" }});
-    wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "test-clap-val" }});
-    wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "test-pluginval" }});
-    wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "test-vst3-val" }});
+    // TODO: we need to specify --prefix for these various commands so their installations don't interfere with each other.
 
-    wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "-Dbuild-mode=performance_profiling", "test" }});
-    wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "-Dbuild-mode=performance_profiling", "test-clap-val" }});
-    wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "-Dbuild-mode=performance_profiling", "test-pluginval" }});
-    wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "-Dbuild-mode=performance_profiling", "test-vst3-val" }});
+    wg.spawnManager(runZigBuild, .{ &ci_report, &.{"test"} });
+    wg.spawnManager(runZigBuild, .{ &ci_report, &.{"test-clap-val"} });
+    wg.spawnManager(runZigBuild, .{ &ci_report, &.{"test-pluginval"} });
+    wg.spawnManager(runZigBuild, .{ &ci_report, &.{"test-vst3-val"} });
 
-    switch (builtin.os.tag) {
-        .linux => {
-            wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "coverage" }});
-            wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "valgrind" }});
-            wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "-Dbuild-mode=performance_profiling", "valgrind" }});
+    wg.spawnManager(runZigBuild, .{ &ci_report, &.{ "-Dbuild-mode=performance_profiling", "test" } });
+    wg.spawnManager(runZigBuild, .{ &ci_report, &.{ "-Dbuild-mode=performance_profiling", "test-clap-val" } });
+    wg.spawnManager(runZigBuild, .{ &ci_report, &.{ "-Dbuild-mode=performance_profiling", "test-pluginval" } });
+    wg.spawnManager(runZigBuild, .{ &ci_report, &.{ "-Dbuild-mode=performance_profiling", "test-vst3-val" } });
 
-            wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "-Dsanitize-thread", "test" }});
-            wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "-Dsanitize-thread", "-Dbuild-mode=performance_profiling", "test" }});
+    if (false) {
+        switch (builtin.os.tag) {
+            .linux => {
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{"coverage"} });
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{"valgrind"} });
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{ "-Dbuild-mode=performance_profiling", "valgrind" } });
 
-            // We choose Linux to do OS-agnostic checks.
-            wg.spawnManager(runProcess, .{&.{
-                zig_exe,
-                "build",
-                "-Dtargets=x86_64-linux,x86_64-windows,aarch64-macos",
-                "clang-tidy",
-            }});
-            wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "check-reuse" }});
-            wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "check-format" }});
-            wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "check-spelling" }});
-            wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "check-links" }});
-        },
-        .windows => {},
-        .macos => {
-            wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "-Dsanitize-thread", "test" }});
-            wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "-Dsanitize-thread", "-Dbuild-mode=performance_profiling", "test" }});
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{ "-Dsanitize-thread", "test" } });
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{ "-Dsanitize-thread", "-Dbuild-mode=performance_profiling", "test" } });
 
-            wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "test-pluginval-au" }});
-            wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "test-auval" }});
-            wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "-Dbuild-mode=performance_profiling", "test-pluginval-au" }});
-            wg.spawnManager(runProcess, .{&.{ zig_exe, "build", "-Dbuild-mode=performance_profiling", "test-auval" }});
-        },
-        else => {},
+                // We choose Linux to do OS-agnostic checks.
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{
+                    "-Dtargets=x86_64-linux,x86_64-windows,aarch64-macos",
+                    "clang-tidy",
+                } });
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{"check-reuse"} });
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{"check-format"} });
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{"check-spelling"} });
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{"check-links"} });
+            },
+            .windows => {},
+            .macos => {
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{ "-Dsanitize-thread", "test" } });
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{ "-Dsanitize-thread", "-Dbuild-mode=performance_profiling", "test" } });
+
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{"test-pluginval-au"} });
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{"test-auval"} });
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{ "-Dbuild-mode=performance_profiling", "test-pluginval-au" } });
+                wg.spawnManager(runZigBuild, .{ &ci_report, &.{ "-Dbuild-mode=performance_profiling", "test-auval" } });
+            },
+            else => {},
+        }
     }
 
     wg.wait();
+
+    ci_report.print();
 }

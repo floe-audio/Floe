@@ -184,6 +184,8 @@
               pkgs.valgrind
               pkgs.wineWowPackages.minimal
 
+              # TODO: maybe remove these if our FLOE_RPATH and FLOE_DYNAMIC_LINKER plan works out
+
               # These following 2 'patch' utilities ensure that we can run the binaries that we build regardless of the system outside of
               # this nix devshell. For example on Ubuntu CI machines we don't have to manage what dependencies are
               # installed on the system via apt.
@@ -223,6 +225,8 @@
             export MACOSX_SDK_SYSROOT="${macosx-sdks}"
             export PATH="$PWD/${nativeBinSubdir}:$PATH"
             export ZIG_GLOBAL_CACHE_DIR=".zig-cache-global"
+            export FLOE_RPATH="${pkgs.lib.makeLibraryPath buildInputs}"
+            export FLOE_DYNAMIC_LINKER="${pkgs.glibc}/lib/ld-linux-x86-64.so.2"
           '';
         };
       }
