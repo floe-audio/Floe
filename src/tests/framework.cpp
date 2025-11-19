@@ -337,10 +337,12 @@ static ErrorCodeOr<void> WriteGithubStepSummary(Tester& tester, String summary_p
 
     if (!num_failed) return k_success;
 
+    StdPrintF(StdStream::Err, "Writing GitHub step summary to {}\n", summary_path);
+
     auto file = TRY(OpenFile(summary_path,
                              {
-                                 .capability = FileMode::Capability::Append,
-                                 .win32_share = FileMode::Share::ReadWrite,
+                                 .capability = FileMode::Capability::Append | FileMode::Capability::ReadWrite,
+                                 .win32_share = FileMode::Share::ReadWrite | FileMode::Share::DeleteRename,
                                  .creation = FileMode::Creation::OpenAlways,
                              }));
     TRY(file.Lock({.type = FileLockOptions::Type::Exclusive}));
