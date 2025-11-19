@@ -132,7 +132,7 @@ const FlagsBuilder = struct {
 
     const Options = struct {
         ubsan: bool = false,
-        add_compile_commands: bool = true,
+        compile_commands: ?*ConcatCompileCommandsStep = null,
         full_diagnostics: bool = false,
         cpp: bool = false,
         objcpp: bool = false,
@@ -303,8 +303,8 @@ const FlagsBuilder = struct {
             try self.flags.append("-fobjc-arc");
         }
 
-        if (options.add_compile_commands) {
-            try ConcatCompileCommandsStep.addClangArgument(context.b, target.result, &self.flags);
+        if (options.compile_commands) |ccs| {
+            try ccs.addClangArgument(&self.flags);
         }
 
         if (target.result.os.tag == .windows) {
@@ -666,7 +666,9 @@ pub fn build(b: *std.Build) void {
         });
         stb_sprintf.addCSourceFile(.{
             .file = b.path("third_party_libs/stb_sprintf.c"),
-            .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
+            .flags = FlagsBuilder.init(&build_context, target, .{
+                .compile_commands = concat_cdb,
+            }).flags.items,
         });
         stb_sprintf.addIncludePath(build_context.dep_stb.path(""));
 
@@ -676,7 +678,9 @@ pub fn build(b: *std.Build) void {
         });
         xxhash.addCSourceFile(.{
             .file = build_context.dep_xxhash.path("xxhash.c"),
-            .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
+            .flags = FlagsBuilder.init(&build_context, target, .{
+                .compile_commands = concat_cdb,
+            }).flags.items,
         });
         xxhash.linkLibC();
 
@@ -687,7 +691,9 @@ pub fn build(b: *std.Build) void {
         {
             tracy.addCSourceFile(.{
                 .file = build_context.dep_tracy.path("public/TracyClient.cpp"),
-                .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
+                .flags = FlagsBuilder.init(&build_context, target, .{
+                    .compile_commands = concat_cdb,
+                }).flags.items,
             });
 
             switch (target.result.os.tag) {
@@ -732,7 +738,9 @@ pub fn build(b: *std.Build) void {
                     vitfx_path ++ "/src/synthesis/filters/formant_manager.cpp",
                     vitfx_path ++ "/wrapper.cpp",
                 },
-                .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
+                .flags = FlagsBuilder.init(&build_context, target, .{
+                    .compile_commands = concat_cdb,
+                }).flags.items,
             });
             vitfx.addIncludePath(b.path(vitfx_path ++ "/src/synthesis"));
             vitfx.addIncludePath(b.path(vitfx_path ++ "/src/synthesis/framework"));
@@ -752,7 +760,9 @@ pub fn build(b: *std.Build) void {
             const pugl_path = build_context.dep_pugl.path("src");
             const pugl_version = std.hash.Fnv1a_32.hash(build_context.dep_pugl.builder.pkg_hash);
 
-            const pugl_flags = FlagsBuilder.init(&build_context, target, .{}).flags.items;
+            const pugl_flags = FlagsBuilder.init(&build_context, target, .{
+                .compile_commands = concat_cdb,
+            }).flags.items;
 
             pugl.addCSourceFiles(.{
                 .root = pugl_path,
@@ -887,6 +897,7 @@ pub fn build(b: *std.Build) void {
                 .full_diagnostics = true,
                 .ubsan = true,
                 .cpp = true,
+                .compile_commands = concat_cdb,
             }).flags.items;
 
             switch (target.result.os.tag) {
@@ -916,6 +927,7 @@ pub fn build(b: *std.Build) void {
                             .full_diagnostics = true,
                             .ubsan = true,
                             .objcpp = true,
+                            .compile_commands = concat_cdb,
                         }).flags.items,
                     });
                     library.linkFramework("Cocoa");
@@ -947,7 +959,9 @@ pub fn build(b: *std.Build) void {
         });
         stb_image.addCSourceFile(.{
             .file = b.path("third_party_libs/stb_image_impls.c"),
-            .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
+            .flags = FlagsBuilder.init(&build_context, target, .{
+                .compile_commands = concat_cdb,
+            }).flags.items,
         });
         stb_image.addIncludePath(build_context.dep_stb.path(""));
         stb_image.linkLibC();
@@ -959,7 +973,9 @@ pub fn build(b: *std.Build) void {
         dr_wav.addCSourceFile(
             .{
                 .file = b.path("third_party_libs/dr_wav_implementation.c"),
-                .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
+                .flags = FlagsBuilder.init(&build_context, target, .{
+                    .compile_commands = concat_cdb,
+                }).flags.items,
             },
         );
         dr_wav.addIncludePath(build_context.dep_dr_libs.path(""));
@@ -978,7 +994,9 @@ pub fn build(b: *std.Build) void {
                     "miniz_tinfl.c",
                     "miniz_zip.c",
                 },
-                .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
+                .flags = FlagsBuilder.init(&build_context, target, .{
+                    .compile_commands = concat_cdb,
+                }).flags.items,
             });
             miniz.addIncludePath(build_context.dep_miniz.path(""));
             miniz.linkLibC();
@@ -990,7 +1008,9 @@ pub fn build(b: *std.Build) void {
             .root_module = b.createModule(module_options),
         });
         {
-            const flac_flags = FlagsBuilder.init(&build_context, target, .{}).flags.items;
+            const flac_flags = FlagsBuilder.init(&build_context, target, .{
+                .compile_commands = concat_cdb,
+            }).flags.items;
 
             flac.addCSourceFiles(.{
                 .root = build_context.dep_flac.path("src/libFLAC"),
@@ -1077,7 +1097,9 @@ pub fn build(b: *std.Build) void {
             .root_module = b.createModule(module_options),
         });
         {
-            var fft_flags: FlagsBuilder = FlagsBuilder.init(&build_context, target, .{});
+            var fft_flags: FlagsBuilder = FlagsBuilder.init(&build_context, target, .{
+                .compile_commands = concat_cdb,
+            });
             if (target.result.os.tag == .macos) {
                 fft_convolver.linkFramework("Accelerate");
                 fft_flags.addFlag("-DAUDIOFFT_APPLE_ACCELERATE");
@@ -1085,7 +1107,9 @@ pub fn build(b: *std.Build) void {
             } else {
                 fft_convolver.addCSourceFile(.{
                     .file = build_context.dep_pffft.path("pffft.c"),
-                    .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
+                    .flags = FlagsBuilder.init(&build_context, target, .{
+                        .compile_commands = concat_cdb,
+                    }).flags.items,
                 });
                 fft_flags.addFlag("-DAUDIOFFT_PFFFT");
             }
@@ -1163,6 +1187,7 @@ pub fn build(b: *std.Build) void {
                     .full_diagnostics = true,
                     .ubsan = true,
                     .cpp = true,
+                    .compile_commands = concat_cdb,
                 }).flags.items,
             });
 
@@ -1211,6 +1236,7 @@ pub fn build(b: *std.Build) void {
                 .full_diagnostics = true,
                 .ubsan = true,
                 .cpp = true,
+                .compile_commands = concat_cdb,
             }).flags.items;
 
             plugin.addCSourceFiles(.{
@@ -1296,6 +1322,7 @@ pub fn build(b: *std.Build) void {
                             .full_diagnostics = true,
                             .ubsan = true,
                             .objcpp = true,
+                            .compile_commands = concat_cdb,
                         }).flags.items,
                     });
                 },
@@ -1357,6 +1384,7 @@ pub fn build(b: *std.Build) void {
                     .full_diagnostics = true,
                     .ubsan = true,
                     .cpp = true,
+                    .compile_commands = concat_cdb,
                 }).flags.items,
             });
             docs_generator.root_module.addCMacro("FINAL_BINARY_TYPE", "DocsGenerator");
@@ -1427,6 +1455,7 @@ pub fn build(b: *std.Build) void {
                     .full_diagnostics = true,
                     .ubsan = true,
                     .cpp = true,
+                    .compile_commands = concat_cdb,
                 }).flags.items,
             });
             packager.root_module.addCMacro("FINAL_BINARY_TYPE", "Packager");
@@ -1473,6 +1502,7 @@ pub fn build(b: *std.Build) void {
                     .full_diagnostics = true,
                     .ubsan = true,
                     .cpp = true,
+                    .compile_commands = concat_cdb,
                 }).flags.items,
             });
             preset_editor.root_module.addCMacro("FINAL_BINARY_TYPE", "PresetEditor");
@@ -1511,6 +1541,7 @@ pub fn build(b: *std.Build) void {
                     .full_diagnostics = true,
                     .ubsan = true,
                     .cpp = true,
+                    .compile_commands = concat_cdb,
                 }).flags.items,
             });
             clap.root_module.addCMacro("FINAL_BINARY_TYPE", "Clap");
@@ -1540,7 +1571,9 @@ pub fn build(b: *std.Build) void {
             {
                 miniaudio.addCSourceFile(.{
                     .file = b.path("third_party_libs/miniaudio.c"),
-                    .flags = FlagsBuilder.init(&build_context, target, .{}).flags.items,
+                    .flags = FlagsBuilder.init(&build_context, target, .{
+                        .compile_commands = concat_cdb,
+                    }).flags.items,
                 });
                 // Disabling pulse audio because it was causing lots of stutters on my machine.
                 miniaudio.root_module.addCMacro("MA_NO_PULSEAUDIO", "1");
@@ -1569,7 +1602,9 @@ pub fn build(b: *std.Build) void {
             });
             {
                 const pm_root = build_context.dep_portmidi.path("");
-                const pm_flags = FlagsBuilder.init(&build_context, target, .{}).flags.items;
+                const pm_flags = FlagsBuilder.init(&build_context, target, .{
+                    .compile_commands = concat_cdb,
+                }).flags.items;
                 portmidi.addCSourceFiles(.{
                     .root = pm_root,
                     .files = &.{
@@ -1645,6 +1680,7 @@ pub fn build(b: *std.Build) void {
                     .full_diagnostics = true,
                     .ubsan = true,
                     .cpp = true,
+                    .compile_commands = concat_cdb,
                 }).flags.items,
             });
 
@@ -1672,6 +1708,7 @@ pub fn build(b: *std.Build) void {
         if (!constants.clap_only) {
             var flags = FlagsBuilder.init(&build_context, target, .{
                 .ubsan = false,
+                .compile_commands = concat_cdb,
             });
             if (build_context.optimise == .Debug) {
                 flags.addFlag("-DDEVELOPMENT=1");
@@ -1834,6 +1871,7 @@ pub fn build(b: *std.Build) void {
                             .files = &.{"public.sdk/source/vst/hosting/module_mac.mm"},
                             .flags = FlagsBuilder.init(&build_context, target, .{
                                 .objcpp = true,
+                                .compile_commands = concat_cdb,
                             }).flags.items,
                         });
                     },
@@ -1878,6 +1916,7 @@ pub fn build(b: *std.Build) void {
 
             var flags = FlagsBuilder.init(&build_context, target, .{
                 .ubsan = false,
+                .compile_commands = concat_cdb,
             });
             flags.addFlag("-fno-char8_t");
 
@@ -1890,6 +1929,7 @@ pub fn build(b: *std.Build) void {
                     .full_diagnostics = true,
                     .ubsan = true,
                     .cpp = true,
+                    .compile_commands = concat_cdb,
                 }).flags.items,
             });
             vst3.root_module.addCMacro("FINAL_BINARY_TYPE", "Vst3");
@@ -2020,6 +2060,7 @@ pub fn build(b: *std.Build) void {
                     },
                     .flags = FlagsBuilder.init(&build_context, target, .{
                         .cpp = true,
+                        .compile_commands = concat_cdb,
                     }).flags.items,
                 });
                 au_sdk.addIncludePath(build_context.dep_au_sdk.path("include"));
@@ -2030,7 +2071,9 @@ pub fn build(b: *std.Build) void {
             {
                 const wrapper_src_path = build_context.dep_clap_wrapper.path("src");
 
-                var flags = FlagsBuilder.init(&build_context, target, .{});
+                var flags = FlagsBuilder.init(&build_context, target, .{
+                    .compile_commands = concat_cdb,
+                });
                 switch (target.result.os.tag) {
                     .windows => {
                         flags.addFlag("-DWIN=1");
@@ -2067,6 +2110,7 @@ pub fn build(b: *std.Build) void {
                         .full_diagnostics = true,
                         .ubsan = true,
                         .objcpp = true,
+                        .compile_commands = concat_cdb,
                     }).flags.items,
                 });
                 au.root_module.addCMacro("FINAL_BINARY_TYPE", "AuV2");
@@ -2310,6 +2354,7 @@ pub fn build(b: *std.Build) void {
                     .full_diagnostics = true,
                     .ubsan = true,
                     .cpp = true,
+                    .compile_commands = concat_cdb,
                 });
 
                 const uninstaller_name = "Floe-Uninstaller";
@@ -2546,6 +2591,7 @@ pub fn build(b: *std.Build) void {
                     .full_diagnostics = true,
                     .ubsan = true,
                     .cpp = true,
+                    .compile_commands = concat_cdb,
                 }).flags.items,
             });
             tests.root_module.addCMacro("FINAL_BINARY_TYPE", "Tests");

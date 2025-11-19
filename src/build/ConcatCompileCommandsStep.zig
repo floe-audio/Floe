@@ -15,6 +15,7 @@ const ConcatCompileCommandsStep = @This();
 step: std.Build.Step,
 target: std.Build.ResolvedTarget,
 use_as_default: bool,
+fragments_dir: []const u8,
 
 pub const CompileFragment = struct {
     directory: []u8,
@@ -34,37 +35,41 @@ pub fn create(b: *std.Build, target: std.Build.ResolvedTarget, use_as_default: b
         }),
         .target = target,
         .use_as_default = use_as_default,
+        .fragments_dir = fragmentsPath(b, target.result),
     };
-
-    b.build_root.handle.makePath(cdbFragmentsDir(b, target.result)) catch {};
 
     return join_compile_commands;
 }
 
-pub fn addClangArgument(b: *std.Build, target: std.Target, flags: *std.ArrayList([]const u8)) !void {
-    try flags.appendSlice(&.{
-        "-gen-cdb-fragment-path",
-        ConcatCompileCommandsStep.cdbFragmentsDir(b, target),
-    });
-}
-
-pub fn cdbDirPath(b: *std.Build, target: std.Target) []u8 {
+fn fragmentsPath(b: *std.Build, target: std.Target) []u8 {
     // To better avoid collisions when multiple 'zig build' processes are running, we include a hash of the
-    // install prefix in the path (since it's likely to be different for different build processes).
+    // install prefix in the path since it's likely to be different for different build processes.
     var hasher = std.hash.Fnv1a_64.init();
     hasher.update(b.install_prefix);
     const hash = hasher.final();
 
+    const name = b.fmt("{s}-{x}", .{ std_extras.archAndOsPair(target).slice(), hash });
+    const path = b.cache_root.join(b.allocator, &.{ "tmp", name }) catch @panic("OOM");
+    b.cache_root.handle.makePath(path) catch |err| {
+        std.debug.print("failed to make fragments path: {any}\n", .{err});
+    };
+    return path;
+}
+
+pub fn addClangArgument(cdb_step: *ConcatCompileCommandsStep, flags: *std.ArrayList([]const u8)) !void {
+    try flags.appendSlice(&.{
+        "-gen-cdb-fragment-path",
+        cdb_step.fragments_dir,
+    });
+}
+
+pub fn cdbDirPath(b: *std.Build, target: std.Target) []u8 {
     return b.pathJoin(&.{
         b.build_root.path.?,
         constants.floe_cache_relative,
         "compile_commands",
-        b.fmt("{s}-{x}", .{ std_extras.archAndOsPair(target).slice(), hash }),
+        std_extras.archAndOsPair(target).slice(),
     });
-}
-
-fn cdbFragmentsDir(b: *std.Build, target: std.Target) []u8 {
-    return b.pathJoin(&.{ cdbDirPath(b, target), "fragments" });
 }
 
 pub fn cdbFilePath(b: *std.Build, target: std.Target) []u8 {
@@ -94,10 +99,9 @@ fn makeCdbFromFragments(step: *std.Build.Step) !void {
     defer arena.deinit();
 
     var compile_commands = std.ArrayList(CompileFragment).init(arena.allocator());
-    const cdb_fragments_dir = cdbFragmentsDir(b, self.target.result);
 
     {
-        const maybe_dir = std.fs.openDirAbsolute(cdb_fragments_dir, .{ .iterate = true });
+        const maybe_dir = std.fs.openDirAbsolute(self.fragments_dir, .{ .iterate = true });
         if (maybe_dir != std.fs.Dir.OpenError.FileNotFound) {
             var dir = try maybe_dir;
             defer dir.close();
@@ -192,6 +196,7 @@ fn makeCdbFromFragments(step: *std.Build.Step) !void {
     }
 
     if (compile_commands.items.len != 0) {
+        b.build_root.handle.makePath(cdbDirPath(b, self.target.result)) catch {};
         const out_path = cdbFilePath(b, self.target.result);
 
         const maybe_file = std.fs.openFileAbsolute(out_path, .{});
@@ -238,7 +243,7 @@ fn makeCdbFromFragments(step: *std.Build.Step) !void {
         try std.json.stringify(compile_commands.items, .{}, buffered_writer.writer());
         try buffered_writer.flush();
 
-        try std.fs.deleteTreeAbsolute(cdb_fragments_dir);
+        try std.fs.deleteTreeAbsolute(self.fragments_dir);
 
         if (self.use_as_default) {
             trySetCdb(b, self.target.result);
@@ -251,5 +256,8 @@ fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
 
     makeCdbFromFragments(step) catch |err| {
         std.debug.print("failed to concatenate compile commands: {any}\n", .{err});
+
+        if (@errorReturnTrace()) |trace|
+            std.debug.dumpStackTrace(trace.*);
     };
 }
