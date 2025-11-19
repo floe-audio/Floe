@@ -512,6 +512,16 @@ pub fn build(b: *std.Build) void {
             "fetch-floe-logos",
             "Fetch Floe logos from online - these may have a different licence to the rest of Floe",
         ) orelse false,
+        .use_system_pluginval = b.option(
+            bool,
+            "use-system-pluginval",
+            "Use system-installed pluginval instead of downloading from GitHub releases",
+        ) orelse false,
+        .use_system_clap_validator = b.option(
+            bool,
+            "use-system-clap-validator",
+            "Use system-installed clap-validator instead of downloading from GitHub releases",
+        ) orelse false,
         .targets = b.option([]const u8, "targets", "Target operating system"),
     };
 
@@ -2586,18 +2596,37 @@ pub fn build(b: *std.Build) void {
         // Clap Validator test
         if (clap_plugin_install) |plugin_install| {
             const run = std_extras.createCommandWithStdoutToStderr(b, target, "run clap-validator");
-            if (target.result.os.tag == .windows) {
+            if (options.use_system_clap_validator) {
+                // Use system-installed clap-validator when explicitly requested
+                run.addArg("clap-validator");
+            } else if (target.result.os.tag == .windows) {
                 run.addFileArg(std_extras.fetch(b, .{
                     .url = "https://github.com/free-audio/clap-validator/releases/download/0.3.2/clap-validator-0.3.2-windows.zip",
                     .file_name = "clap-validator.exe",
                     .hash = "N-V-__8AAACYMwAKpkDTKEWrhJhUyBs1LxycLWN8iFpe5p6r",
                 }));
+            } else if (target.result.os.tag == .macos) {
+                // Use downloaded binary for macOS
+                const clap_validator_fetch = std_extras.fetch(b, .{
+                    .url = "https://github.com/free-audio/clap-validator/releases/download/0.3.2/clap-validator-0.3.2-macos-universal.tar.gz",
+                    .file_name = "binaries/clap-validator",
+                    .hash = "N-V-__8AALwZfgBlaKnVwge3d221LJA9s_vQixy9c6OBvGhQ",
+                });
+                run.addFileArg(clap_validator_fetch);
             } else {
-                run.addArg("clap-validator");
+                // Linux - use downloaded binary.
+                // NOTE: we're using floe-audio repo with a re-uploaded ZIP because we needed to workaround a
+                // zig fetch bug with tar.gz files.
+                const clap_validator_fetch = std_extras.fetch(b, .{
+                    .url = "https://github.com/floe-audio/clap-validator/releases/download/v0.3.2/clap-validator-0.3.2-ubuntu-18.04.zip",
+                    .file_name = "clap-validator",
+                    .hash = "N-V-__8AAFDvhAD7wsMQHzT9s_hiRLUTXJp4mBwyx_O7gZxZ",
+                });
+                run.addFileArg(clap_validator_fetch);
             }
             run.addArgs(&.{
                 "validate",
-                // Clap Validator seems to have a bug that crashes the validator.
+                // Clap Validator seems to have a bug that crashes the program.
                 // https://github.com/free-audio/clap-validator/issues/21
                 // We workaround this by skipping process and param tests. Additionally, we disable this test
                 // because we have a good reason to behave in a different way. Each instance of our plugin as an
@@ -2626,18 +2655,32 @@ pub fn build(b: *std.Build) void {
             // Pluginval puts all of it's output in stdout, not stderr.
             const run = std_extras.createCommandWithStdoutToStderr(b, target, "run pluginval");
 
-            if (target.result.os.tag == .windows) {
+            if (options.use_system_pluginval) {
+                // Use system-installed pluginval when explicitly requested
+                run.addArg("pluginval");
+            } else if (target.result.os.tag == .windows) {
                 // On Windows, we use a downloaded binary.
                 run.addFileArg(std_extras.fetch(b, .{
                     .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_Windows.zip",
                     .file_name = "pluginval.exe",
                     .hash = "N-V-__8AAABcNACEKUY1SsEfHGFybDSKUo4JGhYN5bgZ146c",
                 }));
+            } else if (target.result.os.tag == .macos) {
+                // Use downloaded binary for macOS
+                const pluginval_fetch = std_extras.fetch(b, .{
+                    .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_macOS.zip",
+                    .file_name = "pluginval.app/Contents/MacOS/pluginval",
+                    .hash = "N-V-__8AAF8tGQHuEhO2q5y6oj6foKiCHCXCQWbfpY6ehS5e",
+                });
+                run.addFileArg(pluginval_fetch);
             } else {
-                // On macOS and Linux, we assume pluginval is available in the path. We typically have a debug build
-                // of pluginval available in our Nix shell environment. Having a custom built debug version can
-                // help diagnose plugin issues.
-                run.addArg("pluginval");
+                // Linux - use downloaded binary
+                const pluginval_fetch = std_extras.fetch(b, .{
+                    .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_Linux.zip",
+                    .file_name = "pluginval",
+                    .hash = "N-V-__8AAHiZqACvZuwhiWbvPBeJQd-K_5xpafp_Pi_6228J",
+                });
+                run.addFileArg(pluginval_fetch);
             }
 
             // In headless environments such as CI, GUI tests always fail on Linux so we skip them.
