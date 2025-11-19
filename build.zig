@@ -2747,7 +2747,8 @@ fn installPath(install_step: *std.Build.Step.InstallArtifact, absolute: bool) []
     var result = b.getInstallPath(install_step.dest_dir.?, install_step.dest_sub_path);
     if (absolute) {
         if (std.fs.path.isAbsolute(result)) return result;
-        return b.build_root.handle.realpathAlloc(b.allocator, result) catch @panic("failed to get absolute path");
+        // The install path maybe relative if, for example, the --prefix was specified as a relative folder.
+        return b.build_root.join(b.allocator, &.{result}) catch @panic("failed to get absolute path");
     }
     result = std.fs.path.relative(b.allocator, b.install_prefix, result) catch @panic("failed to get relative path");
     return result;
