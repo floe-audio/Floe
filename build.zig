@@ -2598,6 +2598,11 @@ pub fn build(b: *std.Build) void {
             tests.addConfigHeader(build_config_step);
             tests.linkLibrary(plugin);
             applyUniversalSettings(&build_context, tests, concat_cdb);
+            var final_test_artifact_step = &tests.step;
+
+            if (install_plugin.maybePatchElfExecutable(tests)) |step| {
+                final_test_artifact_step = step;
+            }
 
             // Run unit tests
             {
@@ -2617,11 +2622,9 @@ pub fn build(b: *std.Build) void {
 
                 run_tests.expectExitCode(0);
 
-                test_step.dependOn(&run_tests.step);
+                run_tests.step.dependOn(final_test_artifact_step);
 
-                if (install_plugin.maybePatchElfExecutable(tests)) |step| {
-                    run_tests.step.dependOn(step);
-                }
+                test_step.dependOn(&run_tests.step);
             }
 
             // Coverage tests
@@ -2633,9 +2636,37 @@ pub fn build(b: *std.Build) void {
                 });
                 run_coverage.addArtifactArg(tests_compile_step.?);
                 run_coverage.expectExitCode(0);
+                run_coverage.step.dependOn(final_test_artifact_step);
                 coverage.dependOn(&run_coverage.step);
             } else {
                 coverage.dependOn(&b.addFail("coverage not supported on this OS").step);
+            }
+
+            // Valgrind test
+            if (tests_compile_step != null and !options.sanitize_thread) {
+                const run = b.addSystemCommand(&.{
+                    "valgrind",
+                    "--leak-check=full",
+                    "--fair-sched=yes",
+                    "--num-callers=25",
+                    "--gen-suppressions=all",
+                    b.fmt("--suppressions={s}", .{b.pathFromRoot("valgrind.supp")}),
+                    "--error-exitcode=1",
+                    "--exit-on-first-error=no",
+                });
+                run.addArtifactArg(tests_compile_step.?);
+                run.addArgs(&.{
+                    "--log-level=debug",
+                    b.fmt("--junit-xml-output-path={s}/results-valgrind.junit.xml", .{
+                        b.pathFromRoot(constants.floe_cache_relative),
+                    }),
+                });
+                run.expectExitCode(0);
+                run.step.dependOn(final_test_artifact_step);
+
+                valgrind.dependOn(&run.step);
+            } else {
+                valgrind.dependOn(&b.addFail("valgrind not allowed for this build configuration").step);
             }
         }
 
@@ -2741,32 +2772,6 @@ pub fn build(b: *std.Build) void {
             pluginval.dependOn(&run.step);
         } else {
             pluginval.dependOn(&b.addFail("pluginval not allowed for this build configuration").step);
-        }
-
-        // Valgrind test
-        if (tests_compile_step != null and !options.sanitize_thread) {
-            const run = b.addSystemCommand(&.{
-                "valgrind",
-                "--leak-check=full",
-                "--fair-sched=yes",
-                "--num-callers=25",
-                "--gen-suppressions=all",
-                b.fmt("--suppressions={s}", .{b.pathFromRoot("valgrind.supp")}),
-                "--error-exitcode=1",
-                "--exit-on-first-error=no",
-            });
-            run.addArtifactArg(tests_compile_step.?);
-            run.addArgs(&.{
-                "--log-level=debug",
-                b.fmt("--junit-xml-output-path={s}/results-valgrind.junit.xml", .{
-                    b.pathFromRoot(constants.floe_cache_relative),
-                }),
-            });
-            run.expectExitCode(0);
-
-            valgrind.dependOn(&run.step);
-        } else {
-            valgrind.dependOn(&b.addFail("valgrind not allowed for this build configuration").step);
         }
 
         // clang-tidy
