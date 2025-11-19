@@ -304,8 +304,7 @@ const FlagsBuilder = struct {
         }
 
         if (options.add_compile_commands) {
-            try self.flags.append("-gen-cdb-fragment-path");
-            try self.flags.append(ConcatCompileCommandsStep.cdbFragmentsDir(context.b, target.result));
+            try ConcatCompileCommandsStep.addClangArgument(context.b, target.result, &self.flags);
         }
 
         if (target.result.os.tag == .windows) {

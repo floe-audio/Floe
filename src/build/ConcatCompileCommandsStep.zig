@@ -41,16 +41,29 @@ pub fn create(b: *std.Build, target: std.Build.ResolvedTarget, use_as_default: b
     return join_compile_commands;
 }
 
+pub fn addClangArgument(b: *std.Build, target: std.Target, flags: *std.ArrayList([]const u8)) !void {
+    try flags.appendSlice(&.{
+        "-gen-cdb-fragment-path",
+        ConcatCompileCommandsStep.cdbFragmentsDir(b, target),
+    });
+}
+
 pub fn cdbDirPath(b: *std.Build, target: std.Target) []u8 {
+    // To better avoid collisions when multiple 'zig build' processes are running, we include a hash of the
+    // install prefix in the path (since it's likely to be different for different build processes).
+    var hasher = std.hash.Fnv1a_64.init();
+    hasher.update(b.install_prefix);
+    const hash = hasher.final();
+
     return b.pathJoin(&.{
         b.build_root.path.?,
         constants.floe_cache_relative,
         "compile_commands",
-        std_extras.archAndOsPair(target).slice(),
+        b.fmt("{s}-{x}", .{ std_extras.archAndOsPair(target).slice(), hash }),
     });
 }
 
-pub fn cdbFragmentsDir(b: *std.Build, target: std.Target) []u8 {
+fn cdbFragmentsDir(b: *std.Build, target: std.Target) []u8 {
     return b.pathJoin(&.{ cdbDirPath(b, target), "fragments" });
 }
 
