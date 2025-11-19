@@ -350,7 +350,7 @@ static ErrorCodeOr<void> WriteGithubStepSummary(Tester& tester, String summary_p
         auto writer = buffered_writer.Writer();
         DEFER { buffered_writer.FlushReset(); };
 
-        TRY(fmt::FormatToWriter(writer, "##{}\n", ThisBinaryConfigName(tester.arena)));
+        TRY(fmt::FormatToWriter(writer, "### Failures in {}\n", ThisBinaryConfigName(tester.arena)));
 
         for (auto const& test_case : tester.test_cases)
             if (test_case.failed) TRY(fmt::FormatToWriter(writer, "- ❌ Test failed: {}\n", test_case.title));
