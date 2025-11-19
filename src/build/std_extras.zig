@@ -315,3 +315,11 @@ pub fn loadEnvFile(dir: std.fs.Dir, env_map: *std.process.EnvMap) !void {
         }
     }
 }
+
+fn pathExists(path: []const u8) bool {
+    std.fs.accessAbsolute(path, .{}) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        else => return true, // Other error - let's just say it exists.
+    };
+    return true;
+}

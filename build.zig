@@ -2247,6 +2247,29 @@ pub fn build(b: *std.Build) void {
                             run_auval.step.dependOn(plugin_install.step);
                             run_auval.expectExitCode(0);
 
+                            // We need to make sure that the audio component service is aware of the new AU.
+                            // Unfortunately, it doesn't do this automatically sometimes and if we were to run auval
+                            // right now it might say "didn't find the component". We need to kill the service so
+                            // that auval will rescan for installed AUs. The command on the terminal to do this is:
+                            // killall -9 AudioComponentRegistrar. That is, send SIGKILL to the process named
+                            // AudioComponentRegistrar.
+                            if (std.mem.endsWith(
+                                u8,
+                                std.mem.trimRight(u8, b.install_path, "/"),
+                                "Library/Audio/Plug-Ins",
+                            ) and
+                                !std_extras.pathExists(plugin_install.fullPath(b)))
+                            {
+                                const cmd = b.addSystemCommand(&.{ "killall", "-9", "AudioComponentRegistrar" });
+
+                                // We explicitly set the 'check' to an empty array which means that we do not care
+                                // about the exit code or output of this command. Sometimes it can fail with: "No
+                                // matching processes belonging to you were found" - which is fine.
+                                cmd.stdio.check = .{};
+
+                                auval.dependOn(&cmd.step);
+                            }
+
                             auval.dependOn(&run_auval.step);
                         }
                     } else {

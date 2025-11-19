@@ -204,7 +204,7 @@ pub fn addInstallSteps(
                 .name = b.fmt("make {s} bundle", .{bundle_extension}),
                 .owner = b,
             });
-            var final_install_step = make_bundle_step;
+            const final_install_step = make_bundle_step;
 
             // Binary
             {
@@ -345,31 +345,8 @@ pub fn addInstallSteps(
                 make_bundle_step.dependOn(&install.step);
             }
 
-            // We need to make sure that the audio component service is aware of the new AU. Unfortunately, it
-            // doesn't do this automatically sometimes and if we were to run auval right now it might say it's
-            // uninstalled. We need to kill the service so that auval will rescan for installed AUs. The command
-            // on the terminal to do this is: killall -9 AudioComponentRegistrar. That is, send SIGKILL to the
-            // process named AudioComponentRegistrar.
-            if (builtin.os.tag == .macos and
-                plugin_type == .au and
-                std.mem.endsWith(u8, std.mem.trimRight(u8, b.install_path, "/"), "Library/Audio/Plug-Ins") and
-                !pathExists(b.getInstallPath(.prefix, install_path)))
-            {
-                const cmd = b.addSystemCommand(&.{ "killall", "-9", "AudioComponentRegistrar" });
-                cmd.step.dependOn(make_bundle_step);
-                final_install_step = &cmd.step;
-            }
-
             return .{ .plugin_path = install_path, .step = final_install_step };
         },
         else => @panic("unsupported OS"),
     }
-}
-
-fn pathExists(path: []const u8) bool {
-    std.fs.accessAbsolute(path, .{}) catch |err| switch (err) {
-        error.FileNotFound => return false,
-        else => return true, // Other error - let's just say it exists.
-    };
-    return true;
 }
