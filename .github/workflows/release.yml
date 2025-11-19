@@ -11,6 +11,8 @@ on:
 
 env:
   SENTRY_DSN: ${{ secrets.SENTRY_DSN_PRODUCTION }}
+  # Specify a relative path for reproducible builds (no absolute paths in binaries).
+  ZIG_GLOBAL_CACHE_DIR: .zig-cache-global 
 
 jobs:
   build-windows:
