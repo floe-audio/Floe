@@ -528,8 +528,7 @@ int RunAllTests(Tester& tester, RunTestConfig const& config) {
     if (tester.num_warnings == 0)
         tester.log.Info("Warnings: " ANSI_COLOUR_FOREGROUND_GREEN("0"));
     else
-        tester.log.Info("Warnings: " ANSI_COLOUR_SET_FOREGROUND_RED "{}" ANSI_COLOUR_RESET,
-                        tester.num_warnings);
+        tester.log.Info("Warnings: " ANSI_COLOUR_FOREGROUND_RED("{}"), tester.num_warnings);
 
     auto const num_failed = CountIf(tester.test_cases, [](TestCase const& t) { return t.failed; });
     if (num_failed == 0) {
@@ -547,10 +546,8 @@ int RunAllTests(Tester& tester, RunTestConfig const& config) {
             }
         }
 
-        tester.log.Info("Failed: " ANSI_COLOUR_SET_FOREGROUND_RED "{}" ANSI_COLOUR_RESET "{}",
-                        num_failed,
-                        failed_test_names);
-        tester.log.Info("Result: " ANSI_COLOUR_SET_FOREGROUND_RED "Failure");
+        tester.log.Info("Failed: " ANSI_COLOUR_FOREGROUND_RED("{}") "{}", num_failed, failed_test_names);
+        tester.log.Info("Result: " ANSI_COLOUR_FOREGROUND_RED("Failure"));
     }
 
     if (config.junit_xml_output_path) {
