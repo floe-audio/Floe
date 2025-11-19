@@ -118,7 +118,12 @@ pub const PluginInstallResult = struct {
     step: *std.Build.Step,
 
     pub fn fullPath(self: PluginInstallResult, b: *std.Build) []const u8 {
-        return b.getInstallPath(.prefix, self.plugin_path);
+        const result = b.getInstallPath(.prefix, self.plugin_path);
+        if (std.fs.path.isAbsolute(result)) return result;
+
+        // The install path maybe relative if, for example, the --prefix was specified as a relative folder.
+        const root = b.build_root.handle.realpathAlloc(b.allocator, ".") catch "";
+        return b.pathJoin(&.{ root, result });
     }
 };
 
