@@ -76,40 +76,76 @@ pub fn addWindowsCodesign(
     return &reinstate_step.step;
 }
 
-fn inNixShell(b: *std.Build) bool {
-    return b.graph.env_map.get("IN_NIX_SHELL") != null;
-}
+// These helpers are for dealing with Nix-related issues when we are building inside a Nix devshell, but the host is
+// not NixOS (such as how we use Github Actions Ubuntu runners).
+const NixHelper = struct {
+    binary_patch_needed: ?bool = null,
 
-fn hostIsNixOS() bool {
-    std.fs.accessAbsolute("/etc/NIXOS", .{}) catch return false;
-    return true;
-}
+    // Executables (as opposed to shared libraries) will default to being interpreted by the system's dynamic
+    // linker (often /lib64/ld-linux-x86-64.so.2). This can cause problems relating to using different versions
+    // of glibc at the same time. So we use patchelf to force using the same ld.
+    pub fn maybePatchElfExecutable(self: *NixHelper, compile_step: *std.Build.Step.Compile) ?*std.Build.Step {
+        const b = compile_step.step.owner;
 
-var binary_patch_needed: ?bool = null;
+        if (!self.patchElfNeeded(b)) return null;
 
-pub fn patchElfNeeded(b: *std.Build) bool {
-    if (binary_patch_needed == null)
-        binary_patch_needed = builtin.os.tag == .linux and inNixShell(b) and !hostIsNixOS();
+        const dyn_linker = b.graph.env_map.get("FLOE_DYNAMIC_LINKER") orelse return null;
 
-    return binary_patch_needed.?;
-}
+        const patch_step = b.addSystemCommand(&.{
+            "patchelf",
+            "--set-interpreter",
+            dyn_linker,
+        });
+        patch_step.addFileArg(compile_step.getEmittedBin());
 
-pub fn maybePatchElfExecutable(compile_step: *std.Build.Step.Compile) ?*std.Build.Step {
-    const b = compile_step.step.owner;
+        return &patch_step.step;
+    }
 
-    if (!patchElfNeeded(b)) return null;
+    // The dynamic linker can normally find the libraries inside the nix devshell except when we are running
+    // an external program that hosts our audio plugin. For example clap-validator fails to load our clap with
+    // the error 'libGL.so.1 cannot be found'. Possible this is due to LD_LIBRARY_PATH not being available to
+    // the external program.
+    // As well as LD_LIBRARY_PATH, dynamic linkers also look at the rpath of the binary (which is embedded in
+    // the binary itself) to find the libraries. So that's what we use patchelf for here.
+    pub fn maybePatchElfSharedLibrary(
+        self: *NixHelper,
+        compile_step: *std.Build.Step.Compile,
+        binary_path: []const u8,
+    ) ?*std.Build.Step {
+        const b = compile_step.step.owner;
 
-    const dyn_linker = b.graph.env_map.get("FLOE_DYNAMIC_LINKER") orelse return null;
+        if (!self.patchElfNeeded(b)) return null;
 
-    const patch_step = b.addSystemCommand(&.{
-        "patchelf",
-        "--set-interpreter",
-        dyn_linker,
-    });
-    patch_step.addFileArg(compile_step.getEmittedBin());
+        const rpath = b.graph.env_map.get("FLOE_RPATH") orelse return null;
 
-    return &patch_step.step;
-}
+        const patch_step = b.addSystemCommand(&.{
+            "patchelf",
+            "--set-rpath",
+            rpath,
+            b.getInstallPath(.prefix, binary_path),
+        });
+
+        return &patch_step.step;
+    }
+
+    fn patchElfNeeded(self: *NixHelper, b: *std.Build) bool {
+        if (self.binary_patch_needed == null)
+            self.binary_patch_needed = builtin.os.tag == .linux and inNixShell(b) and !hostIsNixOS();
+
+        return self.binary_patch_needed.?;
+    }
+
+    fn inNixShell(b: *std.Build) bool {
+        return b.graph.env_map.get("IN_NIX_SHELL") != null;
+    }
+
+    fn hostIsNixOS() bool {
+        std.fs.accessAbsolute("/etc/NIXOS", .{}) catch return false;
+        return true;
+    }
+};
+
+pub var nix_helper: NixHelper = .{};
 
 pub const PluginInstallResult = struct {
     // The install path relative the prefix.
@@ -157,17 +193,9 @@ pub fn addInstallSteps(
             const install = b.addInstallFile(compile_step.getEmittedBin(), binary_path);
             var final_install_step = &install.step;
 
-            if (patchElfNeeded(b)) {
-                if (b.graph.env_map.get("FLOE_RPATH")) |rpath| {
-                    const patch_step = b.addSystemCommand(&.{
-                        "patchelf",
-                        "--set-rpath",
-                        rpath,
-                        b.getInstallPath(.prefix, binary_path),
-                    });
-                    patch_step.step.dependOn(&install.step);
-                    final_install_step = &patch_step.step;
-                }
+            if (nix_helper.maybePatchElfSharedLibrary(compile_step, binary_path)) |patch_step| {
+                patch_step.dependOn(&install.step);
+                final_install_step = patch_step;
             }
 
             return .{ .plugin_path = plugin_path, .step = final_install_step };

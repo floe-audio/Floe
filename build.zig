@@ -1401,7 +1401,7 @@ pub fn build(b: *std.Build) void {
                 copy.addCopyFileToSource(run.captureStdOut(), "website/static/generated-data.json");
                 website_gen_step.dependOn(&copy.step);
 
-                if (install_plugin.maybePatchElfExecutable(docs_generator)) |step| {
+                if (install_plugin.nix_helper.maybePatchElfExecutable(docs_generator)) |step| {
                     run.step.dependOn(step);
                 }
             }
@@ -2028,7 +2028,7 @@ pub fn build(b: *std.Build) void {
 
                 test_vst3_validator.dependOn(&run_tests.step);
 
-                if (install_plugin.maybePatchElfExecutable(vst3_validator)) |step| {
+                if (install_plugin.nix_helper.maybePatchElfExecutable(vst3_validator)) |step| {
                     run_tests.step.dependOn(step);
                 }
             }
@@ -2624,7 +2624,7 @@ pub fn build(b: *std.Build) void {
             applyUniversalSettings(&build_context, tests, concat_cdb);
             var final_test_artifact_step = &tests.step;
 
-            if (install_plugin.maybePatchElfExecutable(tests)) |step| {
+            if (install_plugin.nix_helper.maybePatchElfExecutable(tests)) |step| {
                 final_test_artifact_step = step;
             }
 
