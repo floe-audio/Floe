@@ -2222,9 +2222,10 @@ pub fn build(b: *std.Build) void {
                             // Pluginval puts all of it's output in stdout, not stderr.
                             const run = std_extras.createCommandWithStdoutToStderr(b, target, "run pluginval AU");
 
+                            addPluginvalCommand(run, target.result, options.use_system_pluginval);
+
                             run.step.dependOn(plugin_install.step);
                             run.addArgs(&.{
-                                "pluginval",
                                 "--validate",
                                 plugin_install.fullPath(b),
                             });
@@ -2709,11 +2710,11 @@ pub fn build(b: *std.Build) void {
                 // Use downloaded binary for macOS
                 const clap_validator_fetch = std_extras.fetch(b, .{
                     .url = "https://github.com/free-audio/clap-validator/releases/download/0.3.2/clap-validator-0.3.2-macos-universal.tar.gz",
-                    .file_name = "binaries/clap-validator",
+                    .file_name = "clap-validator",
                     .hash = "N-V-__8AALwZfgBlaKnVwge3d221LJA9s_vQixy9c6OBvGhQ",
                 });
                 run.addFileArg(clap_validator_fetch);
-            } else {
+            } else if (target.result.os.tag == .linux) {
                 // Linux - use downloaded binary.
                 // NOTE: we're using floe-audio repo with a re-uploaded ZIP because we needed to workaround a
                 // zig fetch bug with tar.gz files.
@@ -2723,7 +2724,10 @@ pub fn build(b: *std.Build) void {
                     .hash = "N-V-__8AAFDvhAD7wsMQHzT9s_hiRLUTXJp4mBwyx_O7gZxZ",
                 });
                 run.addFileArg(clap_validator_fetch);
+            } else {
+                @panic("Unsupported OS for clap-validator");
             }
+
             run.addArgs(&.{
                 "validate",
                 // Clap Validator seems to have a bug that crashes the program.
@@ -2755,33 +2759,7 @@ pub fn build(b: *std.Build) void {
             // Pluginval puts all of it's output in stdout, not stderr.
             const run = std_extras.createCommandWithStdoutToStderr(b, target, "run pluginval");
 
-            if (options.use_system_pluginval) {
-                // Use system-installed pluginval when explicitly requested
-                run.addArg("pluginval");
-            } else if (target.result.os.tag == .windows) {
-                // On Windows, we use a downloaded binary.
-                run.addFileArg(std_extras.fetch(b, .{
-                    .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_Windows.zip",
-                    .file_name = "pluginval.exe",
-                    .hash = "N-V-__8AAABcNACEKUY1SsEfHGFybDSKUo4JGhYN5bgZ146c",
-                }));
-            } else if (target.result.os.tag == .macos) {
-                // Use downloaded binary for macOS
-                const pluginval_fetch = std_extras.fetch(b, .{
-                    .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_macOS.zip",
-                    .file_name = "pluginval.app/Contents/MacOS/pluginval",
-                    .hash = "N-V-__8AAF8tGQHuEhO2q5y6oj6foKiCHCXCQWbfpY6ehS5e",
-                });
-                run.addFileArg(pluginval_fetch);
-            } else {
-                // Linux - use downloaded binary
-                const pluginval_fetch = std_extras.fetch(b, .{
-                    .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_Linux.zip",
-                    .file_name = "pluginval",
-                    .hash = "N-V-__8AAHiZqACvZuwhiWbvPBeJQd-K_5xpafp_Pi_6228J",
-                });
-                run.addFileArg(pluginval_fetch);
-            }
+            addPluginvalCommand(run, target.result, options.use_system_pluginval);
 
             // In headless environments such as CI, GUI tests always fail on Linux so we skip them.
             if (builtin.os.tag == .linux and b.graph.env_map.get("DISPLAY") == null) {
@@ -2870,4 +2848,38 @@ fn installPath(install_step: *std.Build.Step.InstallArtifact, absolute: bool) []
     }
     result = std.fs.path.relative(b.allocator, b.install_prefix, result) catch @panic("failed to get relative path");
     return result;
+}
+
+fn addPluginvalCommand(run: *std.Build.Step.Run, target: std.Target, use_system_pluginval: bool) void {
+    const b = run.step.owner;
+
+    if (use_system_pluginval) {
+        // Use system-installed pluginval when explicitly requested
+        run.addArg("pluginval");
+    } else if (target.os.tag == .windows) {
+        // On Windows, we use a downloaded binary.
+        run.addFileArg(std_extras.fetch(b, .{
+            .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_Windows.zip",
+            .file_name = "pluginval.exe",
+            .hash = "N-V-__8AAABcNACEKUY1SsEfHGFybDSKUo4JGhYN5bgZ146c",
+        }));
+    } else if (target.os.tag == .macos) {
+        // Use downloaded binary for macOS
+        const pluginval_fetch = std_extras.fetch(b, .{
+            .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_macOS.zip",
+            .file_name = "Contents/MacOS/pluginval",
+            .hash = "N-V-__8AAF8tGQHuEhO2q5y6oj6foKiCHCXCQWbfpY6ehS5e",
+        });
+        run.addFileArg(pluginval_fetch);
+    } else if (target.os.tag == .linux) {
+        // Linux - use downloaded binary
+        const pluginval_fetch = std_extras.fetch(b, .{
+            .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_Linux.zip",
+            .file_name = "pluginval",
+            .hash = "N-V-__8AAHiZqACvZuwhiWbvPBeJQd-K_5xpafp_Pi_6228J",
+        });
+        run.addFileArg(pluginval_fetch);
+    } else {
+        @panic("Unsupported OS for pluginval");
+    }
 }
