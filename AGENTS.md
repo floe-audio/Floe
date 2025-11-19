@@ -10,7 +10,7 @@ Floe, at it's core, is a CLAP plugin, a modern alternative to APIs such as VST3.
 Additionally, this repository contains Floe's website in the subdirectory `website/`, built using Docusaurus. We have 2 release channels: **stable** and **beta**. We use Docusaurus' versioning feature to maintain separate documentation for each channel. `website/docs` contains the beta documentation, and `website/versioned_docs/version-stable` contains the stable documentation. We use the command justfile recipe `website-promote-beta-to-stable` to promote the beta website to stable.
 
 # Commands
-Building is done inside a Nix flake shell. You can use `nix develop` to enter the shell. Or to run a command inside a shell (normally recommended), use `nix develop --command <command>`. All these commands should be prefixed with `nix develop --command` if you're not already in the shell:
+Building is done inside a Nix flake shell. You can use `nix develop .#with-validators` to enter the shell. Or to run a command inside a shell (normally recommended), use `nix develop .#with-validators --command <command>`. All these commands should be prefixed with `nix develop .#with-validators --command` if you're not already in the shell:
 - Compile the project: `zig build -Dtargets=native -Dbuild-mode=development`. Cross-compiling is supported. Alternatives options instead of `native` are: `linux`, `windows`, `mac_arm`, `mac_x86`. You can add `-Dsanitize-thread` to enable Clang's thread sanitizer.
 - Run unit tests: `tests --filter=*`. Run `tests --help` for more options.
 - Format all code using clang-tidy: `just format`
