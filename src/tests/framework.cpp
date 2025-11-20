@@ -255,35 +255,6 @@ static ErrorCodeOr<void> WriteJUnitXmlTestResults(Tester& tester, Writer writer,
                             EscapeXmlAttribute(tester.scratch_arena, system_stats.cpu_name))));
         }
 
-        // Add build and runtime configuration flags
-        constexpr bool k_thread_sanitizer =
-#if __has_feature(thread_sanitizer)
-            true;
-#else
-            false;
-#endif
-
-        constexpr bool k_production_build =
-#if PRODUCTION_BUILD
-            true;
-#else
-            false;
-#endif
-
-        constexpr bool k_optimised_build =
-#if OPTIMISED_BUILD
-            true;
-#else
-            false;
-#endif
-
-        constexpr bool k_runtime_safety_checks =
-#if RUNTIME_SAFETY_CHECKS_ON
-            true;
-#else
-            false;
-#endif
-
         // Separate line otherwise we get clang-tidy warnings.
         auto const running_on_valgrind = (bool)RUNNING_ON_VALGRIND;
 
@@ -293,7 +264,7 @@ static ErrorCodeOr<void> WriteJUnitXmlTestResults(Tester& tester, Writer writer,
                                           "      <property name=\"production_build\" value=\"{}\" />\n"
                                           "      <property name=\"optimised_build\" value=\"{}\" />\n"
                                           "      <property name=\"runtime_safety_checks\" value=\"{}\" />\n",
-                                          k_thread_sanitizer,
+                                          k_running_with_thread_sanitizer,
                                           running_on_valgrind,
                                           k_production_build,
                                           k_optimised_build,
