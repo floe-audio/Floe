@@ -279,9 +279,16 @@ const CiReport = struct {
 
         // Print diagnostics for failed tasks.
         {
-            var stderr_buffered = std.io.bufferedWriter(std.io.getStdErr().writer());
+            const stream = std.io.getStdErr();
+            var stderr_buffered = std.io.bufferedWriter(stream.writer());
             const writer = stderr_buffered.writer();
-            const console = std.io.tty.detectConfig(std.io.getStdErr());
+
+            var console = std.io.tty.detectConfig(stream);
+
+            // GitHub Actions logs seem to always show ANSI escape codes correctly, even if the terminal config isn't
+            // detected properly.
+            if (report.context.env_map.get("GITHUB_ACTIONS") != null) console = std.io.tty.Config.escape_codes;
+
             for (report.tasks.items) |task| {
                 if (task.term == .Exited and task.term.Exited == 0) {
                     continue;
