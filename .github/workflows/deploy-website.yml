@@ -25,7 +25,6 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.2.1
-      - uses: Hanaasagi/zig-action-cache@master
 
       - run: just build
       - run: just website-generate

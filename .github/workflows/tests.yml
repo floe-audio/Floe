@@ -36,7 +36,6 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.1.0
-      - uses: Hanaasagi/zig-action-cache@master
 
       - run: zig build script:ci >> $GITHUB_STEP_SUMMARY
 
@@ -72,7 +71,7 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.1.0
-      - uses: Hanaasagi/zig-action-cache@master
+
 
       - run: zig build script:ci >> $GITHUB_STEP_SUMMARY
 
@@ -121,8 +120,6 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.14.0
-
-      - uses: Hanaasagi/zig-action-cache@master
 
       - name: Install sentry-cli
         run: |

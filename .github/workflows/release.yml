@@ -31,7 +31,6 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.1.0
-      - uses: Hanaasagi/zig-action-cache@master
 
       - run: |
           just build-release windows
@@ -62,7 +61,6 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.1.0
-      - uses: Hanaasagi/zig-action-cache@master
 
       - run: |
           just build-release linux
@@ -93,7 +91,6 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.1.0
-      - uses: Hanaasagi/zig-action-cache@master
 
       - run: |
           just build-release mac_arm
