@@ -520,16 +520,6 @@ pub fn build(b: *std.Build) void {
             "fetch-floe-logos",
             "Fetch Floe logos from online - these may have a different licence to the rest of Floe",
         ) orelse false,
-        .use_system_pluginval = b.option(
-            bool,
-            "use-system-pluginval",
-            "Use system-installed pluginval instead of downloading from GitHub releases",
-        ) orelse false,
-        .use_system_clap_validator = b.option(
-            bool,
-            "use-system-clap-validator",
-            "Use system-installed clap-validator instead of downloading from GitHub releases",
-        ) orelse false,
         .targets = b.option([]const u8, "targets", "Target operating system"),
     };
 
@@ -2230,7 +2220,7 @@ pub fn build(b: *std.Build) void {
                             // Pluginval puts all of it's output in stdout, not stderr.
                             const run = std_extras.createCommandWithStdoutToStderr(b, target, "run pluginval AU");
 
-                            addPluginvalCommand(run, target.result, options.use_system_pluginval);
+                            addPluginvalCommand(run, target.result);
 
                             run.step.dependOn(plugin_install.step);
                             run.addArgs(&.{
@@ -2705,9 +2695,11 @@ pub fn build(b: *std.Build) void {
         // Clap Validator test
         if (clap_plugin_install) |plugin_install| {
             const run = std_extras.createCommandWithStdoutToStderr(b, target, "run clap-validator");
-            if (options.use_system_clap_validator) {
-                // Use system-installed clap-validator when explicitly requested
-                run.addArg("clap-validator");
+            if (b.findProgram(
+                &.{if (target.result.os.tag != .windows) "clap-validator" else "clap-validator.exe"},
+                &[0][]const u8{},
+            ) catch null) |program| {
+                run.addArg(program);
             } else if (target.result.os.tag == .windows) {
                 run.addFileArg(std_extras.fetch(b, .{
                     .url = "https://github.com/free-audio/clap-validator/releases/download/0.3.2/clap-validator-0.3.2-windows.zip",
@@ -2767,7 +2759,7 @@ pub fn build(b: *std.Build) void {
             // Pluginval puts all of it's output in stdout, not stderr.
             const run = std_extras.createCommandWithStdoutToStderr(b, target, "run pluginval");
 
-            addPluginvalCommand(run, target.result, options.use_system_pluginval);
+            addPluginvalCommand(run, target.result);
 
             // In headless environments such as CI, GUI tests always fail on Linux so we skip them.
             if (builtin.os.tag == .linux and b.graph.env_map.get("DISPLAY") == null) {
@@ -2858,12 +2850,15 @@ fn installPath(install_step: *std.Build.Step.InstallArtifact, absolute: bool) []
     return result;
 }
 
-fn addPluginvalCommand(run: *std.Build.Step.Run, target: std.Target, use_system_pluginval: bool) void {
+fn addPluginvalCommand(run: *std.Build.Step.Run, target: std.Target) void {
     const b = run.step.owner;
 
-    if (use_system_pluginval) {
+    if (b.findProgram(
+        &.{if (target.os.tag != .windows) "pluginval" else "pluginval.exe"},
+        &[0][]const u8{},
+    ) catch null) |program| {
         // Use system-installed pluginval when explicitly requested
-        run.addArg("pluginval");
+        run.addArg(program);
     } else if (target.os.tag == .windows) {
         // On Windows, we use a downloaded binary.
         run.addFileArg(std_extras.fetch(b, .{
