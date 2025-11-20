@@ -24,7 +24,7 @@ pub const CompileFragment = struct {
     arguments: [][]u8,
 };
 
-pub fn create(b: *std.Build, target: std.Build.ResolvedTarget, use_as_default: bool) *ConcatCompileCommandsStep {
+pub fn create(b: *std.Build, target: std.Build.ResolvedTarget, use_as_default: bool, config_hash: u64) *ConcatCompileCommandsStep {
     const join_compile_commands = b.allocator.create(ConcatCompileCommandsStep) catch @panic("OOM");
     join_compile_commands.* = ConcatCompileCommandsStep{
         .step = std.Build.Step.init(.{
@@ -35,20 +35,19 @@ pub fn create(b: *std.Build, target: std.Build.ResolvedTarget, use_as_default: b
         }),
         .target = target,
         .use_as_default = use_as_default,
-        .fragments_dir_cache_subpath = fragmentsDirInCache(b, target.result),
+        .fragments_dir_cache_subpath = fragmentsDirInCache(b, config_hash),
     };
 
     return join_compile_commands;
 }
 
-fn fragmentsDirInCache(b: *std.Build, target: std.Target) []u8 {
-    // To better avoid collisions when multiple 'zig build' processes are running simultaneously, we include a hash of the
-    // install prefix in the path since it's likely to be different for different build processes.
-    var hasher = std.hash.Fnv1a_64.init();
-    hasher.update(b.install_prefix);
-    const hash = hasher.final();
-
-    const path = b.fmt("tmp{s}{s}-{x}", .{ std.fs.path.sep_str, std_extras.archAndOsPair(target).slice(), hash });
+// To better avoid collisions when multiple 'zig build' processes are running simultaneously we use a unique hash
+// based on the config.
+fn fragmentsDirInCache(b: *std.Build, config_hash: u64) []u8 {
+    const path = b.fmt("tmp{s}{x}", .{
+        std.fs.path.sep_str,
+        config_hash,
+    });
     b.cache_root.handle.makePath(path) catch |err| {
         std.debug.print("failed to make fragments path: {any}\n", .{err});
     };

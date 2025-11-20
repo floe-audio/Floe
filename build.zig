@@ -496,6 +496,7 @@ pub fn build(b: *std.Build) void {
 
     std_extras.loadEnvFile(b.build_root.handle, &b.graph.env_map) catch {};
 
+    // IMPORTANT: if you add options here, you may need to also update the config_hash computation below.
     const options = .{
         .build_mode = b.option(
             BuildMode,
@@ -607,10 +608,27 @@ pub fn build(b: *std.Build) void {
     const floe_version_hash = std.hash.Fnv1a_32.hash(floe_version_string);
 
     for (targets.items) |target| {
+        // Create a unique hash for this configuration. We use when we need to unique generate folders even when
+        // multiple zig builds processes are running simultaneously. Ideally we would use hashUserInputOptionsMap
+        // from std.Build, but it's private and quite complicated to copy here. This manual approach is simple but
+        // not as robust.
+        const config_hash = blk: {
+            var hasher = std.hash.Wyhash.init(0);
+            hasher.update(target.query.zigTriple(b.allocator) catch "");
+            hasher.update(@tagName(options.build_mode));
+            hasher.update(if (options.enable_tracy) "tracy" else "no_tracy");
+            hasher.update(if (options.sanitize_thread) "sanitize_thread" else "no_sanitize_thread");
+            hasher.update(
+                if (options.windows_installer_require_admin) "win_installer_elevated" else "win_installer_not_elevated",
+            );
+            break :blk hasher.final();
+        };
+
         var concat_cdb = ConcatCompileCommandsStep.create(
             b,
             target,
             target.query.eql(target_for_compile_commands.query),
+            config_hash,
         );
         compile_all_step.dependOn(&concat_cdb.step);
 
