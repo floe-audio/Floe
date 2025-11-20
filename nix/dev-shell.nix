@@ -4,7 +4,6 @@
 {
   pkgs,
   zigpkgs,
-  nativeBinSubdir,
   extraPackages ? [ ],
 }:
 
@@ -76,7 +75,6 @@ pkgs.mkShell rec {
 
   shellHook =
     ''
-      export PATH="$PWD/${nativeBinSubdir}:$PATH"
       # Use a relative path for reproducible builds
       export ZIG_GLOBAL_CACHE_DIR=".zig-cache-global"
     ''

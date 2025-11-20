@@ -23,20 +23,18 @@
         pkgs = import nixpkgs { inherit system; };
         zigpkgs = zig.packages.${system};
 
-        nativeBinSubdir = "zig-out/${builtins.replaceStrings [ "darwin" ] [ "macos" ] system}";
-
         # Optional validation tools
         clap-val = import ./nix/clap-validator.nix { inherit pkgs; };
         pluginval = import ./nix/pluginval.nix { inherit pkgs; };
       in
       {
         devShells.default = import ./nix/dev-shell.nix {
-          inherit pkgs zigpkgs nativeBinSubdir;
+          inherit pkgs zigpkgs;
         };
 
         # Dev shell with validation tools included
         devShells.with-validators = import ./nix/dev-shell.nix {
-          inherit pkgs zigpkgs nativeBinSubdir;
+          inherit pkgs zigpkgs;
           extraPackages = [
             clap-val
             pluginval
