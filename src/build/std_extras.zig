@@ -219,7 +219,7 @@ pub fn createCommandWithStdoutToStderr(
     return run;
 }
 
-// This function is from from TigerBeetle.
+// This function is from from TigerBeetle. Modified slightly to fit our needs.
 // Copyright TigerBeetle
 // SPDX-License-Identifier: Apache-2.0
 // Use 'zig fetch' to download and unpack the specified URL, optionally verifying the checksum.
@@ -227,6 +227,7 @@ pub fn fetch(b: *std.Build, options: struct {
     url: []const u8,
     file_name: []const u8,
     hash: ?[]const u8,
+    executable: bool = false,
 }) std.Build.LazyPath {
     const copy_from_cache = b.addRunArtifact(b.addExecutable(.{
         .name = "copy-from-cache",
@@ -240,12 +241,12 @@ pub fn fetch(b: *std.Build, options: struct {
                 \\    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
                 \\    const allocator = arena.allocator();
                 \\    const args = try std.process.argsAlloc(allocator);
-                \\    assert(args.len == 5 or args.len == 6);
+                \\    assert(args.len == 7);
                 \\
                 \\    const hash_and_newline = try std.fs.cwd().readFileAlloc(allocator, args[2], 128);
                 \\    assert(hash_and_newline[hash_and_newline.len - 1] == '\n');
                 \\    const hash = hash_and_newline[0 .. hash_and_newline.len - 1];
-                \\    if (args.len == 6 and !std.mem.eql(u8, args[5], hash)) {
+                \\    if (!std.mem.eql(u8, args[5], "null") and !std.mem.eql(u8, args[5], hash)) {
                 \\        std.debug.panic(
                 \\            \\bad hash
                 \\            \\specified:  {s}
@@ -261,6 +262,17 @@ pub fn fetch(b: *std.Build, options: struct {
                 \\        args[4],
                 \\        .{},
                 \\    );
+                \\    
+                \\    if (std.mem.eql(u8, args[6], "executable")) {
+                \\        if (builtin.os.tag != .windows) {
+                \\            const file = try std.fs.cwd().openFile(args[4], .{});
+                \\            defer file.close();
+                \\            const permissions = std.fs.File.Permissions{
+                \\                .inner = std.fs.File.PermissionsUnix.unixNew(0o755),
+                \\            };
+                \\            try file.setPermissions(permissions);
+                \\        }
+                \\    }
                 \\}
             ),
             .target = b.graph.host,
@@ -274,9 +286,8 @@ pub fn fetch(b: *std.Build, options: struct {
     );
     copy_from_cache.addArg(options.file_name);
     const result = copy_from_cache.addOutputFileArg(options.file_name);
-    if (options.hash) |hash| {
-        copy_from_cache.addArg(hash);
-    }
+    copy_from_cache.addArg(options.hash orelse "null");
+    copy_from_cache.addArg(if (options.executable) "executable" else "null");
     return result;
 }
 

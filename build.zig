@@ -2714,6 +2714,7 @@ pub fn build(b: *std.Build) void {
                     .url = "https://github.com/free-audio/clap-validator/releases/download/0.3.2/clap-validator-0.3.2-macos-universal.tar.gz",
                     .file_name = "clap-validator",
                     .hash = "N-V-__8AALwZfgBlaKnVwge3d221LJA9s_vQixy9c6OBvGhQ",
+                    .executable = true,
                 });
                 run.addFileArg(clap_validator_fetch);
             } else if (target.result.os.tag == .linux) {
@@ -2724,6 +2725,7 @@ pub fn build(b: *std.Build) void {
                     .url = "https://github.com/floe-audio/clap-validator/releases/download/v0.3.2/clap-validator-0.3.2-ubuntu-18.04.zip",
                     .file_name = "clap-validator",
                     .hash = "N-V-__8AAFDvhAD7wsMQHzT9s_hiRLUTXJp4mBwyx_O7gZxZ",
+                    .executable = true,
                 });
                 run.addFileArg(clap_validator_fetch);
             } else {
@@ -2874,6 +2876,7 @@ fn addPluginvalCommand(run: *std.Build.Step.Run, target: std.Target) void {
             .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_macOS.zip",
             .file_name = "Contents/MacOS/pluginval",
             .hash = "N-V-__8AAF8tGQHuEhO2q5y6oj6foKiCHCXCQWbfpY6ehS5e",
+            .executable = true,
         });
         run.addFileArg(pluginval_fetch);
     } else if (target.os.tag == .linux) {
@@ -2882,6 +2885,7 @@ fn addPluginvalCommand(run: *std.Build.Step.Run, target: std.Target) void {
             .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_Linux.zip",
             .file_name = "pluginval",
             .hash = "N-V-__8AAHiZqACvZuwhiWbvPBeJQd-K_5xpafp_Pi_6228J",
+            .executable = true,
         });
         run.addFileArg(pluginval_fetch);
     } else {
