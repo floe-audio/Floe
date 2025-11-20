@@ -13,26 +13,31 @@ pub const CodesignInfo = struct {
     description: []const u8,
 };
 
-pub fn addWindowsCodesign(
-    b: *std.Build,
+pub fn maybeAddWindowsCodesign(
+    compile_step: *std.Build.Step.Compile,
     sign_info: CodesignInfo,
-    install_path: []const u8,
-    install_step: *std.Build.Step,
-) ?*std.Build.Step {
-    std.debug.assert(!std.fs.path.isAbsolute(install_path));
+) std.Build.LazyPath {
+    const binary_path = compile_step.getEmittedBin();
+
+    if (compile_step.rootModuleTarget().os.tag != .windows) {
+        return binary_path;
+    }
+
+    const b = compile_step.step.owner;
+
     const cert_pfx = b.graph.env_map.get("WINDOWS_CODESIGN_CERT_PFX") orelse {
         std.log.warn("missing WINDOWS_CODESIGN_CERT_PFX environment variable; binaries will be unsigned", .{});
-        return null;
+        return binary_path;
     };
 
     if (cert_pfx.len == 0) {
         std.log.warn("WINDOWS_CODESIGN_CERT_PFX environment variable is empty; binaries will be unsigned", .{});
-        return null;
+        return binary_path;
     }
 
     const cert_password = b.graph.env_map.get("WINDOWS_CODESIGN_CERT_PFX_PASSWORD") orelse {
         std.log.warn("missing WINDOWS_CODESIGN_CERT_PFX_PASSWORD environment variable; binaries will be unsigned", .{});
-        return null;
+        return binary_path;
     };
 
     const write = b.addWriteFiles();
@@ -63,17 +68,13 @@ pub fn addWindowsCodesign(
     cmd.addArgs(&.{ "-i", constants.floe_homepage_url });
     cmd.addArgs(&.{ "-t", "http://timestamp.sectigo.com" });
 
-    cmd.addArgs(&.{ "-in", b.getInstallPath(.prefix, install_path) });
+    cmd.addArg("-in");
+    cmd.addFileArg(binary_path);
 
     cmd.addArg("-out");
     const signed_output_lazy_path = cmd.addOutputFileArg("signed_plugin");
-    cmd.step.dependOn(install_step);
 
-    // osslsigncode doesn't edit in-place, it creates a separate output binary. We now need to copy that
-    // output binary back to the original location.
-    const reinstate_step = b.addInstallFile(signed_output_lazy_path, install_path);
-
-    return &reinstate_step.step;
+    return signed_output_lazy_path;
 }
 
 // These helpers are for dealing with Nix-related issues when we are building inside a Nix devshell, but the host is
@@ -84,21 +85,23 @@ const NixHelper = struct {
     // Executables (as opposed to shared libraries) will default to being interpreted by the system's dynamic
     // linker (often /lib64/ld-linux-x86-64.so.2). This can cause problems relating to using different versions
     // of glibc at the same time. So we use patchelf to force using the same ld.
-    pub fn maybePatchElfExecutable(self: *NixHelper, compile_step: *std.Build.Step.Compile) ?*std.Build.Step {
+    pub fn maybePatchElfExecutable(self: *NixHelper, compile_step: *std.Build.Step.Compile) std.Build.LazyPath {
         const b = compile_step.step.owner;
 
-        if (!self.patchElfNeeded(b)) return null;
+        if (!self.patchElfNeeded(b)) return compile_step.getEmittedBin();
 
-        const dyn_linker = b.graph.env_map.get("FLOE_DYNAMIC_LINKER") orelse return null;
+        const dyn_linker = b.graph.env_map.get("FLOE_DYNAMIC_LINKER") orelse return compile_step.getEmittedBin();
 
         const patch_step = b.addSystemCommand(&.{
             "patchelf",
             "--set-interpreter",
             dyn_linker,
+            "--output",
         });
+        const result = patch_step.addOutputFileArg(compile_step.name);
         patch_step.addFileArg(compile_step.getEmittedBin());
 
-        return &patch_step.step;
+        return result;
     }
 
     // The dynamic linker can normally find the libraries inside the nix devshell except when we are running
@@ -110,22 +113,23 @@ const NixHelper = struct {
     pub fn maybePatchElfSharedLibrary(
         self: *NixHelper,
         compile_step: *std.Build.Step.Compile,
-        binary_path: []const u8,
-    ) ?*std.Build.Step {
+    ) std.Build.LazyPath {
         const b = compile_step.step.owner;
 
-        if (!self.patchElfNeeded(b)) return null;
+        if (!self.patchElfNeeded(b)) return compile_step.getEmittedBin();
 
-        const rpath = b.graph.env_map.get("FLOE_RPATH") orelse return null;
+        const rpath = b.graph.env_map.get("FLOE_RPATH") orelse return compile_step.getEmittedBin();
 
         const patch_step = b.addSystemCommand(&.{
             "patchelf",
             "--set-rpath",
             rpath,
-            b.getInstallPath(.prefix, binary_path),
+            "--output",
         });
+        const result = patch_step.addOutputFileArg("patched_plugin");
+        patch_step.addFileArg(compile_step.getEmittedBin());
 
-        return &patch_step.step;
+        return result;
     }
 
     fn patchElfNeeded(self: *NixHelper, b: *std.Build) bool {
@@ -147,41 +151,34 @@ const NixHelper = struct {
 
 pub var nix_helper: NixHelper = .{};
 
-pub const PluginInstallResult = struct {
-    // The install path relative the prefix.
-    plugin_path: []const u8,
-
-    step: *std.Build.Step,
-
-    pub fn fullPath(self: PluginInstallResult, b: *std.Build) []const u8 {
-        const result = b.getInstallPath(.prefix, self.plugin_path);
-        if (std.fs.path.isAbsolute(result)) return result;
-
-        // The install path maybe relative if, for example, the --prefix was specified as a relative folder.
-        const root = b.build_root.handle.realpathAlloc(b.allocator, ".") catch "";
-        return b.pathJoin(&.{ root, result });
-    }
-};
-
-pub fn addInstallSteps(
+// The generated binary may not have the right name, extension or folder structure to be a valid
+// audio plugin. This function performs the necessary setup.
+pub fn addConfiguredPlugin(
     b: *std.Build,
     plugin_type: PluginType,
     compile_step: *std.Build.Step.Compile,
     codesign: ?CodesignInfo,
-) PluginInstallResult {
+) std.Build.LazyPath {
     switch (compile_step.rootModuleTarget().os.tag) {
         .linux => {
+            const path = nix_helper.maybePatchElfSharedLibrary(compile_step);
+
+            // Path to the actual plugin (whether a binary or a bundle folder).
             const plugin_path = switch (plugin_type) {
-                .vst3 => ".vst3/Floe.vst3",
-                .clap => ".clap/Floe.clap",
+                .vst3 => "Floe.vst3",
+                .clap => "Floe.clap",
                 .au => @panic("AU not supported on Linux"),
             };
 
+            var is_dir: bool = false;
+
+            // Path to the binary shared library.
             const binary_path = b.fmt("{s}{s}", .{
                 plugin_path, switch (plugin_type) {
                     .vst3 => blk: {
                         // For VST3, we need to build a bundle folder structure for the plugin rather than just a
                         // simple binary.
+                        is_dir = true;
                         std.debug.assert(compile_step.root_module.resolved_target.?.result.cpu.arch == .x86_64);
                         break :blk "/Contents/x86_64-linux/Floe.so";
                     },
@@ -190,39 +187,73 @@ pub fn addInstallSteps(
                 },
             });
 
-            const install = b.addInstallFile(compile_step.getEmittedBin(), binary_path);
-            var final_install_step = &install.step;
+            const write = b.addWriteFiles();
+            var result = write.addCopyFile(path, binary_path);
 
-            if (nix_helper.maybePatchElfSharedLibrary(compile_step, binary_path)) |patch_step| {
-                patch_step.dependOn(&install.step);
-                final_install_step = patch_step;
-            }
+            // The 'result' LazyPath points to the file inside the generated directory. We need it to point to the
+            // plugin (which is a folder in the case of VST3).
+            result.generated.sub_path = plugin_path;
 
-            return .{ .plugin_path = plugin_path, .step = final_install_step };
-        },
-        .windows => {
-            const install_path = switch (plugin_type) {
-                .vst3 => "VST3/Floe.vst3",
-                .clap => "CLAP/Floe.clap",
-                .au => @panic("AU not supported on Windows"),
-            };
-            const install = b.addInstallFile(compile_step.getEmittedBin(), install_path);
-            var final_install_step = &install.step;
+            // Install.
+            {
+                // Subdirectory inside the prefix where the plugin will be installed. These subdirs allow for HOME to
+                // be used and the plugins will be correctly found by hosts.
+                const install_subdir = switch (plugin_type) {
+                    .vst3 => ".vst3",
+                    .clap => ".clap",
+                    .au => @panic("AU not supported on Linux"),
+                };
 
-            if (codesign) |sign_info| {
-                if (addWindowsCodesign(b, sign_info, install_path, &install.step)) |sign_step| {
-                    sign_step.dependOn(&install.step);
-                    final_install_step = sign_step;
+                if (is_dir) {
+                    const install = b.addInstallDirectory(.{
+                        .source_dir = result,
+                        .install_dir = .prefix,
+                        .install_subdir = install_subdir,
+                    });
+                    b.getInstallStep().dependOn(&install.step);
+                } else {
+                    const install = b.addInstallFile(result, b.pathJoin(&.{ install_subdir, plugin_path }));
+                    b.getInstallStep().dependOn(&install.step);
                 }
             }
 
-            return .{ .plugin_path = install_path, .step = final_install_step };
+            return result;
+        },
+        .windows => {
+            std.debug.assert(codesign != null);
+            const path = maybeAddWindowsCodesign(compile_step, codesign.?);
+
+            // On Windows, plugins are just single files. So we don't need to worry about bundle structures.
+            const plugin_path = switch (plugin_type) {
+                .vst3 => "Floe.vst3",
+                .clap => "Floe.clap",
+                .au => @panic("AU not supported on Windows"),
+            };
+
+            const write = b.addWriteFiles();
+            const result = write.addCopyFile(path, plugin_path);
+
+            // Install.
+            {
+                // This subfolder allows for the plugin to be installed to either %COMMONPROGRAMFILES% or
+                // %LOCALAPPDATA%\Programs\Common.
+                const install_subdir = switch (plugin_type) {
+                    .vst3 => "VST3",
+                    .clap => "CLAP",
+                    .au => @panic("AU not supported on Windows"),
+                };
+
+                const install = b.addInstallFile(result, b.pathJoin(&.{ install_subdir, plugin_path }));
+                b.getInstallStep().dependOn(&install.step);
+            }
+
+            return result;
         },
         .macos => {
             const install_path = switch (plugin_type) {
-                .vst3 => "VST3/Floe.vst3",
-                .clap => "CLAP/Floe.clap",
-                .au => "Components/Floe.component",
+                .vst3 => "Floe.vst3",
+                .clap => "Floe.clap",
+                .au => "Floe.component",
             };
             const bundle_extension = switch (plugin_type) {
                 .vst3 => "vst3",
@@ -230,44 +261,34 @@ pub fn addInstallSteps(
                 .au => "component",
             };
 
-            // A single top-level step so that other steps can depend on the entire bundle being made.
-            const make_bundle_step = b.allocator.create(std.Build.Step) catch @panic("OOM");
-            make_bundle_step.* = std.Build.Step.init(.{
-                .id = .custom,
-                .name = b.fmt("make {s} bundle", .{bundle_extension}),
-                .owner = b,
-            });
-            const final_install_step = make_bundle_step;
+            const write = b.addWriteFiles();
+
+            var result: std.Build.LazyPath = undefined;
 
             // Binary
             {
-                const binary_path = b.fmt("{s}/Contents/MacOS/Floe", .{install_path});
-                const install = b.addInstallFile(compile_step.getEmittedBin(), binary_path);
-                make_bundle_step.dependOn(&install.step);
+                result = write.addCopyFile(
+                    compile_step.getEmittedBin(),
+                    b.fmt("{s}/Contents/MacOS/Floe", .{install_path}),
+                );
 
                 // Generate dSYM for debugging.
+                // NOTE(Sam): does this need a dependsOn?
                 const cmd = b.addSystemCommand(&.{"dsymutil"});
-                cmd.addArg(b.getInstallPath(.prefix, binary_path));
-                cmd.step.dependOn(&install.step);
-                make_bundle_step.dependOn(&cmd.step);
+                cmd.addFileArg(result);
+
+                // The result points to the binary, for plugins, we want it to point to the bundle since that's
+                // what hosts/validators use.
+                result.generated.sub_path = install_path;
             }
 
             // PkgInfo
-            {
-                const write = b.addWriteFiles();
-                const lazy_path = write.add("PkgInfo", "BNDL????");
-                const install = b.addInstallFile(
-                    lazy_path,
-                    b.fmt("{s}/Contents/PkgInfo", .{install_path}),
-                );
-                make_bundle_step.dependOn(&install.step);
-            }
+            _ = write.add(b.fmt("{s}/Contents/PkgInfo", .{install_path}), "BNDL????");
 
             // Info.plist
             {
                 const version = compile_step.version.?;
 
-                const write = b.addWriteFiles();
                 const file_content = std.fmt.allocPrint(b.allocator,
                     \\<?xml version="1.0" encoding="UTF-8"?>
                     \\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -370,15 +391,26 @@ pub fn addInstallSteps(
                     else
                         "",
                 }) catch @panic("OOM");
-                const lazy_path = write.add("Info.plist", file_content);
-                const install = b.addInstallFile(
-                    lazy_path,
-                    b.fmt("{s}/Contents/Info.plist", .{install_path}),
-                );
-                make_bundle_step.dependOn(&install.step);
+
+                _ = write.add(b.fmt("{s}/Contents/Info.plist", .{install_path}), file_content);
             }
 
-            return .{ .plugin_path = install_path, .step = final_install_step };
+            // Install.
+            {
+                // Subpath ready for a --prefix of /Library/Audio/Plug-Ins/, or the HOME equivalent.
+                const install = b.addInstallDirectory(.{
+                    .source_dir = result,
+                    .install_dir = .prefix,
+                    .install_subdir = switch (plugin_type) {
+                        .vst3 => "VST3",
+                        .clap => "CLAP",
+                        .au => "Components",
+                    },
+                });
+                b.getInstallStep().dependOn(&install.step);
+            }
+
+            return result;
         },
         else => @panic("unsupported OS"),
     }
