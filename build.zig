@@ -2264,7 +2264,9 @@ pub fn build(b: *std.Build) void {
                                 // We explicitly set the 'check' to an empty array which means that we do not care
                                 // about the exit code or output of this command. Sometimes it can fail with: "No
                                 // matching processes belonging to you were found" - which is fine.
-                                cmd.stdio.check = .{};
+                                cmd.stdio = .{
+                                    .check = std.ArrayListUnmanaged(std.Build.Step.Run.StdIo.Check).empty,
+                                };
 
                                 auval.dependOn(&cmd.step);
                             }
