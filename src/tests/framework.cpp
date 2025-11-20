@@ -21,7 +21,7 @@ void RegisterTest(Tester& tester, TestFunction f, String title) {
 
 String TempFolder(Tester& tester) {
     if (!tester.temp_folder) {
-        auto error_log = StdWriter(StdStream::Out);
+        auto error_log = StdWriter(StdStream::Err);
         tester.temp_folder =
             KnownDirectoryWithSubdirectories(tester.arena,
                                              KnownDirectoryType::Temporary,
