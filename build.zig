@@ -31,6 +31,14 @@ const check_steps = @import("src/build/check_steps.zig");
 const scripts = @import("src/build/scripts.zig");
 const install_plugin = @import("src/build/install_plugin.zig");
 
+comptime {
+    const current_zig = builtin.zig_version;
+    const required_zig = std.SemanticVersion.parse("0.14.0") catch unreachable;
+    if (current_zig.order(required_zig) != .eq) {
+        @compileError(std.fmt.comptimePrint("Floe requires Zig version {}, but you are using version {}.", .{ required_zig, current_zig }));
+    }
+}
+
 fn addWindowsEmbedInfo(step: *std.Build.Step.Compile, info: struct {
     name: []const u8,
     description: []const u8,
