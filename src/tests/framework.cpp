@@ -348,22 +348,91 @@ static ErrorCodeOr<void> WriteJUnitXmlTestResults(Tester& tester, Writer writer,
     return k_success;
 }
 
-int RunAllTests(Tester& tester, Span<String> filter_patterns, Optional<String> junit_xml_output_path) {
+static String ThisBinaryConfigName(Allocator& a) {
+    DynamicArray<char> name {a};
+
+    dyn::AppendSpan(name, "tests");
+    if (k_production_build) dyn::AppendSpan(name, "-production");
+    if (k_optimised_build) dyn::AppendSpan(name, "-optimised");
+    if (k_running_with_thread_sanitizer) dyn::AppendSpan(name, "-tsan");
+    if (RUNNING_ON_VALGRIND) dyn::AppendSpan(name, "-valgrind");
+    dyn::AppendSpan(name, IS_WINDOWS ? "-windows"_s : IS_MACOS ? "-macos" : "-linux");
+
+    return name.ToOwnedSpan();
+}
+
+static ErrorCodeOr<void> WriteGithubStepSummary(Tester& tester, String summary_path) {
+    auto const num_failed = CountIf(tester.test_cases, [](TestCase const& t) { return t.failed; });
+
+    if (!num_failed) return k_success;
+
+    auto file = TRY(OpenFile(summary_path,
+                             {
+                                 .capability = FileMode::Capability::Append,
+                                 .win32_share = FileMode::Share::ReadWrite,
+                                 .creation = FileMode::Creation::OpenAlways,
+                             }));
+    TRY(file.Lock({.type = FileLockOptions::Type::Exclusive}));
+
+    {
+        BufferedWriter<Kb(4)> buffered_writer {file.Writer()};
+        auto writer = buffered_writer.Writer();
+        DEFER { buffered_writer.FlushReset(); };
+
+        TRY(fmt::FormatToWriter(writer, "##{}\n", ThisBinaryConfigName(tester.arena)));
+
+        for (auto const& test_case : tester.test_cases)
+            if (test_case.failed) TRY(fmt::FormatToWriter(writer, "- ❌ Test failed: {}\n", test_case.title));
+
+        TRY(writer.WriteChars("\n"));
+    }
+
+    TRY(file.Unlock());
+
+    return k_success;
+}
+
+int RunAllTests(Tester& tester, RunTestConfig const& config) {
     DEFER {
         if (tester.temp_folder)
             auto _ = Delete(*tester.temp_folder, {.type = DeleteOptions::Type::DirectoryRecursively});
     };
+
+    // Setup
+    {
+        if (config.test_files_folder.HasValue()) {
+            tester.test_files_folder = *config.test_files_folder;
+        } else if (auto const path = GetEnvironmentVariable("FLOE_TEST_FILES_FOLDER_PATH", tester.arena);
+                   path.HasValue()) {
+            tester.test_files_folder = path.Value();
+        }
+
+        tester.is_github_actions_run = ({
+            auto const e = GetEnvironmentVariable("GITHUB_ACTIONS", tester.arena);
+            e.HasValue() && e.Value() == "true"_s;
+        });
+
+        if (config.clap_plugin_path.HasValue()) {
+            tester.clap_plugin_path = *config.clap_plugin_path;
+        } else if (auto const path = GetEnvironmentVariable("FLOE_CLAP_PLUGIN_PATH", tester.arena);
+                   path.HasValue()) {
+            tester.clap_plugin_path = path.Value();
+        }
+    }
 
     TestResults test_results {};
 
     tester.log.Info("Running tests ...");
     tester.log.Info("Valgrind: {}", RUNNING_ON_VALGRIND);
     tester.log.Info("Thread Sanitizer: {}", k_running_with_thread_sanitizer);
+    tester.log.Info("Optimised: {}", k_optimised_build);
     tester.log.Info("Repeat tests: {}", tester.repeat_tests);
-    tester.log.Info("Writing to log file: {}", tester.log.file.HasValue());
-    tester.log.Info("Filter patterns: {}", filter_patterns);
+    tester.log.Info("Filter patterns: {}", config.filter_patterns);
+    tester.log.Info("CLAP plugin path: {}", tester.clap_plugin_path);
+    tester.log.Info("Test files folder: {}",
+                    tester.test_files_folder ? *tester.test_files_folder : "auto-detected"_s);
     tester.log.Info("JUnitXML output path: {}",
-                    junit_xml_output_path.HasValue() ? *junit_xml_output_path : "none"_s);
+                    config.junit_xml_output_path.HasValue() ? *config.junit_xml_output_path : "none"_s);
 
     Stopwatch const overall_stopwatch;
 
@@ -379,9 +448,9 @@ int RunAllTests(Tester& tester, Span<String> filter_patterns, Optional<String> j
         DEFER { suite->time_seconds = run_stopwatch.SecondsElapsed(); };
 
         for (auto& test_case : tester.test_cases) {
-            if (filter_patterns.size) {
+            if (config.filter_patterns.size) {
                 bool matches_any_pattern = false;
-                for (auto const& pattern : filter_patterns) {
+                for (auto const& pattern : config.filter_patterns) {
                     if (MatchWildcard(pattern, test_case.title)) {
                         matches_any_pattern = true;
                         break;
@@ -513,9 +582,11 @@ int RunAllTests(Tester& tester, Span<String> filter_patterns, Optional<String> j
         tester.log.Info("Result: " ANSI_COLOUR_SET_FOREGROUND_RED "Failure");
     }
 
-    if (junit_xml_output_path) {
-        auto file = TRY_OR(OpenFile(*junit_xml_output_path, FileMode::Write()), {
-            tester.log.Error("Failed to open JUnit XML output file {}: {}", *junit_xml_output_path, error);
+    if (config.junit_xml_output_path) {
+        auto file = TRY_OR(OpenFile(*config.junit_xml_output_path, FileMode::Write()), {
+            tester.log.Error("Failed to open JUnit XML output file {}: {}",
+                             *config.junit_xml_output_path,
+                             error);
             return 1;
         });
 
@@ -525,6 +596,13 @@ int RunAllTests(Tester& tester, Span<String> filter_patterns, Optional<String> j
 
         TRY_OR(WriteJUnitXmlTestResults(tester, writer, test_results), {
             tester.log.Error("Failed to write JUnit XML test results: {}", error);
+            return 1;
+        });
+    }
+
+    if (auto const summary_path = GetEnvironmentVariable("GITHUB_STEP_SUMMARY", tester.arena)) {
+        TRY_OR(WriteGithubStepSummary(tester, *summary_path), {
+            tester.log.Error("Failed to write GitHub step summary: {}", error);
             return 1;
         });
     }
@@ -561,6 +639,13 @@ Check(Tester& tester, bool expression, String message, FailureAction failure_act
         }
 
         auto _ = PrintCurrentStacktrace(StdStream::Err, {}, ProgramCounter {CALL_SITE_PROGRAM_COUNTER});
+
+        if (tester.is_github_actions_run) {
+            String type = "error";
+            if (failure_action == FailureAction::LogWarningAndContinue) type = "warning";
+            // We can create a Github Actions annotation for this failure.
+            StdPrintF(StdStream::Out, "::{} file={},line={}::{}: {}\n", type, file, line, pretext, message);
+        }
 
         if (failure_action != FailureAction::LogWarningAndContinue) {
             tester.should_reenter = false;

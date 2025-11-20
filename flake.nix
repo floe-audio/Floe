@@ -25,25 +25,6 @@
 
         nativeBinSubdir = "zig-out/${builtins.replaceStrings [ "darwin" ] [ "macos" ] system}";
 
-        macosx-sdks = pkgs.stdenv.mkDerivation {
-          pname = "macosx-sdks";
-          version = "12.0";
-
-          src = builtins.fetchurl {
-            url = "https://github.com/joseluisq/macosx-sdks/releases/download/12.0/MacOSX12.0.sdk.tar.xz";
-            sha256 = "sha256:1z8ga5m9624g3hc0kpdfpqbq1ghswxg57w813jdb18z6166g41xc";
-          };
-
-          buildPhase = ''
-            mkdir -p $out
-          '';
-
-          installPhase = ''
-            mkdir -p $out
-            cp -R . $out
-          '';
-        };
-
         clang-build-analyzer = pkgs.stdenv.mkDerivation rec {
           pname = "clang-build-analyzer";
           version = "1.6.0";
@@ -155,11 +136,9 @@
               pkgs.cppcheck
               pkgs.codespell
               pkgs.parallel
-              pkgs.miller
               pkgs.gnused
               pkgs.coreutils
               pkgs.jq
-              pkgs.fd
               pkgs.just
               pkgs.reuse
               pkgs.osslsigncode
@@ -170,7 +149,6 @@
               zigpkgs."0.14.0"
               pkgs.zls
               pkgs.sentry-cli
-              pkgs.go-httpbin # HTTP testing server
               pkgs.nodejs_24 # For Docusaurus website development
 
               # dsymutil internally calls "lipo", so we have to make sure it's available under that name
@@ -182,6 +160,9 @@
               pkgs.kcov
               pkgs.patchelf
               pkgs.valgrind
+              pkgs.wineWowPackages.minimal
+
+              # TODO: maybe remove these if our FLOE_RPATH and FLOE_DYNAMIC_LINKER plan works out
 
               # These following 2 'patch' utilities ensure that we can run the binaries that we build regardless of the system outside of
               # this nix devshell. For example on Ubuntu CI machines we don't have to manage what dependencies are
@@ -193,16 +174,10 @@
               # the external program.
               # As well as LD_LIBRARY_PATH, dynamic linkers also look at the rpath of the binary (which is embedded in
               # the binary itself) to find the libraries. So that's what we use patchelf for here.
-              (pkgs.writeShellScriptBin "patchrpath" ''
-                patchelf --set-rpath "${pkgs.lib.makeLibraryPath buildInputs}" $@
-              '')
 
               # Executables (as opposed to shared libraries) will default to being interpreted by the system's dynamic
               # linker (often /lib64/ld-linux-x86-64.so.2). This can cause problems relating to using different versions
               # of glibc at the same time. So we use patchelf to force using the same ld.
-              (pkgs.writeShellScriptBin "patchinterpreter" ''
-                patchelf --set-interpreter "${pkgs.glibc}/lib/ld-linux-x86-64.so.2" $@
-              '')
             ];
 
           # buildInputs is for libraries
@@ -218,11 +193,15 @@
               pkgs.libGLU
               pkgs.glibc
             ];
-          shellHook = ''
-            export MACOSX_SDK_SYSROOT="${macosx-sdks}"
-            export PATH="$PWD/${nativeBinSubdir}:$PATH"
-            export ZIG_GLOBAL_CACHE_DIR=".zig-cache-global"
-          '';
+          shellHook =
+            ''
+              export PATH="$PWD/${nativeBinSubdir}:$PATH"
+              export ZIG_GLOBAL_CACHE_DIR=".zig-cache-global"
+            ''
+            + pkgs.lib.optionalString pkgs.stdenv.isLinux ''
+              export FLOE_RPATH="${pkgs.lib.makeLibraryPath buildInputs}"
+              export FLOE_DYNAMIC_LINKER="${pkgs.glibc}/lib/ld-linux-x86-64.so.2"
+            '';
         };
       }
     );

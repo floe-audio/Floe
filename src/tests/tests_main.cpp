@@ -109,8 +109,9 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
         Filter,
         LogLevel,
         Repeats,
-        WriteToFile,
         JUnitXmlOutputPath,
+        TestFilesFolderPath,
+        ClapPluginPath,
         Count,
     };
 
@@ -140,17 +141,26 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
             .num_values = 1,
         },
         {
-            .id = (u32)CommandLineArgId::WriteToFile,
-            .key = "write-to-file",
-            .description = "Write log output to a file as well as to the console",
-            .value_type = "",
-            .required = false,
-            .num_values = 0,
-        },
-        {
             .id = (u32)CommandLineArgId::JUnitXmlOutputPath,
             .key = "junit-xml-output-path",
             .description = "Path to write JUnit XML test results to",
+            .value_type = "path",
+            .required = false,
+            .num_values = 1,
+        },
+        {
+            .id = (u32)CommandLineArgId::TestFilesFolderPath,
+            .key = "test-files-folder-path",
+            .description =
+                "Path to the test_files folder. Alternatively set FLOE_TEST_FILES_FOLDER_PATH env var or let it be auto-detected upwards from the exe.",
+            .value_type = "path",
+            .required = false,
+            .num_values = 1,
+        },
+        {
+            .id = (u32)CommandLineArgId::ClapPluginPath,
+            .key = "clap-plugin-path",
+            .description = "Path to the Floe CLAP plugin. Alternatively set FLOE_CLAP_PLUGIN_PATH env var.",
             .value_type = "path",
             .required = false,
             .num_values = 1,
@@ -177,8 +187,6 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
         tester.repeat_tests = (u16)*parsed_int;
     }
 
-    if (cli_args[ToInt(CommandLineArgId::WriteToFile)].was_provided) tester.log.InitLogFile();
-
     // Register the test functions
 #define X(fn) fn(tester);
     TEST_REGISTER_FUNCTIONS
@@ -187,9 +195,14 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
 #endif
 #undef X
 
-    return RunAllTests(tester,
-                       cli_args[ToInt(CommandLineArgId::Filter)].values,
-                       cli_args[ToInt(CommandLineArgId::JUnitXmlOutputPath)].Value());
+    return RunAllTests(
+        tester,
+        {
+            .filter_patterns = cli_args[ToInt(CommandLineArgId::Filter)].values,
+            .junit_xml_output_path = cli_args[ToInt(CommandLineArgId::JUnitXmlOutputPath)].Value(),
+            .test_files_folder = cli_args[ToInt(CommandLineArgId::TestFilesFolderPath)].Value(),
+            .clap_plugin_path = cli_args[ToInt(CommandLineArgId::ClapPluginPath)].Value(),
+        });
 }
 
 int main(int argc, char** argv) {
