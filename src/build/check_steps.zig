@@ -132,7 +132,7 @@ pub const ClangTidyStep = struct {
         // This ensures we only check files that were actually compiled.
 
         // Read the entire compile_commands.json file
-        const cdb_contents = try std.fs.cwd().readFileAlloc(
+        const cdb_contents = try step.owner.build_root.handle.readFileAlloc(
             self.builder.allocator,
             ConcatCompileCommandsStep.cdbFilePath(self.builder, self.target.result),
             1024 * 1024 * 10,
@@ -166,6 +166,7 @@ pub const ClangTidyStep = struct {
             .allocator = self.builder.allocator,
             .argv = args.items,
             .progress_node = options.progress_node,
+            .cwd = step.owner.build_root.path, // compile_commands.json paths are relative to build root.
         }) catch |err| {
             return step.fail("failed to run clang-tidy: {s}", .{@errorName(err)});
         };

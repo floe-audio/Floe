@@ -15,7 +15,7 @@ const ConcatCompileCommandsStep = @This();
 step: std.Build.Step,
 target: std.Build.ResolvedTarget,
 use_as_default: bool,
-fragments_dir: []const u8,
+fragments_dir_cache_subpath: []const u8,
 
 pub const CompileFragment = struct {
     directory: []u8,
@@ -35,21 +35,20 @@ pub fn create(b: *std.Build, target: std.Build.ResolvedTarget, use_as_default: b
         }),
         .target = target,
         .use_as_default = use_as_default,
-        .fragments_dir = fragmentsPath(b, target.result),
+        .fragments_dir_cache_subpath = fragmentsDirInCache(b, target.result),
     };
 
     return join_compile_commands;
 }
 
-fn fragmentsPath(b: *std.Build, target: std.Target) []u8 {
-    // To better avoid collisions when multiple 'zig build' processes are running, we include a hash of the
+fn fragmentsDirInCache(b: *std.Build, target: std.Target) []u8 {
+    // To better avoid collisions when multiple 'zig build' processes are running simultaneously, we include a hash of the
     // install prefix in the path since it's likely to be different for different build processes.
     var hasher = std.hash.Fnv1a_64.init();
     hasher.update(b.install_prefix);
     const hash = hasher.final();
 
-    const name = b.fmt("{s}-{x}", .{ std_extras.archAndOsPair(target).slice(), hash });
-    const path = b.cache_root.join(b.allocator, &.{ "tmp", name }) catch @panic("OOM");
+    const path = b.fmt("tmp{s}{s}-{x}", .{ std.fs.path.sep_str, std_extras.archAndOsPair(target).slice(), hash });
     b.cache_root.handle.makePath(path) catch |err| {
         std.debug.print("failed to make fragments path: {any}\n", .{err});
     };
@@ -57,21 +56,23 @@ fn fragmentsPath(b: *std.Build, target: std.Target) []u8 {
 }
 
 pub fn addClangArgument(cdb_step: *ConcatCompileCommandsStep, flags: *std.ArrayList([]const u8)) !void {
+    const b = cdb_step.step.owner;
     try flags.appendSlice(&.{
         "-gen-cdb-fragment-path",
-        cdb_step.fragments_dir,
+        try b.cache_root.handle.realpathAlloc(b.allocator, cdb_step.fragments_dir_cache_subpath),
     });
 }
 
+// Relative the build root.
 pub fn cdbDirPath(b: *std.Build, target: std.Target) []u8 {
     return b.pathJoin(&.{
-        b.build_root.path.?,
         constants.floe_cache_relative,
         "compile_commands",
         std_extras.archAndOsPair(target).slice(),
     });
 }
 
+// Relative the build root.
 pub fn cdbFilePath(b: *std.Build, target: std.Target) []u8 {
     return b.pathJoin(&.{ cdbDirPath(b, target), "compile_commands.json" });
 }
@@ -81,14 +82,13 @@ pub fn cdbFilePath(b: *std.Build, target: std.Target) []u8 {
 // copy the cdb for the given target to the default location.
 pub fn trySetCdb(b: *std.Build, target: std.Target) void {
     const default_cdb = b.pathJoin(&.{
-        b.build_root.path.?,
         constants.floe_cache_relative,
         "compile_commands.json",
     });
     const cdb = cdbFilePath(b, target);
 
     // Ignore errors.
-    _ = std.fs.updateFileAbsolute(cdb, default_cdb, .{ .override_mode = null }) catch {};
+    _ = b.build_root.handle.updateFile(cdb, b.build_root.handle, default_cdb, .{ .override_mode = null }) catch {};
 }
 
 fn makeCdbFromFragments(step: *std.Build.Step) !void {
@@ -101,7 +101,7 @@ fn makeCdbFromFragments(step: *std.Build.Step) !void {
     var compile_commands = std.ArrayList(CompileFragment).init(arena.allocator());
 
     {
-        const maybe_dir = std.fs.openDirAbsolute(self.fragments_dir, .{ .iterate = true });
+        const maybe_dir = b.cache_root.handle.openDir(self.fragments_dir_cache_subpath, .{ .iterate = true });
         if (maybe_dir != std.fs.Dir.OpenError.FileNotFound) {
             var dir = try maybe_dir;
             defer dir.close();
@@ -199,7 +199,7 @@ fn makeCdbFromFragments(step: *std.Build.Step) !void {
         b.build_root.handle.makePath(cdbDirPath(b, self.target.result)) catch {};
         const out_path = cdbFilePath(b, self.target.result);
 
-        const maybe_file = std.fs.openFileAbsolute(out_path, .{});
+        const maybe_file = b.build_root.handle.openFile(out_path, .{});
         if (maybe_file != std.fs.File.OpenError.FileNotFound) {
             const f = try maybe_file;
             defer f.close();
@@ -233,17 +233,16 @@ fn makeCdbFromFragments(step: *std.Build.Step) !void {
             }
         }
 
-        var out_f = try std.fs.createFileAbsolute(out_path, .{});
-        defer out_f.close();
-        var buffered_writer: std.io.BufferedWriter(
-            20 * 1024,
-            @TypeOf(out_f.writer()),
-        ) = .{ .unbuffered_writer = out_f.writer() };
+        {
+            var out_f = try b.build_root.handle.createFile(out_path, .{});
+            defer out_f.close();
+            var buffered_writer = std.io.bufferedWriter(out_f.writer());
 
-        try std.json.stringify(compile_commands.items, .{}, buffered_writer.writer());
-        try buffered_writer.flush();
+            try std.json.stringify(compile_commands.items, .{}, buffered_writer.writer());
+            try buffered_writer.flush();
+        }
 
-        try std.fs.deleteTreeAbsolute(self.fragments_dir);
+        try b.build_root.handle.deleteTree(self.fragments_dir_cache_subpath);
 
         if (self.use_as_default) {
             trySetCdb(b, self.target.result);
