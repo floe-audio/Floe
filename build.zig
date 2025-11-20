@@ -2628,21 +2628,28 @@ pub fn build(b: *std.Build) void {
                 final_test_artifact_step = step;
             }
 
+            const add_tests_args = struct {
+                pub fn do(run: *std.Build.Step.Run, clap_install: ?install_plugin.PluginInstallResult) void {
+                    const b2 = run.step.owner;
+                    run.addArg("--log-level=debug");
+
+                    // We output JUnit XML in a unique location so test runs don't clobber each other. These files
+                    // can be collected by searching the .zig-cache directory for .junit.xml files.
+                    _ = run.addPrefixedOutputFileArg("--junit-xml-output-path=", "unit-tests.junit.xml");
+
+                    if (clap_install) |install| {
+                        run.addArg(b2.fmt("--clap-plugin-path={s}", .{install.fullPath(b2)}));
+                        run.step.dependOn(install.step);
+                    }
+
+                    run.addArg(b2.fmt("--test-files-folder-path={s}", .{b2.pathFromRoot("test_files")}));
+                }
+            }.do;
+
             // Run unit tests
             {
                 const run_tests = b.addRunArtifact(tests);
-                run_tests.addArg("--log-level=debug");
-
-                // We output JUnit XML in a unique location so test runs don't clobber each other. These files
-                // can be collected by searching the .zig-cache directory for .junit.xml files.
-                _ = run_tests.addPrefixedOutputFileArg("--junit-xml-output-path=", "unit-tests.junit.xml");
-
-                if (clap_plugin_install) |install| {
-                    run_tests.addArg(b.fmt("--clap-plugin-path={s}", .{install.fullPath(b)}));
-                    run_tests.step.dependOn(install.step);
-                }
-
-                run_tests.addArg(b.fmt("--test-files-folder-path={s}", .{b.pathFromRoot("test_files")}));
+                add_tests_args(run_tests, clap_plugin_install);
 
                 run_tests.expectExitCode(0);
 
@@ -2659,6 +2666,7 @@ pub fn build(b: *std.Build) void {
                     b.fmt("{s}/coverage-out", .{constants.floe_cache_relative}),
                 });
                 run_coverage.addArtifactArg(tests_compile_step.?);
+                add_tests_args(run_coverage, clap_plugin_install);
                 run_coverage.expectExitCode(0);
                 run_coverage.step.dependOn(final_test_artifact_step);
                 coverage.dependOn(&run_coverage.step);
@@ -2679,12 +2687,7 @@ pub fn build(b: *std.Build) void {
                     "--exit-on-first-error=no",
                 });
                 run.addArtifactArg(tests_compile_step.?);
-                run.addArgs(&.{
-                    "--log-level=debug",
-                    b.fmt("--junit-xml-output-path={s}/results-valgrind.junit.xml", .{
-                        b.pathFromRoot(constants.floe_cache_relative),
-                    }),
-                });
+                add_tests_args(run, clap_plugin_install);
                 run.expectExitCode(0);
                 run.step.dependOn(final_test_artifact_step);
 
