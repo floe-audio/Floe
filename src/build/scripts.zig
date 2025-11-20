@@ -279,7 +279,7 @@ const CiReport = struct {
         return std.ascii.lessThanIgnoreCase(a_buf.slice(), b_buf.slice());
     }
 
-    pub fn print(report: *CiReport) !void {
+    pub fn print(report: *CiReport, summary_writer: std.io.AnyWriter) !void {
         std.sort.pdq(CiTask, report.tasks.items, {}, sortTasksAlphabetic);
 
         // Print diagnostics for failed tasks.
@@ -343,39 +343,34 @@ const CiReport = struct {
 
         // Summary: markdown table to stdout
         {
-            var stdout_buffered = std.io.bufferedWriter(std.io.getStdOut().writer());
-            const writer = stdout_buffered.writer();
-
-            try writer.writeAll("| Command | Exit Code | Time Taken |\n");
-            try writer.writeAll("|---|---|---|\n");
+            try summary_writer.writeAll("| Command | Exit Code | Time Taken |\n");
+            try summary_writer.writeAll("|---|---|---|\n");
 
             for (report.tasks.items) |task| {
-                try writer.writeAll("| ");
+                try summary_writer.writeAll("| ");
 
                 // Command column
-                try task.writeArgs(writer);
+                try task.writeArgs(summary_writer);
 
-                try writer.writeAll(" | ");
+                try summary_writer.writeAll(" | ");
 
                 // Exit code/termination info column
                 switch (task.term) {
                     .Exited => |code| {
-                        try writer.print("{s} {d}", .{ if (code == 0) "✅" else "❌", code });
+                        try summary_writer.print("{s} {d}", .{ if (code == 0) "✅" else "❌", code });
                     },
                     .Signal, .Stopped, .Unknown => {
-                        try writer.print("{s} Terminated: {any}", .{ "❌", task.term });
+                        try summary_writer.print("{s} Terminated: {any}", .{ "❌", task.term });
                     },
                 }
 
-                try writer.writeAll(" | ");
+                try summary_writer.writeAll(" | ");
 
                 // Time taken column
-                try writer.print("{d:.2}s", .{task.time_taken_seconds});
+                try summary_writer.print("{d:.2}s", .{task.time_taken_seconds});
 
-                try writer.writeAll(" |\n");
+                try summary_writer.writeAll(" |\n");
             }
-
-            try stdout_buffered.flush();
         }
     }
 };
@@ -596,10 +591,32 @@ fn runCi(context: *Context) !u8 {
         else => {},
     }
 
-    ci_report.print() catch |err| {
-        std.debug.print("Failed to print CI report: {any}\n", .{err});
-        return 1;
-    };
+    {
+        var file: ?std.fs.File = null;
+        defer if (file) |f| f.close();
+
+        var writer: std.io.AnyWriter = undefined;
+
+        var stdout_buffered = std.io.bufferedWriter(std.io.getStdOut().writer());
+        writer = stdout_buffered.writer().any();
+
+        if (context.env_map.get("GITHUB_STEP_SUMMARY")) |summary_path| {
+            file = try std.fs.cwd().createFile(summary_path, .{
+                .read = true,
+                .truncate = false,
+            });
+            try file.?.seekFromEnd(0);
+
+            writer = file.?.writer().any();
+        }
+
+        ci_report.print(writer) catch |err| {
+            std.debug.print("Failed to print CI report: {any}\n", .{err});
+            return 1;
+        };
+
+        try stdout_buffered.flush();
+    }
 
     // Upload logs
     _ = try runUploadErrors(context);

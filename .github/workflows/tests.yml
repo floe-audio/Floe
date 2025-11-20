@@ -37,7 +37,7 @@ jobs:
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.1.0
 
-      - run: zig build script:ci >> $GITHUB_STEP_SUMMARY
+      - run: zig build script:ci
 
       - name: Upload logs
         if: '!cancelled()'
@@ -73,7 +73,7 @@ jobs:
       - uses: nicknovitski/nix-develop@v1.1.0
 
 
-      - run: zig build script:ci >> $GITHUB_STEP_SUMMARY
+      - run: zig build script:ci
 
       - if: '!cancelled()'
         name: Upload coverage reports
@@ -126,8 +126,7 @@ jobs:
           choco install sentry-cli -y --no-progress
           sentry-cli --version
 
-      - run: zig build script:ci >> $GITHUB_STEP_SUMMARY
-        shell: bash
+      - run: zig build script:ci
 
       - if: '!cancelled()'
         name: Upload test results
