@@ -199,13 +199,7 @@ fn runUploadErrors(context: *Context) !u8 {
         defer context.allocator.free(result.stdout);
         defer context.allocator.free(result.stderr);
 
-        // Print captured outputs to stderr
-        if (result.stdout.len > 0) {
-            std.io.getStdErr().writer().writeAll(result.stdout) catch {};
-        }
-        if (result.stderr.len > 0) {
-            std.io.getStdErr().writer().writeAll(result.stderr) catch {};
-        }
+        var print_streams = false;
 
         switch (result.term) {
             .Exited => |code| {
@@ -216,11 +210,22 @@ fn runUploadErrors(context: *Context) !u8 {
                     };
                 } else {
                     std.debug.print("sentry-cli failed for {s} with exit code {d}\n", .{ entry.name, code });
+                    print_streams = true;
                 }
             },
             else => {
                 std.debug.print("sentry-cli terminated unexpectedly for {s}: {any}\n", .{ entry.name, result.term });
+                print_streams = true;
             },
+        }
+
+        if (print_streams) {
+            if (result.stdout.len > 0) {
+                std.io.getStdErr().writer().writeAll(result.stdout) catch {};
+            }
+            if (result.stderr.len > 0) {
+                std.io.getStdErr().writer().writeAll(result.stderr) catch {};
+            }
         }
     }
 
