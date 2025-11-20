@@ -380,10 +380,7 @@ int RunAllTests(Tester& tester, RunTestConfig const& config) {
             tester.test_files_folder = path.Value();
         }
 
-        tester.is_github_actions_run = ({
-            auto const e = GetEnvironmentVariable("GITHUB_ACTIONS", tester.arena);
-            e.HasValue() && e.Value() == "true"_s;
-        });
+        tester.is_github_actions_run = GetEnvironmentVariable("GITHUB_ACTIONS", tester.arena).HasValue();
 
         if (config.clap_plugin_path.HasValue()) {
             tester.clap_plugin_path = *config.clap_plugin_path;
