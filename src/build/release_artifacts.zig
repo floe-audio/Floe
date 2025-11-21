@@ -86,7 +86,29 @@ pub fn makeRelease(args: struct {
                 step.dependOn(&install.step);
             }
         },
-        .macos => {},
+        .macos => {
+            const arch_name_for_file = switch (args.target.cpu.arch) {
+                .aarch64 => "Apple-Silicon",
+                .x86_64 => "Intel",
+                else => @panic("unsupported macOS architecture"),
+            };
+
+            // Packager
+            {
+                const packager = args.packager orelse @panic("packager binary must be provided for macOS releases");
+                const codesigned_packager = maybeAddMacosCodesign(b, packager, false);
+                const zip_file = createZipCommand(b, &.{codesigned_packager});
+
+                const install = b.addInstallFile(zip_file, b.fmt("{s}{c}Floe-Packager-v{s}-macOS-{s}.zip", .{
+                    release_dir,
+                    std.fs.path.sep,
+                    args.version,
+                    arch_name_for_file,
+                }));
+
+                step.dependOn(maybeMacosNotarise(b, zip_file, &install.step, false));
+            }
+        },
         .linux => {
             // CLAP
             {
@@ -139,6 +161,98 @@ pub fn makeRelease(args: struct {
     }
 
     return step;
+}
+
+// Unfortunately rcodesign doesn't have a way to specify an output path for the notarized binary, so we just have to
+// overwrite the input file and have this slightly awkward API of accepting a step pointer.
+fn maybeMacosNotarise(
+    b: *std.Build,
+    path: std.Build.LazyPath,
+    notarise_before_step: *std.Build.Step,
+    staple: bool, // Remember stapling doesn't work for Unix binaries.
+) *std.Build.Step {
+    const api_key_json = std_extras.validEnvVar(
+        b,
+        "MACOS_APP_STORE_CONNECT_API_KEY_JSON",
+        "skipping notarization",
+        true,
+    ) orelse return notarise_before_step;
+
+    const run_cmd = b.addSystemCommand(&.{
+        "rcodesign",
+        "notary-submit",
+        "--wait",
+    });
+
+    if (staple)
+        run_cmd.addArg("--staple");
+
+    run_cmd.addArg("--api-key-path");
+    run_cmd.addFileArg(b.addWriteFiles().add("api_key.json", api_key_json));
+
+    run_cmd.addFileArg(path);
+
+    notarise_before_step.dependOn(&run_cmd.step);
+    return &run_cmd.step;
+}
+
+fn maybeAddMacosCodesign(b: *std.Build, binary_path: std.Build.LazyPath, entitlements: bool) std.Build.LazyPath {
+    const cert_p12 = std_extras.validEnvVar(
+        b,
+        "MACOS_DEV_CERTS_P12",
+        "skipping codesigning",
+        true,
+    ) orelse return binary_path;
+
+    const cert_password = std_extras.validEnvVar(
+        b,
+        "MACOS_DEV_CERTS_P12_PASSWORD",
+        "skipping codesigning",
+        false,
+    ) orelse return binary_path;
+
+    const team_id = std_extras.validEnvVar(
+        b,
+        "MACOS_TEAM_ID",
+        "skipping codesigning",
+        false,
+    ) orelse return binary_path;
+
+    const write = b.addWriteFiles();
+    const cert_lazy_path = write.add("cert.pfx", cert_p12);
+
+    const run_cmd = b.addSystemCommand(&.{ "rcodesign", "sign", "--for-notarization" });
+
+    run_cmd.addArg("--p12-file");
+    run_cmd.addFileArg(cert_lazy_path);
+
+    run_cmd.addArgs(&.{ "--p12-password", cert_password });
+
+    run_cmd.addArgs(&.{ "--team-name", team_id });
+
+    if (entitlements) {
+        run_cmd.addArg("-e");
+        run_cmd.addFileArg(write.add("entitlements.plist",
+            \\<?xml version="1.0" encoding="UTF-8"?>
+            \\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            \\<plist version="1.0">
+            \\<dict>
+            \\    <key>com.apple.security.app-sandbox</key>
+            \\    <true/>
+            \\    <key>com.apple.security.files.user-selected.read-write</key>
+            \\    <true/>
+            \\    <key>com.apple.security.assets.music.read-write</key>
+            \\    <true/>
+            \\    <key>com.apple.security.files.bookmarks.app-scope</key>
+            \\    <true/>
+            \\</dict>
+            \\</plist>
+        ));
+    }
+
+    run_cmd.addFileArg(binary_path);
+
+    return run_cmd.addOutputFileArg("codesigned_binary");
 }
 
 fn createZipCommand(b: *std.Build, input_files: []const std.Build.LazyPath) std.Build.LazyPath {

@@ -27,6 +27,7 @@ pkgs.mkShell rec {
       })
       pkgs.zip
       pkgs.unzip
+      pkgs.rcodesign
       pkgs.llvmPackages_19.bintools-unwrapped # llvm-lipo, llvm-addr2line, dsymutil
       pkgs.llvmPackages_19.clang-unwrapped # clangd, clang-tidy, clang-format
       pkgs.cppcheck
