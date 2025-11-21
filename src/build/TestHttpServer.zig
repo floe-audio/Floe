@@ -9,30 +9,28 @@ const net = std.net;
 const http = std.http;
 const json = std.json;
 
-allocator: std.mem.Allocator,
 server: net.Server,
 thread: ?std.Thread,
 should_stop: std.atomic.Value(bool),
 
 const TestHttpServer = @This();
 
-pub fn init(allocator: std.mem.Allocator, port: u16) !TestHttpServer {
-    const address = net.Address.parseIp4("127.0.0.1", port) catch unreachable;
+pub fn start() !TestHttpServer {
+    const address = net.Address.parseIp4("127.0.0.1", 8081) catch unreachable;
     const server = try address.listen(.{
         .reuse_address = true,
         .force_nonblocking = true,
     });
 
-    return TestHttpServer{
-        .allocator = allocator,
+    var result = TestHttpServer{
         .server = server,
         .thread = null,
         .should_stop = std.atomic.Value(bool).init(false),
     };
-}
 
-pub fn start(self: *TestHttpServer) !void {
-    self.thread = try std.Thread.spawn(.{}, serverLoop, .{self});
+    result.thread = try std.Thread.spawn(.{}, serverLoop, .{&result});
+
+    return result;
 }
 
 pub fn stop(self: *TestHttpServer) void {
@@ -45,7 +43,7 @@ pub fn stop(self: *TestHttpServer) void {
 }
 
 fn serverLoop(self: *TestHttpServer) void {
-    var header_buffer: [4096]u8 = undefined;
+    var header_buffer: [9000]u8 = undefined;
 
     while (!self.should_stop.load(.acquire)) {
         const connection = self.server.accept() catch |err| switch (err) {
@@ -72,7 +70,7 @@ fn serverLoop(self: *TestHttpServer) void {
                 },
             };
 
-            self.handleRequest(&request) catch |err| {
+            handleRequest(&request) catch |err| {
                 std.log.err("Failed to handle request: {}", .{err});
                 break;
             };
@@ -80,21 +78,21 @@ fn serverLoop(self: *TestHttpServer) void {
     }
 }
 
-fn handleRequest(self: *TestHttpServer, request: *http.Server.Request) !void {
+fn handleRequest(request: *http.Server.Request) !void {
     const method = request.head.method;
     const target = request.head.target;
 
     if (std.mem.eql(u8, target, "/get") and method == .GET) {
-        try self.handleGet(request);
+        try handleGet(request);
     } else if (std.mem.eql(u8, target, "/post") and method == .POST) {
-        try self.handlePost(request);
+        try handlePost(request);
     } else {
-        try self.send404(request);
+        try send404(request);
     }
 }
 
-fn handleGet(self: *TestHttpServer, request: *http.Server.Request) !void {
-    var arena = std.heap.ArenaAllocator.init(self.allocator);
+fn handleGet(request: *http.Server.Request) !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
@@ -128,8 +126,8 @@ fn handleGet(self: *TestHttpServer, request: *http.Server.Request) !void {
     });
 }
 
-fn handlePost(self: *TestHttpServer, request: *http.Server.Request) !void {
-    var arena = std.heap.ArenaAllocator.init(self.allocator);
+fn handlePost(request: *http.Server.Request) !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
@@ -171,8 +169,7 @@ fn handlePost(self: *TestHttpServer, request: *http.Server.Request) !void {
     });
 }
 
-fn send404(self: *TestHttpServer, request: *http.Server.Request) !void {
-    _ = self;
+fn send404(request: *http.Server.Request) !void {
     try request.respond("Not Found", .{
         .status = .not_found,
         .extra_headers = &.{

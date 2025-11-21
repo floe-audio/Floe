@@ -516,15 +516,11 @@ fn runCi(context: *Context) !u8 {
     };
 
     // Start a simple HTTP server so that tests can use it.
-    var http_server = TestHttpServer.init(tsa.allocator(), 8081) catch |err| {
-        std.debug.print("Failed to initialize HTTP server: {}\n", .{err});
-        return 1;
-    };
-    defer http_server.stop();
-    http_server.start() catch |err| {
+    var http_server = TestHttpServer.start() catch |err| {
         std.debug.print("Failed to start HTTP server: {}\n", .{err});
         return 1;
     };
+    defer http_server.stop();
 
     // Parallel for speed.
     var wg: std.Thread.WaitGroup = .{};
