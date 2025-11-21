@@ -97,6 +97,7 @@ ErrorCodeOr<LockableSharedMemory> CreateLockableSharedMemory(String name, usize 
 void LockSharedMemory(LockableSharedMemory& memory);
 void UnlockSharedMemory(LockableSharedMemory& memory);
 
+// Be careful with relative paths on Windows, they might not work as expected. Better to use abs paths.
 enum class LibraryHandle : uintptr {};
 ErrorCodeOr<LibraryHandle> LoadLibrary(String path);
 ErrorCodeOr<void*> SymbolFromLibrary(LibraryHandle library, String symbol_name);

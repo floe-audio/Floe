@@ -571,11 +571,12 @@ TEST_CASE(TestHostingClap) {
         fixture.clap_dso_or_bundle_path = tester.clap_plugin_path;
         dyn::Append(fixture.clap_dso_or_bundle_path, '\0');
 
+        auto const abs_clap_path = (String)TRY(AbsolutePath(tester.scratch_arena, tester.clap_plugin_path));
         if constexpr (IS_MACOS) {
-            fixture.clap_binary_path = tester.clap_plugin_path;
+            fixture.clap_binary_path = abs_clap_path;
             path::JoinAppend(fixture.clap_binary_path, "Contents/MacOS/Floe"_s);
         } else {
-            fixture.clap_binary_path = tester.clap_plugin_path;
+            fixture.clap_binary_path = abs_clap_path;
         }
 
         fixture.handle = TRY(LoadLibrary(fixture.clap_binary_path));
