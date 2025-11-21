@@ -2610,6 +2610,10 @@ pub fn build(b: *std.Build) void {
                         p.addToRunStepArgsWithPrefix(run, "--clap-plugin-path=");
 
                     run.addArg(b2.fmt("--test-files-folder-path={s}", .{b2.pathFromRoot("test_files")}));
+
+                    // Add additional arguments to the tests that were given to zig build after "--".
+                    if (b2.args) |args|
+                        run.addArgs(args);
                 }
             }.do;
 
