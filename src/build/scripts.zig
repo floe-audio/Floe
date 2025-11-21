@@ -46,10 +46,68 @@ pub fn main() !u8 {
         return runUploadErrors(&context);
     } else if (std.mem.eql(u8, command, "ci")) {
         return runCi(&context);
+    } else if (std.mem.eql(u8, command, "website-promote-beta-to-stable")) {
+        return runWebsitePromoteBetaToStable(&context);
     } else {
         std.debug.print("Unknown command: {s}\n", .{command});
         return 1;
     }
+}
+
+// `docusaurus docs:version` does not allow overwriting an existing version.
+// We workaround this by deleting the existing stable version. But if we
+// were to now run `docs:version stable`, it errors because as part of its
+// process it partly builds the site (to get the sidebars, etc.) and finds
+// references to the versions that we just deleted. So we temporarily
+// remove all references.
+fn runWebsitePromoteBetaToStable(context: *Context) !u8 {
+    const website_path = "website";
+
+    var dir = try std.fs.cwd().openDir(website_path, .{});
+    defer dir.close();
+
+    dir.deleteFile("versions.json") catch |err| switch (err) {
+        error.FileNotFound => {},
+        else => return err,
+    };
+
+    // These already handle the case where the directories don't exist.
+    try dir.deleteTree("versioned_sidebars");
+    try dir.deleteTree("versioned_docs");
+
+    // Workaround errors due to missing version references.
+    const config_name = "versions-config.js";
+    const backup_config_name = "versions-config.js.backup";
+    try dir.copyFile(config_name, dir, backup_config_name, .{});
+    defer {
+        // Restore. We can't really do anything about errors here.
+        dir.rename(backup_config_name, config_name) catch {
+            std.debug.print("Warning: failed to restore versions-config.js from backup\n", .{});
+        };
+    }
+
+    try dir.writeFile(.{ .sub_path = config_name, .data = "export default {};\n" });
+
+    var child = std.process.Child.init(&.{ "npm", "run", "docusaurus", "docs:version", "stable" }, context.allocator);
+    child.cwd = website_path;
+    child.stdin_behavior = .Ignore;
+
+    const result = try child.spawnAndWait();
+
+    switch (result) {
+        .Exited => |code| {
+            if (code != 0) {
+                std.debug.print("npm command failed with exit code {d}\n", .{code});
+                return code;
+            }
+        },
+        else => {
+            std.debug.print("npm command terminated unexpectedly: {any}\n", .{result});
+            return 1;
+        },
+    }
+
+    return 0;
 }
 
 fn runFormat(context: *Context) !u8 {

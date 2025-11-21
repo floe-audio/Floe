@@ -548,6 +548,7 @@ pub fn build(b: *std.Build) void {
     const website_gen_step = b.step("script:website-generate", "Generate the static JSON for the website");
     const website_build_step = b.step("script:website-build", "Build the website");
     const website_dev_step = b.step("script:website-dev", "Start website dev build locally");
+    const website_promote_step = b.step("script:website-promote-beta-to-stable", "Promote the 'beta' documentation to be the latest stable version");
 
     var build_context: BuildContext = .{
         .b = b,
@@ -2789,6 +2790,14 @@ pub fn build(b: *std.Build) void {
                 run_ci.addArg("ci");
                 applyScriptsConfig(b, run_ci);
                 ci_step.dependOn(&run_ci.step);
+            }
+
+            // Website promote
+            {
+                const run_promote = b.addRunArtifact(scripts_exe);
+                run_promote.addArg("website-promote-beta-to-stable");
+                applyScriptsConfig(b, run_promote);
+                website_promote_step.dependOn(&run_promote.step);
             }
         }
     }
