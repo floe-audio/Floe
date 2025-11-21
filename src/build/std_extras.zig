@@ -334,3 +334,34 @@ pub fn pathExists(path: []const u8) bool {
     };
     return true;
 }
+
+pub fn decodeBase64(allocator: std.mem.Allocator, name: []const u8, base64: []const u8) []const u8 {
+    const size = std.base64.standard.Decoder.calcSizeForSlice(base64) catch {
+        std.debug.panic("Invalid base64 in {s}", .{name});
+    };
+
+    const decoded = allocator.alloc(u8, size) catch @panic("OOM");
+
+    std.base64.standard.Decoder.decode(decoded, base64) catch {
+        std.debug.panic("Invalid base64 in {s}", .{name});
+    };
+
+    return decoded;
+}
+
+pub fn validEnvVar(b: *std.Build, name: []const u8, skip_description: ?[]const u8, decode_base64: bool) ?[]const u8 {
+    const desc = if (skip_description) |desc| desc else "build may be incomplete";
+    const val = b.graph.env_map.get(name) orelse {
+        std.log.warn("{s} not set, {s}", .{ name, desc });
+        return null;
+    };
+    if (val.len == 0) {
+        std.log.warn("{s} is empty, {s}", .{ name, desc });
+        return null;
+    }
+
+    return if (decode_base64)
+        return decodeBase64(b.allocator, name, val)
+    else
+        val;
+}

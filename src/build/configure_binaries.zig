@@ -25,36 +25,21 @@ pub fn maybeAddWindowsCodesign(
 
     const b = compile_step.step.owner;
 
-    const cert_pfx = b.graph.env_map.get("WINDOWS_CODESIGN_CERT_PFX") orelse {
-        std.log.warn("missing WINDOWS_CODESIGN_CERT_PFX environment variable; binaries will be unsigned", .{});
-        return binary_path;
-    };
+    const cert_pfx = std_extras.validEnvVar(
+        b,
+        "WINDOWS_CODESIGN_CERT_PFX",
+        "skipping codesigning",
+        true,
+    ) orelse return binary_path;
 
-    if (cert_pfx.len == 0) {
-        std.log.warn("WINDOWS_CODESIGN_CERT_PFX environment variable is empty; binaries will be unsigned", .{});
-        return binary_path;
-    }
+    const cert_password = std_extras.validEnvVar(
+        b,
+        "WINDOWS_CODESIGN_CERT_PFX_PASSWORD",
+        "skipping codesigning",
+        false,
+    ) orelse return binary_path;
 
-    const cert_password = b.graph.env_map.get("WINDOWS_CODESIGN_CERT_PFX_PASSWORD") orelse {
-        std.log.warn("missing WINDOWS_CODESIGN_CERT_PFX_PASSWORD environment variable; binaries will be unsigned", .{});
-        return binary_path;
-    };
-
-    const write = b.addWriteFiles();
-
-    const cert_lazy_path = write.add("cert.pfx", blk: {
-        // The env var is assumed to be base64-encoded PFX data. We decode it here.
-        const size = std.base64.standard.Decoder.calcSizeForSlice(cert_pfx) catch {
-            @panic("Invalid base64 in WINDOWS_CODESIGN_CERT_PFX");
-        };
-        const decoded = b.allocator.alloc(u8, size) catch @panic("OOM");
-
-        std.base64.standard.Decoder.decode(decoded, cert_pfx) catch {
-            @panic("Invalid base64 in WINDOWS_CODESIGN_CERT_PFX");
-        };
-
-        break :blk decoded;
-    });
+    const cert_lazy_path = b.addWriteFiles().add("cert.pfx", cert_pfx);
 
     // We use osslsigncode instead of signtool.exe because it allows us to do this process cross-platform.
     const cmd = b.addSystemCommand(&.{ "osslsigncode", "sign" });
