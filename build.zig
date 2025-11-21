@@ -2394,7 +2394,7 @@ pub fn build(b: *std.Build) void {
                 win_uninstaller.subsystem = .Windows;
 
                 win_uninstaller.root_module.addCMacro(
-                    "UNINSTALLER_PATH_RELATIVE_BUILD_ROOT",
+                    "UNINSTALLER_BINARY_NAME",
                     b.fmt("\"zig-out/x86_64-windows/{s}\"", .{win_uninstaller.out_filename}),
                 );
 
@@ -2456,25 +2456,17 @@ pub fn build(b: *std.Build) void {
                         b.fmt("\"{s}\"", .{std.fs.path.basename(sidebar_img)}),
                     );
                 }
-                // TODO: rename these macros, the are not "relative to build root", just paths that are discoverable
-                // via the rc include paths.
                 if (vst3_plugin_path) |vst3_plugin| {
-                    win_installer.root_module.addCMacro(
-                        "VST3_PLUGIN_PATH_RELATIVE_BUILD_ROOT",
-                        "\"Floe.vst3\"",
-                    );
+                    win_installer.root_module.addCMacro("VST3_PLUGIN_BINARY_NAME", "\"Floe.vst3\"");
                     rc_include_path.append(vst3_plugin.dirname()) catch @panic("OOM");
                 }
                 if (clap_plugin_path) |clap_plugin| {
-                    win_installer.root_module.addCMacro(
-                        "CLAP_PLUGIN_PATH_RELATIVE_BUILD_ROOT",
-                        "\"Floe.clap\"",
-                    );
+                    win_installer.root_module.addCMacro("CLAP_PLUGIN_BINARY_NAME", "\"Floe.clap\"");
                     rc_include_path.append(clap_plugin.dirname()) catch @panic("OOM");
                 }
                 {
                     win_installer.root_module.addCMacro(
-                        "UNINSTALLER_PATH_RELATIVE_BUILD_ROOT",
+                        "UNINSTALLER_BINARY_NAME",
                         b.fmt("\"{s}\"", .{win_uninstaller.out_filename}),
                     );
                     rc_include_path.append(uninstaller_bin_path.dirname()) catch @panic("OOM");
