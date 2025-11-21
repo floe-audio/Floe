@@ -36,7 +36,10 @@ comptime {
     const current_zig = builtin.zig_version;
     const required_zig = std.SemanticVersion.parse("0.14.0") catch unreachable;
     if (current_zig.order(required_zig) != .eq) {
-        @compileError(std.fmt.comptimePrint("Floe requires Zig version {}, but you are using version {}.", .{ required_zig, current_zig }));
+        @compileError(std.fmt.comptimePrint(
+            "Floe requires Zig version {}, but you are using version {}.",
+            .{ required_zig, current_zig },
+        ));
     }
 }
 
