@@ -42,6 +42,9 @@ Building on Linux, you will need libraries for curl, x11, OpenGL and GLX (handle
 ### Testing
 Run `zig build test` to run the unit tests. Add arguments after `--` to configure our test runner's command-line options. We also have easy to use testing using pluginval, vst3-validator, clap-validator, valgrind, thread sanitizer, clang-tidy; see `zig build --help`.
 
+### Scripts
+Rather than use bash for miscellaneous development scripts, we use Zig. The scripts.zig file is automatically compiles and then is run via the CLI. See `zig build --help` for a list of available scripts.
+
 ## About this codebase
 Floe is written in C++ and we use Zig for the build system. Eventually, we're considering using Zig for the entire codebase.
 
@@ -53,7 +56,7 @@ Thorough continuous testing and deployment is also a priority. We want to provid
 
 Some parts of the codebase need some love (I'm looking at you GUI and audio processing). We're working on it.
 
-Floe's website is in the `website` folder and it's built with Docusaurus. We have 2 release channels: **stable** and **beta**. We use Docusaurus' versioning feature to maintain separate documentation for each channel. `website/docs` contains the beta documentation, and `website/versioned_docs/version-stable` contains the stable documentation. We use the command `just website-promote-beta-to-stable` to promote the beta website to stable.
+Floe's website is in the `website` folder and it's built with Docusaurus. We have 2 release channels: **stable** and **beta**. We use Docusaurus' versioning feature to maintain separate documentation for each channel. `website/docs` contains the beta documentation, and `website/versioned_docs/version-stable` contains the stable documentation. We use the command `zig build script:website-promote-beta-to-stable` to promote the beta website to stable.
 
 ## Discussion
 Feel free to use the discussions on GitHub for questions, feedback, and ideas. Report bugs to the Github issue tracker. Also, FrozenPlain has a Floe section on their [forum](https://forum.frozenplain.com).
