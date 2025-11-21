@@ -130,35 +130,12 @@ close-released-issues version:
   
   echo "Completed: $success succeeded, $failed encountered warnings"
 
-# Generated the static JSON that the website uses
-website-generate:
-  #!/usr/bin/env bash
-  {{native_binary_dir}}/docs_generator > website/static/generated-data.json
-
-# Website development and build commands for Docusaurus
-website-dev:
-  #!/usr/bin/env bash
-  just website-generate
-  cd website && npm run start
-
-website-build:
-  #!/usr/bin/env bash
-  just website-generate
-  cd website && npm run build
 
 # IMPROVE: (June 2024) cppcheck v2.14.0 and v2.14.1 thinks there are syntax errors in valid code. It could be a cppcheck bug or it could be an incompatibility in how we are using it. Regardless, we should try again in the future and see if it's fixed. If it works it should run alongside clang-tidy in CI, etc.
 # cppcheck arch_os_pair=native_arch_os_pair:
 #   # IMPROVE: use --check-level=exhaustive?
 #   # IMPROVE: investigate other flags such as --enable=constVariable
 #   cppcheck --project={{justfile_directory()}}/{{cache_dir}}/compile_commands_{{arch_os_pair}}.json --cppcheck-build-dir={{justfile_directory()}}/.zig-cache --enable=unusedFunction --error-exitcode=2
-
-[unix]
-echo-latest-changes:
-  #!/usr/bin/env bash
-  # Extract text from the heading with the current version number until the next heading with exactly 2 hashes
-  version=$(cat version.txt)
-  changes=$(sed -n "/^## $version/,/^## [^#]/ { /^## [^#]/!p }" website/docs/changelog.md)
-  printf "%s" "$changes" # trim trailing newline
 
 [unix, no-cd]
 _create-manual-install-readme os_name:
