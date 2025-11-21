@@ -147,63 +147,6 @@ _create-manual-install-readme os_name:
   echo "" >> readme.txt
   echo "Installation instructions: https://floe.audio/" >> readme.txt
 
-[unix]
-windows-prepare-release:
-  #!/usr/bin/env bash
-  set -euxo pipefail
-
-  version=$(cat version.txt)
-
-  mkdir -p {{release_files_dir}}
-
-  [[ ! -d zig-out/x86_64-windows ]] && echo "x86_64-windows folder not found" && exit 1
-  cd zig-out/x86_64-windows
-
-  installer_file=$(find . -type f -name "*Installer*.exe")
-
-  # zip the installer
-  final_installer_name=$(echo $installer_file | sed 's/.exe//')
-  final_installer_zip_name="Floe-Installer-v$version-Windows.zip"
-  zip -r $final_installer_zip_name $installer_file
-  mv $final_installer_zip_name {{release_files_dir}}
-
-  # zip the manual-install files
-  just _create-manual-install-readme "Windows"
-  final_manual_zip_name="Floe-Manual-Install-v$version-Windows.zip"
-  zip -r $final_manual_zip_name Floe.clap Floe.vst3 readme.txt
-  rm readme.txt
-  mv $final_manual_zip_name {{release_files_dir}}
-
-  # zip the packager
-  final_packager_zip_name="Floe-Packager-v$version-Windows.zip"
-  zip -r $final_packager_zip_name floe-packager.exe
-  mv $final_packager_zip_name {{release_files_dir}}
-
-[unix]
-linux-prepare-release:
-  #!/usr/bin/env bash
-  set -euxo pipefail
-  
-  version=$(cat version.txt)
-  mkdir -p {{release_files_dir}}
-  [[ ! -d zig-out/x86_64-linux ]] && echo "x86_64-linux folder not found" && exit 1
-  cd zig-out/x86_64-linux
-  
-  # CLAP
-  final_clap_tar_name="Floe-CLAP-v$version-Linux.tar.gz"
-  tar -czf $final_clap_tar_name Floe.clap
-  mv $final_clap_tar_name {{release_files_dir}}
-  
-  # VST3
-  final_vst3_tar_name="Floe-VST3-v$version-Linux.tar.gz"
-  tar -czf $final_vst3_tar_name Floe.vst3
-  mv $final_vst3_tar_name {{release_files_dir}}
-  
-  # Packager
-  final_packager_tar_name="Floe-Packager-v$version-Linux.tar.gz"
-  tar -czf $final_packager_tar_name floe-packager
-  mv $final_packager_tar_name {{release_files_dir}}
-
 [macos, no-cd]
 macos-notarize file:
   #!/usr/bin/env bash

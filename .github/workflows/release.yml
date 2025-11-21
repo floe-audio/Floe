@@ -32,21 +32,13 @@ jobs:
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.1.0
 
-      - run: |
-          just build-release windows
-
-      - run: just windows-prepare-release
-
-      - name: 'get release dir from just'
-        run: |
-          export RELEASE_DIR=$(just --evaluate release_files_dir)
-          echo "RELEASE_DIR=${RELEASE_DIR}" >> $GITHUB_ENV
+      - run: zig build release -Dbuild-mode=production -Dtargets=windows -Dfetch-floe-logos=true
 
       - uses: actions/upload-artifact@v4
         with:
           name: final-windows
           if-no-files-found: error
-          path: ${{ env.RELEASE_DIR }}
+          path: zig-out/release-x86_64-windows
 
   build-linux:
     runs-on: ubuntu-22.04 
@@ -62,21 +54,13 @@ jobs:
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.1.0
 
-      - run: |
-          just build-release linux
-
-      - run: just linux-prepare-release
-
-      - name: 'get release dir from just'
-        run: |
-          export RELEASE_DIR=$(just --evaluate release_files_dir)
-          echo "RELEASE_DIR=${RELEASE_DIR}" >> $GITHUB_ENV
+      - run: zig build release -Dbuild-mode=production -Dtargets=linux -Dfetch-floe-logos=true
 
       - uses: actions/upload-artifact@v4
         with:
           name: final-linux
           if-no-files-found: error
-          path: ${{ env.RELEASE_DIR }}
+          path: zig-out/release-x86_64-linux
 
   build-macos:
     runs-on: macos-14

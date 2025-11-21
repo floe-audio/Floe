@@ -30,6 +30,7 @@ const ConcatCompileCommandsStep = @import("src/build/ConcatCompileCommandsStep.z
 const check_steps = @import("src/build/check_steps.zig");
 const scripts = @import("src/build/scripts.zig");
 const configure_binaries = @import("src/build/configure_binaries.zig");
+const release_artifacts = @import("src/build/release_artifacts.zig");
 
 comptime {
     const current_zig = builtin.zig_version;
@@ -526,6 +527,8 @@ pub fn build(b: *std.Build) void {
 
     const compile_all_step = b.step("compile", "Compiles all into zig-out folder");
     b.default_step = compile_all_step;
+
+    const make_release = b.step("release", "Create release artifacts");
 
     const test_step = b.step("test", "Run unit tests");
     const coverage = b.step("test-coverage", "Generate code coverage report of unit tests");
@@ -1455,6 +1458,7 @@ pub fn build(b: *std.Build) void {
             website_dev_step.dependOn(fail_step);
         }
 
+        var configured_packager: ?std.Build.LazyPath = null;
         if (!constants.clap_only) {
             var packager = b.addExecutable(.{
                 .name = "floe-packager",
@@ -1487,10 +1491,10 @@ pub fn build(b: *std.Build) void {
             }
             applyUniversalSettings(&build_context, packager, concat_cdb);
 
-            const install = b.addInstallBinFile(configure_binaries.maybeAddWindowsCodesign(
+            configured_packager = configure_binaries.maybeAddWindowsCodesign(
                 packager,
                 .{ .description = "Floe Packager" },
-            ), packager.out_filename);
+            );
 
             b.getInstallStep().dependOn(&install.step);
         }
@@ -2043,6 +2047,7 @@ pub fn build(b: *std.Build) void {
             test_vst3_validator.dependOn(&b.addFail("VST3 tests not allowed with this configuration").step);
         }
 
+        var configured_au: ?configure_binaries.ConfiguredPlugin = null;
         if (!constants.clap_only and target.result.os.tag == .macos and !options.sanitize_thread) {
             const au_sdk = b.addStaticLibrary(.{
                 .name = "AU",
@@ -2219,7 +2224,7 @@ pub fn build(b: *std.Build) void {
 
                 applyUniversalSettings(&build_context, au, concat_cdb);
 
-                const au_install = configure_binaries.addConfiguredPlugin(b, .au, au, null).install_step;
+                configured_au = configure_binaries.addConfiguredPlugin(b, .au, au, null);
 
                 if (builtin.os.tag == .macos) {
                     if (std.mem.endsWith(u8, std.mem.trimRight(u8, b.install_path, "/"), "Library/Audio/Plug-Ins")) {
@@ -2234,7 +2239,7 @@ pub fn build(b: *std.Build) void {
 
                             run.addArgs(&.{ "--validate", installed_au_path });
 
-                            run.step.dependOn(au_install);
+                            run.step.dependOn(configured_au.?.install_step);
                             run.expectExitCode(0);
 
                             pluginval_au.dependOn(&run.step);
@@ -2250,7 +2255,7 @@ pub fn build(b: *std.Build) void {
                                 constants.floe_au_subtype,
                                 constants.floe_au_manufacturer_code,
                             });
-                            run_auval.step.dependOn(au_install);
+                            run_auval.step.dependOn(configured_au.?.install_step);
                             run_auval.expectExitCode(0);
 
                             // We need to make sure that the audio component service is aware of the new AU.
@@ -2292,6 +2297,7 @@ pub fn build(b: *std.Build) void {
             auval.dependOn(&fail.step);
         }
 
+        var configured_windows_installer_path: ?std.Build.LazyPath = null;
         if (!constants.clap_only and target.result.os.tag == .windows) {
             const installer_path = "src/windows_installer";
 
@@ -2512,6 +2518,7 @@ pub fn build(b: *std.Build) void {
                     win_installer,
                     .{ .description = "Floe Installer" },
                 );
+                configured_windows_installer_path = installer_bin_path;
 
                 // Installer tests
                 {
@@ -2663,6 +2670,21 @@ pub fn build(b: *std.Build) void {
             } else {
                 valgrind.dependOn(&b.addFail("valgrind not allowed for this build configuration").step);
             }
+        }
+
+        // Make release artifacts
+        {
+            const step = release_artifacts.makeRelease(.{
+                .b = b,
+                .target = target.result,
+                .windows_installer = configured_windows_installer_path,
+                .au = configured_au,
+                .vst3 = configured_vst3,
+                .clap = configured_clap,
+                .version = floe_version_string,
+                .packager = configured_packager,
+            });
+            make_release.dependOn(step);
         }
 
         // Clap Validator test
@@ -2817,19 +2839,6 @@ fn applyScriptsConfig(b: *std.Build, run_step: *std.Build.Step.Run) void {
 
     // Provide the path to the Zig executable for any scripts that may need to invoke Zig.
     run_step.setEnvironmentVariable("ZIG_EXE", b.graph.zig_exe);
-}
-
-fn installPath(install_step: *std.Build.Step.InstallArtifact, absolute: bool) []const u8 {
-    var b = install_step.step.owner;
-    var result = b.getInstallPath(install_step.dest_dir.?, install_step.dest_sub_path);
-    if (absolute) {
-        if (std.fs.path.isAbsolute(result)) return result;
-        // The install path maybe relative if, for example, the --prefix was specified as a relative folder.
-        const root = b.build_root.handle.realpathAlloc(b.allocator, ".") catch "";
-        return b.pathJoin(&.{ root, result });
-    }
-    result = std.fs.path.relative(b.allocator, b.install_prefix, result) catch @panic("failed to get relative path");
-    return result;
 }
 
 fn addPluginvalCommand(run: *std.Build.Step.Run, target: std.Target) void {
