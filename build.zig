@@ -553,6 +553,8 @@ pub fn build(b: *std.Build) void {
     const website_dev_step = b.step("script:website-dev", "Start website dev build locally");
     const website_promote_step = b.step("script:website-promote-beta-to-stable", "Promote the 'beta' documentation to be the latest stable version");
 
+    const install_all_step = b.step("install:all", "Install all; development files as well as plugins");
+
     var build_context: BuildContext = .{
         .b = b,
         .enable_tracy = options.enable_tracy,
@@ -1496,7 +1498,8 @@ pub fn build(b: *std.Build) void {
                 .{ .description = "Floe Packager" },
             );
 
-            b.getInstallStep().dependOn(&install.step);
+            const install = b.addInstallBinFile(configured_packager.?, packager.out_filename);
+            install_all_step.dependOn(&install.step);
         }
 
         if (!constants.clap_only) {
@@ -1532,7 +1535,7 @@ pub fn build(b: *std.Build) void {
             applyUniversalSettings(&build_context, preset_editor, concat_cdb);
 
             const install = b.addInstallArtifact(preset_editor, .{});
-            b.getInstallStep().dependOn(&install.step);
+            install_all_step.dependOn(&install.step);
 
             // IMPROVE: export preset-editor as a production artifact?
         }
@@ -1708,7 +1711,7 @@ pub fn build(b: *std.Build) void {
             applyUniversalSettings(&build_context, floe_standalone, concat_cdb);
 
             const install = b.addInstallArtifact(floe_standalone, .{});
-            b.getInstallStep().dependOn(&install.step);
+            install_all_step.dependOn(&install.step);
         }
 
         const vst3_sdk = b.addStaticLibrary(.{
@@ -2437,7 +2440,7 @@ pub fn build(b: *std.Build) void {
                 // Install
                 {
                     const install = b.addInstallBinFile(uninstaller_bin_path, win_uninstaller.out_filename);
-                    b.getInstallStep().dependOn(&install.step);
+                    install_all_step.dependOn(&install.step);
                 }
 
                 const win_installer_description = "Installer for Floe plugins";
@@ -2541,7 +2544,7 @@ pub fn build(b: *std.Build) void {
                 // Install
                 {
                     const install = b.addInstallBinFile(installer_bin_path, win_installer.out_filename);
-                    b.getInstallStep().dependOn(&install.step);
+                    install_all_step.dependOn(&install.step);
                 }
             }
         } else {
