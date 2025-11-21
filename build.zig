@@ -368,6 +368,18 @@ fn applyUniversalSettings(context: *BuildContext, step: *std.Build.Step.Compile,
     step.addIncludePath(b.path("third_party_libs"));
 
     if (step.rootModuleTarget().os.tag == .macos) {
+        // When using Apple codesign, the binary can silently become invalid. After much investigation it turned out
+        // to be a problem with the Mach-O headers not having enough padding for additional load commands. Zig's
+        // default is not enough for codesign's needs, and codesign doesn't tell you this is the problem. To resolve
+        // this we increase the header padding size significantly. The binaries that had the most problem with this
+        // issue were release-mode x86_64 builds. In the cases I tested, either of these 2 settings alone was enough
+        // to fix the problem, but I see no harm in having both in case it covers more situations. While Apple's
+        // codesign never complains about the problem (and you end up getting segfaults at runtime), an open-source
+        // alternative called rcodesign correctly reports the error: "insufficient room to write code signature load
+        // command". There's lengthy discussion about this issue here: https://github.com/ziglang/zig/issues/23704
+        step.headerpad_size = 0x1000;
+        step.headerpad_max_install_names = true;
+
         if (b.lazyDependency("macos_sdk", .{})) |sdk| {
             step.addSystemIncludePath(sdk.path("usr/include"));
             step.addLibraryPath(sdk.path("usr/lib"));
