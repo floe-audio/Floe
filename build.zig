@@ -2038,6 +2038,8 @@ pub fn build(b: *std.Build) void {
                 run_tests.addFileArg(configure_binaries.nix_helper.maybePatchElfExecutable(vst3_validator));
                 run_tests.addFileArg(vst3_plugin_path.?);
                 run_tests.expectExitCode(0);
+
+                test_vst3_validator.dependOn(&run_tests.step);
             }
         } else {
             test_vst3_validator.dependOn(&b.addFail("VST3 tests not allowed with this configuration").step);
