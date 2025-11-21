@@ -56,6 +56,7 @@ pub fn maybeAddWindowsCodesign(
         break :blk decoded;
     });
 
+    // We use osslsigncode instead of signtool.exe because it allows us to do this process cross-platform.
     const cmd = b.addSystemCommand(&.{ "osslsigncode", "sign" });
 
     cmd.addArg("-pkcs12");
@@ -72,7 +73,7 @@ pub fn maybeAddWindowsCodesign(
     cmd.addFileArg(binary_path);
 
     cmd.addArg("-out");
-    const signed_output_lazy_path = cmd.addOutputFileArg("signed_plugin");
+    const signed_output_lazy_path = cmd.addOutputFileArg(compile_step.out_filename);
 
     return signed_output_lazy_path;
 }
@@ -151,6 +152,11 @@ const NixHelper = struct {
 
 pub var nix_helper: NixHelper = .{};
 
+const ConfiguredPluginResult = struct {
+    plugin_path: std.Build.LazyPath,
+    install_step: *std.Build.Step,
+};
+
 // The generated binary may not have the right name, extension or folder structure to be a valid
 // audio plugin. This function performs the necessary setup.
 pub fn addConfiguredPlugin(
@@ -158,7 +164,7 @@ pub fn addConfiguredPlugin(
     plugin_type: PluginType,
     compile_step: *std.Build.Step.Compile,
     codesign: ?CodesignInfo,
-) std.Build.LazyPath {
+) ConfiguredPluginResult {
     switch (compile_step.rootModuleTarget().os.tag) {
         .linux => {
             const path = nix_helper.maybePatchElfSharedLibrary(compile_step);
@@ -187,15 +193,13 @@ pub fn addConfiguredPlugin(
                 },
             });
 
-            const write = b.addWriteFiles();
-            var result = write.addCopyFile(path, binary_path);
+            var result_path = b.addWriteFiles().addCopyFile(path, binary_path);
 
             // The 'result' LazyPath points to the file inside the generated directory. We need it to point to the
             // plugin (which is a folder in the case of VST3).
-            result.generated.sub_path = plugin_path;
+            result_path.generated.sub_path = plugin_path;
 
-            // Install.
-            {
+            const install_step = blk: {
                 // Subdirectory inside the prefix where the plugin will be installed. These subdirs allow for HOME to
                 // be used and the plugins will be correctly found by hosts.
                 const install_subdir = switch (plugin_type) {
@@ -206,18 +210,20 @@ pub fn addConfiguredPlugin(
 
                 if (is_dir) {
                     const install = b.addInstallDirectory(.{
-                        .source_dir = result,
+                        .source_dir = result_path,
                         .install_dir = .prefix,
-                        .install_subdir = install_subdir,
+                        .install_subdir = b.pathJoin(&.{ install_subdir, plugin_path }),
                     });
                     b.getInstallStep().dependOn(&install.step);
+                    break :blk &install.step;
                 } else {
-                    const install = b.addInstallFile(result, b.pathJoin(&.{ install_subdir, plugin_path }));
+                    const install = b.addInstallFile(result_path, b.pathJoin(&.{ install_subdir, plugin_path }));
                     b.getInstallStep().dependOn(&install.step);
+                    break :blk &install.step;
                 }
-            }
+            };
 
-            return result;
+            return .{ .plugin_path = result_path, .install_step = install_step };
         },
         .windows => {
             std.debug.assert(codesign != null);
@@ -230,11 +236,10 @@ pub fn addConfiguredPlugin(
                 .au => @panic("AU not supported on Windows"),
             };
 
-            const write = b.addWriteFiles();
-            const result = write.addCopyFile(path, plugin_path);
+            const result_path = b.addWriteFiles().addCopyFile(path, plugin_path);
 
             // Install.
-            {
+            const install = blk: {
                 // This subfolder allows for the plugin to be installed to either %COMMONPROGRAMFILES% or
                 // %LOCALAPPDATA%\Programs\Common.
                 const install_subdir = switch (plugin_type) {
@@ -243,11 +248,12 @@ pub fn addConfiguredPlugin(
                     .au => @panic("AU not supported on Windows"),
                 };
 
-                const install = b.addInstallFile(result, b.pathJoin(&.{ install_subdir, plugin_path }));
+                const install = b.addInstallFile(result_path, b.pathJoin(&.{ install_subdir, plugin_path }));
                 b.getInstallStep().dependOn(&install.step);
-            }
+                break :blk &install.step;
+            };
 
-            return result;
+            return .{ .plugin_path = result_path, .install_step = install };
         },
         .macos => {
             const install_path = switch (plugin_type) {
@@ -263,11 +269,11 @@ pub fn addConfiguredPlugin(
 
             const write = b.addWriteFiles();
 
-            var result: std.Build.LazyPath = undefined;
+            var result_path: std.Build.LazyPath = undefined;
 
             // Binary
             {
-                result = write.addCopyFile(
+                result_path = write.addCopyFile(
                     compile_step.getEmittedBin(),
                     b.fmt("{s}/Contents/MacOS/Floe", .{install_path}),
                 );
@@ -275,11 +281,11 @@ pub fn addConfiguredPlugin(
                 // Generate dSYM for debugging.
                 // NOTE(Sam): does this need a dependsOn?
                 const cmd = b.addSystemCommand(&.{"dsymutil"});
-                cmd.addFileArg(result);
+                cmd.addFileArg(result_path);
 
                 // The result points to the binary, for plugins, we want it to point to the bundle since that's
                 // what hosts/validators use.
-                result.generated.sub_path = install_path;
+                result_path.generated.sub_path = install_path;
             }
 
             // PkgInfo
@@ -396,21 +402,22 @@ pub fn addConfiguredPlugin(
             }
 
             // Install.
-            {
-                // Subpath ready for a --prefix of /Library/Audio/Plug-Ins/, or the HOME equivalent.
+            const install = blk: {
+                // Subpath ready for a --prefix of /Library/Audio/Plug-Ins, or the HOME equivalent.
                 const install = b.addInstallDirectory(.{
-                    .source_dir = result,
+                    .source_dir = result_path,
                     .install_dir = .prefix,
-                    .install_subdir = switch (plugin_type) {
+                    .install_subdir = b.pathJoin(&.{ switch (plugin_type) {
                         .vst3 => "VST3",
                         .clap => "CLAP",
                         .au => "Components",
-                    },
+                    }, install_path }),
                 });
                 b.getInstallStep().dependOn(&install.step);
-            }
+                break :blk &install.step;
+            };
 
-            return result;
+            return .{ .plugin_path = result_path, .install_step = install };
         },
         else => @panic("unsupported OS"),
     }

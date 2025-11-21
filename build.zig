@@ -29,7 +29,7 @@ const constants = @import("src/build/constants.zig");
 const ConcatCompileCommandsStep = @import("src/build/ConcatCompileCommandsStep.zig");
 const check_steps = @import("src/build/check_steps.zig");
 const scripts = @import("src/build/scripts.zig");
-const install_plugin = @import("src/build/install_plugin.zig");
+const configure_binaries = @import("src/build/configure_binaries.zig");
 
 comptime {
     const current_zig = builtin.zig_version;
@@ -1413,7 +1413,7 @@ pub fn build(b: *std.Build) void {
             // Run the docs generator. It takes no args but outputs JSON to stdout.
             {
                 const run = std.Build.Step.Run.create(b, b.fmt("run {s}", .{docs_generator.name}));
-                run.addFileArg(install_plugin.nix_helper.maybePatchElfExecutable(docs_generator));
+                run.addFileArg(configure_binaries.nix_helper.maybePatchElfExecutable(docs_generator));
 
                 const copy = b.addUpdateSourceFiles();
                 copy.addCopyFileToSource(run.captureStdOut(), "website/static/generated-data.json");
@@ -1486,10 +1486,10 @@ pub fn build(b: *std.Build) void {
             }
             applyUniversalSettings(&build_context, packager, concat_cdb);
 
-            const install = b.addInstallBinFile(install_plugin.maybeAddWindowsCodesign(
+            const install = b.addInstallBinFile(configure_binaries.maybeAddWindowsCodesign(
                 packager,
                 .{ .description = "Floe Packager" },
-            ), packager.name); // TODO: need .exe ext on Windows?
+            ), packager.out_filename);
 
             b.getInstallStep().dependOn(&install.step);
         }
@@ -1563,9 +1563,12 @@ pub fn build(b: *std.Build) void {
                 .icon_path = null,
             }) catch @panic("OOM");
 
-            clap_plugin_path = install_plugin.addConfiguredPlugin(b, .clap, clap, install_plugin.CodesignInfo{
-                .description = "Floe CLAP Plugin",
-            });
+            clap_plugin_path = configure_binaries.addConfiguredPlugin(
+                b,
+                .clap,
+                clap,
+                configure_binaries.CodesignInfo{ .description = "Floe CLAP Plugin" },
+            ).plugin_path;
         }
 
         // standalone is for development-only at the moment
@@ -2019,14 +2022,17 @@ pub fn build(b: *std.Build) void {
                 .icon_path = null,
             }) catch @panic("OOM");
 
-            vst3_plugin_path = install_plugin.addConfiguredPlugin(b, .vst3, vst3, install_plugin.CodesignInfo{
-                .description = "Floe VST3 Plugin",
-            });
+            vst3_plugin_path = configure_binaries.addConfiguredPlugin(
+                b,
+                .vst3,
+                vst3,
+                configure_binaries.CodesignInfo{ .description = "Floe VST3 Plugin" },
+            ).plugin_path;
 
             // Test VST3
             {
                 const run_tests = std_extras.createCommandWithStdoutToStderr(b, target, "run VST3-Validator");
-                run_tests.addFileArg(install_plugin.nix_helper.maybePatchElfExecutable(vst3_validator));
+                run_tests.addFileArg(configure_binaries.nix_helper.maybePatchElfExecutable(vst3_validator));
                 run_tests.addFileArg(vst3_plugin_path.?);
                 run_tests.expectExitCode(0);
             }
@@ -2210,10 +2216,12 @@ pub fn build(b: *std.Build) void {
 
                 applyUniversalSettings(&build_context, au, concat_cdb);
 
-                const plugin_install = install_plugin.addConfiguredPlugin(b, .au, au, null);
+                const au_install = configure_binaries.addConfiguredPlugin(b, .au, au, null).install_step;
 
                 if (builtin.os.tag == .macos) {
                     if (std.mem.endsWith(u8, std.mem.trimRight(u8, b.install_path, "/"), "Library/Audio/Plug-Ins")) {
+                        const installed_au_path = b.pathJoin(&.{ b.install_path, "Components/Floe.component" });
+
                         // Pluginval AU
                         {
                             // Pluginval puts all of it's output in stdout, not stderr.
@@ -2221,10 +2229,9 @@ pub fn build(b: *std.Build) void {
 
                             addPluginvalCommand(run, target.result);
 
-                            run.addArg("--validate");
-                            run.addArg(b.pathJoin(b.install_path, "Components/Floe.component"));
+                            run.addArgs(&.{ "--validate", installed_au_path });
 
-                            run.step.dependOn(b.getInstallStep());
+                            run.step.dependOn(au_install);
                             run.expectExitCode(0);
 
                             pluginval_au.dependOn(&run.step);
@@ -2240,7 +2247,7 @@ pub fn build(b: *std.Build) void {
                                 constants.floe_au_subtype,
                                 constants.floe_au_manufacturer_code,
                             });
-                            run_auval.step.dependOn(b.getInstallStep());
+                            run_auval.step.dependOn(au_install);
                             run_auval.expectExitCode(0);
 
                             // We need to make sure that the audio component service is aware of the new AU.
@@ -2249,13 +2256,7 @@ pub fn build(b: *std.Build) void {
                             // that auval will rescan for installed AUs. The command on the terminal to do this is:
                             // killall -9 AudioComponentRegistrar. That is, send SIGKILL to the process named
                             // AudioComponentRegistrar.
-                            if (std.mem.endsWith(
-                                u8,
-                                std.mem.trimRight(u8, b.install_path, "/"),
-                                "Library/Audio/Plug-Ins",
-                            ) and
-                                !std_extras.pathExists(plugin_install.fullPath(b)))
-                            {
+                            if (!std_extras.pathExists(installed_au_path)) {
                                 const cmd = b.addSystemCommand(&.{ "killall", "-9", "AudioComponentRegistrar" });
 
                                 // We explicitly set the 'check' to an empty array which means that we do not care
@@ -2419,15 +2420,14 @@ pub fn build(b: *std.Build) void {
 
                 compile_all_step.dependOn(&win_uninstaller.step);
 
-                const uninstaller_bin_path = install_plugin.maybeAddWindowsCodesign(
+                const uninstaller_bin_path = configure_binaries.maybeAddWindowsCodesign(
                     win_uninstaller,
                     .{ .description = "Floe Uninstaller" },
                 );
 
                 // Install
                 {
-                    // TODO: do we need .exe extension?
-                    const install = b.addInstallBinFile(uninstaller_bin_path, uninstaller_name);
+                    const install = b.addInstallBinFile(uninstaller_bin_path, win_uninstaller.out_filename);
                     b.getInstallStep().dependOn(&install.step);
                 }
 
@@ -2446,7 +2446,6 @@ pub fn build(b: *std.Build) void {
                 win_installer.subsystem = .Windows;
 
                 var rc_include_path: std.BoundedArray(std.Build.LazyPath, 5) = .{};
-                rc_include_path.append(b.path("zig-out/x86_64-windows")) catch @panic("OOM");
 
                 if (build_context.dep_floe_logos) |logos| {
                     const sidebar_img = "rasterized/win-installer-sidebar.png";
@@ -2459,32 +2458,26 @@ pub fn build(b: *std.Build) void {
                 }
                 // TODO: rename these macros, the are not "relative to build root", just paths that are discoverable
                 // via the rc include paths.
-                if (vst3_plugin_path) |install| {
+                if (vst3_plugin_path) |vst3_plugin| {
                     win_installer.root_module.addCMacro(
                         "VST3_PLUGIN_PATH_RELATIVE_BUILD_ROOT",
                         "\"Floe.vst3\"",
                     );
-                    var dir = install;
-                    dir.generated.up = 1; // Dir of binary.
-                    rc_include_path.append(dir) catch @panic("OOM");
+                    rc_include_path.append(vst3_plugin.dirname()) catch @panic("OOM");
                 }
-                if (clap_plugin_path) |install| {
+                if (clap_plugin_path) |clap_plugin| {
                     win_installer.root_module.addCMacro(
                         "CLAP_PLUGIN_PATH_RELATIVE_BUILD_ROOT",
                         "\"Floe.clap\"",
                     );
-                    var dir = install;
-                    dir.generated.up = 1; // Dir of binary.
-                    rc_include_path.append(dir) catch @panic("OOM");
+                    rc_include_path.append(clap_plugin.dirname()) catch @panic("OOM");
                 }
                 {
                     win_installer.root_module.addCMacro(
                         "UNINSTALLER_PATH_RELATIVE_BUILD_ROOT",
                         b.fmt("\"{s}\"", .{win_uninstaller.out_filename}),
                     );
-                    var dir = uninstaller_bin_path;
-                    dir.generated.up = 1; // Dir of binary.
-                    rc_include_path.append(dir) catch @panic("OOM");
+                    rc_include_path.append(uninstaller_bin_path.dirname()) catch @panic("OOM");
                 }
 
                 win_installer.addWin32ResourceFile(.{
@@ -2520,7 +2513,7 @@ pub fn build(b: *std.Build) void {
                 win_installer.linkLibrary(common_infrastructure);
                 applyUniversalSettings(&build_context, win_installer, concat_cdb);
 
-                const installer_bin_path = install_plugin.maybeAddWindowsCodesign(
+                const installer_bin_path = configure_binaries.maybeAddWindowsCodesign(
                     win_installer,
                     .{ .description = "Floe Installer" },
                 );
@@ -2545,7 +2538,7 @@ pub fn build(b: *std.Build) void {
 
                 // Install
                 {
-                    const install = b.addInstallBinFile(installer_bin_path, win_installer.name);
+                    const install = b.addInstallBinFile(installer_bin_path, win_installer.out_filename);
                     b.getInstallStep().dependOn(&install.step);
                 }
             }
@@ -2607,7 +2600,7 @@ pub fn build(b: *std.Build) void {
             tests.linkLibrary(plugin);
             applyUniversalSettings(&build_context, tests, concat_cdb);
 
-            const test_binary = install_plugin.nix_helper.maybePatchElfExecutable(tests);
+            const test_binary = configure_binaries.nix_helper.maybePatchElfExecutable(tests);
 
             const add_tests_args = struct {
                 pub fn do(run: *std.Build.Step.Run, clap_plugin: ?std.Build.LazyPath) void {

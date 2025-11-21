@@ -407,6 +407,8 @@ fn runZigBuild(ci_report: *CiReport, args: []const []const u8) void {
 
     var timer = std.time.Timer.start() catch @panic("Timer unavailable");
 
+    // IMPROVE: add timeout
+
     child.spawn() catch |err| {
         std.debug.print("Failed to spawn process: {any}\n", .{err});
         return;
