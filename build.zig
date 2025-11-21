@@ -1425,6 +1425,7 @@ pub fn build(b: *std.Build) void {
             {
                 const npm_install = b.addSystemCommand(&.{ "npm", "install" });
                 npm_install.setCwd(b.path("website"));
+                npm_install.expectExitCode(0);
 
                 const run = std_extras.createCommandWithStdoutToStderr(b, target, "run docusaurus build");
                 run.addArgs(&.{ "npm", "run", "build" });
@@ -1439,6 +1440,7 @@ pub fn build(b: *std.Build) void {
             {
                 const npm_install = b.addSystemCommand(&.{ "npm", "install" });
                 npm_install.setCwd(b.path("website"));
+                npm_install.expectExitCode(0);
 
                 const run = std_extras.createCommandWithStdoutToStderr(b, target, "run docusaurus start");
                 run.addArgs(&.{ "npm", "run", "start" });
