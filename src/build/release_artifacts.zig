@@ -38,7 +38,7 @@ pub fn makeRelease(args: struct {
                 const installer = args.windows_installer orelse
                     @panic("windows installer path must be provided for windows releases");
 
-                const generated_zip = createZipCommand(b, &.{installer});
+                const generated_zip = createZipCommand(b, &.{installer}, &.{});
 
                 const install = b.addInstallFile(generated_zip, b.fmt("{s}{c}Floe-Installer-v{s}-Windows.zip", .{
                     release_dir,
@@ -53,8 +53,7 @@ pub fn makeRelease(args: struct {
                 const vst3 = args.vst3 orelse @panic("VST3 plugin must be provided for windows releases");
                 const clap = args.clap orelse @panic("CLAP plugin must be provided for windows releases");
 
-                const write = b.addWriteFiles();
-                const readme = write.add(
+                const readme = b.addWriteFiles().add(
                     "readme.txt",
                     manualInstallReadme(b.allocator, .{ .os_name = "Windows", .version = args.version }),
                 );
@@ -63,7 +62,7 @@ pub fn makeRelease(args: struct {
                     vst3.plugin_path,
                     clap.plugin_path,
                     readme,
-                });
+                }, &.{});
 
                 const install = b.addInstallFile(generated_zip, b.fmt("{s}{c}Floe-Manual-Install-v{s}-Windows.zip", .{
                     release_dir,
@@ -77,7 +76,7 @@ pub fn makeRelease(args: struct {
             {
                 const packager = args.packager orelse
                     @panic("packager binary must be provided for windows releases");
-                const generated_zip = createZipCommand(b, &.{packager});
+                const generated_zip = createZipCommand(b, &.{packager}, &.{});
                 const install = b.addInstallFile(generated_zip, b.fmt("{s}{c}Floe-Packager-v{s}-Windows.zip", .{
                     release_dir,
                     std.fs.path.sep,
@@ -96,8 +95,8 @@ pub fn makeRelease(args: struct {
             // Packager
             {
                 const packager = args.packager orelse @panic("packager binary must be provided for macOS releases");
-                const codesigned_packager = maybeAddMacosCodesign(b, packager, false);
-                const zip_file = createZipCommand(b, &.{codesigned_packager});
+                const codesigned_packager = maybeAddMacosCodesign(b, packager, false, false);
+                const zip_file = createZipCommand(b, &.{codesigned_packager}, &.{});
 
                 const install = b.addInstallFile(zip_file, b.fmt("{s}{c}Floe-Packager-v{s}-macOS-{s}.zip", .{
                     release_dir,
@@ -106,7 +105,54 @@ pub fn makeRelease(args: struct {
                     arch_name_for_file,
                 }));
 
-                step.dependOn(maybeMacosNotarise(b, zip_file, &install.step, false));
+                // If notarization step exists, make the install step depend on it.
+                if (maybeMacosNotarise(b, zip_file)) |s| {
+                    install.step.dependOn(s);
+                }
+
+                step.dependOn(&install.step);
+            }
+
+            const au = args.au orelse @panic("AU plugin must be provided for macOS releases");
+            const vst3 = args.vst3 orelse @panic("VST3 plugin must be provided for macOS releases");
+            const clap = args.clap orelse @panic("CLAP plugin must be provided for macOS releases");
+
+            const signed_au = maybeAddMacosCodesign(b, au.plugin_path, true, true);
+            const signed_vst3 = maybeAddMacosCodesign(b, vst3.plugin_path, true, true);
+            const signed_clap = maybeAddMacosCodesign(b, clap.plugin_path, true, true);
+
+            const maybe_notarise_au = maybeMacosNotarise(b, signed_au);
+            const maybe_notarise_vst3 = maybeMacosNotarise(b, signed_vst3);
+            const maybe_notarise_clap = maybeMacosNotarise(b, signed_clap);
+
+            // Manual-install
+            {
+                const readme = b.addWriteFiles().add(
+                    "readme.txt",
+                    manualInstallReadme(b.allocator, .{ .os_name = "macOS", .version = args.version }),
+                );
+
+                const zip_file = createZipCommand(b, &.{readme}, &.{ signed_au, signed_vst3, signed_clap });
+
+                const install = b.addInstallFile(zip_file, b.fmt("{s}{c}Floe-Manual-Install-v{s}-macOS-{s}.zip", .{
+                    release_dir,
+                    std.fs.path.sep,
+                    args.version,
+                    arch_name_for_file,
+                }));
+
+                if (maybe_notarise_au) |s| install.step.dependOn(s);
+                if (maybe_notarise_vst3) |s| install.step.dependOn(s);
+                if (maybe_notarise_clap) |s| install.step.dependOn(s);
+
+                step.dependOn(&install.step);
+            }
+
+            if (builtin.os.tag == .macos) {
+                const write = b.addWriteFiles();
+                // TODO: create pkgs
+            } else {
+                std.log.warn("IMPORTANT: building macOS package installers requires a macOS machine", .{});
             }
         },
         .linux => {
@@ -163,20 +209,17 @@ pub fn makeRelease(args: struct {
     return step;
 }
 
-// Unfortunately rcodesign doesn't have a way to specify an output path for the notarized binary, so we just have to
-// overwrite the input file and have this slightly awkward API of accepting a step pointer.
+// Notarizating doesn't actually change files, it just uploads them and waits for approval.
 fn maybeMacosNotarise(
     b: *std.Build,
     path: std.Build.LazyPath,
-    notarise_before_step: *std.Build.Step,
-    staple: bool, // Remember stapling doesn't work for Unix binaries.
-) *std.Build.Step {
+) ?*std.Build.Step {
     const api_key_json = std_extras.validEnvVar(
         b,
         "MACOS_APP_STORE_CONNECT_API_KEY_JSON",
         "skipping notarization",
         true,
-    ) orelse return notarise_before_step;
+    ) orelse return null;
 
     const run_cmd = b.addSystemCommand(&.{
         "rcodesign",
@@ -184,19 +227,20 @@ fn maybeMacosNotarise(
         "--wait",
     });
 
-    if (staple)
-        run_cmd.addArg("--staple");
-
     run_cmd.addArg("--api-key-path");
     run_cmd.addFileArg(b.addWriteFiles().add("api_key.json", api_key_json));
 
     run_cmd.addFileArg(path);
 
-    notarise_before_step.dependOn(&run_cmd.step);
     return &run_cmd.step;
 }
 
-fn maybeAddMacosCodesign(b: *std.Build, binary_path: std.Build.LazyPath, entitlements: bool) std.Build.LazyPath {
+fn maybeAddMacosCodesign(
+    b: *std.Build,
+    binary_path: std.Build.LazyPath,
+    is_dir: bool,
+    entitlements: bool,
+) std.Build.LazyPath {
     const cert_p12 = std_extras.validEnvVar(
         b,
         "MACOS_DEV_CERTS_P12",
@@ -250,22 +294,32 @@ fn maybeAddMacosCodesign(b: *std.Build, binary_path: std.Build.LazyPath, entitle
         ));
     }
 
-    run_cmd.addFileArg(binary_path);
+    if (!is_dir) {
+        run_cmd.addFileArg(binary_path);
+    } else {
+        run_cmd.addDirectoryArg(binary_path);
+    }
 
     return run_cmd.addOutputFileArg("codesigned_binary");
 }
 
-fn createZipCommand(b: *std.Build, input_files: []const std.Build.LazyPath) std.Build.LazyPath {
+fn createZipCommand(
+    b: *std.Build,
+    input_files: []const std.Build.LazyPath,
+    input_dirs: []const std.Build.LazyPath,
+) std.Build.LazyPath {
     if (builtin.os.tag != .windows) {
         const zip_cmd = b.addSystemCommand(&.{ "zip", "-r" });
         const out_zip = zip_cmd.addOutputFileArg("installer.zip");
         for (input_files) |file|
             zip_cmd.addFileArg(file);
+        for (input_dirs) |dir|
+            zip_cmd.addDirectoryArg(dir);
         return out_zip;
     } else {
         // powershell.exe is most ubiquitous, but its format for the -Path argument doesn't work with
         // LazyPaths since it requires quoted paths separated with commas. We have no way of telling the Run step
-        // about this quotes+commas format and it know how to properly depend and resolve LazyPaths.
+        // about this quotes+commas format and so it can't properly depend-on and resolve LazyPaths.
         // Instead, we use 7z which is often installed (e.g. Github Actions Windows runners have it).
         const zip_cmd = b.addSystemCommand(&.{ "7z", "a", "-tzip" });
 
@@ -273,6 +327,8 @@ fn createZipCommand(b: *std.Build, input_files: []const std.Build.LazyPath) std.
 
         for (input_files) |file|
             zip_cmd.addFileArg(file);
+        for (input_dirs) |dir|
+            zip_cmd.addDirectoryArg(dir);
 
         return out_zip;
     }
