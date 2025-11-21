@@ -1533,7 +1533,7 @@ pub fn build(b: *std.Build) void {
             // IMPROVE: export preset-editor as a production artifact?
         }
 
-        var clap_plugin_path: ?std.Build.LazyPath = null;
+        var configured_clap: ?configure_binaries.ConfiguredPlugin = null;
         if (!options.sanitize_thread) {
             const clap = b.addSharedLibrary(.{
                 .name = "Floe.clap",
@@ -1564,12 +1564,12 @@ pub fn build(b: *std.Build) void {
                 .icon_path = null,
             }) catch @panic("OOM");
 
-            clap_plugin_path = configure_binaries.addConfiguredPlugin(
+            configured_clap = configure_binaries.addConfiguredPlugin(
                 b,
                 .clap,
                 clap,
                 configure_binaries.CodesignInfo{ .description = "Floe CLAP Plugin" },
-            ).plugin_path;
+            );
         }
 
         // standalone is for development-only at the moment
@@ -1896,7 +1896,7 @@ pub fn build(b: *std.Build) void {
             }
         }
 
-        var vst3_plugin_path: ?std.Build.LazyPath = null;
+        var configured_vst3: ?configure_binaries.ConfiguredPlugin = null;
         if (!constants.clap_only and !options.sanitize_thread) {
             const vst3 = b.addSharedLibrary(.{
                 .name = "Floe.vst3",
@@ -2023,18 +2023,18 @@ pub fn build(b: *std.Build) void {
                 .icon_path = null,
             }) catch @panic("OOM");
 
-            vst3_plugin_path = configure_binaries.addConfiguredPlugin(
+            configured_vst3 = configure_binaries.addConfiguredPlugin(
                 b,
                 .vst3,
                 vst3,
                 configure_binaries.CodesignInfo{ .description = "Floe VST3 Plugin" },
-            ).plugin_path;
+            );
 
             // Test VST3
             {
                 const run_tests = std_extras.createCommandWithStdoutToStderr(b, target, "run VST3-Validator");
                 run_tests.addFileArg(configure_binaries.nix_helper.maybePatchElfExecutable(vst3_validator));
-                run_tests.addFileArg(vst3_plugin_path.?);
+                configured_vst3.?.addToRunStepArgs(run_tests);
                 run_tests.expectExitCode(0);
 
                 test_vst3_validator.dependOn(&run_tests.step);
@@ -2459,13 +2459,13 @@ pub fn build(b: *std.Build) void {
                         b.fmt("\"{s}\"", .{std.fs.path.basename(sidebar_img)}),
                     );
                 }
-                if (vst3_plugin_path) |vst3_plugin| {
+                if (configured_vst3) |vst3_plugin| {
                     win_installer.root_module.addCMacro("VST3_PLUGIN_BINARY_NAME", "\"Floe.vst3\"");
-                    rc_include_path.append(vst3_plugin.dirname()) catch @panic("OOM");
+                    rc_include_path.append(vst3_plugin.plugin_path.dirname()) catch @panic("OOM");
                 }
-                if (clap_plugin_path) |clap_plugin| {
+                if (configured_clap) |clap_plugin| {
                     win_installer.root_module.addCMacro("CLAP_PLUGIN_BINARY_NAME", "\"Floe.clap\"");
-                    rc_include_path.append(clap_plugin.dirname()) catch @panic("OOM");
+                    rc_include_path.append(clap_plugin.plugin_path.dirname()) catch @panic("OOM");
                 }
                 {
                     win_installer.root_module.addCMacro(
@@ -2598,7 +2598,7 @@ pub fn build(b: *std.Build) void {
             const test_binary = configure_binaries.nix_helper.maybePatchElfExecutable(tests);
 
             const add_tests_args = struct {
-                pub fn do(run: *std.Build.Step.Run, clap_plugin: ?std.Build.LazyPath) void {
+                pub fn do(run: *std.Build.Step.Run, clap_plugin: ?configure_binaries.ConfiguredPlugin) void {
                     const b2 = run.step.owner;
                     run.addArg("--log-level=debug");
 
@@ -2606,8 +2606,8 @@ pub fn build(b: *std.Build) void {
                     // can be collected by searching the .zig-cache directory for .junit.xml files.
                     _ = run.addPrefixedOutputFileArg("--junit-xml-output-path=", "unit-tests.junit.xml");
 
-                    if (clap_plugin) |path|
-                        run.addPrefixedFileArg("--clap-plugin-path=", path);
+                    if (clap_plugin) |p|
+                        p.addToRunStepArgsWithPrefix(run, "--clap-plugin-path=");
 
                     run.addArg(b2.fmt("--test-files-folder-path={s}", .{b2.pathFromRoot("test_files")}));
                 }
@@ -2617,7 +2617,7 @@ pub fn build(b: *std.Build) void {
             {
                 const run_tests = std.Build.Step.Run.create(b, "run unit tests");
                 run_tests.addFileArg(test_binary);
-                add_tests_args(run_tests, clap_plugin_path);
+                add_tests_args(run_tests, configured_clap);
 
                 run_tests.expectExitCode(0);
 
@@ -2632,7 +2632,7 @@ pub fn build(b: *std.Build) void {
                     b.fmt("{s}/coverage-out", .{constants.floe_cache_relative}),
                 });
                 run_coverage.addFileArg(test_binary);
-                add_tests_args(run_coverage, clap_plugin_path);
+                add_tests_args(run_coverage, configured_clap);
                 run_coverage.expectExitCode(0);
                 coverage.dependOn(&run_coverage.step);
             } else {
@@ -2652,7 +2652,7 @@ pub fn build(b: *std.Build) void {
                     "--exit-on-first-error=no",
                 });
                 run.addFileArg(test_binary);
-                add_tests_args(run, clap_plugin_path);
+                add_tests_args(run, configured_clap);
                 run.expectExitCode(0);
 
                 valgrind.dependOn(&run.step);
@@ -2662,7 +2662,7 @@ pub fn build(b: *std.Build) void {
         }
 
         // Clap Validator test
-        if (clap_plugin_path) |clap_path| {
+        if (configured_clap) |p| {
             const run = std_extras.createCommandWithStdoutToStderr(b, target, "run clap-validator");
             if (b.findProgram(
                 &.{if (target.result.os.tag != .windows) "clap-validator" else "clap-validator.exe"},
@@ -2716,7 +2716,7 @@ pub fn build(b: *std.Build) void {
                 ".*(process|param|state-reproducibility-flush).*",
                 "--invert-filter",
             });
-            run.addFileArg(clap_path);
+            p.addToRunStepArgs(run);
             run.expectExitCode(0);
 
             clap_val.dependOn(&run.step);
@@ -2725,7 +2725,7 @@ pub fn build(b: *std.Build) void {
         }
 
         // Pluginval test
-        if (vst3_plugin_path) |vst3_path| {
+        if (configured_vst3) |p| {
             // Pluginval puts all of it's output in stdout, not stderr.
             const run = std_extras.createCommandWithStdoutToStderr(b, target, "run pluginval");
 
@@ -2737,7 +2737,7 @@ pub fn build(b: *std.Build) void {
             }
 
             run.addArg("--validate");
-            run.addFileArg(vst3_path);
+            p.addToRunStepArgs(run);
             run.expectExitCode(0);
 
             pluginval.dependOn(&run.step);

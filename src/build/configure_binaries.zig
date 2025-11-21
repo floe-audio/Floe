@@ -152,9 +152,26 @@ const NixHelper = struct {
 
 pub var nix_helper: NixHelper = .{};
 
-const ConfiguredPluginResult = struct {
-    plugin_path: std.Build.LazyPath,
-    install_step: *std.Build.Step,
+pub const ConfiguredPlugin = struct {
+    plugin_path: std.Build.LazyPath, // Path to the plugin (DSO or bundle folder).
+    is_dir: bool, // Whether the plugin_path is a directory.
+    install_step: *std.Build.Step, // Step that installs the plugin to the install prefix.
+
+    pub fn addToRunStepArgsWithPrefix(
+        self: *const ConfiguredPlugin,
+        run_step: *std.Build.Step.Run,
+        prefix: []const u8,
+    ) void {
+        if (self.is_dir) {
+            run_step.addPrefixedDirectoryArg(prefix, self.plugin_path);
+        } else {
+            run_step.addPrefixedFileArg(prefix, self.plugin_path);
+        }
+    }
+
+    pub fn addToRunStepArgs(self: *const ConfiguredPlugin, run_step: *std.Build.Step.Run) void {
+        self.addToRunStepArgsWithPrefix(run_step, "");
+    }
 };
 
 // The generated binary may not have the right name, extension or folder structure to be a valid
@@ -164,7 +181,7 @@ pub fn addConfiguredPlugin(
     plugin_type: PluginType,
     compile_step: *std.Build.Step.Compile,
     codesign: ?CodesignInfo,
-) ConfiguredPluginResult {
+) ConfiguredPlugin {
     switch (compile_step.rootModuleTarget().os.tag) {
         .linux => {
             const path = nix_helper.maybePatchElfSharedLibrary(compile_step);
@@ -223,7 +240,11 @@ pub fn addConfiguredPlugin(
                 }
             };
 
-            return .{ .plugin_path = result_path, .install_step = install_step };
+            return .{
+                .plugin_path = result_path,
+                .is_dir = is_dir,
+                .install_step = install_step,
+            };
         },
         .windows => {
             std.debug.assert(codesign != null);
@@ -253,7 +274,11 @@ pub fn addConfiguredPlugin(
                 break :blk &install.step;
             };
 
-            return .{ .plugin_path = result_path, .install_step = install };
+            return .{
+                .plugin_path = result_path,
+                .is_dir = false,
+                .install_step = install,
+            };
         },
         .macos => {
             const install_path = switch (plugin_type) {
@@ -417,7 +442,11 @@ pub fn addConfiguredPlugin(
                 break :blk &install.step;
             };
 
-            return .{ .plugin_path = result_path, .install_step = install };
+            return .{
+                .plugin_path = result_path,
+                .is_dir = true,
+                .install_step = install,
+            };
         },
         else => @panic("unsupported OS"),
     }
