@@ -617,11 +617,9 @@ pub fn build(b: *std.Build) void {
             var hasher = std.hash.Wyhash.init(0);
             hasher.update(target.query.zigTriple(b.allocator) catch "");
             hasher.update(@tagName(options.build_mode));
-            hasher.update(if (options.enable_tracy) "tracy" else "no_tracy");
-            hasher.update(if (options.sanitize_thread) "sanitize_thread" else "no_sanitize_thread");
-            hasher.update(
-                if (options.windows_installer_require_admin) "win_installer_elevated" else "win_installer_not_elevated",
-            );
+            hasher.update(std.mem.asBytes(&options.enable_tracy));
+            hasher.update(std.mem.asBytes(&options.sanitize_thread));
+            hasher.update(std.mem.asBytes(&options.windows_installer_require_admin));
             break :blk hasher.final();
         };
 
