@@ -139,6 +139,7 @@ pub var nix_helper: NixHelper = .{};
 
 pub const ConfiguredPlugin = struct {
     plugin_path: std.Build.LazyPath, // Path to the plugin (DSO or bundle folder).
+    file_name: []const u8,
     is_dir: bool, // Whether the plugin_path is a directory.
     install_step: *std.Build.Step, // Step that installs the plugin to the install prefix.
 
@@ -227,6 +228,7 @@ pub fn addConfiguredPlugin(
 
             return .{
                 .plugin_path = result_path,
+                .file_name = plugin_path,
                 .is_dir = is_dir,
                 .install_step = install_step,
             };
@@ -261,6 +263,7 @@ pub fn addConfiguredPlugin(
 
             return .{
                 .plugin_path = result_path,
+                .file_name = plugin_path,
                 .is_dir = false,
                 .install_step = install,
             };
@@ -429,6 +432,7 @@ pub fn addConfiguredPlugin(
 
             return .{
                 .plugin_path = result_path,
+                .file_name = install_path,
                 .is_dir = true,
                 .install_step = install,
             };

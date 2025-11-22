@@ -1475,7 +1475,7 @@ pub fn build(b: *std.Build) void {
             website_dev_step.dependOn(fail_step);
         }
 
-        var configured_packager: ?std.Build.LazyPath = null;
+        var configured_packager: ?release_artifacts.Artifact = null;
         if (!constants.clap_only) {
             var packager = b.addExecutable(.{
                 .name = "floe-packager",
@@ -1508,12 +1508,15 @@ pub fn build(b: *std.Build) void {
             }
             applyUniversalSettings(&build_context, packager, concat_cdb);
 
-            configured_packager = configure_binaries.maybeAddWindowsCodesign(
-                packager,
-                .{ .description = "Floe Packager" },
-            );
+            configured_packager = release_artifacts.Artifact{
+                .out_filename = packager.out_filename,
+                .path = configure_binaries.maybeAddWindowsCodesign(
+                    packager,
+                    .{ .description = "Floe Packager" },
+                ),
+            };
 
-            const install = b.addInstallBinFile(configured_packager.?, packager.out_filename);
+            const install = b.addInstallBinFile(configured_packager.?.path, packager.out_filename);
             install_all_step.dependOn(&install.step);
         }
 
@@ -2315,7 +2318,7 @@ pub fn build(b: *std.Build) void {
             auval.dependOn(&fail.step);
         }
 
-        var configured_windows_installer_path: ?std.Build.LazyPath = null;
+        var configured_windows_installer: ?release_artifacts.Artifact = null;
         if (!constants.clap_only and target.result.os.tag == .windows) {
             const installer_path = "src/windows_installer";
 
@@ -2536,7 +2539,10 @@ pub fn build(b: *std.Build) void {
                     win_installer,
                     .{ .description = "Floe Installer" },
                 );
-                configured_windows_installer_path = installer_bin_path;
+                configured_windows_installer = release_artifacts.Artifact{
+                    .out_filename = win_installer.out_filename,
+                    .path = installer_bin_path,
+                };
 
                 // Installer tests
                 {
@@ -2695,7 +2701,7 @@ pub fn build(b: *std.Build) void {
             const step = release_artifacts.makeRelease(.{
                 .b = b,
                 .target = target.result,
-                .windows_installer = configured_windows_installer_path,
+                .windows_installer = configured_windows_installer,
                 .au = configured_au,
                 .vst3 = configured_vst3,
                 .clap = configured_clap,

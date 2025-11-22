@@ -154,7 +154,7 @@ pub fn copyDirRecursive(src_path: []const u8, dest_path: []const u8, allocator: 
     while (try walker.next()) |entry| {
         switch (entry.kind) {
             .file => {
-                try entry.dir.updateFile(entry.basename, dest_dir, entry.path, .{});
+                _ = try entry.dir.updateFile(entry.basename, dest_dir, entry.path, .{});
             },
             .directory => {
                 try dest_dir.makePath(entry.path);
@@ -184,17 +184,18 @@ pub fn createCommandWithStdoutToStderr(
 ) *std.Build.Step.Run {
     const run = std.Build.Step.Run.create(b, name);
 
-    const wrapper_scripts = b.addWriteFiles();
+    // IMPROVE: it would probably be more robust to create a small Zig program (like fetch()) that does this
+    // redirection so we can guarantee cross-platform compatibility and don't have to do the bash vs batch stuff.
 
     if (builtin.os.tag == .windows) {
-        const batch_wrapper = wrapper_scripts.add("stdout-to-stderr-wrapper.bat",
+        const batch_wrapper = b.addWriteFiles().add("stdout-to-stderr-wrapper.bat",
             \\@echo off
             \\%* 1>&2
             \\exit /b %errorlevel%
         );
         run.addFileArg(batch_wrapper);
     } else {
-        const bash_wrapper = wrapper_scripts.add("stdout-to-stderr-wrapper.sh",
+        const bash_wrapper = b.addWriteFiles().add("stdout-to-stderr-wrapper.sh",
             \\#!/usr/bin/env bash
             \\exec "$@" >&2
         );
