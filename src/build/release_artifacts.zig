@@ -43,8 +43,7 @@ pub fn makeRelease(
         .windows => {
             // Installer
             {
-                const installer = args.windows_installer orelse
-                    @panic("windows installer path must be provided for windows releases");
+                const installer = args.windows_installer orelse return invalidConfiguration(step);
 
                 const generated_zip = createArchiveCommand(b, archiver, .zip, &[_]FileToArchive{
                     .{
@@ -64,8 +63,8 @@ pub fn makeRelease(
 
             // Manual-install plugins
             {
-                const vst3 = args.vst3 orelse @panic("VST3 plugin must be provided for windows releases");
-                const clap = args.clap orelse @panic("CLAP plugin must be provided for windows releases");
+                const vst3 = args.vst3 orelse return invalidConfiguration(step);
+                const clap = args.clap orelse return invalidConfiguration(step);
 
                 const readme = b.addWriteFiles().add(
                     "readme.txt",
@@ -88,8 +87,7 @@ pub fn makeRelease(
 
             // Packager
             {
-                const packager = args.packager orelse
-                    @panic("packager binary must be provided for windows releases");
+                const packager = args.packager orelse return invalidConfiguration(step);
                 const generated_zip = createArchiveCommand(b, archiver, .zip, &[_]FileToArchive{
                     .{ .path = packager.path, .path_in_archive = packager.out_filename, .is_dir = false },
                 });
@@ -110,7 +108,7 @@ pub fn makeRelease(
 
             // Packager
             {
-                const packager = args.packager orelse @panic("packager binary must be provided for macOS releases");
+                const packager = args.packager orelse return invalidConfiguration(step);
                 const codesigned_packager = maybeAddMacosCodesign(b, packager.path, .{
                     .out_filename = packager.out_filename,
                     .is_bundle = false,
@@ -136,9 +134,9 @@ pub fn makeRelease(
                 step.dependOn(&install.step);
             }
 
-            const au_plugin = args.au orelse @panic("AU plugin must be provided for macOS releases");
-            const vst3_plugin = args.vst3 orelse @panic("VST3 plugin must be provided for macOS releases");
-            const clap_plugin = args.clap orelse @panic("CLAP plugin must be provided for macOS releases");
+            const au_plugin = args.au orelse return invalidConfiguration(step);
+            const vst3_plugin = args.vst3 orelse return invalidConfiguration(step);
+            const clap_plugin = args.clap orelse return invalidConfiguration(step);
 
             const au = macosCodesignAndNotarise(b, au_plugin);
             const vst3 = macosCodesignAndNotarise(b, vst3_plugin);
@@ -330,7 +328,7 @@ pub fn makeRelease(
         .linux => {
             // CLAP
             {
-                const clap = args.clap orelse @panic("CLAP plugin must be provided for linux releases");
+                const clap = args.clap orelse return invalidConfiguration(step);
 
                 const tar = createArchiveCommand(b, archiver, .tar_gz, &[_]FileToArchive{
                     .{ .path = clap.plugin_path, .path_in_archive = clap.file_name, .is_dir = clap.is_dir },
@@ -346,7 +344,7 @@ pub fn makeRelease(
 
             // VST3
             {
-                const vst3 = args.vst3 orelse @panic("VST3 plugin must be provided for linux releases");
+                const vst3 = args.vst3 orelse return invalidConfiguration(step);
 
                 const tar = createArchiveCommand(b, archiver, .tar_gz, &[_]FileToArchive{
                     .{ .path = vst3.plugin_path, .path_in_archive = vst3.file_name, .is_dir = vst3.is_dir },
@@ -362,7 +360,7 @@ pub fn makeRelease(
 
             // Packager
             {
-                const packager = args.packager orelse @panic("packager binary must be provided for linux releases");
+                const packager = args.packager orelse return invalidConfiguration(step);
                 const tar = createArchiveCommand(b, archiver, .tar_gz, &[_]FileToArchive{
                     .{ .path = packager.path, .path_in_archive = packager.out_filename, .is_dir = false },
                 });
@@ -379,6 +377,11 @@ pub fn makeRelease(
     }
 
     return step;
+}
+
+fn invalidConfiguration(top_step: *std.Build.Step) *std.Build.Step {
+    top_step.dependOn(&top_step.owner.addFail("invalid build options for release").step);
+    return top_step;
 }
 
 fn maybeMacosNotarise(
