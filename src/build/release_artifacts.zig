@@ -452,13 +452,6 @@ fn maybeAddMacosCodesign(
         false,
     ) orelse return path;
 
-    const team_id = std_extras.validEnvVar(
-        b,
-        "MACOS_TEAM_ID",
-        "skipping codesigning",
-        false,
-    ) orelse return path;
-
     const write = b.addWriteFiles();
     const cert_lazy_path = write.add("cert.pfx", cert_p12);
 
@@ -468,8 +461,6 @@ fn maybeAddMacosCodesign(
     run_cmd.addFileArg(cert_lazy_path);
 
     run_cmd.addArgs(&.{ "--p12-password", cert_password });
-
-    run_cmd.addArgs(&.{ "--team-name", team_id });
 
     if (options.entitlements) {
         run_cmd.addArg("-e");
