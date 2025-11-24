@@ -641,7 +641,7 @@ pub fn build(b: *std.Build) void {
             .name = "scripts",
             .root_module = b.createModule(.{
                 .root_source_file = b.path("src/build/scripts.zig"),
-                .optimize = .ReleaseSafe,
+                .optimize = .Debug,
                 .target = native_resolved_target,
             }),
         });
