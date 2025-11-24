@@ -512,7 +512,7 @@ const FileToArchive = struct {
     is_dir: bool = false,
 };
 
-// Use out archiver.zig utility to create archives.
+// Use our archiver.zig utility to create archives.
 fn createArchiveCommand(
     b: *std.Build,
     archiver: *std.Build.Step.Compile,
