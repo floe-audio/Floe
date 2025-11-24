@@ -95,9 +95,9 @@ const CheckFormatStep = struct {
 pub const ClangTidyStep = struct {
     step: std.Build.Step,
     builder: *std.Build,
-    target: std.Build.ResolvedTarget,
+    target: std.Target,
 
-    pub fn create(builder: *std.Build, target: std.Build.ResolvedTarget) *ClangTidyStep {
+    pub fn create(builder: *std.Build, target: std.Target) *ClangTidyStep {
         const self = builder.allocator.create(ClangTidyStep) catch @panic("OOM");
         self.* = ClangTidyStep{
             .step = std.Build.Step.init(.{
@@ -126,7 +126,7 @@ pub const ClangTidyStep = struct {
 
         // We specify the build root so that we get the correct cdb for the target.
         try args.append("-p");
-        try args.append(ConcatCompileCommandsStep.cdbDirPath(self.builder, self.target.result));
+        try args.append(ConcatCompileCommandsStep.cdbDirPath(self.builder, self.target));
 
         // We get all the source files that we compiled by reading the cdb ourselves and selecting our files.
         // This ensures we only check files that were actually compiled.
@@ -134,7 +134,7 @@ pub const ClangTidyStep = struct {
         // Read the entire compile_commands.json file
         const cdb_contents = try step.owner.build_root.handle.readFileAlloc(
             self.builder.allocator,
-            ConcatCompileCommandsStep.cdbFilePath(self.builder, self.target.result),
+            ConcatCompileCommandsStep.cdbFilePath(self.builder, self.target),
             1024 * 1024 * 10,
         ); // 10MB max
         defer self.builder.allocator.free(cdb_contents);

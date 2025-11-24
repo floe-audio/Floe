@@ -8,7 +8,7 @@
             "request": "launch",
             "name": "Standalone",
             "runInTerminal": true,
-            "program": "floe_standalone"
+            "program": "zig-out/bin/floe_standalone"
         },
         {
             "type": "lldb",

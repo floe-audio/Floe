@@ -13,19 +13,22 @@ pub const Artifact = struct {
     out_filename: []const u8,
 };
 
-pub fn makeRelease(args: struct {
-    b: *std.Build,
-    target: std.Target,
+pub const Artifacts = struct {
     windows_installer: ?Artifact,
     au: ?configure_binaries.ConfiguredPlugin,
     vst3: ?configure_binaries.ConfiguredPlugin,
     clap: ?configure_binaries.ConfiguredPlugin,
     packager: ?Artifact,
-    version: []const u8,
-}) *std.Build.Step {
-    const b = args.b;
+};
 
-    const target_triple = std_extras.archAndOsPair(args.target);
+pub fn makeRelease(
+    b: *std.Build,
+    archiver: *std.Build.Step.Compile,
+    version: []const u8,
+    target: std.Target,
+    args: Artifacts,
+) *std.Build.Step {
+    const target_triple = std_extras.archAndOsPair(target);
 
     const step = b.allocator.create(std.Build.Step) catch @panic("OOM");
     step.* = std.Build.Step.init(.{
@@ -36,17 +39,17 @@ pub fn makeRelease(args: struct {
 
     const release_dir = b.fmt("release-{s}", .{target_triple.constSlice()});
 
-    switch (args.target.os.tag) {
+    switch (target.os.tag) {
         .windows => {
             // Installer
             {
                 const installer = args.windows_installer orelse
                     @panic("windows installer path must be provided for windows releases");
 
-                const generated_zip = createArchiveCommand(b, .zip, &[_]FileToArchive{
+                const generated_zip = createArchiveCommand(b, archiver, .zip, &[_]FileToArchive{
                     .{
                         .path = installer.path,
-                        .path_in_zip = installer.out_filename,
+                        .path_in_archive = installer.out_filename,
                         .is_dir = false,
                     },
                 });
@@ -54,7 +57,7 @@ pub fn makeRelease(args: struct {
                 const install = b.addInstallFile(generated_zip, b.fmt("{s}{c}Floe-Installer-v{s}-Windows.zip", .{
                     release_dir,
                     std.fs.path.sep,
-                    args.version,
+                    version,
                 }));
                 step.dependOn(&install.step);
             }
@@ -66,19 +69,19 @@ pub fn makeRelease(args: struct {
 
                 const readme = b.addWriteFiles().add(
                     "readme.txt",
-                    manualInstallReadme(b.allocator, .{ .os_name = "Windows", .version = args.version }),
+                    manualInstallReadme(b.allocator, .{ .os_name = "Windows", .version = version }),
                 );
 
-                const generated_zip = createArchiveCommand(b, .zip, &[_]FileToArchive{
-                    .{ .path = vst3.plugin_path, .path_in_zip = vst3.file_name, .is_dir = vst3.is_dir },
-                    .{ .path = clap.plugin_path, .path_in_zip = clap.file_name, .is_dir = clap.is_dir },
-                    .{ .path = readme, .path_in_zip = "readme.txt", .is_dir = false },
+                const generated_zip = createArchiveCommand(b, archiver, .zip, &[_]FileToArchive{
+                    .{ .path = vst3.plugin_path, .path_in_archive = vst3.file_name, .is_dir = vst3.is_dir },
+                    .{ .path = clap.plugin_path, .path_in_archive = clap.file_name, .is_dir = clap.is_dir },
+                    .{ .path = readme, .path_in_archive = "readme.txt", .is_dir = false },
                 });
 
                 const install = b.addInstallFile(generated_zip, b.fmt("{s}{c}Floe-Manual-Install-v{s}-Windows.zip", .{
                     release_dir,
                     std.fs.path.sep,
-                    args.version,
+                    version,
                 }));
                 step.dependOn(&install.step);
             }
@@ -87,19 +90,19 @@ pub fn makeRelease(args: struct {
             {
                 const packager = args.packager orelse
                     @panic("packager binary must be provided for windows releases");
-                const generated_zip = createArchiveCommand(b, .zip, &[_]FileToArchive{
-                    .{ .path = packager.path, .path_in_zip = packager.out_filename, .is_dir = false },
+                const generated_zip = createArchiveCommand(b, archiver, .zip, &[_]FileToArchive{
+                    .{ .path = packager.path, .path_in_archive = packager.out_filename, .is_dir = false },
                 });
                 const install = b.addInstallFile(generated_zip, b.fmt("{s}{c}Floe-Packager-v{s}-Windows.zip", .{
                     release_dir,
                     std.fs.path.sep,
-                    args.version,
+                    version,
                 }));
                 step.dependOn(&install.step);
             }
         },
         .macos => {
-            const arch_name_for_file = switch (args.target.cpu.arch) {
+            const arch_name_for_file = switch (target.cpu.arch) {
                 .aarch64 => "Apple-Silicon",
                 .x86_64 => "Intel",
                 else => @panic("unsupported macOS architecture"),
@@ -114,8 +117,8 @@ pub fn makeRelease(args: struct {
                     .entitlements = false,
                     .cert_type = .application,
                 });
-                const zip_file = createArchiveCommand(b, .zip, &[_]FileToArchive{
-                    .{ .path = codesigned_packager, .path_in_zip = packager.out_filename, .is_dir = false },
+                const zip_file = createArchiveCommand(b, archiver, .zip, &[_]FileToArchive{
+                    .{ .path = codesigned_packager, .path_in_archive = packager.out_filename, .is_dir = false },
                 });
                 const notarized_zip = maybeMacosNotarise(b, zip_file, .{
                     .out_filename = packager.out_filename,
@@ -126,7 +129,7 @@ pub fn makeRelease(args: struct {
                 const install = b.addInstallFile(notarized_zip, b.fmt("{s}{c}Floe-Packager-v{s}-macOS-{s}.zip", .{
                     release_dir,
                     std.fs.path.sep,
-                    args.version,
+                    version,
                     arch_name_for_file,
                 }));
 
@@ -145,20 +148,20 @@ pub fn makeRelease(args: struct {
             {
                 const readme = b.addWriteFiles().add(
                     "readme.txt",
-                    manualInstallReadme(b.allocator, .{ .os_name = "macOS", .version = args.version }),
+                    manualInstallReadme(b.allocator, .{ .os_name = "macOS", .version = version }),
                 );
 
-                const zip_file = createArchiveCommand(b, .zip, &[_]FileToArchive{
-                    .{ .path = readme, .path_in_zip = "readme.txt", .is_dir = false },
-                    .{ .path = au, .path_in_zip = au_plugin.file_name, .is_dir = au_plugin.is_dir },
-                    .{ .path = vst3, .path_in_zip = vst3_plugin.file_name, .is_dir = vst3_plugin.is_dir },
-                    .{ .path = clap, .path_in_zip = clap_plugin.file_name, .is_dir = clap_plugin.is_dir },
+                const zip_file = createArchiveCommand(b, archiver, .zip, &[_]FileToArchive{
+                    .{ .path = readme, .path_in_archive = "readme.txt", .is_dir = false },
+                    .{ .path = au, .path_in_archive = au_plugin.file_name, .is_dir = au_plugin.is_dir },
+                    .{ .path = vst3, .path_in_archive = vst3_plugin.file_name, .is_dir = vst3_plugin.is_dir },
+                    .{ .path = clap, .path_in_archive = clap_plugin.file_name, .is_dir = clap_plugin.is_dir },
                 });
 
                 const install = b.addInstallFile(zip_file, b.fmt("{s}{c}Floe-Manual-Install-v{s}-macOS-{s}.zip", .{
                     release_dir,
                     std.fs.path.sep,
-                    args.version,
+                    version,
                     arch_name_for_file,
                 }));
 
@@ -209,7 +212,7 @@ pub fn makeRelease(args: struct {
                     const pkg_cmd = b.addSystemCommand(&.{"pkgbuild"});
 
                     pkg_cmd.addArgs(&.{ "--identifier", pkg_config.identifier });
-                    pkg_cmd.addArgs(&.{ "--version", args.version });
+                    pkg_cmd.addArgs(&.{ "--version", version });
 
                     pkg_cmd.addArg("--component");
                     pkg_cmd.addDirectoryArg(pkg_config.plugin_path);
@@ -243,9 +246,9 @@ pub fn makeRelease(args: struct {
                         \\    </choices-outline>
                         \\</installer-gui-script>
                     , .{
-                        .version = args.version,
+                        .version = version,
                         .welcome_file_name = welcome_file_name,
-                        .host_arch = switch (args.target.cpu.arch) {
+                        .host_arch = switch (target.cpu.arch) {
                             .aarch64 => "arm64",
                             .x86_64 => "x86_64",
                             else => @panic("unsupported macOS architecture"),
@@ -263,7 +266,7 @@ pub fn makeRelease(args: struct {
                                     .id = pkg_config.identifier,
                                     .title = pkg_config.title,
                                     .description = pkg_config.description,
-                                    .version = args.version,
+                                    .version = version,
                                     .pkg_name = pkg_config.pkg_name,
                                 }) catch @panic("OOM");
                             }
@@ -304,10 +307,10 @@ pub fn makeRelease(args: struct {
                     .staple = true,
                 });
 
-                const zip_file = createArchiveCommand(b, .zip, &[_]FileToArchive{
+                const zip_file = createArchiveCommand(b, archiver, .zip, &[_]FileToArchive{
                     .{
                         .path = notarised,
-                        .path_in_zip = b.fmt("Floe-Installer-v{s}.pkg", .{args.version}),
+                        .path_in_archive = b.fmt("Floe-Installer-v{s}.pkg", .{version}),
                         .is_dir = false,
                     },
                 });
@@ -315,7 +318,7 @@ pub fn makeRelease(args: struct {
                 const install = b.addInstallFile(zip_file, b.fmt("{s}{c}Floe-Installer-v{s}-macOS-{s}.zip", .{
                     release_dir,
                     std.fs.path.sep,
-                    args.version,
+                    version,
                     arch_name_for_file,
                 }));
 
@@ -329,14 +332,14 @@ pub fn makeRelease(args: struct {
             {
                 const clap = args.clap orelse @panic("CLAP plugin must be provided for linux releases");
 
-                const tar = createArchiveCommand(b, .tar_gz, &[_]FileToArchive{
-                    .{ .path = clap.plugin_path, .path_in_zip = clap.file_name, .is_dir = clap.is_dir },
+                const tar = createArchiveCommand(b, archiver, .tar_gz, &[_]FileToArchive{
+                    .{ .path = clap.plugin_path, .path_in_archive = clap.file_name, .is_dir = clap.is_dir },
                 });
 
                 const install = b.addInstallFile(tar, b.fmt("{s}{c}Floe-CLAP-v{s}-Linux.tar.gz", .{
                     release_dir,
                     std.fs.path.sep,
-                    args.version,
+                    version,
                 }));
                 step.dependOn(&install.step);
             }
@@ -345,14 +348,14 @@ pub fn makeRelease(args: struct {
             {
                 const vst3 = args.vst3 orelse @panic("VST3 plugin must be provided for linux releases");
 
-                const tar = createArchiveCommand(b, .tar_gz, &[_]FileToArchive{
-                    .{ .path = vst3.plugin_path, .path_in_zip = vst3.file_name, .is_dir = vst3.is_dir },
+                const tar = createArchiveCommand(b, archiver, .tar_gz, &[_]FileToArchive{
+                    .{ .path = vst3.plugin_path, .path_in_archive = vst3.file_name, .is_dir = vst3.is_dir },
                 });
 
                 const install = b.addInstallFile(tar, b.fmt("{s}{c}Floe-VST3-v{s}-Linux.tar.gz", .{
                     release_dir,
                     std.fs.path.sep,
-                    args.version,
+                    version,
                 }));
                 step.dependOn(&install.step);
             }
@@ -360,14 +363,14 @@ pub fn makeRelease(args: struct {
             // Packager
             {
                 const packager = args.packager orelse @panic("packager binary must be provided for linux releases");
-                const tar = createArchiveCommand(b, .tar_gz, &[_]FileToArchive{
-                    .{ .path = packager.path, .path_in_zip = packager.out_filename, .is_dir = false },
+                const tar = createArchiveCommand(b, archiver, .tar_gz, &[_]FileToArchive{
+                    .{ .path = packager.path, .path_in_archive = packager.out_filename, .is_dir = false },
                 });
 
                 const install = b.addInstallFile(tar, b.fmt("{s}{c}Floe-Packager-v{s}-Linux.tar.gz", .{
                     release_dir,
                     std.fs.path.sep,
-                    args.version,
+                    version,
                 }));
                 step.dependOn(&install.step);
             }
@@ -514,45 +517,36 @@ fn macosCodesignAndNotarise(b: *std.Build, plugin: configure_binaries.Configured
 
 const FileToArchive = struct {
     path: std.Build.LazyPath,
-    path_in_zip: []const u8,
+    path_in_archive: []const u8,
     is_dir: bool = false,
 };
 
+// Use out archiver.zig utility to create archives.
 fn createArchiveCommand(
     b: *std.Build,
+    archiver: *std.Build.Step.Compile,
     archive_type: enum { zip, tar_gz },
     input_files: []const FileToArchive,
 ) std.Build.LazyPath {
-    const zip_cmd = if (builtin.os.tag != .windows)
-        if (archive_type == .zip) b.addSystemCommand(&.{ "zip", "-r" }) else b.addSystemCommand(&.{ "tar", "-czf" })
-    else
-        // powershell.exe is most ubiquitous, but its format for the -Path argument doesn't work with
-        // LazyPaths since it requires quoted paths separated with commas. We have no way of telling the Run step
-        // about this quotes+commas format and so it can't properly depend-on and resolve LazyPaths.
-        // Instead, we use 7z which is often installed (e.g. Github Actions Windows runners have it).
-        if (archive_type == .zip) b.addSystemCommand(&.{ "7z", "a", "-tzip" }) else @panic("tar.gz archives not supported on Windows");
+    const cmd = b.addRunArtifact(archiver);
+    cmd.addArg(@tagName(archive_type));
 
-    const out_zip = zip_cmd.addOutputFileArg(b.fmt("archive.{s}", .{switch (archive_type) {
+    const out_archive = cmd.addOutputFileArg(b.fmt("archive.{s}", .{switch (archive_type) {
         .zip => "zip",
         .tar_gz => "tar.gz",
     }}));
 
-    // The zip command creates the Zip archive sub paths relative to its current working directory, so we need
-    // to collect all the input files into a temporary directory first and run the command from there.
-    const write = b.addWriteFiles();
-    zip_cmd.setCwd(write.getDirectory());
-    zip_cmd.step.dependOn(&write.step);
-
+    // The archiver now accepts pairs of paths: {source_path, path_in_archive}
     for (input_files) |file| {
         if (file.is_dir) {
-            _ = write.addCopyDirectory(file.path, file.path_in_zip, .{});
+            cmd.addDirectoryArg(file.path);
         } else {
-            _ = write.addCopyFile(file.path, file.path_in_zip);
+            cmd.addFileArg(file.path);
         }
-        zip_cmd.addArg(file.path_in_zip);
+        cmd.addArg(file.path_in_archive);
     }
 
-    return out_zip;
+    return out_archive;
 }
 
 fn manualInstallReadme(allocator: std.mem.Allocator, args: struct {

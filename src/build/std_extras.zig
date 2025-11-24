@@ -179,7 +179,7 @@ pub fn archAndOsPair(target: std.Target) std.BoundedArray(u8, 32) {
 // such that its stdout is redirected to stderr, so you see all output allowing you to debug why a program fails.
 pub fn createCommandWithStdoutToStderr(
     b: *std.Build,
-    target: ?std.Build.ResolvedTarget,
+    target: ?std.Target,
     name: []const u8,
 ) *std.Build.Step.Run {
     const run = std.Build.Step.Run.create(b, name);
@@ -199,7 +199,7 @@ pub fn createCommandWithStdoutToStderr(
             \\#!/usr/bin/env bash
             \\exec "$@" >&2
         );
-        if (target != null and target.?.result.os.tag == .windows) {
+        if (target != null and target.?.os.tag == .windows) {
             if (builtin.os.tag == .linux and b.enable_wine) {
                 run.addArg("bash");
                 run.addFileArg(bash_wrapper);

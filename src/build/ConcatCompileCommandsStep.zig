@@ -13,7 +13,7 @@ const std_extras = @import("std_extras.zig");
 const ConcatCompileCommandsStep = @This();
 
 step: std.Build.Step,
-target: std.Build.ResolvedTarget,
+target: std.Target,
 use_as_default: bool,
 fragments_dir_cache_subpath: []const u8,
 
@@ -24,7 +24,7 @@ pub const CompileFragment = struct {
     arguments: [][]u8,
 };
 
-pub fn create(b: *std.Build, target: std.Build.ResolvedTarget, use_as_default: bool, config_hash: u64) *ConcatCompileCommandsStep {
+pub fn create(b: *std.Build, target: std.Target, use_as_default: bool, config_hash: u64) *ConcatCompileCommandsStep {
     const join_compile_commands = b.allocator.create(ConcatCompileCommandsStep) catch @panic("OOM");
     join_compile_commands.* = ConcatCompileCommandsStep{
         .step = std.Build.Step.init(.{
@@ -195,8 +195,8 @@ fn makeCdbFromFragments(step: *std.Build.Step) !void {
     }
 
     if (compile_commands.items.len != 0) {
-        b.build_root.handle.makePath(cdbDirPath(b, self.target.result)) catch {};
-        const out_path = cdbFilePath(b, self.target.result);
+        b.build_root.handle.makePath(cdbDirPath(b, self.target)) catch {};
+        const out_path = cdbFilePath(b, self.target);
 
         const maybe_file = b.build_root.handle.openFile(out_path, .{});
         if (maybe_file != std.fs.File.OpenError.FileNotFound) {
@@ -244,7 +244,7 @@ fn makeCdbFromFragments(step: *std.Build.Step) !void {
         try b.build_root.handle.deleteTree(self.fragments_dir_cache_subpath);
 
         if (self.use_as_default) {
-            trySetCdb(b, self.target.result);
+            trySetCdb(b, self.target);
         }
     }
 }
