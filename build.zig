@@ -1483,53 +1483,53 @@ fn doTarget(
             },
         }
 
-        const File = struct {
-            variable: []const u8,
-            file: []const u8,
-        };
-        const license_files = [_]File{
-            .{ .variable = "gpl_3_0_or_later", .file = "GPL-3.0-or-later.txt" },
-            .{ .variable = "apache_2_0", .file = "Apache-2.0.txt" },
-            .{ .variable = "fftpack", .file = "LicenseRef-FFTPACK.txt" },
-            .{ .variable = "ofl_1_1", .file = "OFL-1.1.txt" },
-            .{ .variable = "bsd_3_clause", .file = "BSD-3-Clause.txt" },
-            .{ .variable = "bsd_2_clause", .file = "BSD-2-Clause.txt" },
-            .{ .variable = "isc", .file = "ISC.txt" },
-            .{ .variable = "mit", .file = "MIT.txt" },
-        };
+        {
+            const license_files = [_]struct {
+                variable: []const u8,
+                file: []const u8,
+            }{
+                .{ .variable = "gpl_3_0_or_later", .file = "GPL-3.0-or-later.txt" },
+                .{ .variable = "apache_2_0", .file = "Apache-2.0.txt" },
+                .{ .variable = "fftpack", .file = "LicenseRef-FFTPACK.txt" },
+                .{ .variable = "ofl_1_1", .file = "OFL-1.1.txt" },
+                .{ .variable = "bsd_3_clause", .file = "BSD-3-Clause.txt" },
+                .{ .variable = "bsd_2_clause", .file = "BSD-2-Clause.txt" },
+                .{ .variable = "isc", .file = "ISC.txt" },
+                .{ .variable = "mit", .file = "MIT.txt" },
+            };
 
-        lib.addCSourceFile(.{
-            .file = b.addWriteFiles().add("licenses.c", file_content: {
+            lib.addCSourceFile(.{
+                .file = b.addWriteFiles().add("licenses.c", file_content: {
+                    var data = std.ArrayList(u8).init(b.allocator);
+                    const writer = data.writer();
+                    for (license_files) |l| {
+                        std.fmt.format(writer,
+                            \\const char {[vari]s}_license[] = {{
+                            \\#embed "LICENSES/{[file]s}"
+                            \\}};
+                            \\const unsigned {[vari]s}_license_size = sizeof({[vari]s}_license);
+                            \\
+                        , .{ .vari = l.variable, .file = l.file }) catch @panic("OOM");
+                    }
+                    break :file_content data.toOwnedSlice() catch @panic("OOM");
+                }),
+                .flags = &.{"-std=c23"},
+            });
+
+            const generated_include_dir = b.addWriteFiles();
+            _ = generated_include_dir.add("license_texts.h", file_content: {
                 var data = std.ArrayList(u8).init(b.allocator);
                 const writer = data.writer();
                 for (license_files) |l| {
                     std.fmt.format(writer,
-                        \\const char {[vari]s}_license[] = {{
-                        \\#embed "LICENSES/{[file]s}"
-                        \\}};
-                        \\const unsigned {[vari]s}_license_size = sizeof({[vari]s}_license);
-                        \\
-                    , .{ .vari = l.variable, .file = l.file }) catch @panic("OOM");
+                        \\extern const char {[vari]s}_license[];
+                        \\extern const unsigned {[vari]s}_license_size;
+                    , .{ .vari = l.variable }) catch @panic("OOM");
                 }
-
                 break :file_content data.toOwnedSlice() catch @panic("OOM");
-            }),
-            .flags = &.{"-std=c23"},
-        });
-        const write = b.addWriteFiles();
-        _ = write.add("license_texts.h", file_content: {
-            var data = std.ArrayList(u8).init(b.allocator);
-            const writer = data.writer();
-            for (license_files) |l| {
-                std.fmt.format(writer,
-                    \\extern const char {[vari]s}_license[];
-                    \\extern const unsigned {[vari]s}_license_size;
-                , .{ .vari = l.variable }) catch @panic("OOM");
-            }
-
-            break :file_content data.toOwnedSlice() catch @panic("OOM");
-        });
-        lib.addIncludePath(write.getDirectory());
+            });
+            lib.addIncludePath(generated_include_dir.getDirectory());
+        }
 
         lib.addIncludePath(b.path("src/plugin"));
         lib.addIncludePath(b.path("src"));
@@ -1537,13 +1537,7 @@ fn doTarget(
         lib.linkLibrary(library);
         lib.linkLibrary(common_infrastructure);
         lib.linkLibrary(fft_convolver);
-        if (constants.embed_files_workaround) {
-            lib.addCSourceFile(.{
-                .file = b.dependency("embedded_files_workaround", .{}).path("embedded_files.cpp"),
-            });
-        } else {
-            lib.addObject(embedded_files.?);
-        }
+        lib.addObject(embedded_files);
         lib.linkLibrary(tracy);
         lib.linkLibrary(pugl);
         lib.addObject(stb_image);
