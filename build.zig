@@ -2460,7 +2460,7 @@ fn doTarget(
                     .name = "Floe-Uninstaller",
                     .root_module = b.createModule(module_options),
                     .version = build_context.floe_version,
-                    .win32_manifest = generated_manifests.add("manifest.xml", windowsManifestContent(b, .{
+                    .win32_manifest = generated_manifests.add("xml.manifest", windowsManifestContent(b, .{
                         .name = "Uninstaller",
                         .description = "Uninstaller for Floe plugins",
                         .require_admin = if (options.build_mode == .production) true else options.windows_installer_require_admin,
@@ -2513,7 +2513,7 @@ fn doTarget(
                 .name = b.fmt("Floe-Installer-v{s}", .{ .version = build_context.floe_version_string }),
                 .root_module = b.createModule(module_options),
                 .version = build_context.floe_version,
-                .win32_manifest = generated_manifests.add("manifest.xml", windowsManifestContent(b, .{
+                .win32_manifest = generated_manifests.add("xml.manifest", windowsManifestContent(b, .{
                     .name = "Installer",
                     .description = description,
                     .require_admin = if (options.build_mode == .production) true else options.windows_installer_require_admin,
