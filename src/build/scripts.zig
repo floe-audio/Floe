@@ -49,7 +49,7 @@ pub fn main() !u8 {
     } else if (std.mem.eql(u8, command, "website-promote-beta-to-stable")) {
         return runWebsitePromoteBetaToStable(&context);
     } else {
-        std.debug.print("Unknown command: {s}\n", .{command});
+        std.log.err("Unknown command: {s}\n", .{command});
         return 1;
     }
 }
@@ -82,7 +82,7 @@ fn runWebsitePromoteBetaToStable(context: *Context) !u8 {
     defer {
         // Restore. We can't really do anything about errors here.
         dir.rename(backup_config_name, config_name) catch {
-            std.debug.print("Warning: failed to restore versions-config.js from backup\n", .{});
+            std.log.warn("Failed to restore versions-config.js from backup\n", .{});
         };
     }
 
@@ -97,7 +97,7 @@ fn runWebsitePromoteBetaToStable(context: *Context) !u8 {
     switch (result) {
         .Exited => |code| {
             if (code != 0) {
-                std.debug.print("npm command failed with exit code {d}\n", .{code});
+                std.log.err("npm command failed with exit code {d}\n", .{code});
                 return code;
             }
         },
@@ -142,7 +142,7 @@ fn runEchoLatestChanges(context: *Context) !u8 {
 
     // Read version file
     const version_content = std.fs.cwd().readFileAlloc(context.allocator, "version.txt", 1024) catch |err| {
-        std.debug.print("Error reading version.txt: {}\n", .{err});
+        std.log.err("Error reading version.txt: {}\n", .{err});
         return 1;
     };
 
@@ -150,7 +150,7 @@ fn runEchoLatestChanges(context: *Context) !u8 {
 
     // Read changelog
     const changelog_content = std.fs.cwd().readFileAlloc(context.allocator, "website/docs/changelog.md", 1024 * 1024) catch |err| {
-        std.debug.print("Error reading changelog.md: {}\n", .{err});
+        std.log.err("Error reading changelog.md: {}\n", .{err});
         return 1;
     };
 
@@ -175,7 +175,7 @@ fn runEchoLatestChanges(context: *Context) !u8 {
     }
 
     if (!found_version) {
-        std.debug.print("Version {s} not found in changelog\n", .{version});
+        std.log.err("Version {s} not found in changelog\n", .{version});
         return 1;
     }
 
@@ -198,27 +198,27 @@ fn runUploadErrors(context: *Context) !u8 {
     const logs_dir = switch (builtin.os.tag) {
         .linux => blk: {
             const home = context.env_map.get("HOME") orelse {
-                std.debug.print("HOME environment variable not set\n", .{});
+                std.log.err("HOME environment variable not set\n", .{});
                 return 1;
             };
             break :blk try std.fs.path.join(context.allocator, &.{ home, ".local", "state", "Floe", "Logs" });
         },
         .macos => blk: {
             const home = context.env_map.get("HOME") orelse {
-                std.debug.print("HOME environment variable not set\n", .{});
+                std.log.err("HOME environment variable not set\n", .{});
                 return 1;
             };
             break :blk try std.fs.path.join(context.allocator, &.{ home, "Library", "Logs", "Floe" });
         },
         .windows => blk: {
             const localappdata = context.env_map.get("LOCALAPPDATA") orelse {
-                std.debug.print("LOCALAPPDATA environment variable not set\n", .{});
+                std.log.err("LOCALAPPDATA environment variable not set\n", .{});
                 return 1;
             };
             break :blk try std.fs.path.join(context.allocator, &.{ localappdata, "Floe", "Logs" });
         },
         else => {
-            std.debug.print("Unsupported OS\n", .{});
+            std.log.err("Unsupported OS\n", .{});
             return 1;
         },
     };
@@ -230,7 +230,7 @@ fn runUploadErrors(context: *Context) !u8 {
             return 0;
         },
         else => {
-            std.debug.print("Error opening logs directory: {}\n", .{err});
+            std.log.err("Error opening logs directory: {}\n", .{err});
             return 1;
         },
     };
@@ -251,7 +251,7 @@ fn runUploadErrors(context: *Context) !u8 {
             .allocator = context.allocator,
             .argv = &.{ "sentry-cli", "send-envelope", "--raw", full_path },
         }) catch |err| {
-            std.debug.print("Failed to run sentry-cli for {s}: {}\n", .{ entry.name, err });
+            std.log.err("Failed to run sentry-cli for {s}: {}\n", .{ entry.name, err });
             continue;
         };
         defer context.allocator.free(result.stdout);
@@ -264,15 +264,15 @@ fn runUploadErrors(context: *Context) !u8 {
                 if (code == 0) {
                     // Successfully uploaded, remove the file
                     dir.deleteFile(entry.name) catch |err| {
-                        std.debug.print("Warning: Failed to delete {s}: {}\n", .{ entry.name, err });
+                        std.log.warn("Failed to delete {s}: {}\n", .{ entry.name, err });
                     };
                 } else {
-                    std.debug.print("sentry-cli failed for {s} with exit code {d}\n", .{ entry.name, code });
+                    std.log.err("sentry-cli failed for {s} with exit code {d}\n", .{ entry.name, code });
                     print_streams = true;
                 }
             },
             else => {
-                std.debug.print("sentry-cli terminated unexpectedly for {s}: {any}\n", .{ entry.name, result.term });
+                std.log.err("sentry-cli terminated unexpectedly for {s}: {any}\n", .{ entry.name, result.term });
                 print_streams = true;
             },
         }
@@ -296,6 +296,7 @@ const CiTask = struct {
     stdout: []u8,
     stderr: []u8,
     time_taken_seconds: f64,
+    timed_out: bool,
 
     pub fn writeArgs(self: *const CiTask, writer: anytype) !void {
         try writer.writeAll("zig build");
@@ -421,6 +422,8 @@ const CiReport = struct {
                         try summary_writer.print("{s} Terminated: {any}", .{ "❌", task.term });
                     },
                 }
+                if (task.timed_out)
+                    try summary_writer.writeAll(" (timeout)");
 
                 try summary_writer.writeAll(" | ");
 
@@ -433,15 +436,46 @@ const CiReport = struct {
     }
 };
 
-// Args are assumed to live for the remaining duration of the program.
-fn runZigBuild(ci_report: *CiReport, args: []const []const u8) void {
+fn killProcess(child: *std.process.Child) !void {
+    if (builtin.os.tag == .windows) {
+        std.os.windows.TerminateProcess(child.id, 1) catch |err| switch (err) {
+            error.PermissionDenied => {
+                // The Zig std does another wait here, so we copy that.
+                std.os.windows.WaitForSingleObjectEx(child.id, 0, false) catch return err;
+
+                // Otherwise, consider it already terminated - not an error.
+                return;
+            },
+            else => return err,
+        };
+    } else {
+        std.posix.kill(child.id, std.posix.SIG.TERM) catch |err| switch (err) {
+            error.ProcessNotFound => return, // Already terminated.
+            else => return err,
+        };
+    }
+}
+
+fn writeFifoDataToArrayList(allocator: std.mem.Allocator, list: *std.ArrayListUnmanaged(u8), fifo: *std.io.PollFifo) !void {
+    if (fifo.head != 0) fifo.realign();
+    if (list.capacity == 0) {
+        list.* = .{
+            .items = fifo.buf[0..fifo.count],
+            .capacity = fifo.buf.len,
+        };
+        fifo.* = std.io.PollFifo.init(fifo.allocator);
+    } else {
+        try list.appendSlice(allocator, fifo.buf[0..fifo.count]);
+    }
+}
+
+fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer _ = arena.deinit();
     const allocator = arena.allocator();
 
     const zig_exe = ci_report.context.env_map.get("ZIG_EXE") orelse {
-        std.debug.print("Environment variable ZIG_EXE not set\n", .{});
-        return;
+        return error.EnvVarNotSet;
     };
 
     var child = std.process.Child.init(blk: {
@@ -463,25 +497,72 @@ fn runZigBuild(ci_report: *CiReport, args: []const []const u8) void {
     var stderr: std.ArrayListUnmanaged(u8) = .empty;
     errdefer stderr.deinit(allocator);
 
-    var timer = std.time.Timer.start() catch @panic("Timer unavailable");
+    var timer = try std.time.Timer.start();
 
-    // IMPROVE: add timeout
-
-    child.spawn() catch |err| {
-        std.debug.print("Failed to spawn process: {any}\n", .{err});
-        return;
-    };
+    try child.spawn();
     errdefer {
         _ = child.kill() catch {};
     }
-    child.collectOutput(allocator, &stdout, &stderr, 20 * 1024 * 1024) catch |err| {
-        std.debug.print("Failed to collect output: {any}\n", .{err});
-        return;
-    };
 
-    const result = child.wait() catch |err| {
-        std.debug.print("Failed to wait for process: {any}\n", .{err});
-        return;
+    const timeout_seconds = 60 * 40;
+
+    // Collect outputs
+    {
+        var poller = std.io.poll(allocator, enum { stdout, stderr }, .{
+            .stdout = child.stdout.?,
+            .stderr = child.stderr.?,
+        });
+        defer poller.deinit();
+
+        const max_bytes = 20 * 1024 * 1024;
+        while (try poller.pollTimeout(std.time.ns_per_s)) {
+            if (poller.fifo(.stdout).count > max_bytes or poller.fifo(.stderr).count > max_bytes) {
+                return error.OutputTooLarge;
+            }
+
+            if (timer.read() >= timeout_seconds * std.time.ns_per_s) {
+                break;
+            }
+        }
+
+        try writeFifoDataToArrayList(allocator, &stdout, poller.fifo(.stdout));
+        try writeFifoDataToArrayList(allocator, &stderr, poller.fifo(.stderr));
+    }
+
+    // Wait
+    const result = blk: {
+        var done = std.atomic.Value(bool).init(false);
+
+        const thread = try std.Thread.spawn(
+            .{
+                .allocator = allocator,
+            },
+            struct {
+                fn wait(process: *std.process.Child, done_inner: *std.atomic.Value(bool)) void {
+                    _ = process.wait() catch |err| {
+                        std.log.err("Failed to wait for process: {any}\n", .{err});
+                    };
+
+                    done_inner.store(true, .release);
+                }
+            }.wait,
+            .{ &child, &done },
+        );
+
+        var timed_out = false;
+        while (!done.load(.acquire)) {
+            std.time.sleep(100 * std.time.ns_per_ms);
+            if (timer.read() >= timeout_seconds * std.time.ns_per_s) {
+                std.log.err("Process timed out after {d} seconds, killing...\n", .{timeout_seconds});
+                try killProcess(&child);
+                timed_out = true;
+                break;
+            }
+        }
+
+        thread.join();
+
+        break :blk .{ .result = try child.wait(), .timed_out = timed_out };
     };
 
     {
@@ -490,13 +571,23 @@ fn runZigBuild(ci_report: *CiReport, args: []const []const u8) void {
         const ci_allocator = ci_report.arena.allocator();
         const task = CiTask{
             .args = args,
-            .term = result,
+            .term = result.result,
             .stdout = ci_allocator.dupe(u8, stdout.items) catch @panic("OOM"),
             .stderr = ci_allocator.dupe(u8, stderr.items) catch @panic("OOM"),
             .time_taken_seconds = @as(f64, @floatFromInt(timer.read())) / std.time.ns_per_s,
+            .timed_out = result.timed_out,
         };
         ci_report.tasks.append(ci_allocator, task) catch @panic("OOM");
     }
+}
+
+// Args are assumed to live for the remaining duration of the program.
+fn runZigBuild(ci_report: *CiReport, args: []const []const u8) void {
+    _ = tryRunZigBuild(ci_report, args) catch |err| {
+        std.log.err("runZigBuild failed: {any}\n", .{err});
+        if (@errorReturnTrace()) |st|
+            std.debug.dumpStackTrace(st.*);
+    };
 }
 
 fn spawnZigBuild(wg: *std.Thread.WaitGroup, ci_report: *CiReport, args: []const []const u8) void {
@@ -517,7 +608,7 @@ fn runCi(context: *Context) !u8 {
 
     // Start a simple HTTP server so that tests can use it.
     var http_server = TestHttpServer.start() catch |err| {
-        std.debug.print("Failed to start HTTP server: {}\n", .{err});
+        std.log.err("Failed to start HTTP server: {}\n", .{err});
         return 1;
     };
     defer http_server.stop();
@@ -667,7 +758,7 @@ fn runCi(context: *Context) !u8 {
         }
 
         ci_report.print(writer) catch |err| {
-            std.debug.print("Failed to print CI report: {any}\n", .{err});
+            std.log.err("Failed to print CI report: {any}\n", .{err});
             return 1;
         };
 
