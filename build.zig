@@ -1350,13 +1350,12 @@ fn doTarget(
         break :blk lib;
     };
 
-    var embedded_files: ?*std.Build.Step.Compile = null;
-    if (!constants.embed_files_workaround) {
-        var emdedded_files_module_options = module_options;
-        emdedded_files_module_options.root_source_file = b.path("build_resources/embedded_files.zig");
-        embedded_files = b.addObject(.{
+    const embedded_files = blk: {
+        var opts = module_options;
+        opts.root_source_file = b.path("build_resources/embedded_files.zig");
+        const obj = b.addObject(.{
             .name = "embedded_files",
-            .root_module = b.createModule(emdedded_files_module_options),
+            .root_module = b.createModule(opts),
         });
         {
             var embedded_files_options = b.addOptions();
@@ -1367,11 +1366,13 @@ fn doTarget(
                 embedded_files_options.addOption(?[]const u8, "logo_file", null);
                 embedded_files_options.addOption(?[]const u8, "icon_file", null);
             }
-            embedded_files.?.root_module.addOptions("build_options", embedded_files_options);
+            obj.root_module.addOptions("build_options", embedded_files_options);
         }
-        embedded_files.?.linkLibC();
-        embedded_files.?.addIncludePath(b.path("build_resources"));
-    }
+        obj.linkLibC();
+        obj.addIncludePath(b.path("build_resources"));
+
+        break :blk obj;
+    };
 
     const plugin = blk: {
         const lib = b.addStaticLibrary(.{
@@ -1599,13 +1600,8 @@ fn doTarget(
         exe.addIncludePath(b.path("src"));
         exe.addConfigHeader(floe_config_h);
         exe.linkLibrary(miniz);
-        if (constants.embed_files_workaround) {
-            exe.addCSourceFile(.{
-                .file = b.dependency("embedded_files_workaround", .{}).path("embedded_files.cpp"),
-            });
-        } else {
-            exe.addObject(embedded_files.?);
-        }
+        exe.addObject(embedded_files);
+
         applyUniversalSettings(build_context, exe, concat_cdb);
 
         const codesigned_exe = configure_binaries.maybeAddWindowsCodesign(
@@ -1645,13 +1641,7 @@ fn doTarget(
         exe.addIncludePath(b.path("src"));
         exe.addConfigHeader(floe_config_h);
         exe.linkLibrary(miniz);
-        if (constants.embed_files_workaround) {
-            exe.addCSourceFile(.{
-                .file = b.dependency("embedded_files_workaround", .{}).path("embedded_files.cpp"),
-            });
-        } else {
-            exe.addObject(embedded_files.?);
-        }
+        exe.addObject(embedded_files);
         applyUniversalSettings(build_context, exe, concat_cdb);
 
         const install = b.addInstallArtifact(exe, .{});

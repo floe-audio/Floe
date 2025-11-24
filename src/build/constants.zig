@@ -16,7 +16,4 @@ pub const min_windows_version = "win10";
 pub const floe_au_manufacturer_code = "floA";
 pub const floe_au_subtype = "FLOE";
 pub const floe_au_type = "aumu";
-
 pub const floe_cache_relative = ".floe-cache";
-
-pub const embed_files_workaround = true;
