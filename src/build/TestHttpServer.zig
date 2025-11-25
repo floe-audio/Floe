@@ -15,31 +15,32 @@ should_stop: std.atomic.Value(bool),
 
 const TestHttpServer = @This();
 
-pub fn start() !TestHttpServer {
-    const address = net.Address.parseIp4("127.0.0.1", 8081) catch unreachable;
-    const server = try address.listen(.{
-        .reuse_address = true,
-        .force_nonblocking = true,
-    });
+pub fn start(allocator: std.mem.Allocator) !*TestHttpServer {
+    const address = try net.Address.parseIp4("127.0.0.1", 8081);
 
-    var result = TestHttpServer{
-        .server = server,
+    var result = try allocator.create(TestHttpServer);
+    result.* = .{
+        .server = try address.listen(.{
+            .reuse_address = true,
+            .force_nonblocking = true,
+        }),
         .thread = null,
         .should_stop = std.atomic.Value(bool).init(false),
     };
 
-    result.thread = try std.Thread.spawn(.{}, serverLoop, .{&result});
+    result.thread = try std.Thread.spawn(.{}, serverLoop, .{result});
 
     return result;
 }
 
-pub fn stop(self: *TestHttpServer) void {
+pub fn stop(self: *TestHttpServer, allocator: std.mem.Allocator) void {
     self.should_stop.store(true, .release);
     if (self.thread) |thread| {
         thread.join();
         self.thread = null;
     }
     self.server.deinit();
+    allocator.destroy(self);
 }
 
 fn serverLoop(self: *TestHttpServer) void {
