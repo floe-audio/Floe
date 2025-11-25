@@ -1,3 +1,6 @@
+// Copyright 2025 Sam Windell
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 const builtin = @import("builtin");
 const std = @import("std");
 const std_extras = @import("std_extras.zig");
