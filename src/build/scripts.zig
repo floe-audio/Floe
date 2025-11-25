@@ -400,6 +400,7 @@ const CiReport = struct {
                         try stderr_writer.writeAll("::group::");
                         try stderr_writer.writeAll(output.name);
                         try stderr_writer.writeAll("\n");
+                        try stderr_buffered.flush();
                     }
 
                     try stderr_writer.writeAll(output.data);
@@ -407,6 +408,7 @@ const CiReport = struct {
 
                     if (is_github_actions) {
                         try stderr_writer.writeAll("::endgroup::\n");
+                        try stderr_buffered.flush();
                     }
                 }
             }
@@ -728,6 +730,24 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
             spawnZigBuild(&wg, &ci_report, &.{ "test:auval", "--prefix", au_install_location });
         },
         else => {},
+    }
+
+    // TODO: remove this test code
+    {
+        const is_github_actions = context.env_map.get("GITHUB_ACTIONS") != null;
+        if (is_github_actions) {
+            const stream = std.io.getStdOut();
+            var stdout_buffered = std.io.bufferedWriter(stream.writer());
+            const stdout_writer = stdout_buffered.writer();
+
+            try stdout_writer.writeAll("::group::Wait\n");
+            try stdout_buffered.flush();
+
+            try stdout_writer.writeAll("Waiting for all tasks to complete...\n");
+
+            try stdout_writer.writeAll("::endgroup::\n");
+            try stdout_buffered.flush();
+        }
     }
 
     wg.wait();
