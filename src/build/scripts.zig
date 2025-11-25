@@ -345,9 +345,7 @@ const CiReport = struct {
 
         // Print diagnostics for failed tasks.
         {
-            const is_github_actions = report.context.env_map.get("GITHUB_ACTIONS") != null;
-
-            const stream = std.io.getStdErr();
+            const stream = std.io.getStdOut();
             var stderr_buffered = std.io.bufferedWriter(stream.writer());
             const stderr_writer = stderr_buffered.writer();
 
@@ -355,7 +353,8 @@ const CiReport = struct {
 
             // GitHub Actions logs seem to always show ANSI escape codes correctly, even if the terminal config isn't
             // detected properly.
-            if (report.context.env_map.get("GITHUB_ACTIONS") != null) console = std.io.tty.Config.escape_codes;
+            const is_github_actions = report.context.env_map.get("GITHUB_ACTIONS") != null;
+            if (is_github_actions) console = std.io.tty.Config.escape_codes;
 
             for (report.tasks.items) |task| {
                 if (task.term == .Exited and task.term.Exited == 0) {
@@ -398,17 +397,17 @@ const CiReport = struct {
                     try setColorWithFlush(&stderr_buffered, console, .reset);
 
                     if (is_github_actions) {
-                        // GitHub Actions foldable section
                         try stderr_writer.writeAll("::group::");
                         try stderr_writer.writeAll(output.name);
                         try stderr_writer.writeAll("\n");
                     }
-                    defer if (is_github_actions) {
-                        stderr_writer.writeAll("::endgroup::\n") catch {};
-                    };
 
                     try stderr_writer.writeAll(output.data);
                     try stderr_writer.writeAll("\n");
+
+                    if (is_github_actions) {
+                        try stderr_writer.writeAll("::endgroup::\n");
+                    }
                 }
             }
             try stderr_buffered.flush();
