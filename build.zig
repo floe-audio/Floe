@@ -467,6 +467,7 @@ pub fn build(b: *std.Build) void {
         .format_step = b.step("script:format", "Format code with clang-format"),
         .echo_step = b.step("script:echo-latest-changes", "Echo latest changes from changelog"),
         .ci_step = b.step("script:ci", "Run CI checks"),
+        .ci_basic_step = b.step("script:ci-basic", "Run basic CI checks"),
         .upload_errors_step = b.step("script:upload-errors", "Upload error reports to Sentry"),
 
         .website_gen_step = b.step("script:website-generate", "Generate the static JSON for the website"),
@@ -646,45 +647,12 @@ pub fn build(b: *std.Build) void {
             }),
         });
 
-        // Format script
-        {
-            const run_format = b.addRunArtifact(scripts_exe);
-            run_format.addArg("format");
-            applyScriptsConfig(b, run_format);
-            steps.format_step.dependOn(&run_format.step);
-        }
-
-        // Echo latest changes script
-        {
-            const run_echo = b.addRunArtifact(scripts_exe);
-            run_echo.addArg("echo-latest-changes");
-            applyScriptsConfig(b, run_echo);
-            steps.echo_step.dependOn(&run_echo.step);
-        }
-
-        // Upload errors
-        {
-            const run_upload_errors = b.addRunArtifact(scripts_exe);
-            run_upload_errors.addArg("upload-errors");
-            applyScriptsConfig(b, run_upload_errors);
-            steps.upload_errors_step.dependOn(&run_upload_errors.step);
-        }
-
-        // CI
-        {
-            const run_ci = b.addRunArtifact(scripts_exe);
-            run_ci.addArg("ci");
-            applyScriptsConfig(b, run_ci);
-            steps.ci_step.dependOn(&run_ci.step);
-        }
-
-        // Website promote
-        {
-            const run_promote = b.addRunArtifact(scripts_exe);
-            run_promote.addArg("website-promote-beta-to-stable");
-            applyScriptsConfig(b, run_promote);
-            steps.website_promote_step.dependOn(&run_promote.step);
-        }
+        addRunScript(scripts_exe, steps.format_step, "format");
+        addRunScript(scripts_exe, steps.echo_step, "echo-latest-changes");
+        addRunScript(scripts_exe, steps.upload_errors_step, "upload-errors");
+        addRunScript(scripts_exe, steps.ci_step, "ci");
+        addRunScript(scripts_exe, steps.ci_basic_step, "ci-basic");
+        addRunScript(scripts_exe, steps.website_promote_step, "website-promote-beta-to-stable");
     }
 }
 
@@ -2833,12 +2801,23 @@ fn doTarget(
     };
 }
 
-fn applyScriptsConfig(b: *std.Build, run_step: *std.Build.Step.Run) void {
+fn addRunScript(
+    script_exe: *std.Build.Step.Compile,
+    top_level_step: *std.Build.Step,
+    command: []const u8,
+) void {
+    const b = top_level_step.owner;
+
+    const run_step = b.addRunArtifact(script_exe);
+    run_step.addArg(command);
+
     // Our scripts assume they are run from the repository root.
     run_step.setCwd(b.path("."));
 
     // Provide the path to the Zig executable for any scripts that may need to invoke Zig.
     run_step.setEnvironmentVariable("ZIG_EXE", b.graph.zig_exe);
+
+    top_level_step.dependOn(&run_step.step);
 }
 
 fn addPluginvalCommand(run: *std.Build.Step.Run, target: std.Target) void {
