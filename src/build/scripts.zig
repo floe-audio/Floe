@@ -345,9 +345,11 @@ const CiReport = struct {
 
         // Print diagnostics for failed tasks.
         {
+            const is_github_actions = report.context.env_map.get("GITHUB_ACTIONS") != null;
+
             const stream = std.io.getStdErr();
             var stderr_buffered = std.io.bufferedWriter(stream.writer());
-            const writer = stderr_buffered.writer();
+            const stderr_writer = stderr_buffered.writer();
 
             var console = std.io.tty.detectConfig(stream);
 
@@ -363,22 +365,22 @@ const CiReport = struct {
                 // Heading.
                 {
                     try setColorWithFlush(&stderr_buffered, console, .magenta);
-                    try writer.writeAll("[");
+                    try stderr_writer.writeAll("[");
 
-                    try writer.writeAll("\"");
-                    try task.writeArgs(writer);
-                    try writer.writeAll("\"");
+                    try stderr_writer.writeAll("\"");
+                    try task.writeArgs(stderr_writer);
+                    try stderr_writer.writeAll("\"");
 
                     switch (task.term) {
                         .Exited => |code| {
-                            try std.fmt.format(writer, " failed with exit code {d}", .{code});
+                            try std.fmt.format(stderr_writer, " failed with exit code {d}", .{code});
                         },
                         .Signal, .Stopped, .Unknown => {
-                            try std.fmt.format(writer, " terminated unexpectedly by {any}", .{task.term});
+                            try std.fmt.format(stderr_writer, " terminated unexpectedly by {any}", .{task.term});
                         },
                     }
 
-                    try writer.writeAll("]\n");
+                    try stderr_writer.writeAll("]\n");
                     try setColorWithFlush(&stderr_buffered, console, .reset);
                 }
 
@@ -392,11 +394,21 @@ const CiReport = struct {
                     .{ .name = "stderr", .data = task.stderr },
                 }) |output| {
                     try setColorWithFlush(&stderr_buffered, console, .blue);
-                    try std.fmt.format(writer, "[{s}]\n", .{output.name});
+                    try std.fmt.format(stderr_writer, "[{s}]\n", .{output.name});
                     try setColorWithFlush(&stderr_buffered, console, .reset);
 
-                    try writer.writeAll(output.data);
-                    try writer.writeAll("\n");
+                    if (is_github_actions) {
+                        // GitHub Actions foldable section
+                        try stderr_writer.writeAll("::group::");
+                        try stderr_writer.writeAll(output.name);
+                        try stderr_writer.writeAll("\n");
+                    }
+                    defer if (is_github_actions) {
+                        stderr_writer.writeAll("::endgroup::\n") catch {};
+                    };
+
+                    try stderr_writer.writeAll(output.data);
+                    try stderr_writer.writeAll("\n");
                 }
             }
             try stderr_buffered.flush();
