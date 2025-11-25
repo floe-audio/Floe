@@ -471,19 +471,6 @@ fn killProcess(child: *std.process.Child) !void {
     }
 }
 
-fn writeFifoDataToArrayList(allocator: std.mem.Allocator, list: *std.ArrayListUnmanaged(u8), fifo: *std.io.PollFifo) !void {
-    if (fifo.head != 0) fifo.realign();
-    if (list.capacity == 0) {
-        list.* = .{
-            .items = fifo.buf[0..fifo.count],
-            .capacity = fifo.buf.len,
-        };
-        fifo.* = std.io.PollFifo.init(fifo.allocator);
-    } else {
-        try list.appendSlice(allocator, fifo.buf[0..fifo.count]);
-    }
-}
-
 fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer _ = arena.deinit();
@@ -507,11 +494,6 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
     child.stdout_behavior = .Pipe;
     child.stderr_behavior = .Pipe;
 
-    var stdout: std.ArrayListUnmanaged(u8) = .empty;
-    errdefer stdout.deinit(allocator);
-    var stderr: std.ArrayListUnmanaged(u8) = .empty;
-    errdefer stderr.deinit(allocator);
-
     var timer = try std.time.Timer.start();
 
     try child.spawn();
@@ -520,6 +502,9 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
     }
 
     const timeout_seconds = 60 * 40;
+
+    var stdout: []const u8 = &.{};
+    var stderr: []const u8 = &.{};
 
     // Collect outputs
     {
@@ -540,8 +525,8 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
             }
         }
 
-        try writeFifoDataToArrayList(allocator, &stdout, poller.fifo(.stdout));
-        try writeFifoDataToArrayList(allocator, &stderr, poller.fifo(.stderr));
+        stdout = try poller.fifo(.stdout).toOwnedSlice();
+        stderr = try poller.fifo(.stderr).toOwnedSlice();
     }
 
     // Wait
@@ -587,8 +572,8 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
         const task = CiTask{
             .args = args,
             .term = result.result,
-            .stdout = ci_allocator.dupe(u8, stdout.items) catch @panic("OOM"),
-            .stderr = ci_allocator.dupe(u8, stderr.items) catch @panic("OOM"),
+            .stdout = ci_allocator.dupe(u8, stdout) catch @panic("OOM"),
+            .stderr = ci_allocator.dupe(u8, stderr) catch @panic("OOM"),
             .time_taken_seconds = @as(f64, @floatFromInt(timer.read())) / std.time.ns_per_s,
             .timed_out = result.timed_out,
         };
