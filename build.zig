@@ -1095,7 +1095,7 @@ fn doTarget(
         break :blk lib;
     };
 
-    if (resolved_target.query.isNative()) {
+    if (targetCanRunNatively(target)) {
         var opts = module_options;
         opts.root_source_file = b.path("src/build/archiver.zig");
         const exe = b.addExecutable(.{
@@ -1518,7 +1518,7 @@ fn doTarget(
         break :blk lib;
     };
 
-    if (resolved_target.query.isNative()) {
+    if (targetCanRunNatively(target)) {
         const exe = b.addExecutable(.{
             .name = "docs_generator",
             .root_module = b.createModule(module_options),
@@ -2984,4 +2984,11 @@ fn addWindowsEmbedInfo(step: *std.Build.Step.Compile, info: struct {
         .file = rc_path,
         .include_paths = rc_include_paths.slice(),
     });
+}
+
+// Note that we don't use ResolvedTarget.query.isNative() because it's too strict regarding CPU features. For
+// example, even in 'native' mode on Linux we using a baseline x86_64 CPU so valgrind works well; isNative() would
+// return false even though the target can run natively.
+fn targetCanRunNatively(target: std.Target) bool {
+    return target.cpu.arch == builtin.cpu.arch and target.os.tag == builtin.os.tag;
 }
