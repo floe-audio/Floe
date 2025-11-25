@@ -45,7 +45,9 @@ pub fn main() !u8 {
     } else if (std.mem.eql(u8, command, "upload-errors")) {
         return runUploadErrors(&context);
     } else if (std.mem.eql(u8, command, "ci")) {
-        return runCi(&context);
+        return runCi(&context, .full);
+    } else if (std.mem.eql(u8, command, "ci-basic")) {
+        return runCi(&context, .basic);
     } else if (std.mem.eql(u8, command, "website-promote-beta-to-stable")) {
         return runWebsitePromoteBetaToStable(&context);
     } else {
@@ -596,7 +598,7 @@ fn spawnZigBuild(wg: *std.Thread.WaitGroup, ci_report: *CiReport, args: []const 
 }
 
 // Outputs markdown table to stdout.
-fn runCi(context: *Context) !u8 {
+fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
     var tsa: std.heap.ThreadSafeAllocator = .{ .child_allocator = context.allocator };
 
     var ci_report: CiReport = .{
@@ -632,74 +634,83 @@ fn runCi(context: *Context) !u8 {
     }
 
     // Tests in optimised mode.
-    for (core_tests) |test_cmd| {
-        spawnZigBuild(&wg, &ci_report, &.{
-            test_cmd,
-            "-Dbuild-mode=performance_profiling",
-            "--prefix",
-            "zig-out/optimised",
-        });
+    if (test_level == .full) {
+        for (core_tests) |test_cmd| {
+            spawnZigBuild(&wg, &ci_report, &.{
+                test_cmd,
+                "-Dbuild-mode=performance_profiling",
+                "--prefix",
+                "zig-out/optimised",
+            });
+        }
     }
 
     switch (builtin.os.tag) {
         .linux => {
-            spawnZigBuild(&wg, &ci_report, &.{
-                "test-coverage",
-            });
+            if (test_level == .full) {
+                spawnZigBuild(&wg, &ci_report, &.{
+                    "test-coverage",
+                });
 
-            // Valgrind.
-            // IMPROVE: run validators (in single-process mode) through valgrind
-            spawnZigBuild(&wg, &ci_report, &.{
-                "test:valgrind",
-            });
-            spawnZigBuild(&wg, &ci_report, &.{
-                "test:valgrind",
-                "-Dbuild-mode=performance_profiling",
-            });
+                // Valgrind.
+                // IMPROVE: run validators (in single-process mode) through valgrind
+                spawnZigBuild(&wg, &ci_report, &.{
+                    "test:valgrind",
+                });
+                spawnZigBuild(&wg, &ci_report, &.{
+                    "test:valgrind",
+                    "-Dbuild-mode=performance_profiling",
+                });
 
-            // Unit tests with thread sanitizer.
-            spawnZigBuild(&wg, &ci_report, &.{
-                "test",
-                "-Dsanitize-thread",
-            });
-            spawnZigBuild(&wg, &ci_report, &.{
-                "test",
-                "-Dsanitize-thread",
-                "-Dbuild-mode=performance_profiling",
-            });
+                // Unit tests with thread sanitizer.
+                spawnZigBuild(&wg, &ci_report, &.{
+                    "test",
+                    "-Dsanitize-thread",
+                });
+                spawnZigBuild(&wg, &ci_report, &.{
+                    "test",
+                    "-Dsanitize-thread",
+                    "-Dbuild-mode=performance_profiling",
+                });
 
-            spawnZigBuild(&wg, &ci_report, &.{
-                "test",
-                "-Dsanitize-thread",
-                "--prefix",
-                "zig-out/debug-sanitized",
-            });
-            spawnZigBuild(&wg, &ci_report, &.{
-                "test",
-                "-Dsanitize-thread",
-                "-Dbuild-mode=performance_profiling",
-                "--prefix",
-                "zig-out/optimised-sanitized",
-            });
+                spawnZigBuild(&wg, &ci_report, &.{
+                    "test",
+                    "-Dsanitize-thread",
+                    "--prefix",
+                    "zig-out/debug-sanitized",
+                });
+                spawnZigBuild(&wg, &ci_report, &.{
+                    "test",
+                    "-Dsanitize-thread",
+                    "-Dbuild-mode=performance_profiling",
+                    "--prefix",
+                    "zig-out/optimised-sanitized",
+                });
 
-            // We choose Linux to do OS-agnostic checks.
-            spawnZigBuild(&wg, &ci_report, &.{
-                "check:clang-tidy",
-                "-Dtargets=x86_64-linux,x86_64-windows,aarch64-macos",
-            });
+                // We choose Linux to do OS-agnostic checks.
+                spawnZigBuild(&wg, &ci_report, &.{
+                    "check:clang-tidy",
+                    "-Dtargets=x86_64-linux,x86_64-windows,aarch64-macos",
+                });
+                spawnZigBuild(&wg, &ci_report, &.{"script:website-build"});
+            }
 
             spawnZigBuild(&wg, &ci_report, &.{"check:reuse"});
             spawnZigBuild(&wg, &ci_report, &.{"check:format"});
             spawnZigBuild(&wg, &ci_report, &.{"check:spelling"});
-
-            spawnZigBuild(&wg, &ci_report, &.{"script:website-build"});
         },
         .windows => {
             spawnZigBuild(&wg, &ci_report, &.{"test:windows-install"});
         },
         .macos => {
-            spawnZigBuild(&wg, &ci_report, &.{ "-Dsanitize-thread", "test" });
-            spawnZigBuild(&wg, &ci_report, &.{ "-Dsanitize-thread", "-Dbuild-mode=performance_profiling", "test" });
+            if (test_level == .full) {
+                spawnZigBuild(&wg, &ci_report, &.{ "-Dsanitize-thread", "test" });
+                spawnZigBuild(&wg, &ci_report, &.{
+                    "-Dsanitize-thread",
+                    "-Dbuild-mode=performance_profiling",
+                    "test",
+                });
+            }
 
             const au_install_location = try auInstallLocation(context);
             spawnZigBuild(&wg, &ci_report, &.{ "test:pluginval-au", "--prefix", au_install_location });
@@ -710,32 +721,34 @@ fn runCi(context: *Context) !u8 {
 
     wg.wait();
 
-    switch (builtin.os.tag) {
-        .macos => {
-            // AU tests require the plugin to be installed to the system location. We therefore cannot run
-            // multiple parallel AU testing with different binaries (such as debug binary and optimised binary).
-            // So we run another set of AU tests here.
+    if (test_level == .full) {
+        switch (builtin.os.tag) {
+            .macos => {
+                // AU tests require the plugin to be installed to the system location. We therefore cannot run
+                // multiple parallel AU testing with different binaries (such as debug binary and optimised binary).
+                // So we run another set of AU tests here.
 
-            wg.reset();
+                wg.reset();
 
-            const au_install_location = try auInstallLocation(context);
+                const au_install_location = try auInstallLocation(context);
 
-            spawnZigBuild(&wg, &ci_report, &.{
-                "test:pluginval-au",
-                "-Dbuild-mode=performance_profiling",
-                "--prefix",
-                au_install_location,
-            });
-            spawnZigBuild(&wg, &ci_report, &.{
-                "test:auval",
-                "-Dbuild-mode=performance_profiling",
-                "--prefix",
-                au_install_location,
-            });
+                spawnZigBuild(&wg, &ci_report, &.{
+                    "test:pluginval-au",
+                    "-Dbuild-mode=performance_profiling",
+                    "--prefix",
+                    au_install_location,
+                });
+                spawnZigBuild(&wg, &ci_report, &.{
+                    "test:auval",
+                    "-Dbuild-mode=performance_profiling",
+                    "--prefix",
+                    au_install_location,
+                });
 
-            wg.wait();
-        },
-        else => {},
+                wg.wait();
+            },
+            else => {},
+        }
     }
 
     {
