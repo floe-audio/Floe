@@ -849,7 +849,7 @@ const WindowsTempDir = struct {
         // use GetTempPathW2, https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-gettemppathw
         var wchar_buf: [MAX_PATH + 2]WCHAR = undefined;
         wchar_buf[MAX_PATH + 1] = 0;
-        const ret = GetTempPath2W(MAX_PATH + 1, &wchar_buf);
+        const ret = GetTempPath2W(MAX_PATH + 1, wchar_buf[0.. MAX_PATH + 1 :0].ptr);
         if (ret != 0) {
             const path = wchar_buf[0..ret];
             return std.unicode.utf16LeToUtf8Alloc(allocator, path);
