@@ -2645,7 +2645,7 @@ fn doTarget(
                 if (clap_plugin) |p|
                     p.addToRunStepArgsWithPrefix(run, "--clap-plugin-path=");
 
-                run.addArg(b2.fmt("--test-files-folder-path={s}", .{b2.pathFromRoot("test_files")}));
+                run.addPrefixedDirectoryArg("--test-files-folder-path=", b2.path("test_files"));
 
                 // Add additional arguments to the tests that were given to zig build after "--".
                 if (b2.args) |args|
