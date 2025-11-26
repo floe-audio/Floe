@@ -346,8 +346,8 @@ const CiReport = struct {
         // Print diagnostics for failed tasks.
         {
             const stream = std.io.getStdOut();
-            var stderr_buffered = std.io.bufferedWriter(stream.writer());
-            const stderr_writer = stderr_buffered.writer();
+            var buffered_writer = std.io.bufferedWriter(stream.writer());
+            const writer = buffered_writer.writer();
 
             var console = std.io.tty.detectConfig(stream);
 
@@ -363,24 +363,24 @@ const CiReport = struct {
 
                 // Heading.
                 {
-                    try setColorWithFlush(&stderr_buffered, console, .magenta);
-                    try stderr_writer.writeAll("[");
+                    try setColorWithFlush(&buffered_writer, console, .magenta);
+                    try writer.writeAll("[");
 
-                    try stderr_writer.writeAll("\"");
-                    try task.writeArgs(stderr_writer);
-                    try stderr_writer.writeAll("\"");
+                    try writer.writeAll("\"");
+                    try task.writeArgs(writer);
+                    try writer.writeAll("\"");
 
                     switch (task.term) {
                         .Exited => |code| {
-                            try std.fmt.format(stderr_writer, " failed with exit code {d}", .{code});
+                            try std.fmt.format(writer, " failed with exit code {d}", .{code});
                         },
                         .Signal, .Stopped, .Unknown => {
-                            try std.fmt.format(stderr_writer, " terminated unexpectedly by {any}", .{task.term});
+                            try std.fmt.format(writer, " terminated unexpectedly by {any}", .{task.term});
                         },
                     }
 
-                    try stderr_writer.writeAll("]\n");
-                    try setColorWithFlush(&stderr_buffered, console, .reset);
+                    try writer.writeAll("]\n");
+                    try setColorWithFlush(&buffered_writer, console, .reset);
                 }
 
                 // Stdout and stderr.
@@ -392,30 +392,29 @@ const CiReport = struct {
                     .{ .name = "stdout", .data = task.stdout },
                     .{ .name = "stderr", .data = task.stderr },
                 }) |output| {
-                    try setColorWithFlush(&stderr_buffered, console, .blue);
-                    try std.fmt.format(stderr_writer, "[{s}]\n", .{output.name});
-                    try setColorWithFlush(&stderr_buffered, console, .reset);
+                    try setColorWithFlush(&buffered_writer, console, .blue);
+                    try writer.print("[{s}]\n", .{output.name});
+                    try setColorWithFlush(&buffered_writer, console, .reset);
 
-                    if (is_github_actions) {
-                        try stderr_writer.writeAll("::group::");
-                        try stderr_writer.writeAll(output.name);
-                        try stderr_writer.writeAll("\n");
-                        try stderr_buffered.flush();
+                    if (output.data.len == 0) {
+                        try writer.writeAll("(no output)\n");
+                        continue;
                     }
 
-                    try stderr_writer.writeAll(output.data);
-                    try stderr_writer.writeAll("\n");
+                    if (is_github_actions)
+                        try writer.print("::group::{s}\n", .{output.name});
 
-                    if (is_github_actions) {
-                        try stderr_writer.writeAll("::endgroup::\n");
-                        try stderr_buffered.flush();
-                    }
+                    try writer.writeAll(output.data);
+                    try writer.writeAll("\n");
+
+                    if (is_github_actions)
+                        try writer.writeAll("::endgroup::\n");
                 }
             }
-            try stderr_buffered.flush();
+            try buffered_writer.flush();
         }
 
-        // Summary: markdown table to stdout
+        // Summary markdown table.
         {
             try summary_writer.writeAll("| Command | Exit Code | Time Taken |\n");
             try summary_writer.writeAll("|---|---|---|\n");
@@ -480,12 +479,32 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
         return error.EnvVarNotSet;
     };
 
+    const gha_out_file: ?[]const u8 = if (args.len != 0 and std.mem.eql(u8, args[0], "test") and ci_report.context.env_map.get("GITHUB_ACTIONS") != null)
+        try tempFilePath(allocator, &ci_report.context.env_map)
+    else
+        null;
+    defer if (gha_out_file) |path| std.fs.deleteFileAbsolute(path) catch {};
+
     var child = std.process.Child.init(blk: {
-        const full_args = allocator.alloc([]const u8, args.len + 2) catch @panic("OOM");
-        full_args[0] = zig_exe;
-        full_args[1] = "build";
-        for (args, 0..) |arg, i| {
-            full_args[i + 2] = arg;
+        var num_args = args.len + 2;
+        if (gha_out_file != null) num_args += 2;
+        const full_args = try allocator.alloc([]const u8, num_args);
+        var pos: usize = 0;
+        full_args[pos] = zig_exe;
+        pos += 1;
+        full_args[pos] = "build";
+        pos += 1;
+        for (args) |arg| {
+            full_args[pos] = arg;
+            pos += 1;
+        }
+        if (gha_out_file) |path| {
+            full_args[pos] = "--";
+            pos += 1;
+            full_args[pos] = try std.fmt.allocPrint(allocator, "--gha-annotations-output-path={s}", .{
+                path,
+            });
+            pos += 1;
         }
         break :blk full_args;
     }, allocator);
@@ -553,7 +572,7 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
         while (!done.load(.acquire)) {
             std.time.sleep(100 * std.time.ns_per_ms);
             if (timer.read() >= timeout_seconds * std.time.ns_per_s) {
-                std.log.err("Process timed out after {d} seconds, killing...\n", .{timeout_seconds});
+                std.log.warn("Process timed out after {d} seconds, killing...\n", .{timeout_seconds});
                 try killProcess(&child);
                 timed_out = true;
                 break;
@@ -566,18 +585,28 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
     };
 
     {
+        var stdout_parts = std.BoundedArray([]const u8, 2).init(0) catch unreachable;
+        try stdout_parts.append(stdout);
+        if (gha_out_file) |path| {
+            const annotations = std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024 * 4) catch |err|
+                if (err == error.FileNotFound) "" else return err;
+
+            if (annotations.len != 0)
+                try stdout_parts.append(annotations);
+        }
+
         ci_report.mutex.lock();
         defer ci_report.mutex.unlock();
         const ci_allocator = ci_report.arena.allocator();
         const task = CiTask{
             .args = args,
             .term = result.result,
-            .stdout = ci_allocator.dupe(u8, stdout) catch @panic("OOM"),
-            .stderr = ci_allocator.dupe(u8, stderr) catch @panic("OOM"),
+            .stdout = try std.mem.join(ci_allocator, "\n", stdout_parts.constSlice()),
+            .stderr = try ci_allocator.dupe(u8, stderr),
             .time_taken_seconds = @as(f64, @floatFromInt(timer.read())) / std.time.ns_per_s,
             .timed_out = result.timed_out,
         };
-        ci_report.tasks.append(ci_allocator, task) catch @panic("OOM");
+        try ci_report.tasks.append(ci_allocator, task);
     }
 }
 
@@ -620,7 +649,12 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
     const empty_args: []const []const u8 = &.{};
     spawnZigBuild(&wg, &ci_report, empty_args);
 
-    const core_tests = [_][]const u8{ "test", "test:clap-val", "test:pluginval", "test:vst3-val" };
+    const core_tests = [_][]const u8{
+        "test",
+        "test:clap-val",
+        "test:pluginval",
+        "test:vst3-val",
+    };
 
     // Tests in debug mode.
     for (core_tests) |test_cmd| {
@@ -717,30 +751,12 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
         else => {},
     }
 
-    // TODO: remove this test code
-    {
-        const is_github_actions = context.env_map.get("GITHUB_ACTIONS") != null;
-        if (is_github_actions) {
-            const stream = std.io.getStdOut();
-            var stdout_buffered = std.io.bufferedWriter(stream.writer());
-            const stdout_writer = stdout_buffered.writer();
-
-            try stdout_writer.writeAll("::group::Wait\n");
-            try stdout_buffered.flush();
-
-            try stdout_writer.writeAll("Waiting for all tasks to complete...\n");
-
-            try stdout_writer.writeAll("::endgroup::\n");
-            try stdout_buffered.flush();
-        }
-    }
-
     wg.wait();
 
     if (test_level == .full) {
         switch (builtin.os.tag) {
             .macos => {
-                // AU tests require the plugin to be installed to the system location. We therefore cannot run
+                // AU tests require the plugin to be installed to the AU system location. We therefore cannot run
                 // multiple parallel AU testing with different binaries (such as debug binary and optimised binary).
                 // So we run another set of AU tests here.
 
@@ -807,4 +823,46 @@ fn auInstallLocation(context: *Context) ![]const u8 {
     };
     const result = try std.fs.path.join(context.allocator, &.{ home, "Library", "Audio", "Plug-Ins" });
     return result;
+}
+
+// This code is from https://github.com/liyu1981/tmpfile.zig
+// Licensed under the MIT License. Copyright liyu1981.
+const WindowsTempDir = struct {
+    const DWORD = std.os.windows.DWORD;
+    const LPWSTR = std.os.windows.LPWSTR;
+    const MAX_PATH = std.os.windows.MAX_PATH;
+    const WCHAR = std.os.windows.WCHAR;
+
+    pub extern "C" fn GetTempPath2W(BufferLength: DWORD, Buffer: LPWSTR) DWORD;
+
+    pub fn get(allocator: std.mem.Allocator) ![]const u8 {
+        // use GetTempPathW2, https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-gettemppathw
+        var wchar_buf: [MAX_PATH + 2]WCHAR = undefined;
+        wchar_buf[MAX_PATH + 1] = 0;
+        const ret = GetTempPath2W(MAX_PATH + 1, &wchar_buf);
+        if (ret != 0) {
+            const path = wchar_buf[0..ret];
+            return std.unicode.utf16LeToUtf8Alloc(allocator, path);
+        } else {
+            return error.GetTempPath2WFailed;
+        }
+    }
+};
+
+fn tempFilePath(allocator: std.mem.Allocator, env_map: *std.process.EnvMap) ![]const u8 {
+    const dir = switch (builtin.os.tag) {
+        .linux, .macos => env_map.get("TMPDIR") orelse "/tmp",
+        .windows => try WindowsTempDir.get(allocator),
+        else => return error.UnsupportedOS,
+    };
+
+    var bytes: [8]u8 = undefined;
+    try std.posix.getrandom(&bytes);
+
+    const size = std.base64.standard.Encoder.calcSize(bytes.len);
+    const b64_buf = try allocator.alloc(u8, size);
+    defer allocator.free(b64_buf);
+    const filename = std.base64.standard.Encoder.encode(b64_buf, &bytes);
+
+    return try std.fs.path.join(allocator, &.{ dir, filename });
 }
