@@ -9,7 +9,6 @@ const constants = @import("src/build/constants.zig");
 
 const ConcatCompileCommandsStep = @import("src/build/ConcatCompileCommandsStep.zig");
 const check_steps = @import("src/build/check_steps.zig");
-const scripts = @import("src/build/scripts.zig");
 const configure_binaries = @import("src/build/configure_binaries.zig");
 const release_artifacts = @import("src/build/release_artifacts.zig");
 
