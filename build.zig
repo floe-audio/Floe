@@ -645,6 +645,7 @@ pub fn build(b: *std.Build) void {
                 .target = native_resolved_target,
             }),
         });
+        if (native_resolved_target.result.os.tag == .windows) scripts_exe.linkLibC(); // GetTempPath2W
 
         addRunScript(scripts_exe, steps.format_step, "format");
         addRunScript(scripts_exe, steps.echo_step, "echo-latest-changes");
