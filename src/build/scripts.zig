@@ -379,8 +379,9 @@ const CiReport = struct {
                         },
                     }
 
-                    try writer.writeAll("]\n");
+                    try writer.writeAll("]");
                     try setColorWithFlush(&buffered_writer, console, .reset);
+                    try writer.writeAll("\n");
                 }
 
                 // Stdout and stderr.
@@ -393,8 +394,9 @@ const CiReport = struct {
                     .{ .name = "stderr", .data = task.stderr },
                 }) |output| {
                     try setColorWithFlush(&buffered_writer, console, .blue);
-                    try writer.print("[{s}]\n", .{output.name});
+                    try writer.print("[{s}]", .{output.name});
                     try setColorWithFlush(&buffered_writer, console, .reset);
+                    try writer.writeAll("\n");
 
                     if (output.data.len == 0) {
                         try writer.writeAll("(no output)\n");
