@@ -217,7 +217,7 @@ struct Tester {
     void* fixture_pointer {};
     DeleteFixturePointer delete_fixture {};
     u16 repeat_tests = 1;
-    bool is_github_actions_run = false;
+    Optional<File> gha_annotations_out {};
 };
 
 void RegisterTest(Tester& tester, TestFunction f, String title);
@@ -225,6 +225,7 @@ void RegisterTest(Tester& tester, TestFunction f, String title);
 struct RunTestConfig {
     Span<String> filter_patterns;
     Optional<String> junit_xml_output_path;
+    Optional<String> gha_annotations_output_path;
     Optional<String> test_files_folder;
     Optional<String> clap_plugin_path;
 };

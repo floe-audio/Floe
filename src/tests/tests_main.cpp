@@ -110,6 +110,7 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
         LogLevel,
         Repeats,
         JUnitXmlOutputPath,
+        GithubActionsAnnotationsOutputPath,
         TestFilesFolderPath,
         ClapPluginPath,
         Count,
@@ -144,6 +145,14 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
             .id = (u32)CommandLineArgId::JUnitXmlOutputPath,
             .key = "junit-xml-output-path",
             .description = "Path to write JUnit XML test results to",
+            .value_type = "path",
+            .required = false,
+            .num_values = 1,
+        },
+        {
+            .id = (u32)CommandLineArgId::GithubActionsAnnotationsOutputPath,
+            .key = "gha-annotations-output-path",
+            .description = "Path to write GitHub Actions annotations to",
             .value_type = "path",
             .required = false,
             .num_values = 1,
@@ -200,6 +209,8 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
         {
             .filter_patterns = cli_args[ToInt(CommandLineArgId::Filter)].values,
             .junit_xml_output_path = cli_args[ToInt(CommandLineArgId::JUnitXmlOutputPath)].Value(),
+            .gha_annotations_output_path =
+                cli_args[ToInt(CommandLineArgId::GithubActionsAnnotationsOutputPath)].Value(),
             .test_files_folder = cli_args[ToInt(CommandLineArgId::TestFilesFolderPath)].Value(),
             .clap_plugin_path = cli_args[ToInt(CommandLineArgId::ClapPluginPath)].Value(),
         });

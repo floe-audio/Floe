@@ -319,49 +319,13 @@ static ErrorCodeOr<void> WriteJUnitXmlTestResults(Tester& tester, Writer writer,
     return k_success;
 }
 
-static String ThisBinaryConfigName(Allocator& a) {
-    DynamicArray<char> name {a};
-
-    dyn::AppendSpan(name, "tests");
-    if (k_production_build) dyn::AppendSpan(name, "-production");
-    if (k_optimised_build) dyn::AppendSpan(name, "-optimised");
-    if (k_running_with_thread_sanitizer) dyn::AppendSpan(name, "-tsan");
-    if (RUNNING_ON_VALGRIND) dyn::AppendSpan(name, "-valgrind");
-    dyn::AppendSpan(name, IS_WINDOWS ? "-windows"_s : IS_MACOS ? "-macos" : "-linux");
-
-    return name.ToOwnedSpan();
-}
-
-static ErrorCodeOr<void> WriteGithubStepSummary(Tester& tester, String summary_path) {
-    auto const num_failed = CountIf(tester.test_cases, [](TestCase const& t) { return t.failed; });
-
-    if (!num_failed) return k_success;
-
-    StdPrintF(StdStream::Err, "Writing GitHub step summary to {}\n", summary_path);
-
-    auto file = TRY(OpenFile(summary_path,
-                             {
-                                 .capability = FileMode::Capability::Append | FileMode::Capability::ReadWrite,
-                                 .win32_share = FileMode::Share::ReadWrite | FileMode::Share::DeleteRename,
-                                 .creation = FileMode::Creation::OpenAlways,
-                             }));
-    TRY(file.Lock({.type = FileLockOptions::Type::Exclusive}));
-
-    {
-        BufferedWriter<Kb(4)> buffered_writer {file.Writer()};
-        auto writer = buffered_writer.Writer();
-        DEFER { buffered_writer.FlushReset(); };
-
-        TRY(fmt::FormatToWriter(writer, "### Failures in {}\n", ThisBinaryConfigName(tester.arena)));
-
-        for (auto const& test_case : tester.test_cases)
-            if (test_case.failed) TRY(fmt::FormatToWriter(writer, "- ❌ Test failed: {}\n", test_case.title));
-
-        TRY(writer.WriteChars("\n"));
-    }
-
-    TRY(file.Unlock());
-
+static ErrorCodeOr<void> WriteThisBinaryConfigName(Writer writer) {
+    TRY(writer.WriteChars("tests"));
+    if (k_production_build) TRY(writer.WriteChars("-production"));
+    if (k_optimised_build) TRY(writer.WriteChars("-optimised"));
+    if (k_running_with_thread_sanitizer) TRY(writer.WriteChars("-tsan"));
+    if (RUNNING_ON_VALGRIND) TRY(writer.WriteChars("-valgrind"));
+    TRY(writer.WriteChars(IS_WINDOWS ? "-windows"_s : IS_MACOS ? "-macos" : "-linux"));
     return k_success;
 }
 
@@ -380,13 +344,20 @@ int RunAllTests(Tester& tester, RunTestConfig const& config) {
             tester.test_files_folder = path.Value();
         }
 
-        tester.is_github_actions_run = GetEnvironmentVariable("GITHUB_ACTIONS", tester.arena).HasValue();
-
         if (config.clap_plugin_path.HasValue()) {
             tester.clap_plugin_path = *config.clap_plugin_path;
         } else if (auto const path = GetEnvironmentVariable("FLOE_CLAP_PLUGIN_PATH", tester.arena);
                    path.HasValue()) {
             tester.clap_plugin_path = path.Value();
+        }
+
+        if (config.gha_annotations_output_path.HasValue()) {
+            auto const path = config.gha_annotations_output_path.Value();
+            if (auto const dir = path::Directory(path))
+                auto _ = CreateDirectory(*dir, {.create_intermediate_directories = true});
+            tester.gha_annotations_out = TRY_OR(OpenFile(path, FileMode::Write()), {
+                tester.log.Error("failed to open GitHub Actions annotations output file {}: {}", path, error);
+            });
         }
     }
 
@@ -403,6 +374,9 @@ int RunAllTests(Tester& tester, RunTestConfig const& config) {
                     tester.test_files_folder ? *tester.test_files_folder : "auto-detected"_s);
     tester.log.Info("JUnitXML output path: {}",
                     config.junit_xml_output_path.HasValue() ? *config.junit_xml_output_path : "none"_s);
+    tester.log.Info("GitHub Actions annotations output path: {}",
+                    config.gha_annotations_output_path.HasValue() ? *config.gha_annotations_output_path
+                                                                  : "none"_s);
 
     Stopwatch const overall_stopwatch;
 
@@ -567,13 +541,6 @@ int RunAllTests(Tester& tester, RunTestConfig const& config) {
         });
     }
 
-    if (auto const summary_path = GetEnvironmentVariable("GITHUB_STEP_SUMMARY", tester.arena)) {
-        TRY_OR(WriteGithubStepSummary(tester, *summary_path), {
-            tester.log.Error("Failed to write GitHub step summary: {}", error);
-            return 1;
-        });
-    }
-
     return num_failed ? 1 : 0;
 }
 
@@ -607,11 +574,30 @@ Check(Tester& tester, bool expression, String message, FailureAction failure_act
 
         auto _ = PrintCurrentStacktrace(StdStream::Err, {}, ProgramCounter {CALL_SITE_PROGRAM_COUNTER});
 
-        if (tester.is_github_actions_run) {
+        if (tester.gha_annotations_out) {
+            StdPrintF(StdStream::Err, "Writing GitHub Actions annotation\n");
+
+            BufferedWriter<Kb(4)> gh_writer {tester.gha_annotations_out->Writer()};
+            DEFER { gh_writer.FlushReset(); };
+            auto const writer = gh_writer.Writer();
+
             String type = "error";
             if (failure_action == FailureAction::LogWarningAndContinue) type = "warning";
-            // We can create a Github Actions annotation for this failure.
-            StdPrintF(StdStream::Out, "::{} file={},line={}::{}: {}\n", type, file, line, pretext, message);
+            auto _ = fmt::FormatToWriter(writer, "::{} file={},line={}::", type, file, line);
+
+            // Write the 'message' portion.
+            auto _ = fmt::FormatToWriter(writer, "{} ", tester.current_test_case->title);
+
+            auto _ = fmt::FormatToWriter(writer, "{} (", pretext);
+            auto _ = WriteThisBinaryConfigName(writer);
+            auto _ = writer.WriteChars("): ");
+
+            for (auto c : message) {
+                if (c == '\n' || c == '\r') c = ' ';
+                auto _ = writer.WriteChar(c);
+            }
+
+            auto _ = writer.WriteChar('\n');
         }
 
         if (failure_action != FailureAction::LogWarningAndContinue) {
