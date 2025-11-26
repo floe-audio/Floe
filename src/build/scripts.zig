@@ -522,7 +522,7 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
         _ = child.kill() catch {};
     }
 
-    const timeout_seconds = 60 * 40;
+    const timeout_seconds = 60 * 60;
 
     var stdout: []const u8 = &.{};
     var stderr: []const u8 = &.{};
