@@ -745,11 +745,14 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
         },
         .macos => {
             if (test_level == .full) {
-                spawnZigBuild(&pool, &wg, &ci_report, &.{ "-Dsanitize-thread", "test" });
                 spawnZigBuild(&pool, &wg, &ci_report, &.{
+                    "test",
+                    "-Dsanitize-thread",
+                });
+                spawnZigBuild(&pool, &wg, &ci_report, &.{
+                    "test",
                     "-Dsanitize-thread",
                     "-Dbuild-mode=performance_profiling",
-                    "test",
                 });
             }
 
