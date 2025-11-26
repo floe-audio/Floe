@@ -557,18 +557,13 @@ pub fn build(b: *std.Build) void {
         artifacts_list[i] = artifacts;
     }
 
-    const native_resolved_target = b.resolveTargetQuery(std.Target.Query.parse(.{
-        .arch_os_abi = "native",
-        .cpu_features = "native",
-    }) catch unreachable);
-
     // Make release artifacts
     {
         const archiver = blk: {
             if (build_context.native_archiver) |a| break :blk a;
 
             // We need to add steps for the native target.
-            _ = doTarget(&build_context, native_resolved_target, false, options, steps);
+            _ = doTarget(&build_context, b.graph.host, false, options, steps);
             break :blk build_context.native_archiver.?;
         };
 
@@ -590,7 +585,7 @@ pub fn build(b: *std.Build) void {
             if (build_context.native_docs_generator) |d| break :blk d;
 
             // We need to add steps for the native target.
-            _ = doTarget(&build_context, native_resolved_target, false, options, steps);
+            _ = doTarget(&build_context, b.graph.host, false, options, steps);
             break :blk build_context.native_docs_generator.?;
         };
 
@@ -642,10 +637,10 @@ pub fn build(b: *std.Build) void {
             .root_module = b.createModule(.{
                 .root_source_file = b.path("src/build/scripts.zig"),
                 .optimize = .Debug,
-                .target = native_resolved_target,
+                .target = b.graph.host,
             }),
         });
-        if (native_resolved_target.result.os.tag == .windows) scripts_exe.linkLibC(); // GetTempPath2W
+        if (b.graph.host.result.os.tag == .windows) scripts_exe.linkLibC(); // GetTempPath2W
 
         addRunScript(scripts_exe, steps.format_step, "format");
         addRunScript(scripts_exe, steps.echo_step, "echo-latest-changes");
