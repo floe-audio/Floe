@@ -28,15 +28,21 @@ pub fn maybeAddWindowsCodesign(
     const cert_pfx = std_extras.validEnvVar(
         b,
         "WINDOWS_CODESIGN_CERT_PFX",
-        "skipping codesigning",
-        true,
+        .{
+            .decode_base64 = true,
+            .warn_desc = "skipping codesigning",
+            .step_to_put_warn = &compile_step.step,
+        },
     ) orelse return binary_path;
 
     const cert_password = std_extras.validEnvVar(
         b,
         "WINDOWS_CODESIGN_CERT_PFX_PASSWORD",
-        "skipping codesigning",
-        false,
+        .{
+            .decode_base64 = false,
+            .warn_desc = "skipping codesigning",
+            .step_to_put_warn = &compile_step.step,
+        },
     ) orelse return binary_path;
 
     const cert_lazy_path = b.addWriteFiles().add("cert.pfx", cert_pfx);

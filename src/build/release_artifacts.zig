@@ -114,6 +114,7 @@ pub fn makeRelease(
                     .is_bundle = false,
                     .entitlements = false,
                     .cert_type = .application,
+                    .parent_step = step,
                 });
                 const zip_file = createArchiveCommand(b, archiver, .zip, &[_]FileToArchive{
                     .{ .path = codesigned_packager, .path_in_archive = packager.out_filename, .is_dir = false },
@@ -122,6 +123,7 @@ pub fn makeRelease(
                     .out_filename = packager.out_filename,
                     .is_bundle = false,
                     .staple = false,
+                    .parent_step = step,
                 });
 
                 const install = b.addInstallFile(notarized_zip, b.fmt("{s}{c}Floe-Packager-v{s}-macOS-{s}.zip", .{
@@ -138,9 +140,9 @@ pub fn makeRelease(
             const vst3_plugin = args.vst3 orelse return invalidConfiguration(step);
             const clap_plugin = args.clap orelse return invalidConfiguration(step);
 
-            const au = macosCodesignAndNotarise(b, au_plugin);
-            const vst3 = macosCodesignAndNotarise(b, vst3_plugin);
-            const clap = macosCodesignAndNotarise(b, clap_plugin);
+            const au = macosCodesignAndNotarise(b, step, au_plugin);
+            const vst3 = macosCodesignAndNotarise(b, step, vst3_plugin);
+            const clap = macosCodesignAndNotarise(b, step, clap_plugin);
 
             // Manual-install
             {
@@ -391,13 +393,17 @@ fn maybeMacosNotarise(
         out_filename: []const u8,
         is_bundle: bool,
         staple: bool, // Stapling is only possible for bundles and PKGs.
+        parent_step: *std.Build.Step,
     },
 ) std.Build.LazyPath {
     const api_key_json = std_extras.validEnvVar(
         b,
         "MACOS_APP_STORE_CONNECT_API_KEY_JSON",
-        "skipping notarization",
-        true,
+        .{
+            .decode_base64 = true,
+            .warn_desc = "skipping notarization",
+            .step_to_put_warn = options.parent_step,
+        },
     ) orelse return path;
 
     const run_cmd = b.addSystemCommand(&.{
@@ -433,6 +439,7 @@ fn maybeAddMacosCodesign(
         is_bundle: bool,
         entitlements: bool,
         cert_type: enum { application, installer },
+        parent_step: *std.Build.Step,
     },
 ) std.Build.LazyPath {
     const cert_p12 = std_extras.validEnvVar(
@@ -441,8 +448,11 @@ fn maybeAddMacosCodesign(
             .application => "MACOS_DEV_APP_CERTS_P12",
             .installer => "MACOS_DEV_INSTALLER_CERT_P12",
         },
-        "skipping codesigning",
-        true,
+        .{
+            .decode_base64 = true,
+            .warn_desc = "skipping codesigning",
+            .step_to_put_warn = options.parent_step,
+        },
     ) orelse return path;
 
     const cert_password = std_extras.validEnvVar(
@@ -451,8 +461,11 @@ fn maybeAddMacosCodesign(
             .application => "MACOS_DEV_APP_CERTS_P12_PASSWORD",
             .installer => "MACOS_DEV_INSTALLER_CERT_P12_PASSWORD",
         },
-        "skipping codesigning",
-        false,
+        .{
+            .decode_base64 = false,
+            .warn_desc = "skipping codesigning",
+            .step_to_put_warn = options.parent_step,
+        },
     ) orelse return path;
 
     const write = b.addWriteFiles();
@@ -494,17 +507,19 @@ fn maybeAddMacosCodesign(
     return run_cmd.addOutputFileArg(options.out_filename);
 }
 
-fn macosCodesignAndNotarise(b: *std.Build, plugin: configure_binaries.ConfiguredPlugin) std.Build.LazyPath {
+fn macosCodesignAndNotarise(b: *std.Build, parent_step: *std.Build.Step, plugin: configure_binaries.ConfiguredPlugin) std.Build.LazyPath {
     const codesigned = maybeAddMacosCodesign(b, plugin.plugin_path, .{
         .out_filename = plugin.file_name,
         .is_bundle = plugin.is_dir,
         .entitlements = true,
         .cert_type = .application,
+        .parent_step = parent_step,
     });
     const notarised = maybeMacosNotarise(b, codesigned, .{
         .out_filename = plugin.file_name,
         .is_bundle = plugin.is_dir,
         .staple = true,
+        .parent_step = parent_step,
     });
     return notarised;
 }

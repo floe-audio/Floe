@@ -350,19 +350,60 @@ pub fn decodeBase64(allocator: std.mem.Allocator, name: []const u8, base64: []co
     return decoded;
 }
 
-pub fn validEnvVar(b: *std.Build, name: []const u8, skip_description: ?[]const u8, decode_base64: bool) ?[]const u8 {
-    const desc = if (skip_description) |desc| desc else "build may be incomplete";
+pub fn validEnvVar(b: *std.Build, name: []const u8, options: struct {
+    decode_base64: bool,
+    warn_desc: []const u8,
+    step_to_put_warn: *std.Build.Step,
+}) ?[]const u8 {
     const val = b.graph.env_map.get(name) orelse {
-        std.log.warn("{s} not set, {s}", .{ name, desc });
+        const warn = addWarn(b, b.fmt("{s} not set, {s}", .{ name, options.warn_desc }));
+        options.step_to_put_warn.dependOn(&warn.step);
         return null;
     };
+
     if (val.len == 0) {
-        std.log.warn("{s} is empty, {s}", .{ name, desc });
+        const warn = addWarn(b, b.fmt("{s} is empty, {s}", .{ name, options.warn_desc }));
+        options.step_to_put_warn.dependOn(&warn.step);
         return null;
     }
 
-    return if (decode_base64)
+    return if (options.decode_base64)
         return decodeBase64(b.allocator, name, val)
     else
         val;
+}
+
+pub const WarnStep = struct {
+    step: std.Build.Step,
+    warn_msg: []const u8,
+
+    pub fn create(owner: *std.Build, warn_msg: []const u8) *WarnStep {
+        const warn = owner.allocator.create(WarnStep) catch @panic("OOM");
+
+        warn.* = .{
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .name = "warn",
+                .owner = owner,
+                .makeFn = make,
+            }),
+            .warn_msg = owner.dupe(warn_msg),
+        };
+
+        return warn;
+    }
+
+    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
+        _ = options; // No progress to report.
+
+        const warn: *WarnStep = @fieldParentPtr("step", step);
+
+        try step.result_error_msgs.append(step.owner.allocator, warn.warn_msg);
+
+        return;
+    }
+};
+
+pub fn addWarn(owner: *std.Build, warn_msg: []const u8) *WarnStep {
+    return WarnStep.create(owner, warn_msg);
 }
