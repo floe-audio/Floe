@@ -7,6 +7,9 @@ const builtin = @import("builtin");
 const constants = @import("constants.zig");
 const std_extras = @import("std_extras.zig");
 const configure_binaries = @import("configure_binaries.zig");
+const wrap_inplace_cmd = @import("wrap_inplace_cmd.zig");
+
+const use_rcodesign = true;
 
 pub const Artifact = struct {
     path: std.Build.LazyPath,
@@ -109,24 +112,28 @@ pub fn makeRelease(
             // Packager
             {
                 const packager = args.packager orelse return invalidConfiguration(step);
+
                 const codesigned_packager = maybeAddMacosCodesign(b, packager.path, .{
                     .out_filename = packager.out_filename,
-                    .is_bundle = false,
+                    .kind = .exe,
                     .entitlements = false,
-                    .cert_type = .application,
                     .parent_step = step,
                 });
+
                 const zip_file = createArchiveCommand(b, archiver, .zip, &[_]FileToArchive{
-                    .{ .path = codesigned_packager, .path_in_archive = packager.out_filename, .is_dir = false },
+                    .{ .path = codesigned_packager orelse packager.path, .path_in_archive = packager.out_filename, .is_dir = false },
                 });
-                const notarized_zip = maybeMacosNotarise(b, zip_file, .{
+
+                // Only notarize if we codesigned.
+                const final = if (codesigned_packager != null) maybeMacosNotarise(b, zip_file, .{
                     .out_filename = packager.out_filename,
                     .is_bundle = false,
                     .staple = false,
                     .parent_step = step,
-                });
+                    .archiver = archiver,
+                }) orelse zip_file else zip_file;
 
-                const install = b.addInstallFile(notarized_zip, b.fmt("{s}{c}Floe-Packager-v{s}-macOS-{s}.zip", .{
+                const install = b.addInstallFile(final, b.fmt("{s}{c}Floe-Packager-v{s}-macOS-{s}.zip", .{
                     release_dir,
                     std.fs.path.sep,
                     version,
@@ -140,9 +147,9 @@ pub fn makeRelease(
             const vst3_plugin = args.vst3 orelse return invalidConfiguration(step);
             const clap_plugin = args.clap orelse return invalidConfiguration(step);
 
-            const au = macosCodesignAndNotarise(b, step, au_plugin);
-            const vst3 = macosCodesignAndNotarise(b, step, vst3_plugin);
-            const clap = macosCodesignAndNotarise(b, step, clap_plugin);
+            const au = macosCodesignAndNotarise(b, step, au_plugin, archiver) orelse au_plugin.plugin_path;
+            const vst3 = macosCodesignAndNotarise(b, step, vst3_plugin, archiver) orelse vst3_plugin.plugin_path;
+            const clap = macosCodesignAndNotarise(b, step, clap_plugin, archiver) orelse clap_plugin.plugin_path;
 
             // Manual-install
             {
@@ -209,17 +216,20 @@ pub fn makeRelease(
 
                 for (pkg_configs) |pkg_config| {
                     // Create the component pkg.
-                    const pkg_cmd = b.addSystemCommand(&.{"pkgbuild"});
+                    const cmd = std_extras.createCommandWithStdoutToStderr(b, null, "run pkgbuild");
+                    cmd.addArg("pkgbuild");
 
-                    pkg_cmd.addArgs(&.{ "--identifier", pkg_config.identifier });
-                    pkg_cmd.addArgs(&.{ "--version", version });
+                    cmd.addArgs(&.{ "--identifier", pkg_config.identifier });
+                    cmd.addArgs(&.{ "--version", version });
 
-                    pkg_cmd.addArg("--component");
-                    pkg_cmd.addDirectoryArg(pkg_config.plugin_path);
+                    cmd.addArg("--component");
+                    cmd.addDirectoryArg(pkg_config.plugin_path);
 
-                    pkg_cmd.addArgs(&.{ "--install-location", pkg_config.install_folder });
+                    cmd.addArgs(&.{ "--install-location", pkg_config.install_folder });
 
-                    const output_pkg = pkg_cmd.addOutputFileArg(pkg_config.pkg_name);
+                    const output_pkg = cmd.addOutputFileArg(pkg_config.pkg_name);
+
+                    cmd.expectExitCode(0);
 
                     // Copy the component pkg into the productbuild dir.
                     _ = productbuild_dir.addCopyFile(output_pkg, pkg_config.pkg_name);
@@ -292,24 +302,28 @@ pub fn makeRelease(
                 productbuild_cmd.addArgs(&.{ "--resources", resources_subdir });
                 productbuild_cmd.addArgs(&.{ "--package-path", "." });
 
-                const final_pkg = productbuild_cmd.addOutputFileArg("installer.pkg");
+                productbuild_cmd.expectExitCode(0);
 
-                const signed = maybeAddMacosCodesign(b, final_pkg, .{
+                const pkg = productbuild_cmd.addOutputFileArg("installer.pkg");
+
+                const signed = maybeAddMacosCodesign(b, pkg, .{
                     .out_filename = "signed-installer.pkg",
-                    .is_bundle = false,
+                    .kind = .pkg,
                     .entitlements = false,
-                    .cert_type = .installer,
+                    .parent_step = step,
                 });
 
-                const notarised = maybeMacosNotarise(b, signed, .{
+                const final = if (signed) |s| maybeMacosNotarise(b, s, .{
                     .out_filename = "notarised-installer.pkg",
                     .is_bundle = false,
                     .staple = true,
-                });
+                    .parent_step = step,
+                    .archiver = archiver,
+                }) orelse pkg else pkg;
 
                 const zip_file = createArchiveCommand(b, archiver, .zip, &[_]FileToArchive{
                     .{
-                        .path = notarised,
+                        .path = final,
                         .path_in_archive = b.fmt("Floe-Installer-v{s}.pkg", .{version}),
                         .is_dir = false,
                     },
@@ -389,46 +403,122 @@ fn invalidConfiguration(top_step: *std.Build.Step) *std.Build.Step {
 fn maybeMacosNotarise(
     b: *std.Build,
     path: std.Build.LazyPath,
-    options: struct {
+    args: struct {
         out_filename: []const u8,
         is_bundle: bool,
         staple: bool, // Stapling is only possible for bundles and PKGs.
         parent_step: *std.Build.Step,
+        archiver: *std.Build.Step.Compile,
     },
-) std.Build.LazyPath {
-    const api_key_json = std_extras.validEnvVar(
-        b,
-        "MACOS_APP_STORE_CONNECT_API_KEY_JSON",
-        .{
-            .decode_base64 = true,
-            .warn_desc = "skipping notarization",
-            .step_to_put_warn = options.parent_step,
-        },
-    ) orelse return path;
+) ?std.Build.LazyPath {
+    if (use_rcodesign) {
+        const api_key_json = std_extras.validEnvVar(
+            b,
+            "MACOS_APP_STORE_CONNECT_API_KEY_JSON",
+            .{
+                .decode_base64 = true,
+                .warn_desc = "skipping notarization",
+                .step_to_put_warn = args.parent_step,
+            },
+        ) orelse return null;
 
-    const run_cmd = b.addSystemCommand(&.{
-        "rcodesign",
-        "notary-submit",
-        "--wait",
-    });
+        const cmd = std_extras.InPlaceCmd.create(b, .{
+            .name = "rcodesign-notarize",
+            .out_file_is_dir = args.is_bundle,
+            .out_file_name = args.out_filename,
+        });
 
-    if (options.staple)
-        run_cmd.addArg("--staple");
+        cmd.run.addArgs(&.{
+            "rcodesign",
+            "notary-submit",
+            "--wait",
+        });
 
-    run_cmd.addArg("--api-key-path");
-    run_cmd.addFileArg(b.addWriteFiles().add("api_key.json", api_key_json));
+        if (args.staple)
+            cmd.run.addArg("--staple");
 
-    run_cmd.addFileArg(path);
+        cmd.run.addArg("--api-key-path");
+        cmd.run.addFileArg(b.addWriteFiles().add("api_key.json", api_key_json));
 
-    // rcodesign doesn't have a way to specify a separate output path. So we need to do some
-    // trickery here so we can return a new LazyPath.
-    const write = b.addWriteFiles();
-    write.step.dependOn(&run_cmd.step);
+        cmd.addInputArg(path, args.is_bundle);
 
-    return if (options.is_bundle)
-        write.addCopyDirectory(path, options.out_filename, .{})
-    else
-        write.addCopyFile(path, options.out_filename);
+        cmd.run.expectExitCode(0);
+
+        return cmd.output_file;
+    } else {
+        const apple_id_username = std_extras.validEnvVar(
+            b,
+            "MACOS_NOTARIZE_APPLE_ID_USERNAME",
+            .{
+                .decode_base64 = false,
+                .warn_desc = "skipping notarization",
+                .step_to_put_warn = args.parent_step,
+            },
+        ) orelse return null;
+
+        const apple_id_password = std_extras.validEnvVar(
+            b,
+            "MACOS_NOTARIZE_APPLE_ID_PASSWORD",
+            .{
+                .decode_base64 = false,
+                .warn_desc = "skipping notarization",
+                .step_to_put_warn = args.parent_step,
+            },
+        ) orelse return null;
+
+        const team_id = std_extras.validEnvVar(
+            b,
+            "MACOS_TEAM_ID",
+            .{
+                .decode_base64 = false,
+                .warn_desc = "skipping notarization",
+                .step_to_put_warn = args.parent_step,
+            },
+        ) orelse return null;
+
+        const cmd = b.addSystemCommand(&.{
+            "xcrun",
+            "notarytool",
+            "submit",
+        });
+
+        if (args.is_bundle) {
+            // "must be a zip archive (.zip), flat installer package (.pkg), or UDIF disk image (.dmg)"
+            const archive = createArchiveCommand(b, args.archiver, .zip, &[_]FileToArchive{
+                .{ .path = path, .path_in_archive = "notarize_payload.zip", .is_dir = true },
+            });
+            cmd.addFileArg(archive);
+        } else {
+            cmd.addFileArg(path);
+        }
+
+        cmd.addArgs(&.{
+            "--apple-id",
+            apple_id_username,
+            "--password",
+            apple_id_password,
+            "--team-id",
+            team_id,
+            "--wait",
+        });
+
+        cmd.expectExitCode(0);
+
+        if (args.staple) {
+            const staple = std_extras.InPlaceCmd.create(b, .{
+                .name = "stapler",
+                .out_file_is_dir = args.is_bundle,
+                .out_file_name = args.out_filename,
+            });
+            staple.run.addArgs(&.{ "xcrun", "stapler", "staple" });
+            staple.addInputArg(path, args.is_bundle);
+            staple.run.step.dependOn(&cmd.step);
+            staple.run.expectExitCode(0);
+            return staple.output_file;
+        } else {
+            return path;
+        }
+    }
 }
 
 fn maybeAddMacosCodesign(
@@ -436,90 +526,162 @@ fn maybeAddMacosCodesign(
     path: std.Build.LazyPath,
     options: struct {
         out_filename: []const u8,
-        is_bundle: bool,
+        kind: enum { exe, bundle, pkg },
         entitlements: bool,
-        cert_type: enum { application, installer },
         parent_step: *std.Build.Step,
     },
-) std.Build.LazyPath {
-    const cert_p12 = std_extras.validEnvVar(
-        b,
-        switch (options.cert_type) {
-            .application => "MACOS_DEV_APP_CERTS_P12",
-            .installer => "MACOS_DEV_INSTALLER_CERT_P12",
-        },
-        .{
-            .decode_base64 = true,
-            .warn_desc = "skipping codesigning",
-            .step_to_put_warn = options.parent_step,
-        },
-    ) orelse return path;
+) ?std.Build.LazyPath {
+    const entitlements =
+        \\<?xml version="1.0" encoding="UTF-8"?>
+        \\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        \\<plist version="1.0">
+        \\<dict>
+        \\    <key>com.apple.security.app-sandbox</key>
+        \\    <true/>
+        \\    <key>com.apple.security.files.user-selected.read-write</key>
+        \\    <true/>
+        \\    <key>com.apple.security.assets.music.read-write</key>
+        \\    <true/>
+        \\    <key>com.apple.security.files.bookmarks.app-scope</key>
+        \\    <true/>
+        \\</dict>
+        \\</plist>
+    ;
 
-    const cert_password = std_extras.validEnvVar(
-        b,
-        switch (options.cert_type) {
-            .application => "MACOS_DEV_APP_CERTS_P12_PASSWORD",
-            .installer => "MACOS_DEV_INSTALLER_CERT_P12_PASSWORD",
-        },
-        .{
-            .decode_base64 = false,
-            .warn_desc = "skipping codesigning",
-            .step_to_put_warn = options.parent_step,
-        },
-    ) orelse return path;
+    if (use_rcodesign) {
+        const cert_p12 = std_extras.validEnvVar(
+            b,
+            switch (options.kind) {
+                .exe, .bundle => "MACOS_DEV_APP_CERT_P12",
+                .pkg => "MACOS_DEV_INSTALLER_CERT_P12",
+            },
+            .{
+                .decode_base64 = true,
+                .warn_desc = "skipping codesigning",
+                .step_to_put_warn = options.parent_step,
+            },
+        ) orelse return null;
 
-    const write = b.addWriteFiles();
-    const cert_lazy_path = write.add("cert.pfx", cert_p12);
+        const cert_password = std_extras.validEnvVar(
+            b,
+            switch (options.kind) {
+                .exe, .bundle => "MACOS_DEV_APP_CERT_P12_PASSWORD",
+                .pkg => "MACOS_DEV_INSTALLER_CERT_P12_PASSWORD",
+            },
+            .{
+                .decode_base64 = false,
+                .warn_desc = "skipping codesigning",
+                .step_to_put_warn = options.parent_step,
+            },
+        ) orelse return null;
 
-    const run_cmd = b.addSystemCommand(&.{ "rcodesign", "sign", "--for-notarization" });
+        const write = b.addWriteFiles();
+        const cert_lazy_path = write.add("cert.pfx", cert_p12);
 
-    run_cmd.addArg("--p12-file");
-    run_cmd.addFileArg(cert_lazy_path);
+        const run_cmd = b.addSystemCommand(&.{ "rcodesign", "sign", "--for-notarization" });
 
-    run_cmd.addArgs(&.{ "--p12-password", cert_password });
+        run_cmd.addArg("--p12-file");
+        run_cmd.addFileArg(cert_lazy_path);
 
-    if (options.entitlements) {
-        run_cmd.addArg("-e");
-        run_cmd.addFileArg(write.add("entitlements.plist",
-            \\<?xml version="1.0" encoding="UTF-8"?>
-            \\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            \\<plist version="1.0">
-            \\<dict>
-            \\    <key>com.apple.security.app-sandbox</key>
-            \\    <true/>
-            \\    <key>com.apple.security.files.user-selected.read-write</key>
-            \\    <true/>
-            \\    <key>com.apple.security.assets.music.read-write</key>
-            \\    <true/>
-            \\    <key>com.apple.security.files.bookmarks.app-scope</key>
-            \\    <true/>
-            \\</dict>
-            \\</plist>
-        ));
-    }
+        run_cmd.addArgs(&.{ "--p12-password", cert_password });
 
-    if (!options.is_bundle) {
-        run_cmd.addFileArg(path);
+        if (options.entitlements) {
+            run_cmd.addArg("-e");
+            run_cmd.addFileArg(write.add("entitlements.plist", entitlements));
+        }
+
+        run_cmd.expectExitCode(0);
+
+        if (options.kind == .bundle) {
+            run_cmd.addDirectoryArg(path);
+        } else {
+            run_cmd.addFileArg(path);
+        }
+
+        return run_cmd.addOutputFileArg(options.out_filename);
     } else {
-        run_cmd.addDirectoryArg(path);
-    }
+        switch (options.kind) {
+            .pkg => {
+                const cert_identity = std_extras.validEnvVar(
+                    b,
+                    "MACOS_SIGNING_CERT_NAME_INSTALLER",
+                    .{
+                        .decode_base64 = false,
+                        .warn_desc = "skipping codesigning",
+                        .step_to_put_warn = options.parent_step,
+                    },
+                ) orelse return null;
 
-    return run_cmd.addOutputFileArg(options.out_filename);
+                const cmd = std_extras.createCommandWithStdoutToStderr(b, null, "run productsign");
+                cmd.addArgs(&.{
+                    "productsign",
+                    "--sign",
+                    cert_identity,
+                });
+
+                cmd.addFileArg(path);
+                return cmd.addOutputFileArg(options.out_filename);
+            },
+            .bundle, .exe => {
+                const cert_identity = std_extras.validEnvVar(
+                    b,
+                    "MACOS_SIGNING_CERT_NAME_APPLICATION",
+                    .{
+                        .decode_base64 = false,
+                        .warn_desc = "skipping codesigning",
+                        .step_to_put_warn = options.parent_step,
+                    },
+                ) orelse return null;
+
+                const cmd = std_extras.InPlaceCmd.create(b, .{
+                    .name = "codesign",
+                    .out_file_is_dir = options.kind == .bundle,
+                    .out_file_name = options.out_filename,
+                });
+                cmd.run.addArgs(&.{
+                    "codesign",
+                    "--sign",
+                    cert_identity,
+                    "--timestamp",
+                    "--options=runtime",
+                    "--deep",
+                    "--force",
+                    "--strict",
+                });
+
+                if (options.entitlements) {
+                    cmd.run.addArg("--entitlements");
+                    cmd.run.addFileArg(b.addWriteFiles().add("entitlements.plist", entitlements));
+                }
+
+                cmd.addInputArg(path, options.kind == .bundle);
+
+                cmd.run.expectExitCode(0);
+
+                return cmd.output_file;
+            },
+        }
+    }
 }
 
-fn macosCodesignAndNotarise(b: *std.Build, parent_step: *std.Build.Step, plugin: configure_binaries.ConfiguredPlugin) std.Build.LazyPath {
+fn macosCodesignAndNotarise(
+    b: *std.Build,
+    parent_step: *std.Build.Step,
+    plugin: configure_binaries.ConfiguredPlugin,
+    archiver: *std.Build.Step.Compile,
+) ?std.Build.LazyPath {
     const codesigned = maybeAddMacosCodesign(b, plugin.plugin_path, .{
         .out_filename = plugin.file_name,
-        .is_bundle = plugin.is_dir,
+        .kind = .bundle,
         .entitlements = true,
-        .cert_type = .application,
         .parent_step = parent_step,
-    });
+    }) orelse return null;
     const notarised = maybeMacosNotarise(b, codesigned, .{
         .out_filename = plugin.file_name,
         .is_bundle = plugin.is_dir,
         .staple = true,
         .parent_step = parent_step,
+        .archiver = archiver,
     });
     return notarised;
 }

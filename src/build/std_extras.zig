@@ -292,6 +292,52 @@ pub fn fetch(b: *std.Build, options: struct {
     return result;
 }
 
+// A wrapper for turning commands that modify files in-place into commands with input and output files.
+// See wrap_inplace_cmd.zig for more information.
+// To use it, create the InPlaceCmd, add args as normal to the .run field, but at some point you must call
+// addInputArg() to set the input file argument and let the wrapper know which argument index it is.
+pub const InPlaceCmd = struct {
+    run: *std.Build.Step.Run,
+    output_file: std.Build.LazyPath,
+
+    pub fn create(b: *std.Build, args: struct {
+        name: []const u8,
+        out_file_is_dir: bool,
+        out_file_name: []const u8,
+    }) InPlaceCmd {
+        const run = b.addRunArtifact(b.addExecutable(.{
+            .name = args.name,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/build/wrap_inplace_cmd.zig"),
+                .target = b.graph.host,
+            }),
+        }));
+        run.addArg("PLACEHOLDER-IN-INDEX");
+
+        const output_file =
+            if (args.out_file_is_dir)
+                run.addOutputDirectoryArg(args.out_file_name)
+            else
+                run.addOutputFileArg(args.out_file_name);
+
+        return .{
+            .run = run,
+            .output_file = output_file,
+        };
+    }
+
+    pub fn addInputArg(self: *const InPlaceCmd, path: std.Build.LazyPath, is_dir: bool) void {
+        if (is_dir) {
+            self.run.addDirectoryArg(path);
+        } else {
+            self.run.addFileArg(path);
+        }
+
+        std.debug.assert(std.mem.eql(u8, self.run.argv.items[1].bytes, "PLACEHOLDER-IN-INDEX"));
+        self.run.argv.items[1] = .{ .bytes = self.run.step.owner.fmt("{d}", .{self.run.argv.items.len - 1}) };
+    }
+};
+
 // Loads environment variables from a .env file into the build graph's env_map.
 // Based on https://github.com/zigster64/dotenv.zig
 // SPDX-License-Identifier: MIT
