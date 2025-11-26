@@ -28,7 +28,7 @@ pub fn create(b: *std.Build, target: std.Target, use_as_default: bool, config_ha
     const join_compile_commands = b.allocator.create(ConcatCompileCommandsStep) catch @panic("OOM");
     join_compile_commands.* = ConcatCompileCommandsStep{
         .step = std.Build.Step.init(.{
-            .id = std.Build.Step.Id.custom,
+            .id = .custom,
             .name = "Concatenate compile_commands JSON",
             .owner = b,
             .makeFn = make,

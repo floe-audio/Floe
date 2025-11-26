@@ -612,7 +612,6 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
     }
 }
 
-// Args are assumed to live for the remaining duration of the program.
 fn runZigBuild(ci_report: *CiReport, args: []const []const u8) void {
     _ = tryRunZigBuild(ci_report, args) catch |err| {
         std.log.err("runZigBuild failed: {any}\n", .{err});
@@ -849,7 +848,7 @@ const WindowsTempDir = struct {
         // use GetTempPathW2, https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-gettemppathw
         var wchar_buf: [MAX_PATH + 2]WCHAR = undefined;
         wchar_buf[MAX_PATH + 1] = 0;
-        const ret = GetTempPath2W(MAX_PATH + 1, wchar_buf[0.. MAX_PATH + 1 :0].ptr);
+        const ret = GetTempPath2W(MAX_PATH + 1, wchar_buf[0 .. MAX_PATH + 1 :0].ptr);
         if (ret != 0) {
             const path = wchar_buf[0..ret];
             return std.unicode.utf16LeToUtf8Alloc(allocator, path);
