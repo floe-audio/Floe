@@ -442,13 +442,20 @@ pub fn build(b: *std.Build) void {
             "Fetch Floe logos from online - these may have a different licence to the rest of Floe",
         ) orelse false,
         .targets = b.option([]const u8, "targets", "Target operating system"),
+        .github_publish_release = b.option(
+            bool,
+            "github-publish-release",
+            "When making a GitHub release, publish it immediately instead of as a draft",
+        ) orelse false,
     };
 
     // Top-level steps
     const steps = .{
         .compile_all_step = b.step("compile", "Compile all"),
 
-        .make_release = b.step("release", "Create release artifacts"),
+        .release = b.step("release", "Create release artifacts"),
+        .release_github = b.step("release:github", "Create GitHub draft release and upload all artifacts to it, see the separate option to specify if this is published immediately or not"),
+        .release_github_upload = b.step("release:github-upload", "Only upload artifacts to an existing GitHub release matching current version"),
 
         .test_step = b.step("test", "Run unit tests"),
         .coverage = b.step("test-coverage", "Generate code coverage report of unit tests"),
@@ -557,6 +564,28 @@ pub fn build(b: *std.Build) void {
         artifacts_list[i] = artifacts;
     }
 
+    // Build scripts CLI program and add script steps
+    const scripts_exe = blk: {
+        const scripts_exe = b.addExecutable(.{
+            .name = "scripts",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/build/scripts.zig"),
+                .optimize = .Debug,
+                .target = b.graph.host,
+            }),
+        });
+        if (b.graph.host.result.os.tag == .windows) scripts_exe.linkLibC(); // GetTempPath2W
+
+        addRunScript(scripts_exe, steps.format_step, "format");
+        addRunScript(scripts_exe, steps.echo_step, "echo-latest-changes");
+        addRunScript(scripts_exe, steps.upload_errors_step, "upload-errors");
+        addRunScript(scripts_exe, steps.ci_step, "ci");
+        addRunScript(scripts_exe, steps.ci_basic_step, "ci-basic");
+        addRunScript(scripts_exe, steps.website_promote_step, "website-promote-beta-to-stable");
+
+        break :blk scripts_exe;
+    };
+
     // Make release artifacts
     {
         const archiver = blk: {
@@ -567,15 +596,61 @@ pub fn build(b: *std.Build) void {
             break :blk build_context.native_archiver.?;
         };
 
+        // Step to create GitHub release
+        const create_gh_release = blk: {
+            const v_version = b.fmt("v{s}", .{floe_version_string});
+            const create = b.addSystemCommand(&.{ "gh", "release", "create", v_version });
+            if (!options.github_publish_release) create.addArg("--draft");
+            create.addArgs(&.{ "--title", b.fmt("Release v{s}", .{floe_version_string}) });
+
+            const changes_cmd = b.addRunArtifact(scripts_exe);
+            changes_cmd.addArg("echo-latest-changes");
+            create.addArg("--notes-file");
+            create.addFileArg(changes_cmd.captureStdOut());
+
+            if (floe_version.pre != null)
+                create.addArg("--prerelease");
+
+            break :blk create;
+        };
+
         for (artifacts_list, 0..) |artifacts, i| {
-            const step = release_artifacts.makeRelease(
-                b,
-                archiver,
-                build_context.floe_version_string,
-                targets.items[i].result,
-                artifacts,
-            );
-            steps.make_release.dependOn(step);
+            {
+                const install_steps = release_artifacts.makeRelease(
+                    b,
+                    archiver,
+                    build_context.floe_version,
+                    targets.items[i].result,
+                    .install,
+                    artifacts,
+                );
+                steps.release.dependOn(install_steps);
+            }
+
+            {
+                const upload_steps = release_artifacts.makeRelease(
+                    b,
+                    archiver,
+                    build_context.floe_version,
+                    targets.items[i].result,
+                    .github_release,
+                    artifacts,
+                );
+                upload_steps.dependOn(&create_gh_release.step);
+                steps.release_github.dependOn(upload_steps);
+            }
+
+            {
+                const upload_steps = release_artifacts.makeRelease(
+                    b,
+                    archiver,
+                    build_context.floe_version,
+                    targets.items[i].result,
+                    .github_release,
+                    artifacts,
+                );
+                steps.release_github_upload.dependOn(upload_steps);
+            }
         }
     }
 
@@ -628,26 +703,6 @@ pub fn build(b: *std.Build) void {
 
             steps.website_dev_step.dependOn(&run.step);
         }
-    }
-
-    // Build scripts CLI program and add script steps
-    {
-        const scripts_exe = b.addExecutable(.{
-            .name = "scripts",
-            .root_module = b.createModule(.{
-                .root_source_file = b.path("src/build/scripts.zig"),
-                .optimize = .Debug,
-                .target = b.graph.host,
-            }),
-        });
-        if (b.graph.host.result.os.tag == .windows) scripts_exe.linkLibC(); // GetTempPath2W
-
-        addRunScript(scripts_exe, steps.format_step, "format");
-        addRunScript(scripts_exe, steps.echo_step, "echo-latest-changes");
-        addRunScript(scripts_exe, steps.upload_errors_step, "upload-errors");
-        addRunScript(scripts_exe, steps.ci_step, "ci");
-        addRunScript(scripts_exe, steps.ci_basic_step, "ci-basic");
-        addRunScript(scripts_exe, steps.website_promote_step, "website-promote-beta-to-stable");
     }
 }
 

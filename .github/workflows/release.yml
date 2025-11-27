@@ -29,7 +29,8 @@ jobs:
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.1.0
 
-      - run: zig build release -Dbuild-mode=production -Dtargets=linux,windows,mac_arm,mac_x86 -Dfetch-floe-logos=true
+      - run: |
+          zig build release:github -Dbuild-mode=production -Dtargets=linux,windows,mac_arm,mac_x86 -Dfetch-floe-logos=true -Dgithub-publish-release=true
         env:
           WINDOWS_CODESIGN_CERT_PFX: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX }}
           WINDOWS_CODESIGN_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX_PASSWORD }}
@@ -39,28 +40,10 @@ jobs:
           MACOS_DEV_APP_CERT_P12_PASSWORD: ${{ secrets.MACOS_DEV_APP_CERT_P12_PASSWORD }}
           MACOS_DEV_APP_CERT_P12: ${{ secrets.MACOS_DEV_APP_CERT_P12 }}
 
-      - name: 'Set Env'
+      - name: 'Get version'
         run: |
           export VERSION=$(cat version.txt)
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          
-          # Check if version is a prerelease (contains - followed by prerelease identifier)
-          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-.+ ]]; then
-            echo "PRERELEASE=true" >> $GITHUB_ENV
-          else
-            echo "PRERELEASE=false" >> $GITHUB_ENV
-          fi
-          
-          zig build script:echo-latest-changes > latest_changes.md
-
-      - uses: ncipollo/release-action@v1
-        with:
-          artifactErrorsFailBuild: true
-          artifacts: "zig-out/release/*"
-          name: Release v${{ env.VERSION }}
-          tag: v${{ env.VERSION }}
-          prerelease: ${{ env.PRERELEASE }}
-          bodyFile: latest_changes.md
 
       - name: Create Sentry release
         uses: getsentry/action-release@v3
