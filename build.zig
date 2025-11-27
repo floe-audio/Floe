@@ -508,7 +508,7 @@ pub fn build(b: *std.Build) void {
             .performance_profiling, .production => std.builtin.OptimizeMode.ReleaseSafe,
         },
         .dep_floe_logos = if (options.fetch_floe_logos)
-            b.dependency("floe_logos", .{})
+            b.lazyDependency("floe_logos", .{})
         else
             null,
         .dep_xxhash = b.dependency("xxhash", .{}),

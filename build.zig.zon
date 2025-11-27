@@ -88,6 +88,7 @@
         .floe_logos = .{
             .url = "git+https://github.com/floe-audio/Floe-Logos#8dcbe7fdfab93a7958947ad6d0ff9427565c65ab",
             .hash = "N-V-__8AAHEKFgBFuPa2_DBoERCMfyw108H3h7ubU7jLpXtj",
+            .lazy = true,
         },
     },
     .paths = .{"src"},
