@@ -72,7 +72,6 @@ jobs:
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.1.0
 
-
       - run: zig build script:ci
 
       - if: '!cancelled()'
