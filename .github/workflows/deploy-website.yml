@@ -26,9 +26,7 @@ jobs:
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.2.1
 
-      - run: just build
-      - run: just website-generate
-
+      # IMPROVE: the zig script:website-build should do this work.
       - name: Add /api/v1/version route
         run: |
           mkdir -p website/static/api/v1
@@ -54,13 +52,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Node.js dependencies
-        run: |
-          cd website
-          npm ci
-
-      - name: Build Docusaurus site
-        run: just website-build
+      - run: zig build script:website-build
 
       - name: Deploy GitHub Pages
         env:

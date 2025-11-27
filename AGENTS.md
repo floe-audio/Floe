@@ -7,16 +7,16 @@ This is the Floe repository, an audio plugin written in C++ and built using the 
 
 Floe, at it's core, is a CLAP plugin, a modern alternative to APIs such as VST3. CLAP is documented in the C header files that make up its interface. See the dependencies section below for where to find the CLAP source code.
 
-Additionally, this repository contains Floe's website in the subdirectory `website/`, built using Docusaurus. We have 2 release channels: **stable** and **beta**. We use Docusaurus' versioning feature to maintain separate documentation for each channel. `website/docs` contains the beta documentation, and `website/versioned_docs/version-stable` contains the stable documentation. We use the command justfile recipe `website-promote-beta-to-stable` to promote the beta website to stable.
+Additionally, this repository contains Floe's website in the subdirectory `website/`, built using Docusaurus. We have 2 release channels: **stable** and **beta**. We use Docusaurus' versioning feature to maintain separate documentation for each channel. `website/docs` contains the beta documentation, and `website/versioned_docs/version-stable` contains the stable documentation. We use the command `zig build script:github-publish-release` to promote the beta website to stable.
 
 # Commands
 Building is done inside a Nix flake shell. You can use `nix develop .#with-validators` to enter the shell. Or to run a command inside a shell (normally recommended), use `nix develop .#with-validators --command <command>`. All these commands should be prefixed with `nix develop .#with-validators --command` if you're not already in the shell:
 - Compile the project: `zig build -Dtargets=native -Dbuild-mode=development`. Cross-compiling is supported. Alternatives options instead of `native` are: `linux`, `windows`, `mac_arm`, `mac_x86`. You can add `-Dsanitize-thread` to enable Clang's thread sanitizer.
-- Run unit tests: `tests --filter=*`. Run `tests --help` for more options.
-- Format all code using clang-tidy: `just format`
-- Check spelling : `just check-spelling`
+- Run unit tests: `zig build test -- --filter=*`.
+- Format all code using clang-tidy: `zig build script:format`
+- Check spelling : `zig build script:check-spelling`
   - Be prepared to add exceptions to ignored-spellings.dic since our spell-check is not smart and will often think non-words are words. We use British English.
-- Check license comment headers: `just check-reuse`
+- Check license comment headers: `zig build check:reuse`
 
 # Source code overview
 Here are some notable subdirectories, though there are plenty more.
