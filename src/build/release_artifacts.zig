@@ -40,7 +40,7 @@ pub fn makeRelease(
         .owner = b,
     });
 
-    const release_dir = b.fmt("release-{s}", .{target_triple.constSlice()});
+    const release_dir = "release";
 
     switch (target.os.tag) {
         .windows => {

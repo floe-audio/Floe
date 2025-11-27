@@ -15,32 +15,7 @@ env:
   ZIG_GLOBAL_CACHE_DIR: .zig-cache-global 
 
 jobs:
-  build-windows:
-    runs-on: ubuntu-latest # NOTE: we don't actually use Windows
-    permissions:
-      id-token: write
-      contents: read
-    env:
-      WINDOWS_CODESIGN_CERT_PFX: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX }}
-      WINDOWS_CODESIGN_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX_PASSWORD }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/flakehub-cache-action@main
-      - uses: nicknovitski/nix-develop@v1.1.0
-
-      - run: zig build release -Dbuild-mode=production -Dtargets=windows -Dfetch-floe-logos=true
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: final-windows
-          if-no-files-found: error
-          path: zig-out/release-x86_64-windows
-
-  build-linux:
+  build-and-deploy:
     runs-on: ubuntu-22.04 
     permissions:
       id-token: write
@@ -54,71 +29,15 @@ jobs:
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.1.0
 
-      - run: zig build release -Dbuild-mode=production -Dtargets=linux -Dfetch-floe-logos=true
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: final-linux
-          if-no-files-found: error
-          path: zig-out/release-x86_64-linux
-
-  build-macos:
-    runs-on: macos-14
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/flakehub-cache-action@main
-      - uses: nicknovitski/nix-develop@v1.1.0
-
-      - run: |
-          just build-release mac_arm
-          just build-release mac_x86
-
-      - uses: apple-actions/import-codesign-certs@v3
-        with: 
-          p12-file-base64: ${{ secrets.MACOS_DEV_CERTS_P12 }}
-          p12-password: ${{ secrets.MACOS_DEV_CERTS_P12_PASSWORD }}
-
-      - run: just macos-prepare-release
+      - run: zig build release -Dbuild-mode=production -Dtargets=linux,windows,mac_arm,mac_x86 -Dfetch-floe-logos=true
         env:
-          MACOS_DEV_ID_INSTALLER_NAME: ${{ secrets.MACOS_DEV_ID_INSTALLER_NAME }}
-          MACOS_DEV_ID_APP_NAME: ${{ secrets.MACOS_DEV_ID_APP_NAME }}
-          MACOS_NOTARIZATION_USERNAME: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
-          MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
-          MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
-
-      - name: 'get release dir from just'
-        run: |
-          export RELEASE_DIR=$(just --evaluate release_files_dir)
-          echo "RELEASE_DIR=${RELEASE_DIR}" >> $GITHUB_ENV
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: final-macos
-          if-no-files-found: error
-          path: ${{ env.RELEASE_DIR }}
-
-  deploy:
-    needs: [build-macos, build-windows, build-linux]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      actions: write # Allow workflow dispatch for website deployment
-      issues: write # Allow commenting, labeling, and closing issues
-    env:
-      RELEASE_ARTIFACTS_FOLDER: release_artifacts
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: taiki-e/install-action@just
+          WINDOWS_CODESIGN_CERT_PFX: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX }}
+          WINDOWS_CODESIGN_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX_PASSWORD }}
+          MACOS_APP_STORE_CONNECT_API_KEY_JSON: ${{ secrets.MACOS_APP_STORE_CONNECT_API_KEY_JSON }}
+          MACOS_DEV_INSTALLER_CERT_P12_PASSWORD: ${{ secrets.MACOS_DEV_INSTALLER_CERT_P12_PASSWORD }}
+          MACOS_DEV_INSTALLER_CERT_P12: ${{ secrets.MACOS_DEV_INSTALLER_CERT_P12 }}
+          MACOS_DEV_APP_CERT_P12_PASSWORD: ${{ secrets.MACOS_DEV_APP_CERT_P12_PASSWORD }}
+          MACOS_DEV_APP_CERT_P12: ${{ secrets.MACOS_DEV_APP_CERT_P12 }}
 
       - name: 'Set Env'
         run: |
@@ -132,20 +51,12 @@ jobs:
             echo "PRERELEASE=false" >> $GITHUB_ENV
           fi
           
-          just echo-latest-changes > latest_changes.md
-
-          mkdir -p "$RELEASE_ARTIFACTS_FOLDER"
-
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: final-*
-          path: ${{ env.RELEASE_ARTIFACTS_FOLDER }}
-          merge-multiple: true
+          zig build script:echo-latest-changes > latest_changes.md
 
       - uses: ncipollo/release-action@v1
         with:
           artifactErrorsFailBuild: true
-          artifacts: "${{ env.RELEASE_ARTIFACTS_FOLDER }}/*"
+          artifacts: "zig-out/release/*"
           name: Release v${{ env.VERSION }}
           tag: v${{ env.VERSION }}
           prerelease: ${{ env.PRERELEASE }}
