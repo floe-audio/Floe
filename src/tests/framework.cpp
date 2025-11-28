@@ -91,13 +91,6 @@ String HumanCheckableOutputFilesFolder(Tester& tester) {
     return *tester.human_checkable_output_files_folder;
 }
 
-Optional<String> BuildResourcesFolder(Tester& tester) {
-    if (!tester.build_resources_folder)
-        tester.build_resources_folder.Emplace(
-            SearchUpwardsFromExeForFolder(tester, k_build_resources_subdir));
-    return *tester.build_resources_folder;
-}
-
 void* CreateOrFetchFixturePointer(Tester& tester,
                                   CreateFixturePointer create,
                                   DeleteFixturePointer delete_fixture) {

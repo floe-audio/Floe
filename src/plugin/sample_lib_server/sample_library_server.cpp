@@ -1900,7 +1900,7 @@ TEST_CASE(TestSampleLibraryServer) {
         String test_lib_path;
         ThreadPool thread_pool;
         ThreadsafeErrorNotifications error_notif {};
-        DynamicArrayBounded<String, 2> scan_folders;
+        Array<String, 1> scan_folders;
     };
 
     auto& fixture = CreateOrFetchFixtureObject<Fixture>(tester);
@@ -1945,12 +1945,7 @@ TEST_CASE(TestSampleLibraryServer) {
 
         fixture.test_lib_path = path::Join(fixture.arena, Array {lib_dir, "shared_files_test_lib.mdata"_s});
 
-        DynamicArrayBounded<String, 2> scan_folders;
-        dyn::Append(scan_folders, fixture.arena.Clone(lib_dir));
-        if (auto dir = tests::BuildResourcesFolder(tester))
-            dyn::Append(scan_folders, fixture.arena.Clone(*dir));
-
-        fixture.scan_folders = scan_folders;
+        fixture.scan_folders[0] = fixture.arena.Clone(lib_dir);
     }
 
     auto& scratch_arena = tester.scratch_arena;
