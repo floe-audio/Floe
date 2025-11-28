@@ -336,6 +336,13 @@ int RunAllTests(Tester& tester, RunTestConfig const& config) {
                    path.HasValue()) {
             tester.test_files_folder = path.Value();
         }
+        if (tester.test_files_folder)
+            tester.test_files_folder = TRY_OR(AbsolutePath(tester.arena, *tester.test_files_folder), {
+                tester.log.Error("failed to get absolute path of test files folder {}: {}",
+                                 *tester.test_files_folder,
+                                 error);
+                return 1;
+            });
 
         if (config.clap_plugin_path.HasValue()) {
             tester.clap_plugin_path = *config.clap_plugin_path;
@@ -343,6 +350,13 @@ int RunAllTests(Tester& tester, RunTestConfig const& config) {
                    path.HasValue()) {
             tester.clap_plugin_path = path.Value();
         }
+        if (tester.clap_plugin_path.size)
+            tester.clap_plugin_path = TRY_OR(AbsolutePath(tester.arena, tester.clap_plugin_path), {
+                tester.log.Error("failed to get absolute path of CLAP plugin {}: {}",
+                                 tester.clap_plugin_path,
+                                 error);
+                return 1;
+            });
 
         if (config.gha_annotations_output_path.HasValue()) {
             auto const path = config.gha_annotations_output_path.Value();
