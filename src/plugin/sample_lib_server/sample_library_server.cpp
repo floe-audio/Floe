@@ -1927,18 +1927,24 @@ TEST_CASE(TestSampleLibraryServer) {
             while (auto entry = TRY(dir_iterator::Next(it, tester.scratch_arena))) {
                 auto const relative_path = entry->subpath;
                 auto const dest_file = path::Join(tester.scratch_arena, Array {lib_dir, relative_path});
-                if (entry->type == FileType::File) {
-                    if (auto const dir = path::Directory(dest_file)) {
-                        TRY(CreateDirectory(
-                            *dir,
-                            {.create_intermediate_directories = true, .fail_if_exists = false}));
+                switch (entry->type) {
+                    case FileType::File: {
+                        if (auto const dir = path::Directory(dest_file)) {
+                            TRY(CreateDirectory(
+                                *dir,
+                                {.create_intermediate_directories = true, .fail_if_exists = false}));
+                        }
+                        TRY(CopyFile(dir_iterator::FullPath(it, *entry, tester.scratch_arena),
+                                     dest_file,
+                                     ExistingDestinationHandling::Overwrite));
+                        break;
                     }
-                    TRY(CopyFile(dir_iterator::FullPath(it, *entry, tester.scratch_arena),
-                                 dest_file,
-                                 ExistingDestinationHandling::Overwrite));
-                } else {
-                    TRY(CreateDirectory(dest_file,
-                                        {.create_intermediate_directories = true, .fail_if_exists = false}));
+                    case FileType::Directory: {
+                        TRY(CreateDirectory(
+                            dest_file,
+                            {.create_intermediate_directories = true, .fail_if_exists = false}));
+                        break;
+                    }
                 }
             }
         }
