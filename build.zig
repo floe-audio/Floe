@@ -2761,33 +2761,23 @@ fn doTarget(
             &.{if (target.os.tag != .windows) "clap-validator" else "clap-validator.exe"},
             &[0][]const u8{},
         ) catch null) |program| {
-            run.addArg(program);
+            run.addArg(program); // Use system-installed clap-validator.
         } else if (target.os.tag == .windows) {
-            run.addFileArg(std_extras.fetch(b, .{
-                .url = "https://github.com/free-audio/clap-validator/releases/download/0.3.2/clap-validator-0.3.2-windows.zip",
-                .file_name = "clap-validator.exe",
-                .hash = "N-V-__8AAACYMwAKpkDTKEWrhJhUyBs1LxycLWN8iFpe5p6r",
-            }));
+            if (b.lazyDependency("clap_validator_windows", .{})) |dep| {
+                run.addFileArg(dep.path("clap-validator.exe"));
+            }
         } else if (target.os.tag == .macos) {
-            // Use downloaded binary for macOS
-            const clap_validator_fetch = std_extras.fetch(b, .{
-                .url = "https://github.com/free-audio/clap-validator/releases/download/0.3.2/clap-validator-0.3.2-macos-universal.tar.gz",
-                .file_name = "clap-validator",
-                .hash = "N-V-__8AALwZfgBlaKnVwge3d221LJA9s_vQixy9c6OBvGhQ",
-                .executable = true,
-            });
-            run.addFileArg(clap_validator_fetch);
+            if (b.lazyDependency("clap_validator_macos", .{})) |dep| {
+                const bin_path = dep.path("clap-validator");
+                run.addFileArg(bin_path);
+                run.step.dependOn(&chmodExeStep(b, bin_path).step);
+            }
         } else if (target.os.tag == .linux) {
-            // Linux - use downloaded binary.
-            // NOTE: we're using floe-audio repo with a re-uploaded ZIP because we needed to workaround a
-            // zig fetch bug with tar.gz files.
-            const clap_validator_fetch = std_extras.fetch(b, .{
-                .url = "https://github.com/floe-audio/clap-validator/releases/download/v0.3.2/clap-validator-0.3.2-ubuntu-18.04.zip",
-                .file_name = "clap-validator",
-                .hash = "N-V-__8AAFDvhAD7wsMQHzT9s_hiRLUTXJp4mBwyx_O7gZxZ",
-                .executable = true,
-            });
-            run.addFileArg(clap_validator_fetch);
+            if (b.lazyDependency("clap_validator_linux", .{})) |dep| {
+                const bin_path = dep.path("clap-validator");
+                run.addFileArg(bin_path);
+                run.step.dependOn(&chmodExeStep(b, bin_path).step);
+            }
         } else {
             @panic("Unsupported OS for clap-validator");
         }
@@ -2873,6 +2863,12 @@ fn addRunScript(
     top_level_step.dependOn(&run_step.step);
 }
 
+fn chmodExeStep(b: *std.Build, path: std.Build.LazyPath) *std.Build.Step.Run {
+    const mod = b.addSystemCommand(&.{ "chmod", "+x" });
+    mod.addFileArg(path);
+    return mod;
+}
+
 fn addPluginvalCommand(run: *std.Build.Step.Run, target: std.Target) void {
     const b = run.step.owner;
 
@@ -2880,33 +2876,23 @@ fn addPluginvalCommand(run: *std.Build.Step.Run, target: std.Target) void {
         &.{if (target.os.tag != .windows) "pluginval" else "pluginval.exe"},
         &[0][]const u8{},
     ) catch null) |program| {
-        // Use system-installed pluginval when explicitly requested
-        run.addArg(program);
+        run.addArg(program); // We found a system installation.
     } else if (target.os.tag == .windows) {
-        // On Windows, we use a downloaded binary.
-        run.addFileArg(std_extras.fetch(b, .{
-            .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_Windows.zip",
-            .file_name = "pluginval.exe",
-            .hash = "N-V-__8AAABcNACEKUY1SsEfHGFybDSKUo4JGhYN5bgZ146c",
-        }));
+        if (b.lazyDependency("pluginval_windows", .{})) |dep| {
+            run.addFileArg(dep.path("pluginval.exe"));
+        }
     } else if (target.os.tag == .macos) {
-        // Use downloaded binary for macOS
-        const pluginval_fetch = std_extras.fetch(b, .{
-            .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_macOS.zip",
-            .file_name = "Contents/MacOS/pluginval",
-            .hash = "N-V-__8AAF8tGQHuEhO2q5y6oj6foKiCHCXCQWbfpY6ehS5e",
-            .executable = true,
-        });
-        run.addFileArg(pluginval_fetch);
+        if (b.lazyDependency("pluginval_macos", .{})) |dep| {
+            const bin_path = dep.path("Contents/MacOS/pluginval");
+            run.addFileArg(bin_path);
+            run.step.dependOn(&chmodExeStep(b, bin_path).step);
+        }
     } else if (target.os.tag == .linux) {
-        // Linux - use downloaded binary
-        const pluginval_fetch = std_extras.fetch(b, .{
-            .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_Linux.zip",
-            .file_name = "pluginval",
-            .hash = "N-V-__8AAHiZqACvZuwhiWbvPBeJQd-K_5xpafp_Pi_6228J",
-            .executable = true,
-        });
-        run.addFileArg(pluginval_fetch);
+        if (b.lazyDependency("pluginval_linux", .{})) |dep| {
+            const bin_path = dep.path("pluginval");
+            run.addFileArg(bin_path);
+            run.step.dependOn(&chmodExeStep(b, bin_path).step);
+        }
     } else {
         @panic("Unsupported OS for pluginval");
     }
