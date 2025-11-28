@@ -568,8 +568,6 @@ Check(Tester& tester, bool expression, String message, FailureAction failure_act
         auto _ = PrintCurrentStacktrace(StdStream::Err, {}, ProgramCounter {CALL_SITE_PROGRAM_COUNTER});
 
         if (tester.gha_annotations_out) {
-            StdPrintF(StdStream::Err, "Writing GitHub Actions annotation\n");
-
             BufferedWriter<Kb(4)> gh_writer {tester.gha_annotations_out->Writer()};
             DEFER { gh_writer.FlushReset(); };
             auto const writer = gh_writer.Writer();
