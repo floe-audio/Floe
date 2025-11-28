@@ -21,6 +21,7 @@ pub fn main() !u8 {
     const result = try std.process.Child.run(.{
         .allocator = allocator,
         .argv = args[1..],
+        .max_output_bytes = 10 * 1024 * 1024, // 10 MB
     });
 
     // Redirect stdout to stderr
@@ -37,4 +38,3 @@ pub fn main() !u8 {
         },
     }
 }
-
