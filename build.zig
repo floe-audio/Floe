@@ -2686,6 +2686,9 @@ fn doTarget(
 
         const test_binary = configure_binaries.nix_helper.maybePatchElfExecutable(exe);
 
+        const install = b.addInstallBinFile(test_binary, exe.out_filename);
+        steps.install_all_step.dependOn(&install.step);
+
         const add_tests_args = struct {
             pub fn do(run: *std.Build.Step.Run, clap_plugin: ?configure_binaries.ConfiguredPlugin) void {
                 const b2 = run.step.owner;
