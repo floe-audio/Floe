@@ -182,44 +182,20 @@ pub fn createCommandWithStdoutToStderr(
     target: ?std.Target,
     name: []const u8,
 ) *std.Build.Step.Run {
-    const run = std.Build.Step.Run.create(b, name);
+    const run = b.addRunArtifact(b.addExecutable(.{
+        .name = name,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/build/wrap_stdout_to_stderr_cmd.zig"),
+            .target = b.graph.host,
+        }),
+    }));
 
-    // IMPROVE: it would probably be more robust to create a small Zig program (like fetch()) that does this
-    // redirection so we can guarantee cross-platform compatibility and don't have to do the bash vs batch stuff.
-
-    if (builtin.os.tag == .windows) {
-        const batch_wrapper = b.addWriteFiles().add("stdout-to-stderr-wrapper.bat",
-            \\@echo off
-            \\%* 1>&2
-            \\exit /b %errorlevel%
-        );
-        run.addFileArg(batch_wrapper);
-    } else {
-        const bash_wrapper = b.addWriteFiles().add("stdout-to-stderr-wrapper.sh",
-            \\#!/usr/bin/env bash
-            \\exec "$@" >&2
-        );
-        if (target != null and target.?.os.tag == .windows) {
-            if (builtin.os.tag == .linux and b.enable_wine) {
-                run.addArg("bash");
-                run.addFileArg(bash_wrapper);
-                run.addArg("wine64");
-            } else {
-                // It's probably not going to work, but we can try natively. At any rate, we are deferring the
-                // error to later when the actual command is run (which might never happen).
-                run.addArg("bash");
-                run.addFileArg(bash_wrapper);
-            }
-        } else {
-            // macOS or Linux - use system pluginval
-            run.addArg("bash");
-            run.addFileArg(bash_wrapper);
-        }
+    if (builtin.os.tag == .linux and b.enable_wine and target != null and target.?.os.tag == .windows) {
+        run.addArg("wine64");
     }
 
     return run;
 }
-
 
 // A wrapper for turning commands that modify files in-place into commands with input and output files.
 // See wrap_inplace_cmd.zig for more information.
