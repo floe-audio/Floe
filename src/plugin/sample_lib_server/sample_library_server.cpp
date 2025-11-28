@@ -1895,71 +1895,24 @@ static Type& ExtractSuccess(tests::Tester& tester, LoadResult const& result, Loa
 TEST_CASE(TestSampleLibraryServer) {
     struct Fixture {
         [[maybe_unused]] Fixture(tests::Tester&) { thread_pool.Init("pool", 8u); }
-        bool initialised = false;
-        ArenaAllocatorWithInlineStorage<2000> arena {Malloc::Instance()};
-        String test_lib_path;
         ThreadPool thread_pool;
-        ThreadsafeErrorNotifications error_notif {};
-        Array<String, 1> scan_folders;
     };
 
     auto& fixture = CreateOrFetchFixtureObject<Fixture>(tester);
-    if (!fixture.initialised) {
-        fixture.initialised = true;
 
-        auto const lib_dir = (String)path::Join(tester.scratch_arena,
-                                                Array {
-                                                    tests::TempFolder(tester),
-                                                    "floe libraries",
-                                                });
-        // We copy the test library files to a temp directory so that we can modify them without messing up
-        // our test data. And also on Windows WSL, we can watch for directory changes - which doesn't work on
-        // the WSL filesystem.
-        auto _ =
-            Delete(lib_dir, {.type = DeleteOptions::Type::DirectoryRecursively, .fail_if_not_exists = false});
-        {
-            auto const source =
-                (String)path::Join(tester.scratch_arena,
-                                   Array {TestFilesFolder(tester), tests::k_libraries_test_files_subdir});
-
-            auto it = TRY(dir_iterator::RecursiveCreate(tester.scratch_arena, source, {}));
-            DEFER { dir_iterator::Destroy(it); };
-            while (auto entry = TRY(dir_iterator::Next(it, tester.scratch_arena))) {
-                auto const relative_path = entry->subpath;
-                auto const dest_file = path::Join(tester.scratch_arena, Array {lib_dir, relative_path});
-                switch (entry->type) {
-                    case FileType::File: {
-                        if (auto const dir = path::Directory(dest_file)) {
-                            TRY(CreateDirectory(
-                                *dir,
-                                {.create_intermediate_directories = true, .fail_if_exists = false}));
-                        }
-                        TRY(CopyFile(dir_iterator::FullPath(it, *entry, tester.scratch_arena),
-                                     dest_file,
-                                     ExistingDestinationHandling::Overwrite));
-                        break;
-                    }
-                    case FileType::Directory: {
-                        TRY(CreateDirectory(
-                            dest_file,
-                            {.create_intermediate_directories = true, .fail_if_exists = false}));
-                        break;
-                    }
-                }
-            }
-        }
-
-        fixture.test_lib_path = path::Join(fixture.arena, Array {lib_dir, "shared_files_test_lib.mdata"_s});
-
-        fixture.scan_folders[0] = fixture.arena.Clone(lib_dir);
-    }
+    ThreadsafeErrorNotifications error_notif {};
+    auto const libraries_dir = (String)path::Join(tester.scratch_arena,
+                                                  Array {
+                                                      TestFilesFolder(tester),
+                                                      tests::k_libraries_test_files_subdir,
+                                                  });
 
     auto& scratch_arena = tester.scratch_arena;
-    Server server {fixture.thread_pool, {}, fixture.error_notif};
-    SetExtraScanFolders(server, fixture.scan_folders);
+    Server server {fixture.thread_pool, {}, error_notif};
+    SetExtraScanFolders(server, Array {libraries_dir});
 
     auto const open_args = OpenAsyncCommsChannelArgs {
-        .error_notifications = fixture.error_notif,
+        .error_notifications = error_notif,
         .result_added_callback = []() {},
         .library_changed_callback = [](sample_lib::LibraryIdRef) {},
     };
@@ -2229,7 +2182,7 @@ TEST_CASE(TestSampleLibraryServer) {
         AtomicCountdown countdown {(u32)requests.size};
         auto& channel = OpenAsyncCommsChannel(server,
                                               {
-                                                  .error_notifications = fixture.error_notif,
+                                                  .error_notifications = error_notif,
                                                   .result_added_callback = [&]() { countdown.CountDown(); },
                                                   .library_changed_callback = [](sample_lib::LibraryIdRef) {},
                                               });
@@ -2256,7 +2209,7 @@ TEST_CASE(TestSampleLibraryServer) {
                 DEFER { r->Release(); };
                 for (auto const& request : requests) {
                     if (r->id == request.request_id) {
-                        fixture.error_notif.ForEach([&](ThreadsafeErrorNotifications::Item const& n) {
+                        error_notif.ForEach([&](ThreadsafeErrorNotifications::Item const& n) {
                             tester.log.Debug("Error Notification  {}: {}: {}",
                                              n.title,
                                              n.message,
@@ -2299,16 +2252,14 @@ TEST_CASE(TestSampleLibraryServer) {
 
         auto& channel = OpenAsyncCommsChannel(server,
                                               {
-                                                  .error_notifications = fixture.error_notif,
+                                                  .error_notifications = error_notif,
                                                   .result_added_callback = [&]() { countdown.CountDown(); },
                                                   .library_changed_callback = [](sample_lib::LibraryIdRef) {},
                                               });
         DEFER { CloseAsyncCommsChannel(server, channel); };
 
-        // We sporadically rename the library file to test the error handling of the loading thread
-        DynamicArray<char> temp_rename {fixture.test_lib_path, scratch_arena};
-        dyn::AppendSpan(temp_rename, ".foo");
-        bool is_renamed = false;
+        // We sporadically set/clear library folders to test the error handling of the loading thread
+        bool has_scan_folder = false;
 
         for (auto _ : Range(k_num_calls)) {
             SendAsyncLoadRequest(
@@ -2331,11 +2282,11 @@ TEST_CASE(TestSampleLibraryServer) {
 
             // Let's make this a bit more interesting by simulating a file rename mid-move
             if (RandomIntInRange(random_seed, 0, 4) == 0) {
-                if (is_renamed)
-                    auto _ = Rename(temp_rename, fixture.test_lib_path);
+                if (has_scan_folder)
+                    SetExtraScanFolders(server, {});
                 else
-                    auto _ = Rename(fixture.test_lib_path, temp_rename);
-                is_renamed = !is_renamed;
+                    SetExtraScanFolders(server, Array {libraries_dir});
+                has_scan_folder = !has_scan_folder;
             }
 
             // Additionally, let's release one the results to test ref-counting/reuse
