@@ -680,11 +680,14 @@ pub fn build(b: *std.Build) void {
             npm_install.setCwd(b.path("website"));
             npm_install.expectExitCode(0);
 
+            const create_api = CreateWebsiteApiFiles.create(b);
+
             const run = std_extras.createCommandWithStdoutToStderr(b, builtin.target, "run docusaurus build");
             run.addArgs(&.{ "npm", "run", "build" });
             run.setCwd(b.path("website"));
             run.step.dependOn(steps.website_gen_step);
             run.step.dependOn(&npm_install.step);
+            run.step.dependOn(&create_api.step);
             run.expectExitCode(0);
             steps.website_build_step.dependOn(&run.step);
         }
@@ -3042,3 +3045,65 @@ fn addWindowsEmbedInfo(step: *std.Build.Step.Compile, info: struct {
 fn targetCanRunNatively(target: std.Target) bool {
     return target.cpu.arch == builtin.cpu.arch and target.os.tag == builtin.os.tag;
 }
+
+const CreateWebsiteApiFiles = struct {
+    step: std.Build.Step,
+    latest_stable: std.Build.LazyPath,
+    latest_edge: std.Build.LazyPath,
+    api_dir: std.Build.LazyPath,
+
+    pub fn create(b: *std.Build) *CreateWebsiteApiFiles {
+        const latest_release_args = [_][]const u8{
+            "gh", "release", "list", "--limit", "1", "--json", "tagName", "--jq", ".[].tagName",
+        };
+        const latest_stable = b.addSystemCommand(
+            latest_release_args ++ &[_][]const u8{"--exclude-pre-releases"},
+        ).captureStdOut();
+        const latest_edge = b.addSystemCommand(&latest_release_args).captureStdOut();
+
+        const self = b.allocator.create(CreateWebsiteApiFiles) catch @panic("OOM");
+        self.* = .{
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .name = "Make website API files",
+                .owner = b,
+                .makeFn = make,
+            }),
+            .latest_stable = latest_stable,
+            .latest_edge = latest_edge,
+            .api_dir = b.path("website/static/api/v1"),
+        };
+
+        self.latest_stable.addStepDependencies(&self.step);
+        self.latest_edge.addStepDependencies(&self.step);
+        self.api_dir.addStepDependencies(&self.step);
+
+        return self;
+    }
+
+    fn make(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) !void {
+        _ = make_options;
+        const self: *CreateWebsiteApiFiles = @fieldParentPtr("step", step);
+        const b = step.owner;
+
+        const dir = self.api_dir.getPath3(b, step);
+        try dir.makePath(".");
+
+        try dir.root_dir.handle.writeFile(.{
+            .sub_path = dir.joinString(b.allocator, "version") catch @panic("OOM"),
+            .data = b.fmt(
+                \\latest={s}
+                \\edge={s}
+            , .{
+                try readWholeFile(step, self.latest_stable),
+                try readWholeFile(step, self.latest_edge),
+            }),
+        });
+    }
+
+    fn readWholeFile(step: *std.Build.Step, path: std.Build.LazyPath) ![]const u8 {
+        const p = path.getPath3(step.owner, step);
+        const file_data = try p.root_dir.handle.readFileAlloc(step.owner.allocator, p.sub_path, 100);
+        return std.mem.trim(u8, file_data, "\n\r \t");
+    }
+};
