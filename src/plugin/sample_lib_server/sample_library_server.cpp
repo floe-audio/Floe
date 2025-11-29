@@ -72,7 +72,7 @@ struct PendingLibraryJobs {
 
     u64 server_thread_id;
     ThreadPool& thread_pool;
-    WorkSignaller& work_signaller;
+    Semaphore& work_signaller;
     Atomic<u32>& num_uncompleted_jobs;
     ScanFolders& folders;
 
@@ -465,7 +465,7 @@ static bool UpdateLibraryJobs(Server& server,
             dirs.ToOwnedSpan();
         });
 
-        // we buffer these up so we don't spam the channels with notifications
+        // We buffer these up so we don't spam the channels with notifications.
         DynamicArray<LibrariesAtomicList::Node*> libraries_that_changed {scratch_arena};
 
         if (auto const outcome = PollDirectoryChanges(*watcher,
@@ -561,7 +561,7 @@ static bool UpdateLibraryJobs(Server& server,
                                                  lib.file_format_specifics.tag);
                             } else if (path::IsWithinDirectory(full_path, lib_dir)) {
                                 if (path::Equal(path::Extension(full_path), ".lua")) {
-                                    // If the file is a Lua file, it's probably a file used by the main lua
+                                    // If the file is a Lua file, it's probably a file used by the main Lua
                                     // file. We need to rescan the library.
                                     ReadLibraryAsync(pending_library_jobs,
                                                      server.libraries,
@@ -588,7 +588,7 @@ static bool UpdateLibraryJobs(Server& server,
             NotifyAllChannelsOfLibraryChange(server, l->value.lib->Id());
     }
 
-    // remove libraries that are not in any active scan-folders
+    // Remove libraries that are not in any active scan-folders.
     for (auto it = server.libraries.begin(); it != server.libraries.end();) {
         auto const& lib = *it->value.lib;
 
@@ -693,7 +693,7 @@ ListedImpulseResponse::~ListedImpulseResponse() {
 struct ThreadPoolArgs {
     ThreadPool& pool;
     AtomicCountdown& num_thread_pool_jobs;
-    WorkSignaller& completed_signaller;
+    Semaphore& completed_signaller;
 };
 
 static void
@@ -1486,7 +1486,7 @@ static void ServerThreadProc(Server& server) {
 
         while (true) {
             // We have a timeout because we want to check for directory watching events.
-            server.work_signaller.WaitUntilSignalledOrSpurious(250u);
+            server.work_signaller.TimedWait(250 * 100);
 
             if (!PRODUCTION_BUILD &&
                 server.request_debug_dump_current_state.Exchange(false, RmwMemoryOrder::Relaxed)) {
@@ -1555,7 +1555,7 @@ static void ServerThreadProc(Server& server) {
 
 inline String ToString(EmbeddedString s) { return {s.data, s.size}; }
 
-// not threadsafe
+// Not thread-safe
 static sample_lib::Library* BuiltinLibrary() {
     static constexpr String k_icon_path = "builtin-library-icon";
     static constexpr String k_background_path = "builtin-library-background";

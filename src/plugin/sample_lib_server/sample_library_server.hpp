@@ -280,7 +280,7 @@ struct Server {
     u64 server_thread_id {};
     Atomic<bool> end_thread {false};
     ThreadsafeQueue<detail::QueuedRequest> request_queue {PageAllocator::Instance()};
-    WorkSignaller work_signaller {};
+    Semaphore work_signaller {};
     Atomic<bool> request_debug_dump_current_state {false};
 
     // IMPROVE: we can set limits on some things here: we know there's only going to be
