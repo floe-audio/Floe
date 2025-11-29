@@ -520,9 +520,7 @@ static InstallJob::State DoJobPhase1(InstallJob& job) {
                     sample_lib_server::RequestScanningOfUnscannedFolders(job.sample_lib_server);
 
                     auto const succeed =
-                        WaitIfValueIsExpectedStrong(job.sample_lib_server.is_scanning_libraries,
-                                                    true,
-                                                    120u * 1000);
+                        sample_lib_server::WaitIfLibrariesAreLoading(job.sample_lib_server, 120u * 1000);
                     if (!succeed) {
                         ReportError(ErrorLevel::Error,
                                     SourceLocationHash(),

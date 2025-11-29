@@ -231,16 +231,12 @@ struct ScanFolder {
     enum class State { NotScanned, RescanRequested, Scanning, ScannedSuccessfully, ScanFailed };
     DynamicArray<char> path {Malloc::Instance()};
     Source source {};
-    Atomic<State> state {State::NotScanned};
+    bool active {};
+    State state {State::NotScanned};
 };
 
-struct ScanFolders {
-    using Folders = DynamicArrayBounded<ScanFolder*, k_max_extra_scan_folders + 1>;
-    Mutex mutex;
-    ArenaAllocator folder_arena {PageAllocator::Instance()};
-    ArenaList<ScanFolder> folder_allocator {};
-    Folders folders; // active folders
-};
+// The first folder is the AlwaysScannedFolder.
+using ScanFolders = Array<MutexProtected<ScanFolder>, k_max_extra_scan_folders + 1>;
 
 struct QueuedRequest {
     RequestId id;
@@ -265,7 +261,6 @@ struct Server {
     Atomic<u64> total_bytes_used_by_samples {}; // filled by the server thread
     Atomic<u32> num_insts_loaded {};
     Atomic<u32> num_samples_loaded {};
-    Atomic<u32> is_scanning_libraries {}; // you can use WaitIfValueIsExpected
 
     // private
     detail::ScanFolders scan_folders;
@@ -360,6 +355,9 @@ void RequestScanningOfUnscannedFolders(Server& server);
 
 // [threadsafe]
 void RescanFolder(Server& server, String folder);
+
+// [threadsafe]
+bool WaitIfLibrariesAreLoading(Server& server, Optional<u32> timeout);
 
 } // namespace sample_lib_server
 
