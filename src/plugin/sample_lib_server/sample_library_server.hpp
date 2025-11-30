@@ -228,11 +228,10 @@ using LibrariesAtomicList = AtomicRefList<ListedLibrary>;
 
 struct ScanFolder {
     enum class Source { AlwaysScannedFolder, ExtraFolder };
-    enum class State { NotScanned, RescanRequested, Scanning, ScannedSuccessfully, ScanFailed };
+    enum State : u32 { Inactive, NotScanned, RescanRequested, Scanning, ScannedSuccessfully, ScanFailed };
     DynamicArray<char> path {Malloc::Instance()};
     Source source {};
-    bool active {};
-    State state {State::NotScanned};
+    Atomic<u32> state {Inactive}; // Only modified under mutex, but atomic for futex waits.
 };
 
 // The first folder is the AlwaysScannedFolder.
