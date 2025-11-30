@@ -270,7 +270,7 @@ struct Server {
     // Connection-independent errors. If we have access to a channel, we post to the channel's
     // error_notifications instead of this.
     ThreadsafeErrorNotifications& error_notifications;
-    Atomic<u32> num_uncompleted_library_jobs {0};
+    Atomic<u32> libraries_loading {false};
     ThreadPool& thread_pool;
     Atomic<RequestId> request_id_counter {};
     ArenaAllocator channels_arena {Malloc::Instance()};

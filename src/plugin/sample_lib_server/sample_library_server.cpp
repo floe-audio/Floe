@@ -73,7 +73,7 @@ struct PendingLibraryJobs {
     u64 server_thread_id;
     ThreadPool& thread_pool;
     Semaphore& work_signaller;
-    Atomic<u32>& num_uncompleted_jobs;
+    Atomic<u32> num_uncompleted_jobs {0};
     ScanFolders& folders;
 
     Mutex job_mutex;
@@ -300,6 +300,18 @@ static bool UpdateLibraryJobs(Server& server,
         if (scan_job) AddAsyncJob(pending_library_jobs, server.libraries, scan_job);
     }
 
+    // Update the libraries_loading flag - used to indicate to other threads that libraries are being loaded.
+    // We use the DEFER to ensure that the flag is cleared only after all library-related processing has
+    // completed, including populating libraries_by_id.
+    if (pending_library_jobs.num_uncompleted_jobs.Load(LoadMemoryOrder::Acquire) != 0)
+        server.libraries_loading.Store(true, StoreMemoryOrder::Release);
+    DEFER {
+        if (pending_library_jobs.num_uncompleted_jobs.Load(LoadMemoryOrder::Acquire) == 0) {
+            server.libraries_loading.Store(false, StoreMemoryOrder::Release);
+            WakeWaitingThreads(server.libraries_loading, NumWaitingThreads::All);
+        }
+    };
+
     // Handle async jobs that have completed.
     for (auto node = pending_library_jobs.jobs.Load(LoadMemoryOrder::Acquire); node != nullptr;
          node = node->next) {
@@ -308,8 +320,7 @@ static bool UpdateLibraryJobs(Server& server,
 
         DEFER {
             node->result_handled = true;
-            if (pending_library_jobs.num_uncompleted_jobs.SubFetch(1, RmwMemoryOrder::AcquireRelease) == 0)
-                WakeWaitingThreads(pending_library_jobs.num_uncompleted_jobs, NumWaitingThreads::All);
+            pending_library_jobs.num_uncompleted_jobs.FetchSub(1, RmwMemoryOrder::AcquireRelease);
         };
         auto const& job = *node;
         switch (job.data.tag) {
@@ -1489,7 +1500,6 @@ static void ServerThreadProc(Server& server) {
             .server_thread_id = server.server_thread_id,
             .thread_pool = server.thread_pool,
             .work_signaller = server.work_signaller,
-            .num_uncompleted_jobs = server.num_uncompleted_library_jobs,
             .folders = server.scan_folders,
         };
 
@@ -1732,12 +1742,14 @@ bool WaitIfLibrariesAreLoading(Server& server, Optional<u32> timeout) {
     Stopwatch stopwatch;
 
     while (true) {
-        if (timeout && stopwatch.MillisecondsElapsed() >= *timeout) return false;
+        auto const elapsed = stopwatch.MillisecondsElapsed();
+        if (timeout && elapsed >= *timeout) return false;
 
-        // Wait if there are any library jobs.
-        if (auto const num_jobs = server.num_uncompleted_library_jobs.Load(LoadMemoryOrder::Acquire);
-            num_jobs != 0) {
-            WaitIfValueIsExpected(server.num_uncompleted_library_jobs, num_jobs, 100u);
+        // Wait if there are any libraries loading.
+        if (auto const loading = server.libraries_loading.Load(LoadMemoryOrder::Acquire); loading != 0) {
+            WaitIfValueIsExpected(server.libraries_loading,
+                                  loading,
+                                  timeout ? CheckedCast<u32>(*timeout - elapsed) : k_nullopt);
             continue; // Re-check all conditions.
         }
 
@@ -1748,7 +1760,9 @@ bool WaitIfLibrariesAreLoading(Server& server, Optional<u32> timeout) {
                 auto& atomic_state = protected_f.GetWithoutMutexProtection().state;
                 auto const state = atomic_state.Load(LoadMemoryOrder::Acquire);
                 if (state == ScanFolder::State::RescanRequested || state == ScanFolder::State::Scanning) {
-                    WaitIfValueIsExpected(atomic_state, state, 100u);
+                    WaitIfValueIsExpected(atomic_state,
+                                          state,
+                                          timeout ? CheckedCast<u32>(*timeout - elapsed) : k_nullopt);
                     any_scanning = true;
                     break;
                 }
