@@ -485,6 +485,7 @@ pub fn build(b: *std.Build) void {
     };
 
     b.default_step = steps.compile_all_step;
+    steps.install_all_step.dependOn(b.getInstallStep());
 
     const floe_version_string = blk: {
         var ver: []const u8 = b.build_root.handle.readFileAlloc(b.allocator, "version.txt", 256) catch @panic("version.txt error");
