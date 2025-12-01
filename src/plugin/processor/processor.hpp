@@ -31,25 +31,61 @@
 #include "processing_utils/volume_fade.hpp"
 #include "voices.hpp"
 
-enum class ParamEventForAudioThreadType : u8 {
-    ParamChanged,
-    ParamGestureBegin,
-    ParamGestureEnd,
-};
+struct ParamEventForAudioThread {
+    struct Payload {
+        f32 value {};
+        u32 active : 1 = false;
+        u32 value_changed : 1 = false;
+        u32 host_should_record : 1 = false;
+        u32 send_to_host : 1 = false;
+        u32 gui_gesture_begin : 1 = false;
+        u32 gui_gesture_end : 1 = false;
+    };
 
-struct MainThreadChangedParam {
-    f32 value;
-    ParamIndex param;
-    bool host_should_not_record;
-    bool send_to_host;
-};
+    // Audio thread.
+    Optional<Payload> Consume() {
+        auto const p = payload.Load(LoadMemoryOrder::Relaxed);
+        if (!(p.active)) return k_nullopt;
 
-struct GuiStartedChangingParam {
-    ParamIndex param;
-};
+        return payload.Exchange({}, RmwMemoryOrder::Acquire);
+    }
 
-struct GuiEndedChangingParam {
-    ParamIndex param;
+    // Audio thread.
+    void Clear() { payload.Store({}, StoreMemoryOrder::Relaxed); }
+
+    struct ValueChangedOptions {
+        bool send_to_host = false;
+        bool host_should_record = false;
+    };
+
+    // Main thread.
+    // We deliberately take an additive approach as much as possible rather than overwriting fields so that
+    // multiple changes can be safely combined.
+    void AddValueChanged(f32 value, ValueChangedOptions const& options) {
+        auto p = payload.Load(LoadMemoryOrder::Relaxed);
+        p.value = value;
+        p.active = true;
+        p.value_changed = true;
+        if (options.send_to_host) p.send_to_host = true;
+        if (options.host_should_record) p.host_should_record = true;
+        payload.Store(p, StoreMemoryOrder::Release);
+    }
+
+    enum class GuiGestureType { Begin, End };
+
+    // Main thread.
+    // Additive approach (see above).
+    void AddGuiGesture(GuiGestureType type) {
+        auto p = payload.Load(LoadMemoryOrder::Relaxed);
+        p.active = true;
+        switch (type) {
+            case GuiGestureType::Begin: p.gui_gesture_begin = true; break;
+            case GuiGestureType::End: p.gui_gesture_end = true; break;
+        }
+        payload.Store(p, StoreMemoryOrder::Release);
+    }
+
+    Atomic<Payload> payload {};
 };
 
 enum class EventForAudioThreadType : u8 {
@@ -109,12 +145,6 @@ using EventForAudioThread = TaggedUnion<
     TypeAndTag<AppendMacroDestination, EventForAudioThreadType::AppendMacroDestination>,
     TypeAndTag<RemoveMacroDestination, EventForAudioThreadType::RemoveMacroDestination>,
     TypeAndTag<MacroDestinationValueChanged, EventForAudioThreadType::MacroDestinationValueChanged>>;
-
-using ParamEventForAudioThread =
-    TaggedUnion<ParamEventForAudioThreadType,
-                TypeAndTag<MainThreadChangedParam, ParamEventForAudioThreadType::ParamChanged>,
-                TypeAndTag<GuiStartedChangingParam, ParamEventForAudioThreadType::ParamGestureBegin>,
-                TypeAndTag<GuiEndedChangingParam, ParamEventForAudioThreadType::ParamGestureEnd>>;
 
 using EffectsArray = Array<Effect*, k_num_effect_types>;
 
@@ -253,7 +283,7 @@ struct AudioProcessor {
     Bitset<k_num_layers> mute {};
 
     AtomicQueue<EventForAudioThread, 128> events_for_audio_thread;
-    AtomicQueue<ParamEventForAudioThread, NextPowerOf2(k_num_parameters * 2)> param_events_for_audio_thread;
+    Array<ParamEventForAudioThread, k_num_parameters> param_events_for_audio_thread;
 
     Bitset<k_num_parameters> pending_param_changes;
 

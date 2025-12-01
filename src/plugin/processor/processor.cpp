@@ -629,7 +629,8 @@ static void ProcessorHandleChanges(AudioProcessor& processor, ProcessBlockChange
 void ParameterJustStartedMoving(AudioProcessor& processor, ParamIndex index) {
     ASSERT(g_is_logical_main_thread);
 
-    processor.param_events_for_audio_thread.Push(GuiStartedChangingParam {.param = index});
+    processor.param_events_for_audio_thread[ToInt(index)].AddGuiGesture(
+        ParamEventForAudioThread::GuiGestureType::Begin);
 
     if (auto host_params = HostsParamsExtension(processor)) host_params->request_flush(&processor.host);
 }
@@ -637,7 +638,8 @@ void ParameterJustStartedMoving(AudioProcessor& processor, ParamIndex index) {
 void ParameterJustStoppedMoving(AudioProcessor& processor, ParamIndex index) {
     ASSERT(g_is_logical_main_thread);
 
-    processor.param_events_for_audio_thread.Push(GuiEndedChangingParam {.param = index});
+    processor.param_events_for_audio_thread[ToInt(index)].AddGuiGesture(
+        ParamEventForAudioThread::GuiGestureType::End);
 
     if (auto host_params = HostsParamsExtension(processor)) host_params->request_flush(&processor.host);
 }
@@ -648,12 +650,12 @@ bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, P
     bool const changed = processor.main_params.values[ToInt(index)] != value;
     processor.main_params.SetLinearValue(index, value);
 
-    processor.param_events_for_audio_thread.Push(MainThreadChangedParam {
-        .value = value,
-        .param = index,
-        .host_should_not_record = flags.host_should_not_record != 0,
-        .send_to_host = true,
-    });
+    processor.param_events_for_audio_thread[ToInt(index)].AddValueChanged(
+        value,
+        {
+            .send_to_host = true,
+            .host_should_record = !flags.host_should_not_record,
+        });
 
     if (auto host_params = HostsParamsExtension(processor))
         host_params->request_flush(&processor.host);
@@ -751,7 +753,8 @@ f32 AdjustedLinearValue(Parameters const& params,
 
 static void FlushEventsForAudioThread(AudioProcessor& processor) {
     auto _ = processor.events_for_audio_thread.PopAll();
-    auto _ = processor.param_events_for_audio_thread.PopAll();
+    for (auto& p : processor.param_events_for_audio_thread)
+        p.Clear();
 }
 
 static void Deactivate(AudioProcessor& processor) {
@@ -859,20 +862,13 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
         if (auto host_params = HostsParamsExtension(processor))
             host_params->rescan(&processor.host, CLAP_PARAM_RESCAN_VALUES);
 
-        UninitialisedArray<ParamEventForAudioThread, k_num_parameters> param_events;
-        for (auto const param_index : Range(k_num_parameters)) {
-            PLACEMENT_NEW(&param_events[param_index])
-            ParamEventForAudioThread {MainThreadChangedParam {
-                .value = state.param_values[param_index],
-                .param = (ParamIndex)param_index,
-                .host_should_not_record = true,
-                .send_to_host = false, // The host already knows because of the rescan above.
-            }};
-        }
-        if (!processor.param_events_for_audio_thread.Push(param_events)) {
-            ReportError(ErrorLevel::Warning,
-                        SourceLocationHash(),
-                        "ApplyNewState: failed to push all param events to audio thread");
+        for (auto [param_index, p] : Enumerate(processor.param_events_for_audio_thread)) {
+            p.AddValueChanged(
+                state.param_values[param_index],
+                {
+                    .send_to_host = false, // The host already knows because of the rescan above.
+                    .host_should_record = false,
+                });
         }
     }
 
@@ -976,8 +972,7 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
 
     // Update the audio-thread representations of the parameters.
     {
-        processor.events_for_audio_thread.PopAll();
-        processor.param_events_for_audio_thread.PopAll();
+        FlushEventsForAudioThread(processor);
         processor.audio_params = processor.main_params;
         processor.audio_macro_destinations = processor.main_macro_destinations;
         ProcessBlockChanges changes {
@@ -1278,66 +1273,63 @@ static void ConsumeParamEventsFromMainThread(AudioProcessor& processor,
                                              u32 frame_index,
                                              ProcessBlockChanges& changes) {
     ZoneScoped;
-    for (auto const& e : processor.param_events_for_audio_thread.PopAll()) {
-        switch (e.tag) {
-            case ParamEventForAudioThreadType::ParamChanged: {
-                auto const& value = e.Get<MainThreadChangedParam>();
+    for (auto [param_index, e] : Enumerate(processor.param_events_for_audio_thread)) {
+        auto const maybe_p = e.Consume();
+        if (!maybe_p) continue;
+        auto const& p = *maybe_p;
 
-                if (value.send_to_host) {
-                    clap_event_param_value const event {
-                        .header {
-                            .size = sizeof(event),
-                            .time = frame_index,
-                            .type = CLAP_EVENT_PARAM_VALUE,
-                            .flags = CLAP_EVENT_IS_LIVE |
-                                     (value.host_should_not_record ? (u32)CLAP_EVENT_DONT_RECORD : 0),
-                        },
-                        .param_id = ParamIndexToId(value.param),
-                        .note_id = -1,
-                        .port_index = -1,
-                        .channel = -1,
-                        .key = -1,
-                        .value = (f64)value.value,
-                    };
-                    out.try_push(&out, &event.header);
-                }
+        ASSERT_HOT(p.active);
 
-                processor.audio_params.values[ToInt(value.param)] = value.value;
-                changes.changed_params.changed.Set(ToInt(value.param));
-                break;
-            }
-            case ParamEventForAudioThreadType::ParamGestureBegin: {
-                auto const& gesture = e.Get<GuiStartedChangingParam>();
+        if (p.gui_gesture_begin) {
+            clap_event_param_gesture const event {
+                .header {
+                    .size = sizeof(event),
+                    .time = frame_index,
+                    .type = CLAP_EVENT_PARAM_GESTURE_BEGIN,
+                    .flags = CLAP_EVENT_IS_LIVE,
+                },
+                .param_id = ParamIndexToId((ParamIndex)param_index),
+            };
 
-                clap_event_param_gesture const event {
+            out.try_push(&out, &event.header);
+        }
+
+        if (p.value_changed) {
+            if (p.send_to_host) {
+                clap_event_param_value const event {
                     .header {
                         .size = sizeof(event),
                         .time = frame_index,
-                        .type = CLAP_EVENT_PARAM_GESTURE_BEGIN,
-                        .flags = CLAP_EVENT_IS_LIVE,
+                        .type = CLAP_EVENT_PARAM_VALUE,
+                        .flags =
+                            CLAP_EVENT_IS_LIVE | (p.host_should_record ? 0 : (u32)CLAP_EVENT_DONT_RECORD),
                     },
-                    .param_id = ParamIndexToId(gesture.param),
+                    .param_id = ParamIndexToId((ParamIndex)param_index),
+                    .note_id = -1,
+                    .port_index = -1,
+                    .channel = -1,
+                    .key = -1,
+                    .value = (f64)p.value,
                 };
-
                 out.try_push(&out, &event.header);
-                break;
             }
-            case ParamEventForAudioThreadType::ParamGestureEnd: {
-                auto const& gesture = e.Get<GuiEndedChangingParam>();
 
-                clap_event_param_gesture const event {
-                    .header {
-                        .size = sizeof(event),
-                        .time = frame_index,
-                        .type = CLAP_EVENT_PARAM_GESTURE_END,
-                        .flags = CLAP_EVENT_IS_LIVE,
-                    },
-                    .param_id = ParamIndexToId(gesture.param),
-                };
+            processor.audio_params.values[param_index] = p.value;
+            changes.changed_params.changed.Set(param_index);
+        }
 
-                out.try_push(&out, &event.header);
-                break;
-            }
+        if (p.gui_gesture_end) {
+            clap_event_param_gesture const event {
+                .header {
+                    .size = sizeof(event),
+                    .time = frame_index,
+                    .type = CLAP_EVENT_PARAM_GESTURE_END,
+                    .flags = CLAP_EVENT_IS_LIVE,
+                },
+                .param_id = ParamIndexToId((ParamIndex)param_index),
+            };
+
+            out.try_push(&out, &event.header);
         }
     }
 }
