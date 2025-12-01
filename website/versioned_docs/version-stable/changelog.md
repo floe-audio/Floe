@@ -14,6 +14,13 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 1.1.0
+- Major infrastructure improvements to how we build and release Floe.
+- Fix possible crash related to file paths on Windows.
+- Fix possible crash related to error reporting.
+- Fix possible package installation failure
+- Fix sometimes not correctly loading in Reaper or FL Studio, leaving UI looking correct but audio not reflective of the current state.
+
 ## 1.1.0-beta.1
 - **Browser UI overhaul** (instruments, presets, IRs)
   - Filtering mode is now 'one' mode by default, and alternate modes for 'AND' or 'OR' filtering are selected in the 3-dots menu

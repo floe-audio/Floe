@@ -1,0 +1,79 @@
+---
+id: install-packages
+title: Install Packages
+hide_table_of_contents: true
+description: How to install Floe packages containing sample libraries and presets
+---
+
+<!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: CC-BY-SA-4.0
+-->
+
+import data from "@site/static/generated-data.json";
+
+Floe can install sample libraries and presets from ZIP files called _Floe packages_.
+
+### At a glance
+
+Download your package ZIP file(s). **Don't extract them**. Instead, click the 'Install package' button in Floe's Preferences panel. Direct it to the ZIP file.
+
+<video width="100%" controls>
+  <source src="/images/package-installation.mp4" type="video/mp4" />
+  Your browser does not support the video tag.
+</video>
+
+### Full instructions
+
+Firstly, if you haven't already, [download & install Floe](/download). Next, load up the Floe plugin in your DAW.
+
+Download your chosen package(s) (ZIP files containing sample libraries and presets). **Don't extract them.**
+
+To install:
+1. Open Floe's Preferences panel (<FAIcon icon="fa-solid fa-cog" /> cog icon)
+2. Go to the Packages tab
+3. Click 'Install package' and select your ZIP file(s)
+4. Done - libraries/presets are immediately available
+
+The package ZIP files can be deleted after installation. No restart required.
+
+![Floe's GUI](/images/install-package-gui.png)
+
+## Advanced Details
+
+### Install to a custom location
+1. Create custom folders using Finder/File Explorer such as "Floe Libraries" and "Floe Presets"
+1. Add them to Floe's preferences under their respective heading
+1. Select them on the Package _install folder_ menus
+
+#### Full details
+By default, Floe installs content to standard folders on your main drive. This can be changed though by selecting custom folders in the Preferences panel's Packages tab.
+
+If you've not done this before, the dropdowns for _install folder_ menus might only show 'Default' locations. You need to first tell Floe about your custom folders and then select them here.
+
+To do that, use your file browser program (Finder/File Explorer) and create the folder(s) where you want to keep Floe content and add them on Floe's preferences. 
+
+Floe uses separate folders for sample libraries versus presets, so you might want to create one for each. For example, on your _SAMPLES_ hard drive, create folders: "Floe Libraries" and "Floe Presets". Add these 2 folders on Floe's preferences panels and select them as the default installation locations.
+
+Further details about folder management can be found on the [Folders](../key-concepts/folders) page.
+
+### How 'Install package' works
+
+Floe handles the installation process intelligently. It will check existing installations across all known folders, check for conflicts and handle upgrades. It will even detect if you've modified a library and give you the option to keep your modified version. It will ask you about skipping or overwriting if it needs too. It will never duplicate libraries unnecessarily.
+
+### Manually installing
+
+Instead of using the 'install package' button, you can manually install libraries and presets by extracting the ZIP file into the correct folders.
+
+1. Extract the package ZIP file.
+1. Open Floe.
+1. Open the Preferences panel using the gear icon at the top.
+1. Open the Folders tab.
+1. Here you can control which folders Floe looks for libraries and presets in. Copy/move the contents of the package's Libraries into one of Floe's library folders, and the same for Presets into one Floe's presets folder.
+1. Done. No need to restart Floe.
+
+### Uninstalling packages
+Floe doesn't track packages - they are just the installation format. However, you can uninstall libraries and presets. Visit the [Uninstalling](./uninstalling) page for full instructions.
+
+### Mirage Compatibility
+If the package is a [Mirage](../about-the-project/mirage) library and you are getting errors about missing Mirage Compatibility, [download Mirage Compatibility Package.zip](https://github.com/FrozenPlain/floe-mirage-compatibility/releases/download/v1.1/FrozenPlain.-.Mirage.Compatibility.Package.zip) and install it like any other package.
