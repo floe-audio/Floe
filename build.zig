@@ -1319,7 +1319,8 @@ fn doTarget(
 
     const embedded_files = blk: {
         var opts = module_options;
-        opts.root_source_file = b.path("build_resources/embedded_files.zig");
+        const root_path = "build_resources/embedded_files.zig";
+        opts.root_source_file = b.path(root_path);
         const obj = b.addObject(.{
             .name = "embedded_files",
             .root_module = b.createModule(opts),
@@ -1327,8 +1328,20 @@ fn doTarget(
         {
             var embedded_files_options = b.addOptions();
             if (build_context.dep_floe_logos) |logos| {
-                embedded_files_options.addOptionPath("logo_file", logos.path("rasterized/plugin-gui-logo.png"));
-                embedded_files_options.addOptionPath("icon_file", logos.path("rasterized/icon-background-256px.png"));
+                const update = b.addUpdateSourceFiles();
+
+                // Zig's @embedFile only works with paths lower than the root_source_file, so we have to copy them
+                // into a subfolder and work out the relative paths.
+                const logo_path = "build_resources/external/logo.png";
+                update.addCopyFileToSource(logos.path("rasterized/plugin-gui-logo.png"), logo_path);
+                const icon_path = "build_resources/external/icon.png";
+                update.addCopyFileToSource(logos.path("rasterized/icon-background-256px.png"), icon_path);
+                embedded_files_options.step.dependOn(&update.step);
+
+                const root_dir = std.fs.path.dirname(root_path).?;
+
+                embedded_files_options.addOption(?[]const u8, "logo_file", std.fs.path.relative(b.allocator, root_dir, logo_path) catch unreachable);
+                embedded_files_options.addOption(?[]const u8, "icon_file", std.fs.path.relative(b.allocator, root_dir, icon_path) catch unreachable);
             } else {
                 embedded_files_options.addOption(?[]const u8, "logo_file", null);
                 embedded_files_options.addOption(?[]const u8, "icon_file", null);
