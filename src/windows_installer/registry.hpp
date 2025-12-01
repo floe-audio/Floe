@@ -51,9 +51,7 @@ PUBLIC Optional<String> UninstallerPath(ArenaAllocator& arena, bool create) {
         }
     }
 
-    path = path::JoinAppendResizeAllocation(arena,
-                                            path,
-                                            Array {path::Filename(UNINSTALLER_PATH_RELATIVE_BUILD_ROOT)});
+    path = path::JoinAppendResizeAllocation(arena, path, Array {path::Filename(UNINSTALLER_BINARY_NAME)});
 
     return path;
 }

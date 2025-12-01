@@ -964,6 +964,8 @@ ConsumeAndSubmitErrorFiles(Sentry& sentry, String folder, ArenaAllocator& scratc
             auto const newline = Find(envelope_without_header, '\n');
             if (!newline) return detail::SubmitFileResult::DeleteFile; // File is invalid, delete it.
             envelope_without_header.RemovePrefix(*newline + 1);
+            if (envelope_without_header.size == 0)
+                return detail::SubmitFileResult::DeleteFile; // File is invalid, delete it.
 
             DynamicArray<char> response {scratch_arena};
 

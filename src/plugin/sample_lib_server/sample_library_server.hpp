@@ -228,19 +228,14 @@ using LibrariesAtomicList = AtomicRefList<ListedLibrary>;
 
 struct ScanFolder {
     enum class Source { AlwaysScannedFolder, ExtraFolder };
-    enum class State { NotScanned, RescanRequested, Scanning, ScannedSuccessfully, ScanFailed };
+    enum State : u32 { Inactive, NotScanned, RescanRequested, Scanning, ScannedSuccessfully, ScanFailed };
     DynamicArray<char> path {Malloc::Instance()};
     Source source {};
-    Atomic<State> state {State::NotScanned};
+    Atomic<u32> state {Inactive}; // Only modified under mutex, but atomic for futex waits.
 };
 
-struct ScanFolders {
-    using Folders = DynamicArrayBounded<ScanFolder*, k_max_extra_scan_folders + 1>;
-    Mutex mutex;
-    ArenaAllocator folder_arena {PageAllocator::Instance()};
-    ArenaList<ScanFolder> folder_allocator {};
-    Folders folders; // active folders
-};
+// The first folder is the AlwaysScannedFolder.
+using ScanFolders = Array<MutexProtected<ScanFolder>, k_max_extra_scan_folders + 1>;
 
 struct QueuedRequest {
     RequestId id;
@@ -265,7 +260,6 @@ struct Server {
     Atomic<u64> total_bytes_used_by_samples {}; // filled by the server thread
     Atomic<u32> num_insts_loaded {};
     Atomic<u32> num_samples_loaded {};
-    Atomic<u32> is_scanning_libraries {}; // you can use WaitIfValueIsExpected
 
     // private
     detail::ScanFolders scan_folders;
@@ -276,7 +270,7 @@ struct Server {
     // Connection-independent errors. If we have access to a channel, we post to the channel's
     // error_notifications instead of this.
     ThreadsafeErrorNotifications& error_notifications;
-    Atomic<u32> num_uncompleted_library_jobs {0};
+    Atomic<u32> libraries_loading {false};
     ThreadPool& thread_pool;
     Atomic<RequestId> request_id_counter {};
     ArenaAllocator channels_arena {Malloc::Instance()};
@@ -285,7 +279,7 @@ struct Server {
     u64 server_thread_id {};
     Atomic<bool> end_thread {false};
     ThreadsafeQueue<detail::QueuedRequest> request_queue {PageAllocator::Instance()};
-    WorkSignaller work_signaller {};
+    Semaphore work_signaller {};
     Atomic<bool> request_debug_dump_current_state {false};
 
     // IMPROVE: we can set limits on some things here: we know there's only going to be
@@ -360,6 +354,9 @@ void RequestScanningOfUnscannedFolders(Server& server);
 
 // [threadsafe]
 void RescanFolder(Server& server, String folder);
+
+// [threadsafe]
+bool WaitIfLibrariesAreLoading(Server& server, Optional<u32> timeout);
 
 } // namespace sample_lib_server
 

@@ -567,28 +567,16 @@ TEST_CASE(TestHostingClap) {
 
     if (!fixture.initialised) {
         fixture.initialised = true;
-        auto const exe_path = TRY(CurrentBinaryPath(tester.scratch_arena));
 
-        String dir = exe_path;
-        for (auto _ : Range(6)) {
-            auto p = path::Directory(dir);
-            if (!p) break;
-            dir = *p;
+        fixture.clap_dso_or_bundle_path = tester.clap_plugin_path;
+        dyn::Append(fixture.clap_dso_or_bundle_path, '\0');
 
-            dyn::Assign(fixture.clap_binary_path, dir);
-            path::JoinAppend(fixture.clap_binary_path, "Floe.clap"_s);
-            if (auto const o = GetFileType(fixture.clap_binary_path); o.HasValue()) {
-                fixture.clap_dso_or_bundle_path = fixture.clap_binary_path;
-                dyn::Append(fixture.clap_dso_or_bundle_path, '\0');
-                if constexpr (IS_MACOS) path::JoinAppend(fixture.clap_binary_path, "Contents/MacOS/Floe"_s);
-                break;
-            } else
-                dyn::Clear(fixture.clap_binary_path);
-        }
-
-        if (!fixture.clap_binary_path.size) {
-            LOG_WARNING("Failed to find Floe.clap");
-            return k_success;
+        auto const abs_clap_path = (String)TRY(AbsolutePath(tester.scratch_arena, tester.clap_plugin_path));
+        if constexpr (IS_MACOS) {
+            fixture.clap_binary_path = abs_clap_path;
+            path::JoinAppend(fixture.clap_binary_path, "Contents/MacOS/Floe"_s);
+        } else {
+            fixture.clap_binary_path = abs_clap_path;
         }
 
         fixture.handle = TRY(LoadLibrary(fixture.clap_binary_path));

@@ -104,6 +104,27 @@ constexpr bool k_running_with_thread_sanitizer = true;
 constexpr bool k_running_with_thread_sanitizer = false;
 #endif
 
+constexpr bool k_production_build =
+#if PRODUCTION_BUILD
+    true;
+#else
+    false;
+#endif
+
+constexpr bool k_optimised_build =
+#if OPTIMISED_BUILD
+    true;
+#else
+    false;
+#endif
+
+constexpr bool k_runtime_safety_checks =
+#if RUNTIME_SAFETY_CHECKS_ON
+    true;
+#else
+    false;
+#endif
+
 // ==========================================================================================================
 struct SourceLocation {
     static SourceLocation Current(char const* file = __builtin_FILE(),

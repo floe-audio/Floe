@@ -311,7 +311,7 @@ Application* CreateApplication(GuiFramework& framework, u32 root_layout_id) {
                 ASSERT(
                     IsEqualToCaseInsensitiveAscii(path::Filename(app->components[i].install_dir), "CLAP"_s));
                 break;
-#ifdef VST3_PLUGIN_PATH_RELATIVE_BUILD_ROOT
+#ifdef VST3_PLUGIN_BINARY_NAME
             case ComponentTypes::VST3:
                 ASSERT(
                     IsEqualToCaseInsensitiveAscii(path::Filename(app->components[i].install_dir), "VST3"_s));

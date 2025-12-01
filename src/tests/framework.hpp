@@ -135,17 +135,6 @@ struct Tester {
     struct TestLogger {
         TestLogger(Tester& tester) : tester(tester) {}
 
-        void InitLogFile() {
-            InitLogFolderIfNeeded();
-            if (auto f = LogFolder()) {
-                PathArena path_arena {Malloc::Instance()};
-                auto seed = RandomSeed();
-                auto const path = path::Join(path_arena, Array {*f, UniqueFilename("test-", "", seed)});
-                auto o = OpenFile(path, FileMode::Write());
-                if (o.HasValue()) file.Emplace(o.ReleaseValue());
-            }
-        }
-
         template <typename... Args>
         void Debug(String format, Args const&... args) {
             Log(LogLevel::Debug, format, args...);
@@ -192,13 +181,6 @@ struct Tester {
                 write(writer, true);
             }
 
-            if (file) {
-                BufferedWriter<Kb(4)> buffered_writer {file->Writer()};
-                auto writer = buffered_writer.Writer();
-                DEFER { buffered_writer.FlushReset(); };
-                write(writer, false);
-            }
-
             if (output_buffer) {
                 auto writer = dyn::WriterFor(*output_buffer);
                 write(writer, false);
@@ -206,7 +188,6 @@ struct Tester {
         }
 
         DynamicArray<char>* output_buffer = nullptr; // Optional.
-        Optional<File> file;
         Tester& tester;
         LogLevel max_level_allowed = LogLevel::Info;
     };
@@ -216,6 +197,7 @@ struct Tester {
     ArenaAllocator scratch_arena {PageAllocator::Instance()};
     FixedSizeAllocator<Kb(8)> capture_buffer {&PageAllocator::Instance()};
     u64 random_seed = RandomSeed();
+    String clap_plugin_path {};
 
     // private
     ArenaAllocator arena {PageAllocator::Instance()};
@@ -235,10 +217,19 @@ struct Tester {
     void* fixture_pointer {};
     DeleteFixturePointer delete_fixture {};
     u16 repeat_tests = 1;
+    Optional<File> gha_annotations_out {};
 };
 
 void RegisterTest(Tester& tester, TestFunction f, String title);
-int RunAllTests(Tester& tester, Span<String> filter_patterns, Optional<String> junit_xml_output_path);
+
+struct RunTestConfig {
+    Span<String> filter_patterns;
+    Optional<String> junit_xml_output_path;
+    Optional<String> gha_annotations_output_path;
+    Optional<String> test_files_folder;
+    Optional<String> clap_plugin_path;
+};
+int RunAllTests(Tester& tester, RunTestConfig const& config);
 void Check(Tester& tester,
            bool expression,
            String message,
@@ -246,14 +237,11 @@ void Check(Tester& tester,
            String file = FromNullTerminated(__builtin_FILE()),
            int line = __builtin_LINE());
 
-constexpr auto k_build_resources_subdir = "build_resources"_s;
-
 String TempFolder(Tester& tester); // exists, writable, unique, deleted on exit
 String TempFilename(Tester& tester); // unique path inside TempFolder(), doesn't exist
 
 String TestFilesFolder(Tester& tester); // this repo's folder that contains test files
 String HumanCheckableOutputFilesFolder(Tester& tester); // place to put files that need manually checking
-Optional<String> BuildResourcesFolder(Tester& tester);
 
 // Create some data that persists for all SUBCASEs rather than being created and destroyed every iteration.
 // You can only have one of these; create a struct with ctor+dtor if you want to wrap multiple objects into

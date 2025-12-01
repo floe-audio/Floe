@@ -21,7 +21,7 @@ void RegisterTest(Tester& tester, TestFunction f, String title) {
 
 String TempFolder(Tester& tester) {
     if (!tester.temp_folder) {
-        auto error_log = StdWriter(StdStream::Out);
+        auto error_log = StdWriter(StdStream::Err);
         tester.temp_folder =
             KnownDirectoryWithSubdirectories(tester.arena,
                                              KnownDirectoryType::Temporary,
@@ -89,13 +89,6 @@ String HumanCheckableOutputFilesFolder(Tester& tester) {
                         *tester.human_checkable_output_files_folder);
     }
     return *tester.human_checkable_output_files_folder;
-}
-
-Optional<String> BuildResourcesFolder(Tester& tester) {
-    if (!tester.build_resources_folder)
-        tester.build_resources_folder.Emplace(
-            SearchUpwardsFromExeForFolder(tester, k_build_resources_subdir));
-    return *tester.build_resources_folder;
 }
 
 void* CreateOrFetchFixturePointer(Tester& tester,
@@ -255,35 +248,6 @@ static ErrorCodeOr<void> WriteJUnitXmlTestResults(Tester& tester, Writer writer,
                             EscapeXmlAttribute(tester.scratch_arena, system_stats.cpu_name))));
         }
 
-        // Add build and runtime configuration flags
-        constexpr bool k_thread_sanitizer =
-#if __has_feature(thread_sanitizer)
-            true;
-#else
-            false;
-#endif
-
-        constexpr bool k_production_build =
-#if PRODUCTION_BUILD
-            true;
-#else
-            false;
-#endif
-
-        constexpr bool k_optimised_build =
-#if OPTIMISED_BUILD
-            true;
-#else
-            false;
-#endif
-
-        constexpr bool k_runtime_safety_checks =
-#if RUNTIME_SAFETY_CHECKS_ON
-            true;
-#else
-            false;
-#endif
-
         // Separate line otherwise we get clang-tidy warnings.
         auto const running_on_valgrind = (bool)RUNNING_ON_VALGRIND;
 
@@ -293,7 +257,7 @@ static ErrorCodeOr<void> WriteJUnitXmlTestResults(Tester& tester, Writer writer,
                                           "      <property name=\"production_build\" value=\"{}\" />\n"
                                           "      <property name=\"optimised_build\" value=\"{}\" />\n"
                                           "      <property name=\"runtime_safety_checks\" value=\"{}\" />\n",
-                                          k_thread_sanitizer,
+                                          k_running_with_thread_sanitizer,
                                           running_on_valgrind,
                                           k_production_build,
                                           k_optimised_build,
@@ -348,22 +312,78 @@ static ErrorCodeOr<void> WriteJUnitXmlTestResults(Tester& tester, Writer writer,
     return k_success;
 }
 
-int RunAllTests(Tester& tester, Span<String> filter_patterns, Optional<String> junit_xml_output_path) {
+static ErrorCodeOr<void> WriteThisBinaryConfigName(Writer writer) {
+    TRY(writer.WriteChars("tests"));
+    if (k_production_build) TRY(writer.WriteChars("-production"));
+    if (k_optimised_build) TRY(writer.WriteChars("-optimised"));
+    if (k_running_with_thread_sanitizer) TRY(writer.WriteChars("-tsan"));
+    if (RUNNING_ON_VALGRIND) TRY(writer.WriteChars("-valgrind"));
+    TRY(writer.WriteChars(IS_WINDOWS ? "-windows"_s : IS_MACOS ? "-macos" : "-linux"));
+    return k_success;
+}
+
+int RunAllTests(Tester& tester, RunTestConfig const& config) {
     DEFER {
         if (tester.temp_folder)
             auto _ = Delete(*tester.temp_folder, {.type = DeleteOptions::Type::DirectoryRecursively});
     };
+
+    // Setup
+    {
+        if (config.test_files_folder.HasValue()) {
+            tester.test_files_folder = *config.test_files_folder;
+        } else if (auto const path = GetEnvironmentVariable("FLOE_TEST_FILES_FOLDER_PATH", tester.arena);
+                   path.HasValue()) {
+            tester.test_files_folder = path.Value();
+        }
+        if (tester.test_files_folder)
+            tester.test_files_folder = TRY_OR(AbsolutePath(tester.arena, *tester.test_files_folder), {
+                tester.log.Error("failed to get absolute path of test files folder {}: {}",
+                                 *tester.test_files_folder,
+                                 error);
+                return 1;
+            });
+
+        if (config.clap_plugin_path.HasValue()) {
+            tester.clap_plugin_path = *config.clap_plugin_path;
+        } else if (auto const path = GetEnvironmentVariable("FLOE_CLAP_PLUGIN_PATH", tester.arena);
+                   path.HasValue()) {
+            tester.clap_plugin_path = path.Value();
+        }
+        if (tester.clap_plugin_path.size)
+            tester.clap_plugin_path = TRY_OR(AbsolutePath(tester.arena, tester.clap_plugin_path), {
+                tester.log.Error("failed to get absolute path of CLAP plugin {}: {}",
+                                 tester.clap_plugin_path,
+                                 error);
+                return 1;
+            });
+
+        if (config.gha_annotations_output_path.HasValue()) {
+            auto const path = config.gha_annotations_output_path.Value();
+            if (auto const dir = path::Directory(path))
+                auto _ = CreateDirectory(*dir, {.create_intermediate_directories = true});
+            tester.gha_annotations_out = TRY_OR(OpenFile(path, FileMode::Write()), {
+                tester.log.Error("failed to open GitHub Actions annotations output file {}: {}", path, error);
+            });
+        }
+    }
 
     TestResults test_results {};
 
     tester.log.Info("Running tests ...");
     tester.log.Info("Valgrind: {}", RUNNING_ON_VALGRIND);
     tester.log.Info("Thread Sanitizer: {}", k_running_with_thread_sanitizer);
+    tester.log.Info("Optimised: {}", k_optimised_build);
     tester.log.Info("Repeat tests: {}", tester.repeat_tests);
-    tester.log.Info("Writing to log file: {}", tester.log.file.HasValue());
-    tester.log.Info("Filter patterns: {}", filter_patterns);
+    tester.log.Info("Filter patterns: {}", config.filter_patterns);
+    tester.log.Info("CLAP plugin path: {}", tester.clap_plugin_path);
+    tester.log.Info("Test files folder: {}",
+                    tester.test_files_folder ? *tester.test_files_folder : "auto-detected"_s);
     tester.log.Info("JUnitXML output path: {}",
-                    junit_xml_output_path.HasValue() ? *junit_xml_output_path : "none"_s);
+                    config.junit_xml_output_path.HasValue() ? *config.junit_xml_output_path : "none"_s);
+    tester.log.Info("GitHub Actions annotations output path: {}",
+                    config.gha_annotations_output_path.HasValue() ? *config.gha_annotations_output_path
+                                                                  : "none"_s);
 
     Stopwatch const overall_stopwatch;
 
@@ -379,9 +399,9 @@ int RunAllTests(Tester& tester, Span<String> filter_patterns, Optional<String> j
         DEFER { suite->time_seconds = run_stopwatch.SecondsElapsed(); };
 
         for (auto& test_case : tester.test_cases) {
-            if (filter_patterns.size) {
+            if (config.filter_patterns.size) {
                 bool matches_any_pattern = false;
-                for (auto const& pattern : filter_patterns) {
+                for (auto const& pattern : config.filter_patterns) {
                     if (MatchWildcard(pattern, test_case.title)) {
                         matches_any_pattern = true;
                         break;
@@ -488,8 +508,7 @@ int RunAllTests(Tester& tester, Span<String> filter_patterns, Optional<String> j
     if (tester.num_warnings == 0)
         tester.log.Info("Warnings: " ANSI_COLOUR_FOREGROUND_GREEN("0"));
     else
-        tester.log.Info("Warnings: " ANSI_COLOUR_SET_FOREGROUND_RED "{}" ANSI_COLOUR_RESET,
-                        tester.num_warnings);
+        tester.log.Info("Warnings: " ANSI_COLOUR_FOREGROUND_RED("{}"), tester.num_warnings);
 
     auto const num_failed = CountIf(tester.test_cases, [](TestCase const& t) { return t.failed; });
     if (num_failed == 0) {
@@ -507,15 +526,15 @@ int RunAllTests(Tester& tester, Span<String> filter_patterns, Optional<String> j
             }
         }
 
-        tester.log.Info("Failed: " ANSI_COLOUR_SET_FOREGROUND_RED "{}" ANSI_COLOUR_RESET "{}",
-                        num_failed,
-                        failed_test_names);
-        tester.log.Info("Result: " ANSI_COLOUR_SET_FOREGROUND_RED "Failure");
+        tester.log.Info("Failed: " ANSI_COLOUR_FOREGROUND_RED("{}") "{}", num_failed, failed_test_names);
+        tester.log.Info("Result: " ANSI_COLOUR_FOREGROUND_RED("Failure"));
     }
 
-    if (junit_xml_output_path) {
-        auto file = TRY_OR(OpenFile(*junit_xml_output_path, FileMode::Write()), {
-            tester.log.Error("Failed to open JUnit XML output file {}: {}", *junit_xml_output_path, error);
+    if (config.junit_xml_output_path) {
+        auto file = TRY_OR(OpenFile(*config.junit_xml_output_path, FileMode::Write()), {
+            tester.log.Error("Failed to open JUnit XML output file {}: {}",
+                             *config.junit_xml_output_path,
+                             error);
             return 1;
         });
 
@@ -561,6 +580,30 @@ Check(Tester& tester, bool expression, String message, FailureAction failure_act
         }
 
         auto _ = PrintCurrentStacktrace(StdStream::Err, {}, ProgramCounter {CALL_SITE_PROGRAM_COUNTER});
+
+        if (tester.gha_annotations_out) {
+            BufferedWriter<Kb(4)> gh_writer {tester.gha_annotations_out->Writer()};
+            DEFER { gh_writer.FlushReset(); };
+            auto const writer = gh_writer.Writer();
+
+            String type = "error";
+            if (failure_action == FailureAction::LogWarningAndContinue) type = "warning";
+            auto _ = fmt::FormatToWriter(writer, "::{} file={},line={}::", type, file, line);
+
+            // Write the 'message' portion.
+            auto _ = fmt::FormatToWriter(writer, "{} ", tester.current_test_case->title);
+
+            auto _ = fmt::FormatToWriter(writer, "{} (", pretext);
+            auto _ = WriteThisBinaryConfigName(writer);
+            auto _ = writer.WriteChars("): ");
+
+            for (auto c : message) {
+                if (c == '\n' || c == '\r') c = ' ';
+                auto _ = writer.WriteChar(c);
+            }
+
+            auto _ = writer.WriteChar('\n');
+        }
 
         if (failure_action != FailureAction::LogWarningAndContinue) {
             tester.should_reenter = false;

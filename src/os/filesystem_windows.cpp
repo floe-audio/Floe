@@ -686,7 +686,10 @@ MutableString KnownDirectory(Allocator& a, KnownDirectoryType type, KnownDirecto
         result = Narrow(a, wide_path).Value();
     }
 
-    ASSERT(!path::IsDirectorySeparator(Last(result)));
+    // It seems possible that we can get a path with a trailing separator here:
+    // https://github.com/floe-audio/Floe/issues/197
+    result.size = path::TrimDirectorySeparatorsEnd(result).size;
+
     ASSERT(path::IsAbsolute(result));
     ASSERT(IsValidUtf8(result));
 

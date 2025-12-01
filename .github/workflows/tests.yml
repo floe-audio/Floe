@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - develop
+      - build-revamp
   pull_request:
     branches:
       - main
@@ -17,9 +18,11 @@ on:
 env:
   SENTRY_DSN: ${{ secrets.SENTRY_DSN_DEVELOPMENT }}
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # Specify a relative path for reproducible builds (no absolute paths in binaries).
+  ZIG_GLOBAL_CACHE_DIR: .zig-cache-global 
 
 jobs:
-  mac-compile-and-test:
+  mac:
     runs-on: macos-latest
     permissions:
       id-token: write
@@ -33,21 +36,8 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.1.0
-      - uses: Hanaasagi/zig-action-cache@master
-        with:
-          cache-directories: |
-            .floe-cache
 
-      - run: just build -Dtargets=native
-      - run: just build -Dtargets=native -Dsanitize-thread
-      - run: |
-          just install-au 0
-          killall -9 AudioComponentRegistrar || true
-      - run: just test-ci 0
-
-      - name: Upload errors
-        if: '!cancelled()'
-        run: just upload-errors
+      - run: zig build script:ci
 
       - name: Upload logs
         if: '!cancelled()'
@@ -59,14 +49,15 @@ jobs:
 
       - if: '!cancelled()'
         name: Upload test results
-        uses: codecov/test-results-action@v1
+        uses: codecov/codecov-action@v5
         with:
+          report_type: test_results
           token: ${{ secrets.CODECOV_TOKEN }}
           verbose: true
           flags: macos
+          directory: .zig-cache
 
-  # IMPROVE: do this on all platforms
-  test-optimised:
+  linux:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -80,115 +71,30 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.1.0
-      - uses: Hanaasagi/zig-action-cache@master
-        with:
-          cache-directories: |
-            .floe-cache
 
-      - if: '!cancelled()'
-        run: just build -Dbuild-mode=performance_profiling
-
-      - if: '!cancelled()'
-        run: just test-ci 1
-
-      - name: Upload errors
-        if: '!cancelled()'
-        run: just upload-errors
-
-      - name: Upload logs
-        if: '!cancelled()'
-        uses: actions/upload-artifact@v4
-        with:
-          name: logs-linux-optimised
-          if-no-files-found: ignore
-          path: ~/.local/state/Floe/Logs/*
-
-      - if: '!cancelled()'
-        name: Upload test results
-        uses: codecov/test-results-action@v1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          verbose: true
-          flags: linux,optimised
-
-  linux-compile-and-test:
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/flakehub-cache-action@main
-      - uses: nicknovitski/nix-develop@v1.1.0
-      - uses: Hanaasagi/zig-action-cache@master
-        with:
-          cache-directories: |
-            .floe-cache
-
-      - if: '!cancelled()'
-        run: just build -Dtargets=native
-
-      - if: '!cancelled()'
-        run: just build -Dtargets=windows
-
-      - if: '!cancelled()'
-        run: just build -Dtargets=mac_arm
-
-      - if: '!cancelled()'
-        run: just build -Dtargets=mac_x86
-
-      - if: '!cancelled()'
-        run: just build -Dtargets=native -Dsanitize-thread
-
-      - if: '!cancelled()'
-        run: just test-ci 0
+      - run: zig build script:ci
 
       - if: '!cancelled()'
         name: Upload coverage reports
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           directory: .floe-cache/coverage-out/tests
           verbose: true
           fail_ci_if_error: true
+          report_type: coverage
 
       # "Codecov automatically scans for files matching the *junit.xml pattern". We are expecting files 
       # like these in the floe-cache directory.
       - if: '!cancelled()'
         name: Upload test results
-        uses: codecov/test-results-action@v1
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          directory: .zig-cache
           verbose: true
           flags: linux
-
-      # IMPORTANT(upload-artifact): 
-      #  1. If multiple paths are provided as input, the least common ancestor of all the search paths will be used as the 
-      #     root directory of the artifact. 
-      #  2. All file permissions are removed when uploading.
-
-      - name: Upload Windows binaries
-        if: '!cancelled()'
-        uses: actions/upload-artifact@v4
-        with:
-          name: binaries-windows
-          if-no-files-found: error
-          retention-days: 2
-          path: |
-            zig-out/x86_64-windows/Floe.vst3
-            zig-out/x86_64-windows/Floe.clap
-            zig-out/x86_64-windows/tests.exe
-            zig-out/x86_64-windows/VST3-Validator.exe
-            zig-out/x86_64-windows/Floe-Installer*.exe
-
-      - name: Upload errors
-        if: '!cancelled()'
-        run: just upload-errors
+          report_type: test_results
 
       - name: Upload logs
         if: '!cancelled()'
@@ -198,41 +104,38 @@ jobs:
           if-no-files-found: ignore
           path: ~/.local/state/Floe/Logs/*
 
-  windows-test:
+  windows:
     runs-on: windows-latest
-    needs: linux-compile-and-test
     if: '!cancelled()'
-    timeout-minutes: 10
+    permissions:
+      id-token: write
+      contents: read
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: |
-            build_resources
-            test_files
-            justfile
+          submodules: recursive
 
-      - uses: taiki-e/install-action@just
-
-      - uses: actions/download-artifact@v4
+      - uses: mlugg/setup-zig@v2
         with:
-          name: binaries-windows
-          path: zig-out/x86_64-windows
-
-      - run: just test-ci-windows
-
-      - name: Run installer in auto mode
-        if: '!cancelled()'
-        run: just test-windows-installer
+          version: 0.14.0
 
       - name: Install sentry-cli
-        if: '!cancelled()'
         run: |
           choco install sentry-cli -y --no-progress
           sentry-cli --version
 
-      - name: Upload errors
-        if: '!cancelled()'
-        run: just upload-errors
+      - run: zig build script:ci
+
+      - if: '!cancelled()'
+        name: Upload test results
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: .zig-cache
+          verbose: true
+          flags: windows
+          report_type: test_results
 
       - name: Upload logs
         if: '!cancelled()'
@@ -242,19 +145,12 @@ jobs:
           if-no-files-found: ignore
           path: ~/AppData/Local/Floe/Logs/*
 
-      - if: '!cancelled()'
-        name: Upload test results
-        uses: codecov/test-results-action@v1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          verbose: true
-          flags: windows
   
   notify:
     # We run this for main/develop, and also for PRs that are not from forks; in other words, PRs originating from Floe devs.
     if: ${{ ((github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && !cancelled() }}
     runs-on: ubuntu-latest
-    needs: [linux-compile-and-test, windows-test, mac-compile-and-test]
+    needs: [linux, windows, mac]
     steps:
       - run: |
           report="Floe CI"
@@ -267,8 +163,8 @@ jobs:
               report="$report | $job: ❌"
             fi
           }
-          report_job "Windows" ${{ needs.windows-test.result }}
-          report_job "Mac" ${{ needs.mac-compile-and-test.result }}
-          report_job "Linux" ${{ needs.linux-compile-and-test.result }}
+          report_job "Windows" ${{ needs.windows.result }}
+          report_job "Mac" ${{ needs.mac.result }}
+          report_job "Linux" ${{ needs.linux.result }}
 
           curl -d "$report" "ntfy.sh/${{ secrets.NTFY_CI_URL }}"

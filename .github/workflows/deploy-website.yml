@@ -25,43 +25,10 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.2.1
-      - uses: Hanaasagi/zig-action-cache@master
 
-      - run: just build
-      - run: just website-generate
-
-      - name: Add /api/v1/version route
-        run: |
-          mkdir -p website/static/api/v1
-          
-          # Get latest stable release (exclude prereleases)
-          latest_stable=$(gh release list --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // ""' | sed 's/^v//')
-          
-          # Get latest release regardless of prerelease status
-          latest_edge=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // ""' | sed 's/^v//')
-          
-          # Fallback to version.txt if no releases found
-          if [ -z "$latest_stable" ]; then
-            latest_stable=$(cat version.txt)
-          fi
-          if [ -z "$latest_edge" ]; then
-            latest_edge=$(cat version.txt)
-          fi
-          
-          cat > website/static/api/v1/version << EOF
-          latest=$latest_stable
-          edge=$latest_edge
-          EOF
+      - run: zig build script:website-build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install Node.js dependencies
-        run: |
-          cd website
-          npm ci
-
-      - name: Build Docusaurus site
-        run: just website-build
 
       - name: Deploy GitHub Pages
         env:

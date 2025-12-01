@@ -1,0 +1,360 @@
+// Copyright 2025 Sam Windell
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+const std = @import("std");
+const builtin = @import("builtin");
+
+pub fn findSourceFiles(allocator: std.mem.Allocator, options: struct {
+    dir_path: []const u8,
+    extensions: []const []const u8,
+    exclude_folders: []const []const u8,
+    exclude_hidden_folders: bool = true,
+    respect_gitignore: bool = true,
+}) ![][]const u8 {
+    var files = std.ArrayList([]const u8).init(allocator);
+    var dir = try std.fs.cwd().openDir(options.dir_path, .{ .iterate = true });
+    defer dir.close();
+
+    var walker = try dir.walk(allocator);
+    defer walker.deinit();
+
+    while (try walker.next()) |entry| {
+        var should_exclude = false;
+
+        if (options.exclude_hidden_folders) {
+            // Check if any part of the path contains a hidden folder (starts with '.')
+            var path_iter = std.mem.splitScalar(u8, entry.path, std.fs.path.sep);
+            while (path_iter.next()) |path_component| {
+                if (path_component.len > 0 and path_component[0] == '.') {
+                    should_exclude = true;
+                    break;
+                }
+            }
+        }
+
+        for (options.exclude_folders) |exclude_folder| {
+            if (std.mem.indexOf(u8, entry.path, exclude_folder) != null) {
+                should_exclude = true;
+                break;
+            }
+        }
+        if (should_exclude) continue;
+
+        if (entry.kind == .file) {
+            const ext = std.fs.path.extension(entry.path);
+            for (options.extensions) |target_ext| {
+                if (std.mem.eql(u8, ext, target_ext)) {
+                    try files.append(try allocator.dupe(u8, entry.path));
+                    break;
+                }
+            }
+        }
+    }
+
+    const all_files = try files.toOwnedSlice();
+
+    if (options.respect_gitignore) {
+        return filterGitIgnored(allocator, all_files) catch |err| switch (err) {
+            // If git operations fail, just return all files
+            error.FileNotFound, error.GitCheckIgnoreFailed => all_files,
+            else => return err,
+        };
+    }
+
+    return all_files;
+}
+
+// Rather than parse .gitignore files ourselves, we outsource the work to 'git check-ignore'.
+fn filterGitIgnored(allocator: std.mem.Allocator, files: [][]const u8) ![][]const u8 {
+    if (files.len == 0) return files;
+
+    var input = std.ArrayList(u8).init(allocator);
+    defer input.deinit();
+
+    for (files) |file| {
+        try input.appendSlice(file);
+        try input.append('\n');
+    }
+
+    var child = std.process.Child.init(&.{ "git", "check-ignore", "--stdin", "--no-index" }, allocator);
+    child.stdin_behavior = .Pipe;
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Pipe;
+
+    try child.spawn();
+
+    try child.stdin.?.writeAll(input.items);
+    child.stdin.?.close();
+    child.stdin = null;
+
+    var stdout_buf: std.ArrayListUnmanaged(u8) = .empty;
+    var stderr_buf: std.ArrayListUnmanaged(u8) = .empty;
+    defer stderr_buf.deinit(allocator);
+    defer stdout_buf.deinit(allocator);
+
+    try child.collectOutput(allocator, &stdout_buf, &stderr_buf, 1024 * 1024);
+    const term = try child.wait();
+
+    // Exit code 1 means no files are ignored (normal case)
+    // Exit code 0 means some files are ignored
+    switch (term) {
+        .Exited => |code| {
+            if (code != 0 and code != 1) {
+                return error.GitCheckIgnoreFailed;
+            }
+        },
+        else => {
+            return error.GitCheckIgnoreFailed;
+        },
+    }
+
+    var ignored_set = std.StringHashMap(void).init(allocator);
+    defer ignored_set.deinit();
+
+    var lines = std.mem.splitScalar(u8, stdout_buf.items, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r\n");
+        if (trimmed.len > 0) {
+            try ignored_set.put(trimmed, {});
+        }
+    }
+
+    // Return files that are NOT ignored
+    var filtered: std.ArrayListUnmanaged([]const u8) = .empty;
+    try filtered.ensureTotalCapacity(allocator, files.len);
+    for (files) |file| {
+        if (!ignored_set.contains(file)) {
+            filtered.appendAssumeCapacity(file);
+        }
+    }
+
+    return filtered.toOwnedSlice(allocator);
+}
+
+/// Recursively copies a directory and all its contents from source to destination. If files in the
+/// source and dest are identical, they are not copied again.
+pub fn copyDirRecursive(src_path: []const u8, dest_path: []const u8, allocator: std.mem.Allocator) !void {
+    var src_dir = std.fs.cwd().openDir(src_path, .{ .iterate = true }) catch |err| switch (err) {
+        error.FileNotFound => return,
+        else => return err,
+    };
+    defer src_dir.close();
+
+    std.fs.cwd().makePath(dest_path) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+
+    var dest_dir = try std.fs.cwd().openDir(dest_path, .{});
+    defer dest_dir.close();
+
+    var walker = try src_dir.walk(allocator);
+    defer walker.deinit();
+
+    while (try walker.next()) |entry| {
+        switch (entry.kind) {
+            .file => {
+                _ = try entry.dir.updateFile(entry.basename, dest_dir, entry.path, .{});
+            },
+            .directory => {
+                try dest_dir.makePath(entry.path);
+            },
+            else => continue, // Skip other types like symlinks
+        }
+    }
+}
+
+pub fn archAndOsPair(target: std.Target) std.BoundedArray(u8, 32) {
+    var result = std.BoundedArray(u8, 32).init(0) catch @panic("OOM");
+    std.fmt.format(
+        result.writer(),
+        "{s}-{s}",
+        .{ @tagName(target.cpu.arch), @tagName(target.os.tag) },
+    ) catch @panic("OOM");
+    return result;
+}
+
+// When using Step.Run, Zig never never prints stdout to the console, only stderr. If the program doesn't put
+// debug information in stderr, you don't see anything other than the exit code. This function wraps a command
+// such that its stdout is redirected to stderr, so you see all output allowing you to debug why a program fails.
+pub fn createCommandWithStdoutToStderr(
+    b: *std.Build,
+    target: ?std.Target,
+    name: []const u8,
+) *std.Build.Step.Run {
+    const run = b.addRunArtifact(b.addExecutable(.{
+        .name = name,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/build/wrap_stdout_to_stderr_cmd.zig"),
+            .target = b.graph.host,
+        }),
+    }));
+
+    if (builtin.os.tag == .linux and b.enable_wine and target != null and target.?.os.tag == .windows) {
+        run.addArg("wine64");
+    }
+
+    return run;
+}
+
+// A wrapper for turning commands that modify files in-place into commands with input and output files.
+// See wrap_inplace_cmd.zig for more information.
+// To use it, create the InPlaceCmd, add args as normal to the .run field, but at some point you must call
+// addInputArg() to set the input file argument and let the wrapper know which argument index it is.
+pub const InPlaceCmd = struct {
+    run: *std.Build.Step.Run,
+    output_file: std.Build.LazyPath,
+
+    pub fn create(b: *std.Build, args: struct {
+        name: []const u8,
+        out_file_is_dir: bool,
+        out_file_name: []const u8,
+    }) InPlaceCmd {
+        const run = b.addRunArtifact(b.addExecutable(.{
+            .name = args.name,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/build/wrap_inplace_cmd.zig"),
+                .target = b.graph.host,
+            }),
+        }));
+        run.addArg("PLACEHOLDER-IN-INDEX");
+
+        const output_file =
+            if (args.out_file_is_dir)
+                run.addOutputDirectoryArg(args.out_file_name)
+            else
+                run.addOutputFileArg(args.out_file_name);
+
+        return .{
+            .run = run,
+            .output_file = output_file,
+        };
+    }
+
+    pub fn addInputArg(self: *const InPlaceCmd, path: std.Build.LazyPath, is_dir: bool) void {
+        if (is_dir) {
+            self.run.addDirectoryArg(path);
+        } else {
+            self.run.addFileArg(path);
+        }
+
+        std.debug.assert(std.mem.eql(u8, self.run.argv.items[1].bytes, "PLACEHOLDER-IN-INDEX"));
+        self.run.argv.items[1] = .{ .bytes = self.run.step.owner.fmt("{d}", .{self.run.argv.items.len - 1}) };
+    }
+};
+
+// Loads environment variables from a .env file into the build graph's env_map.
+// Based on https://github.com/zigster64/dotenv.zig
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2024 Scribe of the Ziggurat
+pub fn loadEnvFile(dir: std.fs.Dir, env_map: *std.process.EnvMap) !void {
+    var file = dir.openFile(".env", .{}) catch {
+        return;
+    };
+    defer file.close();
+
+    var buf_reader = std.io.bufferedReader(file.reader());
+    var in_stream = buf_reader.reader();
+    var buf: [1024 * 16]u8 = undefined;
+
+    while (try in_stream.readUntilDelimiterOrEof(&buf, '\n')) |line| {
+        // ignore commented out lines
+        if (line.len > 0 and line[0] == '#') {
+            continue;
+        }
+        // split into KEY and Value
+        if (std.mem.indexOf(u8, line, "=")) |index| {
+            const key = line[0..index];
+            var value = line[index + 1 ..];
+
+            // If the value starts and ends with quotes, remove them
+            if (value.len >= 2 and ((value[0] == '"' and value[value.len - 1] == '"') or
+                (value[0] == '\'' and value[value.len - 1] == '\'')))
+            {
+                value = value[1 .. value.len - 1];
+            }
+
+            try env_map.put(key, value);
+        }
+    }
+}
+
+pub fn pathExists(path: []const u8) bool {
+    std.fs.accessAbsolute(path, .{}) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        else => return true, // Other error - let's just say it exists.
+    };
+    return true;
+}
+
+pub fn decodeBase64(allocator: std.mem.Allocator, name: []const u8, base64: []const u8) []const u8 {
+    const size = std.base64.standard.Decoder.calcSizeForSlice(base64) catch {
+        std.debug.panic("Invalid base64 in {s}", .{name});
+    };
+
+    const decoded = allocator.alloc(u8, size) catch @panic("OOM");
+
+    std.base64.standard.Decoder.decode(decoded, base64) catch {
+        std.debug.panic("Invalid base64 in {s}", .{name});
+    };
+
+    return decoded;
+}
+
+pub fn validEnvVar(b: *std.Build, name: []const u8, options: struct {
+    decode_base64: bool,
+    warn_desc: []const u8,
+    step_to_put_warn: *std.Build.Step,
+}) ?[]const u8 {
+    const val = b.graph.env_map.get(name) orelse {
+        const warn = addWarn(b, b.fmt("{s} not set, {s}", .{ name, options.warn_desc }));
+        options.step_to_put_warn.dependOn(&warn.step);
+        return null;
+    };
+
+    if (val.len == 0) {
+        const warn = addWarn(b, b.fmt("{s} is empty, {s}", .{ name, options.warn_desc }));
+        options.step_to_put_warn.dependOn(&warn.step);
+        return null;
+    }
+
+    return if (options.decode_base64)
+        return decodeBase64(b.allocator, name, val)
+    else
+        val;
+}
+
+pub const WarnStep = struct {
+    step: std.Build.Step,
+    warn_msg: []const u8,
+
+    pub fn create(owner: *std.Build, warn_msg: []const u8) *WarnStep {
+        const warn = owner.allocator.create(WarnStep) catch @panic("OOM");
+
+        warn.* = .{
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .name = "warn",
+                .owner = owner,
+                .makeFn = make,
+            }),
+            .warn_msg = owner.dupe(warn_msg),
+        };
+
+        return warn;
+    }
+
+    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
+        _ = options; // No progress to report.
+
+        const warn: *WarnStep = @fieldParentPtr("step", step);
+
+        try step.result_error_msgs.append(step.owner.allocator, warn.warn_msg);
+
+        return;
+    }
+};
+
+pub fn addWarn(owner: *std.Build, warn_msg: []const u8) *WarnStep {
+    return WarnStep.create(owner, warn_msg);
+}

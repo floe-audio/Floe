@@ -244,6 +244,10 @@ TEST_CASE(TestPackageInstallation) {
                               Array {*path::Directory(preset_path), "renamed-sine.floe-preset"})));
 
         TRY(PrintDirectory(tester, destination_folder, "Files renamed"));
+
+        // Tell the server to rename so it notices the changes. It probably does this automatically via file
+        // watchers but it's not guaranteed.
+        sample_lib_server::RescanFolder(server, destination_folder);
     }
 
     // If the components are modified and we set to Skip, it should skip them.

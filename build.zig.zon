@@ -12,13 +12,14 @@
     .fingerprint = 0xa179a738ea815f67,
     .version = "0.0.0",
     .dependencies = .{
+        .macos_sdk = .{
+            .url = "https://github.com/joseluisq/macosx-sdks/releases/download/12.0/MacOSX12.0.sdk.tar.xz",
+            .hash = "N-V-__8AAEpIpEAVUsVmubwDn1oMDpNDF5ZZBTmP9Jcc-5Nr",
+            .lazy = true,
+        },
         .xxhash = .{
             .url = "https://github.com/Cyan4973/xxHash/archive/refs/tags/v0.8.2.tar.gz",
             .hash = "N-V-__8AAExyUgDx-txe2Gg6EHaVFT1HUCXO-WGf0FBABDq-",
-        },
-        .embedded_files_workaround = .{
-            .url = "git+https://github.com/floe-audio/floe-embedded-files-workaround#2f000a04f6343c38e1ad824eea0872243b24d3cc",
-            .hash = "N-V-__8AANwS1QKPjdO1VFOMNSsXecouM3gpvOHq8Q4OjBgg",
         },
         .stb = .{
             .url = "git+https://github.com/nothings/stb#64e783d73879abe2e7589bc634bf6cb6f5e2baae",
@@ -87,6 +88,39 @@
         .floe_logos = .{
             .url = "git+https://github.com/floe-audio/Floe-Logos#8dcbe7fdfab93a7958947ad6d0ff9427565c65ab",
             .hash = "N-V-__8AAHEKFgBFuPa2_DBoERCMfyw108H3h7ubU7jLpXtj",
+            .lazy = true,
+        },
+        .pluginval_macos = .{
+            .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_macOS.zip",
+            .hash = "N-V-__8AAF8tGQHuEhO2q5y6oj6foKiCHCXCQWbfpY6ehS5e",
+            .lazy = true,
+        },
+        .pluginval_windows = .{
+            .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_Windows.zip",
+            .hash = "N-V-__8AAABcNACEKUY1SsEfHGFybDSKUo4JGhYN5bgZ146c",
+            .lazy = true,
+        },
+        .pluginval_linux = .{
+            .url = "https://github.com/Tracktion/pluginval/releases/download/v1.0.3/pluginval_Linux.zip",
+            .hash = "N-V-__8AAHiZqACvZuwhiWbvPBeJQd-K_5xpafp_Pi_6228J",
+            .lazy = true,
+        },
+        .clap_validator_macos = .{
+            .url = "https://github.com/free-audio/clap-validator/releases/download/0.3.2/clap-validator-0.3.2-macos-universal.tar.gz",
+            .hash = "N-V-__8AALwZfgBlaKnVwge3d221LJA9s_vQixy9c6OBvGhQ",
+            .lazy = true,
+        },
+        .clap_validator_windows = .{
+            .url = "https://github.com/free-audio/clap-validator/releases/download/0.3.2/clap-validator-0.3.2-windows.zip",
+            .hash = "N-V-__8AAACYMwAKpkDTKEWrhJhUyBs1LxycLWN8iFpe5p6r",
+            .lazy = true,
+        },
+        .clap_validator_linux = .{
+            // NOTE: we're using floe-audio repo with a re-uploaded ZIP because we needed to workaround a zig fetch bug with
+            // tar.gz files.
+            .url = "https://github.com/floe-audio/clap-validator/releases/download/v0.3.2/clap-validator-0.3.2-ubuntu-18.04.zip",
+            .hash = "N-V-__8AAFDvhAD7wsMQHzT9s_hiRLUTXJp4mBwyx_O7gZxZ",
+            .lazy = true,
         },
     },
     .paths = .{"src"},
