@@ -29,11 +29,9 @@ pub fn makeRelease(
     archiver: *std.Build.Step.Compile,
     sem_version: std.SemanticVersion,
     target: std.Target,
-    mode: enum { install, github_release },
     args: Artifacts,
 ) *std.Build.Step {
     const version = b.fmt("{any}", .{sem_version});
-    const v_version = b.fmt("v{s}", .{version});
     const target_triple = std_extras.archAndOsPair(target);
 
     const step = b.allocator.create(std.Build.Step) catch @panic("OOM");
@@ -44,12 +42,6 @@ pub fn makeRelease(
     });
 
     const release_dir = "release";
-
-    const gh_upload_cmd = if (mode == .github_release) blk: {
-        const upload = b.addSystemCommand(&.{ "gh", "release", "upload", v_version, "--clobber" });
-        step.dependOn(&upload.step);
-        break :blk upload;
-    } else null;
 
     switch (target.os.tag) {
         .windows => {
@@ -71,11 +63,7 @@ pub fn makeRelease(
                     },
                 });
 
-                if (gh_upload_cmd) |cmd| {
-                    cmd.addFileArg(generated_zip);
-                } else {
-                    step.dependOn(&b.addInstallFile(generated_zip, out_filename).step);
-                }
+                step.dependOn(&b.addInstallFile(generated_zip, out_filename).step);
             }
 
             // Manual-install plugins
@@ -100,11 +88,7 @@ pub fn makeRelease(
                     .{ .path = readme, .path_in_archive = "readme.txt", .is_dir = false },
                 });
 
-                if (gh_upload_cmd) |cmd| {
-                    cmd.addFileArg(generated_zip);
-                } else {
-                    step.dependOn(&b.addInstallFile(generated_zip, out_filename).step);
-                }
+                step.dependOn(&b.addInstallFile(generated_zip, out_filename).step);
             }
 
             // Packager
@@ -118,11 +102,7 @@ pub fn makeRelease(
                 const generated_zip = createArchiveCommand(b, archiver, .zip, out_filename, &[_]FileToArchive{
                     .{ .path = packager.path, .path_in_archive = packager.out_filename, .is_dir = false },
                 });
-                if (gh_upload_cmd) |cmd| {
-                    cmd.addFileArg(generated_zip);
-                } else {
-                    step.dependOn(&b.addInstallFile(generated_zip, out_filename).step);
-                }
+                step.dependOn(&b.addInstallFile(generated_zip, out_filename).step);
             }
         },
         .macos => {
@@ -163,11 +143,7 @@ pub fn makeRelease(
                     .archiver = archiver,
                 }) orelse zip_file else zip_file;
 
-                if (gh_upload_cmd) |cmd| {
-                    cmd.addFileArg(final);
-                } else {
-                    step.dependOn(&b.addInstallFile(final, out_filename).step);
-                }
+                step.dependOn(&b.addInstallFile(final, out_filename).step);
             }
 
             const au_plugin = args.au orelse return invalidConfiguration(step);
@@ -199,11 +175,7 @@ pub fn makeRelease(
                     .{ .path = clap, .path_in_archive = clap_plugin.file_name, .is_dir = clap_plugin.is_dir },
                 });
 
-                if (gh_upload_cmd) |cmd| {
-                    cmd.addFileArg(zip_file);
-                } else {
-                    step.dependOn(&b.addInstallFile(zip_file, out_filename).step);
-                }
+                step.dependOn(&b.addInstallFile(zip_file, out_filename).step);
             }
 
             if (builtin.os.tag == .macos) {
@@ -367,11 +339,7 @@ pub fn makeRelease(
                     },
                 });
 
-                if (gh_upload_cmd) |cmd| {
-                    cmd.addFileArg(zip_file);
-                } else {
-                    step.dependOn(&b.addInstallFile(zip_file, out_filename).step);
-                }
+                step.dependOn(&b.addInstallFile(zip_file, out_filename).step);
             } else {
                 std.log.warn("IMPORTANT: building macOS package installers requires a macOS host, no installer will be created", .{});
             }
@@ -391,11 +359,7 @@ pub fn makeRelease(
                     .{ .path = clap.plugin_path, .path_in_archive = clap.file_name, .is_dir = clap.is_dir },
                 });
 
-                if (gh_upload_cmd) |cmd| {
-                    cmd.addFileArg(tar);
-                } else {
-                    step.dependOn(&b.addInstallFile(tar, out_filename).step);
-                }
+                step.dependOn(&b.addInstallFile(tar, out_filename).step);
             }
 
             // VST3
@@ -412,11 +376,7 @@ pub fn makeRelease(
                     .{ .path = vst3.plugin_path, .path_in_archive = vst3.file_name, .is_dir = vst3.is_dir },
                 });
 
-                if (gh_upload_cmd) |cmd| {
-                    cmd.addFileArg(tar);
-                } else {
-                    step.dependOn(&b.addInstallFile(tar, out_filename).step);
-                }
+                step.dependOn(&b.addInstallFile(tar, out_filename).step);
             }
 
             // Packager
@@ -433,11 +393,7 @@ pub fn makeRelease(
                     .{ .path = packager.path, .path_in_archive = packager.out_filename, .is_dir = false },
                 });
 
-                if (gh_upload_cmd) |cmd| {
-                    cmd.addFileArg(tar);
-                } else {
-                    step.dependOn(&b.addInstallFile(tar, out_filename).step);
-                }
+                step.dependOn(&b.addInstallFile(tar, out_filename).step);
             }
         },
         else => @panic("unsupported target OS"),

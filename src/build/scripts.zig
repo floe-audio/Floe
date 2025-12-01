@@ -29,10 +29,6 @@ pub fn main() !u8 {
 
     if (args.len < 2) {
         std.debug.print("Usage: {s} <command>\n", .{args[0]});
-        std.debug.print("Commands:\n", .{});
-        std.debug.print("  format\n", .{});
-        std.debug.print("  echo-latest-changes\n", .{});
-        std.debug.print("  upload-errors\n", .{});
         return 1;
     }
 
@@ -40,8 +36,8 @@ pub fn main() !u8 {
 
     if (std.mem.eql(u8, command, "format")) {
         return runFormat(&context);
-    } else if (std.mem.eql(u8, command, "echo-latest-changes")) {
-        return runEchoLatestChanges(&context);
+    } else if (std.mem.eql(u8, command, "create-gh-release")) {
+        return runCreateGithubRelease(&context);
     } else if (std.mem.eql(u8, command, "upload-errors")) {
         return runUploadErrors(&context);
     } else if (std.mem.eql(u8, command, "ci")) {
@@ -139,59 +135,107 @@ fn runFormat(context: *Context) !u8 {
     };
 }
 
-fn runEchoLatestChanges(context: *Context) !u8 {
-    const stdout = std.io.getStdOut().writer();
-
-    // Read version file
-    const version_content = std.fs.cwd().readFileAlloc(context.allocator, "version.txt", 1024) catch |err| {
-        std.log.err("Error reading version.txt: {}\n", .{err});
+fn runCreateGithubRelease(context: *Context) !u8 {
+    const version = std.mem.trim(
+        u8,
+        try std.fs.cwd().readFileAlloc(context.allocator, "version.txt", 1024),
+        " \n\r\t",
+    );
+    const version_sem = std.SemanticVersion.parse(version) catch |err| {
+        std.log.err("version.txt is not valid '{s}': {}\n", .{ version, err });
         return 1;
     };
 
-    const version = std.mem.trim(u8, version_content, " \n\r\t");
+    var changelog_lines = std.ArrayList([]const u8).init(context.allocator);
 
-    // Read changelog
-    const changelog_content = std.fs.cwd().readFileAlloc(context.allocator, "website/docs/changelog.md", 1024 * 1024) catch |err| {
-        std.log.err("Error reading changelog.md: {}\n", .{err});
-        return 1;
-    };
+    // Read changelog and find version section
+    {
+        const version_header = try std.fmt.allocPrint(context.allocator, "## {s}", .{version});
+        const changelog_content = try std.fs.cwd().readFileAlloc(
+            context.allocator,
+            "website/docs/changelog.md",
+            1024 * 1024 * 4,
+        );
 
-    // Find version section
-    const version_header = try std.fmt.allocPrint(context.allocator, "## {s}", .{version});
+        var lines = std.mem.splitScalar(u8, changelog_content, '\n');
+        var found_version = false;
 
-    var lines = std.mem.splitScalar(u8, changelog_content, '\n');
-    var found_version = false;
-    var output_lines = std.ArrayList([]const u8).init(context.allocator);
-    defer output_lines.deinit();
-
-    while (lines.next()) |line| {
-        if (found_version) {
-            // Check if we hit the next section (## followed by non-#)
-            if (std.mem.startsWith(u8, line, "## ") and !std.mem.startsWith(u8, line, "## #")) {
-                break;
+        while (lines.next()) |line| {
+            if (found_version) {
+                // Check if we hit the next section (## followed by non-#)
+                if (std.mem.startsWith(u8, line, "## ") and !std.mem.startsWith(u8, line, "## #")) {
+                    break;
+                }
+                try changelog_lines.append(line);
+            } else if (std.mem.eql(u8, line, version_header)) {
+                found_version = true;
             }
-            try output_lines.append(line);
-        } else if (std.mem.eql(u8, line, version_header)) {
-            found_version = true;
+        }
+
+        if (!found_version) {
+            std.log.err("Version {s} not found in changelog\n", .{version});
+            return 1;
         }
     }
 
-    if (!found_version) {
-        std.log.err("Version {s} not found in changelog\n", .{version});
-        return 1;
+    const changes_filepath = try tempFilePath(context.allocator, &context.env_map);
+    defer std.fs.deleteFileAbsolute(changes_filepath) catch {};
+    {
+        var file = try std.fs.createFileAbsolute(changes_filepath, .{});
+        defer file.close();
+        var buffered_writer = std.io.bufferedWriter(file.writer());
+        const writer = buffered_writer.writer();
+
+        for (changelog_lines.items, 0..) |line, i| {
+            if (i == changelog_lines.items.len - 1 and changelog_lines.items.len > 0) {
+                // Don't print newline for last line, and handle empty case
+                if (line.len > 0) {
+                    try writer.print("{s}", .{line});
+                }
+            } else {
+                try writer.print("{s}\n", .{line});
+            }
+        }
+
+        try buffered_writer.flush();
     }
 
-    // Print the changes without trailing newline
-    for (output_lines.items, 0..) |line, i| {
-        if (i == output_lines.items.len - 1 and output_lines.items.len > 0) {
-            // Don't print newline for last line, and handle empty case
-            if (line.len > 0) {
-                try stdout.print("{s}", .{line});
-            }
-        } else {
-            try stdout.print("{s}\n", .{line});
+    // Create draft release
+    {
+        var gh_args = std.ArrayList([]const u8).init(context.allocator);
+
+        try gh_args.append("gh");
+        try gh_args.append("release");
+        try gh_args.append("create");
+        try gh_args.append(try std.fmt.allocPrint(context.allocator, "v{s}", .{version}));
+
+        try gh_args.append("--draft");
+
+        try gh_args.append("--title");
+        try gh_args.append(try std.fmt.allocPrint(context.allocator, "Release v{s}", .{version}));
+
+        try gh_args.append("--notes-file");
+        try gh_args.append(try context.allocator.dupe(u8, changes_filepath));
+
+        if (version_sem.pre != null)
+            try gh_args.append("--prerelease");
+
+        const result = try std.process.Child.run(.{
+            .allocator = context.allocator,
+            .argv = gh_args.items,
+        });
+
+        if (result.stdout.len > 0)
+            try std.io.getStdErr().writeAll(result.stdout);
+        if (result.stderr.len > 0)
+            try std.io.getStdOut().writeAll(result.stderr);
+
+        if (result.term != .Exited or result.term.Exited != 0) {
+            std.log.err("gh release command failed: {any}\n", .{result.term});
+            return 1;
         }
     }
+
     return 0;
 }
 

@@ -13,38 +13,69 @@ env:
   SENTRY_DSN: ${{ secrets.SENTRY_DSN_PRODUCTION }}
   # Specify a relative path for reproducible builds (no absolute paths in binaries).
   ZIG_GLOBAL_CACHE_DIR: .zig-cache-global 
+  ZIG_RELEASE_FOLDER: zig-out/release
 
 jobs:
-  build-and-deploy:
-    runs-on: ubuntu-22.04 
+  # We need a macOS system for the macOS build.
+  build-macos:
+    runs-on: macos-latest
     permissions:
       id-token: write
       contents: read
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
       - uses: nicknovitski/nix-develop@v1.1.0
 
-      - run: |
-          zig build release:github -Dbuild-mode=production -Dtargets=linux,windows,mac_arm,mac_x86 -Dfetch-floe-logos=true -Dgithub-publish-release=true
+      - run: zig build release -Dbuild-mode=production -Dtargets=mac_arm,mac_x86 -Dfetch-floe-logos=true
         env:
-          WINDOWS_CODESIGN_CERT_PFX: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX }}
-          WINDOWS_CODESIGN_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX_PASSWORD }}
           MACOS_APP_STORE_CONNECT_API_KEY_JSON: ${{ secrets.MACOS_APP_STORE_CONNECT_API_KEY_JSON }}
           MACOS_DEV_INSTALLER_CERT_P12_PASSWORD: ${{ secrets.MACOS_DEV_INSTALLER_CERT_P12_PASSWORD }}
           MACOS_DEV_INSTALLER_CERT_P12: ${{ secrets.MACOS_DEV_INSTALLER_CERT_P12 }}
           MACOS_DEV_APP_CERT_P12_PASSWORD: ${{ secrets.MACOS_DEV_APP_CERT_P12_PASSWORD }}
           MACOS_DEV_APP_CERT_P12: ${{ secrets.MACOS_DEV_APP_CERT_P12 }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 'Get version'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-macos
+          if-no-files-found: error
+          path: ${{ env.ZIG_RELEASE_FOLDER }}
+
+  # We can do the rest on a Linux runner.
+  build-and-release:
+    needs: [build-macos]
+    runs-on: ubuntu-22.04 
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/flakehub-cache-action@main
+      - uses: nicknovitski/nix-develop@v1.1.0
+
+      - name: Build Linux and Windows releases
+        run: zig build release -Dbuild-mode=production -Dtargets=linux,windows -Dfetch-floe-logos=true
+        env:
+          WINDOWS_CODESIGN_CERT_PFX: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX }}
+          WINDOWS_CODESIGN_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX_PASSWORD }}
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: final-*
+          path: ${{ env.ZIG_RELEASE_FOLDER }}
+          merge-multiple: true
+
+      - name: Get version
+        run: echo "VERSION=$(cat version.txt)" >> $GITHUB_ENV
+
+      - name: Create GitHub release
         run: |
-          export VERSION=$(cat version.txt)
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          zig build script:create-gh-release
+          ls -la ${{ env.ZIG_RELEASE_FOLDER }}
+          gh release upload v${{ env.VERSION }} ${{ env.ZIG_RELEASE_FOLDER }}/*
+          # gh release edit v${{ env.VERSION }} --draft=false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create Sentry release
         uses: getsentry/action-release@v3
