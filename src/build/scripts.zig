@@ -906,11 +906,18 @@ const WindowsTempDir = struct {
 };
 
 fn tempFilePath(allocator: std.mem.Allocator, env_map: *std.process.EnvMap) ![]const u8 {
-    const dir = switch (builtin.os.tag) {
+    var dir = switch (builtin.os.tag) {
         .linux, .macos => env_map.get("TMPDIR") orelse "/tmp",
         .windows => try WindowsTempDir.get(allocator),
         else => return error.UnsupportedOS,
     };
+
+    std.fs.cwd().makePath(dir) catch |err| {
+        std.log.err("Failed to create temp directory {s}: {any}\n", .{ dir, err });
+        return err;
+    };
+
+    dir = try std.fs.realpathAlloc(allocator, dir);
 
     var bytes: [8]u8 = undefined;
     try std.posix.getrandom(&bytes);
