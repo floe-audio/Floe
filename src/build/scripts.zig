@@ -215,7 +215,7 @@ fn runCreateGithubRelease(context: *Context) !u8 {
         try gh_args.append(try std.fmt.allocPrint(context.allocator, "Release v{s}", .{version}));
 
         try gh_args.append("--notes-file");
-        try gh_args.append(try context.allocator.dupe(u8, changes_filepath));
+        try gh_args.append(changes_filepath);
 
         if (version_sem.pre != null)
             try gh_args.append("--prerelease");
