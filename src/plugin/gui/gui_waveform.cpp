@@ -28,8 +28,6 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
     auto const epsilon = 0.001f;
     auto const slider_sensitivity = 320.0f;
 
-    using namespace loop_and_reverse_flags;
-
     auto& params = g->engine.processor.main_params;
 
     auto const reverse = params.BoolValue(layer->index, LayerParamIndex::Reverse);
@@ -593,7 +591,6 @@ void GUIDoSampleWaveform(Gui* g, LayerProcessor* layer, Rect r) {
         auto const loop_start = params.LinearValue(layer->index, LayerParamIndex::LoopStart);
         auto const reverse = params.BoolValue(layer->index, LayerParamIndex::Reverse);
         auto const loop_end = Max(params.LinearValue(layer->index, LayerParamIndex::LoopEnd), loop_start);
-        using namespace loop_and_reverse_flags;
         auto const loop_mode =
             params.IntValue<param_values::LoopMode>(layer->index, LayerParamIndex::LoopMode);
         bool const loop_points_editable =
@@ -622,7 +619,7 @@ void GUIDoSampleWaveform(Gui* g, LayerProcessor* layer, Rect r) {
             offset_section_uv.hi.x = 1.0f - offset_section_uv.hi.x;
         }
 
-        // Fix issue where texture subtley begins to tile when we don't want it
+        // Fix issue where texture subtly begins to tile when we don't want it
         waveform_r.x = Round(waveform_r.x);
         waveform_r.y = Round(waveform_r.y);
         waveform_r.w = Round(waveform_r.w);

@@ -490,7 +490,8 @@ struct TableFields<Region::AudioProperties> {
             case Field::FadeInFrames:
                 return {
                     .name = "fade_in_frames",
-                    .description_sentence = "The number of frames to fade in the audio data.",
+                    .description_sentence =
+                        "The number of frames to fade in the audio data, applied at the start after any start_offset_frames.",
                     .example = "0",
                     .default_value = "0",
                     .lua_type = LUA_TNUMBER,

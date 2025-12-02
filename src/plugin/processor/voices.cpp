@@ -263,27 +263,27 @@ static Optional<BoundsCheckedLoop> ConfigureLoop(param_values::LoopMode desired_
     return k_nullopt;
 }
 
+static Optional<BoundsCheckedLoop> LoopForSource(VoiceProcessingController const& controller,
+                                                 VoiceSoundSource::SampleSource const& sampler) {
+    return controller.vol_env_on ? ConfigureLoop(controller.loop_mode,
+                                                 sampler.region->loop,
+                                                 sampler.data->num_frames,
+                                                 controller.loop)
+                                 : k_nullopt;
+}
+
 void UpdateLoopInfo(Voice& v) {
     for (auto& s : v.sound_sources) {
         if (!s.is_active) continue;
         if (s.source_data.tag != InstrumentType::Sampler) continue;
+
         auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
         if (sampler.region->trigger.trigger_event == sample_lib::TriggerEvent::NoteOff) continue;
 
-        sampler.loop = v.controller->vol_env_on ? ConfigureLoop(v.controller->loop_mode,
-                                                                sampler.region->loop,
-                                                                sampler.data->num_frames,
-                                                                v.controller->loop)
-                                                : k_nullopt;
-
-        sampler.loop_and_reverse_flags = 0;
-        if (v.controller->reverse) sampler.loop_and_reverse_flags = loop_and_reverse_flags::CurrentlyReversed;
-        if (sampler.loop) {
-            sampler.loop_and_reverse_flags =
-                loop_and_reverse_flags::CorrectLoopFlagsIfNeeded(sampler.loop_and_reverse_flags,
-                                                                 *sampler.loop,
-                                                                 s.pos);
-        }
+        UpdatePlayhead(sampler.playhead,
+                       LoopForSource(*v.controller, sampler),
+                       v.controller->reverse,
+                       sampler.data->num_frames);
     }
 }
 
@@ -381,7 +381,6 @@ void StartVoice(VoicePool& pool,
 
                 s_sampler.region = &s_params.region;
                 s_sampler.data = &s_params.audio_data;
-                s_sampler.loop = {};
                 ASSERT(s_sampler.data != nullptr);
 
                 s.pitch_ratio = CalculatePitchRatio(RootKey(voice, s), s, params.initial_pitch, sample_rate);
@@ -391,13 +390,19 @@ void StartVoice(VoicePool& pool,
                 auto const offs =
                     Max<f64>((f64)sampler.initial_sample_offset_01 * (num_frames - 1),
                              Min<f64>(num_frames - 1, s_params.region.audio_props.start_offset_frames));
-                s.pos = offs;
-                if (voice.controller->reverse) s.pos = num_frames - Max(offs, 1.0);
+
+                ResetPlayhead(s_sampler.playhead,
+                              offs,
+                              ConfigureLoop(voice_controller.loop_mode,
+                                            s_sampler.region->loop,
+                                            s_sampler.data->num_frames,
+                                            voice_controller.loop),
+                              voice_controller.reverse,
+                              s_sampler.data->num_frames);
             }
             for (u32 i = voice.num_active_voice_samples; i < k_max_num_voice_sound_sources; ++i)
                 voice.sound_sources[i].is_active = false;
 
-            UpdateLoopInfo(voice);
             UpdateXfade(voice, sampler.initial_timbre_param_value_01, true);
 
             if (g_final_binary_type == FinalBinaryType::Standalone) {
@@ -424,8 +429,10 @@ void StartVoice(VoicePool& pool,
             auto& s = voice.sound_sources[0];
             s.is_active = true;
             s.amp = waveform.amp;
-            s.pos = 0;
-            s.source_data = waveform.type;
+            s.source_data = VoiceSoundSource::WaveformSource {
+                .type = waveform.type,
+                .pos = 0,
+            };
             s.pitch_ratio = CalculatePitchRatio(voice.note_num, s, params.initial_pitch, sample_rate);
             s.pitch_ratio_smoother.Reset();
 
@@ -512,19 +519,21 @@ struct VoiceProcessor {
         ApplyFilter(voice, output, lfo_amounts, audio_context);
 
         {
-            f32 position_for_gui = {};
+            f64 position_for_gui = {};
             for (auto const& s : voice.sound_sources) {
                 if (!s.is_active) continue;
                 if (s.source_data.tag != InstrumentType::Sampler) continue;
                 auto const& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
                 if (sampler.region->trigger.trigger_event == sample_lib::TriggerEvent::NoteOff) continue;
-                position_for_gui = (f32)(s.pos / sampler.data->num_frames);
+                position_for_gui = sampler.playhead.RealFramePos(sampler.data->num_frames)
+                                       .ValueOr(sampler.data->num_frames) /
+                                   (f64)sampler.data->num_frames;
             }
 
             constexpr f32 k_max_u16 = LargestRepresentableValue<u16>();
             voice.pool.voice_waveform_markers_for_gui.Write()[voice.index] = {
                 .layer_index = (u8)voice.controller->layer_index,
-                .position = (u16)(Clamp01(position_for_gui) * k_max_u16),
+                .position = (u16)(Clamp01(position_for_gui) * (f64)k_max_u16),
                 .intensity = (u16)(Clamp01(voice.current_gain) * k_max_u16),
             };
             voice.pool.voice_vol_env_markers_for_gui.Write()[voice.index] = {
@@ -582,84 +591,74 @@ struct VoiceProcessor {
         return s.pitch_ratio_smoother.LowPass(pitch_ratio, (f64)context.one_pole_smoothing_cutoff_0_2ms);
     }
 
-    struct SampleSourceReturnValue {
-        f32x2 frame;
-        SampleState state;
-    };
-
-    static SampleSourceReturnValue NextSampleFrame(Voice const& voice,
-                                                   VoiceSoundSource& s,
-                                                   f32 current_lfo_value,
-                                                   AudioProcessingContext const& context) {
+    static f32x2 NextSampleFrame(Voice const& voice,
+                                 VoiceSoundSource& s,
+                                 f32 current_lfo_value,
+                                 AudioProcessingContext const& context) {
         auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
 
-        auto out = GetSampleFrame(*sampler.data, sampler.loop, sampler.loop_and_reverse_flags, s.pos);
+        auto out = GetSampleFrame(*sampler.data, sampler.playhead);
 
         // Do the sample fade-in if it's the first time the sample is played.
-        if (!(sampler.loop_and_reverse_flags &
-              (loop_and_reverse_flags::LoopedManyTimes | loop_and_reverse_flags::CurrentlyReversed))) {
-            if (auto const pos = s.pos - sampler.region->audio_props.start_offset_frames;
-                pos >= 0 && pos < sampler.region->audio_props.fade_in_frames) {
-                auto const percent = pos / (f64)sampler.region->audio_props.fade_in_frames;
-                // Quarter-sine fade in.
-                auto const amount = trig_table_lookup::SinTurnsPositive((f32)percent * 0.25f);
-                out *= amount;
+        if (!sampler.playhead.loop ||
+            (sampler.playhead.loop && !sampler.playhead.loop->only_use_frames_within_loop)) {
+            auto const real_pos = sampler.playhead.RealFramePos(sampler.data->num_frames);
+            if (real_pos) {
+                if (auto const pos = *real_pos - sampler.region->audio_props.start_offset_frames;
+                    pos >= 0 && pos < sampler.region->audio_props.fade_in_frames) {
+                    auto const percent = pos / (f64)sampler.region->audio_props.fade_in_frames;
+                    // Quarter-sine fade in.
+                    auto const amount = trig_table_lookup::SinTurnsPositive((f32)percent * 0.25f);
+                    out *= amount;
+                }
             }
         }
 
-        return {
-            .frame = out,
-            .state = IncrementSamplePlaybackPos(sampler.loop,
-                                                sampler.loop_and_reverse_flags,
-                                                s.pos,
-                                                PitchRatio(voice, s, current_lfo_value, context),
-                                                (f64)sampler.data->num_frames),
-        };
+        IncrementPlaybackPos(sampler.playhead,
+                             PitchRatio(voice, s, current_lfo_value, context),
+                             sampler.data->num_frames);
+        return out;
     }
 
-    static SampleState AddSampleDataOntoBuffer(Voice const& voice,
-                                               VoiceSoundSource& s,
-                                               Span<f32x2> buffer,
-                                               Span<f32 const> lfo_amounts,
-                                               AudioProcessingContext const& context) {
+    static bool AddSampleDataOntoBuffer(Voice const& voice,
+                                        VoiceSoundSource& s,
+                                        Span<f32x2> buffer,
+                                        Span<f32 const> lfo_amounts,
+                                        AudioProcessingContext const& context) {
         if (auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
             sampler.region->timbre_layering.layer_range) {
             for (auto [frame_index, val] : Enumerate(buffer)) {
+                if (PlaybackEnded(sampler.playhead, sampler.data->num_frames)) return false;
+
                 auto const sample_frame = ({
-                    SampleSourceReturnValue f;
+                    f32x2 f;
                     if (auto const v =
                             sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol,
                                                                context.one_pole_smoothing_cutoff_10ms);
                         v > 0.0001f) {
                         f = NextSampleFrame(voice, s, lfo_amounts[frame_index], context);
-                        f.frame *= v;
+                        f *= v;
                     } else {
                         auto const pitch_ratio1 = PitchRatio(voice, s, lfo_amounts[frame_index], context);
-                        f.frame = 0.0f;
-                        f.state = IncrementSamplePlaybackPos(sampler.loop,
-                                                             sampler.loop_and_reverse_flags,
-                                                             s.pos,
-                                                             pitch_ratio1,
-                                                             (f64)sampler.data->num_frames);
+                        f = 0.0f;
+                        IncrementPlaybackPos(sampler.playhead, pitch_ratio1, sampler.data->num_frames);
                     }
                     f;
                 });
 
-                val += sample_frame.frame * s.amp;
-
-                if (sample_frame.state == SampleState::Ended) return sample_frame.state;
+                val += sample_frame * s.amp;
             }
         } else {
             for (auto [frame_index, val] : Enumerate(buffer)) {
+                if (PlaybackEnded(sampler.playhead, sampler.data->num_frames)) return false;
+
                 auto const sample_frame = NextSampleFrame(voice, s, lfo_amounts[frame_index], context);
 
-                val += sample_frame.frame * s.amp;
-
-                if (sample_frame.state == SampleState::Ended) return sample_frame.state;
+                val += sample_frame * s.amp;
             }
         }
 
-        return SampleState::Alive;
+        return true;
     }
 
     static constexpr unsigned int k_max_fast_rand = 0x7FFF;
@@ -684,8 +683,7 @@ struct VoiceProcessor {
             if (!s.is_active) continue;
             switch (s.source_data.tag) {
                 case InstrumentType::Sampler: {
-                    if (AddSampleDataOntoBuffer(voice, s, buffer, lfo_amounts, context) ==
-                        SampleState::Ended) {
+                    if (!AddSampleDataOntoBuffer(voice, s, buffer, lfo_amounts, context)) {
                         s.is_active = false;
                         voice.num_active_voice_samples--;
                     }
@@ -693,7 +691,8 @@ struct VoiceProcessor {
                 }
                 case InstrumentType::WaveformSynth: {
                     ASSERT_HOT(voice.num_active_voice_samples == 1);
-                    switch (s.source_data.Get<WaveformType>()) {
+                    auto& waveform_source = s.source_data.Get<VoiceSoundSource::WaveformSource>();
+                    switch (waveform_source.type) {
                         case WaveformType::Sine: {
                             for (auto [frame_index, val] : Enumerate(buffer)) {
                                 // This is an arbitrary scale factor to make the sine more in-line with other
@@ -701,11 +700,13 @@ struct VoiceProcessor {
                                 // compatibility.
                                 constexpr f32x2 k_sine_scale = 0.2f;
 
-                                val = f32x2(trig_table_lookup::SinTurnsPositive((f32)s.pos)) * k_sine_scale;
+                                val = f32x2(trig_table_lookup::SinTurnsPositive((f32)waveform_source.pos)) *
+                                      k_sine_scale;
 
-                                s.pos += PitchRatio(voice, s, lfo_amounts[frame_index], context);
-                                if (s.pos > (1 << 24)) [[unlikely]] // prevent overflow
-                                    s.pos -= (1 << 24);
+                                waveform_source.pos +=
+                                    PitchRatio(voice, s, lfo_amounts[frame_index], context);
+                                if (waveform_source.pos > (1 << 24)) [[unlikely]] // prevent overflow
+                                    waveform_source.pos -= (1 << 24);
                             }
 
                             break;

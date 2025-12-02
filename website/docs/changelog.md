@@ -15,6 +15,7 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 1.1.0
+- Fix pop sometimes possible at ping-pong loop boundary
 - Fix possible crash related to file paths on Windows.
 - Fix possible crash related to error reporting.
 - Fix possible package installation failure

@@ -269,23 +269,26 @@ Type& CreateOrFetchFixtureObject(Tester& tester) {
 
 #define REQUIRE_APPROX_EQ_HELPER(a, b, epsilon, level)                                                       \
     do {                                                                                                     \
-        auto x = a;                                                                                          \
-        auto y = b;                                                                                          \
-        const bool condition = ApproxEqual(x, y, epsilon);                                                   \
-        tests::Check(                                                                                        \
-            tester,                                                                                          \
-            condition,                                                                                       \
-            condition                                                                                        \
-                ? MutableString {}                                                                           \
-                : fmt::Format(tester.scratch_arena, "Expected: {} ~ {}\n          {} ~ {}", #a, #b, x, y),   \
-            tests::FailureAction::level);                                                                    \
+        auto x_req = a;                                                                                      \
+        auto y_req = b;                                                                                      \
+        const bool condition = ApproxEqual(x_req, y_req, epsilon);                                           \
+        tests::Check(tester,                                                                                 \
+                     condition,                                                                              \
+                     condition ? MutableString {}                                                            \
+                               : fmt::Format(tester.scratch_arena,                                           \
+                                             "Expected: {} ~ {}\n          {} ~ {}",                         \
+                                             #a,                                                             \
+                                             #b,                                                             \
+                                             x_req,                                                          \
+                                             y_req),                                                         \
+                     tests::FailureAction::level);                                                           \
     } while (0)
 
 #define REQUIRE_HELPER(a, b, op, level)                                                                      \
     do {                                                                                                     \
-        auto x = a;                                                                                          \
-        auto y = b;                                                                                          \
-        const bool condition = x op y;                                                                       \
+        auto x_req = a;                                                                                      \
+        auto y_req = b;                                                                                      \
+        const bool condition = x_req op y_req;                                                               \
         tests::Check(tester,                                                                                 \
                      condition,                                                                              \
                      condition ? MutableString {}                                                            \
@@ -294,9 +297,9 @@ Type& CreateOrFetchFixtureObject(Tester& tester) {
                                              #a,                                                             \
                                              #op,                                                            \
                                              #b,                                                             \
-                                             x,                                                              \
+                                             x_req,                                                          \
                                              #op,                                                            \
-                                             y),                                                             \
+                                             y_req),                                                         \
                      tests::FailureAction::level);                                                           \
         if constexpr (tests::FailureAction::level == tests::FailureAction::FailAndExitTest)                  \
             if (!condition) PanicIfReached();                                                                \

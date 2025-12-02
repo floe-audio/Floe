@@ -34,7 +34,6 @@ struct VoiceSoundSource {
     f64 pitch_ratio = 1;
     OnePoleLowPassFilter<f64> pitch_ratio_smoother = {};
     f64 pitch_ratio_mod = 0;
-    f64 pos = 0;
     f32 amp = 1;
 
     struct SampleSource {
@@ -42,13 +41,17 @@ struct VoiceSoundSource {
         AudioData const* data = nullptr;
         f32 xfade_vol = 1;
         OnePoleLowPassFilter<f32> xfade_vol_smoother = {};
-        u32 loop_and_reverse_flags {};
-        Optional<BoundsCheckedLoop> loop {};
+        PlayHead playhead {};
+    };
+
+    struct WaveformSource {
+        WaveformType type;
+        f64 pos;
     };
 
     using SourceData = TaggedUnion<InstrumentType,
                                    TypeAndTag<SampleSource, InstrumentType::Sampler>,
-                                   TypeAndTag<WaveformType, InstrumentType::WaveformSynth>>;
+                                   TypeAndTag<WaveformSource, InstrumentType::WaveformSynth>>;
 
     SourceData source_data = InstrumentType::None;
 };
@@ -71,6 +74,7 @@ struct Voice {
     bool processed_this_block = false;
 
     u8 num_active_voice_samples = 0;
+    bool reversed_playback = false;
     Array<VoiceSoundSource, k_max_num_voice_sound_sources> sound_sources {};
 
     VoicePool& pool;

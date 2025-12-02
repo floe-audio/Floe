@@ -57,6 +57,7 @@
     X(RegisterPreferencesTests)                                                                              \
     X(RegisterRandomTests)                                                                                   \
     X(RegisterSampleLibraryServerTests)                                                                      \
+    X(RegisterSamplePlayheadTests)                                                                           \
     X(RegisterSentryTests)                                                                                   \
     X(RegisterStateCodingTests)                                                                              \
     X(RegisterStringTests)                                                                                   \

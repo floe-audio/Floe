@@ -72,6 +72,7 @@ using s4 = signed _BitInt(4);
 
 using f32x2 = __attribute__((ext_vector_type(2))) f32;
 using f32x4 = __attribute__((ext_vector_type(4))) f32;
+using u32x4 = __attribute__((ext_vector_type(4))) u32;
 using s32x2 = __attribute__((ext_vector_type(2))) s32;
 using u8x4 = __attribute__((ext_vector_type(4))) u8;
 
