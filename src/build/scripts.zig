@@ -922,10 +922,12 @@ fn tempFilePath(allocator: std.mem.Allocator, env_map: *std.process.EnvMap) ![]c
     var bytes: [8]u8 = undefined;
     try std.posix.getrandom(&bytes);
 
-    const size = std.base64.standard.Encoder.calcSize(bytes.len);
+    const codec = std.base64.url_safe_no_pad;
+
+    const size = codec.Encoder.calcSize(bytes.len);
     const b64_buf = try allocator.alloc(u8, size);
     defer allocator.free(b64_buf);
-    const filename = std.base64.standard.Encoder.encode(b64_buf, &bytes);
+    const filename = codec.Encoder.encode(b64_buf, &bytes);
 
     return try std.fs.path.join(allocator, &.{ dir, filename });
 }
