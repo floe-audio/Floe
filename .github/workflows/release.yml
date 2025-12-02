@@ -46,6 +46,9 @@ jobs:
   build-and-release:
     needs: [build-macos]
     runs-on: ubuntu-22.04 
+    permissions:
+      id-token: write
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@main
