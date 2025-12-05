@@ -1033,14 +1033,6 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
                 }
             }
         }
-
-        if (state.ir_id) {
-            if (state.ir_id->ir_name == "4s Standard Bright"_s || state.ir_id->ir_name == "Formant 1"_s ||
-                state.ir_id->ir_name == "2s Airy 1"_s) {
-                auto& wet_amp = state.LinearParam(ParamIndex::ConvolutionReverbWet);
-                wet_amp = DbToAmp(AmpToDb(wet_amp) - 10);
-            }
-        }
     }
 
     if constexpr (RUNTIME_SAFETY_CHECKS_ON) {
