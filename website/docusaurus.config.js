@@ -177,194 +177,162 @@ const config = {
                 fromExtensions: ["html", "htm"], // /myPage.html -> /myPage
                 redirects: [
                     // Mostly old routes from our previous mdbook-based site.
-                    //
-                    // TODO: remove these once we're out of beta.
-                    { to: '/', from: ['/home', '/home.html'], },
-                    { to: '/packages', from: ['/packages/available-packages', '/packages/available-packages.html'], },
-                    { to: '/download', from: ['/installation/download-and-install-floe.html', '/installation/download-and-install-floe'], },
-                    { to: '/docs/installation/requirements', from: ['/installation/requirements', '/installation/requirements.html'], },
-                    { to: '/docs/installation/updating', from: ['/installation/updating', '/installation/updating.html'], },
-                    { to: '/docs/installation/uninstalling', from: ['/installation/uninstalling', '/installation/uninstalling.html'], },
-                    { to: '/docs/packages/about-packages', from: ['/packages/about-packages', '/packages/about-packages.html'], },
-                    { to: '/docs/packages/install-packages', from: ['/packages/install-packages', '/packages/install-packages.html'], },
-                    { to: '/docs/usage/sample-libraries', from: ['/usage/sample-libraries', '/usage/sample-libraries.html'], },
-                    { to: '/docs/usage/presets', from: ['/usage/presets', '/usage/presets.html'], },
-                    { to: '/docs/usage/layers', from: ['/usage/layers', '/usage/layers.html'], },
-                    { to: '/docs/usage/effects', from: ['/usage/effects', '/usage/effects.html'], },
-                    { to: '/docs/usage/key-ranges', from: ['/usage/key-ranges', '/usage/key-ranges.html'], },
-                    { to: '/docs/usage/midi', from: ['/usage/midi', '/usage/midi.html'], },
-                    { to: '/docs/usage/looping', from: ['/usage/looping', '/usage/looping.html'], },
-                    { to: '/docs/usage/parameters', from: ['/usage/parameters', '/usage/parameters.html'], },
-                    { to: '/docs/usage/macros', from: ['/usage/macros', '/usage/macros.html'], },
-                    { to: '/docs/usage/autosave', from: ['/usage/autosave', '/usage/autosave.html'], },
-                    { to: '/docs/usage/attribution', from: ['/usage/attribution', '/usage/attribution.html'], },
-                    { to: '/docs/usage/error-reporting', from: ['/usage/error-reporting', '/usage/error-reporting.html'], },
-                    { to: '/docs/develop/develop-libraries', from: ['/develop/develop-libraries', '/develop/develop-libraries.html'], },
-                    { to: '/docs/develop/library-lua-scripts', from: ['/develop/library-lua-scripts', '/develop/library-lua-scripts.html'], },
-                    { to: '/docs/develop/develop-preset-packs', from: ['/develop/develop-preset-packs', '/develop/develop-preset-packs.html'], },
-                    { to: '/docs/develop/packaging', from: ['/develop/packaging', '/develop/packaging.html'], },
-                    { to: '/docs/develop/tags-and-folders', from: ['/develop/tags-and-folders', '/develop/tags-and-folders.html'], },
-                    { to: '/docs/about-the-project/mirage', from: ['/about-the-project/mirage', '/about-the-project/mirage.html'], },
-                    { to: '/docs/about-the-project/roadmap', from: ['/about-the-project/roadmap', '/about-the-project/roadmap.html'], },
-                    { to: '/docs/changelog', from: ['/changelog', '/changelog.html'], },
-                    //
-                    // TODO: replace above with these once we're out of beta.
-                    // {
-                    //     to: "/docs/installation/install-packages",
-                    //     from: [
-                    //         "/docs/packages/install-packages",
-                    //         "/packages/install-packages",
-                    //         "/packages/install-packages.html",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/docs/key-concepts/components",
-                    //     from: [
-                    //         "/docs/usage/presets",
-                    //         "/usage/presets",
-                    //         "/usage/presets.html",
-                    //         "/docs/usage/sample-libraries",
-                    //         "/usage/sample-libraries",
-                    //         "/usage/sample-libraries.html",
-                    //         "/docs/packages/about-packages",
-                    //         "/packages/about-packages",
-                    //         "/packages/about-packages.html",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/docs/reference/autosave",
-                    //     from: [
-                    //         "/docs/usage/autosave",
-                    //         "/usage/autosave",
-                    //         "/usage/autosave.html",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/docs/reference/attribution",
-                    //     from: [
-                    //         "/docs/usage/attribution",
-                    //         "/usage/attribution",
-                    //         "/usage/attribution.html",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/docs/reference/error-reporting",
-                    //     from: [
-                    //         "/docs/usage/error-reporting",
-                    //         "/usage/error-reporting",
-                    //         "/usage/error-reporting.html",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/docs/reference/parameters",
-                    //     from: [
-                    //         "/docs/usage/parameters",
-                    //         "/usage/parameters",
-                    //         "/usage/parameters.html",
-                    //     ],
-                    // },
-                    // { to: "/", from: ["/home", "/home.html"] },
-                    // {
-                    //     to: "/packages",
-                    //     from: [
-                    //         "/packages/available-packages",
-                    //         "/packages/available-packages.html",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/download",
-                    //     from: [
-                    //         "/installation/download-and-install-floe.html",
-                    //         "/installation/download-and-install-floe",
-                    //         "/installation/updating",
-                    //         "/installation/updating.html",
-                    //         "/installation/requirements",
-                    //         "/installation/requirements.html",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/docs/installation/download-and-install-floe",
-                    //     from: ["/docs/installation/requirements"],
-                    // },
-                    // {
-                    //     to: "/docs/getting-started/quick-start-guide",
-                    //     from: ["/docs/introduction"],
-                    // },
-                    // {
-                    //     to: "/docs/installation/uninstalling",
-                    //     from: [
-                    //         "/installation/uninstalling",
-                    //         "/installation/uninstalling.html",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/docs/usage/layers",
-                    //     from: ["/usage/layers", "/usage/layers.html"],
-                    // },
-                    // {
-                    //     to: "/docs/usage/effects",
-                    //     from: ["/usage/effects", "/usage/effects.html"],
-                    // },
-                    // {
-                    //     to: "/docs/usage/key-ranges",
-                    //     from: ["/usage/key-ranges", "/usage/key-ranges.html"],
-                    // },
-                    // { to: "/docs/usage/midi", from: ["/usage/midi", "/usage/midi.html"] },
-                    // {
-                    //     to: "/docs/usage/looping",
-                    //     from: ["/usage/looping", "/usage/looping.html"],
-                    // },
-                    // {
-                    //     to: "/docs/usage/macros",
-                    //     from: ["/usage/macros", "/usage/macros.html"],
-                    // },
-                    // {
-                    //     to: "/docs/develop/develop-libraries",
-                    //     from: [
-                    //         "/develop/develop-libraries",
-                    //         "/develop/develop-libraries.html",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/docs/develop/library-lua-scripts",
-                    //     from: [
-                    //         "/develop/library-lua-scripts",
-                    //         "/develop/library-lua-scripts.html",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/docs/develop/develop-preset-packs",
-                    //     from: [
-                    //         "/develop/develop-preset-packs",
-                    //         "/develop/develop-preset-packs.html",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/docs/develop/packaging",
-                    //     from: ["/develop/packaging", "/develop/packaging.html"],
-                    // },
-                    // {
-                    //     to: "/docs/develop/tags-and-folders",
-                    //     from: [
-                    //         "/develop/tags-and-folders",
-                    //         "/develop/tags-and-folders.html",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/docs/about-the-project/mirage",
-                    //     from: [
-                    //         "/about-the-project/mirage",
-                    //         "/about-the-project/mirage.html",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/docs/about-the-project/roadmap",
-                    //     from: [
-                    //         "/about-the-project/roadmap",
-                    //         "/about-the-project/roadmap.html",
-                    //     ],
-                    // },
-                    // { to: "/docs/changelog", from: ["/changelog", "/changelog.html"] },
+                    {
+                        to: "/docs/installation/install-packages",
+                        from: [
+                            "/docs/packages/install-packages",
+                            "/packages/install-packages",
+                            "/packages/install-packages.html",
+                        ],
+                    },
+                    {
+                        to: "/docs/key-concepts/components",
+                        from: [
+                            "/docs/usage/presets",
+                            "/usage/presets",
+                            "/usage/presets.html",
+                            "/docs/usage/sample-libraries",
+                            "/usage/sample-libraries",
+                            "/usage/sample-libraries.html",
+                            "/docs/packages/about-packages",
+                            "/packages/about-packages",
+                            "/packages/about-packages.html",
+                        ],
+                    },
+                    {
+                        to: "/docs/reference/autosave",
+                        from: [
+                            "/docs/usage/autosave",
+                            "/usage/autosave",
+                            "/usage/autosave.html",
+                        ],
+                    },
+                    {
+                        to: "/docs/reference/attribution",
+                        from: [
+                            "/docs/usage/attribution",
+                            "/usage/attribution",
+                            "/usage/attribution.html",
+                        ],
+                    },
+                    {
+                        to: "/docs/reference/error-reporting",
+                        from: [
+                            "/docs/usage/error-reporting",
+                            "/usage/error-reporting",
+                            "/usage/error-reporting.html",
+                        ],
+                    },
+                    {
+                        to: "/docs/reference/parameters",
+                        from: [
+                            "/docs/usage/parameters",
+                            "/usage/parameters",
+                            "/usage/parameters.html",
+                        ],
+                    },
+                    { to: "/", from: ["/home", "/home.html"] },
+                    {
+                        to: "/packages",
+                        from: [
+                            "/packages/available-packages",
+                            "/packages/available-packages.html",
+                        ],
+                    },
+                    {
+                        to: "/download",
+                        from: [
+                            "/installation/download-and-install-floe.html",
+                            "/installation/download-and-install-floe",
+                            "/installation/updating",
+                            "/installation/updating.html",
+                            "/installation/requirements",
+                            "/installation/requirements.html",
+                        ],
+                    },
+                    {
+                        to: "/docs/installation/download-and-install-floe",
+                        from: ["/docs/installation/requirements"],
+                    },
+                    {
+                        to: "/docs/getting-started/quick-start-guide",
+                        from: ["/docs/introduction"],
+                    },
+                    {
+                        to: "/docs/installation/uninstalling",
+                        from: [
+                            "/installation/uninstalling",
+                            "/installation/uninstalling.html",
+                        ],
+                    },
+                    {
+                        to: "/docs/usage/layers",
+                        from: ["/usage/layers", "/usage/layers.html"],
+                    },
+                    {
+                        to: "/docs/usage/effects",
+                        from: ["/usage/effects", "/usage/effects.html"],
+                    },
+                    {
+                        to: "/docs/usage/key-ranges",
+                        from: ["/usage/key-ranges", "/usage/key-ranges.html"],
+                    },
+                    { to: "/docs/usage/midi", from: ["/usage/midi", "/usage/midi.html"] },
+                    {
+                        to: "/docs/usage/looping",
+                        from: ["/usage/looping", "/usage/looping.html"],
+                    },
+                    {
+                        to: "/docs/usage/macros",
+                        from: ["/usage/macros", "/usage/macros.html"],
+                    },
+                    {
+                        to: "/docs/develop/develop-libraries",
+                        from: [
+                            "/develop/develop-libraries",
+                            "/develop/develop-libraries.html",
+                        ],
+                    },
+                    {
+                        to: "/docs/develop/library-lua-scripts",
+                        from: [
+                            "/develop/library-lua-scripts",
+                            "/develop/library-lua-scripts.html",
+                        ],
+                    },
+                    {
+                        to: "/docs/develop/develop-preset-packs",
+                        from: [
+                            "/develop/develop-preset-packs",
+                            "/develop/develop-preset-packs.html",
+                        ],
+                    },
+                    {
+                        to: "/docs/develop/packaging",
+                        from: ["/develop/packaging", "/develop/packaging.html"],
+                    },
+                    {
+                        to: "/docs/develop/tags-and-folders",
+                        from: [
+                            "/develop/tags-and-folders",
+                            "/develop/tags-and-folders.html",
+                        ],
+                    },
+                    {
+                        to: "/docs/about-the-project/mirage",
+                        from: [
+                            "/about-the-project/mirage",
+                            "/about-the-project/mirage.html",
+                        ],
+                    },
+                    {
+                        to: "/docs/about-the-project/roadmap",
+                        from: [
+                            "/about-the-project/roadmap",
+                            "/about-the-project/roadmap.html",
+                        ],
+                    },
+                    { to: "/docs/changelog", from: ["/changelog", "/changelog.html"] },
                 ],
             },
         ],
