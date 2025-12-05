@@ -149,6 +149,24 @@ inline BoundsCheckedLoop CreateBoundsCheckedLoop(sample_lib::BuiltinLoop loop, u
     };
 }
 
+[[nodiscard]] inline BoundsCheckedLoop InvertLoop(BoundsCheckedLoop const& l, u32 num_frames) {
+    ASSERT_HOT(l.end <= num_frames);
+    ASSERT_HOT(l.start < num_frames);
+    auto const new_start = num_frames - l.end;
+    auto const new_end = num_frames - l.start;
+
+    BoundsCheckedLoop const result {
+        .start = new_start,
+        .end = new_end,
+        .crossfade = ClampCrossfadeSize<u32>(l.crossfade, new_start, new_end, num_frames, l.mode),
+        .mode = l.mode,
+    };
+
+    ASSERT_HOT(result.end <= num_frames);
+    ASSERT_HOT(result.start < num_frames);
+    return result;
+}
+
 struct PlayHead {
     struct Loop : BoundsCheckedLoop {
         bool only_use_frames_within_loop {};
@@ -160,28 +178,10 @@ struct PlayHead {
         return inverse_data_lookup ? ((num_frames - 1) - frame_index) : frame_index;
     }
 
-    // When changing playback direction we may need to invert the frame position and/or loop points so that
-    // they correspond to the dimension.
-    struct InvertOptions {
-        bool invert_frame_pos = false;
-        bool invert_loop = false;
-    };
-    void InvertPositions(u32 num_frames, InvertOptions const& opts) {
-        if (opts.invert_frame_pos) frame_pos = num_frames - frame_pos;
-        if (opts.invert_loop) {
-            ASSERT_HOT(loop);
-            auto& l = *loop;
-            ASSERT_HOT(l.end <= num_frames);
-            ASSERT_HOT(l.start < num_frames);
-            auto const inverted_start = num_frames - l.start;
-            auto const inverted_end = num_frames - l.end;
-            l.start = inverted_end;
-            l.end = inverted_start;
-            ASSERT_HOT(l.crossfade ==
-                       ClampCrossfadeSize<u32>(l.crossfade, l.start, l.end, num_frames, l.mode));
-            ASSERT_HOT(l.end <= num_frames);
-            ASSERT_HOT(l.start < num_frames);
-        }
+    // Change the direction but maintain the same audio data position.
+    void Invert(u32 num_frames) {
+        inverse_data_lookup = !inverse_data_lookup;
+        frame_pos = num_frames - frame_pos;
     }
 
     // The frame position in the audio data regardless of playback direction. It only ever goes forwards. So
@@ -235,10 +235,9 @@ inline void IncrementPlaybackPos(PlayHead& playhead, f64 increment, u32 num_fram
                     playhead.frame_pos = playhead.loop->end - bounded_overshoot;
 
                     if ((u32)(overshoot / loop_size) % 2 == 0) {
-                        playhead.inverse_data_lookup = !playhead.inverse_data_lookup;
-                        playhead.InvertPositions(num_frames, {.invert_frame_pos = true, .invert_loop = true});
+                        playhead.Invert(num_frames);
+                        playhead.loop = InvertLoop(*playhead.loop, num_frames);
                     }
-
                     break;
                 }
                 case sample_lib::LoopMode::Count: PanicIfReached(); break;
@@ -267,8 +266,7 @@ inline void ResetPlayhead(PlayHead& playhead,
     playhead.requested_reverse = is_reversed;
     playhead.inverse_data_lookup = is_reversed;
     if (loop) {
-        playhead.loop = *loop;
-        if (is_reversed) playhead.InvertPositions(num_frames, {.invert_loop = true});
+        playhead.loop = is_reversed ? InvertLoop(*loop, num_frames) : *loop;
         if (frame_pos >= playhead.loop->start) playhead.loop->only_use_frames_within_loop = true;
         if (frame_pos >= playhead.loop->end) playhead.frame_pos = playhead.loop->start;
     }
@@ -280,22 +278,33 @@ inline void UpdatePlayhead(PlayHead& playhead,
                            u32 num_frames) {
     ASSERT_HOT(num_frames);
     if (playhead.requested_reverse != is_reversed) {
-        if (loop && loop->mode == sample_lib::LoopMode::PingPong)
-            playhead.inverse_data_lookup = !playhead.inverse_data_lookup;
-        else
-            playhead.inverse_data_lookup = is_reversed;
         playhead.requested_reverse = is_reversed;
-        playhead.InvertPositions(num_frames, {.invert_frame_pos = true});
+        auto const should_invert = ({
+            bool v;
+            if (loop && loop->mode == sample_lib::LoopMode::PingPong)
+                // For ping-pong loops, it feels more natural that changing the reverse state flips the
+                // playback so at least something happens. Playback direction is less important in this mode
+                // since it's constantly changing.
+                v = true;
+            else
+                // Otherwise, we
+                v = playhead.inverse_data_lookup != is_reversed;
+            v;
+        });
+        if (should_invert) playhead.Invert(num_frames);
     }
 
     if (!loop) {
         playhead.loop = k_nullopt;
     } else {
-        // When the loop changes mode, let's reset the inversion state.
-        if (!playhead.loop || playhead.loop->mode != loop->mode) playhead.inverse_data_lookup = is_reversed;
+        // When the loop changes mode, let's reset the inversion state so that for standard loops it always
+        // respects the current playback direction.
+        if ((!playhead.loop || playhead.loop->mode != loop->mode) &&
+            playhead.inverse_data_lookup != is_reversed) {
+            playhead.Invert(num_frames);
+        }
 
-        playhead.loop = *loop;
-        if (playhead.inverse_data_lookup) playhead.InvertPositions(num_frames, {.invert_loop = true});
+        playhead.loop = playhead.inverse_data_lookup ? InvertLoop(*loop, num_frames) : *loop;
 
         if (!PlaybackEnded(playhead, num_frames))
             // Use the increment function to handle loop clamping that we may need to do if the loop changed
