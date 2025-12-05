@@ -88,7 +88,7 @@ class ConvolutionReverb final : public Effect {
                 conv_context.changed_ir = SwapConvolversIfNeeded();
                 break;
             } else {
-                UpdateRemainingTailLength(wet);
+                UpdateRemainingTailLength(Max(wet, frame));
             }
 
             wet = MixOnOffSmoothing(context, wet, frame);
