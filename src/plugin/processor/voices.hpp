@@ -74,7 +74,6 @@ struct Voice {
     bool processed_this_block = false;
 
     u8 num_active_voice_samples = 0;
-    bool reversed_playback = false;
     Array<VoiceSoundSource, k_max_num_voice_sound_sources> sound_sources {};
 
     VoicePool& pool;
