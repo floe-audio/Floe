@@ -42,14 +42,13 @@ class ConvolutionReverb final : public Effect {
     EffectProcessResult
     ProcessBlock(Span<f32x2> frames, AudioProcessingContext const& context, void* extra_context) override {
         ZoneScoped;
-        auto result = EffectProcessResult::Done;
 
         ASSERT_HOT(extra_context);
         auto& conv_context = *(ConvoExtraContext*)extra_context;
 
         if (!ShouldProcessBlock()) {
             conv_context.changed_ir = SwapConvolversIfNeeded();
-            return result;
+            return EffectProcessResult::Done;
         }
 
         alignas(16) f32 input_left[k_block_size_max];
@@ -95,8 +94,7 @@ class ConvolutionReverb final : public Effect {
             frame = wet;
         }
 
-        result = IsSilent() ? EffectProcessResult::Done : EffectProcessResult::ProcessingTail;
-        return result;
+        return IsSilent() ? EffectProcessResult::Done : EffectProcessResult::ProcessingTail;
     }
 
     // audio-thread
