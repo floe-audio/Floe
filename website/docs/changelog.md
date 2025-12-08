@@ -15,11 +15,13 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 1.1.0
-- Fix pop sometimes possible at ping-pong loop boundary
+- Fix pop sometimes possible at ping-pong loop boundary and make adjusting the loop points while playing have less audible artefacts.
+- Fix sometimes not correctly loading in Reaper or FL Studio, leaving UI looking correct but audio not reflective of the current state.
+- Fix preset being silent when convolution reverb effect had -inf dB dry level.
 - Fix possible crash related to file paths on Windows.
 - Fix possible crash related to error reporting.
 - Fix possible package installation failure
-- Fix sometimes not correctly loading in Reaper or FL Studio, leaving UI looking correct but audio not reflective of the current state.
+- Fix Mirage presets sometimes being too quiet if they used certain convolution reverb IRs.
 - Major infrastructure improvements to how we build and release Floe.
 
 ## 1.1.0-beta.1
