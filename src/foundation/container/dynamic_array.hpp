@@ -381,7 +381,7 @@ template <typename Type>
 requires(!Const<Type>)
 struct DynamicArray {
     NON_COPYABLE(DynamicArray);
-    DEFINE_CONTIGUOUS_CONTAINER_METHODS(DynamicArray, data, size)
+    DEFINE_CONTIGUOUS_CONTAINER_METHODS(Type, data, size)
 
     using ValueType = Type;
 
@@ -535,16 +535,13 @@ struct DynamicArray {
     usize capacity_bytes {};
 };
 
-// IMPROVE: for trivially copyable types, use a union for storage like we do for Optional so that the type can
-// be used in constexpr contexts
-
 template <typename Type, usize k_capacity>
 requires(!Const<Type>)
 struct DynamicArrayBounded {
     using ValueType = Type;
 
     PROPAGATE_TRIVIALLY_COPYABLE(DynamicArrayBounded, Type);
-    DEFINE_CONTIGUOUS_CONTAINER_METHODS(DynamicArrayBounded, data, size)
+    DEFINE_CONTIGUOUS_CONTAINER_METHODS(Type, data, size)
 
     constexpr DynamicArrayBounded() = default;
 
@@ -601,6 +598,19 @@ struct DynamicArrayBounded {
         alignas(Type) u8 storage[k_capacity * sizeof(Type)];
     };
 
-    Storage data {};
+    // This allows for use in constexpr contexts.
+    struct TrivialStorage {
+        PROPAGATE_TRIVIALLY_COPYABLE(TrivialStorage, Type);
+
+        constexpr TrivialStorage() = default;
+        constexpr ~TrivialStorage() {}
+
+        constexpr operator Type*() { return storage; }
+        constexpr operator Type const*() const { return storage; }
+
+        Type storage[k_capacity] {};
+    };
+
+    Conditional<TriviallyCopyable<Type> && DefaultConstructible<Type>, TrivialStorage, Storage> data {};
     usize size {};
 };

@@ -17,10 +17,10 @@
     constexpr operator Span<type>() const_word { return {data, size}; }
 
 #define DEFINE_CONTIGUOUS_CONTAINER_METHODS(type_name, data, size)                                           \
-    DEFINE_BASIC_ARRAY_METHODS(const Type, data, size, const)                                                \
-    DEFINE_BASIC_ARRAY_METHODS(Type, data, size, )                                                           \
-    DEFINE_SPAN_INTERFACE_METHODS(const Type, data, size, const)                                             \
-    DEFINE_SPAN_INTERFACE_METHODS(Type, data, size, )
+    DEFINE_BASIC_ARRAY_METHODS(const type_name, data, size, const)                                           \
+    DEFINE_BASIC_ARRAY_METHODS(type_name, data, size, )                                                      \
+    DEFINE_SPAN_INTERFACE_METHODS(const type_name, data, size, const)                                        \
+    DEFINE_SPAN_INTERFACE_METHODS(type_name, data, size, )
 
 template <class ContainerType>
 concept ContiguousContainer = requires(ContainerType a) {

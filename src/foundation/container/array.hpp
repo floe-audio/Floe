@@ -17,7 +17,7 @@ template <typename Type, usize k_size>
 struct Array {
     using ValueType = Type;
 
-    DEFINE_CONTIGUOUS_CONTAINER_METHODS(Array, data, k_size)
+    DEFINE_CONTIGUOUS_CONTAINER_METHODS(Type, data, k_size)
 
     constexpr StaticSpan<Type, k_size> StaticItems() const { return data; }
     constexpr operator StaticSpan<Type, k_size>() { return data; }
@@ -44,7 +44,7 @@ union UninitialisedArray {
             PLACEMENT_NEW(&data[i]) Type(Move(other.data[i]));
     }
 
-    DEFINE_CONTIGUOUS_CONTAINER_METHODS(UninitialisedArray, data, k_size)
+    DEFINE_CONTIGUOUS_CONTAINER_METHODS(Type, data, k_size)
 
     constexpr StaticSpan<Type, k_size> StaticItems() const { return data; }
     constexpr operator StaticSpan<Type, k_size>() { return data; }
