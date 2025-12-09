@@ -18,6 +18,8 @@ Building is done inside a Nix flake shell. You can use `nix develop .#with-valid
   - Be prepared to add exceptions to ignored-spellings.dic since our spell-check is not smart and will often think non-words are words. We use British English.
 - Check license comment headers: `zig build check:reuse`
 
+IMPORTANT: when building code with zig build, NEVER try to filter the output with head or grep.
+
 # Source code overview
 Here are some notable subdirectories, though there are plenty more.
 - `src/foundation/`: our 'standard library' with data structures and core utilities. All code depends on this.
