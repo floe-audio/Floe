@@ -376,8 +376,13 @@ void RequestScanningOfUnscannedFolders(Server& server);
 // [threadsafe]
 void RescanFolder(Server& server, String folder);
 
+// Waits until all libraries have finished loading and all scan folders have finished scanning.
+// Returns true if loading completed, false if timeout was reached. If timeout is nullopt, waits indefinitely.
+// If timeout is 0, just returns 'is loading' status immediately.
 // [threadsafe]
 bool WaitIfLibrariesAreLoading(Server& server, Optional<u32> timeout);
+
+bool AreLibrariesLoading(Server& server);
 
 } // namespace sample_lib_server
 

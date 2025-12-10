@@ -63,6 +63,25 @@ ErrorCodeOr<u64> Hash(String path, Reader& reader, FileFormat format) {
     return {};
 }
 
+u64 LegacyPersistentInstHash(Instrument const& inst) {
+    return HashMultipleFnv1a(Array {inst.name,
+                                    inst.library.file_format_specifics.tag == FileFormat::Mdata
+                                        ? k_old_mirage_author
+                                        : inst.library.author,
+                                    inst.library.name});
+}
+
+u64 LegacyPersistentIrHash(ImpulseResponse const& ir) {
+    return HashMultipleFnv1a(Array {
+        ir.name,
+        ir.library.file_format_specifics.tag == FileFormat::Mdata ? k_old_mirage_author : ir.library.author,
+        ir.library.name});
+}
+
+u64 PersistentInstHash(Instrument const& inst) { return HashMultipleFnv1a(Array {inst.library.id, inst.id}); }
+
+u64 PersistentIrHash(ImpulseResponse const& ir) { return HashMultipleFnv1a(Array {ir.library.id, ir.id}); }
+
 bool FilenameIsFloeLuaFile(String filename) {
     return IsEqualToCaseInsensitiveAscii(filename, "floe.lua") ||
            EndsWithCaseInsensitiveAscii(filename, ".floe.lua"_s);

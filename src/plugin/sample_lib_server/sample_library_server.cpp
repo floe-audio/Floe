@@ -1752,15 +1752,18 @@ RequestId SendAsyncLoadRequest(Server& server, AsyncCommsChannel& channel, LoadR
     return queued_request.id;
 }
 
+bool AreLibrariesLoading(Server& server) { return !WaitIfLibrariesAreLoading(server, 0u); }
+
 bool WaitIfLibrariesAreLoading(Server& server, Optional<u32> timeout) {
     Stopwatch stopwatch;
 
     while (true) {
         auto const elapsed = stopwatch.MillisecondsElapsed();
-        if (timeout && elapsed >= *timeout) return false;
+        if (timeout && *timeout != 0 && elapsed >= *timeout) return false;
 
         // Wait if there are any libraries loading.
         if (auto const loading = server.libraries_loading.Load(LoadMemoryOrder::Acquire); loading != 0) {
+            if (timeout && *timeout == 0) return false;
             WaitIfValueIsExpected(server.libraries_loading,
                                   loading,
                                   timeout ? CheckedCast<u32>(*timeout - elapsed) : k_nullopt);
@@ -1774,6 +1777,7 @@ bool WaitIfLibrariesAreLoading(Server& server, Optional<u32> timeout) {
                 auto& atomic_state = protected_f.GetWithoutMutexProtection().state;
                 auto const state = atomic_state.Load(LoadMemoryOrder::Acquire);
                 if (state == ScanFolder::State::RescanRequested || state == ScanFolder::State::Scanning) {
+                    if (timeout && *timeout == 0) return false;
                     WaitIfValueIsExpected(atomic_state,
                                           state,
                                           timeout ? CheckedCast<u32>(*timeout - elapsed) : k_nullopt);

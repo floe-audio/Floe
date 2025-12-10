@@ -17,6 +17,7 @@
 #include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "clap/ext/timer-support.h"
+#include "engine/favourite_items.hpp"
 #include "plugin/plugin.hpp"
 #include "processor/layer_processor.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
@@ -470,6 +471,16 @@ static void OnMainThread(Engine& engine) {
     if (AttributionTextNeedsUpdate(engine.attribution_requirements))
         UpdateAttributionText(engine, scratch_arena);
 
+    if (HasLegacyFavourites(engine.shared_engine_systems.prefs)) {
+        auto& server = engine.shared_engine_systems.sample_library_server;
+        sample_lib_server::RequestScanningOfUnscannedFolders(server);
+        if (!sample_lib_server::AreLibrariesLoading(server))
+            MigrateLegacyFavourites(engine.shared_engine_systems.prefs, server);
+        else
+            // Let's try again in a bit.
+            engine.request_main_thread_callback_at.Store(TimePoint::Now() + 2.0, StoreMemoryOrder::Release);
+    }
+
     if (engine.update_gui.Exchange(false, RmwMemoryOrder::Relaxed))
         engine.plugin_instance_messages.UpdateGui();
 
@@ -544,6 +555,22 @@ static void PluginOnPollThread(Engine& engine) {
         if (engine.last_poll_thread_time.SecondsFromNow() >= 0.5) {
             engine.last_poll_thread_time = TimePoint::Now();
             engine.host.request_callback(&engine.host);
+        }
+    }
+
+    {
+        auto const now = TimePoint::Now();
+        auto t = engine.request_main_thread_callback_at.Load(LoadMemoryOrder::Acquire);
+        while (true) {
+            if (t.Raw() == 0) break;
+            if (now < t) break;
+            if (engine.request_main_thread_callback_at.CompareExchangeWeak(t,
+                                                                           TimePoint {},
+                                                                           RmwMemoryOrder::AcquireRelease,
+                                                                           LoadMemoryOrder::Acquire)) {
+                engine.host.request_callback(&engine.host);
+                break;
+            }
         }
     }
 

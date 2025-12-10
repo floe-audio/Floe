@@ -298,27 +298,12 @@ ErrorCodeOr<u64> MdataHash(String path, Reader& reader);
 ErrorCodeOr<u64> LuaHash(String path, Reader& reader);
 ErrorCodeOr<u64> Hash(String path, Reader& reader, FileFormat format);
 
-// The issue here with these 'persistent' hash functions is that we want to use the new authority on
-// uniqueness: the id. However, existing users will have used the old authority, which was author + name and
-// we have to maintain backwards compatibility. Sample libraries are allowed to change their name and author,
-// and so long as they maintain the same ID, its meant to match the same entity. This hashing function breaks
-// in that case.
-// Perhaps the solution is to migrate to the new system by running a startup migration. This should work
-// because it would happen before the user installs any new library that might change name/author but retain
-// the ID. The new system would use the ids.
-PUBLIC u64 PersistentInstHash(Instrument const& inst) {
-    return HashMultipleFnv1a(Array {inst.name,
-                                    inst.library.file_format_specifics.tag == FileFormat::Mdata
-                                        ? k_old_mirage_author
-                                        : inst.library.author,
-                                    inst.library.name});
-}
-PUBLIC u64 PersistentIrHash(ImpulseResponse const& ir) {
-    return HashMultipleFnv1a(Array {
-        ir.name,
-        ir.library.file_format_specifics.tag == FileFormat::Mdata ? k_old_mirage_author : ir.library.author,
-        ir.library.name});
-}
+u64 PersistentInstHash(Instrument const& inst);
+u64 PersistentIrHash(ImpulseResponse const& ir);
+
+// Legacy and only for backwards compatibility.
+u64 LegacyPersistentInstHash(Instrument const& inst);
+u64 LegacyPersistentIrHash(ImpulseResponse const& ir);
 
 struct Error {
     ErrorCode code;

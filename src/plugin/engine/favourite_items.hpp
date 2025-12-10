@@ -5,26 +5,17 @@
 
 #include "common_infrastructure/preferences.hpp"
 
-PUBLIC bool IsFavourite(prefs::PreferencesTable const& prefs, prefs::Key const& key, u64 item_hash) {
-    auto value_list = prefs::LookupValues(prefs, key);
-    for (auto value = value_list; value; value = value->next)
-        if (auto const v = value->TryGet<s64>())
-            if (*v == (s64)item_hash) return true;
-    return false;
+namespace sample_lib_server {
+struct Server;
 }
 
-PUBLIC void AddFavourite(prefs::Preferences& prefs, prefs::Key const& key, u64 item_hash) {
-    prefs::AddValue(prefs, key, (s64)item_hash);
-}
+constexpr auto k_favourite_inst_key = "favourite-instrument-v2"_s;
+constexpr auto k_favourite_ir_key = "favourite-ir-v2"_s;
 
-PUBLIC void RemoveFavourite(prefs::Preferences& prefs, prefs::Key const& key, u64 item_hash) {
-    prefs::RemoveValue(prefs, key, (s64)item_hash);
-}
+bool IsFavourite(prefs::PreferencesTable const& prefs, prefs::Key const& key, u64 item_hash);
+void AddFavourite(prefs::Preferences& prefs, prefs::Key const& key, u64 item_hash);
+void RemoveFavourite(prefs::Preferences& prefs, prefs::Key const& key, u64 item_hash);
+void ToggleFavourite(prefs::Preferences& prefs, prefs::Key const& key, u64 item_hash, bool is_favourite);
 
-PUBLIC void
-ToggleFavourite(prefs::Preferences& prefs, prefs::Key const& key, u64 item_hash, bool is_favourite) {
-    if (is_favourite)
-        RemoveFavourite(prefs, key, item_hash);
-    else
-        AddFavourite(prefs, key, item_hash);
-}
+bool HasLegacyFavourites(prefs::PreferencesTable const& prefs);
+void MigrateLegacyFavourites(prefs::Preferences& prefs, sample_lib_server::Server& server);

@@ -6,8 +6,6 @@
 #include "engine/favourite_items.hpp"
 #include "gui2_common_browser.hpp"
 
-inline prefs::Key FavouriteIr() { return "favourite-ir"_s; }
-
 static Optional<IrCursor> CurrentCursor(IrBrowserContext const& context, sample_lib::IrId const& ir_id) {
     for (auto const [lib_index, l] : Enumerate(context.frame_context.libraries)) {
         if (l->id != ir_id.library) continue;
@@ -32,7 +30,7 @@ static bool ShouldSkipIr(IrBrowserContext const& context,
 
     if (state.common_state.favourites_only) {
         filtering_on = true;
-        if (!IsFavourite(context.prefs, FavouriteIr(), sample_lib::PersistentIrHash(ir))) {
+        if (!IsFavourite(context.prefs, k_favourite_ir_key, sample_lib::PersistentIrHash(ir))) {
             if (state.common_state.filter_mode == FilterMode::MultipleAnd ||
                 state.common_state.filter_mode == FilterMode::Single)
                 return true;
@@ -246,7 +244,7 @@ void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrows
         auto const ir_id = sample_lib::IrId {lib.id, ir.name};
         auto const ir_hash = sample_lib::PersistentIrHash(ir);
         auto const is_current = context.engine.processor.convo.ir_id == ir_id;
-        auto const is_favourite = IsFavourite(context.prefs, FavouriteIr(), ir_hash);
+        auto const is_favourite = IsFavourite(context.prefs, k_favourite_ir_key, ir_hash);
 
         if (folder_section->Do(box_system).tag != BrowserSection::State::Collapsed) {
             auto const item =
@@ -306,7 +304,7 @@ void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrows
             if (item.favourite_toggled) {
                 dyn::Append(box_system.state->deferred_actions,
                             [&prefs = context.prefs, hash = ir_hash, is_favourite]() {
-                                ToggleFavourite(prefs, FavouriteIr(), hash, is_favourite);
+                                ToggleFavourite(prefs, k_favourite_ir_key, hash, is_favourite);
                             });
             }
         }
@@ -354,7 +352,7 @@ void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBro
         for (auto const& ir : l->sorted_irs) {
             auto const skip = ShouldSkipIr(context, state, *ir);
 
-            if (IsFavourite(context.prefs, FavouriteIr(), sample_lib::PersistentIrHash(*ir))) {
+            if (IsFavourite(context.prefs, k_favourite_ir_key, sample_lib::PersistentIrHash(*ir))) {
                 if (!skip) ++favourites_info.num_used_in_items_lists;
                 ++favourites_info.total_available;
             }

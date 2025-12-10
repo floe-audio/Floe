@@ -8,8 +8,6 @@
 
 constexpr sample_lib::LibraryIdRef k_waveform_library_id = "Waveforms - " FLOE_VENDOR;
 
-inline prefs::Key FavouriteItemKey() { return "favourite-instrument"_s; }
-
 struct InstrumentCursor {
     bool operator==(InstrumentCursor const& o) const = default;
     usize lib_index;
@@ -43,7 +41,7 @@ static bool ShouldSkipInstrument(InstBrowserContext const& context,
 
     if (state.common_state.favourites_only) {
         filtering_on = true;
-        if (!IsFavourite(context.prefs, FavouriteItemKey(), sample_lib::PersistentInstHash(inst))) {
+        if (!IsFavourite(context.prefs, k_favourite_inst_key, sample_lib::PersistentInstHash(inst))) {
             if (common_state.filter_mode == FilterMode::MultipleAnd ||
                 common_state.filter_mode == FilterMode::Single)
                 return true;
@@ -296,7 +294,7 @@ static void InstBrowserWaveformItems(GuiBoxSystem& box_system,
 
         auto const inst_hash = sample_lib::PersistentInstHash(pseudo_inst);
         auto const is_current = waveform_type == context.layer.instrument_id.TryGetOpt<WaveformType>();
-        auto const is_favourite = IsFavourite(context.prefs, FavouriteItemKey(), inst_hash);
+        auto const is_favourite = IsFavourite(context.prefs, k_favourite_inst_key, inst_hash);
 
         auto const item = DoBrowserItem(
             box_system,
@@ -325,7 +323,7 @@ static void InstBrowserWaveformItems(GuiBoxSystem& box_system,
         }
 
         if (item.favourite_toggled)
-            ToggleFavourite(context.prefs, FavouriteItemKey(), inst_hash, is_favourite);
+            ToggleFavourite(context.prefs, k_favourite_inst_key, inst_hash, is_favourite);
     }
 }
 
@@ -367,7 +365,7 @@ static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& conte
             auto const inst_id = sample_lib::InstrumentId {lib.id, inst.name};
             auto const inst_hash = sample_lib::PersistentInstHash(inst);
             auto const is_current = context.layer.instrument_id == inst_id;
-            auto const is_favourite = IsFavourite(context.prefs, FavouriteItemKey(), inst_hash);
+            auto const is_favourite = IsFavourite(context.prefs, k_favourite_inst_key, inst_hash);
 
             // TODO: a Panic was hit here where the GUI changed between layout and render passes while
             // updating a floe.lua file. It's rare though.
@@ -435,7 +433,7 @@ static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& conte
             if (item.favourite_toggled) {
                 dyn::Append(box_system.state->deferred_actions,
                             [&prefs = context.prefs, hash = inst_hash, is_favourite]() {
-                                ToggleFavourite(prefs, FavouriteItemKey(), hash, is_favourite);
+                                ToggleFavourite(prefs, k_favourite_inst_key, hash, is_favourite);
                             });
             }
         }
@@ -475,7 +473,7 @@ void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, I
         for (auto const& inst : l->sorted_instruments) {
             auto const skip = ShouldSkipInstrument(context, state, *inst);
 
-            if (IsFavourite(context.prefs, FavouriteItemKey(), sample_lib::PersistentInstHash(*inst))) {
+            if (IsFavourite(context.prefs, k_favourite_inst_key, sample_lib::PersistentInstHash(*inst))) {
                 if (!skip) ++favourites_info.num_used_in_items_lists;
                 ++favourites_info.total_available;
             }

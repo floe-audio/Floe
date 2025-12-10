@@ -77,6 +77,8 @@ struct Engine : ProcessorListener {
     Optional<clap_id> timer_id {};
     TimePoint last_poll_thread_time {};
 
+    Atomic<TimePoint> request_main_thread_callback_at {};
+
     DynamicArrayBounded<char, PRODUCTION_BUILD ? 0 : 200> state_change_description {};
 
     ThreadsafeFunctionQueue main_thread_callbacks {.arena = {PageAllocator::Instance()}};
@@ -102,9 +104,10 @@ constexpr sample_lib::LibraryIdRef k_default_background_lib_id = FLOE_VENDOR ".d
 
 Optional<sample_lib::LibraryIdRef> LibraryForOverallBackground(Engine const& engine);
 
-// one-off loading of a ir or instrument
+// One-off loading of an IR or instrument.
 void LoadConvolutionIr(Engine& engine, Optional<sample_lib::IrId> ir);
 void LoadInstrument(Engine& engine, u32 layer_index, InstrumentId instrument_id);
+
 String IrName(Engine const& engine);
 
 usize MegabytesUsedBySamples(Engine const& engine);
