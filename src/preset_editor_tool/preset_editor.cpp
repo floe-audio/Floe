@@ -98,22 +98,12 @@ ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset
                                 sample_lib::InstrumentId sampler_id;
 
                                 // Extract library author
-                                lua_getfield(lua, -2, "library_author");
+                                lua_getfield(lua, -2, "library_id");
                                 if (lua_isstring(lua, -1)) {
                                     size_t len;
                                     auto str = lua_tolstring(lua, -1, &len);
-                                    auto copy_len = Min(len, sampler_id.library.author.Capacity());
-                                    dyn::Assign(sampler_id.library.author, {str, copy_len});
-                                }
-                                lua_pop(lua, 1);
-
-                                // Extract library name
-                                lua_getfield(lua, -2, "library_name");
-                                if (lua_isstring(lua, -1)) {
-                                    size_t len;
-                                    auto str = lua_tolstring(lua, -1, &len);
-                                    auto copy_len = Min(len, sampler_id.library.name.Capacity());
-                                    dyn::Assign(sampler_id.library.name, {str, copy_len});
+                                    auto copy_len = Min(len, sampler_id.library.Capacity());
+                                    dyn::Assign(sampler_id.library, {str, copy_len});
                                 }
                                 lua_pop(lua, 1);
 
@@ -217,22 +207,12 @@ ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset
         sample_lib::IrId ir_id;
 
         // Extract library author
-        lua_getfield(lua, -1, "library_author");
+        lua_getfield(lua, -1, "library_id");
         if (lua_isstring(lua, -1)) {
             size_t len;
             auto str = lua_tolstring(lua, -1, &len);
-            auto copy_len = Min(len, ir_id.library.author.Capacity());
-            dyn::Assign(ir_id.library.author, {str, copy_len});
-        }
-        lua_pop(lua, 1);
-
-        // Extract library name
-        lua_getfield(lua, -1, "library_name");
-        if (lua_isstring(lua, -1)) {
-            size_t len;
-            auto str = lua_tolstring(lua, -1, &len);
-            auto copy_len = Min(len, ir_id.library.name.Capacity());
-            dyn::Assign(ir_id.library.name, {str, copy_len});
+            auto copy_len = Min(len, ir_id.library.Capacity());
+            dyn::Assign(ir_id.library, {str, copy_len});
         }
         lua_pop(lua, 1);
 
@@ -386,10 +366,8 @@ static void BuildPresetLuaTable(lua_State* lua, StateSnapshot const& preset_stat
             }
             case InstrumentType::Sampler: {
                 auto const& sampler_id = inst_id.Get<sample_lib::InstrumentId>();
-                lua_pushlstring(lua, sampler_id.library.author.data, sampler_id.library.author.size);
-                lua_setfield(lua, -2, "library_author");
-                lua_pushlstring(lua, sampler_id.library.name.data, sampler_id.library.name.size);
-                lua_setfield(lua, -2, "library_name");
+                lua_pushlstring(lua, sampler_id.library.data, sampler_id.library.size);
+                lua_setfield(lua, -2, "library_id");
                 lua_pushlstring(lua, sampler_id.inst_name.data, sampler_id.inst_name.size);
                 lua_setfield(lua, -2, "instrument_name");
                 break;
@@ -439,10 +417,8 @@ static void BuildPresetLuaTable(lua_State* lua, StateSnapshot const& preset_stat
     if (preset_state.ir_id.HasValue()) {
         lua_newtable(lua);
         auto const& ir_id = preset_state.ir_id.Value();
-        lua_pushlstring(lua, ir_id.library.author.data, ir_id.library.author.size);
-        lua_setfield(lua, -2, "library_author");
-        lua_pushlstring(lua, ir_id.library.name.data, ir_id.library.name.size);
-        lua_setfield(lua, -2, "library_name");
+        lua_pushlstring(lua, ir_id.library.data, ir_id.library.size);
+        lua_setfield(lua, -2, "library_id");
         lua_pushlstring(lua, ir_id.ir_name.data, ir_id.ir_name.size);
         lua_setfield(lua, -2, "ir_name");
         lua_setfield(lua, -2, "ir_id");

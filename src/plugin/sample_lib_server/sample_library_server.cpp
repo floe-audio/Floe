@@ -355,14 +355,14 @@ static bool UpdateLibraryJobs(Server& server,
                         for (auto it = server.libraries.begin(); it != server.libraries.end();)
                             if (path::Equal(it->value.lib->path, lib->path)) {
                                 it = server.libraries.Remove(it);
-                                NotifyAllChannelsOfLibraryChange(server, lib->Id());
-                            } else if (it->value.lib->Id() == lib->Id()) {
+                                NotifyAllChannelsOfLibraryChange(server, lib->id);
+                            } else if (it->value.lib->id == lib->id) {
                                 if (it->value.lib->minor_version > lib->minor_version) {
                                     not_wanted = true; // The existing library is newer.
                                     ++it;
                                 } else {
                                     it = server.libraries.Remove(it);
-                                    NotifyAllChannelsOfLibraryChange(server, lib->Id());
+                                    NotifyAllChannelsOfLibraryChange(server, lib->id);
                                 }
                             } else {
                                 ++it;
@@ -605,7 +605,7 @@ static bool UpdateLibraryJobs(Server& server,
         }
 
         for (auto& l : libraries_that_changed)
-            NotifyAllChannelsOfLibraryChange(server, l->value.lib->Id());
+            NotifyAllChannelsOfLibraryChange(server, l->value.lib->id);
     }
 
     // Remove libraries that are not in any active scan-folders.
@@ -613,7 +613,7 @@ static bool UpdateLibraryJobs(Server& server,
         auto const& lib = *it->value.lib;
 
         bool within_any_folder = false;
-        if (lib.Id() == sample_lib::k_builtin_library_id)
+        if (lib.id == sample_lib::k_builtin_library_id)
             within_any_folder = true;
         else
             for (auto& protected_f : pending_library_jobs.folders) {
@@ -632,7 +632,27 @@ static bool UpdateLibraryJobs(Server& server,
     // Remove libraries do not exist on the filesystem.
     for (auto it = server.libraries.begin(); it != server.libraries.end();) {
         auto const& lib = *it->value.lib;
-        if (lib.Id() != sample_lib::k_builtin_library_id && GetFileType(lib.path).HasError())
+        if (lib.id != sample_lib::k_builtin_library_id && GetFileType(lib.path).HasError())
+            it = server.libraries.Remove(it);
+        else
+            ++it;
+    }
+
+    // Remove libraries that are superseded by a more recently scanned version
+    for (auto it = server.libraries.begin(); it != server.libraries.end();) {
+        auto const& lib = *it->value.lib;
+
+        bool superseded = false;
+        for (auto& other_node : server.libraries) {
+            if (&other_node == &*it) continue;
+            if (other_node.value.lib->id == lib.id &&
+                other_node.value.scan_timepoint > it->value.scan_timepoint) {
+                superseded = true;
+                break;
+            }
+        }
+
+        if (superseded)
             it = server.libraries.Remove(it);
         else
             ++it;
@@ -644,15 +664,10 @@ static bool UpdateLibraryJobs(Server& server,
         server.libraries_by_id_mutex.Lock();
         DEFER { server.libraries_by_id_mutex.Unlock(); };
         server.libraries_by_id.DeleteAll();
-        for (auto& n : server.libraries) {
-            auto const& lib = *n.value.lib;
-
-            auto found = server.libraries_by_id.FindOrInsert(lib.Id(), &n);
-            if (!found.inserted) {
-                // If it's already there, we replace it with the one that's more recent
-                if (n.value.scan_timepoint > found.element.data->value.scan_timepoint)
-                    found.element.data = &n;
-            }
+        for (auto& i : server.libraries) {
+            auto const& lib = *i.value.lib;
+            auto const inserted = server.libraries_by_id.Insert(lib.id, &i);
+            ASSERT(inserted);
         }
     }
 
@@ -1098,14 +1113,12 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
             }
             n;
         });
-        ASSERT(library_id.name.size != 0);
-        ASSERT(library_id.author.size != 0);
+        ASSERT(library_id.size != 0);
 
         LibrariesAtomicList::Node* lib {};
         if (auto l_ptr = server.libraries_by_id.Find(library_id)) lib = *l_ptr;
 
-        auto const find_lib_error_id =
-            HashMultiple(Array {"sls-find-lib"_s, library_id.name, library_id.author});
+        auto const find_lib_error_id = HashMultiple(Array {"sls-find-lib"_s, library_id});
         auto& error_notifications = pending_resource.request.async_comms_channel.error_notifications;
 
         if (!lib) {
@@ -1140,8 +1153,8 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
 
                     ASSERT(inst_name.size != 0);
 
-                    auto const find_inst_error_id = HashMultiple(
-                        Array {"sls-find-inst"_s, library_id.name, library_id.author, inst_name});
+                    auto const find_inst_error_id =
+                        HashMultiple(Array {"sls-find-inst"_s, library_id, inst_name});
 
                     if (auto const i = lib->value.lib->insts_by_name.Find(inst_name)) {
                         error_notifications.RemoveError(find_inst_error_id);
@@ -1179,8 +1192,8 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                     auto const ir_id = pending_resource.request.request.Get<sample_lib::IrId>();
                     auto const ir = lib->value.lib->irs_by_name.Find(ir_id.ir_name);
 
-                    auto const find_ir_error_id = HashMultiple(
-                        Array {"sls-find-ir"_s, library_id.name, library_id.author, ir_id.ir_name});
+                    auto const find_ir_error_id =
+                        HashMultiple(Array {"sls-find-ir"_s, library_id, ir_id.ir_name});
 
                     if (ir) {
                         error_notifications.RemoveError(find_ir_error_id);
@@ -1253,7 +1266,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                             "Failed to load audio file '{}', part of instrument '{}', in library '{}'",
                             *audio_path,
                             listed_inst.inst.instrument.name,
-                            listed_inst.inst.instrument.library.Id());
+                            listed_inst.inst.instrument.library.id);
             }
 
             CancelLoadingAudioForInstrumentIfPossible(&listed_inst, pending_resource.debug_id);
@@ -1579,10 +1592,11 @@ static sample_lib::Library* BuiltinLibrary() {
     static constexpr String k_icon_path = "builtin-library-icon";
     static constexpr String k_background_path = "builtin-library-background";
     static sample_lib::Library builtin_library {
-        .name = sample_lib::k_builtin_library_id.name,
+        .name = "Built-in",
+        .id = sample_lib::k_builtin_library_id,
         .tagline = "Built-in IRs",
         .library_url = FLOE_HOMEPAGE_URL,
-        .author = sample_lib::k_builtin_library_id.author,
+        .author = FLOE_VENDOR,
         .minor_version = 1,
         .background_image_path = k_background_path,
         .icon_image_path = k_icon_path,
@@ -1689,7 +1703,7 @@ Server::Server(ThreadPool& pool,
         ListedLibrary {.arena = PageAllocator::Instance(), .lib = BuiltinLibrary()};
         libraries.Insert(node);
 
-        libraries_by_id.Insert(BuiltinLibrary()->Id(), node);
+        libraries_by_id.Insert(BuiltinLibrary()->id, node);
     }
 
     thread.Start([this]() { ServerThreadProc(*this); }, "samp-lib-server");
@@ -1816,6 +1830,23 @@ void SetExtraScanFolders(Server& server, Span<String const> extra_folders) {
 
 detail::LibrariesAtomicList& LibrariesList(Server& server) { return server.libraries; }
 
+bool LibraryLessThan(sample_lib::LibraryIdRef const&,
+                     ResourcePointer<sample_lib::Library> const& val_a,
+                     sample_lib::LibraryIdRef const&,
+                     ResourcePointer<sample_lib::Library> const& val_b) {
+    return val_a->name < val_b->name;
+}
+
+LibrariesTable MakeTable(Span<ResourcePointer<sample_lib::Library>> libs, ArenaAllocator& arena) {
+    LibrariesTable result;
+    result.Reserve(arena, libs.size);
+    for (auto const& l : libs) {
+        bool const inserted = result.InsertWithoutGrowing(l->id, l);
+        ASSERT(inserted);
+    }
+    return result;
+}
+
 Span<ResourcePointer<sample_lib::Library>> AllLibrariesRetained(Server& server, ArenaAllocator& arena) {
     // IMPROVE: is this slow to do at every request for a library?
     RequestScanningOfUnscannedFolders(server);
@@ -1827,7 +1858,23 @@ Span<ResourcePointer<sample_lib::Library>> AllLibrariesRetained(Server& server, 
             dyn::Append(result, ref);
         }
     }
+
     return result.ToOwnedSpan();
+}
+
+LibrariesTable AllLibrariesRetainedAsTable(Server& server, ArenaAllocator& arena) {
+    // IMPROVE: is this slow to do at every request for a library?
+    RequestScanningOfUnscannedFolders(server);
+
+    LibrariesTable result;
+    for (auto& i : server.libraries) {
+        if (i.TryRetain()) {
+            auto ref = ResourcePointer<sample_lib::Library>(*i.value.lib, i.reader_uses);
+            result.InsertGrowIfNeeded(arena, i.value.lib->id, ref);
+        }
+    }
+
+    return result;
 }
 
 ResourcePointer<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::LibraryIdRef id) {
@@ -1940,16 +1987,17 @@ TEST_CASE(TestSampleLibraryServer) {
     SUBCASE("unregister a channel directly after sending a request") {
         auto& channel = OpenAsyncCommsChannel(server, open_args);
 
-        SendAsyncLoadRequest(server,
-                             channel,
-                             LoadRequestInstrumentIdWithLayer {
-                                 .id =
-                                     {
-                                         .library = {{.author = "Tester"_s, .name = "Test Lua"_s}},
-                                         .inst_name = "Auto Mapped Samples"_s,
-                                     },
-                                 .layer_index = 0,
-                             });
+        SendAsyncLoadRequest(
+            server,
+            channel,
+            LoadRequestInstrumentIdWithLayer {
+                .id =
+                    {
+                        .library = sample_lib::IdFromAuthorAndNameInline("Tester", "Test Lua"),
+                        .inst_name = "Auto Mapped Samples"_s,
+                    },
+                .layer_index = 0,
+            });
         CloseAsyncCommsChannel(server, channel);
     }
 
@@ -1980,160 +2028,149 @@ TEST_CASE(TestSampleLibraryServer) {
         }
 
         SUBCASE("library and instrument") {
-            dyn::Append(requests,
-                        {
-                            .request =
-                                LoadRequestInstrumentIdWithLayer {
-                                    .id =
-                                        {
-                                            .library = {{.author = sample_lib::k_mdata_library_author,
-                                                         .name = "SharedFilesMdata"_s}},
-                                            .inst_name = "Groups And Refs"_s,
-                                        },
-                                    .layer_index = 0,
+            dyn::Append(
+                requests,
+                {
+                    .request =
+                        LoadRequestInstrumentIdWithLayer {
+                            .id =
+                                {
+                                    .library = sample_lib::IdForMdataLibraryInline("SharedFilesMdata"_s),
+                                    .inst_name = "Groups And Refs"_s,
                                 },
-                            .check_result =
-                                [&](LoadResult const& r, LoadRequest const& request) {
-                                    auto inst = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
-                                        tester,
-                                        r,
-                                        request);
-                                    CHECK(inst->audio_datas.size);
-                                },
-                        });
+                            .layer_index = 0,
+                        },
+                    .check_result =
+                        [&](LoadResult const& r, LoadRequest const& request) {
+                            auto inst =
+                                ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(tester,
+                                                                                              r,
+                                                                                              request);
+                            CHECK(inst->audio_datas.size);
+                        },
+                });
         }
 
         SUBCASE("library and instrument (lua)") {
-            dyn::Append(requests,
-                        {
-                            .request =
-                                LoadRequestInstrumentIdWithLayer {
-                                    .id =
-                                        {
-                                            .library = {{.author = "Tester"_s, .name = "Test Lua"_s}},
-                                            .inst_name = "Single Sample"_s,
-                                        },
-                                    .layer_index = 0,
+            dyn::Append(
+                requests,
+                {
+                    .request =
+                        LoadRequestInstrumentIdWithLayer {
+                            .id =
+                                {
+                                    .library = sample_lib::IdFromAuthorAndNameInline("Tester", "Test Lua"),
+                                    .inst_name = "Single Sample"_s,
                                 },
-                            .check_result =
-                                [&](LoadResult const& r, LoadRequest const& request) {
-                                    auto inst = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
-                                        tester,
-                                        r,
-                                        request);
-                                    CHECK(inst->audio_datas.size);
-                                },
-                        });
+                            .layer_index = 0,
+                        },
+                    .check_result =
+                        [&](LoadResult const& r, LoadRequest const& request) {
+                            auto inst =
+                                ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(tester,
+                                                                                              r,
+                                                                                              request);
+                            CHECK(inst->audio_datas.size);
+                        },
+                });
         }
 
         SUBCASE("audio file shared across insts") {
-            dyn::Append(requests,
-                        {
-                            .request =
-                                LoadRequestInstrumentIdWithLayer {
-                                    .id =
-                                        {
-                                            .library = {{
-                                                .author = sample_lib::k_mdata_library_author,
-                                                .name = "SharedFilesMdata"_s,
-                                            }},
-                                            .inst_name = "Groups And Refs"_s,
-                                        },
-                                    .layer_index = 0,
+            dyn::Append(
+                requests,
+                {
+                    .request =
+                        LoadRequestInstrumentIdWithLayer {
+                            .id =
+                                {
+                                    .library = sample_lib::IdForMdataLibraryInline("SharedFilesMdata"_s),
+                                    .inst_name = "Groups And Refs"_s,
                                 },
-                            .check_result =
-                                [&](LoadResult const& r, LoadRequest const& request) {
-                                    auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
-                                        tester,
-                                        r,
-                                        request);
-                                    CHECK_EQ(i->instrument.name, "Groups And Refs"_s);
-                                    CHECK_EQ(i->audio_datas.size, 4u);
-                                    for (auto& d : i->audio_datas)
-                                        CHECK_NEQ(d->interleaved_samples.size, 0u);
+                            .layer_index = 0,
+                        },
+                    .check_result =
+                        [&](LoadResult const& r, LoadRequest const& request) {
+                            auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(tester,
+                                                                                                   r,
+                                                                                                   request);
+                            CHECK_EQ(i->instrument.name, "Groups And Refs"_s);
+                            CHECK_EQ(i->audio_datas.size, 4u);
+                            for (auto& d : i->audio_datas)
+                                CHECK_NEQ(d->interleaved_samples.size, 0u);
+                        },
+                });
+            dyn::Append(
+                requests,
+                {
+                    .request =
+                        LoadRequestInstrumentIdWithLayer {
+                            .id =
+                                {
+                                    .library = sample_lib::IdForMdataLibraryInline("SharedFilesMdata"_s),
+                                    .inst_name = "Groups And Refs (copy)"_s,
                                 },
-                        });
-            dyn::Append(requests,
-                        {
-                            .request =
-                                LoadRequestInstrumentIdWithLayer {
-                                    .id =
-                                        {
-                                            .library = {{
-                                                .author = sample_lib::k_mdata_library_author,
-                                                .name = "SharedFilesMdata"_s,
-                                            }},
-                                            .inst_name = "Groups And Refs (copy)"_s,
-                                        },
-                                    .layer_index = 1,
+                            .layer_index = 1,
+                        },
+                    .check_result =
+                        [&](LoadResult const& r, LoadRequest const& request) {
+                            auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(tester,
+                                                                                                   r,
+                                                                                                   request);
+                            CHECK_EQ(i->instrument.name, "Groups And Refs (copy)"_s);
+                            CHECK_EQ(i->audio_datas.size, 4u);
+                            for (auto& d : i->audio_datas)
+                                CHECK_NEQ(d->interleaved_samples.size, 0u);
+                        },
+                });
+            dyn::Append(
+                requests,
+                {
+                    .request =
+                        LoadRequestInstrumentIdWithLayer {
+                            .id =
+                                {
+                                    .library = sample_lib::IdForMdataLibraryInline("SharedFilesMdata"_s),
+                                    .inst_name = "Single Sample"_s,
                                 },
-                            .check_result =
-                                [&](LoadResult const& r, LoadRequest const& request) {
-                                    auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
-                                        tester,
-                                        r,
-                                        request);
-                                    CHECK_EQ(i->instrument.name, "Groups And Refs (copy)"_s);
-                                    CHECK_EQ(i->audio_datas.size, 4u);
-                                    for (auto& d : i->audio_datas)
-                                        CHECK_NEQ(d->interleaved_samples.size, 0u);
-                                },
-                        });
-            dyn::Append(requests,
-                        {
-                            .request =
-                                LoadRequestInstrumentIdWithLayer {
-                                    .id =
-                                        {
-                                            .library = {{
-                                                .author = sample_lib::k_mdata_library_author,
-                                                .name = "SharedFilesMdata"_s,
-                                            }},
-                                            .inst_name = "Single Sample"_s,
-                                        },
-                                    .layer_index = 2,
-                                },
-                            .check_result =
-                                [&](LoadResult const& r, LoadRequest const& request) {
-                                    auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
-                                        tester,
-                                        r,
-                                        request);
-                                    CHECK_EQ(i->instrument.name, "Single Sample"_s);
-                                    CHECK_EQ(i->audio_datas.size, 1u);
-                                    for (auto& d : i->audio_datas)
-                                        CHECK_NEQ(d->interleaved_samples.size, 0u);
-                                },
-                        });
+                            .layer_index = 2,
+                        },
+                    .check_result =
+                        [&](LoadResult const& r, LoadRequest const& request) {
+                            auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(tester,
+                                                                                                   r,
+                                                                                                   request);
+                            CHECK_EQ(i->instrument.name, "Single Sample"_s);
+                            CHECK_EQ(i->audio_datas.size, 1u);
+                            for (auto& d : i->audio_datas)
+                                CHECK_NEQ(d->interleaved_samples.size, 0u);
+                        },
+                });
         }
 
         SUBCASE("audio files shared within inst") {
-            dyn::Append(requests,
-                        {
-                            .request =
-                                LoadRequestInstrumentIdWithLayer {
-                                    .id =
-                                        {
-                                            .library = {{
-                                                .author = sample_lib::k_mdata_library_author,
-                                                .name = "SharedFilesMdata"_s,
-                                            }},
-                                            .inst_name = "Same Sample Twice"_s,
-                                        },
-                                    .layer_index = 0,
+            dyn::Append(
+                requests,
+                {
+                    .request =
+                        LoadRequestInstrumentIdWithLayer {
+                            .id =
+                                {
+                                    .library = sample_lib::IdForMdataLibraryInline("SharedFilesMdata"_s),
+                                    .inst_name = "Same Sample Twice"_s,
                                 },
-                            .check_result =
-                                [&](LoadResult const& r, LoadRequest const& request) {
-                                    auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(
-                                        tester,
-                                        r,
-                                        request);
-                                    CHECK_EQ(i->instrument.name, "Same Sample Twice"_s);
-                                    CHECK_EQ(i->audio_datas.size, 2u);
-                                    for (auto& d : i->audio_datas)
-                                        CHECK_NEQ(d->interleaved_samples.size, 0u);
-                                },
-                        });
+                            .layer_index = 0,
+                        },
+                    .check_result =
+                        [&](LoadResult const& r, LoadRequest const& request) {
+                            auto i = ExtractSuccess<ResourcePointer<sample_lib::LoadedInstrument>>(tester,
+                                                                                                   r,
+                                                                                                   request);
+                            CHECK_EQ(i->instrument.name, "Same Sample Twice"_s);
+                            CHECK_EQ(i->audio_datas.size, 2u);
+                            for (auto& d : i->audio_datas)
+                                CHECK_NEQ(d->interleaved_samples.size, 0u);
+                        },
+                });
         };
 
         SUBCASE("invalid lib+path") {
@@ -2143,7 +2180,7 @@ TEST_CASE(TestSampleLibraryServer) {
                                 LoadRequestInstrumentIdWithLayer {
                                     .id =
                                         {
-                                            .library = {{.author = "foo"_s, .name = "bar"_s}},
+                                            .library = "foo.bar"_s,
                                             .inst_name = "bar"_s,
                                         },
                                     .layer_index = 0,
@@ -2157,25 +2194,25 @@ TEST_CASE(TestSampleLibraryServer) {
                         });
         }
         SUBCASE("invalid path only") {
-            dyn::Append(requests,
-                        {
-                            .request =
-                                LoadRequestInstrumentIdWithLayer {
-                                    .id =
-                                        {
-                                            .library = {{.author = sample_lib::k_mdata_library_author,
-                                                         .name = "SharedFilesMdata"_s}},
-                                            .inst_name = "bar"_s,
-                                        },
-                                    .layer_index = 0,
+            dyn::Append(
+                requests,
+                {
+                    .request =
+                        LoadRequestInstrumentIdWithLayer {
+                            .id =
+                                {
+                                    .library = sample_lib::IdForMdataLibraryInline("SharedFilesMdata"_s),
+                                    .inst_name = "bar"_s,
                                 },
-                            .check_result =
-                                [&](LoadResult const& r, LoadRequest const&) {
-                                    auto err = r.result.TryGet<ErrorCode>();
-                                    REQUIRE(err);
-                                    REQUIRE(*err == CommonError::NotFound);
-                                },
-                        });
+                            .layer_index = 0,
+                        },
+                    .check_result =
+                        [&](LoadResult const& r, LoadRequest const&) {
+                            auto err = r.result.TryGet<ErrorCode>();
+                            REQUIRE(err);
+                            REQUIRE(*err == CommonError::NotFound);
+                        },
+                });
         }
 
         AtomicCountdown countdown {(u32)requests.size};
@@ -2199,7 +2236,8 @@ TEST_CASE(TestSampleLibraryServer) {
                 server.request_debug_dump_current_state.Store(true, StoreMemoryOrder::Release);
                 server.work_signaller.Signal();
                 SleepThisThread(1000);
-                // We need to hard-exit without cleaning up because the loading thread is probably deadlocked
+                // We need to hard-exit without cleaning up because the loading thread is probably
+                // deadlocked
                 __builtin_abort();
             }
 
@@ -2225,21 +2263,22 @@ TEST_CASE(TestSampleLibraryServer) {
     }
 
     SUBCASE("randomly send lots of requests") {
+        auto const lib_id = sample_lib::IdForMdataLibraryInline("SharedFilesMdata"_s);
         sample_lib::InstrumentId const inst_ids[] {
             {
-                .library = {{.author = sample_lib::k_mdata_library_author, .name = "SharedFilesMdata"_s}},
+                .library = lib_id,
                 .inst_name = "Groups And Refs"_s,
             },
             {
-                .library = {{.author = sample_lib::k_mdata_library_author, .name = "SharedFilesMdata"_s}},
+                .library = lib_id,
                 .inst_name = "Groups And Refs (copy)"_s,
             },
             {
-                .library = {{.author = sample_lib::k_mdata_library_author, .name = "SharedFilesMdata"_s}},
+                .library = lib_id,
                 .inst_name = "Single Sample"_s,
             },
             {
-                .library = {{.author = "Tester"_s, .name = "Test Lua"_s}},
+                .library = lib_id,
                 .inst_name = "Auto Mapped Samples"_s,
             },
         };

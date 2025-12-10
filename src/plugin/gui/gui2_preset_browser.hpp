@@ -8,6 +8,7 @@
 
 #include "gui/gui2_common_browser.hpp"
 #include "gui/gui2_confirmation_dialog_state.hpp"
+#include "gui/gui_frame_context.hpp"
 #include "gui/gui_fwd.hpp"
 #include "preset_server/preset_server.hpp"
 
@@ -18,14 +19,11 @@ struct PresetServer;
 struct PresetBrowserContext {
     void Init(ArenaAllocator& arena) {
         if (init++) return;
-        libraries = sample_lib_server::AllLibrariesRetained(sample_library_server, arena);
-        Sort(libraries, [](auto const& a, auto const& b) { return a->name < b->name; });
         presets_snapshot = BeginReadFolders(preset_server, arena);
     }
     void Deinit() {
         if (--init != 0) return;
         EndReadFolders(preset_server);
-        sample_lib_server::ReleaseAll(libraries);
     }
 
     sample_lib_server::Server& sample_library_server;
@@ -37,9 +35,9 @@ struct PresetBrowserContext {
     Notifications& notifications;
     persistent_store::Store& persistent_store;
     ConfirmationDialogState& confirmation_dialog_state;
+    GuiFrameContext const& frame_context;
 
     u32 init = 0;
-    Span<sample_lib_server::ResourcePointer<sample_lib::Library>> libraries;
     PresetsSnapshot presets_snapshot;
 };
 

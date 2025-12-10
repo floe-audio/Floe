@@ -77,9 +77,8 @@ struct StateSnapshotWithName {
             break;
         case InstrumentType::Sampler:
             fmt::Append(result,
-                        "Sampler: {}/{}/{}"_s,
-                        id.Get<sample_lib::InstrumentId>().library.author,
-                        id.Get<sample_lib::InstrumentId>().library.name,
+                        "Sampler: {}/{}"_s,
+                        id.Get<sample_lib::InstrumentId>().library,
                         id.Get<sample_lib::InstrumentId>().inst_name);
             break;
     }
@@ -94,9 +93,9 @@ PUBLIC void AssignDiffDescription(dyn::DynArray auto& diff_desc,
     if (old_state.ir_id != new_state.ir_id) {
         fmt::Append(diff_desc,
                     "IR changed, old: {}:{} vs new: {}:{}\n"_s,
-                    old_state.ir_id.HasValue() ? old_state.ir_id.Value().library.name.Items() : "null"_s,
+                    old_state.ir_id.HasValue() ? old_state.ir_id.Value().library.Items() : "null",
                     old_state.ir_id.HasValue() ? old_state.ir_id.Value().ir_name.Items() : "null"_s,
-                    new_state.ir_id.HasValue() ? new_state.ir_id.Value().library.name.Items() : "null"_s,
+                    new_state.ir_id.HasValue() ? new_state.ir_id.Value().library.Items() : "null",
                     new_state.ir_id.HasValue() ? new_state.ir_id.Value().ir_name.Items() : "null"_s);
     }
 

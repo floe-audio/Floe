@@ -288,28 +288,18 @@ static void AddPresetToFolder(PresetFolder& folder,
                                                                      folder.arena);
 
     auto used_libraries = OrderedSet<sample_lib::LibraryIdRef>::Create(folder.arena, k_num_layers + 1);
-    auto used_library_authors = Set<String>::Create(folder.arena, k_num_layers + 1);
 
     for (auto const& inst_id : state.inst_ids) {
         if (auto const& sampled_inst = inst_id.TryGet<sample_lib::InstrumentId>()) {
             auto const lib_id =
                 FindOrCloneLibraryIdRef(folder, (sample_lib::LibraryIdRef)sampled_inst->library);
             used_libraries.InsertWithoutGrowing(lib_id);
-
-            auto found_author =
-                folder.used_library_authors.FindOrInsertGrowIfNeeded(folder.arena, lib_id.author);
-            used_library_authors.InsertWithoutGrowing(found_author.element.key, found_author.element.hash);
         }
     }
 
     if (state.ir_id) {
         auto const lib_id = FindOrCloneLibraryIdRef(folder, (sample_lib::LibraryIdRef)state.ir_id->library);
-        if (lib_id != sample_lib::k_builtin_library_id) {
-            used_libraries.InsertWithoutGrowing(lib_id);
-            auto found_author =
-                folder.used_library_authors.FindOrInsertGrowIfNeeded(folder.arena, lib_id.author);
-            used_library_authors.InsertWithoutGrowing(found_author.element.key, found_author.element.hash);
-        }
+        if (lib_id != sample_lib::k_builtin_library_id) used_libraries.InsertWithoutGrowing(lib_id);
     }
 
     dyn::Append(presets,
@@ -326,7 +316,6 @@ static void AddPresetToFolder(PresetFolder& folder,
                         .description = folder.arena.Clone(state.metadata.description),
                     },
                     .used_libraries = used_libraries,
-                    .used_library_authors = used_library_authors,
                     .file_hash = file_hash,
                     .full_path_hash = HashMultiple(Array {folder.scan_folder, folder.folder, entry.subpath}),
                     .file_extension = file_format == PresetFormat::Mirage

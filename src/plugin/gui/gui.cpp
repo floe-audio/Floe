@@ -23,6 +23,7 @@
 #include "gui/gui2_package_install.hpp"
 #include "gui/gui2_prefs_panel.hpp"
 #include "gui/gui_file_picker.hpp"
+#include "gui/gui_frame_context.hpp"
 #include "gui_editor_widgets.hpp"
 #include "gui_editors.hpp"
 #include "gui_framework/draw_list.hpp"
@@ -307,6 +308,19 @@ GuiFrameResult GuiUpdate(Gui* g) {
     while (auto function = g->main_thread_callbacks.TryPop(g->scratch_arena))
         (*function)();
 
+    GuiFrameContext frame_context;
+    DEFER { sample_lib_server::ReleaseAll(frame_context.libraries); };
+    {
+        auto libs = sample_lib_server::AllLibrariesRetained(g->shared_engine_systems.sample_library_server,
+                                                            g->scratch_arena);
+        Sort(libs, [](auto const& a, auto const& b) { return a->name < b->name; });
+        auto libs_table = sample_lib_server::MakeTable(libs, g->scratch_arena);
+        frame_context = {
+            .libraries = libs,
+            .lib_table = libs_table,
+        };
+    }
+
     CheckForFilePickerResults(g->imgui.frame_input,
                               g->file_picker_state,
                               {
@@ -373,11 +387,11 @@ GuiFrameResult GuiUpdate(Gui* g) {
 
         auto mid_panel_r = Rect {.x = 0, .y = top_h, .w = imgui.Width(), .h = mid_h};
         imgui.BeginWindow(mid_settings, mid_panel_r, "MidPanel");
-        MidPanel(g);
+        MidPanel(g, frame_context);
         imgui.EndWindow();
     }
 
-    TopPanel(g, top_h);
+    TopPanel(g, top_h, frame_context);
 
     BotPanel(g, {.xywh {0, top_h + mid_h, imgui.Width(), bot_h}});
 
@@ -475,9 +489,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,
                     .confirmation_dialog_state = g->confirmation_dialog_state,
+                    .frame_context = frame_context,
                 };
-                context.Init(g->scratch_arena);
-                DEFER { context.Deinit(); };
 
                 auto& state = g->inst_browser_state[layer_obj.index];
                 DoInstBrowserPopup(g->box_system, context, state);
@@ -495,6 +508,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
                 .confirmation_dialog_state = g->confirmation_dialog_state,
+                .frame_context = frame_context,
             };
             DoPresetBrowser(g->box_system, context, g->preset_browser_state);
         }
@@ -509,9 +523,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
                 .confirmation_dialog_state = g->confirmation_dialog_state,
+                .frame_context = frame_context,
             };
-            context.Init(g->scratch_arena);
-            DEFER { context.Deinit(); };
 
             DoIrBrowserPopup(g->box_system, context, g->ir_browser_state);
         }

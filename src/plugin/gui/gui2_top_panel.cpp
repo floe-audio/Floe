@@ -17,7 +17,7 @@
 #include "gui_prefs.hpp"
 #include "gui_widget_helpers.hpp"
 
-static void DoDotsMenu(Gui* g) {
+static void DoDotsMenu(Gui* g, GuiFrameContext const& frame_context) {
     auto const root = DoBox(g->box_system,
                             {
                                 .layout {
@@ -66,9 +66,8 @@ static void DoDotsMenu(Gui* g) {
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
                 .confirmation_dialog_state = g->confirmation_dialog_state,
+                .frame_context = frame_context,
             };
-            context.Init(g->scratch_arena);
-            DEFER { context.Deinit(); };
             LoadRandomInstrument(context, g->inst_browser_state[layer.index]);
         }
         {
@@ -81,9 +80,8 @@ static void DoDotsMenu(Gui* g) {
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
                 .confirmation_dialog_state = g->confirmation_dialog_state,
+                .frame_context = frame_context,
             };
-            ir_context.Init(g->scratch_arena);
-            DEFER { ir_context.Deinit(); };
             LoadRandomIr(ir_context, g->ir_browser_state);
         }
     }
@@ -133,7 +131,7 @@ static void DoDotsMenu(Gui* g) {
     }
 }
 
-static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
+static void DoTopPanel(GuiBoxSystem& box_system, Gui* g, GuiFrameContext const& frame_context) {
     auto const root_size = box_system.imgui.PixelsToVw(box_system.imgui.Size());
     auto root = DoBox(box_system,
                       {
@@ -314,6 +312,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
                 .confirmation_dialog_state = g->confirmation_dialog_state,
+                .frame_context = frame_context,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
@@ -341,6 +340,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
                 .confirmation_dialog_state = g->confirmation_dialog_state,
+                .frame_context = frame_context,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
@@ -368,6 +368,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
                 .confirmation_dialog_state = g->confirmation_dialog_state,
+                .frame_context = frame_context,
             };
             context.Init(g->scratch_arena);
             DEFER { context.Deinit(); };
@@ -447,7 +448,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
         if (box_system.imgui.IsPopupOpen(popup_id))
             AddPanel(box_system,
                      Panel {
-                         .run = [g](GuiBoxSystem&) { DoDotsMenu(g); },
+                         .run = [g, &frame_context](GuiBoxSystem&) { DoDotsMenu(g, frame_context); },
                          .data =
                              PopupPanel {
                                  .creator_layout_id = dots_button.layout_id,
@@ -517,10 +518,10 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g) {
     }
 }
 
-void TopPanel(Gui* g, f32 height) {
+void TopPanel(Gui* g, f32 height, GuiFrameContext const& frame_context) {
     RunPanel(g->box_system,
              {
-                 .run = [&](GuiBoxSystem& box_system) { DoTopPanel(box_system, g); },
+                 .run = [&](GuiBoxSystem& box_system) { DoTopPanel(box_system, g, frame_context); },
                  .data =
                      Subpanel {
                          .rect = Rect {.xywh {0, 0, g->imgui.Width(), height}},

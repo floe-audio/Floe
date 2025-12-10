@@ -112,8 +112,9 @@ LibraryCheckExistingInstallation(Component const& component,
     if (!existing_matching_library) return ExistingInstalledComponent {.installed = false};
 
     auto const existing_folder = *path::Directory(existing_matching_library->path);
-    ASSERT_EQ(existing_matching_library->Id(), component.library->Id());
+    ASSERT_EQ(existing_matching_library->id, component.library->id);
 
+    // TODO: what if MDATA?
     auto const actual_checksums = TRY(ChecksumsForFolder(existing_folder, scratch_arena, scratch_arena));
 
     if (!ChecksumsDiffer(component.checksum_values, actual_checksums, k_nullopt))
@@ -528,12 +529,12 @@ static InstallJob::State DoJobPhase1(InstallJob& job) {
                         return InstallJob::State::DoneError;
                     }
 
-                    auto existing_lib = sample_lib_server::FindLibraryRetained(job.sample_lib_server,
-                                                                               component->library->Id());
+                    auto existing_lib =
+                        sample_lib_server::FindLibraryRetained(job.sample_lib_server, component->library->id);
                     DEFER { existing_lib.Release(); };
                     LogDebug(ModuleName::Package,
                              "Checking existing installation of library {}, server returned {}",
-                             component->library->Id(),
+                             component->library->id,
                              existing_lib ? "true" : "false");
 
                     r = TRY_H(

@@ -5,6 +5,7 @@
 
 #include "foundation/foundation.hpp"
 
+#include "gui/gui_frame_context.hpp"
 #include "gui_fwd.hpp"
 
-void DoEffectsWindow(Gui* g, Rect r);
+void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r);

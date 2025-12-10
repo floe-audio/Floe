@@ -53,26 +53,32 @@ PUBLIC constexpr u64 HashMultipleFnv1a(ContiguousContainerOfContiguousContainers
     // FNV-1a https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function#FNV-1a_hash
     u64 hash = 0xcbf29ce484222325;
     for (auto data : datas) {
-        for (auto& byte : data.ToByteSpan()) {
-            static_assert(Fundamental<RemoveReference<decltype(byte)>>);
-            hash ^= byte;
+        for (auto& byte : ToBytes(data)) {
+            hash ^= (u8)byte;
             hash *= 0x100000001b3;
         }
     }
     return hash;
 }
 
-inline u64 HashInit() { return 0xcbf29ce484222325; }
+inline u64 HashInitFnv1a() { return 0xcbf29ce484222325; }
 template <Fundamental T>
-inline void HashUpdate(u64& hash, Span<T const> data) {
+inline void HashUpdateFnv1a(u64& hash, Span<T const> data) {
     for (auto& byte : data.ToByteSpan()) {
         hash ^= byte;
         hash *= 0x100000001b3;
     }
 }
-inline void HashUpdate(u64& hash, Integral auto data) {
-    HashUpdate(hash, Span {(u8 const*)&data, sizeof(data)});
+inline void HashUpdateFnv1a(u64& hash, Integral auto data) {
+    HashUpdateFnv1a(hash, Span {(u8 const*)&data, sizeof(data)});
 }
+
+inline u64 HashInit() { return HashInitFnv1a(); }
+template <Fundamental T>
+inline void HashUpdate(u64& hash, Span<T const> data) {
+    HashUpdateFnv1a(hash, data);
+}
+inline void HashUpdate(u64& hash, Integral auto data) { HashUpdateFnv1a(hash, data); }
 
 template <Fundamental T>
 PUBLIC constexpr u32 HashDbj(Span<T const> data) {

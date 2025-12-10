@@ -5,16 +5,54 @@
 
 #include "tests/framework.hpp"
 
-ErrorCodeOr<void>
-CustomValueToString(Writer writer, sample_lib::LibraryIdRef id, fmt::FormatOptions options) {
-    auto const sep = " - "_s;
-    TRY(PadToRequiredWidthIfNeeded(writer, options, id.author.size + sep.size + id.name.size));
-    TRY(writer.WriteChars(id.author));
-    TRY(writer.WriteChars(sep));
-    return writer.WriteChars(id.name);
+namespace sample_lib {
+
+usize IdFromAuthorAndName(String author, String name, MutableString out) {
+    ASSERT(author.size <= k_max_library_author_size);
+    ASSERT(name.size <= k_max_library_name_size);
+    ASSERT(out.size >= author.size + name.size + k_default_library_id_separator.size);
+    usize pos = 0;
+    WriteAndIncrement(pos, out, name);
+    WriteAndIncrement(pos, out, " - "_s);
+    WriteAndIncrement(pos, out, author);
+    return pos;
 }
 
-namespace sample_lib {
+LibraryId IdFromAuthorAndNameInline(String author, String name) {
+    LibraryId id {};
+    id.size = IdFromAuthorAndName(author, name, {id.data, id.Capacity()});
+    return id;
+}
+
+LibraryIdRef IdFromAuthorAndNameAlloc(String author, String name, Allocator& allocator) {
+    auto const result = allocator.AllocateExactSizeUninitialised<char>(author.size + name.size +
+                                                                       k_default_library_id_separator.size);
+    IdFromAuthorAndName(author, name, result);
+    return result;
+}
+
+constexpr auto k_mirage_library_id_suffix = " (Mirage) - FrozenPlain"_s;
+
+usize IdForMdataLibrary(String name, MutableString out) {
+    ASSERT(name.size + k_mirage_library_id_suffix.size <= k_max_library_id_size);
+    usize pos = 0;
+    WriteAndIncrement(pos, out, name);
+    WriteAndIncrement(pos, out, k_mirage_library_id_suffix);
+    return pos;
+}
+
+LibraryId IdForMdataLibraryInline(String name) {
+    LibraryId id {};
+    id.size = IdForMdataLibrary(name, {id.data, id.Capacity()});
+    return id;
+}
+
+LibraryIdRef IdForMdataLibraryAlloc(String name, Allocator& arena) {
+    auto const result =
+        arena.AllocateExactSizeUninitialised<char>(name.size + k_mirage_library_id_suffix.size);
+    IdForMdataLibrary(name, result);
+    return result;
+}
 
 ErrorCodeOr<u64> Hash(String path, Reader& reader, FileFormat format) {
     switch (format) {
@@ -105,6 +143,8 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
     if (lib.insts_by_name.size)
         FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Instrument)], lib.insts_by_name);
     if (lib.irs_by_name.size) FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Ir)], lib.irs_by_name);
+
+    if (!lib.id.size) lib.id = IdFromAuthorAndNameAlloc(lib.author, lib.name, arena);
 
     lib.sorted_instruments =
         BuildSorted(arena, lib.insts_by_name, &lib.root_folders[ToInt(ResourceType::Instrument)]);

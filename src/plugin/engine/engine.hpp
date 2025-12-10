@@ -98,10 +98,7 @@ extern PluginCallbacks<Engine> const g_engine_callbacks;
 
 void RunFunctionOnMainThread(Engine& engine, ThreadsafeFunctionQueue::Function function);
 
-constexpr sample_lib::LibraryIdRef k_default_background_lib_id = {
-    .author = "floe",
-    .name = "default-bg",
-};
+constexpr sample_lib::LibraryIdRef k_default_background_lib_id = FLOE_VENDOR ".default-bg";
 
 Optional<sample_lib::LibraryIdRef> LibraryForOverallBackground(Engine const& engine);
 

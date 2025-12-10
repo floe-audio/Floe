@@ -18,7 +18,6 @@ struct PresetFolder {
         String name {};
         StateMetadataRef metadata {};
         OrderedSet<sample_lib::LibraryIdRef> used_libraries {};
-        Set<String> used_library_authors {};
         u64 file_hash {};
         u64 full_path_hash {};
         String file_extension {}; // Only if file_format is Mirage. Mirage had variable extensions.
@@ -36,7 +35,6 @@ struct PresetFolder {
     Span<Preset> presets {};
     Set<sample_lib::LibraryIdRef> used_libraries {};
     Set<String> used_tags {};
-    Set<String> used_library_authors {};
 
     Optional<PresetBank> preset_bank_info {}; // From metadata file (primary importance)
 

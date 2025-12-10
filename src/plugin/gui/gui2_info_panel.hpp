@@ -56,7 +56,7 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
           });
 
     for (auto lib : context.libraries) {
-        if (lib->Id() == sample_lib::k_builtin_library_id) continue;
+        if (lib->id == sample_lib::k_builtin_library_id) continue;
 
         // create a 'card' container object
         auto const card = DoBox(box_system,

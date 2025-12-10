@@ -120,5 +120,5 @@ Optional<graphics::ImageID>& UnknownLibraryIcon(Gui* g);
 
 void GUIPresetLoaded(Gui* g, Engine* a, bool is_first_preset);
 GuiFrameResult GuiUpdate(Gui* g);
-void TopPanel(Gui* g, f32 height);
-void MidPanel(Gui* g);
+void TopPanel(Gui* g, f32 height, GuiFrameContext const& frame_context);
+void MidPanel(Gui* g, GuiFrameContext const& frame_context);

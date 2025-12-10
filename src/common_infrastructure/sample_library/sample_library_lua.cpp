@@ -1400,6 +1400,7 @@ struct TableFields<Library> {
         LibraryUrl,
         Description,
         Author,
+        Id,
         AuthorUrl,
         MinorVersion,
         BackgroundImagePath,
@@ -1472,6 +1473,24 @@ struct TableFields<Library> {
                                 luaL_error(ctx.lua,
                                            "Library author must be less than %d characters long.",
                                            (int)k_max_library_author_size);
+                        },
+                };
+            case Field::Id:
+                return {
+                    .name = "id",
+                    .description_sentence =
+                        "A unique identifier for this library. Specifying this field overrides the default ID of \"library-name - author\". It can be any text, its only meaning is to uniquely identify this library from others. However, in rare cases it may be shown on the UI so it should be human-readable and representative of the library. This field is useful if you want to change the name of the library: set this to the previous ID (otherwise the ID will change to \"new-library-name - author\") and bump the minor_version field.",
+                    .example = "Iron Vibrations - Found-sound Labs",
+                    .default_value = "\"library-name\" - \"author\"",
+                    .lua_type = LUA_TSTRING,
+                    .required = false,
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            FIELD_OBJ.id = StringFromTop(ctx);
+                            if (FIELD_OBJ.id.size > k_max_library_id_size)
+                                luaL_error(ctx.lua,
+                                           "Library ID must be less than %d characters long.",
+                                           (int)k_max_library_id_size);
                         },
                 };
             case Field::AuthorUrl:

@@ -953,7 +953,7 @@ static void DrawSelectorProgressBar(imgui::Context const& imgui, Rect r, f32 loa
 }
 
 void Draw(Gui* g,
-          Engine* engine,
+          GuiFrameContext const& frame_context,
           Rect r,
           LayerProcessor* layer,
           LayerLayoutTempIDs& c,
@@ -1027,9 +1027,8 @@ void Draw(Gui* g,
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
                 .confirmation_dialog_state = g->confirmation_dialog_state,
+                .frame_context = frame_context,
             };
-            context.Init(g->scratch_arena);
-            DEFER { context.Deinit(); };
             LoadAdjacentInstrument(context, g->inst_browser_state[layer->index], SearchDirection::Backward);
         }
         if (buttons::Button(g,
@@ -1047,9 +1046,8 @@ void Draw(Gui* g,
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
                 .confirmation_dialog_state = g->confirmation_dialog_state,
+                .frame_context = frame_context,
             };
-            context.Init(g->scratch_arena);
-            DEFER { context.Deinit(); };
             LoadAdjacentInstrument(context, g->inst_browser_state[layer->index], SearchDirection::Forward);
         }
         {
@@ -1070,9 +1068,8 @@ void Draw(Gui* g,
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,
                     .confirmation_dialog_state = g->confirmation_dialog_state,
+                    .frame_context = frame_context,
                 };
-                context.Init(g->scratch_arena);
-                DEFER { context.Deinit(); };
                 LoadRandomInstrument(context, g->inst_browser_state[layer->index]);
             }
             Tooltip(g,
@@ -1108,7 +1105,7 @@ void Draw(Gui* g,
             volume_knob_r.y + (volume_knob_r.h - (layer_peak_meter_height + layer_peak_meter_bottom_gap)),
             layer_peak_meter_width,
             layer_peak_meter_height - layer_peak_meter_bottom_gap}};
-        auto const& processor = engine->processor.layer_processors[(usize)layer->index];
+        auto const& processor = g->engine.processor.layer_processors[(usize)layer->index];
         peak_meters::PeakMeter(g, peak_meter_r, processor.peak_meter, false);
     }
 
@@ -1585,7 +1582,7 @@ void Draw(Gui* g,
     }
 
     // overlay
-    if (LayerIsSilent(engine->processor, layer->index)) {
+    if (LayerIsSilent(g->engine.processor, layer->index)) {
         auto const pos = g->imgui.curr_window->unpadded_bounds.pos;
         g->imgui.graphics->AddRectFilled(pos,
                                          pos + g->imgui.Size(),

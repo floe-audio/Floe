@@ -192,7 +192,7 @@ static void AddLibrary(PackageInfo& info,
                        sample_lib::Library const& lib,
                        ArenaAllocator& arena,
                        ArenaAllocator& scratch) {
-    auto lib_result = info.libraries.FindOrInsertGrowIfNeeded(arena, lib.Id(), {});
+    auto lib_result = info.libraries.FindOrInsertGrowIfNeeded(arena, lib.id, {});
     if (lib_result.inserted) {
         lib_result.element.data.name = arena.Clone(lib.name);
         lib_result.element.data.file_format = lib.file_format_specifics.tag;

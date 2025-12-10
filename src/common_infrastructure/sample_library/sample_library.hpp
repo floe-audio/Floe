@@ -15,6 +15,10 @@ constexpr usize k_max_library_name_size = 64;
 constexpr usize k_max_instrument_name_size = 64;
 constexpr usize k_max_ir_name_size = 64;
 
+constexpr String k_default_library_id_separator = " - "_s;
+constexpr usize k_max_library_id_size =
+    k_max_library_author_size + k_max_library_name_size + k_default_library_id_separator.size;
+
 namespace sample_lib {
 
 constexpr usize k_max_folders = 4;
@@ -205,21 +209,6 @@ using FileFormatSpecifics = TaggedUnion<FileFormat,
                                         TypeAndTag<MdataSpecifics, FileFormat::Mdata>,
                                         TypeAndTag<LuaSpecifics, FileFormat::Lua>>;
 
-struct LibraryIdRef {
-    bool operator==(LibraryIdRef const& other) const = default;
-    friend bool operator<(LibraryIdRef const& a, LibraryIdRef const& b) { return a.name < b.name; }
-    LibraryIdRef Clone(Allocator& arena, CloneType _ = CloneType::Shallow) const {
-        return {.author = arena.Clone(author), .name = arena.Clone(name)};
-    }
-    u64 Hash() const { return HashMultiple(ArrayT<String const>({author, name})); }
-    u64 HashWithExtra(String extra) const {
-        return HashMultiple(ArrayT<String const>({extra, author, name}));
-    }
-
-    String author;
-    String name;
-};
-
 struct FileAttribution {
     String title {}; // title of the work
     String license_name {};
@@ -230,9 +219,12 @@ struct FileAttribution {
 
 enum class ResourceType : u8 { Instrument, Ir, Count };
 
+using LibraryIdRef = String;
+using LibraryId = DynamicArrayBounded<char, k_max_library_id_size>;
+
 struct Library {
-    LibraryIdRef Id() const { return {.author = author, .name = name}; }
     String name {};
+    LibraryIdRef id {};
     String tagline {};
     Optional<String> library_url {};
     Optional<String> description {};
@@ -255,47 +247,35 @@ struct Library {
     FileFormatSpecifics file_format_specifics;
 };
 
-constexpr LibraryIdRef k_builtin_library_id = {.author = FLOE_VENDOR, .name = "Built-in"};
+usize IdFromAuthorAndName(String author, String name, MutableString out);
+LibraryId IdFromAuthorAndNameInline(String author, String name);
+LibraryIdRef IdFromAuthorAndNameAlloc(String author, String name, Allocator& allocator);
 
-// MDATA libraries didn't have an author field, but they were all made by FrozenPlain.
-constexpr String k_mdata_library_author = "FrozenPlain (Mirage)"_s;
-constexpr LibraryIdRef k_mirage_compat_library_id = {.author = "FrozenPlain", .name = "Mirage Compatibility"};
+usize IdForMdataLibrary(String name, MutableString out);
+LibraryId IdForMdataLibraryInline(String name);
+LibraryIdRef IdForMdataLibraryAlloc(String name, Allocator& arena);
 
-struct LibraryId {
-    LibraryId() = default;
-    LibraryId(LibraryIdRef ref) : author(ref.author), name(ref.name) {}
+constexpr LibraryIdRef k_builtin_library_id = "Built-in - " FLOE_VENDOR;
+constexpr LibraryIdRef k_mirage_compat_library_id = "Mirage Compatibility - FrozenPlain";
 
-    LibraryIdRef Ref() const { return {.author = author, .name = name}; }
-    operator LibraryIdRef() const { return Ref(); }
-    u64 Hash() const { return Ref().Hash(); }
-    bool operator==(LibraryId const& other) const = default;
-    bool operator==(LibraryIdRef const& other) const { return Ref() == other; }
-    bool operator<(LibraryId const& other) const {
-        if (author < other.author) return true;
-        if (author == other.author) return name < other.name;
-        return false;
-    }
-
-    DynamicArrayBounded<char, k_max_library_author_size> author;
-    DynamicArrayBounded<char, k_max_library_name_size> name;
-};
+// Prior to Floe 1.1.1, all Mirage libraries had this author. We changed this when we added separate library
+// IDs.
+constexpr String k_old_mirage_author = "FrozenPlain (Mirage)"_s;
 
 struct InstrumentId {
     bool operator==(InstrumentId const& other) const = default;
     bool operator==(LoadedInstrument const& inst) const {
-        return inst_name == inst.instrument.name && library == inst.instrument.library.Id();
+        return inst_name == inst.instrument.name && library == inst.instrument.library.id;
     }
-    u64 Hash() const { return library.Ref().HashWithExtra(inst_name); }
+    u64 Hash() const { return HashMultiple(Array {(String)library, (String)inst_name}); }
     LibraryId library;
     DynamicArrayBounded<char, k_max_instrument_name_size> inst_name;
 };
 
 struct IrId {
     bool operator==(IrId const& other) const = default;
-    bool operator==(LoadedIr const& ir) const {
-        return library == ir.ir.library.Id() && ir_name == ir.ir.name;
-    }
-    u64 Hash() const { return library.Ref().HashWithExtra(ir_name); }
+    bool operator==(LoadedIr const& ir) const { return library == ir.ir.library.id && ir_name == ir.ir.name; }
+    u64 Hash() const { return HashMultiple(Array {(String)library, (String)ir_name}); }
     LibraryId library;
     DynamicArrayBounded<char, k_max_ir_name_size> ir_name;
 };
@@ -314,8 +294,27 @@ ErrorCodeOr<u64> MdataHash(String path, Reader& reader);
 ErrorCodeOr<u64> LuaHash(String path, Reader& reader);
 ErrorCodeOr<u64> Hash(String path, Reader& reader, FileFormat format);
 
-PUBLIC u64 InstHash(Instrument const& inst) { return inst.library.Id().HashWithExtra(inst.name); }
-PUBLIC u64 IrHash(ImpulseResponse const& ir) { return ir.library.Id().HashWithExtra(ir.name); }
+// The issue here with these 'persistent' hash functions is that we want to use the new authority on
+// uniqueness: the id. However, existing users will have used the old authority, which was author + name and
+// we have to maintain backwards compatibility. Sample libraries are allowed to change their name and author,
+// and so long as they maintain the same ID, its meant to match the same entity. This hashing function breaks
+// in that case.
+// Perhaps the solution is to migrate to the new system by running a startup migration. This should work
+// because it would happen before the user installs any new library that might change name/author but retain
+// the ID. The new system would use the ids.
+PUBLIC u64 PersistentInstHash(Instrument const& inst) {
+    return HashMultipleFnv1a(Array {inst.name,
+                                    inst.library.file_format_specifics.tag == FileFormat::Mdata
+                                        ? k_old_mirage_author
+                                        : inst.library.author,
+                                    inst.library.name});
+}
+PUBLIC u64 PersistentIrHash(ImpulseResponse const& ir) {
+    return HashMultipleFnv1a(Array {
+        ir.name,
+        ir.library.file_format_specifics.tag == FileFormat::Mdata ? k_old_mirage_author : ir.library.author,
+        ir.library.name});
+}
 
 struct Error {
     ErrorCode code;
@@ -389,5 +388,3 @@ ErrorCodeOr<void> WriteLuaLspDefintionsFile(ArenaAllocator& scratch); // writes 
 bool CheckAllReferencedFilesExist(Library const& lib, Writer error_writer);
 
 } // namespace sample_lib
-
-ErrorCodeOr<void> CustomValueToString(Writer writer, sample_lib::LibraryIdRef id, fmt::FormatOptions options);

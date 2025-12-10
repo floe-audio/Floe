@@ -6,7 +6,7 @@
 #include "engine/favourite_items.hpp"
 #include "gui2_common_browser.hpp"
 
-constexpr sample_lib::LibraryIdRef k_waveform_library_id = {.author = FLOE_VENDOR, .name = "Waveforms"};
+constexpr sample_lib::LibraryIdRef k_waveform_library_id = "Waveforms - " FLOE_VENDOR;
 
 inline prefs::Key FavouriteItemKey() { return "favourite-instrument"_s; }
 
@@ -18,8 +18,8 @@ struct InstrumentCursor {
 
 static Optional<InstrumentCursor> CurrentCursor(InstBrowserContext const& context,
                                                 sample_lib::InstrumentId const& inst_id) {
-    for (auto const [lib_index, l] : Enumerate(context.libraries)) {
-        if (l->Id() != inst_id.library) continue;
+    for (auto const [lib_index, l] : Enumerate(context.frame_context.libraries)) {
+        if (l->id != inst_id.library) continue;
         for (auto const [inst_index, i] : Enumerate(l->sorted_instruments))
             if (i->name == inst_id.inst_name) return InstrumentCursor {lib_index, inst_index};
     }
@@ -43,7 +43,7 @@ static bool ShouldSkipInstrument(InstBrowserContext const& context,
 
     if (state.common_state.favourites_only) {
         filtering_on = true;
-        if (!IsFavourite(context.prefs, FavouriteItemKey(), sample_lib::InstHash(inst))) {
+        if (!IsFavourite(context.prefs, FavouriteItemKey(), sample_lib::PersistentInstHash(inst))) {
             if (common_state.filter_mode == FilterMode::MultipleAnd ||
                 common_state.filter_mode == FilterMode::Single)
                 return true;
@@ -68,7 +68,7 @@ static bool ShouldSkipInstrument(InstBrowserContext const& context,
 
     if (common_state.selected_library_hashes.HasSelected()) {
         filtering_on = true;
-        if (!common_state.selected_library_hashes.Contains(inst.library.Id().Hash())) {
+        if (!common_state.selected_library_hashes.Contains(Hash(inst.library.id))) {
             if (common_state.filter_mode == FilterMode::MultipleAnd)
                 return true;
             else if (common_state.filter_mode == FilterMode::Single)
@@ -121,9 +121,10 @@ static Optional<InstrumentCursor> IterateInstrument(InstBrowserContext const& co
                                                     InstrumentCursor cursor,
                                                     SearchDirection direction,
                                                     bool first) {
-    if (context.libraries.size == 0) return k_nullopt;
+    auto const& libs = context.frame_context.libraries;
+    if (libs.size == 0) return k_nullopt;
 
-    if (cursor.lib_index >= context.libraries.size) cursor.lib_index = 0;
+    if (cursor.lib_index >= libs.size) cursor.lib_index = 0;
 
     if (!first) {
         switch (direction) {
@@ -135,24 +136,24 @@ static Optional<InstrumentCursor> IterateInstrument(InstBrowserContext const& co
         }
     }
 
-    for (usize lib_step = 0; lib_step < context.libraries.size + 1; (
+    for (usize lib_step = 0; lib_step < libs.size + 1; (
              {
                  ++lib_step;
                  switch (direction) {
                      case SearchDirection::Forward:
-                         cursor.lib_index = (cursor.lib_index + 1) % context.libraries.size;
+                         cursor.lib_index = (cursor.lib_index + 1) % libs.size;
                          cursor.inst_index = 0;
                          break;
                      case SearchDirection::Backward:
                          static_assert(UnsignedInt<decltype(cursor.lib_index)>);
                          --cursor.lib_index;
-                         if (cursor.lib_index >= context.libraries.size) // check wraparound
-                             cursor.lib_index = context.libraries.size - 1;
-                         cursor.inst_index = context.libraries[cursor.lib_index]->sorted_instruments.size - 1;
+                         if (cursor.lib_index >= libs.size) // check wraparound
+                             cursor.lib_index = libs.size - 1;
+                         cursor.inst_index = libs[cursor.lib_index]->sorted_instruments.size - 1;
                          break;
                  }
              })) {
-        auto const& lib = *context.libraries[cursor.lib_index];
+        auto const& lib = *libs[cursor.lib_index];
 
         if (lib.sorted_instruments.size == 0) continue;
 
@@ -181,12 +182,12 @@ static void LoadInstrument(InstBrowserContext const& context,
                            InstBrowserState& state,
                            InstrumentCursor const& cursor,
                            bool scroll) {
-    auto const& lib = *context.libraries[cursor.lib_index];
+    auto const& lib = *context.frame_context.libraries[cursor.lib_index];
     auto const& inst = *lib.sorted_instruments[cursor.inst_index];
     LoadInstrument(context.engine,
                    context.layer.index,
                    sample_lib::InstrumentId {
-                       .library = lib.Id(),
+                       .library = lib.id,
                        .inst_name = inst.name,
                    });
     if (scroll) state.scroll_to_show_selected = true;
@@ -276,8 +277,8 @@ static void InstBrowserWaveformItems(GuiBoxSystem& box_system,
     auto& common_state = state.common_state;
 
     sample_lib::Library const pseudo_lib {
-        .name = k_waveform_library_id.name,
-        .author = k_waveform_library_id.author,
+        .name = "Waveforms"_s,
+        .author = FLOE_VENDOR,
         .file_format_specifics = sample_lib::LuaSpecifics {},
     };
     FolderNode pseudo_folder {
@@ -293,7 +294,7 @@ static void InstBrowserWaveformItems(GuiBoxSystem& box_system,
 
         if (ShouldSkipInstrument(context, state, pseudo_inst)) continue;
 
-        auto const inst_hash = sample_lib::InstHash(pseudo_inst);
+        auto const inst_hash = sample_lib::PersistentInstHash(pseudo_inst);
         auto const is_current = waveform_type == context.layer.instrument_id.TryGetOpt<WaveformType>();
         auto const is_favourite = IsFavourite(context.prefs, FavouriteItemKey(), inst_hash);
 
@@ -346,7 +347,7 @@ static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& conte
     Optional<graphics::ImageID> lib_icon {};
     auto cursor = *first;
     while (true) {
-        auto const& lib = *context.libraries[cursor.lib_index];
+        auto const& lib = *context.frame_context.libraries[cursor.lib_index];
         auto const& inst = *lib.sorted_instruments[cursor.inst_index];
         auto const& folder = inst.folder;
         auto const new_folder = folder != previous_folder;
@@ -363,8 +364,8 @@ static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& conte
         }
 
         if (folder_section->Do(box_system).tag != BrowserSection::State::Collapsed) {
-            auto const inst_id = sample_lib::InstrumentId {lib.Id(), inst.name};
-            auto const inst_hash = sample_lib::InstHash(inst);
+            auto const inst_id = sample_lib::InstrumentId {lib.id, inst.name};
+            auto const inst_hash = sample_lib::PersistentInstHash(inst);
             auto const is_current = context.layer.instrument_id == inst_id;
             auto const is_favourite = IsFavourite(context.prefs, FavouriteItemKey(), inst_hash);
 
@@ -406,7 +407,7 @@ static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& conte
                                           previous_library = &lib;
                                           auto const imgs = GetLibraryImages(context.library_images,
                                                                              box_system.imgui,
-                                                                             lib.Id(),
+                                                                             lib.id,
                                                                              context.sample_library_server,
                                                                              LibraryImagesTypes::Icon);
                                           lib_icon = imgs.icon ? imgs.icon : context.unknown_library_icon;
@@ -450,23 +451,22 @@ static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& conte
 
 void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, InstBrowserState& state) {
     if (!state.common_state.open) return;
+    auto const& libs = context.frame_context.libraries;
 
     HashTable<String, FilterItemInfo> tags {};
     auto libraries =
-        OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(box_system.arena,
-                                                                           context.libraries.size + 1);
-    auto library_authors =
-        OrderedHashTable<String, FilterItemInfo>::Create(box_system.arena, context.libraries.size + 1);
+        OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(box_system.arena, libs.size + 1);
+    auto library_authors = OrderedHashTable<String, FilterItemInfo>::Create(box_system.arena, libs.size + 1);
 
     auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(box_system.arena, 16);
     auto root_folder = FolderRootSet::Create(box_system.arena, 8);
 
     FilterItemInfo favourites_info {};
 
-    for (auto const l : context.libraries) {
+    for (auto const l : libs) {
         if (l->sorted_instruments.size == 0) continue;
 
-        auto& lib = libraries.FindOrInsertWithoutGrowing(l->Id(), {}).element.data;
+        auto& lib = libraries.FindOrInsertWithoutGrowing(l->id, {}).element.data;
         auto& author = library_authors.FindOrInsertWithoutGrowing(l->author, {}).element.data;
 
         root_folder.InsertGrowIfNeeded(box_system.arena,
@@ -475,7 +475,7 @@ void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, I
         for (auto const& inst : l->sorted_instruments) {
             auto const skip = ShouldSkipInstrument(context, state, *inst);
 
-            if (IsFavourite(context.prefs, FavouriteItemKey(), sample_lib::InstHash(*inst))) {
+            if (IsFavourite(context.prefs, FavouriteItemKey(), sample_lib::PersistentInstHash(*inst))) {
                 if (!skip) ++favourites_info.num_used_in_items_lists;
                 ++favourites_info.total_available;
             }
@@ -514,10 +514,10 @@ void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, I
         .common =
             {
                 .is_selected =
-                    state.common_state.selected_library_hashes.Contains(k_waveform_library_id.Hash()),
-                .text = k_waveform_library_id.name,
+                    state.common_state.selected_library_hashes.Contains(Hash(k_waveform_library_id)),
+                .text = "Waveforms",
                 .hashes = state.common_state.selected_library_hashes,
-                .clicked_hash = k_waveform_library_id.Hash(),
+                .clicked_hash = Hash(k_waveform_library_id),
                 .filter_mode = state.common_state.filter_mode,
             },
         .library_id = sample_lib::k_builtin_library_id,
@@ -582,6 +582,7 @@ void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, I
             .on_scroll_to_show_selected = [&]() { state.scroll_to_show_selected = true; },
             .library_filters = ({
                 Optional<LibraryFilters> f = LibraryFilters {
+                    .libraries_table = context.frame_context.lib_table,
                     .library_images = context.library_images,
                     .libraries = libraries,
                     .library_authors = library_authors,

@@ -6,16 +6,11 @@
 #include "gui/gui2_common_browser.hpp"
 #include "gui/gui2_confirmation_dialog_state.hpp"
 #include "gui/gui2_ir_browser_state.hpp"
+#include "gui/gui_frame_context.hpp"
 #include "gui/gui_library_images.hpp"
 #include "gui_framework/gui_box_system.hpp"
 
 struct IrBrowserContext {
-    void Init(ArenaAllocator& arena) {
-        libraries = sample_lib_server::AllLibrariesRetained(sample_library_server, arena);
-        Sort(libraries, [](auto const& a, auto const& b) { return a->name < b->name; });
-    }
-    void Deinit() { sample_lib_server::ReleaseAll(libraries); }
-
     sample_lib_server::Server& sample_library_server;
     LibraryImagesTable& library_images;
     Engine& engine;
@@ -24,8 +19,7 @@ struct IrBrowserContext {
     Notifications& notifications;
     persistent_store::Store& persistent_store;
     ConfirmationDialogState& confirmation_dialog_state;
-
-    Span<sample_lib_server::ResourcePointer<sample_lib::Library>> libraries;
+    GuiFrameContext const& frame_context;
 };
 
 struct IrCursor {

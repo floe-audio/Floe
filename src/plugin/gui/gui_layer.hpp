@@ -3,6 +3,7 @@
 
 #pragma once
 #include "engine/engine.hpp"
+#include "gui/gui_frame_context.hpp"
 #include "gui_framework/layout.hpp"
 #include "gui_widget_compounds.hpp"
 
@@ -118,6 +119,11 @@ void Layout(Gui* g,
             f32 width,
             f32 height);
 
-void Draw(Gui* g, Engine* a, Rect r, LayerProcessor* layer, LayerLayoutTempIDs& ids, LayerLayout* layer_gui);
+void Draw(Gui* g,
+          GuiFrameContext const& frame_context,
+          Rect r,
+          LayerProcessor* layer,
+          LayerLayoutTempIDs& ids,
+          LayerLayout* layer_gui);
 
 } // namespace layer_gui
