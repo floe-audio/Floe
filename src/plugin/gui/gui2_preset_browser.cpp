@@ -575,8 +575,9 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
                                                                lib_id,
                                                                context.sample_library_server,
                                                                LibraryImagesTypes::All);
-                            if (!imgs.icon) ++num_unknown;
-                            if (lib_id == sample_lib::k_mirage_compat_library_id)
+                            if (!imgs.icon)
+                                ++num_unknown;
+                            else if (lib_id == sample_lib::k_mirage_compat_library_id)
                                 mirage_compat_icon = imgs.icon;
                             else
                                 icons[icons_index++] = imgs.icon;
