@@ -353,28 +353,28 @@ class JsonStateParser {
                         auto special_type = mdata::SpecialAudioDataFromInstPath(path);
                         switch (special_type) {
                             case mdata::SpecialAudioDataTypeNone: {
-                                auto name = path::Filename(path);
+                                auto id = path::Filename(path);
 
-                                // NOTE(Sam): MDATA libraries (which is what was used when we were using
-                                // this JSON config format) didn't have the requirement that instrument
-                                // names have to be unique within a library.
+                                // MDATA libraries (which is what was used when we were using this JSON config
+                                // format) didn't have the requirement that instrument names have to be unique
+                                // within a library.
                                 //
                                 // These are the handful of conflicts that existed in the MDATA libraries, and
                                 // the new names that we use to identify them.
                                 //
-                                // IMPORTANT: This is pretty hacky; it's parrelleled with the renaming code in
+                                // IMPORTANT: This is pretty hacky; it's paralleled with the renaming code in
                                 // the sample_library files. You must keep them in sync.
                                 if (path == "sampler/Rhythmic Movement/Strange Movements"_s)
-                                    name = "Strange Movements 2"_s;
+                                    id = "Strange Movements 2"_s;
                                 else if (path ==
                                          "sampler/Oneshots/Ghost Voice Phrases/Male/Vocal Join Us 01"_s)
-                                    name = "Vocal Join Us 01 2"_s;
+                                    id = "Vocal Join Us 01 2"_s;
                                 else if (path ==
                                          "sampler/Oneshots/Ghost Voice Phrases/Male/Vocal Join Us 02"_s)
-                                    name = "Vocal Join Us 02 2"_s;
+                                    id = "Vocal Join Us 02 2"_s;
                                 else if (path ==
                                          "sampler/Oneshots/Ghost Voice Phrases/Male/Vocal We Can See You"_s)
-                                    name = "Vocal We Can See You 2"_s;
+                                    id = "Vocal We Can See You 2"_s;
 
                                 // MDATA libraries could mark instruments as one of the special types. It
                                 // wasn't widely used. In Floe we have more advanced oscillator types so we
@@ -388,11 +388,11 @@ class JsonStateParser {
                                     break;
                                 }
 
-                                ASSERT(name.size <= k_max_instrument_name_size);
+                                ASSERT(id.size <= k_max_instrument_id_size);
 
                                 m_state.inst_ids[m_inst_index] = sample_lib::InstrumentId {
                                     .library = {}, // filled in later
-                                    .inst_name = name,
+                                    .inst_id = id,
                                 };
                                 break;
                             }
@@ -644,7 +644,7 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
         for (auto& t : state.fx_order)
             t = (EffectType)k_num_effect_types;
         for (auto& i : state.inst_ids)
-            i = sample_lib::InstrumentId {.library = "foo"_s, .inst_name = "bar"_s};
+            i = sample_lib::InstrumentId {.library = "foo"_s, .inst_id = "bar"_s};
         state.ir_id = sample_lib::IrId {
             .library = sample_lib::k_mirage_compat_library_id,
             .ir_name = "Formant 1"_s,
@@ -1261,7 +1261,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
             TRY(coder.CodeNumber((UnderlyingType<Type>&)type, StateVersion::Initial));
             if (type == Type::Sampler) {
                 TRY(CodeLibraryId(coder, sampler_inst_id.library));
-                TRY(coder.CodeDynArray(sampler_inst_id.inst_name, StateVersion::Initial));
+                TRY(coder.CodeDynArray(sampler_inst_id.inst_id, StateVersion::Initial));
             }
 
             if (coder.IsReading()) {
@@ -1750,7 +1750,7 @@ static void CheckStateIsValid(tests::Tester& tester, StateSnapshot const& state)
             case InstrumentType::Sampler: {
                 auto& s = i.Get<sample_lib::InstrumentId>();
                 CHECK(s.library.size);
-                CHECK(s.inst_name.size);
+                CHECK(s.inst_id.size);
                 break;
             }
         }
@@ -1815,7 +1815,7 @@ TEST_CASE(TestNewSerialisation) {
         for (auto [index, inst] : Enumerate(state.inst_ids)) {
             inst = sample_lib::InstrumentId {
                 .library = (String)fmt::Format(scratch_arena, "TestAuthor{}.TestLib{}", index, index),
-                .inst_name = String(fmt::Format(scratch_arena, "Test/Path{}", index)),
+                .inst_id = String(fmt::Format(scratch_arena, "Test/Path{}", index)),
             };
         }
 
@@ -2082,15 +2082,15 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK(state.inst_ids[2].tag == InstrumentType::Sampler);
         if (auto i = state.inst_ids[0].TryGet<sample_lib::InstrumentId>()) {
             CHECK_EQ(i->library, sample_lib::IdForMdataLibraryAlloc("Phoenix"_s, scratch_arena));
-            CHECK_EQ(i->inst_name, "Strings"_s);
+            CHECK_EQ(i->inst_id, "Strings"_s);
         }
         if (auto i = state.inst_ids[1].TryGet<sample_lib::InstrumentId>()) {
             CHECK_EQ(i->library, sample_lib::IdForMdataLibraryAlloc("Phoenix"_s, scratch_arena));
-            CHECK_EQ(i->inst_name, "Strings"_s);
+            CHECK_EQ(i->inst_id, "Strings"_s);
         }
         if (auto i = state.inst_ids[2].TryGet<sample_lib::InstrumentId>()) {
             CHECK_EQ(i->library, sample_lib::IdForMdataLibraryAlloc("Phoenix"_s, scratch_arena));
-            CHECK_EQ(i->inst_name, "Choir"_s);
+            CHECK_EQ(i->inst_id, "Choir"_s);
         }
         CHECK(state.ir_id.HasValue());
         if (state.ir_id.HasValue()) {
@@ -2146,7 +2146,7 @@ TEST_CASE(TestLoadingOldFiles) {
         {
             auto const i = state.inst_ids[2].Get<sample_lib::InstrumentId>();
             CHECK_EQ(i.library, sample_lib::IdForMdataLibraryAlloc("Abstract Energy"_s, scratch_arena));
-            CHECK_EQ(i.inst_name, "Drone 2 Atmos"_s);
+            CHECK_EQ(i.inst_id, "Drone 2 Atmos"_s);
         }
 
         CHECK_EQ(state.param_values[ToInt(ParamIndex::BitCrushOn)], 0.0f);

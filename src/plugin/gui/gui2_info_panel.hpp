@@ -110,7 +110,7 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
         if (auto const dir = path::Directory(lib->path)) do_text_line(fmt::Assign(buffer, "Folder: {}", dir));
         do_text_line(fmt::Assign(buffer,
                                  "Instruments: {} ({} samples, {} regions)",
-                                 lib->insts_by_name.size,
+                                 lib->insts_by_id.size,
                                  lib->num_instrument_samples,
                                  lib->num_regions));
         do_text_line(fmt::Assign(buffer, "Impulse responses: {}", lib->irs_by_name.size));

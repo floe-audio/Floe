@@ -191,7 +191,7 @@ struct LayerProcessor {
                 return k_waveform_type_names[ToInt(instrument_id.Get<WaveformType>())];
             }
             case InstrumentType::Sampler: {
-                return instrument_id.Get<sample_lib::InstrumentId>().inst_name;
+                return instrument_id.Get<sample_lib::InstrumentId>().inst_id;
             }
             case InstrumentType::None: return "None"_s;
         }

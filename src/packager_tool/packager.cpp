@@ -199,11 +199,11 @@ static void AddLibrary(PackageInfo& info,
     }
 
     auto& insts = lib_result.element.data.instruments_by_folder;
-    for (auto const [inst_name, inst, _] : lib.insts_by_name) {
+    for (auto const [inst_id, inst, _] : lib.insts_by_id) {
         // Add instrument.
         {
             auto instrument = arena.New<PackageInfo::Instrument>(PackageInfo::Instrument {
-                .name = arena.Clone(inst_name),
+                .name = arena.Clone(inst->name),
                 .description = inst->description.Clone(arena),
                 .next = nullptr,
             });

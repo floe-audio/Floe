@@ -1149,14 +1149,14 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                 case LoadRequestType::Instrument: {
                     auto const& load_inst =
                         pending_resource.request.request.Get<LoadRequestInstrumentIdWithLayer>();
-                    auto const inst_name = load_inst.id.inst_name;
+                    auto const inst_id = load_inst.id.inst_id;
 
-                    ASSERT(inst_name.size != 0);
+                    ASSERT(inst_id.size != 0);
 
                     auto const find_inst_error_id =
-                        HashMultiple(Array {"sls-find-inst"_s, library_id, inst_name});
+                        HashMultiple(Array {"sls-find-inst"_s, library_id, inst_id});
 
-                    if (auto const i = lib->value.lib->insts_by_name.Find(inst_name)) {
+                    if (auto const i = lib->value.lib->insts_by_id.Find(inst_id)) {
                         error_notifications.RemoveError(find_inst_error_id);
 
                         pending_resource.request.async_comms_channel
@@ -1176,11 +1176,11 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                                        load_inst.layer_index,
                                        (void const*)inst,
                                        lib->value.lib->name,
-                                       inst_name);
+                                       inst_id);
                     } else {
                         if (auto err = error_notifications.BeginWriteError(find_inst_error_id)) {
                             DEFER { error_notifications.EndWriteError(*err); };
-                            fmt::Assign(err->title, "Cannot find instrument \"{}\""_s, inst_name);
+                            fmt::Assign(err->title, "Cannot find instrument \"{}\""_s, inst_id);
                             err->error_code = CommonError::NotFound;
                         }
 
@@ -1600,7 +1600,7 @@ static sample_lib::Library* BuiltinLibrary() {
         .minor_version = 1,
         .background_image_path = k_background_path,
         .icon_image_path = k_icon_path,
-        .insts_by_name = {},
+        .insts_by_id = {},
         .irs_by_name = {},
         .path = ":memory:",
         .file_hash = 100,
@@ -1920,7 +1920,7 @@ static Type& ExtractSuccess(tests::Tester& tester, LoadResult const& result, Loa
     switch (request.tag) {
         case LoadRequestType::Instrument: {
             auto inst = request.Get<LoadRequestInstrumentIdWithLayer>();
-            tester.log.Debug("Instrument: {} - {}", inst.id.library, inst.id.inst_name);
+            tester.log.Debug("Instrument: {} - {}", inst.id.library, inst.id.inst_id);
             break;
         }
         case LoadRequestType::Ir: {
@@ -1994,7 +1994,7 @@ TEST_CASE(TestSampleLibraryServer) {
                 .id =
                     {
                         .library = sample_lib::IdFromAuthorAndNameInline("Tester", "Test Lua"),
-                        .inst_name = "Auto Mapped Samples"_s,
+                        .inst_id = "Auto Mapped Samples"_s,
                     },
                 .layer_index = 0,
             });
@@ -2036,7 +2036,7 @@ TEST_CASE(TestSampleLibraryServer) {
                             .id =
                                 {
                                     .library = sample_lib::IdForMdataLibraryInline("SharedFilesMdata"_s),
-                                    .inst_name = "Groups And Refs"_s,
+                                    .inst_id = "Groups And Refs"_s,
                                 },
                             .layer_index = 0,
                         },
@@ -2060,7 +2060,7 @@ TEST_CASE(TestSampleLibraryServer) {
                             .id =
                                 {
                                     .library = sample_lib::IdFromAuthorAndNameInline("Tester", "Test Lua"),
-                                    .inst_name = "Single Sample"_s,
+                                    .inst_id = "Single Sample"_s,
                                 },
                             .layer_index = 0,
                         },
@@ -2084,7 +2084,7 @@ TEST_CASE(TestSampleLibraryServer) {
                             .id =
                                 {
                                     .library = sample_lib::IdForMdataLibraryInline("SharedFilesMdata"_s),
-                                    .inst_name = "Groups And Refs"_s,
+                                    .inst_id = "Groups And Refs"_s,
                                 },
                             .layer_index = 0,
                         },
@@ -2107,7 +2107,7 @@ TEST_CASE(TestSampleLibraryServer) {
                             .id =
                                 {
                                     .library = sample_lib::IdForMdataLibraryInline("SharedFilesMdata"_s),
-                                    .inst_name = "Groups And Refs (copy)"_s,
+                                    .inst_id = "Groups And Refs (copy)"_s,
                                 },
                             .layer_index = 1,
                         },
@@ -2130,7 +2130,7 @@ TEST_CASE(TestSampleLibraryServer) {
                             .id =
                                 {
                                     .library = sample_lib::IdForMdataLibraryInline("SharedFilesMdata"_s),
-                                    .inst_name = "Single Sample"_s,
+                                    .inst_id = "Single Sample"_s,
                                 },
                             .layer_index = 2,
                         },
@@ -2156,7 +2156,7 @@ TEST_CASE(TestSampleLibraryServer) {
                             .id =
                                 {
                                     .library = sample_lib::IdForMdataLibraryInline("SharedFilesMdata"_s),
-                                    .inst_name = "Same Sample Twice"_s,
+                                    .inst_id = "Same Sample Twice"_s,
                                 },
                             .layer_index = 0,
                         },
@@ -2181,7 +2181,7 @@ TEST_CASE(TestSampleLibraryServer) {
                                     .id =
                                         {
                                             .library = "foo.bar"_s,
-                                            .inst_name = "bar"_s,
+                                            .inst_id = "bar"_s,
                                         },
                                     .layer_index = 0,
                                 },
@@ -2202,7 +2202,7 @@ TEST_CASE(TestSampleLibraryServer) {
                             .id =
                                 {
                                     .library = sample_lib::IdForMdataLibraryInline("SharedFilesMdata"_s),
-                                    .inst_name = "bar"_s,
+                                    .inst_id = "bar"_s,
                                 },
                             .layer_index = 0,
                         },
@@ -2267,19 +2267,19 @@ TEST_CASE(TestSampleLibraryServer) {
         sample_lib::InstrumentId const inst_ids[] {
             {
                 .library = lib_id,
-                .inst_name = "Groups And Refs"_s,
+                .inst_id = "Groups And Refs"_s,
             },
             {
                 .library = lib_id,
-                .inst_name = "Groups And Refs (copy)"_s,
+                .inst_id = "Groups And Refs (copy)"_s,
             },
             {
                 .library = lib_id,
-                .inst_name = "Single Sample"_s,
+                .inst_id = "Single Sample"_s,
             },
             {
                 .library = lib_id,
-                .inst_name = "Auto Mapped Samples"_s,
+                .inst_id = "Auto Mapped Samples"_s,
             },
         };
         auto const builtin_irs = GetEmbeddedIrs();

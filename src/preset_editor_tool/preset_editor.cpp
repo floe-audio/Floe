@@ -108,12 +108,12 @@ ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset
                                 lua_pop(lua, 1);
 
                                 // Extract instrument name
-                                lua_getfield(lua, -2, "instrument_name");
+                                lua_getfield(lua, -2, "instrument_id");
                                 if (lua_isstring(lua, -1)) {
                                     size_t len;
                                     auto str = lua_tolstring(lua, -1, &len);
-                                    auto copy_len = Min(len, sampler_id.inst_name.Capacity());
-                                    dyn::Assign(sampler_id.inst_name, {str, copy_len});
+                                    auto copy_len = Min(len, sampler_id.inst_id.Capacity());
+                                    dyn::Assign(sampler_id.inst_id, {str, copy_len});
                                 }
                                 lua_pop(lua, 1);
 
@@ -368,8 +368,8 @@ static void BuildPresetLuaTable(lua_State* lua, StateSnapshot const& preset_stat
                 auto const& sampler_id = inst_id.Get<sample_lib::InstrumentId>();
                 lua_pushlstring(lua, sampler_id.library.data, sampler_id.library.size);
                 lua_setfield(lua, -2, "library_id");
-                lua_pushlstring(lua, sampler_id.inst_name.data, sampler_id.inst_name.size);
-                lua_setfield(lua, -2, "instrument_name");
+                lua_pushlstring(lua, sampler_id.inst_id.data, sampler_id.inst_id.size);
+                lua_setfield(lua, -2, "instrument_id");
                 break;
             }
         }

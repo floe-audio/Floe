@@ -79,7 +79,7 @@ struct StateSnapshotWithName {
             fmt::Append(result,
                         "Sampler: {}/{}"_s,
                         id.Get<sample_lib::InstrumentId>().library,
-                        id.Get<sample_lib::InstrumentId>().inst_name);
+                        id.Get<sample_lib::InstrumentId>().inst_id);
             break;
     }
     return result;

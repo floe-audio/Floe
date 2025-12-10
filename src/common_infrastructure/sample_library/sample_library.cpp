@@ -140,17 +140,17 @@ static auto BuildSorted(Allocator& arena, auto hash_table, FolderNode const* roo
 }
 
 VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAllocator& scratch_arena) {
-    if (lib.insts_by_name.size)
-        FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Instrument)], lib.insts_by_name);
+    if (lib.insts_by_id.size)
+        FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Instrument)], lib.insts_by_id);
     if (lib.irs_by_name.size) FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Ir)], lib.irs_by_name);
 
     if (!lib.id.size) lib.id = IdFromAuthorAndNameAlloc(lib.author, lib.name, arena);
 
     lib.sorted_instruments =
-        BuildSorted(arena, lib.insts_by_name, &lib.root_folders[ToInt(ResourceType::Instrument)]);
+        BuildSorted(arena, lib.insts_by_id, &lib.root_folders[ToInt(ResourceType::Instrument)]);
     lib.sorted_irs = BuildSorted(arena, lib.irs_by_name, &lib.root_folders[ToInt(ResourceType::Ir)]);
 
-    for (auto [key, value, _] : lib.insts_by_name) {
+    for (auto [key, value, _] : lib.insts_by_id) {
         auto& inst = *value;
 
         inst.loop_overview.all_regions_require_looping = true;
@@ -210,7 +210,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
         }
     }
 
-    for (auto [key, inst_ptr, _] : lib.insts_by_name) {
+    for (auto [key, inst_ptr, _] : lib.insts_by_id) {
         auto& inst = *inst_ptr;
         struct RoundRobinGroupInfo {
             u8 max_rr_pos;
@@ -243,7 +243,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
                     return (String)fmt::Format(arena,
                                                "More than {} round robin groups in instrument {}",
                                                k_max_round_robin_sequence_groups,
-                                               inst.name);
+                                               inst.id);
                 }
 
                 auto& new_group = e.element.data;
@@ -268,7 +268,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
         }
     }
 
-    for (auto [key, inst_ptr, _] : lib.insts_by_name) {
+    for (auto [key, inst_ptr, _] : lib.insts_by_id) {
         auto const& inst = *inst_ptr;
         for (auto const& region : inst.regions) {
             if (!region.trigger.feather_overlapping_velocity_layers) continue;
@@ -317,7 +317,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
             }
         }
     }
-    for (auto [key, inst_ptr, _] : lib.insts_by_name) {
+    for (auto [key, inst_ptr, _] : lib.insts_by_id) {
         auto const& inst = *inst_ptr;
         for (auto const& region : inst.regions) {
             if (!region.timbre_layering.layer_range) continue;

@@ -408,7 +408,7 @@ static ErrorCodeOr<Span<u8 const>> MakeState(ArenaAllocator& arena, StatePropert
         // TODO: we need to somehow get a library that is widely available: e.g. on CI.
         state.inst_ids[layer_assignment_index] = sample_lib::InstrumentId {
             .library = sample_lib::IdForMdataLibraryAlloc("Wraith", arena),
-            .inst_name = "Endless Stride"_s,
+            .inst_id = "Endless Stride"_s,
         };
         layer_assignment_index = (layer_assignment_index + 1) % k_num_layers;
     }

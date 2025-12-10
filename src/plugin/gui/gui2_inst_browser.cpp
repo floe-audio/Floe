@@ -21,7 +21,7 @@ static Optional<InstrumentCursor> CurrentCursor(InstBrowserContext const& contex
     for (auto const [lib_index, l] : Enumerate(context.frame_context.libraries)) {
         if (l->id != inst_id.library) continue;
         for (auto const [inst_index, i] : Enumerate(l->sorted_instruments))
-            if (i->name == inst_id.inst_name) return InstrumentCursor {lib_index, inst_index};
+            if (i->id == inst_id.inst_id) return InstrumentCursor {lib_index, inst_index};
     }
 
     return k_nullopt;
@@ -188,7 +188,7 @@ static void LoadInstrument(InstBrowserContext const& context,
                    context.layer.index,
                    sample_lib::InstrumentId {
                        .library = lib.id,
-                       .inst_name = inst.name,
+                       .inst_id = inst.id,
                    });
     if (scroll) state.scroll_to_show_selected = true;
 }

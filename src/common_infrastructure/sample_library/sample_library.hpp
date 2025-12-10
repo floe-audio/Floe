@@ -18,6 +18,8 @@ constexpr usize k_max_ir_name_size = 64;
 constexpr String k_default_library_id_separator = " - "_s;
 constexpr usize k_max_library_id_size =
     k_max_library_author_size + k_max_library_name_size + k_default_library_id_separator.size;
+constexpr usize k_max_instrument_id_size = k_max_instrument_name_size;
+constexpr usize k_max_ir_id_size = k_max_ir_name_size;
 
 namespace sample_lib {
 
@@ -150,6 +152,7 @@ struct Instrument {
     Library const& library;
 
     String name {};
+    String id {};
     FolderNode* folder {};
     Optional<String> description {};
     Set<String> tags {};
@@ -233,7 +236,7 @@ struct Library {
     u32 minor_version {1};
     Optional<LibraryPath> background_image_path {};
     Optional<LibraryPath> icon_image_path {};
-    HashTable<String, Instrument*> insts_by_name {};
+    HashTable<String, Instrument*> insts_by_id {};
     Span<Instrument*> sorted_instruments {};
     Array<FolderNode, ToInt(ResourceType::Count)> root_folders {};
     HashTable<String, ImpulseResponse*> irs_by_name {};
@@ -265,11 +268,11 @@ constexpr String k_old_mirage_author = "FrozenPlain (Mirage)"_s;
 struct InstrumentId {
     bool operator==(InstrumentId const& other) const = default;
     bool operator==(LoadedInstrument const& inst) const {
-        return inst_name == inst.instrument.name && library == inst.instrument.library.id;
+        return inst_id == inst.instrument.id && library == inst.instrument.library.id;
     }
-    u64 Hash() const { return HashMultiple(Array {(String)library, (String)inst_name}); }
+    u64 Hash() const { return HashMultiple(Array {(String)library, (String)inst_id}); }
     LibraryId library;
-    DynamicArrayBounded<char, k_max_instrument_name_size> inst_name;
+    DynamicArrayBounded<char, k_max_instrument_id_size> inst_id;
 };
 
 struct IrId {
