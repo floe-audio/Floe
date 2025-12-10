@@ -168,7 +168,7 @@ static Optional<IrCursor> IterateIr(IrBrowserContext const& context,
 static void LoadIr(IrBrowserContext const& context, IrBrowserState& state, IrCursor const& cursor) {
     auto const& lib = *context.frame_context.libraries[cursor.lib_index];
     auto const& ir = *lib.sorted_irs[cursor.ir_index];
-    LoadConvolutionIr(context.engine, sample_lib::IrId {lib.id, ir.name});
+    LoadConvolutionIr(context.engine, sample_lib::IrId {lib.id, ir.id});
     state.scroll_to_show_selected = true;
 }
 
@@ -241,7 +241,7 @@ void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrows
             };
         }
 
-        auto const ir_id = sample_lib::IrId {lib.id, ir.name};
+        auto const ir_id = sample_lib::IrId {lib.id, ir.id};
         auto const ir_hash = sample_lib::PersistentIrHash(ir);
         auto const is_current = context.engine.processor.convo.ir_id == ir_id;
         auto const is_favourite = IsFavourite(context.prefs, k_favourite_ir_key, ir_hash);

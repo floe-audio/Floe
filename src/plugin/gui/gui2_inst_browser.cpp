@@ -362,7 +362,7 @@ static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& conte
         }
 
         if (folder_section->Do(box_system).tag != BrowserSection::State::Collapsed) {
-            auto const inst_id = sample_lib::InstrumentId {lib.id, inst.name};
+            auto const inst_id = sample_lib::InstrumentId {lib.id, inst.id};
             auto const inst_hash = sample_lib::PersistentInstHash(inst);
             auto const is_current = context.layer.instrument_id == inst_id;
             auto const is_favourite = IsFavourite(context.prefs, k_favourite_inst_key, inst_hash);
