@@ -1178,6 +1178,7 @@ struct TableFields<ImpulseResponse> {
 
     enum class Field : u32 {
         Name,
+        Id,
         Path,
         Folder,
         Tags,
@@ -1191,7 +1192,7 @@ struct TableFields<ImpulseResponse> {
             case Field::Name:
                 return {
                     .name = "name",
-                    .description_sentence = "The name of the IR. Must be unique.",
+                    .description_sentence = "The name of the IR.",
                     .example = "Cathedral",
                     .lua_type = LUA_TSTRING,
                     .required = true,
@@ -1202,6 +1203,24 @@ struct TableFields<ImpulseResponse> {
                                 luaL_error(ctx.lua,
                                            "IR name must be less than %d characters long.",
                                            (int)k_max_ir_name_size);
+                        },
+                };
+            case Field::Id:
+                return {
+                    .name = "id",
+                    .description_sentence =
+                        "A unique identifier for the IR. If not specified, it will be the name of the IR. Either way, IR IDs must be unqiue within a library. It can be any text but it's recommended to use a human-readable identifier (similar to the name). IDs are how presets and settings refer to IRs.",
+                    .example = "Cathedral",
+                    .default_value = "same as name",
+                    .lua_type = LUA_TSTRING,
+                    .required = false,
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            FIELD_OBJ.id = StringFromTop(ctx);
+                            if (FIELD_OBJ.id.size > k_max_ir_id_size)
+                                luaL_error(ctx.lua,
+                                           "IR ID must be less than %d characters long.",
+                                           (int)k_max_ir_id_size);
                         },
                 };
             case Field::Path:
@@ -1730,9 +1749,14 @@ static int AddIr(lua_State* lua) {
     auto& ir = ptr->obj;
     InterpretTable<ImpulseResponse>(ctx, 2, ir);
 
-    if (!library->irs_by_name.InsertGrowIfNeeded(ctx.result_arena, ir.name, &ir)) {
-        DynamicArrayBounded<char, k_max_ir_name_size + 1> name {ir.name};
-        luaL_error(lua, "IR names must be unique: %s is found twice", dyn::NullTerminated(name));
+    if (!ir.id.size) ir.id = ir.name;
+
+    if (!library->irs_by_id.InsertGrowIfNeeded(ctx.result_arena, ir.id, &ir)) {
+        DynamicArrayBounded<char, k_max_ir_id_size + 1> name {ir.id};
+        luaL_error(
+            lua,
+            "IR IDs must be unique: %s is found twice. If the 'id' field is not specified, the IR name is used as the ID. Resolve this by changing/setting the ID, or changing the name.",
+            dyn::NullTerminated(name));
     }
 
     return 0;
@@ -2852,7 +2876,7 @@ bool CheckAllReferencedFilesExist(Library const& lib, Writer error_writer) {
             check_file(region.path);
     }
 
-    for (auto [key, ir_ptr, _] : lib.irs_by_name) {
+    for (auto [key, ir_ptr, _] : lib.irs_by_id) {
         auto ir = *ir_ptr;
         check_file(ir.path);
     }
@@ -3140,7 +3164,7 @@ TEST_CASE(TestBasicFile) {
     }
 
     {
-        auto ir = lib.irs_by_name.Find("IR1");
+        auto ir = lib.irs_by_id.Find("IR1");
         REQUIRE(ir);
         CHECK_EQ((*ir)->name, "IR1"_s);
         CHECK_EQ((*ir)->path, "bar/bar.flac"_s);

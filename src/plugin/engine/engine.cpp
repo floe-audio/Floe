@@ -66,7 +66,7 @@ static void UpdateAttributionText(Engine& engine, ArenaAllocator& scratch_arena)
                 sample_lib_server::FindLibraryRetained(engine.shared_engine_systems.sample_library_server,
                                                        ir_id->library);
             if (ir_lib) {
-                if (auto const found_ir = ir_lib->irs_by_name.Find(ir_id->ir_name)) ir = *found_ir;
+                if (auto const found_ir = ir_lib->irs_by_id.Find(ir_id->ir_id)) ir = *found_ir;
             }
         }
     }
@@ -349,6 +349,22 @@ bool StateChangedSinceLastSnapshot(Engine& engine) {
     }
 
     return changed;
+}
+
+String IrName(Engine const& engine) {
+    ASSERT(g_is_logical_main_thread);
+    if (!engine.processor.convo.ir_id) return "None"_s;
+
+    auto const& id = *engine.processor.convo.ir_id;
+    auto lib = sample_lib_server::FindLibraryRetained(engine.shared_engine_systems.sample_library_server,
+                                                      id.library);
+    DEFER { lib.Release(); };
+    if (!lib) return id.ir_id;
+
+    auto const ir = lib->irs_by_id.Find(id.ir_id);
+    if (!ir) return id.ir_id;
+
+    return (*ir)->name;
 }
 
 // one-off load

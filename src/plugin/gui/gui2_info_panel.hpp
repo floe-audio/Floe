@@ -113,7 +113,7 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
                                  lib->insts_by_id.size,
                                  lib->num_instrument_samples,
                                  lib->num_regions));
-        do_text_line(fmt::Assign(buffer, "Impulse responses: {}", lib->irs_by_name.size));
+        do_text_line(fmt::Assign(buffer, "Impulse responses: {}", lib->irs_by_id.size));
         do_text_line(fmt::Assign(buffer, "Library format: {}", ({
                                      String s {};
                                      switch (lib->file_format_specifics.tag) {

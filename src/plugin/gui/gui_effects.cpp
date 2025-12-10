@@ -143,8 +143,7 @@ static void DoIrSelectorRightClickMenu(Gui* g, Rect r) {
 static void DoImpulseResponseMenu(Gui* g, GuiFrameContext const& frame_context, layout::Id lay_id) {
     auto r = layout::GetRect(g->layout, lay_id);
 
-    auto const ir_name =
-        g->engine.processor.convo.ir_id ? String(g->engine.processor.convo.ir_id->ir_name) : "None"_s;
+    auto const ir_name = IrName(g->engine);
 
     auto const id = g->imgui.GetID("Impulse");
 

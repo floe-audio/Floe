@@ -130,6 +130,7 @@ static void AddItemFromFolder(FolderNode const* node, auto output_items, usize& 
 static auto BuildSorted(Allocator& arena, auto hash_table, FolderNode const* root_folder) {
     using ValueType = typename decltype(hash_table)::ValueType;
     auto result = arena.AllocateExactSizeUninitialised<ValueType>(hash_table.size);
+    if (result.size) ASSERT(result.data);
     usize index = 0;
 
     AddItemFromFolder(root_folder, result, index, hash_table);
@@ -142,13 +143,13 @@ static auto BuildSorted(Allocator& arena, auto hash_table, FolderNode const* roo
 VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAllocator& scratch_arena) {
     if (lib.insts_by_id.size)
         FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Instrument)], lib.insts_by_id);
-    if (lib.irs_by_name.size) FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Ir)], lib.irs_by_name);
+    if (lib.irs_by_id.size) FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Ir)], lib.irs_by_id);
 
     if (!lib.id.size) lib.id = IdFromAuthorAndNameAlloc(lib.author, lib.name, arena);
 
     lib.sorted_instruments =
         BuildSorted(arena, lib.insts_by_id, &lib.root_folders[ToInt(ResourceType::Instrument)]);
-    lib.sorted_irs = BuildSorted(arena, lib.irs_by_name, &lib.root_folders[ToInt(ResourceType::Ir)]);
+    lib.sorted_irs = BuildSorted(arena, lib.irs_by_id, &lib.root_folders[ToInt(ResourceType::Ir)]);
 
     for (auto [key, value, _] : lib.insts_by_id) {
         auto& inst = *value;

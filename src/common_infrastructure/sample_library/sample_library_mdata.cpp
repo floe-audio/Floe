@@ -229,7 +229,7 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
                         .name = name,
                         .path = {path},
                     };
-                    library.irs_by_name.InsertGrowIfNeeded(arena, name, ir);
+                    library.irs_by_id.InsertGrowIfNeeded(arena, name, ir);
                 }
 
                 for (auto const& f : mdata_info.file_infos)

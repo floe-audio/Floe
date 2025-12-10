@@ -105,6 +105,7 @@ Optional<sample_lib::LibraryIdRef> LibraryForOverallBackground(Engine const& eng
 // one-off loading of a ir or instrument
 void LoadConvolutionIr(Engine& engine, Optional<sample_lib::IrId> ir);
 void LoadInstrument(Engine& engine, u32 layer_index, InstrumentId instrument_id);
+String IrName(Engine const& engine);
 
 usize MegabytesUsedBySamples(Engine const& engine);
 

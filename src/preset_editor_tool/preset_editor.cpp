@@ -97,7 +97,7 @@ ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset
                             case InstrumentType::Sampler: {
                                 sample_lib::InstrumentId sampler_id;
 
-                                // Extract library author
+                                // Extract library ID
                                 lua_getfield(lua, -2, "library_id");
                                 if (lua_isstring(lua, -1)) {
                                     size_t len;
@@ -206,7 +206,7 @@ ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset
     if (lua_istable(lua, -1)) {
         sample_lib::IrId ir_id;
 
-        // Extract library author
+        // Extract library ID
         lua_getfield(lua, -1, "library_id");
         if (lua_isstring(lua, -1)) {
             size_t len;
@@ -217,12 +217,12 @@ ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset
         lua_pop(lua, 1);
 
         // Extract ir name
-        lua_getfield(lua, -1, "ir_name");
+        lua_getfield(lua, -1, "ir_id");
         if (lua_isstring(lua, -1)) {
             size_t len;
             auto str = lua_tolstring(lua, -1, &len);
-            auto copy_len = Min(len, ir_id.ir_name.Capacity());
-            dyn::Assign(ir_id.ir_name, {str, copy_len});
+            auto copy_len = Min(len, ir_id.ir_id.Capacity());
+            dyn::Assign(ir_id.ir_id, {str, copy_len});
         }
         lua_pop(lua, 1);
 
@@ -419,8 +419,8 @@ static void BuildPresetLuaTable(lua_State* lua, StateSnapshot const& preset_stat
         auto const& ir_id = preset_state.ir_id.Value();
         lua_pushlstring(lua, ir_id.library.data, ir_id.library.size);
         lua_setfield(lua, -2, "library_id");
-        lua_pushlstring(lua, ir_id.ir_name.data, ir_id.ir_name.size);
-        lua_setfield(lua, -2, "ir_name");
+        lua_pushlstring(lua, ir_id.ir_id.data, ir_id.ir_id.size);
+        lua_setfield(lua, -2, "ir_id");
         lua_setfield(lua, -2, "ir_id");
     }
 

@@ -22,7 +22,7 @@ typedef struct {
 
 typedef struct {
     BinaryData data;
-    EmbeddedString name;
+    EmbeddedString id;
     EmbeddedString folder;
     EmbeddedString tag1;
     EmbeddedString tag2;

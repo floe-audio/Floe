@@ -94,9 +94,9 @@ PUBLIC void AssignDiffDescription(dyn::DynArray auto& diff_desc,
         fmt::Append(diff_desc,
                     "IR changed, old: {}:{} vs new: {}:{}\n"_s,
                     old_state.ir_id.HasValue() ? old_state.ir_id.Value().library.Items() : "null",
-                    old_state.ir_id.HasValue() ? old_state.ir_id.Value().ir_name.Items() : "null"_s,
+                    old_state.ir_id.HasValue() ? old_state.ir_id.Value().ir_id.Items() : "null"_s,
                     new_state.ir_id.HasValue() ? new_state.ir_id.Value().library.Items() : "null",
-                    new_state.ir_id.HasValue() ? new_state.ir_id.Value().ir_name.Items() : "null"_s);
+                    new_state.ir_id.HasValue() ? new_state.ir_id.Value().ir_id.Items() : "null"_s);
     }
 
     for (auto layer_index : Range(k_num_layers)) {

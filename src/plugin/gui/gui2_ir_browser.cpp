@@ -12,7 +12,7 @@ static Optional<IrCursor> CurrentCursor(IrBrowserContext const& context, sample_
     for (auto const [lib_index, l] : Enumerate(context.frame_context.libraries)) {
         if (l->id != ir_id.library) continue;
         for (auto const [ir_index, i] : Enumerate(l->sorted_irs))
-            if (i->name == ir_id.ir_name) return IrCursor {lib_index, ir_index};
+            if (i->id == ir_id.ir_id) return IrCursor {lib_index, ir_index};
     }
 
     return k_nullopt;
@@ -139,13 +139,13 @@ static Optional<IrCursor> IterateIr(IrBrowserContext const& context,
                          --cursor.lib_index;
                          if (cursor.lib_index >= libs.size) // check wraparound
                              cursor.lib_index = libs.size - 1;
-                         cursor.ir_index = libs[cursor.lib_index]->irs_by_name.size - 1;
+                         cursor.ir_index = libs[cursor.lib_index]->irs_by_id.size - 1;
                          break;
                  }
              })) {
         auto const& lib = *libs[cursor.lib_index];
 
-        if (lib.irs_by_name.size == 0) continue;
+        if (lib.irs_by_id.size == 0) continue;
 
         // PERF: we could skip early here based on the library and filters, but only for some filter modes.
 
@@ -344,7 +344,7 @@ void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBro
     FilterItemInfo favourites_info {};
 
     for (auto const l : libs) {
-        if (l->irs_by_name.size == 0) continue;
+        if (l->irs_by_id.size == 0) continue;
         auto& lib_found = libraries.FindOrInsertWithoutGrowing(l->id, {}).element.data;
         auto& author_found = library_authors.FindOrInsertWithoutGrowing(l->author, {}).element.data;
 
@@ -402,13 +402,10 @@ void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBro
             .item_type_name = "impulse response",
             .rhs_top_button =
                 BrowserPopupOptions::Button {
-                    // .text =
-                    //     fmt::Format(box_system.arena, "Unload {}", ir_id ? (String)ir_id->ir_name :
-                    //     "IR"_s),
                     .text = fmt::Format(box_system.arena,
                                         "Unload {}",
                                         ir_id ? ({
-                                            auto n = (String)ir_id->ir_name;
+                                            auto n = IrName(context.engine);
                                             usize constexpr k_max_len = 10;
                                             if (n.size > k_max_len)
                                                 n = fmt::Format(

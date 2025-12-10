@@ -180,6 +180,7 @@ struct ImpulseResponse {
     Library const& library;
 
     String name {};
+    String id {};
     LibraryPath path {};
     FolderNode* folder {};
     Set<String> tags {};
@@ -239,7 +240,7 @@ struct Library {
     HashTable<String, Instrument*> insts_by_id {};
     Span<Instrument*> sorted_instruments {};
     Array<FolderNode, ToInt(ResourceType::Count)> root_folders {};
-    HashTable<String, ImpulseResponse*> irs_by_name {};
+    HashTable<String, ImpulseResponse*> irs_by_id {};
     Span<ImpulseResponse*> sorted_irs {};
     HashTable<LibraryPath, FileAttribution, sample_lib::Hash> files_requiring_attribution {};
     u32 num_instrument_samples {};
@@ -277,10 +278,10 @@ struct InstrumentId {
 
 struct IrId {
     bool operator==(IrId const& other) const = default;
-    bool operator==(LoadedIr const& ir) const { return library == ir.ir.library.id && ir_name == ir.ir.name; }
-    u64 Hash() const { return HashMultiple(Array {(String)library, (String)ir_name}); }
+    bool operator==(LoadedIr const& ir) const { return library == ir.ir.library.id && ir_id == ir.ir.name; }
+    u64 Hash() const { return HashMultiple(Array {(String)library, (String)ir_id}); }
     LibraryId library;
-    DynamicArrayBounded<char, k_max_ir_name_size> ir_name;
+    DynamicArrayBounded<char, k_max_ir_id_size> ir_id;
 };
 
 enum class LuaErrorCode {

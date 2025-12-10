@@ -1190,10 +1190,10 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                 }
                 case LoadRequestType::Ir: {
                     auto const ir_id = pending_resource.request.request.Get<sample_lib::IrId>();
-                    auto const ir = lib->value.lib->irs_by_name.Find(ir_id.ir_name);
+                    auto const ir = lib->value.lib->irs_by_id.Find(ir_id.ir_id);
 
                     auto const find_ir_error_id =
-                        HashMultiple(Array {"sls-find-ir"_s, library_id, ir_id.ir_name});
+                        HashMultiple(Array {"sls-find-ir"_s, library_id, ir_id.ir_id});
 
                     if (ir) {
                         error_notifications.RemoveError(find_ir_error_id);
@@ -1205,14 +1205,14 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                         TracyMessageEx({k_trace_category, k_trace_colour, pending_resource.debug_id},
                                        "option: load IR, {}, {}",
                                        ir_id.library,
-                                       ir_id.ir_name);
+                                       ir_id.ir_id);
                     } else {
                         if (auto err = error_notifications.BeginWriteError(find_ir_error_id)) {
                             DEFER { error_notifications.EndWriteError(*err); };
-                            fmt::Assign(err->title, "Cannot find IR \"{}\""_s, ir_id.ir_name);
+                            fmt::Assign(err->title, "Cannot find IR \"{}\""_s, ir_id.ir_id);
                             fmt::Assign(err->message,
                                         "Could not find reverb impulse response: {}, in library: {}",
-                                        ir_id.ir_name,
+                                        ir_id.ir_id,
                                         library_id);
                             err->error_code = CommonError::NotFound;
                         }
@@ -1601,7 +1601,7 @@ static sample_lib::Library* BuiltinLibrary() {
         .background_image_path = k_background_path,
         .icon_image_path = k_icon_path,
         .insts_by_id = {},
-        .irs_by_name = {},
+        .irs_by_id = {},
         .path = ":memory:",
         .file_hash = 100,
         .create_file_reader = [](sample_lib::Library const&,
@@ -1626,12 +1626,11 @@ static sample_lib::Library* BuiltinLibrary() {
 
     static bool init = false;
     if (!Exchange(init, true)) {
-        static FixedSizeAllocator<Kb(15)> alloc {nullptr};
+        static FixedSizeAllocator<Kb(16)> alloc {nullptr};
 
         auto const embedded_irs = GetEmbeddedIrs();
 
-        builtin_library.irs_by_name =
-            decltype(builtin_library.irs_by_name)::Create(alloc, embedded_irs.count);
+        builtin_library.irs_by_id = decltype(builtin_library.irs_by_id)::Create(alloc, embedded_irs.count);
 
         PathPool folders_path_pool;
         sample_lib::detail::InitialiseRootFolders(builtin_library, alloc);
@@ -1645,7 +1644,7 @@ static sample_lib::Library* BuiltinLibrary() {
             if (embedded_ir.tag1.size) tags.InsertWithoutGrowing(ToString(embedded_ir.tag1));
             if (embedded_ir.tag2.size) tags.InsertWithoutGrowing(ToString(embedded_ir.tag2));
 
-            auto const name = ToString(embedded_ir.name);
+            auto const id = ToString(embedded_ir.id);
 
             ArenaAllocatorWithInlineStorage<200> scratch_arena {PageAllocator::Instance()};
 
@@ -1653,7 +1652,8 @@ static sample_lib::Library* BuiltinLibrary() {
             PLACEMENT_NEW(ir)
             sample_lib::ImpulseResponse {
                 .library = builtin_library,
-                .name = name,
+                .name = id,
+                .id = id,
                 .path = {ToString(embedded_ir.data.filename)},
                 .folder =
                     FindOrInsertFolderNode(&builtin_library.root_folders[ToInt(sample_lib::ResourceType::Ir)],
@@ -1670,7 +1670,7 @@ static sample_lib::Library* BuiltinLibrary() {
                 .tags = tags,
                 .description = ToString(embedded_ir.description),
             };
-            builtin_library.irs_by_name.InsertWithoutGrowing(name, ir);
+            builtin_library.irs_by_id.InsertWithoutGrowing(id, ir);
         }
 
         ArenaAllocatorWithInlineStorage<100> scratch_arena {PageAllocator::Instance()};
@@ -1925,7 +1925,7 @@ static Type& ExtractSuccess(tests::Tester& tester, LoadResult const& result, Loa
         }
         case LoadRequestType::Ir: {
             auto ir = request.Get<sample_lib::IrId>();
-            tester.log.Debug("Ir: {} - {}", ir.library, ir.ir_name);
+            tester.log.Debug("Ir: {} - {}", ir.library, ir.ir_id);
             break;
         }
     }
@@ -2011,20 +2011,19 @@ TEST_CASE(TestSampleLibraryServer) {
 
         SUBCASE("ir") {
             auto const builtin_ir = GetEmbeddedIrs().irs[0];
-            dyn::Append(
-                requests,
-                {
-                    .request =
-                        sample_lib::IrId {.library = sample_lib::k_builtin_library_id,
-                                          .ir_name = String {builtin_ir.name.data, builtin_ir.name.size}},
-                    .check_result =
-                        [&](LoadResult const& r, LoadRequest const& request) {
-                            auto ir =
-                                ExtractSuccess<ResourcePointer<sample_lib::LoadedIr>>(tester, r, request);
-                            REQUIRE(ir->audio_data);
-                            CHECK(ir->audio_data->interleaved_samples.size);
-                        },
-                });
+            dyn::Append(requests,
+                        {
+                            .request = sample_lib::IrId {.library = sample_lib::k_builtin_library_id,
+                                                         .ir_id = ToString(builtin_ir.id)},
+                            .check_result =
+                                [&](LoadResult const& r, LoadRequest const& request) {
+                                    auto ir = ExtractSuccess<ResourcePointer<sample_lib::LoadedIr>>(tester,
+                                                                                                    r,
+                                                                                                    request);
+                                    REQUIRE(ir->audio_data);
+                                    CHECK(ir->audio_data->interleaved_samples.size);
+                                },
+                        });
         }
 
         SUBCASE("library and instrument") {
@@ -2305,12 +2304,12 @@ TEST_CASE(TestSampleLibraryServer) {
                 channel,
                 (RandomIntInRange(random_seed, 0, 2) == 0)
                     ? LoadRequest {sample_lib::IrId {.library = sample_lib::k_builtin_library_id,
-                                                     .ir_name = ({
+                                                     .ir_id = ({
                                                          auto const ele = RandomElement(
                                                              Span<EmbeddedIr const> {builtin_irs.irs,
                                                                                      builtin_irs.count},
                                                              random_seed);
-                                                         String {ele.name.data, ele.name.size};
+                                                         ToString(ele.id);
                                                      })}}
                     : LoadRequest {LoadRequestInstrumentIdWithLayer {
                           .id = RandomElement(Span<sample_lib::InstrumentId const> {inst_ids}, random_seed),

@@ -647,7 +647,7 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
             i = sample_lib::InstrumentId {.library = "foo"_s, .inst_id = "bar"_s};
         state.ir_id = sample_lib::IrId {
             .library = sample_lib::k_mirage_compat_library_id,
-            .ir_name = "Formant 1"_s,
+            .ir_id = "Formant 1"_s,
         };
     }
 
@@ -710,7 +710,7 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
             if (ir_name.size && ir_name != "None"_s) {
                 state.ir_id = sample_lib::IrId {
                     .library = sample_lib::k_mirage_compat_library_id,
-                    .ir_name = ir_name,
+                    .ir_id = ir_name,
                 };
             }
         }
@@ -1440,7 +1440,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         if (has_ir) {
             if (coder.IsReading()) state.ir_id = sample_lib::IrId {};
             TRY(CodeLibraryId(coder, state.ir_id->library));
-            TRY(coder.CodeDynArray(state.ir_id->ir_name, StateVersion::Initial));
+            TRY(coder.CodeDynArray(state.ir_id->ir_id, StateVersion::Initial));
         }
     }
 
@@ -1810,7 +1810,7 @@ TEST_CASE(TestNewSerialisation) {
 
         state.ir_id = sample_lib::IrId {
             .library = "irlibname.irlib"_s,
-            .ir_name = "irfile"_s,
+            .ir_id = "irfile"_s,
         };
         for (auto [index, inst] : Enumerate(state.inst_ids)) {
             inst = sample_lib::InstrumentId {
@@ -2095,7 +2095,7 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK(state.ir_id.HasValue());
         if (state.ir_id.HasValue()) {
             CHECK_EQ(state.ir_id->library, sample_lib::k_mirage_compat_library_id);
-            CHECK_EQ(state.ir_id->ir_name, "5s Shimmer"_s);
+            CHECK_EQ(state.ir_id->ir_id, "5s Shimmer"_s);
         }
 
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::Volume), DbToAmp(-6.0f), 0.01f);
