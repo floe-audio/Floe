@@ -9,12 +9,12 @@
 
 namespace fmt {
 
-PUBLIC ErrorCodeOr<void>
+static ErrorCodeOr<void>
 CustomValueToString(Writer writer, package::ExistingInstalledComponent value, FormatOptions) {
     return FormatToWriter(writer, "{}", DumpStruct(value));
 }
 
-PUBLIC ErrorCodeOr<void>
+static ErrorCodeOr<void>
 CustomValueToString(Writer writer, package::InstallJob::State state, FormatOptions o) {
     String s = {"Unknown"};
     switch (state) {
@@ -39,16 +39,6 @@ bool32 NoInstallationRequired(ExistingInstalledComponent status) {
            (status.version_difference == ExistingInstalledComponent::Equal ||
             status.version_difference == ExistingInstalledComponent::InstalledIsNewer);
 }
-
-// ==========================================================================================================
-//      _      _        _ _
-//     | |    | |      (_) |
-//   __| | ___| |_ __ _ _| |___
-//  / _` |/ _ \ __/ _` | | / __|
-// | (_| |  __/ || (_| | | \__ \
-//  \__,_|\___|\__\__,_|_|_|___/
-//
-// ==========================================================================================================
 
 static ErrorCodeOr<ExistingInstalledComponent>
 LibraryCheckExistingInstallation(Component const& component,
