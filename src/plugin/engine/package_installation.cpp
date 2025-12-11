@@ -205,6 +205,61 @@ PresetsCheckExistingInstallation(Component const& component,
     return ExistingInstalledComponent {.installed = false};
 }
 
+struct ParsedFilename {
+    String filename_no_ext; // Filename without extension or suffix
+    String ext; // File extension including the dot
+    Optional<usize> suffix_num; // The numeric suffix found in " (N)" format, or nullopt if none
+};
+
+// Parses a filename to extract the base name (without extension), extension, and any existing numeric
+// suffix in the form " (N)". For example:
+// - "file.txt" -> {filename_no_ext: "file", ext: ".txt", suffix_num: nullopt}
+// - "file (3).txt" -> {filename_no_ext: "file", ext: ".txt", suffix_num: 3}
+// - "file (invalid).txt" -> {filename_no_ext: "file (invalid)", ext: ".txt", suffix_num: nullopt}
+static ParsedFilename ParseFilenameWithSuffix(String filename) {
+    auto const ext = path::Extension(filename);
+    auto filename_no_ext = WhitespaceStrippedEnd(filename.SubSpan(0, filename.size - ext.size));
+    Optional<usize> suffix_num {};
+
+    if (filename_no_ext.size && Last(filename_no_ext) == ')') {
+        if (auto const open_paren = FindLast(filename_no_ext, '(')) {
+            auto const num_str =
+                filename_no_ext.SubSpan(*open_paren + 1, (filename_no_ext.size - 1) - (*open_paren + 1));
+            if (num_str.size) {
+                auto const num = ParseInt(num_str, ParseIntBase::Decimal, nullptr);
+                if (num && *num >= 0) {
+                    suffix_num = (usize)*num;
+
+                    // We have found a valid suffix, so remove the whole () part.
+                    filename_no_ext.size = *open_paren;
+                    filename_no_ext = WhitespaceStrippedEnd(filename_no_ext);
+                }
+            }
+        }
+    }
+
+    return ParsedFilename {
+        .filename_no_ext = filename_no_ext,
+        .ext = ext,
+        .suffix_num = suffix_num,
+    };
+}
+
+// Writes a filename with a numeric suffix into a buffer. The buffer must have enough space for the
+// filename, suffix, and extension. Returns the number of bytes written.
+// For example: WriteFilenameWithSuffix("file", ".txt", 3, buffer) writes "file (3).txt" to buffer.
+static usize
+WriteFilenameWithSuffix(String filename_no_ext, String ext, usize suffix_num, Span<char> buffer) {
+    usize pos = 0;
+    WriteAndIncrement(pos, buffer, filename_no_ext);
+    if (filename_no_ext.size) WriteAndIncrement(pos, buffer, ' ');
+    WriteAndIncrement(pos, buffer, '(');
+    pos += fmt::IntToString(suffix_num, buffer.data + pos, {.base = fmt::IntToStringOptions::Base::Decimal});
+    WriteAndIncrement(pos, buffer, ')');
+    WriteAndIncrement(pos, buffer, ext);
+    return pos;
+}
+
 // Returns the filename that doesn't conflict.
 static ErrorCodeOr<String>
 FindNextNonExistentFilename(String folder, String filename, ArenaAllocator& arena) {
@@ -229,49 +284,28 @@ FindNextNonExistentFilename(String folder, String filename, ArenaAllocator& aren
     WriteAndIncrement(pos, buffer, folder);
     WriteAndIncrement(pos, buffer, path::k_dir_separator);
     auto const filename_start_pos = pos;
-    WriteAndIncrement(pos, buffer, filename);
 
-    if (TRY(does_not_exist({buffer.data, pos}))) return filename;
-
-    pos = filename_start_pos;
-    auto const ext = path::Extension(filename);
-
-    auto filename_no_ext = TrimEndIfMatches(filename.SubSpan(0, filename.size - ext.size), ' ');
-    usize suffix_num = 1;
-    if (filename_no_ext.size && Last(filename_no_ext) == ')') {
-        if (auto const open_paren = FindLast(filename_no_ext, '(')) {
-            auto const num_str =
-                filename_no_ext.SubSpan(*open_paren + 1, (filename_no_ext.size - 1) - (*open_paren + 1));
-            if (num_str.size) {
-                auto const num = ParseInt(num_str, ParseIntBase::Decimal, nullptr);
-                if (num && *num >= 0) {
-                    suffix_num = (usize)*num + 1;
-
-                    // We have found a valid suffix, so remove the whole () part.
-                    filename_no_ext.size = *open_paren;
-                    filename_no_ext = TrimEndIfMatches(filename_no_ext, ' ');
-                }
-            }
-        }
+    // First try the filename as-is.
+    {
+        WriteAndIncrement(pos, buffer, filename);
+        if (TRY(does_not_exist({buffer.data, pos}))) return filename;
     }
 
-    WriteAndIncrement(pos, buffer, filename_no_ext);
-    if (filename_no_ext.size) WriteAndIncrement(pos, buffer, ' ');
-    WriteAndIncrement(pos, buffer, '(');
+    // Next, try with suffixes.
+    auto const parsed = ParseFilenameWithSuffix(filename);
+    usize suffix_num = parsed.suffix_num.ValueOr(0) + 1;
 
     Optional<ErrorCode> error {};
 
     for (; suffix_num <= k_max_suffix_number; ++suffix_num) {
-        usize initial_pos = pos;
-        DEFER { pos = initial_pos; };
+        auto const filename_size = WriteFilenameWithSuffix(parsed.filename_no_ext,
+                                                           parsed.ext,
+                                                           suffix_num,
+                                                           buffer.SubSpan(filename_start_pos));
+        auto const full_path_size = filename_start_pos + filename_size;
 
-        pos +=
-            fmt::IntToString(suffix_num, buffer.data + pos, {.base = fmt::IntToStringOptions::Base::Decimal});
-        WriteAndIncrement(pos, buffer, ')');
-        WriteAndIncrement(pos, buffer, ext);
-
-        if (TRY(does_not_exist({buffer.data, pos})))
-            return String {buffer.data + filename_start_pos, pos - filename_start_pos};
+        if (TRY(does_not_exist({buffer.data, full_path_size})))
+            return String {buffer.data + filename_start_pos, filename_size};
     }
 
     return error ? *error : ErrorCode {FilesystemError::FolderContainsTooManyFiles};
@@ -1307,9 +1341,192 @@ TEST_CASE(TestTypeOfActionTaken) {
     return k_success;
 }
 
+TEST_CASE(TestParseFilenameWithSuffix) {
+    SUBCASE("no suffix") {
+        auto const result = ParseFilenameWithSuffix("file.txt"_s);
+        CHECK_EQ(result.filename_no_ext, "file"_s);
+        CHECK_EQ(result.ext, ".txt"_s);
+        CHECK(!result.suffix_num.HasValue());
+    }
+
+    SUBCASE("with valid suffix") {
+        auto const result = ParseFilenameWithSuffix("file (3).txt"_s);
+        CHECK_EQ(result.filename_no_ext, "file"_s);
+        CHECK_EQ(result.ext, ".txt"_s);
+        REQUIRE(result.suffix_num.HasValue());
+        CHECK_EQ(*result.suffix_num, 3u);
+    }
+
+    SUBCASE("with zero suffix") {
+        auto const result = ParseFilenameWithSuffix("file (0).txt"_s);
+        CHECK_EQ(result.filename_no_ext, "file"_s);
+        CHECK_EQ(result.ext, ".txt"_s);
+        REQUIRE(result.suffix_num.HasValue());
+        CHECK_EQ(*result.suffix_num, 0u);
+    }
+
+    SUBCASE("with large suffix") {
+        auto const result = ParseFilenameWithSuffix("file (999).txt"_s);
+        CHECK_EQ(result.filename_no_ext, "file"_s);
+        CHECK_EQ(result.ext, ".txt"_s);
+        REQUIRE(result.suffix_num.HasValue());
+        CHECK_EQ(*result.suffix_num, 999u);
+    }
+
+    SUBCASE("with invalid suffix text") {
+        auto const result = ParseFilenameWithSuffix("file (abc).txt"_s);
+        CHECK_EQ(result.filename_no_ext, "file (abc)"_s);
+        CHECK_EQ(result.ext, ".txt"_s);
+        CHECK(!result.suffix_num.HasValue());
+    }
+
+    SUBCASE("with negative number") {
+        auto const result = ParseFilenameWithSuffix("file (-5).txt"_s);
+        CHECK_EQ(result.filename_no_ext, "file (-5)"_s);
+        CHECK_EQ(result.ext, ".txt"_s);
+        CHECK(!result.suffix_num.HasValue());
+    }
+
+    SUBCASE("with empty parentheses") {
+        auto const result = ParseFilenameWithSuffix("file ().txt"_s);
+        CHECK_EQ(result.filename_no_ext, "file ()"_s);
+        CHECK_EQ(result.ext, ".txt"_s);
+        CHECK(!result.suffix_num.HasValue());
+    }
+
+    SUBCASE("with space before suffix") {
+        auto const result = ParseFilenameWithSuffix("file (5).txt"_s);
+        CHECK_EQ(result.filename_no_ext, "file"_s);
+        CHECK_EQ(result.ext, ".txt"_s);
+        REQUIRE(result.suffix_num.HasValue());
+        CHECK_EQ(*result.suffix_num, 5u);
+    }
+
+    SUBCASE("with trailing spaces") {
+        auto const result = ParseFilenameWithSuffix("file   (5).txt"_s);
+        CHECK_EQ(result.filename_no_ext, "file"_s);
+        CHECK_EQ(result.ext, ".txt"_s);
+        REQUIRE(result.suffix_num.HasValue());
+        CHECK_EQ(*result.suffix_num, 5u);
+    }
+
+    SUBCASE("without extension") {
+        auto const result = ParseFilenameWithSuffix("file"_s);
+        CHECK_EQ(result.filename_no_ext, "file"_s);
+        CHECK_EQ(result.ext, ""_s);
+        CHECK(!result.suffix_num.HasValue());
+    }
+
+    SUBCASE("without extension but with suffix") {
+        auto const result = ParseFilenameWithSuffix("file (7)"_s);
+        CHECK_EQ(result.filename_no_ext, "file"_s);
+        CHECK_EQ(result.ext, ""_s);
+        REQUIRE(result.suffix_num.HasValue());
+        CHECK_EQ(*result.suffix_num, 7u);
+    }
+
+    SUBCASE("complex filename") {
+        auto const result = ParseFilenameWithSuffix("my-file_v2.final.txt"_s);
+        CHECK_EQ(result.filename_no_ext, "my-file_v2"_s);
+        CHECK_EQ(result.ext, ".final.txt"_s);
+        CHECK(!result.suffix_num.HasValue());
+    }
+
+    SUBCASE("parentheses in middle") {
+        auto const result = ParseFilenameWithSuffix("file (note) (5).txt"_s);
+        CHECK_EQ(result.filename_no_ext, "file (note)"_s);
+        CHECK_EQ(result.ext, ".txt"_s);
+        REQUIRE(result.suffix_num.HasValue());
+        CHECK_EQ(*result.suffix_num, 5u);
+    }
+
+    return k_success;
+}
+
+TEST_CASE(TestWriteFilenameWithSuffix) {
+    Array<char, 128> buffer;
+
+    SUBCASE("basic filename") {
+        auto const size = WriteFilenameWithSuffix("file"_s, ".txt"_s, 1, buffer);
+        CHECK_EQ((String {buffer.data, size}), "file (1).txt"_s);
+    }
+
+    SUBCASE("with larger suffix") {
+        auto const size = WriteFilenameWithSuffix("file"_s, ".txt"_s, 999, buffer);
+        CHECK_EQ((String {buffer.data, size}), "file (999).txt"_s);
+    }
+
+    SUBCASE("with zero suffix") {
+        auto const size = WriteFilenameWithSuffix("file"_s, ".txt"_s, 0, buffer);
+        CHECK_EQ((String {buffer.data, size}), "file (0).txt"_s);
+    }
+
+    SUBCASE("without extension") {
+        auto const size = WriteFilenameWithSuffix("file"_s, ""_s, 5, buffer);
+        CHECK_EQ((String {buffer.data, size}), "file (5)"_s);
+    }
+
+    SUBCASE("empty filename") {
+        auto const size = WriteFilenameWithSuffix(""_s, ".txt"_s, 3, buffer);
+        CHECK_EQ((String {buffer.data, size}), "(3).txt"_s);
+    }
+
+    SUBCASE("complex filename") {
+        auto const size = WriteFilenameWithSuffix("my-file_v2.final"_s, ".txt"_s, 42, buffer);
+        CHECK_EQ((String {buffer.data, size}), "my-file_v2.final (42).txt"_s);
+    }
+
+    SUBCASE("long extension") {
+        auto const size = WriteFilenameWithSuffix("file"_s, ".tar.gz"_s, 10, buffer);
+        CHECK_EQ((String {buffer.data, size}), "file (10).tar.gz"_s);
+    }
+
+    return k_success;
+}
+
+TEST_CASE(TestFindNextNonExistentFilename) {
+    auto const folder = tests::TempFolder(tester);
+
+    SUBCASE("file doesn't exist") {
+        auto const result = TRY(FindNextNonExistentFilename(folder, "test.txt"_s, tester.scratch_arena));
+        CHECK_EQ(result, "test.txt"_s);
+    }
+
+    SUBCASE("file exists, returns (1)") {
+        auto const path = path::Join(tester.scratch_arena, Array {folder, "file.txt"_s});
+        TRY(WriteFile(path, ""_s));
+
+        auto const result = TRY(FindNextNonExistentFilename(folder, "file.txt"_s, tester.scratch_arena));
+        CHECK_EQ(result, "file (1).txt"_s);
+    }
+
+    SUBCASE("file and (1) exist, returns (2)") {
+        auto const path1 = path::Join(tester.scratch_arena, Array {folder, "foo.txt"_s});
+        auto const path2 = path::Join(tester.scratch_arena, Array {folder, "foo (1).txt"_s});
+        TRY(WriteFile(path1, ""_s));
+        TRY(WriteFile(path2, ""_s));
+
+        auto const result = TRY(FindNextNonExistentFilename(folder, "foo.txt"_s, tester.scratch_arena));
+        CHECK_EQ(result, "foo (2).txt"_s);
+    }
+
+    SUBCASE("filename with existing suffix") {
+        auto const path = path::Join(tester.scratch_arena, Array {folder, "bar (5).txt"_s});
+        TRY(WriteFile(path, ""_s));
+
+        auto const result = TRY(FindNextNonExistentFilename(folder, "bar (5).txt"_s, tester.scratch_arena));
+        CHECK_EQ(result, "bar (6).txt"_s);
+    }
+
+    return k_success;
+}
+
 } // namespace package
 
 TEST_REGISTRATION(RegisterPackageInstallationTests) {
     REGISTER_TEST(package::TestPackageInstallation);
     REGISTER_TEST(package::TestTypeOfActionTaken);
+    REGISTER_TEST(package::TestParseFilenameWithSuffix);
+    REGISTER_TEST(package::TestWriteFilenameWithSuffix);
+    REGISTER_TEST(package::TestFindNextNonExistentFilename);
 }
