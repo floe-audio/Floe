@@ -154,7 +154,6 @@ void AddJob(InstallJobs& jobs,
             String zip_path,
             prefs::Preferences& prefs,
             FloePaths const& paths,
-            ThreadPool& thread_pool,
             ArenaAllocator& scratch_arena,
             sample_lib_server::Server& sample_library_server);
 

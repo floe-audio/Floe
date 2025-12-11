@@ -179,7 +179,6 @@ PUBLIC void CheckForFilePickerResults(GuiFrameInput const& frame_input,
                                 path,
                                 context.prefs,
                                 context.paths,
-                                context.thread_pool,
                                 context.scratch_arena,
                                 context.sample_lib_server);
             }

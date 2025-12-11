@@ -827,7 +827,6 @@ void AddJob(InstallJobs& jobs,
             String zip_path,
             prefs::Preferences& prefs,
             FloePaths const& paths,
-            ThreadPool& thread_pool,
             ArenaAllocator& scratch_arena,
             sample_lib_server::Server& sample_library_server) {
     ASSERT(!jobs.Full());
@@ -855,14 +854,19 @@ void AddJob(InstallJobs& jobs,
                                     ExtraScanFolders(paths, prefs, ScanFolderType::Presets),
                                     Array {paths.always_scanned_folder[ToInt(ScanFolderType::Presets)]}),
         });
-    thread_pool.AddJob([job]() {
-        try {
-            package::DoJobPhase1(*job->job);
-        } catch (PanicException) {
-            dyn::AppendSpan(job->job->error_buffer, "fatal error\n");
-            job->job->state.Store(InstallJob::State::DoneError, StoreMemoryOrder::Release);
-        }
-    });
+
+    Thread thread;
+    thread.Start(
+        [job]() {
+            try {
+                package::DoJobPhase1(*job->job);
+            } catch (PanicException) {
+                dyn::AppendSpan(job->job->error_buffer, "fatal error\n");
+                job->job->state.Store(InstallJob::State::DoneError, StoreMemoryOrder::Release);
+            }
+        },
+        "pkg-instll-job");
+    thread.Detach();
 }
 
 // [main thread]
