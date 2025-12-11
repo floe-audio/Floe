@@ -956,20 +956,34 @@ ErrorCodeOr<void> Rename(String from, String to) {
     PathArena temp_path_arena {Malloc::Instance()};
 
     auto to_wide = TRY(path::MakePathForWin32(to, temp_path_arena, true)).path;
+    auto from_wide = TRY(path::MakePathForWin32(from, temp_path_arena, true)).path;
 
     // MoveFileExW for directories only succeeds if the destination is an empty directory. Do to make
     // Rename consistent across Windows and POSIX rename() we try to delete the empty dir first.
     RemoveDirectoryW(to_wide.data);
 
-    if (!MoveFileExW(TRY(path::MakePathForWin32(from, temp_path_arena, true)).path.data,
-                     to_wide.data,
-                     MOVEFILE_REPLACE_EXISTING)) {
+    if (!MoveFileExW(from_wide.data, to_wide.data, MOVEFILE_REPLACE_EXISTING)) {
         auto err = GetLastError();
+
+        // When the destination is a non-empty directory we don't get ERROR_DIR_NOT_EMPTY as we might
+        // expect, but instead ERROR_ACCESS_DENIED. Let's try and fix that.
         if (err == ERROR_ACCESS_DENIED) {
-            // When the destination is a non-empty directory we don't get ERROR_DIR_NOT_EMPTY as we might
-            // expect, but instead ERROR_ACCESS_DENIED. Let's try and fix that.
             if (PathIsANonEmptyDirectory(to_wide)) err = ERROR_DIR_NOT_EMPTY;
         }
+
+        // Additionally, we want to report the case when it fails because the destination is an existing file
+        // and the source is a directory. The Win32 docs don't specify what error this would be.
+        if (err == ERROR_ACCESS_DENIED || err == ERROR_FILE_EXISTS || err == ERROR_ALREADY_EXISTS) {
+            auto const from_attributes = GetFileAttributesW(from_wide.data);
+            auto const to_attributes = GetFileAttributesW(to_wide.data);
+            if (from_attributes != INVALID_FILE_ATTRIBUTES && to_attributes != INVALID_FILE_ATTRIBUTES) {
+                if ((from_attributes & FILE_ATTRIBUTE_DIRECTORY) &&
+                    !(to_attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                    return ErrorCode {FilesystemError::PathIsAFile};
+                }
+            }
+        }
+
         return FilesystemWin32ErrorCode(err, "MoveFileExW");
     }
     return k_success;

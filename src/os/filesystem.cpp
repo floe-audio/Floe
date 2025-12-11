@@ -61,6 +61,7 @@ static constexpr Optional<FilesystemError> TranslateErrnoCode(s64 ec) {
         case ENOSPC: return FilesystemError::DiskFull;
         case EXDEV: return FilesystemError::DifferentFilesystems;
         case ENOTEMPTY: return FilesystemError::NotEmpty;
+        case ENOTDIR: return FilesystemError::PathIsAFile;
     }
     return {};
 }
