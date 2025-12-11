@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
+#include "common_infrastructure/error_reporting.hpp"
 #include "common_infrastructure/package_format.hpp"
 #include "common_infrastructure/paths.hpp"
 #include "common_infrastructure/preferences.hpp"
+#include "utils/debug/debug.hpp"
 
 #include "sample_lib_server/sample_library_server.hpp"
 
@@ -205,7 +207,7 @@ PresetsCheckExistingInstallation(Component const& component,
                 for (auto const file_entry : entries) {
                     if (file_entry.type != FileType::File) continue;
                     auto const relative =
-                        detail::RelativePathIfInFolder(file_entry.subpath, dir_entry.subpath);
+                        RelativePathIfInFolder(file_entry.subpath, dir_entry.subpath);
                     if (!relative) continue;
                     if (path::Equal(*relative, expected_path)) {
                         found_expected = true;
@@ -340,7 +342,7 @@ static ErrorCodeOr<void> ExtractFile(PackageReader& package, String file_path, S
     auto const file_stat = find_file(file_path).Value();
     LogDebug(ModuleName::Package, "Extracting file: {} to {}", file_path, destination_path);
     auto out_file = TRY(OpenFile(destination_path, FileMode::WriteNoOverwrite()));
-    return detail::ExtractFileToFile(package, file_stat, out_file);
+    return ExtractFileToFile(package, file_stat, out_file);
 }
 
 static ErrorCodeOr<void> ExtractFolder(PackageReader& package,
@@ -350,10 +352,10 @@ static ErrorCodeOr<void> ExtractFolder(PackageReader& package,
                                        HashTable<String, ChecksumValues> destination_checksums) {
     LogInfo(ModuleName::Package, "extracting folder");
     for (auto const file_index : Range(mz_zip_reader_get_num_files(&package.zip))) {
-        auto const file_stat = TRY(detail::FileStat(package, file_index));
+        auto const file_stat = TRY(FileStat(package, file_index));
         if (file_stat.m_is_directory) continue;
         auto const path = PathWithoutTrailingSlash(file_stat.m_filename);
-        auto const relative_path = detail::RelativePathIfInFolder(path, dir_in_zip);
+        auto const relative_path = RelativePathIfInFolder(path, dir_in_zip);
         if (!relative_path) continue;
 
         auto const out_path = path::Join(scratch_arena, Array {destination_folder, *relative_path});
@@ -364,7 +366,7 @@ static ErrorCodeOr<void> ExtractFolder(PackageReader& package,
                                 .fail_if_exists = false,
                             }));
         auto out_file = TRY(OpenFile(out_path, FileMode::WriteNoOverwrite()));
-        TRY(detail::ExtractFileToFile(package, file_stat, out_file));
+        TRY(ExtractFileToFile(package, file_stat, out_file));
     }
 
     {
