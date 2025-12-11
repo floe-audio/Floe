@@ -110,6 +110,14 @@ PUBLIC ErrorCodeOr<ChecksumTable> ParseChecksumFile(String checksum_file_data,
     return checksum_values.ToOwnedTable();
 }
 
+PUBLIC ErrorCodeOr<u32> ChecksumForFile(String path, ArenaAllocator& scratch_arena) {
+    auto const file_data = TRY(ReadEntireFile(path, scratch_arena)).ToByteSpan();
+    DEFER {
+        if (file_data.size) scratch_arena.Free(file_data);
+    };
+    return Crc32(file_data);
+}
+
 PUBLIC ErrorCodeOr<ChecksumTable>
 ChecksumsForFolder(String folder, ArenaAllocator& arena, ArenaAllocator& scratch_arena) {
     DynamicChecksumTable checksums {arena};

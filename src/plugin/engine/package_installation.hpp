@@ -58,21 +58,17 @@ struct InstallJob {
         Skip,
     };
 
-    enum class DestinationWriteMode {
-        // Automatically create a subfolder/filename based on the package name inside the destination_path and
-        // install into that. Resolve name conflicts by automatically appending a number.
-        CreateUniqueSubpath,
-
-        // Install directly into the destination_path - overwriting if needed. No subfolder/filename is added.
-        OverwriteDirectly,
+    enum class InstallDestinationType {
+        FolderNonExistent,
+        FolderOverwritable,
+        FileOverwritable,
     };
 
     ArenaAllocator& arena;
     Atomic<State> state {State::Installing};
     Atomic<bool> abort {false};
     String const path;
-    String const libraries_install_folder;
-    String const presets_install_folder;
+    Array<String, ToInt(ComponentType::Count)> const install_folders;
     sample_lib_server::Server& sample_lib_server;
     Span<String> const preset_folders;
 
@@ -84,8 +80,9 @@ struct InstallJob {
         package::Component component;
         ExistingInstalledComponent existing_installation_status {};
         UserDecision user_decision {UserDecision::Unknown};
-        String destination_path;
-        DestinationWriteMode destination_write_mode;
+        String install_filename {};
+        bool install_allow_overwrite {};
+        String install_folder {};
     };
     ArenaList<Component> components;
 };
@@ -111,10 +108,31 @@ LibraryCheckExistingInstallation(Component const& component,
 
     if (!existing_matching_library) return ExistingInstalledComponent {.installed = false};
 
+    if (existing_matching_library->file_format_specifics.tag == sample_lib::FileFormat::Mdata) {
+        if (component.library->file_format_specifics.tag == sample_lib::FileFormat::Lua) {
+            // MDATAs are a legacy format so a Lua library with the same ID must be newer.
+            return ExistingInstalledComponent {
+                .installed = true,
+                .version_difference = ExistingInstalledComponent::InstalledIsOlder,
+                .modified_since_installed = ExistingInstalledComponent::Unmodified,
+            };
+        } else {
+            // We just assume that if the package MDATA is different from the installed MDATA, then it should
+            // overwrite the existing. While MDATAs had versions, they were never used.
+            return ExistingInstalledComponent {
+                .installed = true,
+                .version_difference = TRY(ChecksumForFile(existing_matching_library->path, scratch_arena)) ==
+                                              *component.mdata_checksum
+                                          ? ExistingInstalledComponent::Equal
+                                          : ExistingInstalledComponent::InstalledIsOlder,
+                .modified_since_installed = ExistingInstalledComponent::Unmodified,
+            };
+        }
+    }
+
     auto const existing_folder = *path::Directory(existing_matching_library->path);
     ASSERT_EQ(existing_matching_library->id, component.library->id);
 
-    // TODO: what if MDATA?
     auto const actual_checksums = TRY(ChecksumsForFolder(existing_folder, scratch_arena, scratch_arena));
 
     if (!ChecksumsDiffer(component.checksum_values, actual_checksums, k_nullopt))
@@ -203,7 +221,7 @@ PresetsCheckExistingInstallation(Component const& component,
             if (dir_contains_all_expected_files) {
                 bool matches_exactly = true;
 
-                // check the checksums of all files
+                // Check the checksums of all files.
                 for (auto const [expected_path, checksum, _] : component.checksum_values) {
                     auto const cursor = scratch_arena.TotalUsed();
                     DEFER {
@@ -237,7 +255,9 @@ PresetsCheckExistingInstallation(Component const& component,
     return ExistingInstalledComponent {.installed = false};
 }
 
-static ErrorCodeOr<String> ResolvePossibleFilenameConflicts(String path, ArenaAllocator& arena) {
+// Returns the filename that doesn't conflict.
+static ErrorCodeOr<String>
+FindNextNonExistentFilename(String folder, String filename, ArenaAllocator& arena) {
     auto const does_not_exist = [&](String path) -> ErrorCodeOr<bool> {
         auto o = GetFileType(path);
         if (o.HasError()) {
@@ -247,20 +267,51 @@ static ErrorCodeOr<String> ResolvePossibleFilenameConflicts(String path, ArenaAl
         return false;
     };
 
-    if (TRY(does_not_exist(path))) return path;
+    folder = path::TrimDirectorySeparatorsEnd(folder);
+    filename = path::TrimDirectorySeparatorsStart(filename);
 
     constexpr usize k_max_suffix_number = 999;
     constexpr usize k_max_suffix_str_size = " (999)"_s.size;
 
-    auto buffer = arena.AllocateExactSizeUninitialised<char>(path.size + k_max_suffix_str_size);
+    auto buffer =
+        arena.AllocateExactSizeUninitialised<char>(folder.size + 1 + filename.size + k_max_suffix_str_size);
     usize pos = 0;
-    auto const ext = path::Extension(path);
-    WriteAndIncrement(pos, buffer, path.SubSpan(0, path.size - ext.size));
-    WriteAndIncrement(pos, buffer, " ("_s);
+    WriteAndIncrement(pos, buffer, folder);
+    WriteAndIncrement(pos, buffer, path::k_dir_separator);
+    auto const filename_start_pos = pos;
+    WriteAndIncrement(pos, buffer, filename);
+
+    if (TRY(does_not_exist({buffer.data, pos}))) return filename;
+
+    pos = filename_start_pos;
+    auto const ext = path::Extension(filename);
+
+    auto filename_no_ext = TrimEndIfMatches(filename.SubSpan(0, filename.size - ext.size), ' ');
+    usize suffix_num = 1;
+    if (filename_no_ext.size && Last(filename_no_ext) == ')') {
+        if (auto const open_paren = FindLast(filename_no_ext, '(')) {
+            auto const num_str =
+                filename_no_ext.SubSpan(*open_paren + 1, (filename_no_ext.size - 1) - (*open_paren + 1));
+            if (num_str.size) {
+                auto const num = ParseInt(num_str, ParseIntBase::Decimal, nullptr);
+                if (num && *num >= 0) {
+                    suffix_num = (usize)*num + 1;
+
+                    // We have found a valid suffix, so remove the whole () part.
+                    filename_no_ext.size = *open_paren;
+                    filename_no_ext = TrimEndIfMatches(filename_no_ext, ' ');
+                }
+            }
+        }
+    }
+
+    WriteAndIncrement(pos, buffer, filename_no_ext);
+    if (filename_no_ext.size) WriteAndIncrement(pos, buffer, ' ');
+    WriteAndIncrement(pos, buffer, '(');
 
     Optional<ErrorCode> error {};
 
-    for (usize suffix_num = 1; suffix_num <= k_max_suffix_number; ++suffix_num) {
+    for (; suffix_num <= k_max_suffix_number; ++suffix_num) {
         usize initial_pos = pos;
         DEFER { pos = initial_pos; };
 
@@ -269,7 +320,8 @@ static ErrorCodeOr<String> ResolvePossibleFilenameConflicts(String path, ArenaAl
         WriteAndIncrement(pos, buffer, ')');
         WriteAndIncrement(pos, buffer, ext);
 
-        if (TRY(does_not_exist({buffer.data, pos}))) return arena.ResizeType(buffer, pos, pos);
+        if (TRY(does_not_exist({buffer.data, pos})))
+            return String {buffer.data + filename_start_pos, pos - filename_start_pos};
     }
 
     return error ? *error : ErrorCode {FilesystemError::FolderContainsTooManyFiles};
@@ -332,146 +384,175 @@ static ErrorCodeOr<void> ExtractFolder(PackageReader& package,
     return k_success;
 }
 
-// Destination folder is the folder where the package will be installed. e.g. /home/me/Libraries
-// The final folder name is determined by options.destination.
-// Extracts to a temp folder than then renames to the final location. This ensures we either fail or succeed,
-// with no in-between cases where the folder is partially extracted. Additionally, it doesn't generate lots of
-// filesystem-change notifications which Floe might try to process and fail on.
 static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
-                                                Component const& component,
-                                                ArenaAllocator& scratch_arena,
-                                                String destination_path,
-                                                InstallJob::DestinationWriteMode write_mode) {
-    ASSERT(path::IsAbsolute(destination_path));
+                                                InstallJob::Component const& component,
+                                                ArenaAllocator& scratch_arena) {
+    TRY(CreateDirectory(component.install_folder, {.create_intermediate_directories = true}));
 
-    auto const resolved_destination_path = ({
-        String f = destination_path;
-
-        if (write_mode == InstallJob::DestinationWriteMode::CreateUniqueSubpath) {
-            f = path::Join(scratch_arena, Array {f, path::Filename(component.path)});
-            f = TRY(detail::ResolvePossibleFilenameConflicts(f, scratch_arena));
+    // Try to get a folder on the same filesystem so that we can atomic-rename.
+    auto const temp_folder = ({
+        String s {};
+        if (auto const o = TemporaryDirectoryOnSameFilesystemAs(component.install_folder, scratch_arena);
+            o.HasValue()) {
+            s = o.Value();
+        } else {
+            // If we can't get a temporary directory on the same filesystem, we shall try to use a
+            // standard directory - it might work. If not, then we will fail later.
+            s = KnownDirectoryWithSubdirectories(scratch_arena,
+                                                 KnownDirectoryType::Temporary,
+                                                 Array {"Floe-Package-Install"_s},
+                                                 k_nullopt,
+                                                 {.create = true});
         }
-
-        f;
-    });
-    ASSERT(path::IsAbsolute(resolved_destination_path));
-
-    bool const single_file =
-        component.type == ComponentType::Library && path::Extension(component.path) == ".mdata";
-
-    TRY(CreateDirectory(destination_path, {.create_intermediate_directories = true}));
-
-    // Try to get a folder on the same filesystem so that we can atomic-rename and therefore reduce the chance
-    // of leaving partially extracted files and generating lots of filesystem-change events.
-    auto const temp_path = ({
-        ASSERT(GetFileType(destination_path).HasValue());
-
-        String result = ({
-            String s {};
-            if (auto const o = TemporaryDirectoryOnSameFilesystemAs(destination_path, scratch_arena);
-                o.HasValue()) {
-                s = o.Value();
-            } else {
-                // If we can't get a temporary directory on the same filesystem, we shall try to use a
-                // standard directory - it might work. If not, then we will fail later.
-                s = KnownDirectoryWithSubdirectories(scratch_arena,
-                                                     KnownDirectoryType::Temporary,
-                                                     Array {"Floe-Package-Install"_s},
-                                                     k_nullopt,
-                                                     {.create = true});
-            }
-            s;
-        });
-
-        if (single_file) result = path::Join(scratch_arena, Array {result, path::Filename(component.path)});
-        result;
+        s;
     });
     DEFER {
-        auto _ = Delete(temp_path,
+        auto _ = Delete(temp_folder,
                         {
                             .type = DeleteOptions::Type::DirectoryRecursively,
                             .fail_if_not_exists = false,
                         });
     };
 
-    if (single_file) {
-        TRY(detail::ExtractFile(package, component.path, temp_path));
+    auto const install_type = component.component.InstallType();
+
+    // We extract to a temp folder than then rename to the final location. This ensures we either fail or
+    // succeed, without any in-between cases where the folder is partially extracted. Additionally, it doesn't
+    // generate lots of filesystem-change notifications which Floe might try to process and fail on.
+
+    auto const temp_path = ({
+        auto s = temp_folder;
+        // Files need a filename, whereas folders can just use the temp folder directly, there's no need to
+        // create a subfolder for them.
+        if (install_type == FileType::File)
+            s = path::Join(scratch_arena, Array {s, component.install_filename});
+        s;
+    });
+
+    if (install_type == FileType::File) {
+        TRY(detail::ExtractFile(package, component.component.path, temp_path));
     } else {
         TRY(detail::ExtractFolder(package,
-                                  component.path,
+                                  component.component.path,
                                   temp_path,
                                   scratch_arena,
-                                  component.checksum_values));
+                                  component.component.checksum_values));
     }
 
-    if (auto const rename_o = Rename(temp_path, resolved_destination_path); rename_o.HasError()) {
-        if (write_mode == InstallJob::DestinationWriteMode::OverwriteDirectly &&
-            rename_o.Error() == FilesystemError::NotEmpty) {
-            // Rather than overwrite files one-by-one, we delete the whole folder and replace it with the new
-            // component. We do this because overwriting files could leave unwanted files behind if the
-            // component has fewer files than the existing installation. This is confusing in general, but in
-            // particular it's bad for a library because there could be 2 Lua files.
+    auto installed_name = component.install_filename;
+    auto allow_overwrite = component.install_allow_overwrite;
 
-            // Rename the existing folder so that it's got a unique, recognizable name that will be easy to
-            // spot in the Trash.
-            MutableString new_name {};
-            {
-                new_name = scratch_arena.AllocateExactSizeUninitialised<char>(resolved_destination_path.size +
-                                                                              " (old-)"_s.size + 13);
-                usize pos = 0;
-                WriteAndIncrement(pos, new_name, resolved_destination_path);
-                WriteAndIncrement(pos, new_name, " (old-"_s);
-                auto const chars_written = fmt::IntToString(RandomU64(package.seed),
-                                                            new_name.data + pos,
-                                                            {.base = fmt::IntToStringOptions::Base::Base32});
-                ASSERT(chars_written <= 13);
-                pos += chars_written;
-                WriteAndIncrement(pos, new_name, ')');
-                new_name.size = pos;
+    // With files, Rename() will overwrite existing files, we need to check for that if overwrite is not
+    // allowed. This is not ideal as it introduces a tiny window where another process could create the file
+    // after we check and before we rename.
+    if (!allow_overwrite && install_type == FileType::File)
+        installed_name =
+            TRY(FindNextNonExistentFilename(component.install_folder, installed_name, scratch_arena));
 
-                TRY(Rename(resolved_destination_path, new_name));
-            }
+    DynamicArray<char> full_dest {component.install_folder, scratch_arena};
+    for (auto const _ : Range(50)) {
+        dyn::Resize(full_dest, component.install_folder.size);
+        path::JoinAppend(full_dest, installed_name);
+        if (auto const rename_o = Rename(temp_path, full_dest); rename_o.Succeeded()) {
+            break;
+        } else if (rename_o.Error() == FilesystemError::NotEmpty) {
+            // The destination is a non-empty folder.
+            if (allow_overwrite) {
+                // Rather than overwrite files one-by-one (which will cause lots of filesystem events, and
+                // potentially leave things in an incomplete state), we put the existing folder to one side
+                // for a moment, install the new folder, and finally if that succeeds, move the old folder to
+                // the Trash.
 
-            // The old folder is out of the way so we can now install the new component.
-            if (auto const rename2_o = Rename(temp_path, resolved_destination_path); rename2_o.HasError()) {
-                // We failed to install the new files, try to restore the old files.
-                auto const _ = Rename(new_name, resolved_destination_path);
+                // For moving aside the existing folder, we generate a unique, recognizable filename that will
+                // be easy to spot in the Trash.
+                String const new_name = ({
+                    auto n = scratch_arena.AllocateExactSizeUninitialised<char>(full_dest.size +
+                                                                                " (old-)"_s.size + 13);
+                    usize pos = 0;
+                    WriteAndIncrement(pos, n, full_dest);
+                    WriteAndIncrement(pos, n, " (old-"_s);
+                    auto const chars_written =
+                        fmt::IntToString(RandomU64(package.seed),
+                                         n.data + pos,
+                                         {.base = fmt::IntToStringOptions::Base::Base32});
+                    ASSERT(chars_written <= 13);
+                    pos += chars_written;
+                    WriteAndIncrement(pos, n, ')');
+                    n.size = pos;
 
-                return rename2_o.Error();
-            }
+                    n;
+                });
 
-            // The new component is installed, let's try to trash the old folder.
-            if (auto const o = TrashFileOrDirectory(new_name, scratch_arena); o.HasError()) {
-                ErrorCodeOr<void> error = o.Error();
+                // Move the existing folder out of the way.
+                TRY(Rename(full_dest, new_name));
 
-                if (o.Error() == FilesystemError::NotSupported) {
-                    // Trash is not supported, so just delete the old folder.
-                    if (auto const delete_outcome =
-                            Delete(new_name,
-                                   {
-                                       .type = DeleteOptions::Type::DirectoryRecursively,
-                                       .fail_if_not_exists = false,
-                                   });
-                        delete_outcome.HasError())
-                        error = delete_outcome.Error();
-                    else
-                        error = k_success;
+                // The old folder is out of the way so we can now install the new component.
+                if (auto const rename2_o = Rename(temp_path, full_dest); rename2_o.HasError()) {
+                    // We failed to install the new files, try to restore the old files.
+                    auto const _ = Rename(new_name, full_dest);
+
+                    return rename2_o.Error();
                 }
 
-                if (error.HasError()) {
-                    // Try to undo the rename
-                    auto const _ = Rename(new_name, resolved_destination_path);
+                // The new component is installed, let's try to trash the old folder.
+                if (auto const o = TrashFileOrDirectory(new_name, scratch_arena); o.HasError()) {
+                    ErrorCodeOr<void> error = o.Error();
 
-                    return error.Error();
+                    if (o.Error() == FilesystemError::NotSupported) {
+                        // Trash is not supported, so just delete the old folder.
+                        if (auto const delete_outcome =
+                                Delete(new_name,
+                                       {
+                                           .type = DeleteOptions::Type::DirectoryRecursively,
+                                           .fail_if_not_exists = false,
+                                       });
+                            delete_outcome.HasError())
+                            error = delete_outcome.Error();
+                        else
+                            error = k_success;
+                    }
+
+                    if (error.HasError()) {
+                        // Try to undo the rename
+                        auto const _ = Rename(new_name, full_dest);
+
+                        return error.Error();
+                    }
                 }
+
+                break;
+            } else {
+                // Try a new name.
+                installed_name =
+                    TRY(FindNextNonExistentFilename(component.install_folder, installed_name, scratch_arena));
+                continue;
             }
+        } else if (rename_o.Error() == FilesystemError::PathIsAFile && allow_overwrite) {
+            // The destination exists as a file. This can only happen with folder-to-file installs since
+            // Rename() overwrites files automatically. We trash the existing file and try again.
+            if (auto const trash_o = TrashFileOrDirectory(full_dest, scratch_arena);
+                trash_o.HasError() && trash_o.Error() == FilesystemError::NotSupported) {
+                TRY(Delete(full_dest,
+                           {
+                               .type = DeleteOptions::Type::File,
+                               .fail_if_not_exists = false,
+                           }));
+            }
+
+            // Additionally with this folder-to-file case, we rename the destination since we don't want to
+            // end up with a folder that has a file's name with an extension.
+            installed_name = path::Filename(component.component.path);
+            allow_overwrite = false;
+
+            continue;
         } else {
+            // Other error.
             return rename_o.Error();
         }
     }
 
     // remove hidden
-    TRY(WindowsSetFileAttributes(resolved_destination_path, k_nullopt));
+    TRY(WindowsSetFileAttributes(full_dest, k_nullopt));
 
     return k_success;
 }
@@ -510,8 +591,9 @@ static InstallJob::State DoJobPhase1(InstallJob& job) {
             break;
         }
 
-        String destination_path = {};
-        InstallJob::DestinationWriteMode write_mode {};
+        String install_filename {};
+        String install_folder {};
+        bool install_allow_overwrite = false;
 
         auto const existing_check = ({
             ExistingInstalledComponent r;
@@ -547,12 +629,19 @@ static InstallJob::State DoJobPhase1(InstallJob& job) {
                              r.installed,
                              r.version_difference,
                              r.modified_since_installed);
+
                     if (existing_lib) {
-                        destination_path = job.arena.Clone(*path::Directory(existing_lib->path));
-                        write_mode = InstallJob::DestinationWriteMode::OverwriteDirectly;
+                        auto const path =
+                            existing_lib->file_format_specifics.tag == sample_lib::FileFormat::Mdata
+                                ? existing_lib->path
+                                : *path::Directory(existing_lib->path);
+                        install_filename = job.arena.Clone(path::Filename(path));
+                        install_folder = job.arena.Clone(*path::Directory(path));
+                        install_allow_overwrite = true; // Should we need to update, we allow overwriting.
                     } else {
-                        destination_path = job.libraries_install_folder;
-                        write_mode = InstallJob::DestinationWriteMode::CreateUniqueSubpath;
+                        install_filename = path::Filename(component->path);
+                        install_folder = job.install_folders[ToInt(ComponentType::Library)];
+                        install_allow_overwrite = false;
                     }
 
                     break;
@@ -560,8 +649,9 @@ static InstallJob::State DoJobPhase1(InstallJob& job) {
                 case package::ComponentType::Presets: {
                     r = TRY_H(
                         detail::PresetsCheckExistingInstallation(*component, job.preset_folders, job.arena));
-                    destination_path = job.presets_install_folder;
-                    write_mode = InstallJob::DestinationWriteMode::CreateUniqueSubpath;
+                    install_filename = path::Filename(component->path);
+                    install_folder = job.install_folders[ToInt(ComponentType::Presets)];
+                    install_allow_overwrite = false;
                     break;
                 }
                 case package::ComponentType::Count: PanicIfReached();
@@ -576,8 +666,9 @@ static InstallJob::State DoJobPhase1(InstallJob& job) {
             .component = *component,
             .existing_installation_status = existing_check,
             .user_decision = InstallJob::UserDecision::Unknown,
-            .destination_path = destination_path,
-            .destination_write_mode = write_mode,
+            .install_filename = install_filename,
+            .install_allow_overwrite = install_allow_overwrite,
+            .install_folder = install_folder,
         };
     }
 
@@ -607,18 +698,14 @@ static InstallJob::State DoJobPhase2(InstallJob& job) {
             if (component.user_decision == InstallJob::UserDecision::Skip) continue;
         }
 
-        TRY_H(ReaderInstallComponent(*job.reader,
-                                     component.component,
-                                     job.arena,
-                                     component.destination_path,
-                                     component.destination_write_mode));
+        TRY_H(ReaderInstallComponent(*job.reader, component, job.arena));
 
         if (component.component.type == ComponentType::Library) {
             // The sample library server should receive filesystem-events about the move and rescan
             // automatically. But the timing of filesystem events is not reliable. As we already know that the
             // folder has changed, we can issue a rescan immediately. This way, the changes will be reflected
             // sooner.
-            sample_lib_server::RescanFolder(job.sample_lib_server, component.destination_path);
+            sample_lib_server::RescanFolder(job.sample_lib_server, component.install_folder);
         }
     }
 
@@ -641,8 +728,7 @@ static InstallJob::State DoJobPhase2(InstallJob& job) {
 
 struct CreateJobOptions {
     String zip_path;
-    String libraries_install_folder;
-    String presets_install_folder;
+    Array<String, ToInt(ComponentType::Count)> install_folders;
     sample_lib_server::Server& server;
     Span<String> preset_folders;
 };
@@ -650,15 +736,19 @@ struct CreateJobOptions {
 // [main thread]
 PUBLIC InstallJob* CreateInstallJob(ArenaAllocator& arena, CreateJobOptions opts) {
     ASSERT(path::IsAbsolute(opts.zip_path));
-    ASSERT(path::IsAbsolute(opts.libraries_install_folder));
-    ASSERT(path::IsAbsolute(opts.presets_install_folder));
+    for (auto const& f : opts.install_folders)
+        ASSERT(path::IsAbsolute(f));
     auto j = arena.NewUninitialised<InstallJob>();
     PLACEMENT_NEW(j)
     InstallJob {
         .arena = arena,
         .path = arena.Clone(opts.zip_path),
-        .libraries_install_folder = arena.Clone(opts.libraries_install_folder),
-        .presets_install_folder = arena.Clone(opts.presets_install_folder),
+        .install_folders = ({
+            Array<String, ToInt(ComponentType::Count)> f;
+            for (auto const i : Range(ToInt(ComponentType::Count)))
+                f[i] = arena.Clone(opts.install_folders[i]);
+            f;
+        }),
         .sample_lib_server = opts.server,
         .preset_folders = arena.Clone(opts.preset_folders, CloneType::Deep),
         .error_buffer = {arena},
@@ -803,10 +893,15 @@ PUBLIC void AddJob(InstallJobs& jobs,
         job->arena,
         CreateJobOptions {
             .zip_path = zip_path,
-            .libraries_install_folder =
-                prefs::GetString(prefs, InstallLocationDescriptor(paths, prefs, ScanFolderType::Libraries)),
-            .presets_install_folder =
-                prefs::GetString(prefs, InstallLocationDescriptor(paths, prefs, ScanFolderType::Presets)),
+            .install_folders = ({
+                Array<String, ToInt(ComponentType::Count)> fs;
+                fs[ToInt(ComponentType::Library)] =
+                    prefs::GetString(prefs,
+                                     InstallLocationDescriptor(paths, prefs, ScanFolderType::Libraries));
+                fs[ToInt(ComponentType::Presets)] =
+                    prefs::GetString(prefs, InstallLocationDescriptor(paths, prefs, ScanFolderType::Presets));
+                fs;
+            }),
             .server = sample_library_server,
             .preset_folders =
                 CombineStringArrays(scratch_arena,

@@ -106,14 +106,14 @@ struct TestOptions {
 static ErrorCodeOr<void> Test(tests::Tester& tester, TestOptions options) {
     CAPTURE(options.test_name);
 
-    auto job = CreateInstallJob(tester.scratch_arena,
-                                {
-                                    .zip_path = options.zip_path,
-                                    .libraries_install_folder = options.destination_folder,
-                                    .presets_install_folder = options.destination_folder,
-                                    .server = options.server,
-                                    .preset_folders = Array {String(options.destination_folder)},
-                                });
+    auto job =
+        CreateInstallJob(tester.scratch_arena,
+                         {
+                             .zip_path = options.zip_path,
+                             .install_folders = {options.destination_folder, options.destination_folder},
+                             .server = options.server,
+                             .preset_folders = Array {String(options.destination_folder)},
+                         });
     DEFER { DestroyInstallJob(job); };
 
     DoJobPhase1(*job);

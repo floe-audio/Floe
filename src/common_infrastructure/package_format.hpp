@@ -476,9 +476,12 @@ PUBLIC void ReaderDeinit(PackageReader& package) { mz_zip_reader_end(&package.zi
 
 // The individual parts of a package, either a library or a presets folder.
 struct Component {
+    FileType InstallType() const { return mdata_checksum ? FileType::File : FileType::Directory; }
+
     String path; // path in the zip
     ComponentType type;
     HashTable<String, ChecksumValues> checksum_values;
+    Optional<u32> mdata_checksum; // Only for libraries stored as an MDATA.
 
     // Only valid if this component's type is a library. nullptr otherwise. You can't use this library to read
     // library files since they're unextracted, but you can read basic fields like name and author.
@@ -502,6 +505,9 @@ IteratePackageComponents(PackageReader& package, PackageComponentIndex& file_ind
             if (relative_path->size == 0) continue;
             if (Contains(*relative_path, '/')) continue;
 
+            auto const is_mdata_library =
+                folder == k_libraries_subdir && path::Equal(path::Extension(path), ".mdata");
+
             return Optional<Component> {Component {
                 .path = path.Clone(arena),
                 .type = ({
@@ -514,14 +520,17 @@ IteratePackageComponents(PackageReader& package, PackageComponentIndex& file_ind
                         PanicIfReached();
                     t;
                 }),
-                .checksum_values = TRY_OR(detail::ReaderChecksumValuesForDir(package, path, arena),
-                                          return detail::ZipReadError(package);),
+                .checksum_values = !is_mdata_library
+                                       ? TRY_OR(detail::ReaderChecksumValuesForDir(package, path, arena),
+                                                return detail::ZipReadError(package);)
+                                       : HashTable<String, ChecksumValues> {},
+                .mdata_checksum = is_mdata_library ? Optional<u32> {(u32)file_stat.m_crc32} : k_nullopt,
                 .library = ({
                     sample_lib::Library* lib = nullptr;
                     if (folder == k_libraries_subdir) {
                         lib = ({
                             auto const library =
-                                TRY(!path::Equal(path::Extension(path), ".mdata")
+                                TRY(!is_mdata_library
                                         ? detail::ReaderReadLibraryLua(package, path, arena)
                                         : detail::ReaderReadLibraryMdata(package, file_index, path, arena));
                             if (!library) return {PackageError::InvalidLibrary};
