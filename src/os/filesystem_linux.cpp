@@ -301,6 +301,7 @@ ErrorCodeOr<String> TrashFileOrDirectory(String path, Allocator& allocator) {
             // Finally, delete the original item.
             TRY(Delete(path, {.type = DeleteOptions::Type::Any, .fail_if_not_exists = false}));
             success = true;
+            return trashed_path.Clone(allocator);
         }
     }
 
