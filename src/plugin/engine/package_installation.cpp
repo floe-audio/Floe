@@ -1093,10 +1093,7 @@ String CreatePackageZipFile(tests::Tester& tester, String lib_subpath, bool incl
 }
 
 TEST_CASE(TestPackageInstallation) {
-    auto const destination_folder {tests::TempFilename(tester)};
-    REQUIRE(!CreateDirectory(destination_folder,
-                             {.create_intermediate_directories = false, .fail_if_exists = false})
-                 .HasError());
+    auto const destination_folder = tests::TempFolderUnique(tester);
 
     ThreadPool thread_pool;
     thread_pool.Init("pkg-install", {});
@@ -1500,7 +1497,7 @@ TEST_CASE(TestWriteFilenameWithSuffix) {
 }
 
 TEST_CASE(TestFindNextNonExistentFilename) {
-    auto const folder = tests::TempFolder(tester);
+    auto const folder = tests::TempFolderUnique(tester);
 
     SUBCASE("file doesn't exist") {
         auto const result = TRY(FindNextNonExistentFilename(folder, "test.txt"_s, tester.scratch_arena));

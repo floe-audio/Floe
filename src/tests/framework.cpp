@@ -43,6 +43,14 @@ String TempFilename(Tester& tester) {
     return path::Join(tester.scratch_arena, Array {folder, filename});
 }
 
+String TempFolderUnique(Tester& tester) {
+    auto const path = TempFilename(tester);
+    auto const result =
+        CreateDirectory(path, {.create_intermediate_directories = true, .fail_if_exists = true});
+    CHECK(result.Succeeded());
+    return path;
+}
+
 static Optional<String> SearchUpwardsFromExeForFolder(Tester& tester, String folder_name) {
     auto const path_outcome = CurrentBinaryPath(tester.scratch_arena);
     if (path_outcome.HasError()) {

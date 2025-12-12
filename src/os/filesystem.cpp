@@ -470,10 +470,7 @@ TEST_CASE(TestDirectoryWatcher) {
     for (auto const recursive : Array {true, false}) {
         CAPTURE(recursive);
 
-        auto const dir = (String)path::Join(a, Array {tests::TempFolder(tester), "directory-watcher-test"});
-        auto _ =
-            Delete(dir, {.type = DeleteOptions::Type::DirectoryRecursively, .fail_if_not_exists = false});
-        TRY(CreateDirectory(dir, {.create_intermediate_directories = false, .fail_if_exists = true}));
+        auto const dir = tests::TempFolderUnique(tester);
 
         struct TestPath {
             static TestPath Create(ArenaAllocator& a, String root_dir, String subpath) {
@@ -823,8 +820,7 @@ TEST_CASE(TestDirectoryWatcher) {
 TEST_CASE(TestDirectoryWatcherErrors) {
     auto& a = tester.scratch_arena;
 
-    auto const dir =
-        (String)path::Join(a, Array {tests::TempFolder(tester), "directory-watcher-errors-test"});
+    auto const dir = tests::TempFolderUnique(tester);
 
     auto watcher = TRY(CreateDirectoryWatcher(a));
     DEFER { DestoryDirectoryWatcher(watcher); };
@@ -894,15 +890,12 @@ TEST_CASE(TestDirectoryWatcherErrors) {
 
 TEST_CASE(TestFileApi) {
     auto& scratch_arena = tester.scratch_arena;
-    auto const filename1 = path::Join(scratch_arena, Array {tests::TempFolder(tester), "filename1"});
-    auto const filename2 = path::Join(scratch_arena, Array {tests::TempFolder(tester), "filename2"});
-    DEFER { auto _ = Delete(filename1, {}); };
-    DEFER { auto _ = Delete(filename2, {}); };
+    auto const dir = tests::TempFolderUnique(tester);
+    auto const filename1 = path::Join(scratch_arena, Array {dir, "filename1"});
+    auto const filename2 = path::Join(scratch_arena, Array {dir, "filename2"});
     constexpr auto k_data = "data"_s;
 
     SUBCASE("Write and read") {
-        TRY(CreateDirectory(tests::TempFolder(tester), {.create_intermediate_directories = true}));
-
         SUBCASE("Open API") {
             {
                 auto f = TRY(OpenFile(filename1, FileMode::Write()));
@@ -1005,13 +998,7 @@ TEST_CASE(TestFilesystemApi) {
     auto& a = tester.scratch_arena;
 
     SUBCASE("DirectoryIteratorV2") {
-        auto dir = String(path::Join(a, Array {tests::TempFolder(tester), "DirectoryIteratorV2 test"}));
-        auto _ = Delete(dir, {.type = DeleteOptions::Type::DirectoryRecursively});
-        TRY(CreateDirectory(dir, {.create_intermediate_directories = true}));
-        DEFER {
-            if (auto o = Delete(dir, {.type = DeleteOptions::Type::DirectoryRecursively}); o.HasError())
-                LOG_WARNING("failed to delete temp dir: {}", o.Error());
-        };
+        auto const dir = tests::TempFolderUnique(tester);
 
         SUBCASE("empty dir") {
             SUBCASE("non-recursive") {
@@ -1288,8 +1275,7 @@ TEST_CASE(TestFilesystemApi) {
 
     SUBCASE("DeleteDirectory") {
         auto test_delete_directory = [&a, &tester]() -> ErrorCodeOr<void> {
-            auto const dir = path::Join(a, Array {tests::TempFolder(tester), "DeleteDirectory test"});
-            TRY(CreateDirectory(dir, {.create_intermediate_directories = true}));
+            auto const dir = tests::TempFolderUnique(tester);
 
             // create files and folders within the dir
             {
@@ -1316,17 +1302,14 @@ TEST_CASE(TestFilesystemApi) {
     }
 
     SUBCASE("CreateDirectory") {
-        auto const dir = path::Join(a, Array {tests::TempFolder(tester), "CreateDirectory test"});
+        auto const dir = tests::TempFilename(tester);
         TRY(CreateDirectory(dir, {.create_intermediate_directories = false}));
         CHECK(TRY(GetFileType(dir)) == FileType::Directory);
         TRY(Delete(dir, {}));
     }
 
     SUBCASE("relocate files") {
-        auto const dir = String(path::Join(a, Array {tests::TempFolder(tester), "Relocate files test"}));
-        TRY(CreateDirectory(dir, {.create_intermediate_directories = false}));
-        DEFER { auto _ = Delete(dir, {.type = DeleteOptions::Type::DirectoryRecursively}); };
-
+        auto const dir = tests::TempFolderUnique(tester);
         auto const path1 = path::Join(a, Array {dir, "test-path1"});
         auto const path2 = path::Join(a, Array {dir, "test-path2"});
 
