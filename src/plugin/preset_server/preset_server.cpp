@@ -927,9 +927,9 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
              [](PresetFolder::Preset const& a, PresetFolder::Preset const& b) { return a.name < b.name; });
 
         // After sorting, we can compute the overall hash.
-        preset_folder->all_presets_hash = HashInit();
+        preset_folder->all_presets_hash = HashInitFnv1a();
         for (auto const& preset : preset_folder->presets)
-            HashUpdate(preset_folder->all_presets_hash, preset.file_hash);
+            HashUpdateFnv1a(preset_folder->all_presets_hash, preset.file_hash);
 
         AppendFolderAndPublish(server, preset_folder, scratch_arena);
     }
