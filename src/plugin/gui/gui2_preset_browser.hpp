@@ -19,11 +19,13 @@ struct PresetServer;
 struct PresetBrowserContext {
     void Init(ArenaAllocator& arena) {
         if (init++) return;
-        presets_snapshot = BeginReadFolders(preset_server, arena);
+        auto const [snapshot, handle] = BeginReadFolders(preset_server, arena);
+        presets_snapshot = snapshot;
+        preset_read_handle = handle;
     }
     void Deinit() {
         if (--init != 0) return;
-        EndReadFolders(preset_server);
+        EndReadFolders(preset_server, preset_read_handle);
     }
 
     sample_lib_server::Server& sample_library_server;
@@ -39,6 +41,7 @@ struct PresetBrowserContext {
 
     u32 init = 0;
     PresetsSnapshot presets_snapshot;
+    PresetServerReadHandle preset_read_handle;
 };
 
 // Persistent

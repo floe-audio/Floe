@@ -162,9 +162,11 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
 
 struct PreferencesPanelContext {
     void Init(PresetServer& preset_server, ArenaAllocator& arena) {
-        presets_snapshot = BeginReadFolders(preset_server, arena);
+        auto const [snapshot, handle] = BeginReadFolders(preset_server, arena);
+        presets_snapshot = snapshot;
+        preset_read_handle = handle;
     }
-    static void Deinit(PresetServer& preset_server) { EndReadFolders(preset_server); }
+    void Deinit(PresetServer& preset_server) { EndReadFolders(preset_server, preset_read_handle); }
 
     prefs::Preferences& prefs;
     FloePaths const& paths;
@@ -173,6 +175,7 @@ struct PreferencesPanelContext {
     ThreadPool& thread_pool;
     FilePickerState& file_picker_state;
     PresetsSnapshot presets_snapshot {};
+    PresetServerReadHandle preset_read_handle;
 };
 
 static void SetFolderSubtext(DynamicArrayBounded<char, 200>& out,

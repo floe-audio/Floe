@@ -168,28 +168,28 @@ void StartScanningIfNeeded(PresetServer& server) {
 }
 
 // Reader thread
-PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
+BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
     // Trigger the server to start the scanning process if its not already doing so.
     StartScanningIfNeeded(server);
 
     // We tell the server that we're reading the current version so that it knows not to delete any folders
     // that we might be using.
+    auto const current_version = server.published_version.Load(LoadMemoryOrder::Acquire);
     {
-        auto const current_version = server.published_version.Load(LoadMemoryOrder::Acquire);
+        server.active_readers_mutex.Lock();
+        DEFER { server.active_readers_mutex.Unlock(); };
 
-        auto expected = PresetServer::k_no_version;
-        if (!server.version_in_use.CompareExchangeStrong(expected,
-                                                         current_version,
-                                                         RmwMemoryOrder::AcquireRelease,
-                                                         LoadMemoryOrder::Relaxed)) {
-            PanicF(
-                SourceLocation::Current(),
-                "we only allow one reader, and it must not re-enter this function while it's already reading");
-        }
+        dyn::Append(server.active_reader_versions, current_version);
+
+        // Update the oldest version in use
+        auto oldest = current_version;
+        for (auto const v : server.active_reader_versions)
+            oldest = Min(oldest, v);
+        server.oldest_version_in_use.Store(oldest, StoreMemoryOrder::Release);
     }
 
     // We take a snapshot of the folders list so that the server can continue to modify it while we're
-    // reading and we don't have to do locking or reference counting.
+    // reading and we don't have to do locking or reference counting. We only copy pointers.
     server.mutex.Lock();
     DEFER { server.mutex.Unlock(); };
 
@@ -211,17 +211,37 @@ PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
         preset_banks[i] = &folders_nodes[server.folder_node_preset_bank_indices[i]];
 
     return {
-        .folders = preset_folders,
-        .preset_banks = preset_banks,
-        .used_tags = {server.used_tags.table.Clone(arena, CloneType::Deep)},
-        .used_libraries = {server.used_libraries.table.Clone(arena, CloneType::Deep)},
-        .authors = {server.authors.table.Clone(arena, CloneType::Deep)},
-        .has_preset_type = server.has_preset_type,
+        .snapshot =
+            {
+                .folders = preset_folders,
+                .preset_banks = preset_banks,
+                .used_tags = {server.used_tags.table.Clone(arena, CloneType::Deep)},
+                .used_libraries = {server.used_libraries.table.Clone(arena, CloneType::Deep)},
+                .authors = {server.authors.table.Clone(arena, CloneType::Deep)},
+                .has_preset_type = server.has_preset_type,
+            },
+        .handle = (PresetServerReadHandle)current_version,
     };
 }
 
-void EndReadFolders(PresetServer& server) {
-    server.version_in_use.Store(PresetServer::k_no_version, StoreMemoryOrder::Release);
+void EndReadFolders(PresetServer& server, PresetServerReadHandle handle) {
+    auto const version = (u64)handle;
+
+    server.active_readers_mutex.Lock();
+    DEFER { server.active_readers_mutex.Unlock(); };
+
+    // Remove this reader's version
+    dyn::RemoveValueSwapLast(server.active_reader_versions, version);
+
+    // Recalculate oldest version
+    if (server.active_reader_versions.size == 0) {
+        server.oldest_version_in_use.Store(PresetServer::k_no_version, StoreMemoryOrder::Release);
+    } else {
+        auto oldest = server.active_reader_versions[0];
+        for (auto const v : server.active_reader_versions)
+            oldest = Min(oldest, v);
+        server.oldest_version_in_use.Store(oldest, StoreMemoryOrder::Release);
+    }
 }
 
 static bool FolderIsSafeForDeletion(PresetFolder const& folder, u64 current_version, u64 in_use_version) {
@@ -246,7 +266,7 @@ static void DeleteUnusedFolders(PresetServer& server) {
     ASSERT(CurrentThreadId() == server.server_thread_id);
 
     auto const current_version = server.published_version.Load(LoadMemoryOrder::Relaxed);
-    auto const in_use_version = server.version_in_use.Load(LoadMemoryOrder::Acquire);
+    auto const in_use_version = server.oldest_version_in_use.Load(LoadMemoryOrder::Acquire);
 
     server.folder_pool.RemoveIf([&](PresetFolder const& folder) {
         if (FolderIsSafeForDeletion(folder, current_version, in_use_version)) {
@@ -1130,7 +1150,7 @@ static void ServerThread(PresetServer& server) {
         DeleteUnusedFolders(server);
     }
 
-    ASSERT(server.version_in_use.Load(LoadMemoryOrder::Relaxed) == PresetServer::k_no_version);
+    ASSERT(server.oldest_version_in_use.Load(LoadMemoryOrder::Relaxed) == PresetServer::k_no_version);
     server.folder_pool.Clear();
 }
 

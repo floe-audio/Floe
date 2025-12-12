@@ -70,7 +70,11 @@ struct PresetServer {
     // We're using a sort of basic "epoch-based reclamation" to delete folders that are no longer in use
     // without the reader having to do much locking.
     Atomic<u64> published_version {};
-    Atomic<u64> version_in_use = k_no_version;
+
+    // Multiple readers support: track all active reader versions and maintain the oldest
+    Mutex active_readers_mutex;
+    DynamicArray<u64> active_reader_versions {Malloc::Instance()};
+    Atomic<u64> oldest_version_in_use = k_no_version;
 
     // The next fields are versioned and mutex protected
     DynamicArray<PresetFolder*> folders {arena};
@@ -135,8 +139,16 @@ struct PresetsSnapshot {
     Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
 };
 
+// Opaque handle that must be returned to EndReadFolders when done reading the snapshot.
+enum class PresetServerReadHandle : u64 {};
+
+struct BeginReadFoldersResult {
+    PresetsSnapshot snapshot;
+    PresetServerReadHandle handle;
+};
+
 // Trigger the server to start the scanning process if its not already doing so.
 void StartScanningIfNeeded(PresetServer& server);
 
-PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena);
-void EndReadFolders(PresetServer& server);
+BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& arena);
+void EndReadFolders(PresetServer& server, PresetServerReadHandle handle);
