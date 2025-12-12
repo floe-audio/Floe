@@ -15,19 +15,22 @@
 
 namespace package {
 
+enum class VersionDifference : u8 {
+    Equal, // Installed version is the same as the package version.
+    InstalledIsOlder, // Installed version is older than the package version.
+    InstalledIsNewer, // Installed version is newer than the package version.
+    Count,
+};
+
+enum class ModifiedSinceInstalled : u8 {
+    Unmodified, // Installed version is known to be unmodified since it was installed.
+    MaybeModified, // We don't know if the installed version has been modified since it was installed.
+    Modified, // Installed version has been modified since it was installed.
+    UnmodifiedButFilesAdded, // Unchanged, but extra files were added.
+    Count,
+};
+
 struct ExistingInstalledComponent {
-    enum class VersionDifference : u8 {
-        Equal, // Installed version is the same as the package version.
-        InstalledIsOlder, // Installed version is older than the package version.
-        InstalledIsNewer, // Installed version is newer than the package version.
-    };
-    enum class ModifiedSinceInstalled : u8 {
-        Unmodified, // Installed version is known to be unmodified since it was installed.
-        MaybeModified, // We don't know if the installed version has been modified since it was installed.
-        Modified, // Installed version has been modified since it was installed.
-    };
-    using enum VersionDifference;
-    using enum ModifiedSinceInstalled;
     bool operator==(ExistingInstalledComponent const& o) const = default;
     bool installed;
     VersionDifference version_difference; // if installed

@@ -14,32 +14,51 @@ PUBLIC String InstallationOptionAskUserPretext(package::InstallJob::Component co
     ASSERT(package::UserInputIsRequired(status));
 
     String format {};
-    if (status.modified_since_installed == package::ExistingInstalledComponent::Modified) {
+    if (status.modified_since_installed == package::ModifiedSinceInstalled::Modified) {
         switch (status.version_difference) {
-            case package::ExistingInstalledComponent::InstalledIsNewer:
+            case package::VersionDifference::InstalledIsNewer:
                 format =
                     "A newer version of {} {} is already installed but its files have been modified since it was installed.";
                 break;
-            case package::ExistingInstalledComponent::InstalledIsOlder:
+            case package::VersionDifference::InstalledIsOlder:
                 format =
                     "An older version of {} {} is already installed but its files have been modified since it was installed.";
                 break;
-            case package::ExistingInstalledComponent::Equal:
+            case package::VersionDifference::Equal:
                 format =
                     "{} {} is already installed but its files have been modified since it was installed.";
                 break;
+            case package::VersionDifference::Count: PanicIfReached();
         }
+    } else if (status.modified_since_installed == package::ModifiedSinceInstalled::UnmodifiedButFilesAdded) {
+        switch (status.version_difference) {
+            case package::VersionDifference::InstalledIsNewer:
+                format =
+                    "A newer version of {} {} is already fully installed but unrelated files have been added to the folder since it was installed.";
+                break;
+            case package::VersionDifference::InstalledIsOlder:
+                format =
+                    "An older version of {} {} is already fully installed but unrelated files have been added to the folder since it was installed.";
+                break;
+            case package::VersionDifference::Equal:
+                format =
+                    "{} {} is already fully installed but unrelated files have been added to the folder since it was installed.";
+                break;
+            case package::VersionDifference::Count: PanicIfReached();
+        }
+
     } else {
         // We don't know if the package has been modified or not so we just ask the user what to do without
-        // any explaination.
+        // any explanation.
         switch (status.version_difference) {
-            case package::ExistingInstalledComponent::InstalledIsNewer:
+            case package::VersionDifference::InstalledIsNewer:
                 format = "A newer version of {} {} is already installed.";
                 break;
-            case package::ExistingInstalledComponent::InstalledIsOlder:
+            case package::VersionDifference::InstalledIsOlder:
                 format = "An older version of {} {} is already installed.";
                 break;
-            case package::ExistingInstalledComponent::Equal: format = "{} {} is already installed."; break;
+            case package::VersionDifference::Equal: format = "{} {} is already installed."; break;
+            case package::VersionDifference::Count: PanicIfReached();
         }
     }
 

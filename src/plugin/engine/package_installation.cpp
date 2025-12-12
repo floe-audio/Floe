@@ -31,13 +31,15 @@ CustomValueToString(Writer writer, package::InstallJob::State state, FormatOptio
 namespace package {
 
 bool32 UserInputIsRequired(ExistingInstalledComponent status) {
-    return status.installed && status.modified_since_installed != ExistingInstalledComponent::Unmodified;
+    return status.installed && status.modified_since_installed != ModifiedSinceInstalled::Unmodified;
 }
 
 bool32 NoInstallationRequired(ExistingInstalledComponent status) {
-    return status.installed && status.modified_since_installed == ExistingInstalledComponent::Unmodified &&
-           (status.version_difference == ExistingInstalledComponent::Equal ||
-            status.version_difference == ExistingInstalledComponent::InstalledIsNewer);
+    return status.installed &&
+           (status.modified_since_installed == ModifiedSinceInstalled::Unmodified ||
+            status.modified_since_installed == ModifiedSinceInstalled::UnmodifiedButFilesAdded) &&
+           (status.version_difference == VersionDifference::Equal ||
+            status.version_difference == VersionDifference::InstalledIsNewer);
 }
 
 static ErrorCodeOr<ExistingInstalledComponent>
@@ -54,8 +56,8 @@ LibraryCheckExistingInstallation(Component const& component,
             // MDATAs are a legacy format so a Lua library with the same ID must be newer.
             return ExistingInstalledComponent {
                 .installed = true,
-                .version_difference = ExistingInstalledComponent::InstalledIsOlder,
-                .modified_since_installed = ExistingInstalledComponent::Unmodified,
+                .version_difference = VersionDifference::InstalledIsOlder,
+                .modified_since_installed = ModifiedSinceInstalled::Unmodified,
             };
         } else {
             // We just assume that if the package MDATA is different from the installed MDATA, then it should
@@ -64,9 +66,9 @@ LibraryCheckExistingInstallation(Component const& component,
                 .installed = true,
                 .version_difference = TRY(ChecksumForFile(existing_matching_library->path, scratch_arena)) ==
                                               *component.mdata_checksum
-                                          ? ExistingInstalledComponent::Equal
-                                          : ExistingInstalledComponent::InstalledIsOlder,
-                .modified_since_installed = ExistingInstalledComponent::Unmodified,
+                                          ? VersionDifference::Equal
+                                          : VersionDifference::InstalledIsOlder,
+                .modified_since_installed = ModifiedSinceInstalled::Unmodified,
             };
         }
     }
@@ -76,38 +78,66 @@ LibraryCheckExistingInstallation(Component const& component,
 
     auto const actual_checksums = TRY(ChecksumsForFolder(existing_folder, scratch_arena, scratch_arena));
 
-    if (!ChecksumsDiffer(component.checksum_values, actual_checksums, k_nullopt))
+    if (CompareChecksums(component.checksum_values,
+                         actual_checksums,
+                         {.test_table_allowed_extra_files = true}) != CompareChecksumsResult::Differ)
         return ExistingInstalledComponent {
             .installed = true,
-            .version_difference = ExistingInstalledComponent::Equal,
-            .modified_since_installed = ExistingInstalledComponent::Unmodified,
+            .version_difference = VersionDifference::Equal,
+            .modified_since_installed = ModifiedSinceInstalled::Unmodified,
         };
 
-    ExistingInstalledComponent result = {.installed = true};
+    return ExistingInstalledComponent {
+        .installed = true,
+        .version_difference = ({
+            VersionDifference v {};
+            if (existing_matching_library->minor_version < component.library->minor_version)
+                v = VersionDifference::InstalledIsOlder;
+            else if (existing_matching_library->minor_version > component.library->minor_version)
+                v = VersionDifference::InstalledIsNewer;
+            else
+                v = VersionDifference::Equal;
+            v;
+        }),
+        .modified_since_installed = ({
+            ModifiedSinceInstalled m {};
 
-    auto const checksum_file_path = path::Join(scratch_arena, Array {existing_folder, k_checksums_file});
-    if (auto const o = ReadEntireFile(checksum_file_path, scratch_arena); !o.HasError()) {
-        auto const stored_checksums = ParseChecksumFile(o.Value(), scratch_arena);
-        if (stored_checksums.HasValue() &&
-            !ChecksumsDiffer(stored_checksums.Value(), actual_checksums, k_nullopt)) {
-            result.modified_since_installed = ExistingInstalledComponent::Unmodified;
-        } else {
-            // The library has been modified since it was installed. OR the checksum file is badly formatted,
-            // which presumably means it was modified.
-            result.modified_since_installed = ExistingInstalledComponent::Modified;
-        }
-    } else {
-        result.modified_since_installed = ExistingInstalledComponent::MaybeModified;
-    }
-
-    if (existing_matching_library->minor_version < component.library->minor_version)
-        result.version_difference = ExistingInstalledComponent::InstalledIsOlder;
-    else if (existing_matching_library->minor_version > component.library->minor_version)
-        result.version_difference = ExistingInstalledComponent::InstalledIsNewer;
-    else
-        result.version_difference = ExistingInstalledComponent::Equal;
-
-    return result;
+            if (auto const o =
+                    ReadEntireFile(path::Join(scratch_arena, Array {existing_folder, k_checksums_file}),
+                                   scratch_arena);
+                !o.HasError()) {
+                if (auto const stored_checksums = ParseChecksumFile(o.Value(), scratch_arena);
+                    stored_checksums.HasValue()) {
+                    switch (CompareChecksums(stored_checksums.Value(),
+                                             actual_checksums,
+                                             {
+                                                 .test_table_allowed_extra_files = true,
+                                                 .ignore_extra_auto_generated_files = true,
+                                             })) {
+                        case CompareChecksumsResult::Same: {
+                            m = ModifiedSinceInstalled::Unmodified;
+                            break;
+                        }
+                        case CompareChecksumsResult::SameButHasExtraFiles: {
+                            m = ModifiedSinceInstalled::UnmodifiedButFilesAdded;
+                            break;
+                        }
+                        case CompareChecksumsResult::Differ: {
+                            m = ModifiedSinceInstalled::Modified;
+                            break;
+                        }
+                    }
+                } else {
+                    // The checksum file is badly formatted, which presumably means it was modified.
+                    m = ModifiedSinceInstalled::Modified;
+                }
+            } else {
+                // We couldn't read the existing checksum (maybe it doesn't exist).
+                m = ModifiedSinceInstalled::MaybeModified;
+            }
+            m;
+        }),
+    };
 }
 
 // We don't actually check the checksums file of a presets folder. All we do is check if the exact files from
@@ -183,8 +213,8 @@ PresetsCheckExistingInstallation(Component const& component,
                 if (matches_exactly)
                     return ExistingInstalledComponent {
                         .installed = true,
-                        .version_difference = ExistingInstalledComponent::Equal,
-                        .modified_since_installed = ExistingInstalledComponent::Unmodified,
+                        .version_difference = VersionDifference::Equal,
+                        .modified_since_installed = ModifiedSinceInstalled::Unmodified,
                     };
             }
         }
@@ -778,8 +808,7 @@ String TypeOfActionTaken(ExistingInstalledComponent existing_installation_status
         switch (user_decision) {
             case InstallJob::UserDecision::Unknown: PanicIfReached();
             case InstallJob::UserDecision::Overwrite: {
-                if (existing_installation_status.version_difference ==
-                    ExistingInstalledComponent::InstalledIsOlder)
+                if (existing_installation_status.version_difference == VersionDifference::InstalledIsOlder)
                     return "updated";
                 else
                     return "overwritten";
@@ -789,7 +818,7 @@ String TypeOfActionTaken(ExistingInstalledComponent existing_installation_status
     }
 
     if (NoInstallationRequired(existing_installation_status)) {
-        if (existing_installation_status.version_difference == ExistingInstalledComponent::InstalledIsNewer) {
+        if (existing_installation_status.version_difference == VersionDifference::InstalledIsNewer) {
             return "newer version already installed";
         } else {
             ASSERT(existing_installation_status.installed);
@@ -798,8 +827,8 @@ String TypeOfActionTaken(ExistingInstalledComponent existing_installation_status
     }
 
     if (existing_installation_status.installed &&
-        existing_installation_status.version_difference == ExistingInstalledComponent::InstalledIsOlder &&
-        existing_installation_status.modified_since_installed == ExistingInstalledComponent::Unmodified) {
+        existing_installation_status.version_difference == VersionDifference::InstalledIsOlder &&
+        existing_installation_status.modified_since_installed == ModifiedSinceInstalled::Unmodified) {
         return "updated";
     }
 
@@ -1102,14 +1131,14 @@ TEST_CASE(TestPackageInstallation) {
                  .expected_state = InstallJob::State::DoneSuccess,
                  .expected_library_status {
                      .installed = true,
-                     .version_difference = ExistingInstalledComponent::Equal,
-                     .modified_since_installed = ExistingInstalledComponent::Unmodified,
+                     .version_difference = VersionDifference::Equal,
+                     .modified_since_installed = ModifiedSinceInstalled::Unmodified,
                  },
                  .expected_library_action = "already installed"_s,
                  .expected_presets_status {
                      .installed = true,
-                     .version_difference = ExistingInstalledComponent::Equal,
-                     .modified_since_installed = ExistingInstalledComponent::Unmodified,
+                     .version_difference = VersionDifference::Equal,
+                     .modified_since_installed = ModifiedSinceInstalled::Unmodified,
                  },
                  .expected_presets_action = "already installed"_s,
              }));
@@ -1147,8 +1176,8 @@ TEST_CASE(TestPackageInstallation) {
 
                  .expected_library_status {
                      .installed = true,
-                     .version_difference = ExistingInstalledComponent::Equal,
-                     .modified_since_installed = ExistingInstalledComponent::Modified,
+                     .version_difference = VersionDifference::Equal,
+                     .modified_since_installed = ModifiedSinceInstalled::Modified,
                  },
                  .expected_library_action = "skipped"_s,
                  .library_user_decision = InstallJob::UserDecision::Skip,
@@ -1169,8 +1198,8 @@ TEST_CASE(TestPackageInstallation) {
 
                  .expected_library_status {
                      .installed = true,
-                     .version_difference = ExistingInstalledComponent::Equal,
-                     .modified_since_installed = ExistingInstalledComponent::Modified,
+                     .version_difference = VersionDifference::Equal,
+                     .modified_since_installed = ModifiedSinceInstalled::Modified,
                  },
                  .expected_library_action = "overwritten"_s,
                  .library_user_decision = InstallJob::UserDecision::Overwrite,
@@ -1180,8 +1209,8 @@ TEST_CASE(TestPackageInstallation) {
                  // this installation.
                  .expected_presets_status {
                      .installed = true,
-                     .version_difference = ExistingInstalledComponent::Equal,
-                     .modified_since_installed = ExistingInstalledComponent::Unmodified,
+                     .version_difference = VersionDifference::Equal,
+                     .modified_since_installed = ModifiedSinceInstalled::Unmodified,
                  },
                  .expected_presets_action = "already installed"_s,
              }));
@@ -1201,8 +1230,8 @@ TEST_CASE(TestPackageInstallation) {
 
                  .expected_library_status {
                      .installed = true,
-                     .version_difference = ExistingInstalledComponent::Equal,
-                     .modified_since_installed = ExistingInstalledComponent::Modified,
+                     .version_difference = VersionDifference::Equal,
+                     .modified_since_installed = ModifiedSinceInstalled::Modified,
                  },
                  .expected_library_action = "overwritten"_s,
                  .library_user_decision = InstallJob::UserDecision::Overwrite,
@@ -1212,8 +1241,8 @@ TEST_CASE(TestPackageInstallation) {
                  // this installation.
                  .expected_presets_status {
                      .installed = true,
-                     .version_difference = ExistingInstalledComponent::Equal,
-                     .modified_since_installed = ExistingInstalledComponent::Unmodified,
+                     .version_difference = VersionDifference::Equal,
+                     .modified_since_installed = ModifiedSinceInstalled::Unmodified,
                  },
                  .expected_presets_action = "already installed"_s,
              }));
@@ -1229,15 +1258,15 @@ TEST_CASE(TestPackageInstallation) {
 
                  .expected_library_status {
                      .installed = true,
-                     .version_difference = ExistingInstalledComponent::InstalledIsOlder,
-                     .modified_since_installed = ExistingInstalledComponent::Unmodified,
+                     .version_difference = VersionDifference::InstalledIsOlder,
+                     .modified_since_installed = ModifiedSinceInstalled::Unmodified,
                  },
                  .expected_library_action = "updated"_s,
 
                  .expected_presets_status {
                      .installed = true,
-                     .version_difference = ExistingInstalledComponent::Equal,
-                     .modified_since_installed = ExistingInstalledComponent::Unmodified,
+                     .version_difference = VersionDifference::Equal,
+                     .modified_since_installed = ModifiedSinceInstalled::Unmodified,
                  },
                  .expected_presets_action = "already installed"_s,
              }));
@@ -1253,15 +1282,15 @@ TEST_CASE(TestPackageInstallation) {
 
                  .expected_library_status {
                      .installed = true,
-                     .version_difference = ExistingInstalledComponent::InstalledIsNewer,
-                     .modified_since_installed = ExistingInstalledComponent::Unmodified,
+                     .version_difference = VersionDifference::InstalledIsNewer,
+                     .modified_since_installed = ModifiedSinceInstalled::Unmodified,
                  },
                  .expected_library_action = "newer version already installed"_s,
 
                  .expected_presets_status {
                      .installed = true,
-                     .version_difference = ExistingInstalledComponent::Equal,
-                     .modified_since_installed = ExistingInstalledComponent::Unmodified,
+                     .version_difference = VersionDifference::Equal,
+                     .modified_since_installed = ModifiedSinceInstalled::Unmodified,
                  },
                  .expected_presets_action = "already installed"_s,
              }));
@@ -1293,8 +1322,8 @@ TEST_CASE(TestPackageInstallation) {
 
                  .expected_library_status {
                      .installed = true,
-                     .version_difference = ExistingInstalledComponent::Equal,
-                     .modified_since_installed = ExistingInstalledComponent::Unmodified,
+                     .version_difference = VersionDifference::Equal,
+                     .modified_since_installed = ModifiedSinceInstalled::Unmodified,
                  },
                  .expected_library_action = "already installed"_s,
              }));
@@ -1304,14 +1333,8 @@ TEST_CASE(TestPackageInstallation) {
 
 TEST_CASE(TestTypeOfActionTaken) {
     for (auto const installed : Array {true, false}) {
-        for (auto const version_difference :
-             Array {ExistingInstalledComponent::VersionDifference::Equal,
-                    ExistingInstalledComponent::VersionDifference::InstalledIsOlder,
-                    ExistingInstalledComponent::VersionDifference::InstalledIsNewer}) {
-            for (auto const modified_since_installed :
-                 Array {ExistingInstalledComponent::ModifiedSinceInstalled::Modified,
-                        ExistingInstalledComponent::ModifiedSinceInstalled::MaybeModified,
-                        ExistingInstalledComponent::ModifiedSinceInstalled::Unmodified}) {
+        for (auto const version_difference : EnumIterator<VersionDifference>()) {
+            for (auto const modified_since_installed : EnumIterator<ModifiedSinceInstalled>()) {
                 for (auto const user_decision :
                      Array {InstallJob::UserDecision::Overwrite, InstallJob::UserDecision::Skip}) {
                     auto const status = ExistingInstalledComponent {
@@ -1321,8 +1344,6 @@ TEST_CASE(TestTypeOfActionTaken) {
                     };
 
                     auto const action_taken = TypeOfActionTaken(status, user_decision);
-
-                    (void)action_taken;
 
                     CAPTURE(status);
                     CAPTURE(user_decision);
