@@ -820,7 +820,7 @@ TEST_CASE(TestDirectoryWatcher) {
 TEST_CASE(TestDirectoryWatcherErrors) {
     auto& a = tester.scratch_arena;
 
-    auto const dir = tests::TempFolderUnique(tester);
+    auto const non_existent_dir = tests::TempFilename(tester);
 
     auto watcher = TRY(CreateDirectoryWatcher(a));
     DEFER { DestoryDirectoryWatcher(watcher); };
@@ -829,7 +829,7 @@ TEST_CASE(TestDirectoryWatcherErrors) {
         auto const outcome = PollDirectoryChanges(watcher,
                                                   PollDirectoryChangesArgs {
                                                       .dirs_to_watch = Array {DirectoryToWatch {
-                                                          .path = dir,
+                                                          .path = non_existent_dir,
                                                           .recursive = false,
                                                       }},
                                                       .retry_failed_directories = false,
@@ -852,7 +852,7 @@ TEST_CASE(TestDirectoryWatcherErrors) {
         auto const outcome = PollDirectoryChanges(watcher,
                                                   PollDirectoryChangesArgs {
                                                       .dirs_to_watch = Array {DirectoryToWatch {
-                                                          .path = dir,
+                                                          .path = non_existent_dir,
                                                           .recursive = false,
                                                       }},
                                                       .retry_failed_directories = false,
@@ -869,7 +869,7 @@ TEST_CASE(TestDirectoryWatcherErrors) {
         auto const outcome = PollDirectoryChanges(watcher,
                                                   PollDirectoryChangesArgs {
                                                       .dirs_to_watch = Array {DirectoryToWatch {
-                                                          .path = dir,
+                                                          .path = non_existent_dir,
                                                           .recursive = false,
                                                       }},
                                                       .retry_failed_directories = true,
