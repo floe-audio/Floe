@@ -5,6 +5,7 @@
 
 #include "tests/framework.hpp"
 
+#include "common_infrastructure/common_errors.hpp"
 #include "common_infrastructure/error_reporting.hpp"
 
 namespace fmt {
@@ -87,6 +88,9 @@ LibraryCheckExistingInstallation(Component const& component,
             .modified_since_installed = ModifiedSinceInstalled::Unmodified,
         };
 
+    Optional<Writer> diff_log {};
+    if constexpr (!PRODUCTION_BUILD) diff_log = StdWriter(StdStream::Err);
+
     return ExistingInstalledComponent {
         .installed = true,
         .version_difference = ({
@@ -108,11 +112,17 @@ LibraryCheckExistingInstallation(Component const& component,
                 !o.HasError()) {
                 if (auto const stored_checksums = ParseChecksumFile(o.Value(), scratch_arena);
                     stored_checksums.HasValue()) {
+                    static constexpr auto k_allowed_extras =
+                        ConcatArrays(CompareChecksumsOptions::k_default_allowed_files,
+                                     ArrayT<CompareChecksumsOptions::ExtraFile>({
+                                         {k_checksums_file, false},
+                                     }));
                     switch (CompareChecksums(stored_checksums.Value(),
                                              actual_checksums,
                                              {
                                                  .test_table_allowed_extra_files = true,
-                                                 .ignore_extra_auto_generated_files = true,
+                                                 .allowed_extra_files = k_allowed_extras,
+                                                 .diff_log = diff_log,
                                              })) {
                         case CompareChecksumsResult::Same: {
                             m = ModifiedSinceInstalled::Unmodified;
@@ -1092,6 +1102,90 @@ String CreatePackageZipFile(tests::Tester& tester, String lib_subpath, bool incl
     return zip_path;
 }
 
+TEST_CASE(TestPackageInstallationExtraFiles) {
+    auto const destination_folder = tests::TempFolderUnique(tester);
+
+    ThreadPool thread_pool;
+    thread_pool.Init("pkg-install", {});
+    ThreadsafeErrorNotifications error_notif;
+    sample_lib_server::Server server {thread_pool, destination_folder, error_notif};
+
+    auto const zip_path_v1 = CreatePackageZipFile(tester, "Test-Lib-1/floe.lua", false);
+    auto const zip_path_v2 = CreatePackageZipFile(tester, "Test-Lib-1-v2/floe.lua", false);
+
+    CreateJobOptions job_opts {
+        .zip_path = zip_path_v1,
+        .install_folders = {destination_folder, destination_folder},
+        .server = server,
+        .preset_folders = Array {destination_folder},
+    };
+
+    // Install the library.
+    {
+        auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
+        DEFER { DestroyInstallJob(job); };
+        DoJobPhase1(*job); // Should do both phases.
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::DoneSuccess);
+        auto const& comp = job->components.first->data;
+        CHECK(!comp.existing_installation_status.installed);
+    }
+
+    auto const extra_file_path =
+        path::Join(tester.scratch_arena,
+                   Array {destination_folder, "Tester - Test Lua", "my-extra-file.txt"});
+    // Add an additional, unrelated file to the folder.
+    {
+        TRY(WriteFile(extra_file_path, "Extra file content"_s));
+        sample_lib_server::RescanFolder(server, destination_folder);
+    }
+
+    // Trying to install again should do nothing; it's already installed exactly, it just has an extra file.
+    {
+        auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
+        DEFER { DestroyInstallJob(job); };
+        DoJobPhase1(*job);
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::DoneSuccess);
+        auto const& comp = job->components.first->data;
+        CHECK(comp.existing_installation_status.installed);
+        CHECK_EQ(comp.existing_installation_status.version_difference, VersionDifference::Equal);
+        CHECK_EQ(comp.existing_installation_status.modified_since_installed,
+                 ModifiedSinceInstalled::Unmodified);
+
+        // The file should still exist.
+        auto const type = REQUIRE_UNWRAP(GetFileType(extra_file_path));
+        CHECK_EQ(type, FileType::File);
+    }
+
+    // Update to a new version - this should prompt user input because overwriting the existing folder would
+    // delete the extra file that was added - we should be asking permission before doing that.
+    job_opts.zip_path = zip_path_v2;
+    {
+        auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
+        DEFER { DestroyInstallJob(job); };
+        DoJobPhase1(*job);
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::AwaitingUserInput);
+        auto& comp = job->components.first->data;
+        CHECK(comp.existing_installation_status.installed);
+        CHECK_EQ(comp.existing_installation_status.version_difference, VersionDifference::InstalledIsOlder);
+        CHECK_EQ(comp.existing_installation_status.modified_since_installed,
+                 ModifiedSinceInstalled::UnmodifiedButFilesAdded);
+
+        // Let's say to overwrite.
+        comp.user_decision = InstallJob::UserDecision::Overwrite;
+        job->state.Store(InstallJob::State::Installing, StoreMemoryOrder::Release);
+
+        DoJobPhase2(*job);
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::DoneSuccess);
+
+        // The extra file should no longer exist because we chose to overwrite.
+        auto const o = GetFileType(extra_file_path);
+        REQUIRE(o.HasError());
+        CHECK(o.Error() == FilesystemError::PathDoesNotExist);
+    }
+
+    return k_success;
+}
+
 TEST_CASE(TestPackageInstallation) {
     auto const destination_folder = tests::TempFolderUnique(tester);
 
@@ -1536,6 +1630,7 @@ TEST_CASE(TestFindNextNonExistentFilename) {
 } // namespace package
 
 TEST_REGISTRATION(RegisterPackageInstallationTests) {
+    REGISTER_TEST(package::TestPackageInstallationExtraFiles);
     REGISTER_TEST(package::TestPackageInstallation);
     REGISTER_TEST(package::TestTypeOfActionTaken);
     REGISTER_TEST(package::TestParseFilenameWithSuffix);
