@@ -311,10 +311,11 @@ void ReplacePreferences(Preferences& preferences,
 Optional<usize> Init(Preferences& preferences, Span<String const> possible_paths);
 void Deinit(Preferences& preferences);
 
-void WriteIfNeeded(Preferences& preferences);
+void WriteIfNeeded(Preferences& preferences, Optional<String> override_write_path = {});
 
 struct PollForExternalChangesOptions {
     bool ignore_rate_limiting {};
+    Optional<String> override_write_path {};
 };
 
 void PollForExternalChanges(Preferences& preferences, PollForExternalChangesOptions options = {});
