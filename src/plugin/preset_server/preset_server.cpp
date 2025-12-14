@@ -167,6 +167,36 @@ void StartScanningIfNeeded(PresetServer& server) {
     server.enable_scanning.Store(true, StoreMemoryOrder::Relaxed);
 }
 
+static u64 OldestVersion(Span<u64> versions) {
+    auto oldest = versions[0];
+    for (auto const v : versions)
+        oldest = Min(oldest, v);
+    return oldest;
+}
+
+// Reader thread
+static void BeginReaderUsingVersion(MutexProtected<DynamicArray<u64>>& active_versions,
+                                    Atomic<u64>& oldest_version_in_use,
+                                    u64 version) {
+    active_versions.Use([&](auto& array) {
+        dyn::Append(array, version);
+        oldest_version_in_use.Store(OldestVersion(array), StoreMemoryOrder::Release);
+    });
+}
+
+// Reader thread
+static void EndReaderUsingVersion(MutexProtected<DynamicArray<u64>>& active_versions,
+                                  Atomic<u64>& oldest_version_in_use,
+                                  u64 version) {
+    active_versions.Use([&](auto& array) {
+        dyn::RemoveValueSwapLast(array, version);
+        if (array.size == 0)
+            oldest_version_in_use.Store(PresetServer::k_no_version, StoreMemoryOrder::Release);
+        else
+            oldest_version_in_use.Store(OldestVersion(array), StoreMemoryOrder::Release);
+    });
+}
+
 // Reader thread
 BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
     // Trigger the server to start the scanning process if its not already doing so.
@@ -175,18 +205,7 @@ BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& ar
     // We tell the server that we're reading the current version so that it knows not to delete any folders
     // that we might be using.
     auto const current_version = server.published_version.Load(LoadMemoryOrder::Acquire);
-    {
-        server.active_readers_mutex.Lock();
-        DEFER { server.active_readers_mutex.Unlock(); };
-
-        dyn::Append(server.active_reader_versions, current_version);
-
-        // Update the oldest version in use
-        auto oldest = current_version;
-        for (auto const v : server.active_reader_versions)
-            oldest = Min(oldest, v);
-        server.oldest_version_in_use.Store(oldest, StoreMemoryOrder::Release);
-    }
+    BeginReaderUsingVersion(server.active_reader_versions, server.oldest_version_in_use, current_version);
 
     // We take a snapshot of the folders list so that the server can continue to modify it while we're
     // reading and we don't have to do locking or reference counting. We only copy pointers.
@@ -225,23 +244,7 @@ BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& ar
 }
 
 void EndReadFolders(PresetServer& server, PresetServerReadHandle handle) {
-    auto const version = (u64)handle;
-
-    server.active_readers_mutex.Lock();
-    DEFER { server.active_readers_mutex.Unlock(); };
-
-    // Remove this reader's version
-    dyn::RemoveValueSwapLast(server.active_reader_versions, version);
-
-    // Recalculate oldest version
-    if (server.active_reader_versions.size == 0) {
-        server.oldest_version_in_use.Store(PresetServer::k_no_version, StoreMemoryOrder::Release);
-    } else {
-        auto oldest = server.active_reader_versions[0];
-        for (auto const v : server.active_reader_versions)
-            oldest = Min(oldest, v);
-        server.oldest_version_in_use.Store(oldest, StoreMemoryOrder::Release);
-    }
+    EndReaderUsingVersion(server.active_reader_versions, server.oldest_version_in_use, (u64)handle);
 }
 
 static bool FolderIsSafeForDeletion(PresetFolder const& folder, u64 current_version, u64 in_use_version) {

@@ -72,8 +72,7 @@ struct PresetServer {
     Atomic<u64> published_version {};
 
     // Multiple readers support: track all active reader versions and maintain the oldest
-    Mutex active_readers_mutex;
-    DynamicArray<u64> active_reader_versions {Malloc::Instance()};
+    MutexProtected<DynamicArray<u64>> active_reader_versions {Malloc::Instance()};
     Atomic<u64> oldest_version_in_use = k_no_version;
 
     // The next fields are versioned and mutex protected
