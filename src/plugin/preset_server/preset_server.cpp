@@ -1194,11 +1194,14 @@ bool WaitIfFoldersAreScanning(PresetServer& server, Optional<u32> timeout) {
 bool AreFoldersScanning(PresetServer& server) { return !WaitIfFoldersAreScanning(server, 0u); }
 
 void SetExtraScanFolders(PresetServer& server, Span<String const> folders) {
-    server.scan_folders_request_mutex.Lock();
-    DEFER { server.scan_folders_request_mutex.Unlock(); };
+    {
+        server.scan_folders_request_mutex.Lock();
+        DEFER { server.scan_folders_request_mutex.Unlock(); };
 
-    server.scan_folders_request = server.scan_folders_request_arena.Clone(folders, CloneType::Deep);
-    server.is_scanning.Store(true, StoreMemoryOrder::Release);
+        server.scan_folders_request = server.scan_folders_request_arena.Clone(folders, CloneType::Deep);
+        server.is_scanning.Store(true, StoreMemoryOrder::Release);
+    }
+    server.work_signaller.Signal();
 }
 
 void InitPresetServer(PresetServer& server, String always_scanned_folder) {
