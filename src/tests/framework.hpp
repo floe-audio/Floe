@@ -245,7 +245,7 @@ String TempFolder(Tester& tester);
 // it will cleanup up after the program exits.
 String TempFolderUnique(Tester& tester);
 
-// Get a unique name inside the runner's temp folder. It doesn't exist but it's in a folder that does.
+// Get a unique name inside a TempFolderUnique(). It doesn't exist but it's in a folder that does.
 String TempFilename(Tester& tester);
 
 String TestFilesFolder(Tester& tester); // this repo's folder that contains test files

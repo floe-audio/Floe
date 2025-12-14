@@ -37,18 +37,22 @@ String TempFolder(Tester& tester) {
     return *tester.temp_folder;
 }
 
-String TempFilename(Tester& tester) {
-    auto folder = TempFolder(tester);
-    auto filename = UniqueFilename("tmp-", "", tester.random_seed);
-    return path::Join(tester.scratch_arena, Array {folder, filename});
-}
+static auto UniqueFilename(Tester& tester) { return ::UniqueFilename("tmp-", "", tester.random_seed); }
 
 String TempFolderUnique(Tester& tester) {
-    auto const path = TempFilename(tester);
+    auto const folder = TempFolder(tester);
+    auto const filename = UniqueFilename(tester);
+    auto const path = path::Join(tester.scratch_arena, Array {folder, filename});
     auto const result =
         CreateDirectory(path, {.create_intermediate_directories = true, .fail_if_exists = true});
     CHECK(result.Succeeded());
     return path;
+}
+
+String TempFilename(Tester& tester) {
+    auto const folder = TempFolderUnique(tester);
+    auto const filename = UniqueFilename(tester);
+    return path::Join(tester.scratch_arena, Array {folder, filename});
 }
 
 static Optional<String> SearchUpwardsFromExeForFolder(Tester& tester, String folder_name) {
