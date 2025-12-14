@@ -119,9 +119,14 @@ struct PresetFolderListing {
     FolderNode const& node;
 };
 
+// If all presets in this folder and all subfolders use the same single library, return that library.
 Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& node);
-PresetBank const* PresetBankForNode(FolderNode const& node);
+
+// The bank associated at with a specific node, if there is any.
+PresetBank const* PresetBankInfoAtNode(FolderNode const& node);
+
 PresetBank const* ContainingPresetBank(FolderNode const* node);
+
 bool IsInsideFolder(PresetFolderListing const* node, usize folder_node_hash);
 
 struct PresetsSnapshot {
@@ -129,7 +134,7 @@ struct PresetsSnapshot {
     Span<PresetFolderListing const*> folders;
 
     // Root nodes of all preset banks. All presets are guaranteed to be inside one of these nodes. Presets
-    // that aren't explicitly put into packs will be smartly grouped into "Miscellaneous Presets" packs.
+    // that aren't explicitly put into banks will be smartly grouped into "Miscellaneous Presets" banks.
     Span<FolderNode const*> preset_banks;
 
     // Additional convenience data

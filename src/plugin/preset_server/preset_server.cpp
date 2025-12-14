@@ -57,7 +57,7 @@ Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& nod
     return k_nullopt;
 }
 
-PresetBank const* PresetBankForNode(FolderNode const& node) {
+PresetBank const* PresetBankInfoAtNode(FolderNode const& node) {
     PresetBank const* metadata {};
     auto const listing = node.user_data.As<PresetFolderListing const>();
     if (listing->folder && listing->folder->preset_bank_info)
@@ -69,7 +69,7 @@ PresetBank const* PresetBankForNode(FolderNode const& node) {
 
 PresetBank const* ContainingPresetBank(FolderNode const* node) {
     for (auto f = node; f; f = f->parent)
-        if (auto const info = PresetBankForNode(*f); info) return info;
+        if (auto const info = PresetBankInfoAtNode(*f); info) return info;
     return nullptr;
 }
 
@@ -496,7 +496,7 @@ struct FoldersAggregateInfo {
     }
 
     // Floe didn't use to have preset banks. To smooth the transition for users, we detect all the preset
-    // packs that existed before the Floe update and fill in the metadata for them.
+    // banks that existed before the Floe update and fill in the metadata for them.
     static PresetBank const* KnownPresetBank(FolderNode const* node) {
         auto const hash = FolderContentsHash(node);
         switch (hash) {
@@ -698,22 +698,21 @@ struct FoldersAggregateInfo {
 
     void Finalise(ArenaAllocator& scratch_arena) {
         for (auto [_, root, _] : scan_folder_nodes) {
-            // Add preset bank info for packs that we know existed before Floe had metadata files.
+            // Add preset bank info for banks that we know existed before Floe had metadata files.
             ForEachNode(root, [&](FolderNode* node) {
                 auto listing = node->user_data.As<PresetFolderListing>();
                 ASSERT(listing);
-                if (auto const metadata = KnownPresetBank(node))
-                    listing->fallback_preset_bank_info = metadata;
+                if (auto const bank = KnownPresetBank(node)) listing->fallback_preset_bank_info = bank;
             });
 
-            DynamicArray<FolderNode*> miscellaneous_packs {scratch_arena};
+            DynamicArray<FolderNode*> miscellaneous_banks {scratch_arena};
 
-            // Add orphaned PresetFolder nodes to new "Miscellaneous" packs.
+            // Add orphaned PresetFolder nodes to new "Miscellaneous" banks.
             ForEachNode(root, [&](FolderNode* node) {
                 if (!node->user_data.As<PresetFolderListing>()->folder) return;
 
                 for (auto n = node; n; n = n->parent)
-                    if (PresetBankForNode(*n)) return;
+                    if (PresetBankInfoAtNode(*n)) return;
 
                 // The node is not part of any bank. We should see if we should create metadata for it
                 // by again walking up the tree, this time looking for the topmost parent that has a
@@ -725,30 +724,30 @@ struct FoldersAggregateInfo {
                 // Walk back down the lineage looking for a PresetFolder, we use the topmost one we find.
                 for (usize i = lineage.size; i-- > 0;) {
                     if (auto listing = lineage[i]->user_data.As<PresetFolderListing>(); listing->folder) {
-                        dyn::AppendIfNotAlreadyThere(miscellaneous_packs, lineage[i]);
+                        dyn::AppendIfNotAlreadyThere(miscellaneous_banks, lineage[i]);
                         break;
                     }
                 }
             });
 
-            if (miscellaneous_packs.size) {
+            if (miscellaneous_banks.size) {
                 static constexpr PresetBank k_miscellaneous_info {
                     .id = HashComptime("misc"),
                     .subtitle = ""_s,
                 };
-                auto const node = FirstCommonAncestor(miscellaneous_packs, scratch_arena);
+                auto const node = FirstCommonAncestor(miscellaneous_banks, scratch_arena);
                 auto listing = node->user_data.As<PresetFolderListing>();
                 listing->fallback_preset_bank_info = &k_miscellaneous_info;
             }
 
             ForEachNode(root, [&](FolderNode* node) {
-                if (auto m = PresetBankForNode(*node)) {
-                    // Since we consider nesting of folders to be unimportant when identifying legacy packs,
+                if (auto m = PresetBankInfoAtNode(*node)) {
+                    // Since we consider nesting of folders to be unimportant when identifying legacy banks,
                     // we can end up with the subfolder having the same metadata as the parent. We don't want
-                    // to list both as separate packs so we walk up the tree to find the topmost folder with
+                    // to list both as separate banks so we walk up the tree to find the topmost folder with
                     // the same metadata. This was quite common with the old Mirage factory presets which had
                     // folders like LibraryName/Factory.
-                    for (; node->parent && PresetBankForNode(*node->parent) == m; node = node->parent)
+                    for (; node->parent && PresetBankInfoAtNode(*node->parent) == m; node = node->parent)
                         ;
                     auto const index = CheckedCast<usize>(node - folder_node_allocator.folders.data);
                     dyn::AppendIfNotAlreadyThere(folder_node_preset_bank_indices, index);

@@ -403,11 +403,11 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
             .button_fired) {
         if (({
                 bool has_child_pack = false;
-                auto root_pack = PresetBankForNode(*folder);
+                auto root_pack = PresetBankInfoAtNode(*folder);
                 ForEachNode((FolderNode*)folder, [&](FolderNode const* node) {
                     if (has_child_pack) return;
                     if (node == folder) return;
-                    auto bank = PresetBankForNode(*node);
+                    auto bank = PresetBankInfoAtNode(*node);
                     if (!bank) return;
                     if (root_pack != bank) has_child_pack = true;
                 });
@@ -910,7 +910,7 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                                 .sample_library_server = context.sample_library_server,
                                 .subtext = ({
                                     String s {};
-                                    if (auto const m = PresetBankForNode(*folder))
+                                    if (auto const m = PresetBankInfoAtNode(*folder))
                                         s = m->subtitle;
                                     else
                                         s = "Preset folder";
