@@ -422,9 +422,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .package_install_jobs = g->engine.package_install_jobs,
                 .thread_pool = g->shared_engine_systems.thread_pool,
                 .file_picker_state = g->file_picker_state,
+                .presets_server = g->shared_engine_systems.preset_server,
             };
-            context.Init(g->shared_engine_systems.preset_server, g->scratch_arena);
-            DEFER { context.Deinit(g->shared_engine_systems.preset_server); };
 
             DoPreferencesPanel(g->box_system, context, g->preferences_panel_state);
         }
