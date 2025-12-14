@@ -1150,6 +1150,18 @@ static void ServerThread(PresetServer& server) {
             }
         }
 
+        // At the end of the tick, check if we can set is_scanning to false.
+        {
+            server.scan_folders_request_mutex.Lock();
+            DEFER { server.scan_folders_request_mutex.Unlock(); };
+            auto const any_needs_scan = FindIf(server.scan_folders, [](auto const& f) { return !f.scanned; });
+            auto const has_rescan_request = server.scan_folders_request.HasValue();
+            if (!any_needs_scan && !has_rescan_request) {
+                if (server.is_scanning.Exchange(false, RmwMemoryOrder::AcquireRelease))
+                    WakeWaitingThreads(server.is_scanning, NumWaitingThreads::All);
+            }
+        }
+
         DeleteUnusedFolders(server);
     }
 
@@ -1157,11 +1169,36 @@ static void ServerThread(PresetServer& server) {
     server.folder_pool.Clear();
 }
 
+bool WaitIfFoldersAreScanning(PresetServer& server, Optional<u32> timeout) {
+    ASSERT(server.enable_scanning.Load(LoadMemoryOrder::Acquire));
+
+    Stopwatch stopwatch;
+    while (true) {
+        auto const elapsed = stopwatch.MicrosecondsElapsed();
+        if (timeout && *timeout != 0 && elapsed >= *timeout) return false;
+
+        if (server.is_scanning.Load(LoadMemoryOrder::Acquire)) {
+            if (timeout && *timeout == 0) return false;
+            WaitIfValueIsExpected(server.is_scanning,
+                                  true,
+                                  timeout ? CheckedCast<u32>(*timeout - elapsed) : k_nullopt);
+            continue;
+        } else {
+            break;
+        }
+    }
+
+    return true;
+}
+
+bool AreFoldersScanning(PresetServer& server) { return !WaitIfFoldersAreScanning(server, 0u); }
+
 void SetExtraScanFolders(PresetServer& server, Span<String const> folders) {
     server.scan_folders_request_mutex.Lock();
     DEFER { server.scan_folders_request_mutex.Unlock(); };
 
     server.scan_folders_request = server.scan_folders_request_arena.Clone(folders, CloneType::Deep);
+    server.is_scanning.Store(true, StoreMemoryOrder::Release);
 }
 
 void InitPresetServer(PresetServer& server, String always_scanned_folder) {
@@ -1171,6 +1208,7 @@ void InitPresetServer(PresetServer& server, String always_scanned_folder) {
                     // We can use the server arena directly because the server thread isn't running yet.
                     .path = {server.arena.Clone(always_scanned_folder)},
                 });
+    server.is_scanning.Store(true, StoreMemoryOrder::Release);
 
     server.thread.Start([&server]() { ServerThread(server); }, "presets");
 }
@@ -1179,4 +1217,6 @@ void ShutdownPresetServer(PresetServer& server) {
     server.end_thread.Store(true, StoreMemoryOrder::Release);
     server.work_signaller.Signal();
     server.thread.Join();
+    if (server.is_scanning.Exchange(false, RmwMemoryOrder::AcquireRelease))
+        WakeWaitingThreads(server.is_scanning, NumWaitingThreads::All);
 }

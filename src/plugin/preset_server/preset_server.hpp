@@ -96,6 +96,7 @@ struct PresetServer {
     Atomic<bool> end_thread {false};
 
     Atomic<bool> enable_scanning {};
+    Atomic<u32> is_scanning {};
 };
 
 void InitPresetServer(PresetServer& server, String always_scanned_folder);
@@ -151,3 +152,11 @@ void StartScanningIfNeeded(PresetServer& server);
 
 BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& arena);
 void EndReadFolders(PresetServer& server, PresetServerReadHandle handle);
+
+// Waits until all folders have finished scanning.
+// Returns true if loading completed, false if timeout was reached. If timeout is nullopt, waits indefinitely.
+// If timeout is 0, just returns 'is scanning' status immediately.
+// Must have called StartScanningIfNeeded before this.
+// [threadsafe]
+bool WaitIfFoldersAreScanning(PresetServer& server, Optional<u32> timeout);
+bool AreFoldersScanning(PresetServer& server);
