@@ -113,8 +113,13 @@ ChecksumsForFolder(String folder, ArenaAllocator& arena, ArenaAllocator& scratch
                                                 }));
     DEFER { dir_iterator::Destroy(it); };
 
+    ArenaAllocator inner_arena {PageAllocator::Instance()};
+
     while (auto entry = TRY(dir_iterator::Next(it, arena))) {
         if (entry->type == FileType::File) {
+            inner_arena.ResetCursorAndConsolidateRegions();
+
+            if (path::IgnorableSystemFile(entry->subpath)) continue;
 
             auto relative_path = entry->subpath;
             if constexpr (IS_WINDOWS) {
@@ -125,11 +130,8 @@ ChecksumsForFolder(String folder, ArenaAllocator& arena, ArenaAllocator& scratch
             ASSERT(relative_path[0] != '/');
 
             auto const file_data =
-                TRY(ReadEntireFile(dir_iterator::FullPath(it, *entry, scratch_arena), scratch_arena))
+                TRY(ReadEntireFile(dir_iterator::FullPath(it, *entry, inner_arena), inner_arena))
                     .ToByteSpan();
-            DEFER {
-                if (file_data.size) scratch_arena.Free(file_data);
-            };
 
             checksums.InsertGrowIfNeeded(arena,
                                          relative_path,
