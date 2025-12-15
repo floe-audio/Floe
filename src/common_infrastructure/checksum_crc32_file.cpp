@@ -148,26 +148,40 @@ ChecksumsForFolder(String folder, ArenaAllocator& arena, ArenaAllocator& scratch
 CompareChecksumsResult CompareChecksums(ChecksumTable const& authority,
                                         ChecksumTable const& test_table,
                                         CompareChecksumsOptions const& options) {
+    constexpr auto k_debug_log = false;
+
     // We can do some early-out checks.
-    if (!options.diff_log) {
-        if (!options.test_table_allowed_extra_files) {
-            if (authority.size != test_table.size) return CompareChecksumsResult::Differ;
-        } else {
-            if (test_table.size < authority.size) return CompareChecksumsResult::Differ;
-        }
+    if (!options.test_table_allowed_extra_files) {
+        if (authority.size != test_table.size) return CompareChecksumsResult::Differ;
+    } else {
+        if (test_table.size < authority.size) return CompareChecksumsResult::Differ;
     }
 
     for (auto const [key, a_val, key_hash] : authority) {
-        if (auto const b_val = test_table.FindElement(key, key_hash)) {
-            if (a_val.crc32 != b_val->data.crc32 || a_val.file_size != b_val->data.file_size) {
-                if (options.diff_log)
-                    auto _ = fmt::FormatToWriter(*options.diff_log, "File has changed: {}\n", key);
+        if (!options.ignore_path_nesting) {
+            if (auto const b_val = test_table.FindElement(key, key_hash)) {
+                if (a_val.crc32 != b_val->data.crc32 || a_val.file_size != b_val->data.file_size) {
+                    if constexpr (k_debug_log) LogDebug(ModuleName::Package, "File has changed: {}\n", key);
+                    return CompareChecksumsResult::Differ;
+                }
+            } else {
+                if constexpr (k_debug_log) LogDebug(ModuleName::Package, "File is missing: {}\n", key);
                 return CompareChecksumsResult::Differ;
             }
         } else {
-            if (options.diff_log)
-                auto _ = fmt::FormatToWriter(*options.diff_log, "File is missing: {}\n", key);
-            return CompareChecksumsResult::Differ;
+            bool found = false;
+            for (auto const [b_key, b_val, _] : test_table) {
+                if (a_val.crc32 == b_val.crc32 && a_val.file_size == b_val.file_size &&
+                    path::Filename(key) == path::Filename(b_key)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                if constexpr (k_debug_log)
+                    LogDebug(ModuleName::Package, "File is missing/changed: {}\n", key);
+                return CompareChecksumsResult::Differ;
+            }
         }
     }
 
@@ -175,10 +189,9 @@ CompareChecksumsResult CompareChecksums(ChecksumTable const& authority,
     ASSERT(test_table.size >= authority.size);
 
     auto const print_extras_if_needed = [&]() {
-        if (!options.diff_log) return;
+        if constexpr (!k_debug_log) return;
         for (auto const [key, _, key_hash] : test_table)
-            if (!authority.Find(key, key_hash))
-                auto _ = fmt::FormatToWriter(*options.diff_log, "File is extra: {}\n", key);
+            if (!authority.Find(key, key_hash)) LogDebug(ModuleName::Package, "File is extra: {}\n", key);
     };
 
     if (test_table.size == authority.size) {
@@ -186,25 +199,9 @@ CompareChecksumsResult CompareChecksums(ChecksumTable const& authority,
     } else if (!options.test_table_allowed_extra_files) {
         print_extras_if_needed();
         return CompareChecksumsResult::Differ;
-    } else if (!options.allowed_extra_files.size) {
+    } else {
         print_extras_if_needed();
         return CompareChecksumsResult::SameButHasExtraFiles;
-    } else {
-        // There's extra files, but we've been requested to return 'Same' if all these extras are
-        // auto-generated files.
-        bool all_files_are_auto_generated = true;
-        for (auto const [key, _, key_hash] : test_table)
-            if (!authority.Find(key, key_hash)) {
-                if (options.diff_log)
-                    auto _ = fmt::FormatToWriter(*options.diff_log, "File is extra: {}\n", key);
-                if (!FindIf(options.allowed_extra_files, [key](auto const& f) {
-                        return f.filename_match_only ? path::Filename(key) == f.path : key == f.path;
-                    }))
-                    all_files_are_auto_generated = false;
-            }
-
-        return all_files_are_auto_generated ? CompareChecksumsResult::Same
-                                            : CompareChecksumsResult::SameButHasExtraFiles;
     }
 }
 
@@ -228,7 +225,6 @@ TEST_CASE(TestCompareChecksums) {
                                   table1,
                                   {
                                       .test_table_allowed_extra_files = false,
-                                      .allowed_extra_files = {},
                                   }),
                  CompareChecksumsResult::Same);
 
@@ -236,7 +232,6 @@ TEST_CASE(TestCompareChecksums) {
                                   table1,
                                   {
                                       .test_table_allowed_extra_files = true,
-                                      .allowed_extra_files = {},
                                   }),
                  CompareChecksumsResult::Same);
     }
@@ -252,7 +247,6 @@ TEST_CASE(TestCompareChecksums) {
                                       table2,
                                       {
                                           .test_table_allowed_extra_files = false,
-                                          .allowed_extra_files = {},
                                       }),
                      CompareChecksumsResult::Differ);
         }
@@ -269,7 +263,6 @@ TEST_CASE(TestCompareChecksums) {
                                       table2,
                                       {
                                           .test_table_allowed_extra_files = false,
-                                          .allowed_extra_files = {},
                                       }),
                      CompareChecksumsResult::Differ);
         }
@@ -283,7 +276,6 @@ TEST_CASE(TestCompareChecksums) {
                                       table2,
                                       {
                                           .test_table_allowed_extra_files = false,
-                                          .allowed_extra_files = {},
                                       }),
                      CompareChecksumsResult::Differ);
         }
@@ -301,7 +293,6 @@ TEST_CASE(TestCompareChecksums) {
                                   table2,
                                   {
                                       .test_table_allowed_extra_files = false,
-                                      .allowed_extra_files = {},
                                   }),
                  CompareChecksumsResult::Differ);
 
@@ -309,29 +300,8 @@ TEST_CASE(TestCompareChecksums) {
                                   table2,
                                   {
                                       .test_table_allowed_extra_files = true,
-                                      .allowed_extra_files = {},
                                   }),
                  CompareChecksumsResult::SameButHasExtraFiles);
-    }
-
-    SUBCASE("ignore auto-generated files") {
-        auto const checksum_file2 = fmt::Format(tester.scratch_arena,
-                                                "{}\n"
-                                                "851098 23 folder/.DS_Store\n",
-                                                checksum_file1);
-        auto const table2 = TRY(ParseChecksumFile(checksum_file2, tester.scratch_arena));
-        CHECK_EQ(table2.size, table1.size + 1);
-
-        constexpr auto k_extra_allowed = ArrayT<CompareChecksumsOptions::ExtraFile>({
-            {".DS_Store", true},
-        });
-        CHECK_EQ(CompareChecksums(table1,
-                                  table2,
-                                  {
-                                      .test_table_allowed_extra_files = true,
-                                      .allowed_extra_files = k_extra_allowed,
-                                  }),
-                 CompareChecksumsResult::Same);
     }
 
     return k_success;

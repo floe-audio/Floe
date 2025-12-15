@@ -330,6 +330,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
                                   .thread_pool = g->shared_engine_systems.thread_pool,
                                   .scratch_arena = g->scratch_arena,
                                   .sample_lib_server = g->shared_engine_systems.sample_library_server,
+                                  .preset_server = g->shared_engine_systems.preset_server,
                                   .engine = g->engine,
                               });
 

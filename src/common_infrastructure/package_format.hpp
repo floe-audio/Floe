@@ -7,6 +7,8 @@
 #include "foundation/foundation.hpp"
 #include "os/filesystem.hpp"
 
+#include "common_infrastructure/preset_bank_info.hpp"
+
 #include "checksum_crc32_file.hpp"
 #include "sample_library/sample_library.hpp"
 
@@ -32,6 +34,7 @@ enum class PackageError {
     FileCorrupted,
     NotFloePackage,
     InvalidLibrary,
+    InvalidPresetBank,
     AccessDenied,
     FilesystemError,
     NotEmpty,
@@ -54,7 +57,7 @@ void ReaderDeinit(PackageReader& package);
 
 // The individual parts of a package, either a library or a presets folder.
 struct Component {
-    FileType InstallType() const { return mdata_checksum ? FileType::File : FileType::Directory; }
+    FileType InstallFileType() const { return mdata_checksum ? FileType::File : FileType::Directory; }
 
     String path; // path in the zip
     ComponentType type;
@@ -64,6 +67,9 @@ struct Component {
     // Only valid if this component's type is a library. nullptr otherwise. You can't use this library to read
     // library files since they're unextracted, but you can read basic fields like name and author.
     sample_lib::Library* library;
+
+    // Only valid if this component's type is a preset bank.
+    Optional<PresetBank> preset_bank;
 };
 
 // init to 0

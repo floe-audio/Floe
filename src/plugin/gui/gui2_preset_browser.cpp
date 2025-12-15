@@ -30,17 +30,6 @@ static FolderNode const* FindFolderByHash(PresetBrowserContext const& context, u
     return result;
 }
 
-static Optional<String> FolderPath(FolderNode const* folder, ArenaAllocator& arena) {
-    if (!folder) return k_nullopt;
-
-    DynamicArrayBounded<String, 20> parts;
-    for (auto f = folder; f; f = f->parent)
-        dyn::Append(parts, f->name);
-    Reverse(parts);
-
-    return path::Join(arena, parts);
-}
-
 struct PresetCursor {
     bool operator==(PresetCursor const& o) const = default;
     usize folder_index;
@@ -403,11 +392,11 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
             .button_fired) {
         if (({
                 bool has_child_pack = false;
-                auto root_pack = PresetBankInfoAtNode(*folder);
+                auto root_pack = PresetBankAtNode(*folder);
                 ForEachNode((FolderNode*)folder, [&](FolderNode const* node) {
                     if (has_child_pack) return;
                     if (node == folder) return;
-                    auto bank = PresetBankInfoAtNode(*node);
+                    auto bank = PresetBankAtNode(*node);
                     if (!bank) return;
                     if (root_pack != bank) has_child_pack = true;
                 });
@@ -910,7 +899,7 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                                 .sample_library_server = context.sample_library_server,
                                 .subtext = ({
                                     String s {};
-                                    if (auto const m = PresetBankInfoAtNode(*folder))
+                                    if (auto const m = PresetBankAtNode(*folder))
                                         s = m->subtitle;
                                     else
                                         s = "Preset folder";

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "utils/error_notifications.hpp"
+#include "utils/thread_extra/thread_extra.hpp"
 
 #include "common_infrastructure/preset_bank_info.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
@@ -60,6 +61,7 @@ struct PresetServer {
     Mutex scan_folders_request_mutex;
     ArenaAllocator scan_folders_request_arena {Malloc::Instance(), 0, 128};
     Optional<Span<String>> scan_folders_request {};
+    MutexProtected<DynamicArray<char>> rescan_folder_requests {Malloc::Instance()};
 
     ArenaAllocator arena {PageAllocator::Instance()}; // Preset thread
 
@@ -122,19 +124,23 @@ struct PresetFolderListing {
 // If all presets in this folder and all subfolders use the same single library, return that library.
 Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& node);
 
-// The bank associated at with a specific node, if there is any.
-PresetBank const* PresetBankInfoAtNode(FolderNode const& node);
+// The bank associated with a specific node, if there is any.
+PresetBank const* PresetBankAtNode(FolderNode const& node);
 
+// The bank that is node is part of.
 PresetBank const* ContainingPresetBank(FolderNode const* node);
 
-bool IsInsideFolder(PresetFolderListing const* node, usize folder_node_hash);
+bool IsInsideFolder(PresetFolderListing const* listing, usize folder_node_hash);
+
+// Real filepath to the folder.
+Optional<String> FolderPath(FolderNode const* folder, ArenaAllocator& arena);
 
 struct PresetsSnapshot {
-    // Folders that contain presets, sorted. e.i. these will have PresetFolderListing::folder != null.
+    // Folders that contain presets, sorted. These will have PresetFolderListing::folder != null.
     Span<PresetFolderListing const*> folders;
 
     // Root nodes of all preset banks. All presets are guaranteed to be inside one of these nodes. Presets
-    // that aren't explicitly put into banks will be smartly grouped into "Miscellaneous Presets" banks.
+    // that aren't explicitly put into banks will be smartly grouped into "misc" banks with ID 0.
     Span<FolderNode const*> preset_banks;
 
     // Additional convenience data
@@ -165,3 +171,5 @@ void EndReadFolders(PresetServer& server, PresetServerReadHandle handle);
 // [threadsafe]
 bool WaitIfFoldersAreScanning(PresetServer& server, Optional<u32> timeout);
 bool AreFoldersScanning(PresetServer& server);
+
+void RescanFolder(PresetServer& server, String folder);

@@ -57,7 +57,7 @@ Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& nod
     return k_nullopt;
 }
 
-PresetBank const* PresetBankInfoAtNode(FolderNode const& node) {
+PresetBank const* PresetBankAtNode(FolderNode const& node) {
     PresetBank const* metadata {};
     auto const listing = node.user_data.As<PresetFolderListing const>();
     if (listing->folder && listing->folder->preset_bank_info)
@@ -69,8 +69,21 @@ PresetBank const* PresetBankInfoAtNode(FolderNode const& node) {
 
 PresetBank const* ContainingPresetBank(FolderNode const* node) {
     for (auto f = node; f; f = f->parent)
-        if (auto const info = PresetBankInfoAtNode(*f); info) return info;
+        if (auto const info = PresetBankAtNode(*f); info) return info;
     return nullptr;
+}
+
+Optional<String> FolderPath(FolderNode const* folder, ArenaAllocator& arena) {
+    if (!folder) return k_nullopt;
+
+    DynamicArrayBounded<String, 20> parts;
+    for (auto f = folder; f; f = f->parent) {
+        auto const appended = dyn::Append(parts, f->name);
+        ASSERT(appended);
+    }
+    Reverse(parts);
+
+    return path::Join(arena, parts);
 }
 
 bool IsInsideFolder(PresetFolderListing const* node, usize folder_node_hash) {
@@ -712,7 +725,7 @@ struct FoldersAggregateInfo {
                 if (!node->user_data.As<PresetFolderListing>()->folder) return;
 
                 for (auto n = node; n; n = n->parent)
-                    if (PresetBankInfoAtNode(*n)) return;
+                    if (PresetBankAtNode(*n)) return;
 
                 // The node is not part of any bank. We should see if we should create metadata for it
                 // by again walking up the tree, this time looking for the topmost parent that has a
@@ -732,7 +745,7 @@ struct FoldersAggregateInfo {
 
             if (miscellaneous_banks.size) {
                 static constexpr PresetBank k_miscellaneous_info {
-                    .id = HashComptime("misc"),
+                    .id = k_misc_bank_id,
                     .subtitle = ""_s,
                 };
                 auto const node = FirstCommonAncestor(miscellaneous_banks, scratch_arena);
@@ -741,13 +754,13 @@ struct FoldersAggregateInfo {
             }
 
             ForEachNode(root, [&](FolderNode* node) {
-                if (auto m = PresetBankInfoAtNode(*node)) {
+                if (auto m = PresetBankAtNode(*node)) {
                     // Since we consider nesting of folders to be unimportant when identifying legacy banks,
                     // we can end up with the subfolder having the same metadata as the parent. We don't want
                     // to list both as separate banks so we walk up the tree to find the topmost folder with
                     // the same metadata. This was quite common with the old Mirage factory presets which had
                     // folders like LibraryName/Factory.
-                    for (; node->parent && PresetBankInfoAtNode(*node->parent) == m; node = node->parent)
+                    for (; node->parent && PresetBankAtNode(*node->parent) == m; node = node->parent)
                         ;
                     auto const index = CheckedCast<usize>(node - folder_node_allocator.folders.data);
                     dyn::AppendIfNotAlreadyThere(folder_node_preset_bank_indices, index);
@@ -905,7 +918,7 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
     for (auto const& entry : entries) {
         if (entry.type != FileType::File) continue;
 
-        if (path::Equal(entry.subpath, k_metadata_filename)) {
+        if (path::Equal(entry.subpath, k_preset_bank_filename)) {
             if (!preset_folder)
                 preset_folder = CreatePresetFolder(server, scan_folder.path, subfolder_of_scan_folder);
             preset_folder->preset_bank_info =
@@ -1055,6 +1068,20 @@ static void ServerThread(PresetServer& server) {
             server.scan_folders_request_arena.FreeAll();
         }
 
+        // Batch up changes.
+        DynamicArray<PresetServer::ScanFolder*> rescan_folders {scratch_arena};
+
+        // Consume rescan-requests
+        server.rescan_folder_requests.Use([&](auto& buf) {
+            for (auto const rescan_folder :
+                 SplitIterator {.whole = buf, .token = '\0', .skip_consecutive = true}) {
+                for (auto& f : server.scan_folders)
+                    if (path::Equal(f.path, rescan_folder) || path::IsWithinDirectory(rescan_folder, f.path))
+                        dyn::AppendIfNotAlreadyThere(rescan_folders, &f);
+            }
+            dyn::Clear(buf);
+        });
+
         if (watcher) {
             auto const dirs_to_watch = ({
                 DynamicArray<DirectoryToWatch> dirs {scratch_arena};
@@ -1068,9 +1095,6 @@ static void ServerThread(PresetServer& server) {
                 }
                 dirs.ToOwnedSpan();
             });
-
-            // Batch up changes.
-            DynamicArray<PresetServer::ScanFolder*> rescan_folders {scratch_arena};
 
             if (auto const outcome = PollDirectoryChanges(*watcher,
                                                           {
@@ -1113,23 +1137,24 @@ static void ServerThread(PresetServer& server) {
                         if (subpath_changeset.subpath.size == 0) continue;
 
                         // For now, we ignore the granularity of the changes and just rescan the whole
-                        // folder. IMPROVE: handle changes more granularly
+                        // folder. IMPROVE: handle changes more granularly.
                         dyn::AppendIfNotAlreadyThere(rescan_folders, &scan_folder);
                     }
                 }
             }
+        }
 
-            for (auto scan_folder : rescan_folders) {
-                for (usize i = 0; i < server.folders.size;) {
-                    auto& preset_folder = *server.folders[i];
-                    if (preset_folder.scan_folder == scan_folder->path)
-                        RemoveFolderAndPublish(server, i, scratch_arena);
-                    else
-                        ++i;
-                }
-
-                scan_folder->scanned = false; // force a rescan
+        // Mark rescan for any requested.
+        for (auto scan_folder : rescan_folders) {
+            for (usize i = 0; i < server.folders.size;) {
+                auto& preset_folder = *server.folders[i];
+                if (preset_folder.scan_folder == scan_folder->path)
+                    RemoveFolderAndPublish(server, i, scratch_arena);
+                else
+                    ++i;
             }
+
+            scan_folder->scanned = false; // force a rescan
         }
 
         for (auto& scan_folder : server.scan_folders) {
@@ -1150,16 +1175,22 @@ static void ServerThread(PresetServer& server) {
         }
 
         // At the end of the tick, check if we can set is_scanning to false.
+        bool wake_is_scanning = false;
         {
             server.scan_folders_request_mutex.Lock();
             DEFER { server.scan_folders_request_mutex.Unlock(); };
-            auto const any_needs_scan = FindIf(server.scan_folders, [](auto const& f) { return !f.scanned; });
-            auto const has_rescan_request = server.scan_folders_request.HasValue();
-            if (!any_needs_scan && !has_rescan_request) {
+
+            server.rescan_folder_requests.mutex.Lock();
+            DEFER { server.rescan_folder_requests.mutex.Unlock(); };
+
+            auto const has_rescan_requests = server.rescan_folder_requests.GetWithoutMutexProtection().size;
+            auto const has_new_scan_folders_request = server.scan_folders_request.HasValue();
+            if (!has_new_scan_folders_request && !has_rescan_requests) {
                 if (server.is_scanning.Exchange(false, RmwMemoryOrder::AcquireRelease))
-                    WakeWaitingThreads(server.is_scanning, NumWaitingThreads::All);
+                    wake_is_scanning = true;
             }
         }
+        if (wake_is_scanning) WakeWaitingThreads(server.is_scanning, NumWaitingThreads::All);
 
         DeleteUnusedFolders(server);
     }
@@ -1173,7 +1204,7 @@ bool WaitIfFoldersAreScanning(PresetServer& server, Optional<u32> timeout) {
 
     Stopwatch stopwatch;
     while (true) {
-        auto const elapsed = stopwatch.MicrosecondsElapsed();
+        auto const elapsed = stopwatch.MillisecondsElapsed();
         if (timeout && *timeout != 0 && elapsed >= *timeout) return false;
 
         if (server.is_scanning.Load(LoadMemoryOrder::Acquire)) {
@@ -1191,6 +1222,15 @@ bool WaitIfFoldersAreScanning(PresetServer& server, Optional<u32> timeout) {
 }
 
 bool AreFoldersScanning(PresetServer& server) { return !WaitIfFoldersAreScanning(server, 0u); }
+
+void RescanFolder(PresetServer& server, String folder) {
+    server.rescan_folder_requests.Use([&](auto& buf) {
+        dyn::AppendSpan(buf, folder);
+        dyn::Append(buf, '\0');
+        server.is_scanning.Store(true, StoreMemoryOrder::Release);
+    });
+    server.work_signaller.Signal();
+}
 
 void SetExtraScanFolders(PresetServer& server, Span<String const> folders) {
     {

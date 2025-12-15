@@ -77,7 +77,8 @@ LibraryCheckExistingInstallation(Component const& component,
     auto const existing_folder = *path::Directory(existing_matching_library->path);
     ASSERT_EQ(existing_matching_library->id, component.library->id);
 
-    auto const actual_checksums = TRY(ChecksumsForFolder(existing_folder, scratch_arena, scratch_arena));
+    auto actual_checksums = TRY(ChecksumsForFolder(existing_folder, scratch_arena, scratch_arena));
+    actual_checksums.RemoveIf([](auto const& key, auto const&) { return key == k_checksums_file; });
 
     if (CompareChecksums(component.checksum_values,
                          actual_checksums,
@@ -87,9 +88,6 @@ LibraryCheckExistingInstallation(Component const& component,
             .version_difference = VersionDifference::Equal,
             .modified_since_installed = ModifiedSinceInstalled::Unmodified,
         };
-
-    Optional<Writer> diff_log {};
-    if constexpr (!PRODUCTION_BUILD) diff_log = StdWriter(StdStream::Err);
 
     return ExistingInstalledComponent {
         .installed = true,
@@ -112,17 +110,10 @@ LibraryCheckExistingInstallation(Component const& component,
                 !o.HasError()) {
                 if (auto const stored_checksums = ParseChecksumFile(o.Value(), scratch_arena);
                     stored_checksums.HasValue()) {
-                    static constexpr auto k_allowed_extras =
-                        ConcatArrays(CompareChecksumsOptions::k_default_allowed_files,
-                                     ArrayT<CompareChecksumsOptions::ExtraFile>({
-                                         {k_checksums_file, false},
-                                     }));
                     switch (CompareChecksums(stored_checksums.Value(),
                                              actual_checksums,
                                              {
                                                  .test_table_allowed_extra_files = true,
-                                                 .allowed_extra_files = k_allowed_extras,
-                                                 .diff_log = diff_log,
                                              })) {
                         case CompareChecksumsResult::Same: {
                             m = ModifiedSinceInstalled::Unmodified;
@@ -148,91 +139,6 @@ LibraryCheckExistingInstallation(Component const& component,
             m;
         }),
     };
-}
-
-// We don't actually check the checksums file of a presets folder. All we do is check if the exact files from
-// the package are already installed. If there's any discrepancy, we just install the package again to a new
-// folder. It means there could be duplicate files, but it's not a problem; preset files are tiny, and our
-// preset system will ignore duplicate files by checking their checksums.
-//
-// We take this approach because there is no reason to overwrite preset files. Preset files are tiny. If
-// there's a 'version 2' of a preset bank, then it might as well be installed alongside version 1.
-static ErrorCodeOr<ExistingInstalledComponent>
-PresetsCheckExistingInstallation(Component const& component,
-                                 Span<String const> presets_folders,
-                                 ArenaAllocator& scratch_arena) {
-    for (auto const folder : presets_folders) {
-        auto const entries = TRY(FindEntriesInFolder(scratch_arena,
-                                                     folder,
-                                                     {
-                                                         .options {
-                                                             .wildcard = "*",
-                                                             .get_file_size = true,
-                                                             .skip_dot_files = true,
-                                                         },
-                                                         .recursive = true,
-                                                     }));
-
-        if constexpr (IS_WINDOWS)
-            for (auto& entry : entries)
-                Replace(entry.subpath, '\\', '/');
-
-        for (auto const dir_entry : entries) {
-            if (dir_entry.type != FileType::Directory) continue;
-
-            bool dir_contains_all_expected_files = true;
-            for (auto const [expected_path, checksum, _] : component.checksum_values) {
-                bool found_expected = false;
-                for (auto const file_entry : entries) {
-                    if (file_entry.type != FileType::File) continue;
-                    auto const relative = RelativePathIfInFolder(file_entry.subpath, dir_entry.subpath);
-                    if (!relative) continue;
-                    if (path::Equal(*relative, expected_path)) {
-                        found_expected = true;
-                        break;
-                    }
-                }
-                if (!found_expected) {
-                    dir_contains_all_expected_files = false;
-                    break;
-                }
-            }
-
-            if (dir_contains_all_expected_files) {
-                bool matches_exactly = true;
-
-                // Check the checksums of all files.
-                for (auto const [expected_path, checksum, _] : component.checksum_values) {
-                    auto const cursor = scratch_arena.TotalUsed();
-                    DEFER {
-                        auto const new_used = scratch_arena.TryShrinkTotalUsed(cursor);
-                        ASSERT(new_used >= cursor);
-                    };
-
-                    auto const full_path =
-                        path::Join(scratch_arena, Array {folder, dir_entry.subpath, expected_path});
-
-                    auto const matches_file = TRY(FileMatchesChecksum(full_path, checksum, scratch_arena));
-
-                    if (!matches_file) {
-                        matches_exactly = false;
-                        break;
-                    }
-                }
-
-                if (matches_exactly)
-                    return ExistingInstalledComponent {
-                        .installed = true,
-                        .version_difference = VersionDifference::Equal,
-                        .modified_since_installed = ModifiedSinceInstalled::Unmodified,
-                    };
-            }
-        }
-    }
-
-    // It may actually be installed, but for presets we take the approach of just installing the package again
-    // unless it is already exactly installed.
-    return ExistingInstalledComponent {.installed = false};
 }
 
 struct ParsedFilename {
@@ -399,15 +305,15 @@ static ErrorCodeOr<void> ExtractFolder(PackageReader& package,
 }
 
 static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
-                                                InstallJob::Component const& component,
+                                                package::Component const& component,
+                                                ComponentInstallConfig const& config,
                                                 ArenaAllocator& scratch_arena) {
-    TRY(CreateDirectory(component.install_folder, {.create_intermediate_directories = true}));
+    TRY(CreateDirectory(config.folder, {.create_intermediate_directories = true}));
 
     // Try to get a folder on the same filesystem so that we can atomic-rename.
     auto const temp_folder = ({
         String s {};
-        if (auto const o = TemporaryDirectoryOnSameFilesystemAs(component.install_folder, scratch_arena);
-            o.HasValue()) {
+        if (auto const o = TemporaryDirectoryOnSameFilesystemAs(config.folder, scratch_arena); o.HasValue()) {
             s = o.Value();
         } else {
             // If we can't get a temporary directory on the same filesystem, we shall try to use a
@@ -428,7 +334,7 @@ static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
                         });
     };
 
-    auto const install_type = component.component.InstallType();
+    auto const install_type = component.InstallFileType();
 
     // We extract to a temp folder than then rename to the final location. This ensures we either fail or
     // succeed, without any in-between cases where the folder is partially extracted. Additionally, it doesn't
@@ -438,34 +344,27 @@ static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
         auto s = temp_folder;
         // Files need a filename, whereas folders can just use the temp folder directly, there's no need to
         // create a subfolder for them.
-        if (install_type == FileType::File)
-            s = path::Join(scratch_arena, Array {s, component.install_filename});
+        if (install_type == FileType::File) s = path::Join(scratch_arena, Array {s, config.filename});
         s;
     });
 
-    if (install_type == FileType::File) {
-        TRY(ExtractFile(package, component.component.path, temp_path));
-    } else {
-        TRY(ExtractFolder(package,
-                          component.component.path,
-                          temp_path,
-                          scratch_arena,
-                          component.component.checksum_values));
-    }
+    if (install_type == FileType::File)
+        TRY(ExtractFile(package, component.path, temp_path));
+    else
+        TRY(ExtractFolder(package, component.path, temp_path, scratch_arena, component.checksum_values));
 
-    auto installed_name = component.install_filename;
-    auto allow_overwrite = component.install_allow_overwrite;
+    auto installed_name = config.filename;
+    auto allow_overwrite = config.allow_overwrite;
 
-    // With files, Rename() will overwrite existing files, we need to check for that if overwrite is not
-    // allowed. This is not ideal as it introduces a tiny window where another process could create the file
-    // after we check and before we rename.
+    // If we've been requested to not overwrite files, we need to handle that before Rename(). This is not
+    // ideal as it introduces a tiny window where another process could create the file after we check and
+    // before we rename.
     if (!allow_overwrite && install_type == FileType::File)
-        installed_name =
-            TRY(FindNextNonExistentFilename(component.install_folder, installed_name, scratch_arena));
+        installed_name = TRY(FindNextNonExistentFilename(config.folder, installed_name, scratch_arena));
 
-    DynamicArray<char> full_dest {component.install_folder, scratch_arena};
+    DynamicArray<char> full_dest {config.folder, scratch_arena};
     for (auto const _ : Range(50)) {
-        dyn::Resize(full_dest, component.install_folder.size);
+        dyn::Resize(full_dest, config.folder.size);
         path::JoinAppend(full_dest, installed_name);
         if (auto const rename_o = Rename(temp_path, full_dest); rename_o.Succeeded()) {
             break;
@@ -538,7 +437,7 @@ static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
             } else {
                 // Try a new name.
                 installed_name =
-                    TRY(FindNextNonExistentFilename(component.install_folder, installed_name, scratch_arena));
+                    TRY(FindNextNonExistentFilename(config.folder, installed_name, scratch_arena));
                 continue;
             }
         } else if (rename_o.Error() == FilesystemError::PathIsAFile && allow_overwrite) {
@@ -555,7 +454,7 @@ static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
 
             // Additionally with this folder-to-file case, we rename the destination since we don't want to
             // end up with a folder that has a file's name with an extension.
-            installed_name = path::Filename(component.component.path);
+            installed_name = path::Filename(component.path);
             allow_overwrite = false;
 
             continue;
@@ -600,76 +499,205 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
         }
 
         auto const component = TRY_H(IteratePackageComponents(*job.reader, it, job.arena));
-        if (!component) {
-            // end of folders
-            break;
-        }
+        if (!component) break; // No more folders.
 
-        String install_filename {};
-        String install_folder {};
-        bool install_allow_overwrite = false;
+        ComponentInstallConfig install_config {};
+        ExistingInstalledComponent existing_check {};
 
-        auto const existing_check = ({
-            ExistingInstalledComponent r;
-            switch (component->type) {
-                case package::ComponentType::Library: {
-                    ASSERT(component->library);
-                    sample_lib_server::RequestScanningOfUnscannedFolders(job.sample_lib_server);
+        switch (component->type) {
+            case package::ComponentType::Library: {
+                ASSERT(component->library);
+                sample_lib_server::RequestScanningOfUnscannedFolders(job.sample_lib_server);
 
-                    auto const succeed =
-                        sample_lib_server::WaitIfLibrariesAreLoading(job.sample_lib_server, 120u * 1000);
-                    if (!succeed) {
-                        ReportError(ErrorLevel::Error,
-                                    SourceLocationHash(),
-                                    "timed out waiting for sample libraries to be scanned");
-                        return InstallJob::State::DoneError;
-                    }
-
-                    auto existing_lib =
-                        sample_lib_server::FindLibraryRetained(job.sample_lib_server, component->library->id);
-                    DEFER { existing_lib.Release(); };
-                    LogDebug(ModuleName::Package,
-                             "Checking existing installation of library {}, server returned {}",
-                             component->library->id,
-                             existing_lib ? "true" : "false");
-
-                    r = TRY_H(LibraryCheckExistingInstallation(*component,
-                                                               existing_lib ? &*existing_lib : nullptr,
-                                                               job.arena));
-                    LogDebug(ModuleName::Package,
-                             "Existing installation status: installed={}, version_difference={}, "
-                             "modified_since_installed={}",
-                             r.installed,
-                             r.version_difference,
-                             r.modified_since_installed);
-
-                    if (existing_lib) {
-                        auto const path =
-                            existing_lib->file_format_specifics.tag == sample_lib::FileFormat::Mdata
-                                ? existing_lib->path
-                                : *path::Directory(existing_lib->path);
-                        install_filename = job.arena.Clone(path::Filename(path));
-                        install_folder = job.arena.Clone(*path::Directory(path));
-                        install_allow_overwrite = true; // Should we need to update, we allow overwriting.
-                    } else {
-                        install_filename = path::Filename(component->path);
-                        install_folder = job.install_folders[ToInt(ComponentType::Library)];
-                        install_allow_overwrite = false;
-                    }
-
-                    break;
+                auto const succeed =
+                    sample_lib_server::WaitIfLibrariesAreLoading(job.sample_lib_server, 120u * 1000);
+                if (!succeed) {
+                    ReportError(ErrorLevel::Error,
+                                SourceLocationHash(),
+                                "timed out waiting for sample libraries to be scanned");
+                    return InstallJob::State::DoneError;
                 }
-                case package::ComponentType::Presets: {
-                    r = TRY_H(PresetsCheckExistingInstallation(*component, job.preset_folders, job.arena));
-                    install_filename = path::Filename(component->path);
-                    install_folder = job.install_folders[ToInt(ComponentType::Presets)];
-                    install_allow_overwrite = false;
-                    break;
+
+                auto existing_lib =
+                    sample_lib_server::FindLibraryRetained(job.sample_lib_server, component->library->id);
+                DEFER { existing_lib.Release(); };
+                LogDebug(ModuleName::Package,
+                         "Checking existing installation of library {}, server returned {}",
+                         component->library->id,
+                         existing_lib ? "true" : "false");
+
+                existing_check =
+                    TRY_H(LibraryCheckExistingInstallation(*component,
+                                                           existing_lib ? &*existing_lib : nullptr,
+                                                           job.arena));
+                LogDebug(ModuleName::Package,
+                         "Existing installation status: installed={}, version_difference={}, "
+                         "modified_since_installed={}",
+                         existing_check.installed,
+                         existing_check.version_difference,
+                         existing_check.modified_since_installed);
+
+                if (existing_lib) {
+                    auto const path = existing_lib->file_format_specifics.tag == sample_lib::FileFormat::Mdata
+                                          ? existing_lib->path
+                                          : *path::Directory(existing_lib->path);
+                    install_config = {
+                        .filename = job.arena.Clone(path::Filename(path)),
+                        .folder = job.arena.Clone(*path::Directory(path)),
+                        .allow_overwrite = true, // Should we need to update, we allow overwriting.
+                    };
+                } else {
+                    install_config = {
+                        .filename = path::Filename(component->path),
+                        .folder = job.install_folders[ToInt(ComponentType::Library)],
+                        .allow_overwrite = false,
+                    };
                 }
-                case package::ComponentType::Count: PanicIfReached();
+
+                break;
             }
-            r;
-        });
+            case package::ComponentType::Presets: {
+                StartScanningIfNeeded(job.preset_server);
+                auto const succeed = WaitIfFoldersAreScanning(job.preset_server, 120u * 1000);
+                if (!succeed) {
+                    ReportError(ErrorLevel::Error,
+                                SourceLocationHash(),
+                                "timed out waiting for presets folders to be scanned");
+                    return InstallJob::State::DoneError;
+                }
+
+                ArenaAllocatorWithInlineStorage<4000> scratch_arena {PageAllocator::Instance()};
+
+                auto const [snapshot, handle] = BeginReadFolders(job.preset_server, scratch_arena);
+                DEFER { EndReadFolders(job.preset_server, handle); };
+
+                bool matched = false;
+
+                if (component->preset_bank) {
+                    ASSERT(component->preset_bank->id != k_misc_bank_id);
+
+                    for (auto const [index, node] : Enumerate(snapshot.preset_banks)) {
+                        auto const existing_bank = PresetBankAtNode(*node);
+                        ASSERT(existing_bank);
+                        auto const path = *FolderPath(node, scratch_arena);
+
+                        auto actual_checksums = TRY_H(ChecksumsForFolder(path, scratch_arena, scratch_arena));
+                        actual_checksums.RemoveIf(
+                            [](auto const& key, auto const&) { return key == k_checksums_file; });
+
+                        if (existing_bank->id == component->preset_bank->id) {
+                            existing_check = {
+                                .installed = true,
+                                .version_difference = ({
+                                    VersionDifference d {};
+                                    if (existing_bank->minor_version == component->preset_bank->minor_version)
+                                        d = VersionDifference::Equal;
+                                    else if (existing_bank->minor_version <
+                                             component->preset_bank->minor_version)
+                                        d = VersionDifference::InstalledIsOlder;
+                                    else
+                                        d = VersionDifference::InstalledIsNewer;
+                                    d;
+                                }),
+                                .modified_since_installed = ({
+                                    ModifiedSinceInstalled m {};
+
+                                    if (auto const o = ReadEntireFile(
+                                            path::Join(scratch_arena, Array {path, k_checksums_file}),
+                                            scratch_arena);
+                                        !o.HasError()) {
+                                        if (auto const stored_checksums =
+                                                ParseChecksumFile(o.Value(), scratch_arena);
+                                            stored_checksums.HasValue()) {
+                                            switch (
+                                                CompareChecksums(stored_checksums.Value(),
+                                                                 actual_checksums,
+                                                                 {
+                                                                     .test_table_allowed_extra_files = true,
+                                                                 })) {
+                                                case CompareChecksumsResult::Same: {
+                                                    m = ModifiedSinceInstalled::Unmodified;
+                                                    break;
+                                                }
+                                                case CompareChecksumsResult::SameButHasExtraFiles: {
+                                                    m = ModifiedSinceInstalled::UnmodifiedButFilesAdded;
+                                                    break;
+                                                }
+                                                case CompareChecksumsResult::Differ: {
+                                                    m = ModifiedSinceInstalled::Modified;
+                                                    break;
+                                                }
+                                            }
+                                        } else {
+                                            // The checksum file is badly formatted, which presumably means it
+                                            // was modified.
+                                            m = ModifiedSinceInstalled::Modified;
+                                        }
+                                    } else {
+                                        // We couldn't read the existing checksum (maybe it doesn't exist).
+                                        m = ModifiedSinceInstalled::MaybeModified;
+                                    }
+                                    m;
+                                }),
+                            };
+                            install_config = {
+                                .filename = job.arena.Clone(path::Filename(path)),
+                                .folder = job.arena.Clone(*path::Directory(path)),
+                                .allow_overwrite = true,
+                            };
+                            matched = true;
+                            break;
+                        }
+                    }
+                } else {
+                    // The incoming presets are not a bank. Let's just scan the currently installed banks to
+                    // find an exact match of the files (ignoring folder structure), in which case we can say
+                    // it's already installed.
+                    for (auto const [index, node] : Enumerate(snapshot.preset_banks)) {
+                        auto const existing_bank = PresetBankAtNode(*node);
+                        ASSERT(existing_bank);
+                        auto const path = *FolderPath(node, scratch_arena);
+
+                        auto const actual_checksums =
+                            TRY_H(ChecksumsForFolder(path, scratch_arena, scratch_arena));
+
+                        if (CompareChecksums(component->checksum_values,
+                                             actual_checksums,
+                                             {
+                                                 .ignore_path_nesting = true,
+                                                 .test_table_allowed_extra_files = true,
+                                             }) != CompareChecksumsResult::Differ) {
+                            // We have found a folder that contains all the component's files exactly. They
+                            // might have a different folder nesting structure, and it might contain more
+                            // folders but we still say the component is fully installed.
+                            existing_check = {
+                                .installed = true,
+                                .version_difference = VersionDifference::Equal,
+                                .modified_since_installed = ModifiedSinceInstalled::Unmodified,
+                            };
+                            install_config = {}; // Irrelevant.
+                            matched = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!matched) {
+                    // We cannot find an installed bank matching our existing one.
+                    existing_check = {
+                        .installed = false,
+                    };
+                    install_config = {
+                        .filename = path::Filename(component->path),
+                        .folder = job.install_folders[ToInt(ComponentType::Presets)],
+                        .allow_overwrite = false,
+                    };
+                }
+
+                break;
+            }
+            case package::ComponentType::Count: PanicIfReached();
+        }
 
         if (UserInputIsRequired(existing_check)) user_input_needed = true;
 
@@ -678,9 +706,7 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
             .component = *component,
             .existing_installation_status = existing_check,
             .user_decision = InstallJob::UserDecision::Unknown,
-            .install_filename = install_filename,
-            .install_allow_overwrite = install_allow_overwrite,
-            .install_folder = install_folder,
+            .install_config = install_config,
         };
     }
 
@@ -710,14 +736,22 @@ static InstallJob::State DoJobPhase2Impl(InstallJob& job) {
             if (component.user_decision == InstallJob::UserDecision::Skip) continue;
         }
 
-        TRY_H(ReaderInstallComponent(*job.reader, component, job.arena));
+        TRY_H(ReaderInstallComponent(*job.reader, component.component, component.install_config, job.arena));
 
-        if (component.component.type == ComponentType::Library) {
-            // The sample library server should receive filesystem-events about the move and rescan
-            // automatically. But the timing of filesystem events is not reliable. As we already know that the
-            // folder has changed, we can issue a rescan immediately. This way, the changes will be reflected
-            // sooner.
-            sample_lib_server::RescanFolder(job.sample_lib_server, component.install_folder);
+        switch (component.component.type) {
+            case ComponentType::Library: {
+                // The sample library server should receive filesystem-events about the move and rescan
+                // automatically. But the timing of filesystem events is not reliable. As we already know that
+                // the folder has changed, we can issue a rescan immediately. This way, the changes will be
+                // reflected sooner.
+                sample_lib_server::RescanFolder(job.sample_lib_server, component.install_config.folder);
+                break;
+            }
+            case ComponentType::Presets: {
+                RescanFolder(job.preset_server, component.install_config.folder);
+                break;
+            }
+            case ComponentType::Count: PanicIfReached();
         }
     }
 
@@ -751,8 +785,8 @@ InstallJob* CreateInstallJob(ArenaAllocator& arena, CreateJobOptions opts) {
                 f[i] = arena.Clone(opts.install_folders[i]);
             f;
         }),
-        .sample_lib_server = opts.server,
-        .preset_folders = arena.Clone(opts.preset_folders, CloneType::Deep),
+        .sample_lib_server = opts.sample_lib_server,
+        .preset_server = opts.preset_server,
         .error_buffer = {arena},
         .components = {},
     };
@@ -866,8 +900,8 @@ void AddJob(InstallJobs& jobs,
             String zip_path,
             prefs::Preferences& prefs,
             FloePaths const& paths,
-            ArenaAllocator& scratch_arena,
-            sample_lib_server::Server& sample_library_server) {
+            sample_lib_server::Server& sample_library_server,
+            PresetServer& preset_server) {
     ASSERT(!jobs.Full());
     ASSERT(path::IsAbsolute(zip_path));
     ASSERT(g_is_logical_main_thread);
@@ -887,11 +921,8 @@ void AddJob(InstallJobs& jobs,
                     prefs::GetString(prefs, InstallLocationDescriptor(paths, prefs, ScanFolderType::Presets));
                 fs;
             }),
-            .server = sample_library_server,
-            .preset_folders =
-                CombineStringArrays(scratch_arena,
-                                    ExtraScanFolders(paths, prefs, ScanFolderType::Presets),
-                                    Array {paths.always_scanned_folder[ToInt(ScanFolderType::Presets)]}),
+            .sample_lib_server = sample_library_server,
+            .preset_server = preset_server,
         });
 
     Thread thread;
@@ -1016,7 +1047,8 @@ struct TestOptions {
     String test_name;
     String destination_folder;
     String zip_path;
-    sample_lib_server::Server& server;
+    sample_lib_server::Server& sample_lib_server;
+    PresetServer& preset_server;
 
     InstallJob::State expected_state;
 
@@ -1036,8 +1068,8 @@ static ErrorCodeOr<void> Test(tests::Tester& tester, TestOptions options) {
                          {
                              .zip_path = options.zip_path,
                              .install_folders = {options.destination_folder, options.destination_folder},
-                             .server = options.server,
-                             .preset_folders = Array {String(options.destination_folder)},
+                             .sample_lib_server = options.sample_lib_server,
+                             .preset_server = options.preset_server,
                          });
     DEFER { DestroyInstallJob(job); };
 
@@ -1109,6 +1141,12 @@ TEST_CASE(TestPackageInstallationExtraFiles) {
     thread_pool.Init("pkg-install", {});
     ThreadsafeErrorNotifications error_notif;
     sample_lib_server::Server server {thread_pool, destination_folder, error_notif};
+    PresetServer preset_server {
+        .error_notifications = error_notif,
+    };
+
+    InitPresetServer(preset_server, destination_folder);
+    DEFER { ShutdownPresetServer(preset_server); };
 
     auto const zip_path_v1 = CreatePackageZipFile(tester, "Test-Lib-1/floe.lua", false);
     auto const zip_path_v2 = CreatePackageZipFile(tester, "Test-Lib-1-v2/floe.lua", false);
@@ -1116,8 +1154,8 @@ TEST_CASE(TestPackageInstallationExtraFiles) {
     CreateJobOptions job_opts {
         .zip_path = zip_path_v1,
         .install_folders = {destination_folder, destination_folder},
-        .server = server,
-        .preset_folders = Array {destination_folder},
+        .sample_lib_server = server,
+        .preset_server = preset_server,
     };
 
     // Install the library.
@@ -1193,7 +1231,12 @@ TEST_CASE(TestPackageInstallation) {
     thread_pool.Init("pkg-install", {});
 
     ThreadsafeErrorNotifications error_notif;
-    sample_lib_server::Server server {thread_pool, destination_folder, error_notif};
+    sample_lib_server::Server sample_lib_server {thread_pool, destination_folder, error_notif};
+    PresetServer preset_server {
+        .error_notifications = error_notif,
+    };
+    InitPresetServer(preset_server, destination_folder);
+    DEFER { ShutdownPresetServer(preset_server); };
 
     auto const zip_path = CreatePackageZipFile(tester, "Test-Lib-1/floe.lua", true);
 
@@ -1204,7 +1247,8 @@ TEST_CASE(TestPackageInstallation) {
                  .test_name = "Initial installation succeeds",
                  .destination_folder = destination_folder,
                  .zip_path = zip_path,
-                 .server = server,
+                 .sample_lib_server = sample_lib_server,
+                 .preset_server = preset_server,
                  .expected_state = InstallJob::State::DoneSuccess,
                  .expected_library_status = {.installed = false},
                  .expected_library_action = "installed"_s,
@@ -1218,7 +1262,8 @@ TEST_CASE(TestPackageInstallation) {
                  .test_name = "Reinstalling the same package does nothing",
                  .destination_folder = destination_folder,
                  .zip_path = zip_path,
-                 .server = server,
+                 .sample_lib_server = sample_lib_server,
+                 .preset_server = preset_server,
                  .expected_state = InstallJob::State::DoneSuccess,
                  .expected_library_status {
                      .installed = true,
@@ -1253,7 +1298,8 @@ TEST_CASE(TestPackageInstallation) {
 
         // Tell the server to rename so it notices the changes. It probably does this automatically via file
         // watchers but it's not guaranteed.
-        sample_lib_server::RescanFolder(server, destination_folder);
+        sample_lib_server::RescanFolder(sample_lib_server, destination_folder);
+        RescanFolder(preset_server, destination_folder);
     }
 
     // If the components are modified and we set to Skip, it should skip them.
@@ -1262,7 +1308,8 @@ TEST_CASE(TestPackageInstallation) {
                  .test_name = "Skipping modified-by-rename components",
                  .destination_folder = destination_folder,
                  .zip_path = zip_path,
-                 .server = server,
+                 .sample_lib_server = sample_lib_server,
+                 .preset_server = preset_server,
                  .expected_state = InstallJob::State::AwaitingUserInput,
 
                  .expected_library_status {
@@ -1284,7 +1331,8 @@ TEST_CASE(TestPackageInstallation) {
                  .test_name = "Overwriting modified-by-rename components",
                  .destination_folder = destination_folder,
                  .zip_path = zip_path,
-                 .server = server,
+                 .sample_lib_server = sample_lib_server,
+                 .preset_server = preset_server,
                  .expected_state = InstallJob::State::AwaitingUserInput,
 
                  .expected_library_status {
@@ -1316,7 +1364,8 @@ TEST_CASE(TestPackageInstallation) {
                  .test_name = "Overwriting modified-by-edit components",
                  .destination_folder = destination_folder,
                  .zip_path = zip_path,
-                 .server = server,
+                 .sample_lib_server = sample_lib_server,
+                 .preset_server = preset_server,
                  .expected_state = InstallJob::State::AwaitingUserInput,
 
                  .expected_library_status {
@@ -1344,7 +1393,8 @@ TEST_CASE(TestPackageInstallation) {
                  .test_name = "Updating library to newer version",
                  .destination_folder = destination_folder,
                  .zip_path = CreatePackageZipFile(tester, "Test-Lib-1-v2/floe.lua", true),
-                 .server = server,
+                 .sample_lib_server = sample_lib_server,
+                 .preset_server = preset_server,
                  .expected_state = InstallJob::State::DoneSuccess,
 
                  .expected_library_status {
@@ -1368,7 +1418,8 @@ TEST_CASE(TestPackageInstallation) {
                  .test_name = "Downgrading library does nothing",
                  .destination_folder = destination_folder,
                  .zip_path = zip_path,
-                 .server = server,
+                 .sample_lib_server = sample_lib_server,
+                 .preset_server = preset_server,
                  .expected_state = InstallJob::State::DoneSuccess,
 
                  .expected_library_status {
@@ -1393,7 +1444,8 @@ TEST_CASE(TestPackageInstallation) {
                  .test_name = "Installing MDATA library",
                  .destination_folder = destination_folder,
                  .zip_path = mdata_package,
-                 .server = server,
+                 .sample_lib_server = sample_lib_server,
+                 .preset_server = preset_server,
                  .expected_state = InstallJob::State::DoneSuccess,
 
                  .expected_library_status {
@@ -1408,7 +1460,8 @@ TEST_CASE(TestPackageInstallation) {
                  .test_name = "Installing MDATA library again does nothing",
                  .destination_folder = destination_folder,
                  .zip_path = mdata_package,
-                 .server = server,
+                 .sample_lib_server = sample_lib_server,
+                 .preset_server = preset_server,
                  .expected_state = InstallJob::State::DoneSuccess,
 
                  .expected_library_status {

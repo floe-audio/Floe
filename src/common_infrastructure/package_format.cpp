@@ -26,6 +26,7 @@ ErrorCodeCategory const g_package_error_category = {
                     case PackageError::FileCorrupted: s = "package file is corrupted"_s; break;
                     case PackageError::NotFloePackage: s = "not a valid Floe package"_s; break;
                     case PackageError::InvalidLibrary: s = "library is invalid"_s; break;
+                    case PackageError::InvalidPresetBank: s = "preset bank is invalid"_s; break;
                     case PackageError::AccessDenied: s = "access denied"_s; break;
                     case PackageError::FilesystemError: s = "filesystem error"_s; break;
                     case PackageError::NotEmpty: s = "directory not empty"_s; break;
@@ -164,6 +165,7 @@ static ErrorCodeOr<void> WriterAddAllFiles(mz_zip_archive& zip,
 
         // we will manually add the checksums file later
         if (entry->subpath == k_checksums_file) continue;
+        if (path::IgnorableSystemFile(entry->subpath)) continue;
 
         DynamicArray<char> archive_path {inner_arena};
         path::JoinAppend(archive_path, subdirs_in_zip);
@@ -335,7 +337,7 @@ ReaderReadLibraryLua(PackageReader& package, String library_dir_in_zip, ArenaAll
     // to a temporary directory else the script will fail to run.
 
     auto const temp_root = KnownDirectory(scratch_arena, KnownDirectoryType::Temporary, {.create = true});
-    auto const temp = String(TRY(TemporaryDirectoryWithinFolder(temp_root, scratch_arena, package.seed)));
+    auto const temp = (String)TRY(TemporaryDirectoryWithinFolder(temp_root, scratch_arena, package.seed));
     DEFER { auto _ = Delete(temp, {.type = DeleteOptions::Type::DirectoryRecursively}); };
 
     Optional<mz_zip_archive_file_stat> floe_lua_stat;
@@ -389,6 +391,25 @@ static ErrorCodeOr<sample_lib::Library*> ReaderReadLibraryMdata(PackageReader& p
     return lib_outcome.ReleaseValue();
 }
 
+static ErrorCodeOr<Optional<PresetBank>>
+ReaderReadPresetBank(PackageReader& package, String bank_dir_in_zip, ArenaAllocator& arena) {
+    ArenaAllocatorWithInlineStorage<4000> scratch_arena {PageAllocator::Instance()};
+
+    for (auto const file_index : Range(mz_zip_reader_get_num_files(&package.zip))) {
+        auto const file_stat = TRY(FileStat(package, file_index));
+        if (file_stat.m_is_directory) continue;
+        auto const path = PathWithoutTrailingSlash(file_stat.m_filename);
+        auto const path_inside_bank = RelativePathIfInFolder(path, bank_dir_in_zip);
+        if (!path_inside_bank) continue;
+        if (*path_inside_bank != k_preset_bank_filename) continue;
+
+        auto const file_data = TRY(ExtractFileToMem(package, file_stat, scratch_arena));
+        return ParsePresetBankFile({(char const*)file_data.data, file_data.size}, arena);
+    }
+
+    return k_nullopt;
+}
+
 static ErrorCodeOr<HashTable<String, ChecksumValues>>
 ReaderChecksumValuesForDir(PackageReader& package, String dir_in_zip, ArenaAllocator& arena) {
     DynamicHashTable<String, ChecksumValues> table {arena};
@@ -399,6 +420,7 @@ ReaderChecksumValuesForDir(PackageReader& package, String dir_in_zip, ArenaAlloc
         auto const relative_path = RelativePathIfInFolder(path, dir_in_zip);
         if (!relative_path) continue;
         if (*relative_path == k_checksums_file) continue;
+        if (path::IgnorableSystemFile(*relative_path)) continue;
         table.Insert(arena.Clone(*relative_path),
                      ChecksumValues {(u32)file_stat.m_crc32, file_stat.m_uncomp_size});
     }
@@ -456,6 +478,9 @@ IteratePackageComponents(PackageReader& package, PackageComponentIndex& file_ind
             if (relative_path->size == 0) continue;
             if (Contains(*relative_path, '/')) continue;
 
+            // At this stage we know that path is a direct subitem of one of the component folders (libraries
+            // or presets).
+
             auto const is_mdata_library =
                 folder == k_libraries_subdir && path::Equal(path::Extension(path), ".mdata");
 
@@ -476,19 +501,16 @@ IteratePackageComponents(PackageReader& package, PackageComponentIndex& file_ind
                                                 return ZipReadError(package);)
                                        : HashTable<String, ChecksumValues> {},
                 .mdata_checksum = is_mdata_library ? Optional<u32> {(u32)file_stat.m_crc32} : k_nullopt,
-                .library = ({
-                    sample_lib::Library* lib = nullptr;
-                    if (folder == k_libraries_subdir) {
-                        lib = ({
-                            auto const library = TRY(
-                                !is_mdata_library ? ReaderReadLibraryLua(package, path, arena)
-                                                  : ReaderReadLibraryMdata(package, file_index, path, arena));
-                            if (!library) return {PackageError::InvalidLibrary};
-                            library;
-                        });
-                    }
-                    lib;
-                }),
+                .library =
+                    (folder == k_libraries_subdir)
+                        ? TRY_OR(!is_mdata_library ? ReaderReadLibraryLua(package, path, arena)
+                                                   : ReaderReadLibraryMdata(package, file_index, path, arena),
+                                 return {PackageError::InvalidLibrary})
+                        : nullptr,
+                .preset_bank = (folder == k_presets_subdir)
+                                   ? TRY_OR(ReaderReadPresetBank(package, path, arena),
+                                            return {PackageError::InvalidPresetBank})
+                                   : k_nullopt,
             }};
         }
     }

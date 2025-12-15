@@ -6,6 +6,7 @@
 #include "common_infrastructure/paths.hpp"
 #include "common_infrastructure/preferences.hpp"
 
+#include "preset_server/preset_server.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 
 // This is a higher-level API on top of package_format.hpp.
@@ -40,6 +41,12 @@ struct ExistingInstalledComponent {
 bool32 UserInputIsRequired(ExistingInstalledComponent status);
 bool32 NoInstallationRequired(ExistingInstalledComponent status);
 
+struct ComponentInstallConfig {
+    String filename {};
+    String folder {};
+    bool allow_overwrite {};
+};
+
 struct InstallJob {
     enum class State {
         Installing, // worker owns all data
@@ -66,7 +73,7 @@ struct InstallJob {
     String const path;
     Array<String, ToInt(ComponentType::Count)> const install_folders;
     sample_lib_server::Server& sample_lib_server;
-    Span<String> const preset_folders;
+    PresetServer& preset_server;
 
     Optional<Reader> file_reader {};
     Optional<PackageReader> reader {}; // NOTE: needs uninit
@@ -76,9 +83,7 @@ struct InstallJob {
         package::Component component;
         ExistingInstalledComponent existing_installation_status {};
         UserDecision user_decision {UserDecision::Unknown};
-        String install_filename {};
-        bool install_allow_overwrite {};
-        String install_folder {};
+        ComponentInstallConfig install_config {};
     };
     ArenaList<Component> components;
 };
@@ -98,8 +103,8 @@ struct InstallJob {
 struct CreateJobOptions {
     String zip_path;
     Array<String, ToInt(ComponentType::Count)> install_folders;
-    sample_lib_server::Server& server;
-    Span<String> preset_folders;
+    sample_lib_server::Server& sample_lib_server;
+    PresetServer& preset_server;
 };
 
 // [main thread]
@@ -157,8 +162,8 @@ void AddJob(InstallJobs& jobs,
             String zip_path,
             prefs::Preferences& prefs,
             FloePaths const& paths,
-            ArenaAllocator& scratch_arena,
-            sample_lib_server::Server& sample_library_server);
+            sample_lib_server::Server& sample_library_server,
+            PresetServer& preset_server);
 
 // [main thread]
 InstallJobs::Iterator RemoveJob(InstallJobs& jobs, InstallJobs::Iterator it);

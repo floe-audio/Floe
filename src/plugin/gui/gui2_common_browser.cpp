@@ -393,8 +393,8 @@ static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
                                       RightClickMenuState::Function const& do_right_click_menu = nullptr) {
     // We want to stop if we find a preset bank within the preset bank.
     if (folder->user_data.As<PresetFolderListing const>())
-        if (auto const bank = PresetBankInfoAtNode(*folder);
-            bank && folder->parent && bank != PresetBankInfoAtNode(*folder->parent))
+        if (auto const bank = PresetBankAtNode(*folder);
+            bank && folder->parent && bank != PresetBankAtNode(*folder->parent))
             return;
 
     bool is_active = false;
@@ -402,8 +402,8 @@ static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
         for (auto f = folder; f; f = f->parent) {
             // We want to stop if the parent is part of a different preset bank.
             if (f->user_data.As<PresetFolderListing const>())
-                if (auto const bank = PresetBankInfoAtNode(*f);
-                    bank && f->parent && bank != PresetBankInfoAtNode(*f->parent))
+                if (auto const bank = PresetBankAtNode(*f);
+                    bank && f->parent && bank != PresetBankAtNode(*f->parent))
                     break;
 
             if (state.selected_folder_hashes.Contains(f->Hash())) {

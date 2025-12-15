@@ -37,19 +37,8 @@ ChecksumsForFolder(String folder, ArenaAllocator& arena, ArenaAllocator& scratch
 enum class CompareChecksumsResult { Same, Differ, SameButHasExtraFiles };
 
 struct CompareChecksumsOptions {
-    struct ExtraFile {
-        String path;
-        bool filename_match_only; // Else full match.
-    };
-
-    static constexpr auto k_default_allowed_files = ArrayT<ExtraFile>({
-        {".DS_Store"_s, true},
-        {"Thumbs.db", true},
-    });
-
+    bool ignore_path_nesting = false; // Consider foo/file.txt == bar/file.txt if the checksums match.
     bool test_table_allowed_extra_files = false;
-    Span<ExtraFile const> allowed_extra_files {}; // When allowing extra files, these are ignored.
-    Optional<Writer> diff_log = {};
 };
 
 CompareChecksumsResult CompareChecksums(ChecksumTable const& authority,

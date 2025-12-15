@@ -150,6 +150,7 @@ struct FilePickerContext {
     ThreadPool& thread_pool;
     ArenaAllocator& scratch_arena;
     sample_lib_server::Server& sample_lib_server;
+    PresetServer& preset_server;
     Engine& engine;
 };
 
@@ -179,8 +180,8 @@ PUBLIC void CheckForFilePickerResults(GuiFrameInput const& frame_input,
                                 path,
                                 context.prefs,
                                 context.paths,
-                                context.scratch_arena,
-                                context.sample_lib_server);
+                                context.sample_lib_server,
+                                context.preset_server);
             }
             break;
         }
