@@ -333,6 +333,14 @@ Type& CreateOrFetchFixtureObject(Tester& tester) {
                          tests::FailureAction::FailAndExitTest);                                             \
         outcome.ReleaseValue();                                                                              \
     })
+#define REQUIRE_DEREF(ptr)                                                                                   \
+    ({                                                                                                       \
+        auto ptr_require_deref = ptr;                                                                        \
+        if (!ptr_require_deref) {                                                                            \
+            tests::Check(tester, false, #ptr " is null", tests::FailureAction::FailAndExitTest);             \
+        }                                                                                                    \
+        *ptr_require_deref;                                                                                  \
+    })
 
 #define CHECK(...)                     tests::Check(tester, !!(__VA_ARGS__), #__VA_ARGS__, tests::FailureAction::FailAndContinue)
 #define CHECK_OP(a, op, b)             REQUIRE_HELPER(a, b, op, FailAndContinue)

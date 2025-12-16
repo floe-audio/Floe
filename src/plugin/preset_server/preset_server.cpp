@@ -1265,8 +1265,9 @@ void ShutdownPresetServer(PresetServer& server) {
 }
 
 TEST_CASE(TestPresetServer) {
-    auto const folder = path::Join(tester.scratch_arena,
-                                   Array {tests::TestFilesFolder(tester), tests::k_preset_test_files_subdir});
+    auto const folder =
+        (String)path::Join(tester.scratch_arena,
+                           Array {tests::TestFilesFolder(tester), tests::k_preset_test_files_subdir});
 
     ThreadsafeErrorNotifications errors;
     PresetServer server {.error_notifications = errors};
@@ -1282,12 +1283,24 @@ TEST_CASE(TestPresetServer) {
         StartScanningIfNeeded(server);
         CHECK(WaitIfFoldersAreScanning(server, k_nullopt));
 
+        CHECK(!AreFoldersScanning(server));
+
         // We should now have some folders.
         auto const [snapshot, handle] = BeginReadFolders(server, tester.scratch_arena);
         DEFER { EndReadFolders(server, handle); };
 
-        CHECK_NEQ(snapshot.folders.size, 0u);
-        CHECK_NEQ(snapshot.banks.size, 0u);
+        CHECK_EQ(snapshot.folders.size, 1u);
+        CHECK_EQ(snapshot.banks.size, 1u);
+
+        auto const& bank_node = REQUIRE_DEREF(snapshot.banks[0]);
+        auto const bank = PresetBankAtNode(bank_node);
+        REQUIRE(bank);
+
+        auto const& f = REQUIRE_DEREF(snapshot.folders[0]);
+        REQUIRE(f.folder);
+        CHECK(ContainingPresetBank(&f.node) == bank);
+
+        CHECK_EQ(FolderPath(&f.node, tester.scratch_arena), folder);
     }
 
     return k_success;
