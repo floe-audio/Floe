@@ -20,7 +20,7 @@ inline prefs::Key FavouriteItemKey() { return "favourite-preset"_s; }
 static FolderNode const* FindFolderByHash(PresetBrowserContext const& context, u64 folder_hash) {
     FolderNode const* result = nullptr;
 
-    for (auto root : context.presets_snapshot.preset_banks) {
+    for (auto root : context.presets_snapshot.banks) {
         ForEachNode((FolderNode*)root, [&](FolderNode const* node) {
             if (result) return;
             if (node->Hash() == folder_hash) result = node;
@@ -914,7 +914,7 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                             });
                     };
 
-                    for (auto const folder : context.presets_snapshot.preset_banks) {
+                    for (auto const folder : context.presets_snapshot.banks) {
                         auto const info = folders.Find(folder);
                         if (!info) continue;
                         do_card(folder, *info);

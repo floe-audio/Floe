@@ -141,7 +141,7 @@ struct PresetsSnapshot {
 
     // Root nodes of all preset banks. All presets are guaranteed to be inside one of these nodes. Presets
     // that aren't explicitly put into banks will be smartly grouped into "misc" banks with ID 0.
-    Span<FolderNode const*> preset_banks;
+    Span<FolderNode const*> banks;
 
     // Additional convenience data
     Set<String> used_tags;

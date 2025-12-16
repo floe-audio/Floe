@@ -576,7 +576,7 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
                 if (component->preset_bank) {
                     ASSERT(component->preset_bank->id != k_misc_bank_id);
 
-                    for (auto const [index, node] : Enumerate(snapshot.preset_banks)) {
+                    for (auto const [index, node] : Enumerate(snapshot.banks)) {
                         auto const existing_bank = PresetBankAtNode(*node);
                         ASSERT(existing_bank);
                         auto const path = *FolderPath(node, scratch_arena);
@@ -653,7 +653,7 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
                     // The incoming presets are not a bank. Let's just scan the currently installed banks to
                     // find an exact match of the files (ignoring folder structure), in which case we can say
                     // it's already installed.
-                    for (auto const [index, node] : Enumerate(snapshot.preset_banks)) {
+                    for (auto const [index, node] : Enumerate(snapshot.banks)) {
                         auto const existing_bank = PresetBankAtNode(*node);
                         ASSERT(existing_bank);
                         auto const path = *FolderPath(node, scratch_arena);

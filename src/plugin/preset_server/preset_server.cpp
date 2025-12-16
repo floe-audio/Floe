@@ -247,7 +247,7 @@ BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& ar
         .snapshot =
             {
                 .folders = preset_folders,
-                .preset_banks = preset_banks,
+                .banks = preset_banks,
                 .used_tags = {server.used_tags.table.Clone(arena, CloneType::Deep)},
                 .used_libraries = {server.used_libraries.table.Clone(arena, CloneType::Deep)},
                 .authors = {server.authors.table.Clone(arena, CloneType::Deep)},
@@ -1287,7 +1287,7 @@ TEST_CASE(TestPresetServer) {
         DEFER { EndReadFolders(server, handle); };
 
         CHECK_NEQ(snapshot.folders.size, 0u);
-        CHECK_NEQ(snapshot.preset_banks.size, 0u);
+        CHECK_NEQ(snapshot.banks.size, 0u);
     }
 
     return k_success;
