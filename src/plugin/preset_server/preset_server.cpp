@@ -5,6 +5,7 @@
 
 #include <xxhash.h>
 
+#include "tests/framework.hpp"
 #include "utils/logger/logger.hpp"
 
 #include "common_infrastructure/state/state_coding.hpp"
@@ -1262,3 +1263,34 @@ void ShutdownPresetServer(PresetServer& server) {
     if (server.is_scanning.Exchange(false, RmwMemoryOrder::AcquireRelease))
         WakeWaitingThreads(server.is_scanning, NumWaitingThreads::All);
 }
+
+TEST_CASE(TestPresetServer) {
+    auto const folder = path::Join(tester.scratch_arena,
+                                   Array {tests::TestFilesFolder(tester), tests::k_preset_test_files_subdir});
+
+    ThreadsafeErrorNotifications errors;
+    PresetServer server {.error_notifications = errors};
+
+    InitPresetServer(server, folder);
+    DEFER { ShutdownPresetServer(server); };
+
+    SUBCASE("instant shutdown") {}
+
+    SUBCASE("enable and shutdown") { StartScanningIfNeeded(server); }
+
+    SUBCASE("wait") {
+        StartScanningIfNeeded(server);
+        CHECK(WaitIfFoldersAreScanning(server, k_nullopt));
+
+        // We should now have some folders.
+        auto const [snapshot, handle] = BeginReadFolders(server, tester.scratch_arena);
+        DEFER { EndReadFolders(server, handle); };
+
+        CHECK_NEQ(snapshot.folders.size, 0u);
+        CHECK_NEQ(snapshot.preset_banks.size, 0u);
+    }
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterPresetServerTests) { REGISTER_TEST(TestPresetServer); }
