@@ -238,10 +238,11 @@ BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& ar
         preset_folders[i] = node_listing;
     }
 
-    auto preset_banks =
-        arena.AllocateExactSizeUninitialised<FolderNode const*>(server.folder_node_preset_bank_indices.size);
+    auto preset_banks = arena.AllocateExactSizeUninitialised<PresetFolderListing const*>(
+        server.folder_node_preset_bank_indices.size);
     for (auto const i : Range(server.folder_node_preset_bank_indices.size))
-        preset_banks[i] = &folders_nodes[server.folder_node_preset_bank_indices[i]];
+        preset_banks[i] =
+            folders_nodes[server.folder_node_preset_bank_indices[i]].user_data.As<PresetFolderListing>();
 
     return {
         .snapshot =
@@ -737,7 +738,8 @@ struct FoldersAggregateInfo {
 
                 // Walk back down the lineage looking for a PresetFolder, we use the topmost one we find.
                 for (usize i = lineage.size; i-- > 0;) {
-                    if (auto listing = lineage[i]->user_data.As<PresetFolderListing>(); listing->folder) {
+                    if (auto const listing = lineage[i]->user_data.As<PresetFolderListing>();
+                        listing->folder) {
                         dyn::AppendIfNotAlreadyThere(miscellaneous_banks, lineage[i]);
                         break;
                     }
@@ -1292,8 +1294,8 @@ TEST_CASE(TestPresetServer) {
         CHECK_EQ(snapshot.folders.size, 1u);
         CHECK_EQ(snapshot.banks.size, 1u);
 
-        auto const& bank_node = REQUIRE_DEREF(snapshot.banks[0]);
-        auto const bank = PresetBankAtNode(bank_node);
+        auto const& bank_listing = REQUIRE_DEREF(snapshot.banks[0]);
+        auto const bank = PresetBankAtNode(bank_listing.node);
         REQUIRE(bank);
 
         auto const& f = REQUIRE_DEREF(snapshot.folders[0]);

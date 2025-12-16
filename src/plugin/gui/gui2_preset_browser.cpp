@@ -914,10 +914,10 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                             });
                     };
 
-                    for (auto const folder : context.presets_snapshot.banks) {
-                        auto const info = folders.Find(folder);
+                    for (auto const listing : context.presets_snapshot.banks) {
+                        auto const info = folders.Find(&listing->node);
                         if (!info) continue;
-                        do_card(folder, *info);
+                        do_card(&listing->node, *info);
                     }
                 },
             .do_extra_filters_bottom =

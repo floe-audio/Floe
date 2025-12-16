@@ -576,10 +576,10 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
                 if (component->preset_bank) {
                     ASSERT(component->preset_bank->id != k_misc_bank_id);
 
-                    for (auto const [index, node] : Enumerate(snapshot.banks)) {
-                        auto const existing_bank = PresetBankAtNode(*node);
+                    for (auto const [index, listing] : Enumerate(snapshot.banks)) {
+                        auto const existing_bank = PresetBankAtNode(listing->node);
                         ASSERT(existing_bank);
-                        auto const path = *FolderPath(node, scratch_arena);
+                        auto const path = *FolderPath(&listing->node, scratch_arena);
 
                         auto actual_checksums = TRY_H(ChecksumsForFolder(path, scratch_arena, scratch_arena));
                         actual_checksums.RemoveIf(
@@ -653,10 +653,10 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
                     // The incoming presets are not a bank. Let's just scan the currently installed banks to
                     // find an exact match of the files (ignoring folder structure), in which case we can say
                     // it's already installed.
-                    for (auto const [index, node] : Enumerate(snapshot.banks)) {
-                        auto const existing_bank = PresetBankAtNode(*node);
+                    for (auto const [index, listing] : Enumerate(snapshot.banks)) {
+                        auto const existing_bank = PresetBankAtNode(listing->node);
                         ASSERT(existing_bank);
-                        auto const path = *FolderPath(node, scratch_arena);
+                        auto const path = *FolderPath(&listing->node, scratch_arena);
 
                         auto const actual_checksums =
                             TRY_H(ChecksumsForFolder(path, scratch_arena, scratch_arena));
