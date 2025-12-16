@@ -863,6 +863,38 @@ static void RemoveFolderAndPublish(PresetServer& server, usize index, ArenaAlloc
     server.published_version.FetchAdd(1, RmwMemoryOrder::AcquireRelease);
 }
 
+static void ReplaceAndPublish(PresetServer& server,
+                              usize existing_index,
+                              PresetFolder* new_preset_folder,
+                              ArenaAllocator& scratch_arena) {
+    ASSERT(CurrentThreadId() == server.server_thread_id);
+
+    auto& old_folder = *server.folders[existing_index];
+    old_folder.delete_after_version = server.published_version.Load(LoadMemoryOrder::Relaxed);
+
+    if constexpr (k_skip_duplicate_presets)
+        for (auto const& preset : old_folder.presets)
+            server.preset_file_hashes.Delete(preset.file_hash);
+
+    FoldersAggregateInfo info {scratch_arena,
+                               ((server.folders.size + 1) * k_max_nested_folders) + server.scan_folders.size};
+    for (auto const folder_index : Range(server.folders.size))
+        if (folder_index == existing_index)
+            info.AddFolder(*new_preset_folder);
+        else
+            info.AddFolder(*server.folders[folder_index]);
+    info.Finalise(scratch_arena);
+
+    server.mutex.Lock();
+    DEFER { server.mutex.Unlock(); };
+
+    server.folders[existing_index] = new_preset_folder;
+
+    info.CopyToServer(server);
+
+    server.published_version.FetchAdd(1, RmwMemoryOrder::AcquireRelease);
+}
+
 static PresetFolder*
 CreatePresetFolder(PresetServer& server, String scan_folder, String subfolder_of_scan_folder) {
     auto preset_folder = server.folder_pool.PrependUninitialised(server.arena);
@@ -969,7 +1001,21 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
         for (auto const& preset : preset_folder->presets)
             HashUpdateFnv1a(preset_folder->all_presets_hash, preset.file_hash);
 
-        AppendFolderAndPublish(server, preset_folder, scratch_arena);
+        // Check if there's an existing folder with the same scan_folder and folder path.
+        Optional<usize> existing_folder_index {};
+        for (auto const i : Range(server.folders.size)) {
+            auto const& existing = *server.folders[i];
+            if (existing.scan_folder == preset_folder->scan_folder &&
+                existing.folder == preset_folder->folder) {
+                existing_folder_index = i;
+                break;
+            }
+        }
+
+        if (existing_folder_index)
+            ReplaceAndPublish(server, *existing_folder_index, preset_folder, scratch_arena);
+        else
+            AppendFolderAndPublish(server, preset_folder, scratch_arena);
     }
 
     for (auto const& entry : entries) {
@@ -1147,17 +1193,15 @@ static void ServerThread(PresetServer& server) {
             }
         }
 
+        DynamicArray<PresetFolder*> maybe_remove_folders {scratch_arena};
+
         // Mark rescan for any requested.
         for (auto scan_folder : rescan_folders) {
-            for (usize i = 0; i < server.folders.size;) {
-                auto& preset_folder = *server.folders[i];
-                if (preset_folder.scan_folder == scan_folder->path)
-                    RemoveFolderAndPublish(server, i, scratch_arena);
-                else
-                    ++i;
-            }
+            for (auto& f : server.folders)
+                if (f->scan_folder == scan_folder->path)
+                    dyn::AppendIfNotAlreadyThere(maybe_remove_folders, f);
 
-            scan_folder->scanned = false; // force a rescan
+            scan_folder->scanned = false; // Force a rescan.
         }
 
         for (auto& scan_folder : server.scan_folders) {
@@ -1175,6 +1219,21 @@ static void ServerThread(PresetServer& server) {
             } else {
                 server.error_notifications.RemoveError(error_id);
             }
+        }
+
+        // After a rescan, if any folders have not been replaced as part of the rescan we can consider them
+        // non-existent and remove them.
+        for (auto maybe_remove_folder : maybe_remove_folders) {
+            Optional<usize> i {};
+            for (auto [index, active_f] : Enumerate(server.folders)) {
+                if (maybe_remove_folder == active_f) {
+                    i = index;
+                    break;
+                }
+            }
+            if (!i) continue; // It's already been removed/replaced.
+
+            RemoveFolderAndPublish(server, *i, scratch_arena);
         }
 
         // At the end of the tick, check if we can set is_scanning to false.
