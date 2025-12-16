@@ -159,7 +159,7 @@ PackageName(ArenaAllocator& arena, sample_lib::Library const* lib, Span<CommandL
             package::k_file_extension);
     if (lib)
         return path::MakeSafeForFilename(
-            fmt::Format(arena, "{} Package{}", lib->id, package::k_file_extension),
+            fmt::Format(arena, "{} - {} Package{}", lib->author, lib->name, package::k_file_extension),
             arena);
     if (args[ToInt(PackagerCliArgId::InputPackages)].was_provided)
         return args[ToInt(PackagerCliArgId::InputPackages)].values[0];
