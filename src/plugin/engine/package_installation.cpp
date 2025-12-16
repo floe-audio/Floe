@@ -1144,6 +1144,190 @@ String CreatePackageZipFile(tests::Tester& tester, String lib_subpath, bool incl
     return zip_path;
 }
 
+TEST_CASE(TestPackageInstallationUpdatePresets) {
+    auto const destination_folder = tests::TempFolderUnique(tester);
+
+    ThreadPool thread_pool;
+    thread_pool.Init("pkg-install", {});
+    ThreadsafeErrorNotifications error_notif;
+    sample_lib_server::Server server {thread_pool, destination_folder, error_notif};
+    PresetServer preset_server {
+        .error_notifications = error_notif,
+    };
+
+    InitPresetServer(preset_server, destination_folder);
+    DEFER { ShutdownPresetServer(preset_server); };
+
+    constexpr String k_presets_folder_name = "my-presets";
+
+    auto const create_zip_file = [&](String filename, u32 version) -> ErrorCodeOr<String> {
+        DynamicArray<u8> data {tester.scratch_arena};
+        auto writer = dyn::WriterFor(data);
+        auto package = WriterCreate(writer);
+        DEFER { WriterDestroy(package); };
+
+        auto const folder =
+            (String)path::Join(tester.scratch_arena,
+                               Array {tests::TempFolderUnique(tester), k_presets_folder_name});
+        TRY(CreateDirectory(folder, {.create_intermediate_directories = false}));
+        TRY(CopyFile(
+            path::Join(tester.scratch_arena,
+                       Array {tests::TestFilesFolder(tester), tests::k_preset_test_files_subdir, filename}),
+            path::Join(tester.scratch_arena, Array {folder, filename}),
+            ExistingDestinationHandling::Fail));
+        TRY(WriteFile(path::Join(tester.scratch_arena, Array {folder, k_preset_bank_filename}),
+                      fmt::Format(tester.scratch_arena,
+                                  "minor_version = {}\n"_s
+                                  "id = org.floe-audio.test\n",
+                                  version)));
+        TRY(WriterAddPresetsFolder(package, folder, tester.scratch_arena, "tester"));
+
+        WriterFinalise(package);
+
+        auto const zip = tests::TempFilename(tester);
+        TRY(WriteFile(zip, data));
+        return zip;
+    };
+
+    constexpr String k_preset_filename_v1 = "sine.floe-preset";
+    constexpr String k_preset_filename_v2 = "generic-test-1.mirage-phoenix";
+    auto const zip_path_v1 = TRY(create_zip_file(k_preset_filename_v1, 1));
+    auto const zip_path_v2 = TRY(create_zip_file(k_preset_filename_v2, 2));
+
+    CreateJobOptions job_opts {
+        .zip_path = zip_path_v1,
+        .install_folders = {destination_folder, destination_folder},
+        .sample_lib_server = server,
+        .preset_server = preset_server,
+    };
+
+    auto const installed_dir =
+        (String)path::Join(tester.scratch_arena, Array {destination_folder, k_presets_folder_name});
+    auto const installed_file_v1 =
+        path::Join(tester.scratch_arena, Array {installed_dir, k_preset_filename_v1});
+    auto const installed_file_v2 =
+        path::Join(tester.scratch_arena, Array {installed_dir, k_preset_filename_v2});
+
+    // Install version 1.
+    {
+        auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
+        DEFER { DestroyInstallJob(job); };
+        DoJobPhase1(*job); // Should do both phases.
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::DoneSuccess);
+        auto const& comp = job->components.first->data;
+        CHECK(!comp.existing_installation_status.installed);
+
+        CHECK_EQ(TRY(GetFileType(installed_dir)), FileType::Directory);
+        CHECK_EQ(TRY(GetFileType(installed_file_v1)), FileType::File);
+    }
+
+    SUBCASE("same bank does nothing") {
+        auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
+        DEFER { DestroyInstallJob(job); };
+        DoJobPhase1(*job); // Should do both phases.
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::DoneSuccess);
+        auto const& comp = job->components.first->data;
+        CHECK(comp.existing_installation_status.installed);
+        CHECK_EQ(comp.existing_installation_status.modified_since_installed,
+                 ModifiedSinceInstalled::Unmodified);
+        CHECK_EQ(comp.existing_installation_status.version_difference, VersionDifference::Equal);
+
+        CHECK_EQ(TRY(GetFileType(installed_file_v1)), FileType::File);
+    }
+
+    // Now we test the various cases of installing verison 2.
+    job_opts.zip_path = zip_path_v2;
+
+    SUBCASE("updates automatically when unmodified") {
+        auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
+        DEFER { DestroyInstallJob(job); };
+        DoJobPhase1(*job); // Should do both phases.
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::DoneSuccess);
+        auto const& comp = job->components.first->data;
+        CHECK(comp.existing_installation_status.installed);
+
+        CHECK_EQ(TRY(GetFileType(installed_dir)), FileType::Directory);
+        CHECK_EQ(TRY(GetFileType(installed_file_v2)), FileType::File);
+        CHECK(GetFileType(installed_file_v1).HasError());
+    }
+
+    SUBCASE("modified file requires user input") {
+        auto state = TRY(LoadPresetFile(installed_file_v1, tester.scratch_arena, false));
+        state.inst_ids[0] = sample_lib::InstrumentId {.library = "foo"_s, .inst_id = "bar"_s};
+        TRY(SavePresetFile(installed_file_v1, state));
+
+        auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
+        DEFER { DestroyInstallJob(job); };
+        DoJobPhase1(*job);
+
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::AwaitingUserInput);
+        auto& comp = job->components.first->data;
+        CHECK(comp.existing_installation_status.installed);
+        CHECK_EQ(comp.existing_installation_status.modified_since_installed,
+                 ModifiedSinceInstalled::Modified);
+        CHECK_EQ(comp.existing_installation_status.version_difference, VersionDifference::InstalledIsOlder);
+
+        comp.user_decision = InstallJob::UserDecision::Skip;
+        job->state.Store(InstallJob::State::Installing, StoreMemoryOrder::Release);
+        DoJobPhase2(*job);
+    }
+
+    SUBCASE("extra file added requires user input") {
+        auto const extra_file = path::Join(tester.scratch_arena, Array {installed_dir, "file.txt"});
+        TRY(WriteFile(extra_file, ""_s));
+        RescanFolder(preset_server, installed_dir);
+
+        auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
+        DEFER { DestroyInstallJob(job); };
+        DoJobPhase1(*job);
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::AwaitingUserInput);
+        auto& comp = job->components.first->data;
+        CHECK(comp.existing_installation_status.installed);
+        CHECK_EQ(comp.existing_installation_status.modified_since_installed,
+                 ModifiedSinceInstalled::UnmodifiedButFilesAdded);
+        CHECK_EQ(comp.existing_installation_status.version_difference, VersionDifference::InstalledIsOlder);
+
+        SUBCASE("overwrite") { comp.user_decision = InstallJob::UserDecision::Overwrite; }
+        SUBCASE("skip") { comp.user_decision = InstallJob::UserDecision::Skip; }
+        SUBCASE("install copy") { comp.user_decision = InstallJob::UserDecision::InstallCopy; }
+
+        job->state.Store(InstallJob::State::Installing, StoreMemoryOrder::Release);
+        DoJobPhase2(*job);
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::DoneSuccess);
+        CHECK_EQ(TRY(GetFileType(installed_dir)), FileType::Directory);
+
+        TRY(PrintDirectory(tester, destination_folder, "installed"));
+
+        switch (comp.user_decision) {
+            case InstallJob::UserDecision::Unknown: PanicIfReached();
+            case InstallJob::UserDecision::Overwrite: {
+                CHECK_EQ(TRY(GetFileType(installed_file_v2)), FileType::File);
+                CHECK(GetFileType(installed_file_v1).HasError());
+                CHECK(GetFileType(extra_file).HasError());
+                break;
+            }
+            case InstallJob::UserDecision::Skip: {
+                CHECK_EQ(TRY(GetFileType(installed_file_v1)), FileType::File);
+                CHECK_EQ(TRY(GetFileType(extra_file)), FileType::File);
+                break;
+            }
+            case InstallJob::UserDecision::InstallCopy: {
+                CHECK_EQ(TRY(GetFileType(installed_file_v1)), FileType::File);
+                CHECK_EQ(TRY(GetFileType(extra_file)), FileType::File);
+
+                auto const separate_dir = (String)fmt::Format(tester.scratch_arena, "{} (1)", installed_dir);
+                auto const separate_file =
+                    path::Join(tester.scratch_arena, Array {separate_dir, k_preset_filename_v2});
+                CHECK_EQ(TRY(GetFileType(separate_dir)), FileType::Directory);
+                CHECK_EQ(TRY(GetFileType(separate_file)), FileType::File);
+                break;
+            }
+        }
+    }
+
+    return k_success;
+}
+
 TEST_CASE(TestPackageInstallationExtraFiles) {
     auto const destination_folder = tests::TempFolderUnique(tester);
 
@@ -1187,7 +1371,8 @@ TEST_CASE(TestPackageInstallationExtraFiles) {
         sample_lib_server::RescanFolder(server, destination_folder);
     }
 
-    // Trying to install again should do nothing; it's already installed exactly, it just has an extra file.
+    // Trying to install again should do nothing; it's already installed exactly, it just has an extra
+    // file.
     {
         auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
         DEFER { DestroyInstallJob(job); };
@@ -1204,8 +1389,8 @@ TEST_CASE(TestPackageInstallationExtraFiles) {
         CHECK_EQ(type, FileType::File);
     }
 
-    // Update to a new version - this should prompt user input because overwriting the existing folder would
-    // delete the extra file that was added - we should be asking permission before doing that.
+    // Update to a new version - this should prompt user input because overwriting the existing folder
+    // would delete the extra file that was added - we should be asking permission before doing that.
     job_opts.zip_path = zip_path_v2;
     {
         auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
@@ -1306,8 +1491,8 @@ TEST_CASE(TestPackageInstallation) {
 
         TRY(PrintDirectory(tester, destination_folder, "Files renamed"));
 
-        // Tell the server to rename so it notices the changes. It probably does this automatically via file
-        // watchers but it's not guaranteed.
+        // Tell the server to rename so it notices the changes. It probably does this automatically via
+        // file watchers but it's not guaranteed.
         sample_lib_server::RescanFolder(sample_lib_server, destination_folder);
         RescanFolder(preset_server, destination_folder);
     }
@@ -1699,4 +1884,5 @@ TEST_REGISTRATION(RegisterPackageInstallationTests) {
     REGISTER_TEST(package::TestParseFilenameWithSuffix);
     REGISTER_TEST(package::TestWriteFilenameWithSuffix);
     REGISTER_TEST(package::TestFindNextNonExistentFilename);
+    REGISTER_TEST(package::TestPackageInstallationUpdatePresets);
 }
