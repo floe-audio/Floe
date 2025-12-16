@@ -12,7 +12,7 @@ SPDX-FileCopyrightText = "2024 Sam Windell"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
 [[annotations]]
-path = ["website/static/package-database.json", "website/static/CNAME", "website/package-lock.json", "website/package.json", "website/versions.json", "website/versioned_sidebars/version-stable-sidebars.json"]
+path = ["website/static/package-database.json", "website/static/CNAME", "website/static/api/v1/version", "website/package-lock.json", "website/package.json", "website/versions.json", "website/versioned_sidebars/version-stable-sidebars.json"]
 SPDX-FileCopyrightText = "2024-2025 Sam Windell"
 SPDX-License-Identifier = "MIT"
 
