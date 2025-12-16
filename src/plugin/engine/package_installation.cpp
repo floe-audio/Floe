@@ -581,10 +581,6 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
                         ASSERT(existing_bank);
                         auto const path = *FolderPath(&listing->node, scratch_arena);
 
-                        auto actual_checksums = TRY_H(ChecksumsForFolder(path, scratch_arena, scratch_arena));
-                        actual_checksums.RemoveIf(
-                            [](auto const& key, auto const&) { return key == k_checksums_file; });
-
                         if (existing_bank->id == component->preset_bank->id) {
                             existing_check = {
                                 .installed = true,
@@ -609,6 +605,13 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
                                         if (auto const stored_checksums =
                                                 ParseChecksumFile(o.Value(), scratch_arena);
                                             stored_checksums.HasValue()) {
+
+                                            auto actual_checksums =
+                                                TRY_H(ChecksumsForFolder(path, scratch_arena, scratch_arena));
+                                            actual_checksums.RemoveIf([](auto const& key, auto const&) {
+                                                return key == k_checksums_file;
+                                            });
+
                                             switch (
                                                 CompareChecksums(stored_checksums.Value(),
                                                                  actual_checksums,
@@ -658,18 +661,15 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
                         ASSERT(existing_bank);
                         auto const path = *FolderPath(&listing->node, scratch_arena);
 
-                        auto const actual_checksums =
-                            TRY_H(ChecksumsForFolder(path, scratch_arena, scratch_arena));
-
                         if (CompareChecksums(component->checksum_values,
-                                             actual_checksums,
+                                             TRY_H(ChecksumsForFolder(path, scratch_arena, scratch_arena)),
                                              {
                                                  .ignore_path_nesting = true,
                                                  .test_table_allowed_extra_files = true,
                                              }) != CompareChecksumsResult::Differ) {
-                            // We have found a folder that contains all the component's files exactly. They
-                            // might have a different folder nesting structure, and it might contain more
-                            // folders but we still say the component is fully installed.
+                            // We have found all the component's files exactly. They might have a different
+                            // folder nesting structure, and it might contain more folders but we still say
+                            // the component is fully installed.
                             existing_check = {
                                 .installed = true,
                                 .version_difference = VersionDifference::Equal,
@@ -1320,7 +1320,6 @@ TEST_CASE(TestPackageInstallation) {
                  .expected_library_action = "skipped"_s,
                  .library_user_decision = InstallJob::UserDecision::Skip,
 
-                 // Presets never require user input, they're always installed or skipped automatically.
                  .expected_presets_status {.installed = false},
                  .expected_presets_action = "installed"_s,
              }));
