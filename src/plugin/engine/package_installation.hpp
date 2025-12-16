@@ -59,6 +59,7 @@ struct InstallJob {
         Unknown,
         Overwrite,
         Skip,
+        InstallCopy,
     };
 
     enum class InstallDestinationType {

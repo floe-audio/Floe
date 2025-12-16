@@ -732,8 +732,17 @@ static InstallJob::State DoJobPhase2Impl(InstallJob& job) {
         if (NoInstallationRequired(component.existing_installation_status)) continue;
 
         if (UserInputIsRequired(component.existing_installation_status)) {
-            ASSERT(component.user_decision != InstallJob::UserDecision::Unknown);
-            if (component.user_decision == InstallJob::UserDecision::Skip) continue;
+            switch (component.user_decision) {
+                case InstallJob::UserDecision::Skip: continue;
+                case InstallJob::UserDecision::InstallCopy:
+                    component.install_config.allow_overwrite = false;
+                    component.install_config.folder = job.install_folders[ToInt(component.component.type)];
+                    break;
+                case InstallJob::UserDecision::Overwrite:
+                    component.install_config.allow_overwrite = true;
+                    break;
+                case InstallJob::UserDecision::Unknown: PanicIfReached();
+            }
         }
 
         TRY_H(ReaderInstallComponent(*job.reader, component.component, component.install_config, job.arena));
@@ -857,6 +866,7 @@ String TypeOfActionTaken(ExistingInstalledComponent existing_installation_status
                 else
                     return "overwritten";
             }
+            case InstallJob::UserDecision::InstallCopy: return "installed as copy";
             case InstallJob::UserDecision::Skip: return "skipped";
         }
     }
@@ -1478,8 +1488,9 @@ TEST_CASE(TestTypeOfActionTaken) {
     for (auto const installed : Array {true, false}) {
         for (auto const version_difference : EnumIterator<VersionDifference>()) {
             for (auto const modified_since_installed : EnumIterator<ModifiedSinceInstalled>()) {
-                for (auto const user_decision :
-                     Array {InstallJob::UserDecision::Overwrite, InstallJob::UserDecision::Skip}) {
+                for (auto const user_decision : Array {InstallJob::UserDecision::Overwrite,
+                                                       InstallJob::UserDecision::Skip,
+                                                       InstallJob::UserDecision::InstallCopy}) {
                     auto const status = ExistingInstalledComponent {
                         .installed = installed,
                         .version_difference = version_difference,

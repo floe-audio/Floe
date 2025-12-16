@@ -133,6 +133,9 @@ PUBLIC void PackageInstallAlertsPanel(GuiBoxSystem& box_system, package::Install
                 component.user_decision = package::InstallJob::UserDecision::Skip;
             if (TextButton(box_system, button_row, {.text = "Overwrite"}))
                 component.user_decision = package::InstallJob::UserDecision::Overwrite;
+            if (component.component.type == package::ComponentType::Presets &&
+                TextButton(box_system, button_row, {.text = "Keep Both"}))
+                component.user_decision = package::InstallJob::UserDecision::InstallCopy;
         }
     }
 }
