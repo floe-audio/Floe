@@ -530,7 +530,7 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
                             dyn::AppendSpan(buffer, "\n\nRequires libraries: ");
                             for (auto const [library, _] : preset.used_libraries) {
                                 auto const maybe_lib = frame_context.lib_table.Find(library);
-                                if (!maybe_lib || *maybe_lib)
+                                if (!maybe_lib || !*maybe_lib)
                                     fmt::Append(buffer, "{} (not installed)", library);
                                 else
                                     dyn::AppendSpan(buffer, (*maybe_lib)->name);
