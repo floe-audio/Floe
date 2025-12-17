@@ -33,7 +33,10 @@ auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
         .id = (u32)CliArgId::ScriptFile,
         .key = "script-file",
         .description =
-            "Path to the script file to edit. If not provided, the preset file will be printed to stdout.",
+            "Path to the script file to edit. If not provided, the preset file will be printed to stdout.\n"
+            "In the script, you have access to a global 'preset'. Modify this global and the changes will\n"
+            "be saved to the file. Run this tool without a script file to see the format of 'preset'.\n"
+            "param_values are keyed by param ID.\n",
         .value_type = "path",
         .required = false,
         .num_values = 1,
