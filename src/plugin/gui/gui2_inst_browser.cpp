@@ -276,6 +276,7 @@ static void InstBrowserWaveformItems(GuiBoxSystem& box_system,
 
     sample_lib::Library const pseudo_lib {
         .name = "Waveforms"_s,
+        .id = k_waveform_library_id,
         .author = FLOE_VENDOR,
         .file_format_specifics = sample_lib::LuaSpecifics {},
     };
@@ -518,7 +519,7 @@ void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, I
                 .clicked_hash = Hash(k_waveform_library_id),
                 .filter_mode = state.common_state.filter_mode,
             },
-        .library_id = sample_lib::k_builtin_library_id,
+        .library_id = k_waveform_library_id,
         .library_images = context.library_images,
         .sample_library_server = context.sample_library_server,
         .subtext = "Basic waveforms built into Floe",
