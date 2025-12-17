@@ -20,8 +20,8 @@ inline prefs::Key FavouriteItemKey() { return "favourite-preset"_s; }
 static FolderNode const* FindFolderByHash(PresetBrowserContext const& context, u64 folder_hash) {
     FolderNode const* result = nullptr;
 
-    for (auto root : context.presets_snapshot.banks) {
-        ForEachNode((FolderNode*)root, [&](FolderNode const* node) {
+    for (auto listing : context.presets_snapshot.banks) {
+        ForEachNode(const_cast<FolderNode*>(&listing->node), [&](FolderNode const* node) {
             if (result) return;
             if (node->Hash() == folder_hash) result = node;
         });
