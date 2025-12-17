@@ -103,7 +103,7 @@ inline BoundsCheckedLoop CreateBoundsCheckedLoop(sample_lib::BuiltinLoop loop, u
 
     auto end = ({
         u32 e;
-        if (loop.end_frame < 0) {
+        if (loop.end_frame <= 0) {
             auto const offset_end = -loop.end_frame;
             e = (num_frames >= offset_end) ? (num_frames - (u32)offset_end) : 0;
         } else {
