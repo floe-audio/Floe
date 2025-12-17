@@ -477,8 +477,8 @@ static void BuildPresetLuaTable(lua_State* lua, StateSnapshot const& preset_stat
 }
 
 static ErrorCodeOr<int> Main(ArgsCstr args) {
-    GlobalInit({.init_error_reporting = true, .set_main_thread = true});
-    DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
+    GlobalInit({.init_error_reporting = false, .set_main_thread = true});
+    DEFER { GlobalDeinit({.shutdown_error_reporting = false}); };
 
     ArenaAllocator arena {PageAllocator::Instance()};
 
