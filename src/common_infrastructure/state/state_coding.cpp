@@ -513,8 +513,9 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     if (version < StateVersion::AddedLayerVelocityCurves) {
         state.velocity_curve_points = {};
 
-        // We don't want to adapt parameters from the DAW because there might be automation on them.
         if (source == StateSource::Daw) {
+            // We don't want to adapt parameters from the DAW because there might be automation on them.
+            // We disable the velocity curve by setting it to a 100% straight line.
             for (auto const layer_index : Range(k_num_layers)) {
                 dyn::AssignAssumingAlreadyEmpty(state.velocity_curve_points[layer_index],
                                                 Array {
@@ -522,77 +523,74 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                                                     CurveMap::Point {1.0f, 1.0f, 0.0f},
                                                 });
             }
-            return;
-        }
+        } else {
+            // Adapt LayerParamIndex::VelocityMapping to the new curve and clear out the old param.
+            for (auto const layer_index : Range(k_num_layers)) {
+                auto& val = state.LinearParam(
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::VelocityMapping));
+                auto const velocity_mapping_mode = (param_values::VelocityMappingMode)Round(val);
 
-        // Adapt LayerParamIndex::VelocityMapping.
-        for (auto const layer_index : Range(k_num_layers)) {
-            auto& val = state.LinearParam(
-                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::VelocityMapping));
-            auto const velocity_mapping_mode = (param_values::VelocityMappingMode)Round(val);
+                // We don't use this param anymore.
+                val = (f32)param_values::VelocityMappingMode::None;
 
-            // We don't use this param anymore.
-            val = (f32)param_values::VelocityMappingMode::None;
-
-            auto& points = state.velocity_curve_points[layer_index];
-            switch (velocity_mapping_mode) {
-                case param_values::VelocityMappingMode::None:
-                    // Flat at max volume.
-                    dyn::AssignAssumingAlreadyEmpty(points,
-                                                    Array {
-                                                        CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                        CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                    });
-                    break;
-                case param_values::VelocityMappingMode::TopToBottom:
-                    // Linear
-                    dyn::AssignAssumingAlreadyEmpty(points,
-                                                    Array {
-                                                        CurveMap::Point {0.0f, 0.0f, 0.0f},
-                                                        CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                    });
-                    break;
-                case param_values::VelocityMappingMode::BottomToTop:
-                    // Inverse linear
-                    dyn::AssignAssumingAlreadyEmpty(points,
-                                                    Array {
-                                                        CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                        CurveMap::Point {1.0f, 0.0f, 0.0f},
-                                                    });
-                    break;
-                case param_values::VelocityMappingMode::TopToMiddle:
-                    // Flat until middle, then linear ramp-up to end
-                    dyn::AssignAssumingAlreadyEmpty(points,
-                                                    Array {
-                                                        CurveMap::Point {0.0f, 0.0f, 0.0f},
-                                                        CurveMap::Point {0.5f, 0.0f, 0.0f},
-                                                        CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                    });
-                    break;
-                case param_values::VelocityMappingMode::MiddleOutwards:
-                    // Linear ramp-up to middle, then linear ramp-down to end
-                    dyn::AssignAssumingAlreadyEmpty(points,
-                                                    Array {
-                                                        CurveMap::Point {0.0f, 0.0f, 0.0f},
-                                                        CurveMap::Point {0.5f, 1.0f, 0.0f},
-                                                        CurveMap::Point {1.0f, 0.0f, 0.0f},
-                                                    });
-                    break;
-                case param_values::VelocityMappingMode::MiddleToBottom:
-                    // Linear ramp-down to middle, then flat to end
-                    dyn::AssignAssumingAlreadyEmpty(points,
-                                                    Array {
-                                                        CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                        CurveMap::Point {0.5f, 0.0f, 0.0f},
-                                                        CurveMap::Point {1.0f, 0.0f, 0.0f},
-                                                    });
-                    break;
-                case param_values::VelocityMappingMode::Count: break;
+                auto& points = state.velocity_curve_points[layer_index];
+                switch (velocity_mapping_mode) {
+                    case param_values::VelocityMappingMode::None:
+                        // Flat at max volume.
+                        dyn::AssignAssumingAlreadyEmpty(points,
+                                                        Array {
+                                                            CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                                            CurveMap::Point {1.0f, 1.0f, 0.0f},
+                                                        });
+                        break;
+                    case param_values::VelocityMappingMode::TopToBottom:
+                        // Linear
+                        dyn::AssignAssumingAlreadyEmpty(points,
+                                                        Array {
+                                                            CurveMap::Point {0.0f, 0.0f, 0.0f},
+                                                            CurveMap::Point {1.0f, 1.0f, 0.0f},
+                                                        });
+                        break;
+                    case param_values::VelocityMappingMode::BottomToTop:
+                        // Inverse linear
+                        dyn::AssignAssumingAlreadyEmpty(points,
+                                                        Array {
+                                                            CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                                            CurveMap::Point {1.0f, 0.0f, 0.0f},
+                                                        });
+                        break;
+                    case param_values::VelocityMappingMode::TopToMiddle:
+                        // Flat until middle, then linear ramp-up to end
+                        dyn::AssignAssumingAlreadyEmpty(points,
+                                                        Array {
+                                                            CurveMap::Point {0.0f, 0.0f, 0.0f},
+                                                            CurveMap::Point {0.5f, 0.0f, 0.0f},
+                                                            CurveMap::Point {1.0f, 1.0f, 0.0f},
+                                                        });
+                        break;
+                    case param_values::VelocityMappingMode::MiddleOutwards:
+                        // Linear ramp-up to middle, then linear ramp-down to end
+                        dyn::AssignAssumingAlreadyEmpty(points,
+                                                        Array {
+                                                            CurveMap::Point {0.0f, 0.0f, 0.0f},
+                                                            CurveMap::Point {0.5f, 1.0f, 0.0f},
+                                                            CurveMap::Point {1.0f, 0.0f, 0.0f},
+                                                        });
+                        break;
+                    case param_values::VelocityMappingMode::MiddleToBottom:
+                        // Linear ramp-down to middle, then flat to end
+                        dyn::AssignAssumingAlreadyEmpty(points,
+                                                        Array {
+                                                            CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                                            CurveMap::Point {0.5f, 0.0f, 0.0f},
+                                                            CurveMap::Point {1.0f, 0.0f, 0.0f},
+                                                        });
+                        break;
+                    case param_values::VelocityMappingMode::Count: break;
+                }
             }
-        }
 
-        // Adapt MasterVelocity.
-        {
+            // Adapt MasterVelocity to the new curves and clear out the old param.
             auto& val = state.LinearParam(ParamIndex::MasterVelocity);
             ASSERT(val >= 0.0f && val <= 1.0f);
             auto const velocity_volume_strength = val;

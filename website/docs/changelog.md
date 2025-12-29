@@ -17,6 +17,7 @@ For instance: 0.0.1. Don't change the headings.
 ## 1.1.1
 - Sample library creation: add ability to set IDs for libraries, instruments and IRs allowing for changing names without breaking backwards compatibility
 - Fix EQ parameters sometime not being correctly applyed when changing presets.
+- Fix some parameters not loading correctly related to the velocity curves
 
 ## 1.1.0
 - Fix pop sometimes possible at ping-pong loop boundary and make adjusting the loop points while playing have less audible artefacts.
