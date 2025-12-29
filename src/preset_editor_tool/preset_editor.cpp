@@ -14,6 +14,8 @@
 #include "common_infrastructure/global.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
 
+// IMPROVE: export a Lua LSP def file for the preset table.
+
 enum class CliArgId : u32 {
     PresetFile,
     ScriptFile,
