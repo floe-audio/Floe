@@ -31,7 +31,7 @@ LibraryIdRef IdFromAuthorAndNameAlloc(String author, String name, Allocator& all
     return result;
 }
 
-constexpr auto k_mirage_library_id_suffix = " (Mirage) - FrozenPlain"_s;
+constexpr auto k_mirage_library_id_suffix = " - FrozenPlain - OG"_s;
 
 usize IdForMdataLibrary(String name, MutableString out) {
     ASSERT(name.size + k_mirage_library_id_suffix.size <= k_max_library_id_size);
