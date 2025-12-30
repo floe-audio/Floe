@@ -305,7 +305,10 @@ struct LayerProcessor {
     f32 pitch_bend_range_semitone = 0;
     f32 sample_offset_01 = 0;
 
-    bool monophonic {};
+    param_values::MonophonicMode monophonic_mode {};
+    bool monophonic_retrigger_legacy {}; // Legacy
+    Optional<MidiChannelNote> monophonic_latch {};
+
     bool vol_env_on_param = true;
 
     param_values::LfoRestartMode lfo_restart_mode {};

@@ -496,12 +496,15 @@ enum class StateVersion : u16 {
     // Changed to using a single ID string for libraries instead of name+author.
     ReverseDnsLibraryId,
 
+    // Changed Monophonic from bool to enum with Off, Retrigger, and Latch modes.
+    AddedMonophonicModeParameter,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
 
 static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSource source) {
-    static_assert(k_num_parameters == 225,
+    static_assert(k_num_parameters == 228,
                   "You have changed the number of parameters. You must now bump the "
                   "state version number and handle setting any new parameters to "
                   "backwards-compatible states. In other words, these new parameters "
@@ -628,6 +631,35 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
             // There used to be no pitch bend.
             state.param_values[ToInt(
                 ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::PitchBendRange))] = 0;
+        }
+    }
+
+    if (version < StateVersion::AddedMonophonicModeParameter) {
+        if (source == StateSource::Daw) {
+            // We don't want to adapt parameters from the DAW because there might be automation on the bool.
+            // Set new param to default (Off/polyphonic)
+            for (auto const layer_index : Range(k_num_layers)) {
+                state.LinearParam(
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::MonophonicMode)) =
+                    (f32)param_values::MonophonicMode::Off;
+            }
+        } else {
+            // Adapt legacy Monophonic bool to new MonophonicMode enum
+            for (auto const layer_index : Range(k_num_layers)) {
+                auto& bool_val = state.LinearParam(
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::Monophonic));
+
+                auto const was_monophonic = bool_val >= 0.5f; // Bool params use 0.0f/1.0f
+
+                // Clear the legacy parameter
+                bool_val = 0.0f;
+
+                // Set new parameter: false -> Off, true -> Retrigger (preserve old behaviour)
+                auto& mode_val = state.LinearParam(
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::MonophonicMode));
+                mode_val = was_monophonic ? (f32)param_values::MonophonicMode::Retrigger
+                                          : (f32)param_values::MonophonicMode::Off;
+            }
         }
     }
 }

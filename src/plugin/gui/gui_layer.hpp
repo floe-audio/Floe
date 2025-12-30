@@ -84,6 +84,7 @@ struct LayerLayoutTempIDs {
             layout::Id pitchbend_name;
             layout::Id keytrack;
             layout::Id mono;
+            layout::Id mono_name;
             layout::Id velo_name;
             layout::Id velo_graph;
             layout::Id key_range_text;

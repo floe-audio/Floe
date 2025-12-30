@@ -18,6 +18,10 @@ For instance: 0.0.1. Don't change the headings.
 - Sample library creation: add ability to set IDs for libraries, instruments and IRs allowing for changing names without breaking backwards compatibility
 - Fix EQ parameters sometime not being correctly applyed when changing presets.
 - Fix some parameters not loading correctly related to the velocity curves
+- Fix layer voices duplicating when just changing one instrument at a time
+- Add new monophonic mode: latch. The monophonic bool parameter is replaced by a menu with this new option.
+In latch mode, the note only ends when all notes are released - new key presses are ignored and the original note continues playing unchanged.
+
 
 ## 1.1.0
 - Fix pop sometimes possible at ping-pong loop boundary and make adjusting the loop points while playing have less audible artefacts.

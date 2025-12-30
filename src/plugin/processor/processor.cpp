@@ -1627,28 +1627,43 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
 
     // Create new voices for layer if requested. We want to do this after parameters have been updated
     // so that the voices start with the most recent parameter values.
-    if (auto restart_layer_bitset = Exchange(processor.restart_voices_for_layer_bitset, {});
+    if (auto const restart_layer_bitset = Exchange(processor.restart_voices_for_layer_bitset, {});
         restart_layer_bitset.AnyValuesSet()) {
-        for (u32 chan = 0; chan <= 15; ++chan) {
-            auto const keys_to_start =
+        auto const all_layers_resetting = restart_layer_bitset.AllValuesSet();
+
+        // Clear latch for layers that are restarting.
+        for (auto [layer_index, layer] : Enumerate(processor.layer_processors))
+            if (restart_layer_bitset.Get(layer_index)) layer.monophonic_latch = {};
+
+        for (auto const chan : Range<u8>(16)) {
+            auto const held_notes =
                 processor.audio_processing_context.midi_note_state.NotesHeldIncludingSustained((u4)chan);
-            if (keys_to_start.AnyValuesSet()) {
-                for (auto [layer_index, layer] : Enumerate(processor.layer_processors)) {
-                    if (restart_layer_bitset.Get(layer_index)) {
-                        for (u8 note_num = 0; note_num <= 127; ++note_num) {
-                            if (keys_to_start.Get(note_num)) {
-                                dyn::Append(changes.note_events,
-                                            NoteEvent {
-                                                .velocity = processor.audio_processing_context.midi_note_state
-                                                                .velocities[chan][note_num],
-                                                .offset = 0,
-                                                .note = {.note = (u7)note_num, .channel = (u4)chan},
-                                                .type = NoteEvent::Type::On,
-                                            });
-                            }
-                        }
+            if (!held_notes.AnyValuesSet()) continue;
+
+            auto const add_note_events = [&](s8 exclusively_for_layer) {
+                for (auto const note_num : Range<u8>(128)) {
+                    if (held_notes.Get(note_num)) {
+                        dyn::Append(changes.note_events,
+                                    NoteEvent {
+                                        .velocity = processor.audio_processing_context.midi_note_state
+                                                        .velocities[chan][note_num],
+                                        .offset = 0,
+                                        .note = {.note = (u7)note_num, .channel = (u4)chan},
+                                        .type = NoteEvent::Type::On,
+                                        .exclusively_for_layer = exclusively_for_layer,
+                                    });
                     }
                 }
+            };
+
+            if (all_layers_resetting) {
+                // If all layers are restarting we don't need to set 'exclusively_for_layer' and so we can
+                // avoid putting the event in multiple times (one for each layer).
+                add_note_events(-1);
+            } else {
+                // Otherwise, we need to add the notes for every layer that is restarting.
+                for (auto [layer_index, layer] : Enumerate(processor.layer_processors))
+                    if (restart_layer_bitset.Get(layer_index)) add_note_events(CheckedCast<s8>(layer.index));
             }
         }
     }

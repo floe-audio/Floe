@@ -799,7 +799,8 @@ void Layout(Gui* g,
                     },
                 };
                 c.play.keytrack = layout::CreateItem(g->layout, g->scratch_arena, button_options);
-                c.play.mono = layout::CreateItem(g->layout, g->scratch_arena, button_options);
+
+                layout_item(c.play.mono, c.play.mono_name, midi_item_height);
 
                 {
                     {
@@ -877,7 +878,7 @@ void Layout(Gui* g,
                                                   .size = {layout::k_fill_parent, page_heading_height},
                                                   .margins = heading_margins,
                                               });
-                auto layout_item = [&](layout::Id& control, layout::Id& name) {
+                auto const layout_menu_and_label = [&](layout::Id& control, layout::Id& name) {
                     auto parent =
                         layout::CreateItem(g->layout,
                                            g->scratch_arena,
@@ -906,9 +907,9 @@ void Layout(Gui* g,
                                               });
                 };
 
-                layout_item(c.lfo.target, c.lfo.target_name);
-                layout_item(c.lfo.shape, c.lfo.shape_name);
-                layout_item(c.lfo.mode, c.lfo.mode_name);
+                layout_menu_and_label(c.lfo.target, c.lfo.target_name);
+                layout_menu_and_label(c.lfo.shape, c.lfo.shape_name);
+                layout_menu_and_label(c.lfo.mode, c.lfo.mode_name);
 
                 auto knob_container =
                     layout::CreateItem(g->layout,
@@ -1355,10 +1356,14 @@ void Draw(Gui* g,
                             params.DescribedValue(layer->index, LayerParamIndex::Keytrack),
                             c.play.keytrack,
                             buttons::MidiButton(g->imgui));
-            buttons::Toggle(g,
-                            params.DescribedValue(layer->index, LayerParamIndex::Monophonic),
-                            c.play.mono,
-                            buttons::MidiButton(g->imgui));
+            buttons::PopupWithItems(g,
+                                    params.DescribedValue(layer->index, LayerParamIndex::MonophonicMode),
+                                    c.play.mono,
+                                    buttons::ParameterPopupButton(g->imgui));
+            labels::Label(g,
+                          params.DescribedValue(layer->index, LayerParamIndex::MonophonicMode),
+                          c.play.mono_name,
+                          labels::Parameter(g->imgui));
 
             labels::Label(g, c.play.key_range_text, "Range", labels::Parameter(g->imgui));
 
@@ -1564,6 +1569,7 @@ void Draw(Gui* g,
                     case LayerParamIndex::VelocityMapping:
                     case LayerParamIndex::Keytrack:
                     case LayerParamIndex::Monophonic:
+                    case LayerParamIndex::MonophonicMode:
                     case LayerParamIndex::MidiTranspose:
                     case LayerParamIndex::PitchBendRange:
                     case LayerParamIndex::KeyRangeLow:

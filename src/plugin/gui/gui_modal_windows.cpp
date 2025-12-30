@@ -220,7 +220,7 @@ static void DoLegacyParamsModal(Gui* g) {
                                    g->scratch_arena,
                                    {
                                        .size = g->imgui.Size(),
-                                       .contents_gap = {0, 10},
+                                       .contents_gap = {20, 10},
                                        .contents_direction = layout::Direction::Row,
                                        .contents_multiline = true,
                                        .contents_align = layout::Alignment::Start,
@@ -243,14 +243,32 @@ static void DoLegacyParamsModal(Gui* g) {
                                                   {
                                                       .parent = root,
                                                       .size = layout::k_hug_contents,
+                                                      .margins = {.b = 20},
                                                       .contents_direction = layout::Direction::Column,
                                                       .contents_align = layout::Alignment::Start,
                                                   });
-        LayoutParameterComponent(g,
-                                 container,
-                                 p.pair,
-                                 g->engine.processor.main_params.DescribedValue(p.index),
-                                 UiSizeId::Top2KnobsGapX);
+
+        auto const& desc = k_param_descriptors[ToInt(p.index)];
+        if (desc.value_type != ParamValueType::Bool) {
+            LayoutParameterComponent(g,
+                                     container,
+                                     p.pair,
+                                     g->engine.processor.main_params.DescribedValue(p.index),
+                                     UiSizeId::Top2KnobsGapX);
+        } else {
+            auto const font = imgui.graphics->context->CurrentFont();
+            auto const text_width = font->CalcTextSizeA(font->font_size, FLT_MAX, 0.0f, desc.name).x;
+            auto const toggle_width = text_width + (LiveSize(imgui, UiSizeId::MenuButtonTextMarginL) * 2);
+            auto const btn_h = LiveSize(g->imgui, UiSizeId::ParamPopupButtonHeight);
+            p.pair.control = layout::CreateItem(g->layout,
+                                                g->scratch_arena,
+                                                {
+                                                    .parent = container,
+                                                    .size = {toggle_width, btn_h},
+                                                });
+            p.pair.label = layout::k_invalid_id;
+        }
+
         p.extra_label = layout::CreateItem(g->layout,
                                            g->scratch_arena,
                                            {
@@ -272,9 +290,12 @@ static void DoLegacyParamsModal(Gui* g) {
                                         param,
                                         p.pair.control,
                                         buttons::ParameterPopupButton(g->imgui, false));
-                labels::Label(g, param, p.pair.label, labels::ParameterCentred(g->imgui, false));
+                if (p.pair.label != layout::k_invalid_id)
+                    labels::Label(g, param, p.pair.label, labels::ParameterCentred(g->imgui, false));
                 break;
             case ParamValueType::Bool:
+                buttons::Toggle(g, param, p.pair.control, buttons::ParameterToggleButton(g->imgui, false));
+                break;
             case ParamValueType::Int: PanicIfReached(); break;
         }
 

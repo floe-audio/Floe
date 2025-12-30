@@ -52,7 +52,8 @@ enum class LayerParamIndex : u16 {
     EqType2,
     VelocityMapping, // Legacy
     Keytrack,
-    Monophonic,
+    Monophonic, // Legacy
+    MonophonicMode,
     MidiTranspose,
     PitchBendRange,
     KeyRangeLow,
@@ -485,6 +486,19 @@ constexpr auto k_velocity_mapping_mode_strings = ArrayT<String>({
 });
 static_assert(k_velocity_mapping_mode_strings.size == ToInt(VelocityMappingMode::Count));
 
+enum class MonophonicMode : u8 { // never reorder
+    Off,
+    Retrigger,
+    Latch,
+    Count,
+};
+constexpr auto k_monophonic_mode_strings = ArrayT<String>({
+    "Off",
+    "Retrigger",
+    "Latch",
+});
+static_assert(k_monophonic_mode_strings.size == ToInt(MonophonicMode::Count));
+
 } // namespace param_values
 
 struct ParamDescriptor {
@@ -502,6 +516,7 @@ struct ParamDescriptor {
         DelaySyncedTime,
         DelayMode,
         VelocityMappingMode,
+        MonophonicMode,
         Count,
     };
 
@@ -708,6 +723,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::DelaySyncedTime: return k_delay_synced_time_strings;
         case ParamDescriptor::MenuType::DelayMode: return k_delay_mode_strings;
         case ParamDescriptor::MenuType::VelocityMappingMode: return k_velocity_mapping_mode_strings;
+        case ParamDescriptor::MenuType::MonophonicMode: return k_monophonic_mode_strings;
         case ParamDescriptor::MenuType::None:
         case ParamDescriptor::MenuType::Count: break;
     }
@@ -2113,6 +2129,19 @@ consteval auto CreateParams() {
             .name = "Monophonic On"_s,
             .gui_label = "Monophonic"_s,
             .tooltip = "Only allow one voice of each sound to play at a time"_s,
+            .flags = {.hidden = true},
+        };
+        lp(MonophonicMode) = Args {
+            .id = id(region, 55), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::MonophonicMode,
+                .default_val = (u32)MonophonicMode::Off,
+            }),
+            .modules = {layer_module, ParameterModule::Playback},
+            .name = "Monophonic Mode"_s,
+            .gui_label = "Monophonic"_s,
+            .tooltip =
+                "Control voice behavior when notes overlap. Off: multiple voices play simultaneously (polyphonic). Retrigger: new notes stop previous notes. Latch: first note plays until all keys are released, new notes are ignored"_s,
         };
         lp(MidiTranspose) = Args {
             .id = id(region, 48), // never change
