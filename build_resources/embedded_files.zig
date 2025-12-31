@@ -36,10 +36,6 @@ export fn EmbeddedDefaultBackground() c.BinaryData {
     return embeddedFile("images/default-background.jpg");
 }
 
-export fn EmbeddedUnknownLibraryIcon() c.BinaryData {
-    return embeddedFile("images/unknown-library-icon.png");
-}
-
 export fn EmbeddedLogoImage() c.BinaryData {
     if (build_options.logo_file) |p| {
         return embeddedFile(p);

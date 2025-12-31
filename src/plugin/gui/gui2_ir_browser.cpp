@@ -223,7 +223,7 @@ void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrows
     if (!first) return;
 
     sample_lib::Library const* previous_library {};
-    Optional<graphics::ImageID> lib_icon {};
+    ItemIcon lib_icon {ItemIconType::None};
     auto cursor = *first;
     while (true) {
         auto const& lib = *context.frame_context.libraries[cursor.lib_index];
@@ -247,45 +247,50 @@ void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrows
         auto const is_favourite = IsFavourite(context.prefs, k_favourite_ir_key, ir_hash);
 
         if (folder_section->Do(box_system).tag != BrowserSection::State::Collapsed) {
-            auto const item =
-                DoBrowserItem(box_system,
-                              state.common_state,
-                              {
-                                  .parent = folder_section->Do(box_system).Get<Box>(),
-                                  .text = ir.name,
-                                  .tooltip = FunctionRef<String()>([&]() -> String {
-                                      DynamicArray<char> buffer {box_system.arena};
+            auto const item = DoBrowserItem(box_system,
+                                            state.common_state,
+                                            {
+                                                .parent = folder_section->Do(box_system).Get<Box>(),
+                                                .text = ir.name,
+                                                .tooltip = FunctionRef<String()>([&]() -> String {
+                                                    DynamicArray<char> buffer {box_system.arena};
 
-                                      fmt::Append(buffer, "{}. Tags: ", ir.name);
-                                      if (ir.tags.size) {
-                                          for (auto const& [tag, _] : ir.tags)
-                                              fmt::Append(buffer, "{}, ", tag);
-                                          dyn::Pop(buffer, 2);
-                                      } else {
-                                          dyn::AppendSpan(buffer, "none");
-                                      }
+                                                    fmt::Append(buffer, "{}. Tags: ", ir.name);
+                                                    if (ir.tags.size) {
+                                                        for (auto const& [tag, _] : ir.tags)
+                                                            fmt::Append(buffer, "{}, ", tag);
+                                                        dyn::Pop(buffer, 2);
+                                                    } else {
+                                                        dyn::AppendSpan(buffer, "none");
+                                                    }
 
-                                      return buffer.ToOwnedSpan();
-                                  }),
-                                  .item_id = ir_hash,
-                                  .is_current = is_current,
-                                  .is_favourite = is_favourite,
-                                  .is_tab_item = new_folder,
-                                  .icons = ({
-                                      if (&lib != previous_library) {
-                                          previous_library = &lib;
-                                          auto const imgs = GetLibraryImages(context.library_images,
+                                                    return buffer.ToOwnedSpan();
+                                                }),
+                                                .item_id = ir_hash,
+                                                .is_current = is_current,
+                                                .is_favourite = is_favourite,
+                                                .is_tab_item = new_folder,
+                                                .icons = ({
+                                                    if (&lib != previous_library) {
+                                                        previous_library = &lib;
+                                                        auto const imgs =
+                                                            GetLibraryImages(context.library_images,
                                                                              box_system.imgui,
                                                                              lib.id,
                                                                              context.sample_library_server,
                                                                              LibraryImagesTypes::Icon);
-                                          lib_icon = imgs.icon ? imgs.icon : context.unknown_library_icon;
-                                      }
-                                      decltype(BrowserItemOptions::icons) {lib_icon};
-                                  }),
-                                  .notifications = context.notifications,
-                                  .store = context.persistent_store,
-                              });
+                                                        if (imgs.icon)
+                                                            lib_icon = *imgs.icon;
+                                                        else
+                                                            lib_icon = ItemIconType::None;
+                                                    }
+                                                    decltype(BrowserItemOptions::icons) result;
+                                                    dyn::Emplace(result, lib_icon);
+                                                    result;
+                                                }),
+                                                .notifications = context.notifications,
+                                                .store = context.persistent_store,
+                                            });
 
             if (is_current &&
                 box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
@@ -433,7 +438,6 @@ void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBro
                     .library_images = context.library_images,
                     .libraries = libraries,
                     .library_authors = library_authors,
-                    .unknown_library_icon = context.unknown_library_icon,
                     .card_view = true,
                     .resource_type = sample_lib::ResourceType::Ir,
                     .folders = folders,

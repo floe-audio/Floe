@@ -89,7 +89,6 @@ struct Gui {
     Optional<graphics::ImageID> floe_logo_image {};
 
     LibraryImagesTable library_images {};
-    Optional<graphics::ImageID> unknown_library_icon {};
 
     Optional<DraggingFX> dragging_fx_unit {};
     Optional<DraggingFX> dragging_fx_switch {};
@@ -116,7 +115,6 @@ LibraryImages
 LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, LibraryImagesTypes needed);
 
 Optional<graphics::ImageID> LogoImage(Gui* g);
-Optional<graphics::ImageID>& UnknownLibraryIcon(Gui* g);
 
 void GUIPresetLoaded(Gui* g, Engine* a, bool is_first_preset);
 GuiFrameResult GuiUpdate(Gui* g);

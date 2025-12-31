@@ -15,7 +15,6 @@ struct IrBrowserContext {
     LibraryImagesTable& library_images;
     Engine& engine;
     prefs::Preferences& prefs;
-    Optional<graphics::ImageID>& unknown_library_icon;
     Notifications& notifications;
     persistent_store::Store& persistent_store;
     ConfirmationDialogState& confirmation_dialog_state;

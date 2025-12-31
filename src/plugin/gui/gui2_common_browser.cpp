@@ -295,17 +295,45 @@ DoBrowserItem(GuiBoxSystem& box_system, CommonBrowserState& state, BrowserItemOp
             .ignore_double_click = true,
         });
 
-    for (auto const tex : options.icons) {
-        if (!tex) continue;
-        DoBox(box_system,
-              {
-                  .parent = item,
-                  .background_tex = tex.NullableValue(),
-                  .layout {
-                      .size = style::k_library_icon_standard_size,
-                      .margins = {.r = k_browser_spacing / 2},
-                  },
-              });
+    if (options.icons.size) {
+        auto const icon_container = DoBox(box_system,
+                                          {
+                                              .parent = item,
+                                              .layout {
+                                                  .size = {layout::k_hug_contents, layout::k_fill_parent},
+                                                  .margins = {.r = k_browser_spacing / 2},
+                                                  .contents_gap = {1, 0},
+                                                  .contents_direction = layout::Direction::Row,
+                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                              },
+                                          });
+        for (auto const icon : options.icons) {
+            switch (icon.tag) {
+                case ItemIconType::None: break;
+                case ItemIconType::Image: {
+                    auto const tex = icon.Get<graphics::ImageID>();
+                    DoBox(box_system,
+                          {
+                              .parent = icon_container,
+                              .background_tex = &tex,
+                              .layout {
+                                  .size = style::k_library_icon_standard_size,
+                              },
+                          });
+                    break;
+                }
+                case ItemIconType::Font: {
+                    DoBox(box_system,
+                          {
+                              .parent = icon_container,
+                              .text = icon.Get<String>(),
+                              .size_from_text = true,
+                              .font = FontType::Icons,
+                          });
+                    break;
+                }
+            }
+        }
     }
 
     DoBox(box_system,
@@ -783,14 +811,13 @@ Box DoFilterCard(GuiBoxSystem& box_system,
                                      *options.library_id,
                                      options.sample_library_server,
                                      LibraryImagesTypes::All);
-        has_icon = imgs.icon.HasValue() || options.unknown_library_icon.HasValue();
+        has_icon = imgs.icon.HasValue() && *imgs.icon != graphics::k_invalid_image_id;
         if (box_system.InputAndRenderPass()) {
             if (box_system.imgui.IsRectVisible(
                     box_system.imgui.WindowRectToScreenRect(*BoxRect(box_system, card_outer)))) {
                 background_image1 = imgs.blurred_background;
                 background_image2 = imgs.background;
                 icon = imgs.icon;
-                if (!icon) icon = options.unknown_library_icon;
             }
         }
     }
@@ -1313,7 +1340,6 @@ static void DoBrowserLibraryFilters(GuiBoxSystem& box_system,
                                           .library_id = lib_id,
                                           .library_images = library_filters.library_images,
                                           .sample_library_server = context.sample_library_server,
-                                          .unknown_library_icon = library_filters.unknown_library_icon,
                                           .subtext = ({
                                               String s;
                                               if (lib) s = box_system.arena.Clone(lib->tagline);
@@ -1363,8 +1389,7 @@ static void DoBrowserLibraryFilters(GuiBoxSystem& box_system,
                                 .filter_mode = context.state.filter_mode,
                             },
                         .icon = ({
-                            graphics::ImageID const* tex =
-                                library_filters.unknown_library_icon.NullableValue();
+                            graphics::ImageID const* tex = nullptr;
                             if (imgs.icon) tex = imgs.icon.NullableValue();
                             tex;
                         }),

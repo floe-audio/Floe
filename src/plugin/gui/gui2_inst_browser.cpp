@@ -343,7 +343,7 @@ static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& conte
     if (!first) return;
 
     sample_lib::Library const* previous_library {};
-    Optional<graphics::ImageID> lib_icon {};
+    ItemIcon lib_icon {ItemIconType::None};
     auto cursor = *first;
     while (true) {
         auto const& lib = *context.frame_context.libraries[cursor.lib_index];
@@ -370,52 +370,58 @@ static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& conte
 
             // TODO: a Panic was hit here where the GUI changed between layout and render passes while
             // updating a floe.lua file. It's rare though.
-            auto const item =
-                DoBrowserItem(box_system,
-                              common_state,
-                              {
-                                  .parent = folder_section->Do(box_system).Get<Box>(),
-                                  .text = inst.name,
-                                  .tooltip = FunctionRef<String()>([&]() -> String {
-                                      DynamicArray<char> buf {box_system.arena};
-                                      fmt::Append(buf,
-                                                  "{} from {} by {}.\n\n",
-                                                  inst.name,
-                                                  inst.library.name,
-                                                  inst.library.author);
+            auto const item = DoBrowserItem(box_system,
+                                            common_state,
+                                            {
+                                                .parent = folder_section->Do(box_system).Get<Box>(),
+                                                .text = inst.name,
+                                                .tooltip = FunctionRef<String()>([&]() -> String {
+                                                    DynamicArray<char> buf {box_system.arena};
+                                                    fmt::Append(buf,
+                                                                "{} from {} by {}.\n\n",
+                                                                inst.name,
+                                                                inst.library.name,
+                                                                inst.library.author);
 
-                                      if (inst.description) fmt::Append(buf, "{}", inst.description);
+                                                    if (inst.description)
+                                                        fmt::Append(buf, "{}", inst.description);
 
-                                      fmt::Append(buf, "\n\nTags: ");
-                                      if (inst.tags.size == 0)
-                                          fmt::Append(buf, "None");
-                                      else {
-                                          for (auto const [t, _] : inst.tags)
-                                              fmt::Append(buf, "{}, ", t);
-                                          dyn::Pop(buf, 2);
-                                      }
+                                                    fmt::Append(buf, "\n\nTags: ");
+                                                    if (inst.tags.size == 0)
+                                                        fmt::Append(buf, "None");
+                                                    else {
+                                                        for (auto const [t, _] : inst.tags)
+                                                            fmt::Append(buf, "{}, ", t);
+                                                        dyn::Pop(buf, 2);
+                                                    }
 
-                                      return buf.ToOwnedSpan();
-                                  }),
-                                  .item_id = inst_hash,
-                                  .is_current = is_current,
-                                  .is_favourite = is_favourite,
-                                  .is_tab_item = new_folder,
-                                  .icons = ({
-                                      if (&lib != previous_library) {
-                                          previous_library = &lib;
-                                          auto const imgs = GetLibraryImages(context.library_images,
+                                                    return buf.ToOwnedSpan();
+                                                }),
+                                                .item_id = inst_hash,
+                                                .is_current = is_current,
+                                                .is_favourite = is_favourite,
+                                                .is_tab_item = new_folder,
+                                                .icons = ({
+                                                    if (&lib != previous_library) {
+                                                        previous_library = &lib;
+                                                        auto const imgs =
+                                                            GetLibraryImages(context.library_images,
                                                                              box_system.imgui,
                                                                              lib.id,
                                                                              context.sample_library_server,
                                                                              LibraryImagesTypes::Icon);
-                                          lib_icon = imgs.icon ? imgs.icon : context.unknown_library_icon;
-                                      }
-                                      decltype(BrowserItemOptions::icons) {lib_icon};
-                                  }),
-                                  .notifications = context.notifications,
-                                  .store = context.persistent_store,
-                              });
+                                                        if (imgs.icon)
+                                                            lib_icon = *imgs.icon;
+                                                        else
+                                                            lib_icon = ItemIconType::None;
+                                                    }
+                                                    decltype(BrowserItemOptions::icons) result {};
+                                                    dyn::Emplace(result, lib_icon);
+                                                    result;
+                                                }),
+                                                .notifications = context.notifications,
+                                                .store = context.persistent_store,
+                                            });
 
             if (is_current &&
                 box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
@@ -585,7 +591,6 @@ void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, I
                     .library_images = context.library_images,
                     .libraries = libraries,
                     .library_authors = library_authors,
-                    .unknown_library_icon = context.unknown_library_icon,
                     .card_view = true,
                     .resource_type = sample_lib::ResourceType::Instrument,
                     .folders = folders,

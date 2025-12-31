@@ -503,7 +503,7 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
             auto const item = DoBrowserItem(
                 box_system,
                 state.common_state,
-                {
+                BrowserItemOptions {
                     .parent = folder_section->Do(box_system).Get<Box>(),
                     .text = preset.name,
                     .tooltip = FunctionRef<String()>([&preset,
@@ -557,7 +557,6 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
                         // Mirage Compatibility library and unknown libraries.
 
                         decltype(BrowserItemOptions::icons) icons {};
-                        usize icons_index = 0;
                         Optional<graphics::ImageID> mirage_compat_icon = k_nullopt;
                         usize num_unknown = 0;
                         for (auto const [lib_id, _] : preset.used_libraries) {
@@ -571,11 +570,12 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
                             else if (lib_id == sample_lib::k_mirage_compat_library_id)
                                 mirage_compat_icon = imgs.icon;
                             else
-                                icons[icons_index++] = imgs.icon;
+                                dyn::Emplace(icons, *imgs.icon);
                         }
                         for (auto const _ : Range(num_unknown))
-                            icons[icons_index++] = *context.unknown_library_icon;
-                        if (mirage_compat_icon) icons[icons_index++] = *mirage_compat_icon;
+                            dyn::Emplace(icons, String(ICON_FA_CIRCLE_QUESTION));
+                        if (mirage_compat_icon) dyn::Emplace(icons, *mirage_compat_icon);
+
                         icons;
                     }),
                     .notifications = context.notifications,
@@ -840,7 +840,6 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                     .library_images = context.library_images,
                     .libraries = libraries,
                     .library_authors = library_authors,
-                    .unknown_library_icon = context.unknown_library_icon,
                     .error_notifications = context.engine.error_notifications,
                     .notifications = context.notifications,
                     .confirmation_dialog_state = context.confirmation_dialog_state,

@@ -40,7 +40,6 @@ BinaryData EmbeddedRobotoItalic();
 BinaryData EmbeddedDefaultBackground();
 BinaryData EmbeddedLogoImage();
 BinaryData EmbeddedIconImage();
-BinaryData EmbeddedUnknownLibraryIcon();
 BinaryData EmbeddedAboutLibraryTemplateRtf();
 BinaryData EmbeddedPackageInstallationRtf();
 

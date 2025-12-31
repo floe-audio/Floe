@@ -257,7 +257,6 @@ struct FilterCardOptions {
     Optional<sample_lib::LibraryIdRef> library_id; // For images.
     LibraryImagesTable& library_images;
     sample_lib_server::Server& sample_library_server;
-    Optional<graphics::ImageID> unknown_library_icon;
     String subtext;
     FolderFilterItemInfoLookupTable folder_infos;
     FolderNode const* folder;
@@ -269,7 +268,6 @@ struct LibraryFilters {
     LibraryImagesTable& library_images;
     OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
     OrderedHashTable<String, FilterItemInfo> library_authors;
-    Optional<graphics::ImageID> unknown_library_icon;
     bool card_view {};
     sample_lib::ResourceType resource_type {};
     FolderFilterItemInfoLookupTable folders;
@@ -360,6 +358,11 @@ struct BrowserSection {
     u8 is_box_init : 1 = 0;
 };
 
+enum class ItemIconType { None, Image, Font };
+using ItemIcon = TaggedUnion<ItemIconType,
+                             TypeAndTag<String, ItemIconType::Font>,
+                             TypeAndTag<graphics::ImageID, ItemIconType::Image>>;
+
 struct BrowserItemOptions {
     Box parent;
     String text;
@@ -368,7 +371,7 @@ struct BrowserItemOptions {
     bool is_current;
     bool is_favourite;
     bool is_tab_item; // Is a point where pressing Tab jumps to.
-    Array<Optional<graphics::ImageID>, k_num_layers + 1> icons;
+    DynamicArrayBounded<ItemIcon, k_num_layers + 2> icons;
     Notifications& notifications;
     persistent_store::Store& store;
 };

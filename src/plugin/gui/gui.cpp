@@ -64,19 +64,6 @@ Optional<graphics::ImageID> LogoImage(Gui* g) {
     return g->floe_logo_image;
 }
 
-Optional<graphics::ImageID>& UnknownLibraryIcon(Gui* g) {
-    if (!g->imgui.graphics->context->ImageIdIsValid(g->unknown_library_icon)) {
-        auto const data = EmbeddedUnknownLibraryIcon();
-        if (data.size) {
-            auto outcome = DecodeImage({data.data, data.size}, g->scratch_arena);
-            ASSERT(!outcome.HasError());
-            auto const pixels = outcome.ReleaseValue();
-            g->unknown_library_icon = CreateImageIdChecked(*g->imgui.graphics->context, pixels);
-        }
-    }
-    return g->unknown_library_icon;
-}
-
 static void SampleLibraryChanged(Gui* g, sample_lib::LibraryIdRef library_id) {
     InvalidateLibraryImages(g->library_images, library_id, *g->frame_input.graphics_ctx);
 }
@@ -485,7 +472,6 @@ GuiFrameResult GuiUpdate(Gui* g) {
                     .library_images = g->library_images,
                     .engine = g->engine,
                     .prefs = g->prefs,
-                    .unknown_library_icon = UnknownLibraryIcon(g),
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,
                     .confirmation_dialog_state = g->confirmation_dialog_state,
@@ -504,7 +490,6 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .library_images = g->library_images,
                 .prefs = g->prefs,
                 .engine = g->engine,
-                .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
                 .confirmation_dialog_state = g->confirmation_dialog_state,
@@ -519,7 +504,6 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .library_images = g->library_images,
                 .engine = g->engine,
                 .prefs = g->prefs,
-                .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
                 .confirmation_dialog_state = g->confirmation_dialog_state,
