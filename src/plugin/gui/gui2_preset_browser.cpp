@@ -576,6 +576,11 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
                             dyn::Emplace(icons, String(ICON_FA_CIRCLE_QUESTION));
                         if (mirage_compat_icon) dyn::Emplace(icons, *mirage_compat_icon);
 
+                        if (!PRODUCTION_BUILD && preset.file_format == PresetFormat::Floe &&
+                            (preset.metadata.tags.size == 0 || preset.metadata.author.size == 0 ||
+                             preset.metadata.description.size == 0))
+                            dyn::Emplace(icons, String(ICON_FA_TRIANGLE_EXCLAMATION));
+
                         icons;
                     }),
                     .notifications = context.notifications,
