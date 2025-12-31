@@ -858,7 +858,7 @@ static ListedInstrument* FetchOrCreateInstrument(LibrariesAtomicList::Node& lib_
     ASSERT_EQ(&inst.library, lib.lib);
 
     for (auto& i : lib.instruments)
-        if (i.inst.instrument.name == inst.name) {
+        if (i.inst.instrument.id == inst.id) {
             bool any_modified = false;
             for (auto d : i.audio_data_set) {
                 if (d->file_modified) {
@@ -1250,8 +1250,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
         auto const audio_load_error_id = HashMultiple(Array {
             "sls-audio-load"_s,
             audio_path.ValueOr(""),
-            listed_inst.inst.instrument.library.name,
-            listed_inst.inst.instrument.library.author,
+            listed_inst.inst.instrument.library.id,
         });
 
         auto& error_notifications = pending_resource.request.async_comms_channel.error_notifications;
@@ -1265,7 +1264,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                 fmt::Assign(err->message,
                             "Failed to load audio file '{}', part of instrument '{}', in library '{}'",
                             *audio_path,
-                            listed_inst.inst.instrument.name,
+                            listed_inst.inst.instrument.id,
                             listed_inst.inst.instrument.library.id);
             }
 
@@ -1337,8 +1336,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
         auto const audio_load_error_id = HashMultiple(Array {
             "sls-audio-load"_s,
             ir.audio_data->path.str,
-            ir.ir.ir.library.name,
-            ir.ir.ir.library.author,
+            ir.ir.ir.library.id,
         });
 
         auto& error_notifications = pending_resource.request.async_comms_channel.error_notifications;
