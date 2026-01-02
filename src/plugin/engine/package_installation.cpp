@@ -378,7 +378,7 @@ static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
 
                 // For moving aside the existing folder, we generate a unique, recognizable filename that will
                 // be easy to spot in the Trash.
-                String const new_name = ({
+                String const existing_folder_path = ({
                     auto n = scratch_arena.AllocateExactSizeUninitialised<char>(full_dest.size +
                                                                                 " (old-)"_s.size + 13);
                     usize pos = 0;
@@ -397,24 +397,24 @@ static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
                 });
 
                 // Move the existing folder out of the way.
-                TRY(Rename(full_dest, new_name));
+                TRY(Rename(full_dest, existing_folder_path));
 
                 // The old folder is out of the way so we can now install the new component.
                 if (auto const rename2_o = Rename(temp_path, full_dest); rename2_o.HasError()) {
                     // We failed to install the new files, try to restore the old files.
-                    auto const _ = Rename(new_name, full_dest);
+                    auto const _ = Rename(existing_folder_path, full_dest);
 
                     return rename2_o.Error();
                 }
 
-                // The new component is installed, let's try to trash the old folder.
-                if (auto const o = TrashFileOrDirectory(new_name, scratch_arena); o.HasError()) {
+                // The new component is installed, let's try to trash the existing folder.
+                if (auto const o = TrashFileOrDirectory(existing_folder_path, scratch_arena); o.HasError()) {
                     ErrorCodeOr<void> error = o.Error();
 
                     if (o.Error() == FilesystemError::NotSupported) {
-                        // Trash is not supported, so just delete the old folder.
+                        // Trash is not supported, so just delete the existing folder.
                         if (auto const delete_outcome =
-                                Delete(new_name,
+                                Delete(existing_folder_path,
                                        {
                                            .type = DeleteOptions::Type::DirectoryRecursively,
                                            .fail_if_not_exists = false,
@@ -426,8 +426,8 @@ static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
                     }
 
                     if (error.HasError()) {
-                        // Try to undo the rename
-                        auto const _ = Rename(new_name, full_dest);
+                        // Try to restore the existing folder.
+                        auto const _ = Rename(existing_folder_path, full_dest);
 
                         return error.Error();
                     }
