@@ -7,7 +7,7 @@
 constexpr auto k_preset_bank_filename = "floe-preset-bank.ini"_s;
 
 // This ID represents a bank that is not user-defined, but rather automatically generated.
-constexpr auto k_misc_bank_id = HashComptime("misc-preset-bank");
+constexpr auto k_misc_bank_id = HashFnv1a("misc-preset-bank");
 
 struct PresetBank {
     bool operator==(PresetBank const& other) const = default;

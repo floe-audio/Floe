@@ -48,6 +48,12 @@ PUBLIC constexpr u64 HashFnv1a(ContiguousContainer auto const& data) {
     return hash;
 }
 
+template <usize N>
+PUBLIC consteval u64 HashFnv1a(char const (&array_literal)[N]) {
+    if (array_literal[N - 1] != 0) throw "bug";
+    return HashFnv1a(String {array_literal, N - 1});
+}
+
 PUBLIC constexpr u64 HashMultipleFnv1a(ContiguousContainerOfContiguousContainers auto const& c_of_c) {
     auto datas = SpanFromContainerOfContainers(c_of_c);
     // FNV-1a https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function#FNV-1a_hash
@@ -125,15 +131,6 @@ PUBLIC consteval u64 SourceLocationHash(char const* file = __builtin_FILE(), u32
         hash ^= (u64)(line & 0xff);
         hash *= 0x100000001b3;
         line >>= 8;
-    }
-    return hash;
-}
-
-PUBLIC constexpr u64 HashComptime(String data) {
-    u64 hash = 0xcbf29ce484222325;
-    for (auto c : data) {
-        hash ^= (u64)c;
-        hash *= 0x100000001b3;
     }
     return hash;
 }

@@ -642,7 +642,7 @@ void PresetBrowserExtraFilters(GuiBoxSystem& box_system,
         BrowserSection section {
             .state = state.common_state,
             .num_sections_rendered = &num_sections,
-            .id = HashComptime("preset-type-section"),
+            .id = HashFnv1a("preset-type-section"),
             .parent = parent,
             .heading = "PRESET TYPE",
             .multiline_contents = true,
@@ -696,7 +696,7 @@ void PresetBrowserExtraFilters(GuiBoxSystem& box_system,
         BrowserSection section {
             .state = state.common_state,
             .num_sections_rendered = &num_sections,
-            .id = HashComptime("preset-author-section"),
+            .id = HashFnv1a("preset-author-section"),
             .parent = parent,
             .heading = "AUTHOR",
             .multiline_contents = true,
@@ -861,7 +861,7 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                     if (num_sections) DoModalDivider(box_system, parent, {.horizontal = true});
                     ++num_sections;
 
-                    auto constexpr k_section_id = HashComptime("preset-folders-section");
+                    auto constexpr k_section_id = HashFnv1a("preset-folders-section");
                     BrowserSection section {
                         .state = state.common_state,
                         .id = k_section_id,

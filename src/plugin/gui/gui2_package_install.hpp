@@ -145,7 +145,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBoxSystem& box_system,
                                           Notifications& notifications,
                                           ThreadsafeErrorNotifications& error_notifs,
                                           ThreadPool& thread_pool) {
-    constexpr u64 k_installing_packages_notif_id = HashComptime("installing packages notification");
+    constexpr u64 k_installing_packages_notif_id = HashFnv1a("installing packages notification");
     if (!package_install_jobs.Empty()) {
         if (!notifications.Find(k_installing_packages_notif_id)) {
             *notifications.AppendUninitalisedOverwrite() = {
@@ -228,7 +228,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBoxSystem& box_system,
                             }
                             return c;
                         },
-                        .id = HashComptime("package install success"),
+                        .id = HashFnv1a("package install success"),
                     };
                     box_system.imgui.frame_output.ElevateUpdateRequest(
                         GuiFrameResult::UpdateRequest::ImmediatelyUpdate);

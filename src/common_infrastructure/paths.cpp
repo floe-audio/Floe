@@ -80,7 +80,7 @@ static String AlwaysScannedFolder(ScanFolderType type, ArenaAllocator& allocator
         FloeKnownDirectory(allocator, dir_type, k_nullopt, {.create = create, .error_log = &error_writer});
     if (error_log.size) {
         ReportError(ErrorLevel::Warning,
-                    HashComptime("always scanned folder") + ToInt(dir_type),
+                    HashFnv1a("always scanned folder") + ToInt(dir_type),
                     "Failed to get always scanned folder\n{}",
                     error_log);
     }
@@ -112,7 +112,7 @@ FloePaths CreateFloePaths(ArenaAllocator& arena, bool create_folders) {
                                                   {.create = create_folders, .error_log = &writer});
         if (error_log.size) {
             ReportError(ErrorLevel::Warning,
-                        HashComptime("autosave path"),
+                        HashFnv1a("autosave path"),
                         "Failed to get autosave path\n{}",
                         error_log);
         }
@@ -129,7 +129,7 @@ FloePaths CreateFloePaths(ArenaAllocator& arena, bool create_folders) {
                                              {.create = create_folders, .error_log = &writer});
         if (error_log.size) {
             ReportError(ErrorLevel::Warning,
-                        HashComptime("persistent store path"),
+                        HashFnv1a("persistent store path"),
                         "Failed to get persistent store path {}\n{}",
                         result.persistent_store_path,
                         error_log);

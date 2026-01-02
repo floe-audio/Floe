@@ -1284,7 +1284,7 @@ static void DoBrowserLibraryFilters(GuiBoxSystem& box_system,
         BrowserSection section = {
             .state = context.state,
             .num_sections_rendered = &sections,
-            .id = context.browser_id ^ HashComptime("libraries-section"),
+            .id = context.browser_id ^ HashFnv1a("libraries-section"),
             .parent = parent,
             .heading = !library_filters.card_view ||
                                ShowPrimaryFilterSectionHeader(context.state, context.preferences, section.id)
@@ -1436,7 +1436,7 @@ static void DoBrowserLibraryAuthorFilters(GuiBoxSystem& box_system,
         BrowserSection section = {
             .state = context.state,
             .num_sections_rendered = &sections,
-            .id = context.browser_id ^ HashComptime("library-authors-section"),
+            .id = context.browser_id ^ HashFnv1a("library-authors-section"),
             .parent = parent,
             .heading = "LIBRARY AUTHORS"_s,
             .multiline_contents = true,
@@ -1487,7 +1487,7 @@ void DoBrowserTagsFilters(GuiBoxSystem& box_system,
     BrowserSection tags_section {
         .state = context.state,
         .num_sections_rendered = &sections,
-        .id = context.browser_id ^ HashComptime("tags-section"),
+        .id = context.browser_id ^ HashFnv1a("tags-section"),
         .parent = parent,
         .heading = "TAGS",
         .multiline_contents = false,
@@ -1499,7 +1499,7 @@ void DoBrowserTagsFilters(GuiBoxSystem& box_system,
 
         BrowserSection inner_section {
             .state = context.state,
-            .id = context.browser_id ^ HashComptime("tags-section") ^ category_hash,
+            .id = context.browser_id ^ HashFnv1a("tags-section") ^ category_hash,
             .parent = {}, // IMPORTANT: set later
             .heading = category_info.name,
             .icon = category_info.font_awesome_icon,
@@ -1539,7 +1539,7 @@ void DoBrowserTagsFilters(GuiBoxSystem& box_system,
     if (non_standard_tags.size) {
         BrowserSection inner_section {
             .state = context.state,
-            .id = context.browser_id ^ HashComptime("tags-section-uncategorised"),
+            .id = context.browser_id ^ HashFnv1a("tags-section-uncategorised"),
             .parent = {}, // IMPORTANT: set later
             .heading = "UNCATEGORISED",
             .multiline_contents = true,
