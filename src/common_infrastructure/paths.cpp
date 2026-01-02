@@ -28,7 +28,7 @@ static Span<String> PossiblePrefFilePaths(ArenaAllocator& arena) {
     // Some of these are actually a bit problematic for reading/writing due to permissions but it doesn't
     // matter for this case. We're just doing our best to retain any existing preferences.
     {
-        auto try_add_path = [&](KnownDirectoryType known_dir, Span<String const> sub_paths, String filename) {
+        auto add_path = [&](KnownDirectoryType known_dir, Span<String const> sub_paths, String filename) {
             dyn::Append(result,
                         KnownDirectoryWithSubdirectories(arena,
                                                          known_dir,
@@ -39,9 +39,9 @@ static Span<String> PossiblePrefFilePaths(ArenaAllocator& arena) {
 
         // C:/ProgramData/FrozenPlain/Mirage/mirage.json
         // /Library/Application Support/FrozenPlain/Mirage/mirage.json
-        try_add_path(KnownDirectoryType::MirageGlobalPreferences,
-                     Array {"FrozenPlain"_s, "Mirage", "Settings"},
-                     "mirage.json"_s);
+        add_path(KnownDirectoryType::MirageGlobalPreferences,
+                 Array {"FrozenPlain"_s, "Mirage", "Settings"},
+                 "mirage.json"_s);
 
         // ~/AppData/Roaming/FrozenPlain/Mirage/mirage.json
         // ~/Music/Audio Music Apps/Plug-In Settings/FrozenPlain/mirage.json
@@ -49,15 +49,15 @@ static Span<String> PossiblePrefFilePaths(ArenaAllocator& arena) {
             DynamicArrayBounded<String, 2> sub_paths;
             dyn::Append(sub_paths, "FrozenPlain"_s);
             if constexpr (IS_WINDOWS) dyn::Append(sub_paths, "Mirage");
-            try_add_path(KnownDirectoryType::MiragePreferences, sub_paths, "mirage.json"_s);
+            add_path(KnownDirectoryType::MiragePreferences, sub_paths, "mirage.json"_s);
         }
 
         // macOS had an additional possible path.
         // ~/Library/Application Support/FrozenPlain/Mirage/mirage.json
         if constexpr (IS_MACOS) {
-            try_add_path(KnownDirectoryType::MiragePreferencesAlternate,
-                         Array {"FrozenPlain"_s, "Mirage"},
-                         "mirage.json");
+            add_path(KnownDirectoryType::MiragePreferencesAlternate,
+                     Array {"FrozenPlain"_s, "Mirage"},
+                     "mirage.json");
         }
     }
 
