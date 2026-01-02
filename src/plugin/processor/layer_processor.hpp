@@ -307,7 +307,7 @@ struct LayerProcessor {
 
     param_values::MonophonicMode monophonic_mode {};
     bool monophonic_retrigger_legacy {}; // Legacy
-    Optional<MidiChannelNote> monophonic_latch {};
+    bool monophonic_latch {};
 
     bool vol_env_on_param = true;
 

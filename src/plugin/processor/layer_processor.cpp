@@ -317,7 +317,7 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
             case param_values::MonophonicMode::Latch:
                 // Only start if not already latched.
                 if (!layer.monophonic_latch)
-                    layer.monophonic_latch = note;
+                    layer.monophonic_latch = true;
                 else
                     start_voice = false;
                 break;
@@ -362,7 +362,8 @@ static void LayerHandleNoteOff(LayerProcessor& layer,
                                f32 velocity,
                                bool triggered_by_cc64) {
     if (layer.monophonic_latch && NoNotesHeld(context)) {
-        NoteOff(voice_pool, layer.voice_controller, *layer.monophonic_latch);
+        for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
+            EndVoice(v);
         layer.monophonic_latch = {};
     }
 
@@ -630,8 +631,8 @@ void ProcessLayerChanges(LayerProcessor& layer,
             changes.changed_params.IntValue<param_values::MonophonicMode>(layer.index,
                                                                           LayerParamIndex::MonophonicMode)) {
         layer.monophonic_mode = *p;
-        // Reset latch state when switching away from Latch mode
-        if (*p != param_values::MonophonicMode::Latch) layer.monophonic_latch = {};
+
+        if (*p != param_values::MonophonicMode::Latch) layer.monophonic_latch = false;
     }
 
     if (auto p = changes.changed_params.IntValue<u7>(layer.index, LayerParamIndex::KeyRangeLow))
