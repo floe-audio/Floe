@@ -390,18 +390,7 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
                      .is_selected = false,
                  })
             .button_fired) {
-        if (({
-                bool has_child_pack = false;
-                auto root_pack = PresetBankAtNode(*folder);
-                ForEachNode((FolderNode*)folder, [&](FolderNode const* node) {
-                    if (has_child_pack) return;
-                    if (node == folder) return;
-                    auto bank = PresetBankAtNode(*node);
-                    if (!bank) return;
-                    if (root_pack != bank) has_child_pack = true;
-                });
-                has_child_pack;
-            })) {
+        if (HasNestedBank(*folder)) {
             auto const error_id = Hash(Array {SourceLocationHash(), folder->Hash()});
             if (auto item = context.engine.error_notifications.BeginWriteError(error_id)) {
                 DEFER { context.engine.error_notifications.EndWriteError(*item); };

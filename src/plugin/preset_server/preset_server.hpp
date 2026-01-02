@@ -132,6 +132,8 @@ PresetBank const* ContainingPresetBank(FolderNode const* node);
 
 bool IsInsideFolder(PresetFolderListing const* listing, usize folder_node_hash);
 
+bool HasNestedBank(FolderNode const& node);
+
 // Real filepath to the folder.
 Optional<String> FolderPath(FolderNode const* folder, ArenaAllocator& arena);
 
@@ -140,7 +142,7 @@ struct PresetsSnapshot {
     Span<PresetFolderListing const*> folders;
 
     // Root nodes of all preset banks. All presets are guaranteed to be inside one of these nodes. Presets
-    // that aren't explicitly put into banks will be smartly grouped into "misc" banks with ID 0.
+    // that aren't explicitly put into banks will be smartly grouped into "misc" banks.
     Span<PresetFolderListing const*> banks;
 
     // Additional convenience data

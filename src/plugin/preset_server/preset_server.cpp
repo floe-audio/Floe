@@ -101,6 +101,19 @@ bool IsInsideFolder(PresetFolderListing const* node, usize folder_node_hash) {
     return true;
 }
 
+bool HasNestedBank(FolderNode const& folder) {
+    bool has_child_bank = false;
+    auto root_pack = PresetBankAtNode(folder);
+    ForEachNode(const_cast<FolderNode*>(&folder), [&](FolderNode const* node) {
+        if (has_child_bank) return;
+        if (node == &folder) return;
+        auto bank = PresetBankAtNode(*node);
+        if (!bank) return;
+        if (root_pack != bank) has_child_bank = true;
+    });
+    return has_child_bank;
+}
+
 static u64 FolderContentsHash(FolderNode const* node) {
     // Using XOR and only when we have an all_presets_hash means it doesn't matter about the order or exact
     // hierarchy of the tree.
