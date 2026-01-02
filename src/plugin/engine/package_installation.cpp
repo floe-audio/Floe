@@ -356,9 +356,9 @@ static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
     auto installed_name = config.filename;
     auto allow_overwrite = config.allow_overwrite;
 
-    // If we've been requested to not overwrite files, we need to handle that before Rename(). This is not
-    // ideal as it introduces a tiny window where another process could create the file after we check and
-    // before we rename.
+    // If we've been requested to not overwrite _files_, we need to handle that before because Rename() always
+    // overwrites files automatically. Doing this before is not ideal as it introduces a tiny window where
+    // another process could create the file after we check and before we rename.
     if (!allow_overwrite && install_type == FileType::File)
         installed_name = TRY(FindNextNonExistentFilename(config.folder, installed_name, scratch_arena));
 
