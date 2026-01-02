@@ -33,8 +33,7 @@ struct PendingLibraryJobs {
 
         struct ReadLibrary {
             struct Args {
-                PathOrMemory path_or_memory;
-                sample_lib::FileFormat format;
+                String path;
                 LibrariesAtomicList& libraries;
             };
             struct Result {
@@ -97,37 +96,36 @@ static void DoCallbackForMatchingScanFolder(Span<MutexProtected<ScanFolder>> fol
     }
 }
 
-static void ReadLibraryAsync(PendingLibraryJobs& pending_library_jobs,
-                             LibrariesAtomicList& lib_list,
-                             PathOrMemory path_or_memory,
-                             sample_lib::FileFormat format);
+static void
+ReadLibraryAsync(PendingLibraryJobs& pending_library_jobs, LibrariesAtomicList& lib_list, String path);
 
 static void DoReadLibraryJob(PendingLibraryJobs::Job::ReadLibrary& job, ArenaAllocator& scratch_arena) {
     ZoneScopedN("read library");
 
     auto const& args = job.args;
-    String const path = args.path_or_memory.Is<String>() ? args.path_or_memory.Get<String>() : ":memory:";
     ZoneText(path.data, path.size);
 
     auto const try_read = [&]() -> Optional<sample_lib::LibraryPtrOrError> {
         using H = sample_lib::TryHelpersOutcomeToError;
-        auto path_or_memory = args.path_or_memory;
-        if (args.format == sample_lib::FileFormat::Lua && args.path_or_memory.Is<String>()) {
+
+        auto const format = TRY_OPT_OR(sample_lib::DetermineFileFormat(args.path), return k_nullopt);
+
+        PathOrMemory path_or_memory = args.path;
+        if (format == sample_lib::FileFormat::Lua) {
             // it will be more efficient to just load the whole Lua into memory
-            path_or_memory =
-                TRY_H(ReadEntireFile(args.path_or_memory.Get<String>(), scratch_arena)).ToConstByteSpan();
+            path_or_memory = TRY_H(ReadEntireFile(args.path, scratch_arena)).ToConstByteSpan();
         }
 
         auto reader = TRY_H(Reader::FromPathOrMemory(path_or_memory));
-        auto const file_hash = TRY_H(sample_lib::Hash(path, reader, args.format));
+        auto const file_hash = TRY_H(sample_lib::Hash(args.path, reader, format));
 
         for (auto& node : args.libraries) {
             if (auto l = node.TryScoped()) {
-                if (l->lib->file_hash == file_hash && l->lib->path == path) return k_nullopt;
+                if (l->lib->file_hash == file_hash && l->lib->path == args.path) return k_nullopt;
             }
         }
 
-        auto lib = TRY(sample_lib::Read(reader, args.format, path, job.result.arena, scratch_arena));
+        auto lib = TRY(sample_lib::Read(reader, format, args.path, job.result.arena, scratch_arena));
         lib->file_hash = file_hash;
         return lib;
     };
@@ -153,9 +151,10 @@ static void DoScanFolderJob(PendingLibraryJobs::Job::ScanFolder& job,
         DEFER { dir_iterator::Destroy(it); };
         while (auto const entry = TRY(dir_iterator::Next(it, scratch_arena))) {
             if (ContainsSpan(entry->subpath, k_temporary_directory_prefix)) continue;
+            if (entry->type == FileType::Directory) continue;
             auto const full_path = dir_iterator::FullPath(it, *entry, scratch_arena);
-            if (auto format = sample_lib::DetermineFileFormat(full_path))
-                ReadLibraryAsync(pending_library_jobs, lib_list, String(full_path), *format);
+            if (sample_lib::DetermineFileFormat(full_path))
+                ReadLibraryAsync(pending_library_jobs, lib_list, full_path);
         }
         return k_success;
     };
@@ -212,10 +211,8 @@ static void AddAsyncJob(PendingLibraryJobs& pending_library_jobs,
 }
 
 // thread-safe
-static void ReadLibraryAsync(PendingLibraryJobs& pending_library_jobs,
-                             LibrariesAtomicList& lib_list,
-                             PathOrMemory path_or_memory,
-                             sample_lib::FileFormat format) {
+static void
+ReadLibraryAsync(PendingLibraryJobs& pending_library_jobs, LibrariesAtomicList& lib_list, String path) {
     auto read_job = ({
         pending_library_jobs.job_mutex.Lock();
         DEFER { pending_library_jobs.job_mutex.Unlock(); };
@@ -224,11 +221,7 @@ static void ReadLibraryAsync(PendingLibraryJobs& pending_library_jobs,
         PendingLibraryJobs::Job::ReadLibrary {
             .args =
                 {
-                    .path_or_memory = path_or_memory.Is<String>()
-                                          ? PathOrMemory(String(pending_library_jobs.job_arena.Clone(
-                                                path_or_memory.Get<String>())))
-                                          : path_or_memory,
-                    .format = format,
+                    .path = pending_library_jobs.job_arena.Clone(path),
                     .libraries = lib_list,
                 },
             .result = {},
@@ -328,26 +321,24 @@ static bool UpdateLibraryJobs(Server& server,
                 auto& j = *job.data.Get<PendingLibraryJobs::Job::ReadLibrary*>();
                 DEFER { j.PendingLibraryJobs::Job::ReadLibrary::~ReadLibrary(); };
                 auto const& args = j.args;
-                String const path =
-                    args.path_or_memory.Is<String>() ? args.path_or_memory.Get<String>() : ":memory:";
                 ZoneScopedN("job completed: library read");
                 ZoneText(path.data, path.size);
                 if (!j.result.result) {
                     TracyMessageEx({k_trace_category, k_trace_colour, {}},
                                    "skipping {}, it already exists",
-                                   path::Filename(path));
+                                   path::Filename(args.path));
                     continue;
                 }
                 auto const& outcome = *j.result.result;
 
-                auto const error_id = HashMultiple(Array {"sls-read-lib"_s, path});
+                auto const error_id = HashMultiple(Array {"sls-read-lib"_s, args.path});
 
                 switch (outcome.tag) {
                     case ResultType::Value: {
                         auto lib = outcome.GetFromTag<ResultType::Value>();
                         TracyMessageEx({k_trace_category, k_trace_colour, {}},
                                        "adding new library {}",
-                                       path::Filename(path));
+                                       path::Filename(args.path));
 
                         bool not_wanted = false;
 
@@ -386,7 +377,7 @@ static bool UpdateLibraryJobs(Server& server,
                         auto const error = outcome.GetFromTag<ResultType::Error>();
                         if (error.code == FilesystemError::PathDoesNotExist) {
                             for (auto it = server.libraries.begin(); it != server.libraries.end();)
-                                if (it->value.lib->path == path)
+                                if (it->value.lib->path == args.path)
                                     it = server.libraries.Remove(it);
                                 else
                                     ++it;
@@ -396,7 +387,7 @@ static bool UpdateLibraryJobs(Server& server,
                         if (auto err = server.error_notifications.BeginWriteError(error_id)) {
                             DEFER { server.error_notifications.EndWriteError(*err); };
                             dyn::AssignFitInCapacity(err->title, "Failed to read library"_s);
-                            dyn::AssignFitInCapacity(err->message, path);
+                            dyn::AssignFitInCapacity(err->message, args.path);
                             if (error.message.size) fmt::Append(err->message, "\n{}\n", error.message);
                             err->error_code = error.code;
                         }
@@ -562,10 +553,7 @@ static bool UpdateLibraryJobs(Server& server,
 
                     if (auto const lib_format = sample_lib::DetermineFileFormat(full_path)) {
                         // We queue-up a scan of the file. It will handle new/deleted/modified.
-                        ReadLibraryAsync(pending_library_jobs,
-                                         server.libraries,
-                                         String(full_path),
-                                         *lib_format);
+                        ReadLibraryAsync(pending_library_jobs, server.libraries, full_path);
                     } else {
                         for (auto& node : server.libraries) {
                             auto const& lib = *node.value.lib;
@@ -575,18 +563,12 @@ static bool UpdateLibraryJobs(Server& server,
                             if (path::Equal(full_path, lib_dir)) {
                                 // The library folder itself has changed. We queue-up a scan of the library.
                                 // It will handle new/deleted/modified.
-                                ReadLibraryAsync(pending_library_jobs,
-                                                 server.libraries,
-                                                 lib.path,
-                                                 lib.file_format_specifics.tag);
+                                ReadLibraryAsync(pending_library_jobs, server.libraries, lib.path);
                             } else if (path::IsWithinDirectory(full_path, lib_dir)) {
                                 if (path::Equal(path::Extension(full_path), ".lua")) {
                                     // If the file is a Lua file, it's probably a file used by the main Lua
                                     // file. We need to rescan the library.
-                                    ReadLibraryAsync(pending_library_jobs,
-                                                     server.libraries,
-                                                     lib.path,
-                                                     lib.file_format_specifics.tag);
+                                    ReadLibraryAsync(pending_library_jobs, server.libraries, lib.path);
                                 } else {
                                     // Something within the library folder has changed
                                     dyn::AppendIfNotAlreadyThere(libraries_that_changed, &node);
