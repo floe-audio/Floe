@@ -422,6 +422,7 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
             context.confirmation_dialog_state.callback = [&error_notifications =
                                                               context.engine.error_notifications,
                                                           &gui_notifications = context.notifications,
+                                                          &preset_server = context.preset_server,
                                                           cloned_path](ConfirmationDialogResult result) {
                 DEFER { Malloc::Instance().Free(cloned_path.ToByteSpan()); };
                 if (result == ConfirmationDialogResult::Ok) {
@@ -444,6 +445,8 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
                                 },
                             .id = id,
                         };
+                        if (auto const d = path::Directory(cloned_path)) RescanFolder(preset_server, *d);
+
                     } else if (auto item = error_notifications.BeginWriteError(id)) {
                         DEFER { error_notifications.EndWriteError(*item); };
                         item->title = "Failed to send preset folder to trash"_s;
