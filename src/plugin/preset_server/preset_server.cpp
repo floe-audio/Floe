@@ -733,6 +733,22 @@ struct FoldersAggregateInfo {
                 if (auto const bank = KnownPresetBank(node)) listing->fallback_preset_bank_info = bank;
             });
 
+            // We want to avoid root nodes from being 'known preset banks' because it has a strange UX and
+            // complicates finding Floe-Details.
+            if (auto root_listing = root->user_data.As<PresetFolderListing>();
+                root_listing && root_listing->fallback_preset_bank_info) {
+                for (auto* child = root->first_child; child; child = child->next) {
+                    auto child_listing = child->user_data.As<PresetFolderListing>();
+                    if (child_listing &&
+                        child_listing->fallback_preset_bank_info == root_listing->fallback_preset_bank_info) {
+                        // We found a child that has the same known bank. Let's prefer this over the root
+                        // node.
+                        root_listing->fallback_preset_bank_info = nullptr;
+                        break;
+                    }
+                }
+            }
+
             DynamicArray<FolderNode*> miscellaneous_banks {scratch_arena};
 
             // Add orphaned PresetFolder nodes to new "Miscellaneous" banks.
