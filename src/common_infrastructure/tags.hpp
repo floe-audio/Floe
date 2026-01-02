@@ -143,6 +143,7 @@ enum class TagType : u16 {
 
     Pulsing,
     Evolving,
+    Fluctuating,
     Glitched,
     Grainy,
 
@@ -179,11 +180,13 @@ enum class TagType : u16 {
     Noisy,
     Pure,
     Resonant,
+    Ringing,
     Rumbly,
     Saturated,
     Smooth,
     Thin,
     Warm,
+    Whining,
 
     Eighties,
     EDM,
@@ -373,7 +376,8 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
 
         // Timbre modulation
         case TagType::Pulsing: return {"pulsing"_s, "Rhythmic modulation"_s};
-        case TagType::Evolving: return {"evolving"_s, "Changing over time"_s};
+        case TagType::Evolving: return {"evolving"_s, "Slow changing over time"_s};
+        case TagType::Fluctuating: return {"fluctuating"_s, "Irregular movement"_s};
         case TagType::Glitched: return {"glitched"_s, "Digital error artefacts"_s};
         case TagType::Grainy: return {"grainy"_s, "Fine textural irregularities"_s};
 
@@ -423,6 +427,8 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         case TagType::Smooth: return {"smooth"_s, "Even, consistent, without sharp edges"_s};
         case TagType::Thin: return {"thin"_s, "Lacking in fullness, narrow frequency range"_s};
         case TagType::Warm: return {"warm"_s, "Rich in harmonics, pleasant mid-range"_s};
+        case TagType::Ringing: return {"ringing"_s, "Clear high unrelenting resonant sound"_s};
+        case TagType::Whining: return {"whining"_s, "High-pitched fluctuating sound"_s};
 
         // Genres
         case TagType::Eighties: return {"80s"_s, ""_s};
@@ -780,10 +786,11 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
         }
         case TagCategory::TimbreModulation: {
             static constexpr auto k_tags = Array {
-                Pulsing,
                 Evolving,
+                Fluctuating,
                 Glitched,
                 Grainy,
+                Pulsing,
             };
             return {
                 .name = "Timbre (modulation)",
@@ -839,9 +846,9 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
         }
         case TagCategory::TimbreFrequency: {
             static constexpr auto k_tags = Array {
-                Airy,  CircuitBent, Cold,   Digital,   Distorted, FullSpectrum, Fuzzy,   Glassy, Gritty,
-                Harsh, Hissing,     LoFi,   Lush,      Metallic,  Muddy,        Muffled, Nasal,  Noisy,
-                Pure,  Resonant,    Rumbly, Saturated, Smooth,    Thin,         Warm,
+                Airy,  CircuitBent, Cold,    Digital, Distorted, FullSpectrum, Fuzzy,   Glassy, Gritty,
+                Harsh, Hissing,     LoFi,    Lush,    Metallic,  Muddy,        Muffled, Nasal,  Noisy,
+                Pure,  Resonant,    Ringing, Rumbly,  Saturated, Smooth,       Thin,    Warm,   Whining,
             };
             static constexpr auto k_exclude_tags = Array {
                 Acoustic,

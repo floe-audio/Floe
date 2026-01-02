@@ -22,6 +22,7 @@ For instance: 0.0.1. Don't change the headings.
 - Add new monophonic mode: latch. The monophonic bool parameter is replaced by a menu with this new option.
 In latch mode, the note only ends when all notes are released - new key presses are ignored and the original note continues playing unchanged.
 - GUI: show more decimal points with very slow LFO rates
+- Add 'fluctuating', 'ringing' and 'whining' tags
 
 
 ## 1.1.0
