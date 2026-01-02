@@ -62,6 +62,7 @@ static constexpr Optional<FilesystemError> TranslateErrnoCode(s64 ec) {
         case EXDEV: return FilesystemError::DifferentFilesystems;
         case ENOTEMPTY: return FilesystemError::NotEmpty;
         case ENOTDIR: return FilesystemError::PathIsAFile;
+        case EISDIR: return FilesystemError::PathIsAsDirectory;
     }
     return {};
 }
@@ -1309,9 +1310,9 @@ TEST_CASE(TestFilesystemApi) {
     }
 
     SUBCASE("relocate files") {
-        auto const dir = tests::TempFolderUnique(tester);
-        auto const path1 = path::Join(a, Array {dir, "test-path1"});
-        auto const path2 = path::Join(a, Array {dir, "test-path2"});
+        auto const dir = (String)tests::TempFolderUnique(tester);
+        auto const path1 = (String)path::Join(a, Array {dir, "test-path1"});
+        auto const path2 = (String)path::Join(a, Array {dir, "test-path2"});
 
         SUBCASE("Rename") {
             SUBCASE("basic file rename") {
@@ -1342,6 +1343,110 @@ TEST_CASE(TestFilesystemApi) {
                 TRY(Rename(path1, path2));
                 CHECK(TRY(GetFileType(path2)) == FileType::Directory);
                 CHECK(GetFileType(path1).HasError());
+            }
+
+            SUBCASE("error cases") {
+                SUBCASE("rename file to existing directory fails") {
+                    TRY(WriteFile(path1, "data"_s.ToByteSpan()));
+                    TRY(CreateDirectory(path2, {.create_intermediate_directories = false}));
+
+                    auto const result = Rename(path1, path2);
+                    REQUIRE(result.HasError());
+                    CHECK(result.Error() == FilesystemError::PathIsAsDirectory);
+
+                    // Verify source unchanged
+                    CHECK(TRY(GetFileType(path1)) == FileType::File);
+                    // Verify destination unchanged
+                    CHECK(TRY(GetFileType(path2)) == FileType::Directory);
+                }
+
+                SUBCASE("rename directory to existing file fails") {
+                    TRY(CreateDirectory(path1, {.create_intermediate_directories = false}));
+                    TRY(WriteFile(path2, "data"_s.ToByteSpan()));
+
+                    auto const result = Rename(path1, path2);
+                    REQUIRE(result.HasError());
+                    CHECK(result.Error() == FilesystemError::PathIsAFile);
+
+                    // Verify source unchanged
+                    CHECK(TRY(GetFileType(path1)) == FileType::Directory);
+                    // Verify destination unchanged
+                    CHECK(TRY(GetFileType(path2)) == FileType::File);
+                }
+
+                SUBCASE("rename directory to non-empty directory fails") {
+                    TRY(CreateDirectory(path1, {.create_intermediate_directories = false}));
+                    TRY(CreateDirectory(path2, {.create_intermediate_directories = false}));
+
+                    // Make path2 non-empty
+                    auto const file_in_dest = (String)path::Join(a, Array {path2, "file.txt"});
+                    TRY(WriteFile(file_in_dest, "data"_s.ToByteSpan()));
+
+                    auto const result = Rename(path1, path2);
+                    REQUIRE(result.HasError());
+                    CHECK(result.Error() == FilesystemError::NotEmpty);
+
+                    // Verify both unchanged
+                    CHECK(TRY(GetFileType(path1)) == FileType::Directory);
+                    CHECK(TRY(GetFileType(path2)) == FileType::Directory);
+                    CHECK(TRY(GetFileType(file_in_dest)) == FileType::File);
+                }
+
+                SUBCASE("rename non-existent source fails") {
+                    auto const result = Rename(path1, path2);
+                    REQUIRE(result.HasError());
+                    CHECK(result.Error() == FilesystemError::PathDoesNotExist);
+                }
+
+                SUBCASE("rename to non-existent parent directory fails") {
+                    TRY(WriteFile(path1, "data"_s.ToByteSpan()));
+
+                    auto const non_existent_parent = (String)path::Join(a, Array {dir, "nonexistent", "file.txt"});
+                    auto const result = Rename(path1, non_existent_parent);
+
+                    REQUIRE(result.HasError());
+                    CHECK(result.Error() == FilesystemError::PathDoesNotExist);
+
+                    // Source should remain unchanged
+                    CHECK(TRY(GetFileType(path1)) == FileType::File);
+                }
+            }
+
+            SUBCASE("edge cases") {
+                SUBCASE("identity rename succeeds") {
+                    TRY(WriteFile(path1, "data"_s.ToByteSpan()));
+
+                    // Rename to itself
+                    TRY(Rename(path1, path1));
+
+                    // Should still exist with same content
+                    CHECK(TRY(GetFileType(path1)) == FileType::File);
+                    CHECK(TRY(ReadEntireFile(path1, a)) == "data"_s);
+                }
+
+                SUBCASE("directory rename moves contents") {
+                    TRY(CreateDirectory(path1, {.create_intermediate_directories = false}));
+
+                    auto const file_in_dir = (String)path::Join(a, Array {path1, "file.txt"});
+                    auto const subdir = (String)path::Join(a, Array {path1, "subdir"});
+                    TRY(WriteFile(file_in_dir, "test data"_s.ToByteSpan()));
+                    TRY(CreateDirectory(subdir, {.create_intermediate_directories = false}));
+
+                    TRY(Rename(path1, path2));
+
+                    // Verify old location gone
+                    CHECK(GetFileType(path1).HasError());
+                    CHECK(GetFileType(file_in_dir).HasError());
+                    CHECK(GetFileType(subdir).HasError());
+
+                    // Verify new location contains everything
+                    CHECK(TRY(GetFileType(path2)) == FileType::Directory);
+                    auto const new_file = (String)path::Join(a, Array {path2, "file.txt"});
+                    auto const new_subdir = (String)path::Join(a, Array {path2, "subdir"});
+                    CHECK(TRY(GetFileType(new_file)) == FileType::File);
+                    CHECK(TRY(ReadEntireFile(new_file, a)) == "test data"_s);
+                    CHECK(TRY(GetFileType(new_subdir)) == FileType::Directory);
+                }
             }
         }
 

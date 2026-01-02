@@ -965,23 +965,25 @@ ErrorCodeOr<void> Rename(String from, String to) {
     if (!MoveFileExW(from_wide.data, to_wide.data, MOVEFILE_REPLACE_EXISTING)) {
         auto err = GetLastError();
 
-        // When the destination is a non-empty directory we don't get ERROR_DIR_NOT_EMPTY as we might
-        // expect, but instead ERROR_ACCESS_DENIED. Let's try and fix that.
-        if (err == ERROR_ACCESS_DENIED) {
-            if (PathIsANonEmptyDirectory(to_wide)) err = ERROR_DIR_NOT_EMPTY;
-        }
-
-        // Additionally, we want to report the case when it fails because the destination is an existing file
-        // and the source is a directory. The Win32 docs don't specify what error this would be.
-        if (err == ERROR_ACCESS_DENIED || err == ERROR_FILE_EXISTS || err == ERROR_ALREADY_EXISTS) {
+        if (auto const to_attributes = GetFileAttributesW(to_wide.data);
+            to_attributes != INVALID_FILE_ATTRIBUTES) {
             auto const from_attributes = GetFileAttributesW(from_wide.data);
-            auto const to_attributes = GetFileAttributesW(to_wide.data);
-            if (from_attributes != INVALID_FILE_ATTRIBUTES && to_attributes != INVALID_FILE_ATTRIBUTES) {
-                if ((from_attributes & FILE_ATTRIBUTE_DIRECTORY) &&
-                    !(to_attributes & FILE_ATTRIBUTE_DIRECTORY)) {
-                    return ErrorCode {FilesystemError::PathIsAFile};
-                }
-            }
+            if (from_attributes == INVALID_FILE_ATTRIBUTES)
+                return FilesystemWin32ErrorCode(err, "MoveFileExW");
+
+            auto const from_is_dir = from_attributes & FILE_ATTRIBUTE_DIRECTORY;
+            auto const to_is_dir = to_attributes & FILE_ATTRIBUTE_DIRECTORY;
+
+            // Folder to file.
+            if (from_is_dir && !to_is_dir) return ErrorCode {FilesystemError::PathIsAFile};
+
+            // File to folder.
+            if (!from_is_dir && to_is_dir) return ErrorCode {FilesystemError::PathIsAsDirectory};
+
+            // When the destination is a non-empty directory we don't get ERROR_DIR_NOT_EMPTY as we might
+            // expect, but instead ERROR_ACCESS_DENIED. Let's try and fix that.
+            if (from_is_dir && to_is_dir && err == ERROR_ACCESS_DENIED && PathIsANonEmptyDirectory(to_wide))
+                return ErrorCode {FilesystemError::NotEmpty};
         }
 
         return FilesystemWin32ErrorCode(err, "MoveFileExW");
