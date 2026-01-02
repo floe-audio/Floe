@@ -440,22 +440,28 @@ static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
                     TRY(FindNextNonExistentFilename(config.folder, installed_name, scratch_arena));
                 continue;
             }
-        } else if (rename_o.Error() == FilesystemError::PathIsAFile && allow_overwrite) {
+        } else if (rename_o.Error() == FilesystemError::PathIsAFile) {
             // The destination exists as a file. This can only happen with folder-to-file installs since
-            // Rename() overwrites files automatically. We trash the existing file and try again.
-            if (auto const trash_o = TrashFileOrDirectory(full_dest, scratch_arena);
-                trash_o.HasError() && trash_o.Error() == FilesystemError::NotSupported) {
-                TRY(Delete(full_dest,
-                           {
-                               .type = DeleteOptions::Type::File,
-                               .fail_if_not_exists = false,
-                           }));
+            // Rename() handles file-to-file overwrites automatically.
+
+            if (allow_overwrite) {
+                if (auto const trash_o = TrashFileOrDirectory(full_dest, scratch_arena);
+                    trash_o.HasError() && trash_o.Error() == FilesystemError::NotSupported) {
+                    TRY(Delete(full_dest,
+                               {
+                                   .type = DeleteOptions::Type::File,
+                                   .fail_if_not_exists = false,
+                               }));
+                }
+
+                // We have handled the overwrite case now, we don't want the next step to overwrite something
+                // unrelated.
+                allow_overwrite = false;
             }
 
-            // Additionally with this folder-to-file case, we rename the destination since we don't want to
-            // end up with a folder that has a file's name with an extension.
+            // We know this is a folder-to-file case, and we therefore don't want the final folder to have the
+            // same name as original file (it would be strange to have a file extension for a folder).
             installed_name = path::Filename(component.path);
-            allow_overwrite = false;
 
             continue;
         } else {
@@ -475,6 +481,35 @@ struct TryHelpersToState {
     static auto ExtractError(auto const&) { return InstallJob::State::DoneError; }
     static auto ExtractValue(auto& o) { return o.ReleaseValue(); }
 };
+
+static bool MirageIsInstalled() {
+    if constexpr (IS_LINUX) return false; // Mirage wasn't available for Linux.
+
+    Span<String const> possible_paths {};
+
+    if constexpr (IS_MACOS) {
+        static constexpr auto k_paths = Array {
+            "/Library/Audio/Plug-Ins/VST/Mirage.vst"_s,
+            "/Library/Audio/Plug-Ins/Components/FrozenPlain Mirage.component"_s,
+        };
+        possible_paths = k_paths;
+    }
+
+    if constexpr (IS_WINDOWS) {
+        static constexpr auto k_paths = Array {
+            "C:\\Program Files\\VSTPlugins\\mirage64.dll"_s,
+            "C:\\Program Files\\Steinberg\\VSTPlugins\\mirage64.dll",
+            "C:\\Program Files\\Common Files\\VST2\\mirage64.dll",
+            "C:\\Program Files\\Common Files\\Steinberg\\VST2\\mirage64.dll",
+        };
+        possible_paths = k_paths;
+    }
+
+    for (auto const p : possible_paths)
+        if (GetFileType(p).HasValue()) return true;
+
+    return false;
+}
 
 static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
     using H = package::TryHelpersToState;
@@ -544,7 +579,20 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
                     install_config = {
                         .filename = job.arena.Clone(path::Filename(path)),
                         .folder = job.arena.Clone(*path::Directory(path)),
-                        .allow_overwrite = true, // Should we need to update, we allow overwriting.
+                        .allow_overwrite = ({
+                            bool allow = true; // Should we need to update, we allow overwriting.
+
+                            if (existing_lib->file_format_specifics.tag == sample_lib::FileFormat::Mdata &&
+                                component->library->file_format_specifics.tag ==
+                                    sample_lib::FileFormat::Lua) {
+                                // When upgrading from a Mirage library to a Lua library, we don't want to
+                                // overwrite it if Mirage is still installed because it would break Mirage's
+                                // usage of the library.
+                                if (MirageIsInstalled()) allow = false;
+                            }
+
+                            allow;
+                        }),
                     };
                 } else {
                     install_config = {
