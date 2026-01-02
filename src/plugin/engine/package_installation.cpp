@@ -694,7 +694,31 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
                             install_config = {
                                 .filename = job.arena.Clone(path::Filename(path)),
                                 .folder = job.arena.Clone(*path::Directory(path)),
-                                .allow_overwrite = true,
+                                .allow_overwrite = ({
+                                    bool allow = true;
+
+                                    if (HasNestedBank(listing->node))
+                                        allow = false;
+                                    else if (MirageIsInstalled())
+                                        // Disallow overwriting Mirage presets if Mirage is in use.
+                                        ForEachNode(
+                                            const_cast<FolderNode*>(&listing->node),
+                                            [&allow](FolderNode* n) {
+                                                if (!allow) return;
+                                                if (auto l = n->user_data.As<PresetFolderListing const>()) {
+                                                    if (l->folder) {
+                                                        for (auto const& p : l->folder->presets) {
+                                                            if (p.file_format == PresetFormat::Mirage) {
+                                                                allow = false;
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            });
+
+                                    allow;
+                                }),
                             };
                             matched = true;
                             break;
