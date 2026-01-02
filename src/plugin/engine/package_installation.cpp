@@ -229,7 +229,7 @@ FindNextNonExistentFilename(String folder, String filename, ArenaAllocator& aren
 
     // Next, try with suffixes.
     auto const parsed = ParseFilenameWithSuffix(filename);
-    usize suffix_num = parsed.suffix_num.ValueOr(0) + 1;
+    usize suffix_num = parsed.suffix_num.ValueOr(1) + 1;
 
     Optional<ErrorCode> error {};
 
@@ -1363,7 +1363,7 @@ TEST_CASE(TestPackageInstallationUpdatePresets) {
                 CHECK_EQ(TRY(GetFileType(installed_file_v1)), FileType::File);
                 CHECK_EQ(TRY(GetFileType(extra_file)), FileType::File);
 
-                auto const separate_dir = (String)fmt::Format(tester.scratch_arena, "{} (1)", installed_dir);
+                auto const separate_dir = (String)fmt::Format(tester.scratch_arena, "{} (2)", installed_dir);
                 auto const separate_file =
                     path::Join(tester.scratch_arena, Array {separate_dir, k_preset_filename_v2});
                 CHECK_EQ(TRY(GetFileType(separate_dir)), FileType::Directory);
@@ -1894,22 +1894,22 @@ TEST_CASE(TestFindNextNonExistentFilename) {
         CHECK_EQ(result, "test.txt"_s);
     }
 
-    SUBCASE("file exists, returns (1)") {
+    SUBCASE("file exists, returns (2)") {
         auto const path = path::Join(tester.scratch_arena, Array {folder, "file.txt"_s});
         TRY(WriteFile(path, ""_s));
 
         auto const result = TRY(FindNextNonExistentFilename(folder, "file.txt"_s, tester.scratch_arena));
-        CHECK_EQ(result, "file (1).txt"_s);
+        CHECK_EQ(result, "file (2).txt"_s);
     }
 
-    SUBCASE("file and (1) exist, returns (2)") {
+    SUBCASE("file and (2) exist, returns (3)") {
         auto const path1 = path::Join(tester.scratch_arena, Array {folder, "foo.txt"_s});
-        auto const path2 = path::Join(tester.scratch_arena, Array {folder, "foo (1).txt"_s});
+        auto const path2 = path::Join(tester.scratch_arena, Array {folder, "foo (2).txt"_s});
         TRY(WriteFile(path1, ""_s));
         TRY(WriteFile(path2, ""_s));
 
         auto const result = TRY(FindNextNonExistentFilename(folder, "foo.txt"_s, tester.scratch_arena));
-        CHECK_EQ(result, "foo (2).txt"_s);
+        CHECK_EQ(result, "foo (3).txt"_s);
     }
 
     SUBCASE("filename with existing suffix") {
