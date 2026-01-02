@@ -1401,7 +1401,8 @@ TEST_CASE(TestFilesystemApi) {
                 SUBCASE("rename to non-existent parent directory fails") {
                     TRY(WriteFile(path1, "data"_s.ToByteSpan()));
 
-                    auto const non_existent_parent = (String)path::Join(a, Array {dir, "nonexistent", "file.txt"});
+                    auto const non_existent_parent =
+                        (String)path::Join(a, Array {dir, "nonexistent", "file.txt"});
                     auto const result = Rename(path1, non_existent_parent);
 
                     REQUIRE(result.HasError());
