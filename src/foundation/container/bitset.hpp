@@ -113,6 +113,13 @@ struct Bitset {
         [[unlikely]] return k_bits;
     }
 
+    constexpr usize FirstSetBit() const {
+        for (auto const element_index : Range(k_num_elements))
+            if (elements[element_index] != 0)
+                return (element_index * k_bits_per_element) + (usize)__builtin_ctzg(elements[element_index]);
+        return k_bits;
+    }
+
     constexpr Bitset operator~() const {
         Bitset result = *this;
         for (auto& element : result.elements)
