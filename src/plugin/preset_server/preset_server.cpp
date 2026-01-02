@@ -517,7 +517,7 @@ struct FoldersAggregateInfo {
         switch (hash) {
             case 17797709789825583399ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.AbstractEnergy.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.AbstractEnergy.1"),
                     .subtitle = "Factory presets for Abstract Energy (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -525,7 +525,7 @@ struct FoldersAggregateInfo {
             }
             case 17678716117694255396ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.Wraith.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.Wraith.1"),
                     .subtitle = "Factory presets for Wraith (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -533,7 +533,7 @@ struct FoldersAggregateInfo {
             }
             case 4522276088530940864ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.ArcticStrings.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.ArcticStrings.1"),
                     .subtitle = "Factory presets for Arctic Strings (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -541,7 +541,7 @@ struct FoldersAggregateInfo {
             }
             case 17067796986821586660ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.CinematicAtmosphereToolkit.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.CinematicAtmosphereToolkit.1"),
                     .subtitle = "Factory presets for Cinematic Atmosphere Toolkit (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -549,7 +549,7 @@ struct FoldersAggregateInfo {
             }
             case 1113295807784802420ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.DeepConjuring.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.DeepConjuring.1"),
                     .subtitle = "Factory presets for Deep Conjuring (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -557,7 +557,7 @@ struct FoldersAggregateInfo {
             }
             case 14194170911065684425ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.FeedbackLoops.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.FeedbackLoops.1"),
                     .subtitle = "Factory presets for Feedback Loops (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -565,7 +565,7 @@ struct FoldersAggregateInfo {
             }
             case 10657727448210940357ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.IsolatedSignals.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.IsolatedSignals.1"),
                     .subtitle = "Factory presets for Isolated Signals (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -573,7 +573,7 @@ struct FoldersAggregateInfo {
             }
             case 5014338070805093321ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.LostReveries.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.LostReveries.1"),
                     .subtitle = "Factory presets for Lost Reveries (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -581,7 +581,7 @@ struct FoldersAggregateInfo {
             }
             case 13346224102117216586ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.MusicBoxSuiteFree.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.MusicBoxSuiteFree.1"),
                     .subtitle = "Factory presets for Music Box Suite Free (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -589,7 +589,7 @@ struct FoldersAggregateInfo {
             }
             case 10450269504034189798ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.MusicBoxSuite.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.MusicBoxSuite.1"),
                     .subtitle = "Factory presets for Music Box Suite (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -597,7 +597,7 @@ struct FoldersAggregateInfo {
             }
             case 12314029761590835424ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.Phoenix.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.Phoenix.1"),
                     .subtitle = "Factory presets for Phoenix (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -605,7 +605,7 @@ struct FoldersAggregateInfo {
             }
             case 1979436314251425427ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.ScenicVibrations.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.ScenicVibrations.1"),
                     .subtitle = "Factory presets for Scenic Vibrations (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -613,7 +613,7 @@ struct FoldersAggregateInfo {
             }
             case 5617954846491642181ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.Slow.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.Slow.1"),
                     .subtitle = "Factory presets for Slow (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -621,7 +621,7 @@ struct FoldersAggregateInfo {
             }
             case 4523343789936516079ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.SqueakyGate.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.SqueakyGate.1"),
                     .subtitle = "Factory presets for Squeaky Gate (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -629,7 +629,7 @@ struct FoldersAggregateInfo {
             }
             case 15901798520857468560ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.Dreamstates.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.Dreamstates.1"),
                     .subtitle = "Factory presets for Dreamstates (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -637,7 +637,7 @@ struct FoldersAggregateInfo {
             }
             case 9622774010603600999ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.Paranormal.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.Paranormal.1"),
                     .subtitle = "Factory presets for Paranormal (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -645,7 +645,7 @@ struct FoldersAggregateInfo {
             }
             case 2299133524087718373ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.ScareTactics.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.ScareTactics.1"),
                     .subtitle = "Factory presets for Scare Tactics (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -653,7 +653,7 @@ struct FoldersAggregateInfo {
             }
             case 3960283021267125531ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.SignalInterference.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.SignalInterference.1"),
                     .subtitle = "Factory presets for Signal Interference (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -661,7 +661,7 @@ struct FoldersAggregateInfo {
             }
             case 2834298600494183622ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.Terracotta.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.Terracotta.1"),
                     .subtitle = "Factory presets for Terracotta (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -669,7 +669,7 @@ struct FoldersAggregateInfo {
             }
             case 7286607532220839066ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.WraithDemo.Mirage"),
+                    .id = HashComptime("com.FrozenPlain.WraithDemo.1"),
                     .subtitle = "Factory presets for Wraith Demo (Mirage presets)"_s,
                     .minor_version = 1,
                 };
