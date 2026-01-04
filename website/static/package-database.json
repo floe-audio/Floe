@@ -18,7 +18,7 @@
         },
         "description": "A high-quality multisampled harp with velocity layers and round robins.<br /><br />Port of <a href=\"https://versilian-studios.com/etherealwinds-harp/\">Etherealwinds Harp 2: Community Edition</a> by Versilian Studios.",
         "category": "community",
-        "direct_download_link": "https://github.com/floe-audio/Harp/releases/download/v1.5/Floe.Ports.-.Celtic.Harp.Package.zip",
+        "direct_download_link": "https://github.com/floe-audio/Harp/releases/download/v1.6/Floe.Ports.-.Celtic.Harp.Package.zip",
         "external_product_page": null,
         "repo_link": "https://github.com/floe-audio/Harp",
         "instruments": 1,
