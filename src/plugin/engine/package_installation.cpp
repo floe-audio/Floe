@@ -1066,10 +1066,22 @@ void ShutdownJobs(InstallJobs& jobs) {
 // Tests
 // ==========================================================================================================
 
-static MutableString FullTestLibraryPath(tests::Tester& tester, String lib_folder_name) {
-    return path::Join(
-        tester.scratch_arena,
-        Array {tests::TestFilesFolder(tester), tests::k_libraries_test_files_subdir, lib_folder_name});
+enum class LibFolder { Regular, Extra };
+
+static MutableString FullTestLibraryPath(tests::Tester& tester, LibFolder folder, String lib_folder_name) {
+    return path::Join(tester.scratch_arena,
+                      Array {tests::TestFilesFolder(tester),
+                             ({
+                                 String f;
+                                 switch (folder) {
+                                     case LibFolder::Regular: f = tests::k_libraries_test_files_subdir; break;
+                                     case LibFolder::Extra:
+                                         f = tests::k_extra_libraries_test_files_subdir;
+                                         break;
+                                 }
+                                 f;
+                             }),
+                             lib_folder_name});
 }
 
 static String TestPresetsFolder(tests::Tester& tester) {
@@ -1077,14 +1089,15 @@ static String TestPresetsFolder(tests::Tester& tester) {
                       Array {tests::TestFilesFolder(tester), tests::k_preset_test_files_subdir});
 }
 
-static ErrorCodeOr<sample_lib::Library*> LoadTestLibrary(tests::Tester& tester, String lib_subpath) {
+static ErrorCodeOr<sample_lib::Library*>
+LoadTestLibrary(tests::Tester& tester, LibFolder folder, String lib_subpath) {
     auto const format = sample_lib::DetermineFileFormat(lib_subpath);
     if (!format.HasValue()) {
         tester.log.Error("Unknown file format for '{}'", lib_subpath);
         return ErrorCode {PackageError::InvalidLibrary};
     }
 
-    auto const path = FullTestLibraryPath(tester, lib_subpath);
+    auto const path = FullTestLibraryPath(tester, folder, lib_subpath);
     auto reader = TRY(Reader::FromFile(path));
     auto lib_outcome =
         sample_lib::Read(reader, format.Value(), path, tester.scratch_arena, tester.scratch_arena);
@@ -1098,13 +1111,13 @@ static ErrorCodeOr<sample_lib::Library*> LoadTestLibrary(tests::Tester& tester, 
 }
 
 static ErrorCodeOr<Span<u8 const>>
-CreateValidTestPackage(tests::Tester& tester, String lib_subpath, bool include_presets) {
+CreateValidTestPackage(tests::Tester& tester, LibFolder folder, String lib_subpath, bool include_presets) {
     DynamicArray<u8> zip_data {tester.scratch_arena};
     auto writer = dyn::WriterFor(zip_data);
     auto package = WriterCreate(writer);
     DEFER { WriterDestroy(package); };
 
-    auto lib = TRY(LoadTestLibrary(tester, lib_subpath));
+    auto lib = TRY(LoadTestLibrary(tester, folder, lib_subpath));
     TRY(WriterAddLibrary(package, *lib, tester.scratch_arena, "tester"));
 
     if (include_presets)
@@ -1202,9 +1215,10 @@ static ErrorCodeOr<void> Test(tests::Tester& tester, TestOptions options) {
     return k_success;
 }
 
-String CreatePackageZipFile(tests::Tester& tester, String lib_subpath, bool include_presets) {
+String
+CreatePackageZipFile(tests::Tester& tester, LibFolder folder, String lib_subpath, bool include_presets) {
     auto const zip_data = ({
-        auto o = package::CreateValidTestPackage(tester, lib_subpath, include_presets);
+        auto o = package::CreateValidTestPackage(tester, folder, lib_subpath, include_presets);
         REQUIRE(!o.HasError());
         o.ReleaseValue();
     });
@@ -1400,6 +1414,77 @@ TEST_CASE(TestPackageInstallationUpdatePresets) {
     return k_success;
 }
 
+TEST_CASE(TestPackageInstallationMdataToLua) {
+    auto const destination_folder = tests::TempFolderUnique(tester);
+
+    ThreadPool thread_pool;
+    thread_pool.Init("pkg-install", {});
+    ThreadsafeErrorNotifications error_notif;
+    sample_lib_server::Server server {thread_pool, destination_folder, error_notif};
+    PresetServer preset_server {
+        .error_notifications = error_notif,
+    };
+
+    InitPresetServer(preset_server, destination_folder);
+    DEFER { ShutdownPresetServer(preset_server); };
+
+    auto const lua_package = CreatePackageZipFile(tester, LibFolder::Extra, "Mdata-To-Lua/floe.lua", false);
+    auto const mdata_package =
+        CreatePackageZipFile(tester, LibFolder::Regular, "shared_files_test_lib.mdata", false);
+
+    CreateJobOptions job_opts {
+        .zip_path = mdata_package,
+        .install_folders = {destination_folder, destination_folder},
+        .sample_lib_server = server,
+        .preset_server = preset_server,
+    };
+
+    auto const expected_final_mdata_path =
+        path::Join(tester.scratch_arena, Array {destination_folder, "FrozenPlain - SharedFilesMdata.mdata"});
+
+    // Install the MDATA.
+    {
+        auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
+        DEFER { DestroyInstallJob(job); };
+        DoJobPhase1(*job); // Should do both phases.
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::DoneSuccess);
+        auto const& comp = job->components.first->data;
+        CHECK(!comp.existing_installation_status.installed);
+
+        CHECK(TRY(GetFileType(expected_final_mdata_path)) == FileType::File);
+    }
+
+    // Installing the Lua should automatically replace the existing since the Lua is the same ID but newer.
+    job_opts.zip_path = lua_package;
+    {
+        CHECK(!MirageIsInstalled());
+        auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
+        DEFER { DestroyInstallJob(job); };
+        DoJobPhase1(*job); // Should do both phases.
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::DoneSuccess);
+        auto const& comp = job->components.first->data;
+        CHECK(comp.existing_installation_status.installed);
+        CHECK_EQ(comp.existing_installation_status.version_difference, VersionDifference::InstalledIsOlder);
+        CHECK_EQ(comp.existing_installation_status.modified_since_installed,
+                 ModifiedSinceInstalled::Unmodified);
+
+        {
+            auto const o = GetFileType(expected_final_mdata_path);
+            REQUIRE(o.HasError());
+            CHECK_EQ(o.Error(), FilesystemError::PathDoesNotExist);
+        }
+
+        {
+            auto const o =
+                GetFileType(path::Join(tester.scratch_arena, Array {destination_folder, "Tester - Foo"}));
+            REQUIRE(o.HasValue());
+            CHECK_EQ(o.Value(), FileType::Directory);
+        }
+    }
+
+    return k_success;
+}
+
 TEST_CASE(TestPackageInstallationExtraFiles) {
     auto const destination_folder = tests::TempFolderUnique(tester);
 
@@ -1414,8 +1499,9 @@ TEST_CASE(TestPackageInstallationExtraFiles) {
     InitPresetServer(preset_server, destination_folder);
     DEFER { ShutdownPresetServer(preset_server); };
 
-    auto const zip_path_v1 = CreatePackageZipFile(tester, "Test-Lib-1/floe.lua", false);
-    auto const zip_path_v2 = CreatePackageZipFile(tester, "Test-Lib-1-v2/floe.lua", false);
+    auto const zip_path_v1 = CreatePackageZipFile(tester, LibFolder::Regular, "Test-Lib-1/floe.lua", false);
+    auto const zip_path_v2 =
+        CreatePackageZipFile(tester, LibFolder::Regular, "Test-Lib-1-v2/floe.lua", false);
 
     CreateJobOptions job_opts {
         .zip_path = zip_path_v1,
@@ -1505,7 +1591,7 @@ TEST_CASE(TestPackageInstallation) {
     InitPresetServer(preset_server, destination_folder);
     DEFER { ShutdownPresetServer(preset_server); };
 
-    auto const zip_path = CreatePackageZipFile(tester, "Test-Lib-1/floe.lua", true);
+    auto const zip_path = CreatePackageZipFile(tester, LibFolder::Regular, "Test-Lib-1/floe.lua", true);
 
     // Initially we're expecting success without any user input because the package is valid, it's not
     // installed anywhere else, and the destination folder is empty.
@@ -1658,7 +1744,7 @@ TEST_CASE(TestPackageInstallation) {
              {
                  .test_name = "Updating library to newer version",
                  .destination_folder = destination_folder,
-                 .zip_path = CreatePackageZipFile(tester, "Test-Lib-1-v2/floe.lua", true),
+                 .zip_path = CreatePackageZipFile(tester, LibFolder::Regular, "Test-Lib-1-v2/floe.lua", true),
                  .sample_lib_server = sample_lib_server,
                  .preset_server = preset_server,
                  .expected_state = InstallJob::State::DoneSuccess,
@@ -1704,7 +1790,8 @@ TEST_CASE(TestPackageInstallation) {
              }));
 
     // Try installing a MDATA library
-    auto const mdata_package = CreatePackageZipFile(tester, "shared_files_test_lib.mdata", false);
+    auto const mdata_package =
+        CreatePackageZipFile(tester, LibFolder::Regular, "shared_files_test_lib.mdata", false);
     TRY(Test(tester,
              {
                  .test_name = "Installing MDATA library",
@@ -1957,4 +2044,5 @@ TEST_REGISTRATION(RegisterPackageInstallationTests) {
     REGISTER_TEST(package::TestWriteFilenameWithSuffix);
     REGISTER_TEST(package::TestFindNextNonExistentFilename);
     REGISTER_TEST(package::TestPackageInstallationUpdatePresets);
+    REGISTER_TEST(package::TestPackageInstallationMdataToLua);
 }

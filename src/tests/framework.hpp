@@ -69,6 +69,7 @@ namespace tests {
 // this-repo/test_files/<folder>
 constexpr auto k_preset_test_files_subdir = "presets"_s;
 constexpr auto k_libraries_test_files_subdir = "libraries"_s;
+constexpr auto k_extra_libraries_test_files_subdir = "libraries_extra"_s;
 
 struct Result {
     __attribute__((noinline)) Result(ErrorCode ec)
