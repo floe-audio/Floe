@@ -14,32 +14,51 @@ PUBLIC String InstallationOptionAskUserPretext(package::InstallJob::Component co
     ASSERT(package::UserInputIsRequired(status));
 
     String format {};
-    if (status.modified_since_installed == package::ExistingInstalledComponent::Modified) {
+    if (status.modified_since_installed == package::ModifiedSinceInstalled::Modified) {
         switch (status.version_difference) {
-            case package::ExistingInstalledComponent::InstalledIsNewer:
+            case package::VersionDifference::InstalledIsNewer:
                 format =
                     "A newer version of {} {} is already installed but its files have been modified since it was installed.";
                 break;
-            case package::ExistingInstalledComponent::InstalledIsOlder:
+            case package::VersionDifference::InstalledIsOlder:
                 format =
                     "An older version of {} {} is already installed but its files have been modified since it was installed.";
                 break;
-            case package::ExistingInstalledComponent::Equal:
+            case package::VersionDifference::Equal:
                 format =
                     "{} {} is already installed but its files have been modified since it was installed.";
                 break;
+            case package::VersionDifference::Count: PanicIfReached();
         }
+    } else if (status.modified_since_installed == package::ModifiedSinceInstalled::UnmodifiedButFilesAdded) {
+        switch (status.version_difference) {
+            case package::VersionDifference::InstalledIsNewer:
+                format =
+                    "A newer version of {} {} is already fully installed but unrelated files have been added to the folder since it was installed.";
+                break;
+            case package::VersionDifference::InstalledIsOlder:
+                format =
+                    "An older version of {} {} is already fully installed but unrelated files have been added to the folder since it was installed.";
+                break;
+            case package::VersionDifference::Equal:
+                format =
+                    "{} {} is already fully installed but unrelated files have been added to the folder since it was installed.";
+                break;
+            case package::VersionDifference::Count: PanicIfReached();
+        }
+
     } else {
         // We don't know if the package has been modified or not so we just ask the user what to do without
-        // any explaination.
+        // any explanation.
         switch (status.version_difference) {
-            case package::ExistingInstalledComponent::InstalledIsNewer:
+            case package::VersionDifference::InstalledIsNewer:
                 format = "A newer version of {} {} is already installed.";
                 break;
-            case package::ExistingInstalledComponent::InstalledIsOlder:
+            case package::VersionDifference::InstalledIsOlder:
                 format = "An older version of {} {} is already installed.";
                 break;
-            case package::ExistingInstalledComponent::Equal: format = "{} {} is already installed."; break;
+            case package::VersionDifference::Equal: format = "{} {} is already installed."; break;
+            case package::VersionDifference::Count: PanicIfReached();
         }
     }
 
@@ -112,8 +131,12 @@ PUBLIC void PackageInstallAlertsPanel(GuiBoxSystem& box_system, package::Install
 
             if (TextButton(box_system, button_row, {.text = "Skip"}))
                 component.user_decision = package::InstallJob::UserDecision::Skip;
-            if (TextButton(box_system, button_row, {.text = "Overwrite"}))
+            if (component.install_config.allow_overwrite &&
+                TextButton(box_system, button_row, {.text = "Overwrite"}))
                 component.user_decision = package::InstallJob::UserDecision::Overwrite;
+            if (component.component.type == package::ComponentType::Presets &&
+                TextButton(box_system, button_row, {.text = "Keep Both"}))
+                component.user_decision = package::InstallJob::UserDecision::InstallCopy;
         }
     }
 }
@@ -123,7 +146,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBoxSystem& box_system,
                                           Notifications& notifications,
                                           ThreadsafeErrorNotifications& error_notifs,
                                           ThreadPool& thread_pool) {
-    constexpr u64 k_installing_packages_notif_id = HashComptime("installing packages notification");
+    constexpr u64 k_installing_packages_notif_id = HashFnv1a("installing packages notification");
     if (!package_install_jobs.Empty()) {
         if (!notifications.Find(k_installing_packages_notif_id)) {
             *notifications.AppendUninitalisedOverwrite() = {
@@ -206,7 +229,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBoxSystem& box_system,
                             }
                             return c;
                         },
-                        .id = HashComptime("package install success"),
+                        .id = HashFnv1a("package install success"),
                     };
                     box_system.imgui.frame_output.ElevateUpdateRequest(
                         GuiFrameResult::UpdateRequest::ImmediatelyUpdate);

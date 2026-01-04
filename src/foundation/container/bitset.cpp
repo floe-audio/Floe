@@ -72,22 +72,34 @@ TEST_CASE(TestBitset) {
     {
         Bitset<8> b(0b00000000);
         REQUIRE(b.FirstUnsetBit() == 0);
+        REQUIRE(b.FirstSetBit() == 8);
         b.Set(0);
         REQUIRE(b.FirstUnsetBit() == 1);
+        REQUIRE(b.FirstSetBit() == 0);
         b.Set(1);
         REQUIRE(b.FirstUnsetBit() == 2);
+        REQUIRE(b.FirstSetBit() == 0);
     }
 
     {
-        // test FirstUnsetBit across element boundary
+        // test FirstUnsetBit and FirstSetBit across element boundary
         Bitset<128> b {};
+        REQUIRE(b.FirstSetBit() == 128);
         for (usize i = 0; i < 128; ++i)
             b.Set(i);
         REQUIRE(b.FirstUnsetBit() == 128);
+        REQUIRE(b.FirstSetBit() == 0);
         b.Clear(127);
         REQUIRE(b.FirstUnsetBit() == 127);
+        REQUIRE(b.FirstSetBit() == 0);
         b.Clear(64);
         REQUIRE(b.FirstUnsetBit() == 64);
+        REQUIRE(b.FirstSetBit() == 0);
+        b.ClearAll();
+        b.Set(64);
+        REQUIRE(b.FirstSetBit() == 64);
+        b.Set(127);
+        REQUIRE(b.FirstSetBit() == 64);
     }
 
     {

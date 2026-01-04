@@ -105,7 +105,7 @@ void GlobalInit(GlobalInitOptions options) {
 
     if (auto const err = InitStacktraceState())
         ReportError(ErrorLevel::Warning,
-                    HashComptime("stacktrace_init_failed"),
+                    HashFnv1a("stacktrace_init_failed"),
                     "Failed to initialize stacktrace state: {}",
                     *err);
 

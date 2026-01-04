@@ -944,13 +944,19 @@ void Deinit(Preferences& prefs) {
     if (prefs.watcher.HasValue()) DestoryDirectoryWatcher(prefs.watcher.Value());
 }
 
-void WriteIfNeeded(Preferences& prefs) {
+void WriteIfNeeded(Preferences& prefs, Optional<String> override_write_path) {
     if (!prefs.write_to_file_needed) return;
 
     prefs.last_known_file_modified_time = NanosecondsSinceEpoch();
-    TRY_OR(WritePreferencesFile(prefs, PreferencesFilepath(), prefs.last_known_file_modified_time), {
-        ReportError(ErrorLevel::Error, SourceLocationHash(), "failed to write preferences file: {}", error);
-    });
+    TRY_OR(WritePreferencesFile(prefs,
+                                override_write_path.ValueOr(PreferencesFilepath()),
+                                prefs.last_known_file_modified_time),
+           {
+               ReportError(ErrorLevel::Error,
+                           SourceLocationHash(),
+                           "failed to write preferences file: {}",
+                           error);
+           });
 
     prefs.write_to_file_needed = false;
 }
@@ -1017,7 +1023,7 @@ void PollForExternalChanges(Preferences& prefs, PollForExternalChangesOptions op
         if ((prefs.last_watcher_poll_time + k_file_watcher_poll_interval_seconds) > TimePoint::Now()) return;
     DEFER { prefs.last_watcher_poll_time = TimePoint::Now(); };
 
-    auto const path = PreferencesFilepath();
+    auto const path = options.override_write_path.ValueOr(PreferencesFilepath());
     auto const dir = *path::Directory(path);
 
     DirectoryToWatch const watch_dir {
@@ -1430,19 +1436,7 @@ TEST_CASE(TestPreferences) {
     }
 
     SUBCASE("file watcher poll") {
-        auto const filepath = PreferencesFilepath();
-
-        // The prefs system only polls the official PreferencesFilepath(), so we need to write to that
-        // file. Let's first backup the existing file and restore it when we're done.
-        auto const original_prefs_file_data = ({
-            Optional<String> d {};
-            auto const o = ReadEntireFile(filepath, tester.scratch_arena);
-            if (o.HasValue()) d = o.Value();
-            d;
-        });
-        DEFER {
-            if (original_prefs_file_data) auto _ = WriteFile(filepath, *original_prefs_file_data);
-        };
+        auto const filepath = tests::TempFilename(tester);
 
         constexpr String k_file_data = "key1 = value1\nkey2 = value2\n"_s;
         TRY(WriteFile(filepath, k_file_data));
@@ -1460,7 +1454,7 @@ TEST_CASE(TestPreferences) {
         CHECK_EQ(*LookupString(prefs, "key2"_s), "value2"_s);
 
         auto const last_know_modified_time = prefs.last_known_file_modified_time;
-        PollForExternalChanges(prefs, {.ignore_rate_limiting = true});
+        PollForExternalChanges(prefs, {.ignore_rate_limiting = true, .override_write_path = filepath});
         CHECK(!prefs.write_to_file_needed);
         CHECK_EQ(last_know_modified_time, prefs.last_known_file_modified_time);
 
@@ -1492,7 +1486,7 @@ TEST_CASE(TestPreferences) {
 
         for (auto _ : Range(25)) {
             CHECK(!prefs.write_to_file_needed);
-            PollForExternalChanges(prefs, {.ignore_rate_limiting = true});
+            PollForExternalChanges(prefs, {.ignore_rate_limiting = true, .override_write_path = filepath});
             if (prefs.size != 2) break;
             SleepThisThread(1); // wait for the file watcher to pick up the change
         }
@@ -1512,7 +1506,7 @@ TEST_CASE(TestPreferences) {
         }
 
         for (auto _ : Range(25)) {
-            PollForExternalChanges(prefs, {.ignore_rate_limiting = true});
+            PollForExternalChanges(prefs, {.ignore_rate_limiting = true, .override_write_path = filepath});
             CHECK(!prefs.write_to_file_needed);
             if (LookupString(prefs, "key1"_s) == "value4"_s) break;
             SleepThisThread(1); // wait for the file watcher to pick up the change

@@ -191,7 +191,14 @@ struct LayerProcessor {
                 return k_waveform_type_names[ToInt(instrument_id.Get<WaveformType>())];
             }
             case InstrumentType::Sampler: {
-                return instrument_id.Get<sample_lib::InstrumentId>().inst_name;
+                auto const& id = instrument_id.GetFromTag<InstrumentType::Sampler>();
+
+                // Try to get the name from the loaded instrument if we can.
+                if (auto const& s = instrument.TryGetFromTag<InstrumentType::Sampler>();
+                    s && *s && (*s)->instrument.library.id == id.library && (*s)->instrument.id == id.inst_id)
+                    return (*s)->instrument.name;
+
+                return id.inst_id;
             }
             case InstrumentType::None: return "None"_s;
         }
@@ -236,7 +243,7 @@ struct LayerProcessor {
     Optional<sample_lib::LibraryIdRef> LibId() const {
         ASSERT(g_is_logical_main_thread);
         if (auto sampled_inst = instrument.TryGetFromTag<InstrumentType::Sampler>())
-            return (*sampled_inst)->instrument.library.Id();
+            return (*sampled_inst)->instrument.library.id;
         return k_nullopt;
     }
 
@@ -298,7 +305,10 @@ struct LayerProcessor {
     f32 pitch_bend_range_semitone = 0;
     f32 sample_offset_01 = 0;
 
-    bool monophonic {};
+    param_values::MonophonicMode monophonic_mode {};
+    bool monophonic_retrigger_legacy {}; // Legacy
+    bool monophonic_latch {};
+
     bool vol_env_on_param = true;
 
     param_values::LfoRestartMode lfo_restart_mode {};

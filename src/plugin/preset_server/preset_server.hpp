@@ -4,6 +4,7 @@
 #pragma once
 
 #include "utils/error_notifications.hpp"
+#include "utils/thread_extra/thread_extra.hpp"
 
 #include "common_infrastructure/preset_bank_info.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
@@ -18,7 +19,6 @@ struct PresetFolder {
         String name {};
         StateMetadataRef metadata {};
         OrderedSet<sample_lib::LibraryIdRef> used_libraries {};
-        Set<String> used_library_authors {};
         u64 file_hash {};
         u64 full_path_hash {};
         String file_extension {}; // Only if file_format is Mirage. Mirage had variable extensions.
@@ -36,7 +36,6 @@ struct PresetFolder {
     Span<Preset> presets {};
     Set<sample_lib::LibraryIdRef> used_libraries {};
     Set<String> used_tags {};
-    Set<String> used_library_authors {};
 
     Optional<PresetBank> preset_bank_info {}; // From metadata file (primary importance)
 
@@ -62,6 +61,7 @@ struct PresetServer {
     Mutex scan_folders_request_mutex;
     ArenaAllocator scan_folders_request_arena {Malloc::Instance(), 0, 128};
     Optional<Span<String>> scan_folders_request {};
+    MutexProtected<DynamicArray<char>> rescan_folder_requests {Malloc::Instance()};
 
     ArenaAllocator arena {PageAllocator::Instance()}; // Preset thread
 
@@ -72,7 +72,10 @@ struct PresetServer {
     // We're using a sort of basic "epoch-based reclamation" to delete folders that are no longer in use
     // without the reader having to do much locking.
     Atomic<u64> published_version {};
-    Atomic<u64> version_in_use = k_no_version;
+
+    // Multiple readers support: track all active reader versions and maintain the oldest
+    MutexProtected<DynamicArray<u64>> active_reader_versions {Malloc::Instance()};
+    Atomic<u64> oldest_version_in_use = k_no_version;
 
     // The next fields are versioned and mutex protected
     DynamicArray<PresetFolder*> folders {arena};
@@ -95,6 +98,7 @@ struct PresetServer {
     Atomic<bool> end_thread {false};
 
     Atomic<bool> enable_scanning {};
+    Atomic<u32> is_scanning {};
 };
 
 void InitPresetServer(PresetServer& server, String always_scanned_folder);
@@ -117,18 +121,29 @@ struct PresetFolderListing {
     FolderNode const& node;
 };
 
+// If all presets in this folder and all subfolders use the same single library, return that library.
 Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& node);
-PresetBank const* PresetBankForNode(FolderNode const& node);
+
+// The bank associated with a specific node, if there is any.
+PresetBank const* PresetBankAtNode(FolderNode const& node);
+
+// The bank that is node is part of.
 PresetBank const* ContainingPresetBank(FolderNode const* node);
-bool IsInsideFolder(PresetFolderListing const* node, usize folder_node_hash);
+
+bool IsInsideFolder(PresetFolderListing const* listing, usize folder_node_hash);
+
+bool HasNestedBank(FolderNode const& node);
+
+// Real filepath to the folder.
+Optional<String> FolderPath(FolderNode const* folder, ArenaAllocator& arena);
 
 struct PresetsSnapshot {
-    // Folders that contain presets, sorted. e.i. these will have PresetFolderListing::folder != null.
+    // Folders that contain presets, sorted. These will have PresetFolderListing::folder != null.
     Span<PresetFolderListing const*> folders;
 
     // Root nodes of all preset banks. All presets are guaranteed to be inside one of these nodes. Presets
-    // that aren't explicitly put into packs will be smartly grouped into "Miscellaneous Presets" packs.
-    Span<FolderNode const*> preset_banks;
+    // that aren't explicitly put into banks will be smartly grouped into "misc" banks.
+    Span<PresetFolderListing const*> banks;
 
     // Additional convenience data
     Set<String> used_tags;
@@ -137,8 +152,26 @@ struct PresetsSnapshot {
     Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
 };
 
+// Opaque handle that must be returned to EndReadFolders when done reading the snapshot.
+enum class PresetServerReadHandle : u64 {};
+
+struct BeginReadFoldersResult {
+    PresetsSnapshot snapshot;
+    PresetServerReadHandle handle;
+};
+
 // Trigger the server to start the scanning process if its not already doing so.
 void StartScanningIfNeeded(PresetServer& server);
 
-PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena);
-void EndReadFolders(PresetServer& server);
+BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& arena);
+void EndReadFolders(PresetServer& server, PresetServerReadHandle handle);
+
+// Waits until all folders have finished scanning.
+// Returns true if loading completed, false if timeout was reached. If timeout is nullopt, waits indefinitely.
+// If timeout is 0, just returns 'is scanning' status immediately.
+// Must have called StartScanningIfNeeded before this.
+// [threadsafe]
+bool WaitIfFoldersAreScanning(PresetServer& server, Optional<u32> timeout);
+bool AreFoldersScanning(PresetServer& server);
+
+void RescanFolder(PresetServer& server, String folder);

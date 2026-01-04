@@ -159,6 +159,13 @@ void PrepareToPlay(LayerProcessor& layer, AudioProcessingContext const& context)
 //
 //
 
+static param_values::MonophonicMode EffectiveMonophonicMode(LayerProcessor const& layer) {
+    // We maintain backwards compatibility with DAW projects that may have been automating the legacy
+    // monophonic switch by overwriting the mode if the legacy param is true.
+    return layer.monophonic_retrigger_legacy ? param_values::MonophonicMode::Retrigger
+                                             : layer.monophonic_mode;
+}
+
 static void TriggerVoicesIfNeeded(LayerProcessor& layer,
                                   AudioProcessingContext const& context,
                                   VoicePool& voice_pool,
@@ -288,15 +295,64 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
         }
     }
 
-    if (layer.monophonic && trigger_event == sample_lib::TriggerEvent::NoteOn) {
-        for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
-            if (!layer.voice_controller.vol_env_on)
-                v.volume_fade.SetAsFadeOutIfNotAlready(context.sample_rate, 5);
-            else
-                EndVoice(v);
+    bool start_voice = true;
+
+    if (trigger_event == sample_lib::TriggerEvent::NoteOn) {
+        auto const effective_mode = EffectiveMonophonicMode(layer);
+
+        switch (effective_mode) {
+            case param_values::MonophonicMode::Off:
+                // Polyphonic.
+                break;
+
+            case param_values::MonophonicMode::Retrigger:
+                // End existing voices.
+                for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
+                    if (!layer.voice_controller.vol_env_on)
+                        v.volume_fade.SetAsFadeOutIfNotAlready(context.sample_rate, 5);
+                    else
+                        EndVoice(v); // Triggers ADSR release.
+                break;
+
+            case param_values::MonophonicMode::Latch:
+                // Only start if not already latched.
+                if (!layer.monophonic_latch)
+                    layer.monophonic_latch = true;
+                else
+                    start_voice = false;
+                break;
+
+            case param_values::MonophonicMode::Count: break;
+        }
     }
 
-    StartVoice(voice_pool, layer.voice_controller, p, context);
+    if (start_voice) StartVoice(voice_pool, layer.voice_controller, p, context);
+}
+
+static bool NoNotesHeld(AudioProcessingContext const& context) {
+    for (auto const chan : Range<u8>(16)) {
+        auto const held_or_sustained = context.midi_note_state.NotesHeldIncludingSustained((u4)chan);
+        if (held_or_sustained.AnyValuesSet()) return false;
+    }
+    return true;
+}
+
+static bool
+ShouldEndNote(LayerProcessor& layer, AudioProcessingContext const& context, MidiChannelNote note) {
+    // Don't end notes when we're in latch mode.
+    if (layer.monophonic_latch) return false;
+
+    // When the sustain pedal is held, don't end notes.
+    if (context.midi_note_state.sustain_pedal_on.Get(note.channel)) return false;
+
+    // If there's no volume envelope, voices play out fully.
+    if (!layer.voice_controller.vol_env_on) return false;
+
+    // Don't end a note that's actually still held down somehow.
+    if (context.midi_note_state.keys_held[note.channel].Get(note.note)) return false;
+
+    // End the note.
+    return true;
 }
 
 static void LayerHandleNoteOff(LayerProcessor& layer,
@@ -305,10 +361,15 @@ static void LayerHandleNoteOff(LayerProcessor& layer,
                                MidiChannelNote note,
                                f32 velocity,
                                bool triggered_by_cc64) {
-    if (!context.midi_note_state.sustain_pedal_on.Get(note.channel) && layer.voice_controller.vol_env_on &&
-        !context.midi_note_state.keys_held[note.channel].Get(note.note))
-        NoteOff(voice_pool, layer.voice_controller, note);
+    if (layer.monophonic_latch && NoNotesHeld(context)) {
+        for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
+            EndVoice(v);
+        layer.monophonic_latch = {};
+    }
 
+    if (ShouldEndNote(layer, context, note)) NoteOff(voice_pool, layer.voice_controller, note);
+
+    // Some voices trigger on note-off.
     if (!triggered_by_cc64)
         TriggerVoicesIfNeeded(layer,
                               context,
@@ -562,8 +623,17 @@ void ProcessLayerChanges(LayerProcessor& layer,
                                                                                LayerParamIndex::LfoRestart))
         layer.lfo_restart_mode = *p;
 
+    // Read legacy bool parameter for DAW automation compatibility
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::Monophonic))
-        layer.monophonic = *p;
+        layer.monophonic_retrigger_legacy = *p;
+
+    if (auto p =
+            changes.changed_params.IntValue<param_values::MonophonicMode>(layer.index,
+                                                                          LayerParamIndex::MonophonicMode)) {
+        layer.monophonic_mode = *p;
+
+        if (*p != param_values::MonophonicMode::Latch) layer.monophonic_latch = false;
+    }
 
     if (auto p = changes.changed_params.IntValue<u7>(layer.index, LayerParamIndex::KeyRangeLow))
         vmst.key_range_low = *p;
@@ -616,6 +686,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
     // Start/end notes.
     // =======================================================================================================
     for (auto const& note : changes.note_events) {
+        if (note.exclusively_for_layer != -1 && note.exclusively_for_layer != layer.index) continue;
         switch (note.type) {
             case NoteEvent::Type::On: {
                 LayerHandleNoteOn(layer, context, voice_pool, note.note, note.velocity, note.offset);

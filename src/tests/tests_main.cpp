@@ -55,6 +55,7 @@
     X(RegisterPathTests)                                                                                     \
     X(RegisterPersistentStoreTests)                                                                          \
     X(RegisterPreferencesTests)                                                                              \
+    X(RegisterPresetServerTests)                                                                             \
     X(RegisterRandomTests)                                                                                   \
     X(RegisterSampleLibraryServerTests)                                                                      \
     X(RegisterSamplePlayheadTests)                                                                           \

@@ -225,6 +225,8 @@ Optional<DynamicArrayBounded<char, 128>> ParamDescriptor::LinearValueToString(f3
         case ParamDisplayFormat::Hz: {
             if (RoundPositiveFloat(value) >= 1000)
                 result = fmt::FormatInline<k_size>("{.1} kHz", value / 1000);
+            else if (value < 0.5f)
+                result = fmt::FormatInline<k_size>("{.2} Hz", value);
             else if (projection->range.Delta() > 100)
                 result = fmt::FormatInline<k_size>("{.0} Hz", value);
             else if (projection->range.min < 0.01f)

@@ -29,7 +29,7 @@ PresetBank ParsePresetBankFile(String file_data, ArenaAllocator& arena) {
                 bank.minor_version = (decltype(bank.minor_version))*v;
             }
         } else if (key == "id"_s) {
-            bank.id = Hash(value_str);
+            bank.id = HashFnv1a(value_str);
         }
     }
 

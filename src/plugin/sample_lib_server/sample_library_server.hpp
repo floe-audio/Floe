@@ -291,18 +291,39 @@ struct Server {
 // ==========================================================================================================
 // At any time, you can access library information from the server using these functions.
 
+bool LibraryLessThan(sample_lib::LibraryIdRef const& key_a,
+                     ResourcePointer<sample_lib::Library> const& val_a,
+                     sample_lib::LibraryIdRef const& key_b,
+                     ResourcePointer<sample_lib::Library> const& val_b);
+
+using LibrariesTable = OrderedHashTable<sample_lib::LibraryIdRef,
+                                        ResourcePointer<sample_lib::Library>,
+                                        nullptr,
+                                        LibraryLessThan>;
+using LibrariesSpan = Span<ResourcePointer<sample_lib::Library>>;
+
 //
 // Thread-safe. You must call Release() on all results.
-Span<ResourcePointer<sample_lib::Library>> AllLibrariesRetained(Server& server, ArenaAllocator& arena);
-
-// Thread-safe.
-ResourcePointer<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::LibraryIdRef id);
+LibrariesSpan AllLibrariesRetained(Server& server, ArenaAllocator& arena);
 
 // Thread-safe.
 inline void ReleaseAll(Span<ResourcePointer<sample_lib::Library>> libs) {
     for (auto& l : libs)
         l.Release();
 }
+inline void ReleaseAll(LibrariesTable& table) {
+    for (auto [key, lib, _] : table)
+        lib.Release();
+    table.DeleteAll();
+}
+
+LibrariesTable MakeTable(LibrariesSpan libs, ArenaAllocator& arena); // Does not retain.
+
+// Thread-safe.
+LibrariesTable AllLibrariesRetainedAsTable(Server& server, ArenaAllocator& arena);
+
+// Thread-safe.
+ResourcePointer<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::LibraryIdRef id);
 
 // Thread-safe. You need understand the AtomicRefList API to use this properly.
 detail::LibrariesAtomicList& LibrariesList(Server& server);
@@ -355,8 +376,13 @@ void RequestScanningOfUnscannedFolders(Server& server);
 // [threadsafe]
 void RescanFolder(Server& server, String folder);
 
+// Waits until all libraries have finished loading and all scan folders have finished scanning.
+// Returns true if loading completed, false if timeout was reached. If timeout is nullopt, waits indefinitely.
+// If timeout is 0, just returns 'is loading' status immediately.
 // [threadsafe]
 bool WaitIfLibrariesAreLoading(Server& server, Optional<u32> timeout);
+
+bool AreLibrariesLoading(Server& server);
 
 } // namespace sample_lib_server
 

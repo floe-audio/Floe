@@ -14,6 +14,22 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 1.1.1
+- New monophonic mode: latch. The monophonic switch parameter is replaced by a menu with this new option.
+In latch mode, the note only ends when all notes are released; new key-presses are ignored and the original note continues playing unchanged.
+- GUI: show more decimal points with very slow LFO rates
+- GUI: better icon for 'missing library' on the preset browser
+- Add infrastructure for updating Mirage libraries to backwards-compatible Floe versions of the library. IDs are now used for libraries, instruments and IRs allowing for changing names without breaking backwards compatibility
+- Add 'fluctuating', 'ringing' and 'whining' tags
+- Package installation: support upgrading preset banks based on minor_version field
+- Package installation: add 'keep both' option when user input is required
+- Fix EQ parameters sometimes not being correctly applied when changing presets.
+- Fix some parameters not loading correctly related to the velocity curves
+- Fix layer voices duplicating when just changing one instrument at a time
+- Fix error with displaying presets with many unknown libraries
+- Fix possible hang when installing packages
+- Fix incorrect loop end_frame when set in Lua as 0
+
 ## 1.1.0
 - Fix pop sometimes possible at ping-pong loop boundary and make adjusting the loop points while playing have less audible artefacts.
 - Fix sometimes not correctly loading in Reaper or FL Studio, leaving UI looking correct but audio not reflective of the current state.

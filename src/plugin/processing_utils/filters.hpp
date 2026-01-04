@@ -356,7 +356,7 @@ class SmoothedCoefficients {
         m_remaining_samples = 0;
         m_fade.ForceSetFullVolume();
 
-        if (m_remaining_samples) RecalculateCoefficientsWithCurrentValues();
+        if (m_sample_rate > 0) RecalculateCoefficientsWithCurrentValues();
     }
 
     State Value() {

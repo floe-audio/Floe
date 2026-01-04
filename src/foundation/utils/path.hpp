@@ -544,4 +544,9 @@ PUBLIC String MakeDisplayPath(String path,
     return original_path;
 }
 
+PUBLIC bool IgnorableSystemFile(String path) {
+    if (IsAnyOf(path::Filename(path), Array {".DS_Store"_s, "Thumbs.db"_s})) return true;
+    return false;
+}
+
 } // namespace path

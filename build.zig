@@ -1374,6 +1374,7 @@ fn doTarget(
             .files = &(.{
                 "engine/check_for_update.cpp",
                 "engine/engine.cpp",
+                "engine/favourite_items.cpp",
                 "engine/package_installation.cpp",
                 "engine/shared_engine_systems.cpp",
                 "gui/gui.cpp",

@@ -353,28 +353,28 @@ class JsonStateParser {
                         auto special_type = mdata::SpecialAudioDataFromInstPath(path);
                         switch (special_type) {
                             case mdata::SpecialAudioDataTypeNone: {
-                                auto name = path::Filename(path);
+                                auto id = path::Filename(path);
 
-                                // NOTE(Sam): MDATA libraries (which is what was used when we were using
-                                // this JSON config format) didn't have the requirement that instrument
-                                // names have to be unique within a library.
+                                // MDATA libraries (which is what was used when we were using this JSON config
+                                // format) didn't have the requirement that instrument names have to be unique
+                                // within a library.
                                 //
                                 // These are the handful of conflicts that existed in the MDATA libraries, and
                                 // the new names that we use to identify them.
                                 //
-                                // IMPORTANT: This is pretty hacky; it's parrelleled with the renaming code in
+                                // IMPORTANT: This is pretty hacky; it's paralleled with the renaming code in
                                 // the sample_library files. You must keep them in sync.
                                 if (path == "sampler/Rhythmic Movement/Strange Movements"_s)
-                                    name = "Strange Movements 2"_s;
+                                    id = "Strange Movements 2"_s;
                                 else if (path ==
                                          "sampler/Oneshots/Ghost Voice Phrases/Male/Vocal Join Us 01"_s)
-                                    name = "Vocal Join Us 01 2"_s;
+                                    id = "Vocal Join Us 01 2"_s;
                                 else if (path ==
                                          "sampler/Oneshots/Ghost Voice Phrases/Male/Vocal Join Us 02"_s)
-                                    name = "Vocal Join Us 02 2"_s;
+                                    id = "Vocal Join Us 02 2"_s;
                                 else if (path ==
                                          "sampler/Oneshots/Ghost Voice Phrases/Male/Vocal We Can See You"_s)
-                                    name = "Vocal We Can See You 2"_s;
+                                    id = "Vocal We Can See You 2"_s;
 
                                 // MDATA libraries could mark instruments as one of the special types. It
                                 // wasn't widely used. In Floe we have more advanced oscillator types so we
@@ -388,11 +388,11 @@ class JsonStateParser {
                                     break;
                                 }
 
-                                ASSERT(name.size <= k_max_instrument_name_size);
+                                ASSERT(id.size <= k_max_instrument_id_size);
 
                                 m_state.inst_ids[m_inst_index] = sample_lib::InstrumentId {
                                     .library = {}, // filled in later
-                                    .inst_name = name,
+                                    .inst_id = id,
                                 };
                                 break;
                             }
@@ -493,12 +493,18 @@ enum class StateVersion : u16 {
     // Added macro parameters.
     AddedMacroAndKeyRangeAndPitchBendParameters,
 
+    // Changed to using a single ID string for libraries instead of name+author.
+    AddLibraryIdInsteadOfNameAndAuthor,
+
+    // Changed Monophonic from bool to enum with Off, Retrigger, and Latch modes.
+    AddedMonophonicModeParameter,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
 
 static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSource source) {
-    static_assert(k_num_parameters == 225,
+    static_assert(k_num_parameters == 228,
                   "You have changed the number of parameters. You must now bump the "
                   "state version number and handle setting any new parameters to "
                   "backwards-compatible states. In other words, these new parameters "
@@ -510,8 +516,9 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     if (version < StateVersion::AddedLayerVelocityCurves) {
         state.velocity_curve_points = {};
 
-        // We don't want to adapt parameters from the DAW because there might be automation on them.
         if (source == StateSource::Daw) {
+            // We don't want to adapt parameters from the DAW because there might be automation on them.
+            // We disable the velocity curve by setting it to a 100% straight line.
             for (auto const layer_index : Range(k_num_layers)) {
                 dyn::AssignAssumingAlreadyEmpty(state.velocity_curve_points[layer_index],
                                                 Array {
@@ -519,77 +526,74 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                                                     CurveMap::Point {1.0f, 1.0f, 0.0f},
                                                 });
             }
-            return;
-        }
+        } else {
+            // Adapt LayerParamIndex::VelocityMapping to the new curve and clear out the old param.
+            for (auto const layer_index : Range(k_num_layers)) {
+                auto& val = state.LinearParam(
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::VelocityMapping));
+                auto const velocity_mapping_mode = (param_values::VelocityMappingMode)Round(val);
 
-        // Adapt LayerParamIndex::VelocityMapping.
-        for (auto const layer_index : Range(k_num_layers)) {
-            auto& val = state.LinearParam(
-                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::VelocityMapping));
-            auto const velocity_mapping_mode = (param_values::VelocityMappingMode)Round(val);
+                // We don't use this param anymore.
+                val = (f32)param_values::VelocityMappingMode::None;
 
-            // We don't use this param anymore.
-            val = (f32)param_values::VelocityMappingMode::None;
-
-            auto& points = state.velocity_curve_points[layer_index];
-            switch (velocity_mapping_mode) {
-                case param_values::VelocityMappingMode::None:
-                    // Flat at max volume.
-                    dyn::AssignAssumingAlreadyEmpty(points,
-                                                    Array {
-                                                        CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                        CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                    });
-                    break;
-                case param_values::VelocityMappingMode::TopToBottom:
-                    // Linear
-                    dyn::AssignAssumingAlreadyEmpty(points,
-                                                    Array {
-                                                        CurveMap::Point {0.0f, 0.0f, 0.0f},
-                                                        CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                    });
-                    break;
-                case param_values::VelocityMappingMode::BottomToTop:
-                    // Inverse linear
-                    dyn::AssignAssumingAlreadyEmpty(points,
-                                                    Array {
-                                                        CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                        CurveMap::Point {1.0f, 0.0f, 0.0f},
-                                                    });
-                    break;
-                case param_values::VelocityMappingMode::TopToMiddle:
-                    // Flat until middle, then linear ramp-up to end
-                    dyn::AssignAssumingAlreadyEmpty(points,
-                                                    Array {
-                                                        CurveMap::Point {0.0f, 0.0f, 0.0f},
-                                                        CurveMap::Point {0.5f, 0.0f, 0.0f},
-                                                        CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                    });
-                    break;
-                case param_values::VelocityMappingMode::MiddleOutwards:
-                    // Linear ramp-up to middle, then linear ramp-down to end
-                    dyn::AssignAssumingAlreadyEmpty(points,
-                                                    Array {
-                                                        CurveMap::Point {0.0f, 0.0f, 0.0f},
-                                                        CurveMap::Point {0.5f, 1.0f, 0.0f},
-                                                        CurveMap::Point {1.0f, 0.0f, 0.0f},
-                                                    });
-                    break;
-                case param_values::VelocityMappingMode::MiddleToBottom:
-                    // Linear ramp-down to middle, then flat to end
-                    dyn::AssignAssumingAlreadyEmpty(points,
-                                                    Array {
-                                                        CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                        CurveMap::Point {0.5f, 0.0f, 0.0f},
-                                                        CurveMap::Point {1.0f, 0.0f, 0.0f},
-                                                    });
-                    break;
-                case param_values::VelocityMappingMode::Count: break;
+                auto& points = state.velocity_curve_points[layer_index];
+                switch (velocity_mapping_mode) {
+                    case param_values::VelocityMappingMode::None:
+                        // Flat at max volume.
+                        dyn::AssignAssumingAlreadyEmpty(points,
+                                                        Array {
+                                                            CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                                            CurveMap::Point {1.0f, 1.0f, 0.0f},
+                                                        });
+                        break;
+                    case param_values::VelocityMappingMode::TopToBottom:
+                        // Linear
+                        dyn::AssignAssumingAlreadyEmpty(points,
+                                                        Array {
+                                                            CurveMap::Point {0.0f, 0.0f, 0.0f},
+                                                            CurveMap::Point {1.0f, 1.0f, 0.0f},
+                                                        });
+                        break;
+                    case param_values::VelocityMappingMode::BottomToTop:
+                        // Inverse linear
+                        dyn::AssignAssumingAlreadyEmpty(points,
+                                                        Array {
+                                                            CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                                            CurveMap::Point {1.0f, 0.0f, 0.0f},
+                                                        });
+                        break;
+                    case param_values::VelocityMappingMode::TopToMiddle:
+                        // Flat until middle, then linear ramp-up to end
+                        dyn::AssignAssumingAlreadyEmpty(points,
+                                                        Array {
+                                                            CurveMap::Point {0.0f, 0.0f, 0.0f},
+                                                            CurveMap::Point {0.5f, 0.0f, 0.0f},
+                                                            CurveMap::Point {1.0f, 1.0f, 0.0f},
+                                                        });
+                        break;
+                    case param_values::VelocityMappingMode::MiddleOutwards:
+                        // Linear ramp-up to middle, then linear ramp-down to end
+                        dyn::AssignAssumingAlreadyEmpty(points,
+                                                        Array {
+                                                            CurveMap::Point {0.0f, 0.0f, 0.0f},
+                                                            CurveMap::Point {0.5f, 1.0f, 0.0f},
+                                                            CurveMap::Point {1.0f, 0.0f, 0.0f},
+                                                        });
+                        break;
+                    case param_values::VelocityMappingMode::MiddleToBottom:
+                        // Linear ramp-down to middle, then flat to end
+                        dyn::AssignAssumingAlreadyEmpty(points,
+                                                        Array {
+                                                            CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                                            CurveMap::Point {0.5f, 0.0f, 0.0f},
+                                                            CurveMap::Point {1.0f, 0.0f, 0.0f},
+                                                        });
+                        break;
+                    case param_values::VelocityMappingMode::Count: break;
+                }
             }
-        }
 
-        // Adapt MasterVelocity.
-        {
+            // Adapt MasterVelocity to the new curves and clear out the old param.
             auto& val = state.LinearParam(ParamIndex::MasterVelocity);
             ASSERT(val >= 0.0f && val <= 1.0f);
             auto const velocity_volume_strength = val;
@@ -629,6 +633,35 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                 ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::PitchBendRange))] = 0;
         }
     }
+
+    if (version < StateVersion::AddedMonophonicModeParameter) {
+        if (source == StateSource::Daw) {
+            // We don't want to adapt parameters from the DAW because there might be automation on the bool.
+            // Set new param to default (Off/polyphonic)
+            for (auto const layer_index : Range(k_num_layers)) {
+                state.LinearParam(
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::MonophonicMode)) =
+                    (f32)param_values::MonophonicMode::Off;
+            }
+        } else {
+            // Adapt legacy Monophonic bool to new MonophonicMode enum
+            for (auto const layer_index : Range(k_num_layers)) {
+                auto& bool_val = state.LinearParam(
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::Monophonic));
+
+                auto const was_monophonic = bool_val >= 0.5f; // Bool params use 0.0f/1.0f
+
+                // Clear the legacy parameter
+                bool_val = 0.0f;
+
+                // Set new parameter: false -> Off, true -> Retrigger (preserve old behaviour)
+                auto& mode_val = state.LinearParam(
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::MonophonicMode));
+                mode_val = was_monophonic ? (f32)param_values::MonophonicMode::Retrigger
+                                          : (f32)param_values::MonophonicMode::Off;
+            }
+        }
+    }
 }
 
 static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
@@ -641,12 +674,10 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
         for (auto& t : state.fx_order)
             t = (EffectType)k_num_effect_types;
         for (auto& i : state.inst_ids)
-            i = sample_lib::InstrumentId {.library =
-                                              sample_lib::LibraryIdRef {.author = "foo"_s, .name = "foo"_s},
-                                          .inst_name = "bar"_s};
+            i = sample_lib::InstrumentId {.library = "foo"_s, .inst_id = "bar"_s};
         state.ir_id = sample_lib::IrId {
             .library = sample_lib::k_mirage_compat_library_id,
-            .ir_name = "Formant 1"_s,
+            .ir_id = "Formant 1"_s,
         };
     }
 
@@ -666,8 +697,7 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
     } else {
         for (auto& i : state.inst_ids)
             if (auto s = i.TryGet<sample_lib::InstrumentId>())
-                s->library = sample_lib::LibraryIdRef {.author = sample_lib::k_mdata_library_author,
-                                                       .name = parser.library_name};
+                s->library = sample_lib::IdForMdataLibraryAlloc(parser.library_name, scratch_arena);
     }
 
     // Fill in missing values and convert the existing ones into their new formats
@@ -710,7 +740,7 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
             if (ir_name.size && ir_name != "None"_s) {
                 state.ir_id = sample_lib::IrId {
                     .library = sample_lib::k_mirage_compat_library_id,
-                    .ir_name = ir_name,
+                    .ir_id = ir_name,
                 };
             }
         }
@@ -1167,6 +1197,22 @@ struct StateCoder {
     u32 counter {0};
 };
 
+ErrorCodeOr<void> CodeLibraryId(StateCoder& coder, sample_lib::LibraryId& library_id) {
+    if (coder.IsReading() && coder.version < StateVersion::AddLibraryIdInsteadOfNameAndAuthor) {
+        DynamicArrayBounded<char, k_max_library_author_size> library_author;
+        DynamicArrayBounded<char, k_max_library_name_size> library_name;
+        TRY(coder.CodeDynArray(library_author, StateVersion::Initial));
+        TRY(coder.CodeDynArray(library_name, StateVersion::Initial));
+        if (library_author == sample_lib::k_old_mirage_author)
+            library_id = sample_lib::IdForMdataLibraryInline(library_name);
+        else
+            library_id = sample_lib::IdFromAuthorAndNameInline(library_author, library_name);
+    } else {
+        TRY(coder.CodeDynArray(library_id, StateVersion::AddLibraryIdInsteadOfNameAndAuthor));
+    }
+    return k_success;
+}
+
 ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args) {
     static_assert(k_endianness == Endianness::Little, "this code makes no attempt to be endian agnostic");
     ArenaAllocatorWithInlineStorage<1000> scratch_arena {Malloc::Instance()};
@@ -1244,9 +1290,8 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
             TRY(coder.CodeNumber((UnderlyingType<Type>&)type, StateVersion::Initial));
             if (type == Type::Sampler) {
-                TRY(coder.CodeDynArray(sampler_inst_id.library.author, StateVersion::Initial));
-                TRY(coder.CodeDynArray(sampler_inst_id.library.name, StateVersion::Initial));
-                TRY(coder.CodeDynArray(sampler_inst_id.inst_name, StateVersion::Initial));
+                TRY(CodeLibraryId(coder, sampler_inst_id.library));
+                TRY(coder.CodeDynArray(sampler_inst_id.inst_id, StateVersion::Initial));
             }
 
             if (coder.IsReading()) {
@@ -1424,9 +1469,8 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
         if (has_ir) {
             if (coder.IsReading()) state.ir_id = sample_lib::IrId {};
-            TRY(coder.CodeDynArray(state.ir_id->library.author, StateVersion::Initial));
-            TRY(coder.CodeDynArray(state.ir_id->library.name, StateVersion::Initial));
-            TRY(coder.CodeDynArray(state.ir_id->ir_name, StateVersion::Initial));
+            TRY(CodeLibraryId(coder, state.ir_id->library));
+            TRY(coder.CodeDynArray(state.ir_id->ir_id, StateVersion::Initial));
         }
     }
 
@@ -1735,9 +1779,8 @@ static void CheckStateIsValid(tests::Tester& tester, StateSnapshot const& state)
             }
             case InstrumentType::Sampler: {
                 auto& s = i.Get<sample_lib::InstrumentId>();
-                CHECK(s.library.name.size);
-                CHECK(s.library.author.size);
-                CHECK(s.inst_name.size);
+                CHECK(s.library.size);
+                CHECK(s.inst_id.size);
                 break;
             }
         }
@@ -1796,16 +1839,13 @@ TEST_CASE(TestNewSerialisation) {
         Shuffle(state.fx_order, random_seed);
 
         state.ir_id = sample_lib::IrId {
-            .library = {{.author = "irlibname"_s, .name = "irlib"_s}},
-            .ir_name = "irfile"_s,
+            .library = "irlibname.irlib"_s,
+            .ir_id = "irfile"_s,
         };
         for (auto [index, inst] : Enumerate(state.inst_ids)) {
             inst = sample_lib::InstrumentId {
-                .library = {{
-                    .author = String(fmt::Format(scratch_arena, "TestAuthor{}", index)),
-                    .name = String(fmt::Format(scratch_arena, "TestLib{}", index)),
-                }},
-                .inst_name = String(fmt::Format(scratch_arena, "Test/Path{}", index)),
+                .library = (String)fmt::Format(scratch_arena, "TestAuthor{}.TestLib{}", index, index),
+                .inst_id = String(fmt::Format(scratch_arena, "Test/Path{}", index)),
             };
         }
 
@@ -2071,24 +2111,21 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK(state.inst_ids[1].tag == InstrumentType::Sampler);
         CHECK(state.inst_ids[2].tag == InstrumentType::Sampler);
         if (auto i = state.inst_ids[0].TryGet<sample_lib::InstrumentId>()) {
-            CHECK_EQ(i->library.name, "Phoenix"_s);
-            CHECK_EQ(i->library.author, sample_lib::k_mdata_library_author);
-            CHECK_EQ(i->inst_name, "Strings"_s);
+            CHECK_EQ(i->library, sample_lib::IdForMdataLibraryAlloc("Phoenix"_s, scratch_arena));
+            CHECK_EQ(i->inst_id, "Strings"_s);
         }
         if (auto i = state.inst_ids[1].TryGet<sample_lib::InstrumentId>()) {
-            CHECK_EQ(i->library.name, "Phoenix"_s);
-            CHECK_EQ(i->library.author, sample_lib::k_mdata_library_author);
-            CHECK_EQ(i->inst_name, "Strings"_s);
+            CHECK_EQ(i->library, sample_lib::IdForMdataLibraryAlloc("Phoenix"_s, scratch_arena));
+            CHECK_EQ(i->inst_id, "Strings"_s);
         }
         if (auto i = state.inst_ids[2].TryGet<sample_lib::InstrumentId>()) {
-            CHECK_EQ(i->library.name, "Phoenix"_s);
-            CHECK_EQ(i->library.author, sample_lib::k_mdata_library_author);
-            CHECK_EQ(i->inst_name, "Choir"_s);
+            CHECK_EQ(i->library, sample_lib::IdForMdataLibraryAlloc("Phoenix"_s, scratch_arena));
+            CHECK_EQ(i->inst_id, "Choir"_s);
         }
         CHECK(state.ir_id.HasValue());
         if (state.ir_id.HasValue()) {
             CHECK_EQ(state.ir_id->library, sample_lib::k_mirage_compat_library_id);
-            CHECK_EQ(state.ir_id->ir_name, "5s Shimmer"_s);
+            CHECK_EQ(state.ir_id->ir_id, "5s Shimmer"_s);
         }
 
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::Volume), DbToAmp(-6.0f), 0.01f);
@@ -2138,9 +2175,8 @@ TEST_CASE(TestLoadingOldFiles) {
 
         {
             auto const i = state.inst_ids[2].Get<sample_lib::InstrumentId>();
-            CHECK_EQ(i.library.name, "Abstract Energy"_s);
-            CHECK_EQ(i.library.author, sample_lib::k_mdata_library_author);
-            CHECK_EQ(i.inst_name, "Drone 2 Atmos"_s);
+            CHECK_EQ(i.library, sample_lib::IdForMdataLibraryAlloc("Abstract Energy"_s, scratch_arena));
+            CHECK_EQ(i.inst_id, "Drone 2 Atmos"_s);
         }
 
         CHECK_EQ(state.param_values[ToInt(ParamIndex::BitCrushOn)], 0.0f);

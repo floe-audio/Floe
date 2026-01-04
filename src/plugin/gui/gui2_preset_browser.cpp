@@ -20,25 +20,14 @@ inline prefs::Key FavouriteItemKey() { return "favourite-preset"_s; }
 static FolderNode const* FindFolderByHash(PresetBrowserContext const& context, u64 folder_hash) {
     FolderNode const* result = nullptr;
 
-    for (auto root : context.presets_snapshot.preset_banks) {
-        ForEachNode((FolderNode*)root, [&](FolderNode const* node) {
+    for (auto listing : context.presets_snapshot.banks) {
+        ForEachNode(const_cast<FolderNode*>(&listing->node), [&](FolderNode const* node) {
             if (result) return;
             if (node->Hash() == folder_hash) result = node;
         });
     }
 
     return result;
-}
-
-static Optional<String> FolderPath(FolderNode const* folder, ArenaAllocator& arena) {
-    if (!folder) return k_nullopt;
-
-    DynamicArrayBounded<String, 20> parts;
-    for (auto f = folder; f; f = f->parent)
-        dyn::Append(parts, f->name);
-    Reverse(parts);
-
-    return path::Join(arena, parts);
 }
 
 struct PresetCursor {
@@ -127,8 +116,15 @@ static bool ShouldSkipPreset(PresetBrowserContext const& context,
 
     if (state.common_state.selected_library_author_hashes.HasSelected()) {
         filtering_on = true;
-        for (auto const& selected_hash : state.common_state.selected_library_author_hashes) {
-            if (!preset.used_library_authors.ContainsSkipKeyCheck(selected_hash.hash)) {
+
+        for (auto [lib_id, _] : preset.used_libraries) {
+            auto const maybe_lib = context.frame_context.lib_table.Find(lib_id);
+            if (!maybe_lib) continue;
+            auto const& lib = *maybe_lib;
+
+            auto const author_hash = Hash(lib->author);
+            auto const contains = state.common_state.selected_library_author_hashes.Contains(author_hash);
+            if (!contains) {
                 if (state.common_state.filter_mode == FilterMode::MultipleAnd)
                     return true;
                 else if (state.common_state.filter_mode == FilterMode::Single)
@@ -394,18 +390,7 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
                      .is_selected = false,
                  })
             .button_fired) {
-        if (({
-                bool has_child_pack = false;
-                auto root_pack = PresetBankForNode(*folder);
-                ForEachNode((FolderNode*)folder, [&](FolderNode const* node) {
-                    if (has_child_pack) return;
-                    if (node == folder) return;
-                    auto bank = PresetBankForNode(*node);
-                    if (!bank) return;
-                    if (root_pack != bank) has_child_pack = true;
-                });
-                has_child_pack;
-            })) {
+        if (HasNestedBank(*folder)) {
             auto const error_id = Hash(Array {SourceLocationHash(), folder->Hash()});
             if (auto item = context.engine.error_notifications.BeginWriteError(error_id)) {
                 DEFER { context.engine.error_notifications.EndWriteError(*item); };
@@ -426,6 +411,7 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
             context.confirmation_dialog_state.callback = [&error_notifications =
                                                               context.engine.error_notifications,
                                                           &gui_notifications = context.notifications,
+                                                          &preset_server = context.preset_server,
                                                           cloned_path](ConfirmationDialogResult result) {
                 DEFER { Malloc::Instance().Free(cloned_path.ToByteSpan()); };
                 if (result == ConfirmationDialogResult::Ok) {
@@ -448,6 +434,8 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
                                 },
                             .id = id,
                         };
+                        if (auto const d = path::Directory(cloned_path)) RescanFolder(preset_server, *d);
+
                     } else if (auto item = error_notifications.BeginWriteError(id)) {
                         DEFER { error_notifications.EndWriteError(*item); };
                         item->title = "Failed to send preset folder to trash"_s;
@@ -504,85 +492,92 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
 
             auto const is_favourite = IsFavourite(context.prefs, FavouriteItemKey(), preset.file_hash);
 
-            auto const item =
-                DoBrowserItem(box_system,
-                              state.common_state,
-                              {
-                                  .parent = folder_section->Do(box_system).Get<Box>(),
-                                  .text = preset.name,
-                                  .tooltip = FunctionRef<String()>([&]() -> String {
-                                      DynamicArray<char> buffer {box_system.arena};
+            auto const item = DoBrowserItem(
+                box_system,
+                state.common_state,
+                BrowserItemOptions {
+                    .parent = folder_section->Do(box_system).Get<Box>(),
+                    .text = preset.name,
+                    .tooltip = FunctionRef<String()>([&preset,
+                                                      &scratch = box_system.arena,
+                                                      &frame_context = context.frame_context]() -> String {
+                        DynamicArray<char> buffer {scratch};
 
-                                      fmt::Append(buffer, "{}", preset.name);
-                                      if (preset.metadata.author.size)
-                                          fmt::Append(buffer, " by {}.", preset.metadata.author);
-                                      if (preset.metadata.description.size)
-                                          fmt::Append(buffer, "\n\n{}", preset.metadata.description);
+                        fmt::Append(buffer, "{}", preset.name);
+                        if (preset.metadata.author.size)
+                            fmt::Append(buffer, " by {}.", preset.metadata.author);
+                        if (preset.metadata.description.size)
+                            fmt::Append(buffer, "\n\n{}", preset.metadata.description);
 
-                                      dyn::AppendSpan(buffer, "\n\nTags: ");
-                                      if (preset.metadata.tags.size) {
-                                          for (auto const [tag, _] : preset.metadata.tags)
-                                              fmt::Append(buffer, "{}, ", tag);
-                                          dyn::Pop(buffer, 2);
-                                      } else {
-                                          dyn::AppendSpan(buffer, "none");
-                                      }
+                        dyn::AppendSpan(buffer, "\n\nTags: ");
+                        if (preset.metadata.tags.size) {
+                            for (auto const [tag, _] : preset.metadata.tags)
+                                fmt::Append(buffer, "{}, ", tag);
+                            dyn::Pop(buffer, 2);
+                        } else {
+                            dyn::AppendSpan(buffer, "none");
+                        }
 
-                                      if (preset.used_libraries.size) {
-                                          dyn::AppendSpan(buffer, "\n\nRequires libraries: ");
-                                          for (auto const [library, _] : preset.used_libraries) {
-                                              dyn::AppendSpan(buffer, library.name);
-                                              auto lib = sample_lib_server::FindLibraryRetained(
-                                                  context.sample_library_server,
-                                                  library);
-                                              DEFER { lib.Release(); };
-                                              if (!lib) dyn::AppendSpan(buffer, " (not installed)");
-                                              if (preset.used_libraries.size == 2)
-                                                  dyn::AppendSpan(buffer, " and ");
-                                              else
-                                                  dyn::AppendSpan(buffer, ", ");
-                                          }
-                                          if (preset.used_libraries.size == 2)
-                                              dyn::Pop(buffer, 5);
-                                          else
-                                              dyn::Pop(buffer, 2);
-                                          dyn::AppendSpan(buffer, ".");
-                                      }
+                        if (preset.used_libraries.size) {
+                            dyn::AppendSpan(buffer, "\n\nRequires libraries: ");
+                            for (auto const [library, _] : preset.used_libraries) {
+                                auto const maybe_lib = frame_context.lib_table.Find(library);
+                                if (!maybe_lib || !*maybe_lib)
+                                    fmt::Append(buffer, "{} (not installed)", library);
+                                else
+                                    dyn::AppendSpan(buffer, (*maybe_lib)->name);
+                                if (preset.used_libraries.size == 2)
+                                    dyn::AppendSpan(buffer, " and ");
+                                else
+                                    dyn::AppendSpan(buffer, ", ");
+                            }
+                            if (preset.used_libraries.size == 2)
+                                dyn::Pop(buffer, 5);
+                            else
+                                dyn::Pop(buffer, 2);
+                            dyn::AppendSpan(buffer, ".");
+                        }
 
-                                      return buffer.ToOwnedSpan();
-                                  }),
-                                  .item_id = preset.full_path_hash,
-                                  .is_current = is_current,
-                                  .is_favourite = is_favourite,
-                                  .is_tab_item = new_folder,
-                                  .icons = ({
-                                      // The items are normally ordered, but we want special handling for the
-                                      // Mirage Compatibility library and unknown libraries.
+                        return buffer.ToOwnedSpan();
+                    }),
+                    .item_id = preset.full_path_hash,
+                    .is_current = is_current,
+                    .is_favourite = is_favourite,
+                    .is_tab_item = new_folder,
+                    .icons = ({
+                        // The items are normally ordered, but we want special handling for the
+                        // Mirage Compatibility library and unknown libraries.
 
-                                      decltype(BrowserItemOptions::icons) icons {};
-                                      usize icons_index = 0;
-                                      Optional<graphics::ImageID> mirage_compat_icon = k_nullopt;
-                                      usize num_unknown = 0;
-                                      for (auto const [lib_id, _] : preset.used_libraries) {
-                                          auto const imgs = GetLibraryImages(context.library_images,
-                                                                             box_system.imgui,
-                                                                             lib_id,
-                                                                             context.sample_library_server,
-                                                                             LibraryImagesTypes::All);
-                                          if (!imgs.icon) ++num_unknown;
-                                          if (lib_id == sample_lib::k_mirage_compat_library_id)
-                                              mirage_compat_icon = imgs.icon;
-                                          else
-                                              icons[icons_index++] = imgs.icon;
-                                      }
-                                      for (auto const _ : Range(num_unknown))
-                                          icons[icons_index++] = *context.unknown_library_icon;
-                                      if (mirage_compat_icon) icons[icons_index++] = *mirage_compat_icon;
-                                      icons;
-                                  }),
-                                  .notifications = context.notifications,
-                                  .store = context.persistent_store,
-                              });
+                        decltype(BrowserItemOptions::icons) icons {};
+                        Optional<graphics::ImageID> mirage_compat_icon = k_nullopt;
+                        usize num_unknown = 0;
+                        for (auto const [lib_id, _] : preset.used_libraries) {
+                            auto const imgs = GetLibraryImages(context.library_images,
+                                                               box_system.imgui,
+                                                               lib_id,
+                                                               context.sample_library_server,
+                                                               LibraryImagesTypes::All);
+                            if (!imgs.icon)
+                                ++num_unknown;
+                            else if (lib_id == sample_lib::k_mirage_compat_library_id)
+                                mirage_compat_icon = imgs.icon;
+                            else
+                                dyn::Emplace(icons, *imgs.icon);
+                        }
+                        for (auto const _ : Range(num_unknown))
+                            dyn::Emplace(icons, String(ICON_FA_CIRCLE_QUESTION));
+                        if (mirage_compat_icon) dyn::Emplace(icons, *mirage_compat_icon);
+
+                        if (!PRODUCTION_BUILD && preset.file_format == PresetFormat::Floe &&
+                            (preset.metadata.tags.size == 0 || preset.metadata.author.size == 0 ||
+                             preset.metadata.description.size == 0))
+                            dyn::Emplace(icons, String(ICON_FA_TRIANGLE_EXCLAMATION));
+
+                        icons;
+                    }),
+                    .notifications = context.notifications,
+                    .store = context.persistent_store,
+                });
 
             // Right-click menu.
             DoRightClickMenuForBox(box_system,
@@ -636,7 +631,7 @@ void PresetBrowserExtraFilters(GuiBoxSystem& box_system,
         BrowserSection section {
             .state = state.common_state,
             .num_sections_rendered = &num_sections,
-            .id = HashComptime("preset-type-section"),
+            .id = HashFnv1a("preset-type-section"),
             .parent = parent,
             .heading = "PRESET TYPE",
             .multiline_contents = true,
@@ -690,7 +685,7 @@ void PresetBrowserExtraFilters(GuiBoxSystem& box_system,
         BrowserSection section {
             .state = state.common_state,
             .num_sections_rendered = &num_sections,
-            .id = HashComptime("preset-author-section"),
+            .id = HashFnv1a("preset-author-section"),
             .parent = parent,
             .heading = "AUTHOR",
             .multiline_contents = true,
@@ -768,14 +763,19 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                 ++i.total_available;
             }
 
+            DynamicArrayBounded<String, k_num_layers + 1> library_authors_used;
+
             for (auto const [lib_id, lib_id_hash] : preset.used_libraries) {
                 auto& i = libraries.FindOrInsertWithoutGrowing(lib_id, {}, lib_id_hash).element.data;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
+
+                if (auto const lib = context.frame_context.lib_table.Find(lib_id))
+                    dyn::AppendIfNotAlreadyThere(library_authors_used, (*lib)->author);
             }
 
-            for (auto const [author, author_hash] : preset.used_library_authors) {
-                auto& i = library_authors.FindOrInsertWithoutGrowing(author, {}, author_hash).element.data;
+            for (auto const& author : library_authors_used) {
+                auto& i = library_authors.FindOrInsertWithoutGrowing(author, {}).element.data;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
             }
@@ -833,10 +833,10 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
             .on_scroll_to_show_selected = [&]() { state.scroll_to_show_selected = true; },
             .library_filters =
                 LibraryFilters {
+                    .libraries_table = context.frame_context.lib_table,
                     .library_images = context.library_images,
                     .libraries = libraries,
                     .library_authors = library_authors,
-                    .unknown_library_icon = context.unknown_library_icon,
                     .error_notifications = context.engine.error_notifications,
                     .notifications = context.notifications,
                     .confirmation_dialog_state = context.confirmation_dialog_state,
@@ -850,7 +850,7 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                     if (num_sections) DoModalDivider(box_system, parent, {.horizontal = true});
                     ++num_sections;
 
-                    auto constexpr k_section_id = HashComptime("preset-folders-section");
+                    auto constexpr k_section_id = HashFnv1a("preset-folders-section");
                     BrowserSection section {
                         .state = state.common_state,
                         .id = k_section_id,
@@ -895,7 +895,7 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                                 .sample_library_server = context.sample_library_server,
                                 .subtext = ({
                                     String s {};
-                                    if (auto const m = PresetBankForNode(*folder))
+                                    if (auto const m = PresetBankAtNode(*folder))
                                         s = m->subtitle;
                                     else
                                         s = "Preset folder";
@@ -910,10 +910,10 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                             });
                     };
 
-                    for (auto const folder : context.presets_snapshot.preset_banks) {
-                        auto const info = folders.Find(folder);
+                    for (auto const listing : context.presets_snapshot.banks) {
+                        auto const info = folders.Find(&listing->node);
                         if (!info) continue;
-                        do_card(folder, *info);
+                        do_card(&listing->node, *info);
                     }
                 },
             .do_extra_filters_bottom =

@@ -6,6 +6,8 @@
 #include <lauxlib.h>
 #include <lua.h>
 
+#include "common_infrastructure/common_errors.hpp"
+
 #include "engine/engine.hpp"
 #include "gui/gui2_save_preset_panel.hpp"
 #include "gui2_common_modal_panel.hpp"

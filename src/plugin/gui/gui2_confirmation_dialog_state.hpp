@@ -13,5 +13,5 @@ struct ConfirmationDialogState {
     bool open {};
     DynamicArrayBounded<char, 256> title {};
     DynamicArrayBounded<char, 512> body_text {};
-    TrivialFixedSizeFunction<32, void(ConfirmationDialogResult)> callback {};
+    TrivialFixedSizeFunction<40, void(ConfirmationDialogResult)> callback {};
 };

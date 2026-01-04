@@ -914,40 +914,6 @@ ErrorCodeOr<void> CopyFile(String from, String to, ExistingDestinationHandling e
     return k_success;
 }
 
-// There's a function PathIsDirectoryEmptyW but it does not seem to support long paths, so we implement our
-// own.
-static bool PathIsANonEmptyDirectory(WString path) {
-    PathArena temp_path_arena {Malloc::Instance()};
-
-    WIN32_FIND_DATAW data {};
-    DynamicArray<wchar_t> search_path {path, temp_path_arena};
-    dyn::AppendSpan(search_path, L"\\*");
-    SetLastError(0);
-
-    auto handle = FindFirstFileW(dyn::NullTerminated(search_path), &data);
-    if (handle == INVALID_HANDLE_VALUE) return false; // Not a directory, or inaccessible
-    DEFER { FindClose(handle); };
-
-    if (GetLastError() == ERROR_FILE_NOT_FOUND) return false; // Empty directory
-
-    while (true) {
-        auto const file_name = FromNullTerminated(data.cFileName);
-        if (file_name != L"."_s && file_name != L".."_s) return true;
-        if (FindNextFileW(handle, &data)) {
-            continue;
-        } else {
-            if (GetLastError() == ERROR_NO_MORE_FILES) {
-                // Empty directory. If we made it here we can't have found any files since we 'return true' if
-                // anything was found
-                return false;
-            }
-            return false; // an error occurred, we can't determine if the directory is non-empty
-        }
-    }
-
-    return false;
-}
-
 ErrorCodeOr<void> Rename(String from, String to) {
     ASSERT(IsValidUtf8(from));
     ASSERT(IsValidUtf8(to));
@@ -956,22 +922,52 @@ ErrorCodeOr<void> Rename(String from, String to) {
     PathArena temp_path_arena {Malloc::Instance()};
 
     auto to_wide = TRY(path::MakePathForWin32(to, temp_path_arena, true)).path;
+    auto from_wide = TRY(path::MakePathForWin32(from, temp_path_arena, true)).path;
 
-    // MoveFileExW for directories only succeeds if the destination is an empty directory. Do to make
-    // Rename consistent across Windows and POSIX rename() we try to delete the empty dir first.
-    RemoveDirectoryW(to_wide.data);
+    // We try to follow POSIX rename() rules, and so we don't start off using 'replacing' mode since it
+    // behaves strangely in some situations.
 
-    if (!MoveFileExW(TRY(path::MakePathForWin32(from, temp_path_arena, true)).path.data,
-                     to_wide.data,
-                     MOVEFILE_REPLACE_EXISTING)) {
-        auto err = GetLastError();
-        if (err == ERROR_ACCESS_DENIED) {
-            // When the destination is a non-empty directory we don't get ERROR_DIR_NOT_EMPTY as we might
-            // expect, but instead ERROR_ACCESS_DENIED. Let's try and fix that.
-            if (PathIsANonEmptyDirectory(to_wide)) err = ERROR_DIR_NOT_EMPTY;
+    for (auto const flags : Array {(DWORD)0, MOVEFILE_REPLACE_EXISTING}) {
+        if (MoveFileExW(from_wide.data, to_wide.data, flags)) break;
+
+        auto const err = GetLastError();
+
+        // Handle cases when destination exists.
+        if (auto const to_attributes = GetFileAttributesW(to_wide.data);
+            to_attributes != INVALID_FILE_ATTRIBUTES) {
+            auto const from_attributes = GetFileAttributesW(from_wide.data);
+            if (from_attributes == INVALID_FILE_ATTRIBUTES)
+                return FilesystemWin32ErrorCode(err, "MoveFileExW");
+
+            auto const from_is_dir = from_attributes & FILE_ATTRIBUTE_DIRECTORY;
+            auto const to_is_dir = to_attributes & FILE_ATTRIBUTE_DIRECTORY;
+
+            // Folder to file, not allowed.
+            if (from_is_dir && !to_is_dir) return ErrorCode {FilesystemError::PathIsAFile};
+
+            // File to folder, not allowed.
+            if (!from_is_dir && to_is_dir) return ErrorCode {FilesystemError::PathIsAsDirectory};
+
+            // Folder to folder, only allowed for empty directories.
+            if (from_is_dir && to_is_dir) {
+                // MoveFileExW for directories only succeeds if the destination does not exist. To make
+                // Rename consistent across Windows and POSIX rename(), which also accepts the destination
+                // as an empty directory, we try to delete the empty directory first.
+                if (!(flags & MOVEFILE_REPLACE_EXISTING)) {
+                    RemoveDirectoryW(to_wide.data); // Only delete empty directories.
+                    continue;
+                } else {
+                    return ErrorCode {FilesystemError::NotEmpty};
+                }
+            }
+
+            // File to file, allowed.
+            if (!from_is_dir && !to_is_dir) continue;
         }
+
         return FilesystemWin32ErrorCode(err, "MoveFileExW");
     }
+
     return k_success;
 }
 

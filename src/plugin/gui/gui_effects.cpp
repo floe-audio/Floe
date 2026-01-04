@@ -140,11 +140,10 @@ static void DoIrSelectorRightClickMenu(Gui* g, Rect r) {
     }
 }
 
-static void DoImpulseResponseMenu(Gui* g, layout::Id lay_id) {
+static void DoImpulseResponseMenu(Gui* g, GuiFrameContext const& frame_context, layout::Id lay_id) {
     auto r = layout::GetRect(g->layout, lay_id);
 
-    auto const ir_name =
-        g->engine.processor.convo.ir_id ? String(g->engine.processor.convo.ir_id->ir_name) : "None"_s;
+    auto const ir_name = IrName(g->engine);
 
     auto const id = g->imgui.GetID("Impulse");
 
@@ -179,13 +178,11 @@ static void DoImpulseResponseMenu(Gui* g, layout::Id lay_id) {
         .library_images = g->library_images,
         .engine = g->engine,
         .prefs = g->prefs,
-        .unknown_library_icon = UnknownLibraryIcon(g),
         .notifications = g->notifications,
         .persistent_store = g->shared_engine_systems.persistent_store,
         .confirmation_dialog_state = g->confirmation_dialog_state,
+        .frame_context = frame_context,
     };
-    context.Init(g->scratch_arena);
-    DEFER { context.Deinit(); };
 
     auto const button_style = buttons::IconButton(g->imgui);
     auto const left_id = id - 4;
@@ -266,7 +263,7 @@ static FXColours GetFxCols(imgui::Context const& imgui, EffectType type) {
     return {};
 }
 
-void DoEffectsWindow(Gui* g, Rect r) {
+void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
     using enum UiSizeId;
     auto& imgui = g->imgui;
     auto& lay = g->layout;
@@ -1121,7 +1118,7 @@ void DoEffectsWindow(Gui* g, Rect r) {
 
                 do_heading(engine.processor.convo, cols.back);
 
-                DoImpulseResponseMenu(g, ids.convo.ir.control);
+                DoImpulseResponseMenu(g, frame_context, ids.convo.ir.control);
                 labels::Label(g, ids.convo.ir.label, "Impulse", labels::ParameterCentred(imgui));
 
                 KnobAndLabel(

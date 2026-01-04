@@ -25,7 +25,7 @@ struct TypeErasedUserData {
   private:
     template <typename T>
     static constexpr u64 TypeHashFor() {
-        return HashComptime(__PRETTY_FUNCTION__);
+        return HashFnv1a(__PRETTY_FUNCTION__);
     }
 };
 

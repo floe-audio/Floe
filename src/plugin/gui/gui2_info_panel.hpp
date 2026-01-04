@@ -56,7 +56,7 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
           });
 
     for (auto lib : context.libraries) {
-        if (lib->Id() == sample_lib::k_builtin_library_id) continue;
+        if (lib->id == sample_lib::k_builtin_library_id) continue;
 
         // create a 'card' container object
         auto const card = DoBox(box_system,
@@ -110,10 +110,10 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
         if (auto const dir = path::Directory(lib->path)) do_text_line(fmt::Assign(buffer, "Folder: {}", dir));
         do_text_line(fmt::Assign(buffer,
                                  "Instruments: {} ({} samples, {} regions)",
-                                 lib->insts_by_name.size,
+                                 lib->insts_by_id.size,
                                  lib->num_instrument_samples,
                                  lib->num_regions));
-        do_text_line(fmt::Assign(buffer, "Impulse responses: {}", lib->irs_by_name.size));
+        do_text_line(fmt::Assign(buffer, "Impulse responses: {}", lib->irs_by_id.size));
         do_text_line(fmt::Assign(buffer, "Library format: {}", ({
                                      String s {};
                                      switch (lib->file_format_specifics.tag) {

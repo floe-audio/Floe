@@ -53,6 +53,7 @@ const sidebars = {
                 'reference/attribution',
                 'reference/autosave',
                 'reference/error-reporting',
+                'reference/legacy-parameters',
                 'reference/file-locations',
             ],
         },

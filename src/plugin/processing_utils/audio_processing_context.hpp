@@ -64,6 +64,7 @@ struct NoteEvent {
     MidiChannelNote note;
     bool created_by_cc64;
     enum class Type : u8 { On, Off } type;
+    s8 exclusively_for_layer = -1;
 };
 
 struct ProcessBlockChanges {

@@ -23,6 +23,7 @@
 #include "gui/gui2_package_install.hpp"
 #include "gui/gui2_prefs_panel.hpp"
 #include "gui/gui_file_picker.hpp"
+#include "gui/gui_frame_context.hpp"
 #include "gui_editor_widgets.hpp"
 #include "gui_editors.hpp"
 #include "gui_framework/draw_list.hpp"
@@ -61,19 +62,6 @@ Optional<graphics::ImageID> LogoImage(Gui* g) {
         }
     }
     return g->floe_logo_image;
-}
-
-Optional<graphics::ImageID>& UnknownLibraryIcon(Gui* g) {
-    if (!g->imgui.graphics->context->ImageIdIsValid(g->unknown_library_icon)) {
-        auto const data = EmbeddedUnknownLibraryIcon();
-        if (data.size) {
-            auto outcome = DecodeImage({data.data, data.size}, g->scratch_arena);
-            ASSERT(!outcome.HasError());
-            auto const pixels = outcome.ReleaseValue();
-            g->unknown_library_icon = CreateImageIdChecked(*g->imgui.graphics->context, pixels);
-        }
-    }
-    return g->unknown_library_icon;
 }
 
 static void SampleLibraryChanged(Gui* g, sample_lib::LibraryIdRef library_id) {
@@ -307,6 +295,19 @@ GuiFrameResult GuiUpdate(Gui* g) {
     while (auto function = g->main_thread_callbacks.TryPop(g->scratch_arena))
         (*function)();
 
+    GuiFrameContext frame_context;
+    DEFER { sample_lib_server::ReleaseAll(frame_context.libraries); };
+    {
+        auto libs = sample_lib_server::AllLibrariesRetained(g->shared_engine_systems.sample_library_server,
+                                                            g->scratch_arena);
+        Sort(libs, [](auto const& a, auto const& b) { return a->name < b->name; });
+        auto libs_table = sample_lib_server::MakeTable(libs, g->scratch_arena);
+        frame_context = {
+            .libraries = libs,
+            .lib_table = libs_table,
+        };
+    }
+
     CheckForFilePickerResults(g->imgui.frame_input,
                               g->file_picker_state,
                               {
@@ -316,6 +317,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
                                   .thread_pool = g->shared_engine_systems.thread_pool,
                                   .scratch_arena = g->scratch_arena,
                                   .sample_lib_server = g->shared_engine_systems.sample_library_server,
+                                  .preset_server = g->shared_engine_systems.preset_server,
                                   .engine = g->engine,
                               });
 
@@ -373,11 +375,11 @@ GuiFrameResult GuiUpdate(Gui* g) {
 
         auto mid_panel_r = Rect {.x = 0, .y = top_h, .w = imgui.Width(), .h = mid_h};
         imgui.BeginWindow(mid_settings, mid_panel_r, "MidPanel");
-        MidPanel(g);
+        MidPanel(g, frame_context);
         imgui.EndWindow();
     }
 
-    TopPanel(g, top_h);
+    TopPanel(g, top_h, frame_context);
 
     BotPanel(g, {.xywh {0, top_h + mid_h, imgui.Width(), bot_h}});
 
@@ -408,9 +410,8 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .package_install_jobs = g->engine.package_install_jobs,
                 .thread_pool = g->shared_engine_systems.thread_pool,
                 .file_picker_state = g->file_picker_state,
+                .presets_server = g->shared_engine_systems.preset_server,
             };
-            context.Init(g->shared_engine_systems.preset_server, g->scratch_arena);
-            DEFER { context.Deinit(g->shared_engine_systems.preset_server); };
 
             DoPreferencesPanel(g->box_system, context, g->preferences_panel_state);
         }
@@ -471,13 +472,11 @@ GuiFrameResult GuiUpdate(Gui* g) {
                     .library_images = g->library_images,
                     .engine = g->engine,
                     .prefs = g->prefs,
-                    .unknown_library_icon = UnknownLibraryIcon(g),
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,
                     .confirmation_dialog_state = g->confirmation_dialog_state,
+                    .frame_context = frame_context,
                 };
-                context.Init(g->scratch_arena);
-                DEFER { context.Deinit(); };
 
                 auto& state = g->inst_browser_state[layer_obj.index];
                 DoInstBrowserPopup(g->box_system, context, state);
@@ -491,10 +490,10 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .library_images = g->library_images,
                 .prefs = g->prefs,
                 .engine = g->engine,
-                .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
                 .confirmation_dialog_state = g->confirmation_dialog_state,
+                .frame_context = frame_context,
             };
             DoPresetBrowser(g->box_system, context, g->preset_browser_state);
         }
@@ -505,13 +504,11 @@ GuiFrameResult GuiUpdate(Gui* g) {
                 .library_images = g->library_images,
                 .engine = g->engine,
                 .prefs = g->prefs,
-                .unknown_library_icon = UnknownLibraryIcon(g),
                 .notifications = g->notifications,
                 .persistent_store = g->shared_engine_systems.persistent_store,
                 .confirmation_dialog_state = g->confirmation_dialog_state,
+                .frame_context = frame_context,
             };
-            context.Init(g->scratch_arena);
-            DEFER { context.Deinit(); };
 
             DoIrBrowserPopup(g->box_system, context, g->ir_browser_state);
         }

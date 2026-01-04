@@ -6,13 +6,11 @@
 #include "engine/favourite_items.hpp"
 #include "gui2_common_browser.hpp"
 
-inline prefs::Key FavouriteIr() { return "favourite-ir"_s; }
-
 static Optional<IrCursor> CurrentCursor(IrBrowserContext const& context, sample_lib::IrId const& ir_id) {
-    for (auto const [lib_index, l] : Enumerate(context.libraries)) {
-        if (l->Id() != ir_id.library) continue;
+    for (auto const [lib_index, l] : Enumerate(context.frame_context.libraries)) {
+        if (l->id != ir_id.library) continue;
         for (auto const [ir_index, i] : Enumerate(l->sorted_irs))
-            if (i->name == ir_id.ir_name) return IrCursor {lib_index, ir_index};
+            if (i->id == ir_id.ir_id) return IrCursor {lib_index, ir_index};
     }
 
     return k_nullopt;
@@ -32,7 +30,7 @@ static bool ShouldSkipIr(IrBrowserContext const& context,
 
     if (state.common_state.favourites_only) {
         filtering_on = true;
-        if (!IsFavourite(context.prefs, FavouriteIr(), sample_lib::IrHash(ir))) {
+        if (!IsFavourite(context.prefs, k_favourite_ir_key, sample_lib::PersistentIrHash(ir))) {
             if (state.common_state.filter_mode == FilterMode::MultipleAnd ||
                 state.common_state.filter_mode == FilterMode::Single)
                 return true;
@@ -57,7 +55,7 @@ static bool ShouldSkipIr(IrBrowserContext const& context,
 
     if (state.common_state.selected_library_hashes.HasSelected()) {
         filtering_on = true;
-        if (!state.common_state.selected_library_hashes.Contains(ir.library.Id().Hash())) {
+        if (!state.common_state.selected_library_hashes.Contains(Hash(ir.library.id))) {
             if (state.common_state.filter_mode == FilterMode::MultipleAnd)
                 return true;
             else if (state.common_state.filter_mode == FilterMode::Single)
@@ -111,9 +109,10 @@ static Optional<IrCursor> IterateIr(IrBrowserContext const& context,
                                     IrCursor cursor,
                                     SearchDirection direction,
                                     bool first) {
-    if (context.libraries.size == 0) return k_nullopt;
+    auto const& libs = context.frame_context.libraries;
+    if (libs.size == 0) return k_nullopt;
 
-    if (cursor.lib_index >= context.libraries.size) cursor.lib_index = 0;
+    if (cursor.lib_index >= libs.size) cursor.lib_index = 0;
 
     if (!first) {
         switch (direction) {
@@ -125,26 +124,26 @@ static Optional<IrCursor> IterateIr(IrBrowserContext const& context,
         }
     }
 
-    for (usize lib_step = 0; lib_step < context.libraries.size + 1; (
+    for (usize lib_step = 0; lib_step < libs.size + 1; (
              {
                  ++lib_step;
                  switch (direction) {
                      case SearchDirection::Forward:
-                         cursor.lib_index = (cursor.lib_index + 1) % context.libraries.size;
+                         cursor.lib_index = (cursor.lib_index + 1) % libs.size;
                          cursor.ir_index = 0;
                          break;
                      case SearchDirection::Backward:
                          static_assert(UnsignedInt<decltype(cursor.lib_index)>);
                          --cursor.lib_index;
-                         if (cursor.lib_index >= context.libraries.size) // check wraparound
-                             cursor.lib_index = context.libraries.size - 1;
-                         cursor.ir_index = context.libraries[cursor.lib_index]->irs_by_name.size - 1;
+                         if (cursor.lib_index >= libs.size) // check wraparound
+                             cursor.lib_index = libs.size - 1;
+                         cursor.ir_index = libs[cursor.lib_index]->irs_by_id.size - 1;
                          break;
                  }
              })) {
-        auto const& lib = *context.libraries[cursor.lib_index];
+        auto const& lib = *libs[cursor.lib_index];
 
-        if (lib.irs_by_name.size == 0) continue;
+        if (lib.irs_by_id.size == 0) continue;
 
         // PERF: we could skip early here based on the library and filters, but only for some filter modes.
 
@@ -167,9 +166,9 @@ static Optional<IrCursor> IterateIr(IrBrowserContext const& context,
 }
 
 static void LoadIr(IrBrowserContext const& context, IrBrowserState& state, IrCursor const& cursor) {
-    auto const& lib = *context.libraries[cursor.lib_index];
+    auto const& lib = *context.frame_context.libraries[cursor.lib_index];
     auto const& ir = *lib.sorted_irs[cursor.ir_index];
-    LoadConvolutionIr(context.engine, sample_lib::IrId {lib.Id(), ir.name});
+    LoadConvolutionIr(context.engine, sample_lib::IrId {lib.id, ir.id});
     state.scroll_to_show_selected = true;
 }
 
@@ -224,10 +223,10 @@ void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrows
     if (!first) return;
 
     sample_lib::Library const* previous_library {};
-    Optional<graphics::ImageID> lib_icon {};
+    ItemIcon lib_icon {ItemIconType::None};
     auto cursor = *first;
     while (true) {
-        auto const& lib = *context.libraries[cursor.lib_index];
+        auto const& lib = *context.frame_context.libraries[cursor.lib_index];
         auto const& ir = *lib.sorted_irs[cursor.ir_index];
         auto const& folder = ir.folder;
         auto const new_folder = folder != previous_folder;
@@ -242,51 +241,56 @@ void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrows
             };
         }
 
-        auto const ir_id = sample_lib::IrId {lib.Id(), ir.name};
-        auto const ir_hash = sample_lib::IrHash(ir);
+        auto const ir_id = sample_lib::IrId {lib.id, ir.id};
+        auto const ir_hash = sample_lib::PersistentIrHash(ir);
         auto const is_current = context.engine.processor.convo.ir_id == ir_id;
-        auto const is_favourite = IsFavourite(context.prefs, FavouriteIr(), ir_hash);
+        auto const is_favourite = IsFavourite(context.prefs, k_favourite_ir_key, ir_hash);
 
         if (folder_section->Do(box_system).tag != BrowserSection::State::Collapsed) {
-            auto const item =
-                DoBrowserItem(box_system,
-                              state.common_state,
-                              {
-                                  .parent = folder_section->Do(box_system).Get<Box>(),
-                                  .text = ir.name,
-                                  .tooltip = FunctionRef<String()>([&]() -> String {
-                                      DynamicArray<char> buffer {box_system.arena};
+            auto const item = DoBrowserItem(box_system,
+                                            state.common_state,
+                                            {
+                                                .parent = folder_section->Do(box_system).Get<Box>(),
+                                                .text = ir.name,
+                                                .tooltip = FunctionRef<String()>([&]() -> String {
+                                                    DynamicArray<char> buffer {box_system.arena};
 
-                                      fmt::Append(buffer, "{}. Tags: ", ir.name);
-                                      if (ir.tags.size) {
-                                          for (auto const& [tag, _] : ir.tags)
-                                              fmt::Append(buffer, "{}, ", tag);
-                                          dyn::Pop(buffer, 2);
-                                      } else {
-                                          dyn::AppendSpan(buffer, "none");
-                                      }
+                                                    fmt::Append(buffer, "{}. Tags: ", ir.name);
+                                                    if (ir.tags.size) {
+                                                        for (auto const& [tag, _] : ir.tags)
+                                                            fmt::Append(buffer, "{}, ", tag);
+                                                        dyn::Pop(buffer, 2);
+                                                    } else {
+                                                        dyn::AppendSpan(buffer, "none");
+                                                    }
 
-                                      return buffer.ToOwnedSpan();
-                                  }),
-                                  .item_id = ir_hash,
-                                  .is_current = is_current,
-                                  .is_favourite = is_favourite,
-                                  .is_tab_item = new_folder,
-                                  .icons = ({
-                                      if (&lib != previous_library) {
-                                          previous_library = &lib;
-                                          auto const imgs = GetLibraryImages(context.library_images,
+                                                    return buffer.ToOwnedSpan();
+                                                }),
+                                                .item_id = ir_hash,
+                                                .is_current = is_current,
+                                                .is_favourite = is_favourite,
+                                                .is_tab_item = new_folder,
+                                                .icons = ({
+                                                    if (&lib != previous_library) {
+                                                        previous_library = &lib;
+                                                        auto const imgs =
+                                                            GetLibraryImages(context.library_images,
                                                                              box_system.imgui,
-                                                                             lib.Id(),
+                                                                             lib.id,
                                                                              context.sample_library_server,
                                                                              LibraryImagesTypes::Icon);
-                                          lib_icon = imgs.icon ? imgs.icon : context.unknown_library_icon;
-                                      }
-                                      decltype(BrowserItemOptions::icons) {lib_icon};
-                                  }),
-                                  .notifications = context.notifications,
-                                  .store = context.persistent_store,
-                              });
+                                                        if (imgs.icon)
+                                                            lib_icon = *imgs.icon;
+                                                        else
+                                                            lib_icon = ItemIconType::None;
+                                                    }
+                                                    decltype(BrowserItemOptions::icons) result;
+                                                    dyn::Emplace(result, lib_icon);
+                                                    result;
+                                                }),
+                                                .notifications = context.notifications,
+                                                .store = context.persistent_store,
+                                            });
 
             if (is_current &&
                 box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
@@ -305,7 +309,7 @@ void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrows
             if (item.favourite_toggled) {
                 dyn::Append(box_system.state->deferred_actions,
                             [&prefs = context.prefs, hash = ir_hash, is_favourite]() {
-                                ToggleFavourite(prefs, FavouriteIr(), hash, is_favourite);
+                                ToggleFavourite(prefs, k_favourite_ir_key, hash, is_favourite);
                             });
             }
         }
@@ -322,10 +326,11 @@ void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrows
 void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrowserState& state) {
     if (!state.common_state.open) return;
 
+    auto const& libs = context.frame_context.libraries;
     auto& ir_id = context.engine.processor.convo.ir_id;
 
     HashTable<String, FilterItemInfo> tags {};
-    for (auto const& l_ptr : context.libraries) {
+    for (auto const& l_ptr : libs) {
         auto const& lib = *l_ptr;
         for (auto const& ir : lib.sorted_irs)
             for (auto const& [tag, tag_hash] : ir->tags)
@@ -333,19 +338,17 @@ void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBro
     }
 
     auto libraries =
-        OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(box_system.arena,
-                                                                           context.libraries.size);
-    auto library_authors =
-        OrderedHashTable<String, FilterItemInfo>::Create(box_system.arena, context.libraries.size);
+        OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(box_system.arena, libs.size);
+    auto library_authors = OrderedHashTable<String, FilterItemInfo>::Create(box_system.arena, libs.size);
 
     auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(box_system.arena, 16);
     auto root_folder = FolderRootSet::Create(box_system.arena, 8);
 
     FilterItemInfo favourites_info {};
 
-    for (auto const l : context.libraries) {
-        if (l->irs_by_name.size == 0) continue;
-        auto& lib_found = libraries.FindOrInsertWithoutGrowing(l->Id(), {}).element.data;
+    for (auto const l : libs) {
+        if (l->irs_by_id.size == 0) continue;
+        auto& lib_found = libraries.FindOrInsertWithoutGrowing(l->id, {}).element.data;
         auto& author_found = library_authors.FindOrInsertWithoutGrowing(l->author, {}).element.data;
 
         if (auto& f = l->root_folders[ToInt(sample_lib::ResourceType::Ir)]; f.first_child)
@@ -354,7 +357,7 @@ void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBro
         for (auto const& ir : l->sorted_irs) {
             auto const skip = ShouldSkipIr(context, state, *ir);
 
-            if (IsFavourite(context.prefs, FavouriteIr(), sample_lib::IrHash(*ir))) {
+            if (IsFavourite(context.prefs, k_favourite_ir_key, sample_lib::PersistentIrHash(*ir))) {
                 if (!skip) ++favourites_info.num_used_in_items_lists;
                 ++favourites_info.total_available;
             }
@@ -402,13 +405,10 @@ void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBro
             .item_type_name = "impulse response",
             .rhs_top_button =
                 BrowserPopupOptions::Button {
-                    // .text =
-                    //     fmt::Format(box_system.arena, "Unload {}", ir_id ? (String)ir_id->ir_name :
-                    //     "IR"_s),
                     .text = fmt::Format(box_system.arena,
                                         "Unload {}",
                                         ir_id ? ({
-                                            auto n = (String)ir_id->ir_name;
+                                            auto n = IrName(context.engine);
                                             usize constexpr k_max_len = 10;
                                             if (n.size > k_max_len)
                                                 n = fmt::Format(
@@ -434,10 +434,10 @@ void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBro
             .on_scroll_to_show_selected = [&]() { state.scroll_to_show_selected = true; },
             .library_filters =
                 LibraryFilters {
+                    .libraries_table = context.frame_context.lib_table,
                     .library_images = context.library_images,
                     .libraries = libraries,
                     .library_authors = library_authors,
-                    .unknown_library_icon = context.unknown_library_icon,
                     .card_view = true,
                     .resource_type = sample_lib::ResourceType::Ir,
                     .folders = folders,

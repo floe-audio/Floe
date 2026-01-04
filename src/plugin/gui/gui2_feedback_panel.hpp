@@ -131,7 +131,7 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
                     .icon = icon,
                 };
             },
-            .id = HashComptime(__FILE__ STRINGIFY(__LINE__)),
+            .id = HashFnv1a(__FILE__ STRINGIFY(__LINE__)),
         };
     }
 }

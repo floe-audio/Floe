@@ -14,6 +14,8 @@
 #include "common_infrastructure/global.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
 
+// IMPROVE: export a Lua LSP def file for the preset table.
+
 enum class CliArgId : u32 {
     PresetFile,
     ScriptFile,
@@ -33,7 +35,10 @@ auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
         .id = (u32)CliArgId::ScriptFile,
         .key = "script-file",
         .description =
-            "Path to the script file to edit. If not provided, the preset file will be printed to stdout.",
+            "Path to the script file to edit. If not provided, the preset file will be printed to stdout.\n"
+            "In the script, you have access to a global 'preset'. Modify this global and the changes will\n"
+            "be saved to the file. Run this tool without a script file to see the format of 'preset'.\n"
+            "param_values are keyed by param ID.\n",
         .value_type = "path",
         .required = false,
         .num_values = 1,
@@ -97,33 +102,23 @@ ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset
                             case InstrumentType::Sampler: {
                                 sample_lib::InstrumentId sampler_id;
 
-                                // Extract library author
-                                lua_getfield(lua, -2, "library_author");
+                                // Extract library ID
+                                lua_getfield(lua, -2, "library_id");
                                 if (lua_isstring(lua, -1)) {
                                     size_t len;
                                     auto str = lua_tolstring(lua, -1, &len);
-                                    auto copy_len = Min(len, sampler_id.library.author.Capacity());
-                                    dyn::Assign(sampler_id.library.author, {str, copy_len});
-                                }
-                                lua_pop(lua, 1);
-
-                                // Extract library name
-                                lua_getfield(lua, -2, "library_name");
-                                if (lua_isstring(lua, -1)) {
-                                    size_t len;
-                                    auto str = lua_tolstring(lua, -1, &len);
-                                    auto copy_len = Min(len, sampler_id.library.name.Capacity());
-                                    dyn::Assign(sampler_id.library.name, {str, copy_len});
+                                    auto copy_len = Min(len, sampler_id.library.Capacity());
+                                    dyn::Assign(sampler_id.library, {str, copy_len});
                                 }
                                 lua_pop(lua, 1);
 
                                 // Extract instrument name
-                                lua_getfield(lua, -2, "instrument_name");
+                                lua_getfield(lua, -2, "instrument_id");
                                 if (lua_isstring(lua, -1)) {
                                     size_t len;
                                     auto str = lua_tolstring(lua, -1, &len);
-                                    auto copy_len = Min(len, sampler_id.inst_name.Capacity());
-                                    dyn::Assign(sampler_id.inst_name, {str, copy_len});
+                                    auto copy_len = Min(len, sampler_id.inst_id.Capacity());
+                                    dyn::Assign(sampler_id.inst_id, {str, copy_len});
                                 }
                                 lua_pop(lua, 1);
 
@@ -216,33 +211,23 @@ ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset
     if (lua_istable(lua, -1)) {
         sample_lib::IrId ir_id;
 
-        // Extract library author
-        lua_getfield(lua, -1, "library_author");
+        // Extract library ID
+        lua_getfield(lua, -1, "library_id");
         if (lua_isstring(lua, -1)) {
             size_t len;
             auto str = lua_tolstring(lua, -1, &len);
-            auto copy_len = Min(len, ir_id.library.author.Capacity());
-            dyn::Assign(ir_id.library.author, {str, copy_len});
-        }
-        lua_pop(lua, 1);
-
-        // Extract library name
-        lua_getfield(lua, -1, "library_name");
-        if (lua_isstring(lua, -1)) {
-            size_t len;
-            auto str = lua_tolstring(lua, -1, &len);
-            auto copy_len = Min(len, ir_id.library.name.Capacity());
-            dyn::Assign(ir_id.library.name, {str, copy_len});
+            auto copy_len = Min(len, ir_id.library.Capacity());
+            dyn::Assign(ir_id.library, {str, copy_len});
         }
         lua_pop(lua, 1);
 
         // Extract ir name
-        lua_getfield(lua, -1, "ir_name");
+        lua_getfield(lua, -1, "ir_id");
         if (lua_isstring(lua, -1)) {
             size_t len;
             auto str = lua_tolstring(lua, -1, &len);
-            auto copy_len = Min(len, ir_id.ir_name.Capacity());
-            dyn::Assign(ir_id.ir_name, {str, copy_len});
+            auto copy_len = Min(len, ir_id.ir_id.Capacity());
+            dyn::Assign(ir_id.ir_id, {str, copy_len});
         }
         lua_pop(lua, 1);
 
@@ -386,12 +371,10 @@ static void BuildPresetLuaTable(lua_State* lua, StateSnapshot const& preset_stat
             }
             case InstrumentType::Sampler: {
                 auto const& sampler_id = inst_id.Get<sample_lib::InstrumentId>();
-                lua_pushlstring(lua, sampler_id.library.author.data, sampler_id.library.author.size);
-                lua_setfield(lua, -2, "library_author");
-                lua_pushlstring(lua, sampler_id.library.name.data, sampler_id.library.name.size);
-                lua_setfield(lua, -2, "library_name");
-                lua_pushlstring(lua, sampler_id.inst_name.data, sampler_id.inst_name.size);
-                lua_setfield(lua, -2, "instrument_name");
+                lua_pushlstring(lua, sampler_id.library.data, sampler_id.library.size);
+                lua_setfield(lua, -2, "library_id");
+                lua_pushlstring(lua, sampler_id.inst_id.data, sampler_id.inst_id.size);
+                lua_setfield(lua, -2, "instrument_id");
                 break;
             }
         }
@@ -439,12 +422,10 @@ static void BuildPresetLuaTable(lua_State* lua, StateSnapshot const& preset_stat
     if (preset_state.ir_id.HasValue()) {
         lua_newtable(lua);
         auto const& ir_id = preset_state.ir_id.Value();
-        lua_pushlstring(lua, ir_id.library.author.data, ir_id.library.author.size);
-        lua_setfield(lua, -2, "library_author");
-        lua_pushlstring(lua, ir_id.library.name.data, ir_id.library.name.size);
-        lua_setfield(lua, -2, "library_name");
-        lua_pushlstring(lua, ir_id.ir_name.data, ir_id.ir_name.size);
-        lua_setfield(lua, -2, "ir_name");
+        lua_pushlstring(lua, ir_id.library.data, ir_id.library.size);
+        lua_setfield(lua, -2, "library_id");
+        lua_pushlstring(lua, ir_id.ir_id.data, ir_id.ir_id.size);
+        lua_setfield(lua, -2, "ir_id");
         lua_setfield(lua, -2, "ir_id");
     }
 
@@ -501,8 +482,8 @@ static void BuildPresetLuaTable(lua_State* lua, StateSnapshot const& preset_stat
 }
 
 static ErrorCodeOr<int> Main(ArgsCstr args) {
-    GlobalInit({.init_error_reporting = true, .set_main_thread = true});
-    DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
+    GlobalInit({.init_error_reporting = false, .set_main_thread = true});
+    DEFER { GlobalDeinit({.shutdown_error_reporting = false}); };
 
     ArenaAllocator arena {PageAllocator::Instance()};
 

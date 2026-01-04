@@ -295,17 +295,45 @@ DoBrowserItem(GuiBoxSystem& box_system, CommonBrowserState& state, BrowserItemOp
             .ignore_double_click = true,
         });
 
-    for (auto const tex : options.icons) {
-        if (!tex) continue;
-        DoBox(box_system,
-              {
-                  .parent = item,
-                  .background_tex = tex.NullableValue(),
-                  .layout {
-                      .size = style::k_library_icon_standard_size,
-                      .margins = {.r = k_browser_spacing / 2},
-                  },
-              });
+    if (options.icons.size) {
+        auto const icon_container = DoBox(box_system,
+                                          {
+                                              .parent = item,
+                                              .layout {
+                                                  .size = {layout::k_hug_contents, layout::k_fill_parent},
+                                                  .margins = {.r = k_browser_spacing / 2},
+                                                  .contents_gap = {1, 0},
+                                                  .contents_direction = layout::Direction::Row,
+                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                              },
+                                          });
+        for (auto const icon : options.icons) {
+            switch (icon.tag) {
+                case ItemIconType::None: break;
+                case ItemIconType::Image: {
+                    auto const tex = icon.Get<graphics::ImageID>();
+                    DoBox(box_system,
+                          {
+                              .parent = icon_container,
+                              .background_tex = &tex,
+                              .layout {
+                                  .size = style::k_library_icon_standard_size,
+                              },
+                          });
+                    break;
+                }
+                case ItemIconType::Font: {
+                    DoBox(box_system,
+                          {
+                              .parent = icon_container,
+                              .text = icon.Get<String>(),
+                              .size_from_text = true,
+                              .font = FontType::Icons,
+                          });
+                    break;
+                }
+            }
+        }
     }
 
     DoBox(box_system,
@@ -393,8 +421,8 @@ static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
                                       RightClickMenuState::Function const& do_right_click_menu = nullptr) {
     // We want to stop if we find a preset bank within the preset bank.
     if (folder->user_data.As<PresetFolderListing const>())
-        if (auto const bank = PresetBankForNode(*folder);
-            bank && folder->parent && bank != PresetBankForNode(*folder->parent))
+        if (auto const bank = PresetBankAtNode(*folder);
+            bank && folder->parent && bank != PresetBankAtNode(*folder->parent))
             return;
 
     bool is_active = false;
@@ -402,8 +430,8 @@ static void DoFolderFilterAndChildren(GuiBoxSystem& box_system,
         for (auto f = folder; f; f = f->parent) {
             // We want to stop if the parent is part of a different preset bank.
             if (f->user_data.As<PresetFolderListing const>())
-                if (auto const bank = PresetBankForNode(*f);
-                    bank && f->parent && bank != PresetBankForNode(*f->parent))
+                if (auto const bank = PresetBankAtNode(*f);
+                    bank && f->parent && bank != PresetBankAtNode(*f->parent))
                     break;
 
             if (state.selected_folder_hashes.Contains(f->Hash())) {
@@ -783,14 +811,13 @@ Box DoFilterCard(GuiBoxSystem& box_system,
                                      *options.library_id,
                                      options.sample_library_server,
                                      LibraryImagesTypes::All);
-        has_icon = imgs.icon.HasValue() || options.unknown_library_icon.HasValue();
+        has_icon = imgs.icon.HasValue() && *imgs.icon != graphics::k_invalid_image_id;
         if (box_system.InputAndRenderPass()) {
             if (box_system.imgui.IsRectVisible(
                     box_system.imgui.WindowRectToScreenRect(*BoxRect(box_system, card_outer)))) {
                 background_image1 = imgs.blurred_background;
                 background_image2 = imgs.background;
                 icon = imgs.icon;
-                if (!icon) icon = options.unknown_library_icon;
             }
         }
     }
@@ -1257,7 +1284,7 @@ static void DoBrowserLibraryFilters(GuiBoxSystem& box_system,
         BrowserSection section = {
             .state = context.state,
             .num_sections_rendered = &sections,
-            .id = context.browser_id ^ HashComptime("libraries-section"),
+            .id = context.browser_id ^ HashFnv1a("libraries-section"),
             .parent = parent,
             .heading = !library_filters.card_view ||
                                ShowPrimaryFilterSectionHeader(context.state, context.preferences, section.id)
@@ -1267,64 +1294,60 @@ static void DoBrowserLibraryFilters(GuiBoxSystem& box_system,
         };
 
         for (auto const& [lib_id, lib_info, lib_hash] : library_filters.libraries) {
-            ASSERT(lib_id.name.size);
-            ASSERT(lib_id.author.size);
+            ASSERT(lib_id.size);
 
-            if (!MatchesFilterSearch(lib_id.name, context.state.filter_search)) continue;
+            auto const lib_ptr = library_filters.libraries_table.Find(lib_id, lib_hash);
+            if (!lib_ptr) continue;
+            auto const& lib = *lib_ptr;
+
+            if (!MatchesFilterSearch(lib->name, context.state.filter_search)) continue;
 
             Box button;
             if (library_filters.card_view) {
-                // TODO: we probably want to cache this somewhere.
-                auto lib = sample_lib_server::FindLibraryRetained(context.sample_library_server, lib_id);
-                DEFER { lib.Release(); };
-                if (!lib) continue;
-
                 auto const folder = &lib->root_folders[ToInt(library_filters.resource_type)];
 
                 auto const is_selected = context.state.selected_library_hashes.Contains(lib_hash);
 
                 if (section.Do(box_system) == BrowserSection::State::Collapsed) break;
 
-                button =
-                    DoFilterCard(box_system,
-                                 context.state,
-                                 lib_info,
-                                 FilterCardOptions {
-                                     .common =
-                                         {
-                                             .parent = section.Do(box_system).Get<Box>(),
-                                             .is_selected = is_selected,
-                                             .text = lib_id.name,
-                                             .tooltip = FunctionRef<String()>([&]() -> String {
-                                                 auto lib = sample_lib_server::FindLibraryRetained(
-                                                     context.sample_library_server,
-                                                     lib_id);
-                                                 DEFER { lib.Release(); };
+                button = DoFilterCard(box_system,
+                                      context.state,
+                                      lib_info,
+                                      FilterCardOptions {
+                                          .common =
+                                              {
+                                                  .parent = section.Do(box_system).Get<Box>(),
+                                                  .is_selected = is_selected,
+                                                  .text = lib->name,
+                                                  .tooltip = FunctionRef<String()>([&]() -> String {
+                                                      auto lib = sample_lib_server::FindLibraryRetained(
+                                                          context.sample_library_server,
+                                                          lib_id);
+                                                      DEFER { lib.Release(); };
 
-                                                 DynamicArray<char> buf {box_system.arena};
-                                                 fmt::Append(buf, "{} by {}.", lib_id.name, lib_id.author);
-                                                 if (lib) {
-                                                     if (lib->description)
-                                                         fmt::Append(buf, "\n\n{}", lib->description);
-                                                 }
-                                                 return buf.ToOwnedSpan();
-                                             }),
-                                             .hashes = context.state.selected_library_hashes,
-                                             .clicked_hash = lib_hash,
-                                             .filter_mode = context.state.filter_mode,
-                                         },
-                                     .library_id = lib_id,
-                                     .library_images = library_filters.library_images,
-                                     .sample_library_server = context.sample_library_server,
-                                     .unknown_library_icon = library_filters.unknown_library_icon,
-                                     .subtext = ({
-                                         String s;
-                                         if (lib) s = box_system.arena.Clone(lib->tagline);
-                                         s;
-                                     }),
-                                     .folder_infos = library_filters.folders,
-                                     .folder = folder,
-                                 });
+                                                      DynamicArray<char> buf {box_system.arena};
+                                                      fmt::Append(buf, "{} by {}.", lib->name, lib->author);
+                                                      if (lib) {
+                                                          if (lib->description)
+                                                              fmt::Append(buf, "\n\n{}", lib->description);
+                                                      }
+                                                      return buf.ToOwnedSpan();
+                                                  }),
+                                                  .hashes = context.state.selected_library_hashes,
+                                                  .clicked_hash = lib_hash,
+                                                  .filter_mode = context.state.filter_mode,
+                                              },
+                                          .library_id = lib_id,
+                                          .library_images = library_filters.library_images,
+                                          .sample_library_server = context.sample_library_server,
+                                          .subtext = ({
+                                              String s;
+                                              if (lib) s = box_system.arena.Clone(lib->tagline);
+                                              s;
+                                          }),
+                                          .folder_infos = library_filters.folders,
+                                          .folder = folder,
+                                      });
             } else {
                 if (section.Do(box_system) == BrowserSection::State::Collapsed) break;
 
@@ -1343,7 +1366,7 @@ static void DoBrowserLibraryFilters(GuiBoxSystem& box_system,
                             {
                                 .parent = section.Do(box_system).Get<Box>(),
                                 .is_selected = context.state.selected_library_hashes.Contains(lib_hash),
-                                .text = lib_id.name,
+                                .text = lib->name,
                                 .tooltip = FunctionRef<String()>([&]() -> String {
                                     auto lib =
                                         sample_lib_server::FindLibraryRetained(context.sample_library_server,
@@ -1351,7 +1374,7 @@ static void DoBrowserLibraryFilters(GuiBoxSystem& box_system,
                                     DEFER { lib.Release(); };
 
                                     DynamicArray<char> buf {box_system.arena};
-                                    fmt::Append(buf, "{} by {}.", lib_id.name, lib_id.author);
+                                    fmt::Append(buf, "{} by {}.", lib->name, lib->author);
                                     if (lib) {
                                         if (lib->description) fmt::Append(buf, "\n\n{}", lib->description);
                                     } else {
@@ -1366,15 +1389,14 @@ static void DoBrowserLibraryFilters(GuiBoxSystem& box_system,
                                 .filter_mode = context.state.filter_mode,
                             },
                         .icon = ({
-                            graphics::ImageID const* tex =
-                                library_filters.unknown_library_icon.NullableValue();
+                            graphics::ImageID const* tex = nullptr;
                             if (imgs.icon) tex = imgs.icon.NullableValue();
                             tex;
                         }),
                     });
             }
 
-            if (lib_hash != sample_lib::k_builtin_library_id.Hash())
+            if (lib_hash != Hash(sample_lib::k_builtin_library_id))
                 DoRightClickMenuForBox(
                     box_system,
                     context.state,
@@ -1414,7 +1436,7 @@ static void DoBrowserLibraryAuthorFilters(GuiBoxSystem& box_system,
         BrowserSection section = {
             .state = context.state,
             .num_sections_rendered = &sections,
-            .id = context.browser_id ^ HashComptime("library-authors-section"),
+            .id = context.browser_id ^ HashFnv1a("library-authors-section"),
             .parent = parent,
             .heading = "LIBRARY AUTHORS"_s,
             .multiline_contents = true,
@@ -1465,7 +1487,7 @@ void DoBrowserTagsFilters(GuiBoxSystem& box_system,
     BrowserSection tags_section {
         .state = context.state,
         .num_sections_rendered = &sections,
-        .id = context.browser_id ^ HashComptime("tags-section"),
+        .id = context.browser_id ^ HashFnv1a("tags-section"),
         .parent = parent,
         .heading = "TAGS",
         .multiline_contents = false,
@@ -1477,7 +1499,7 @@ void DoBrowserTagsFilters(GuiBoxSystem& box_system,
 
         BrowserSection inner_section {
             .state = context.state,
-            .id = context.browser_id ^ HashComptime("tags-section") ^ category_hash,
+            .id = context.browser_id ^ HashFnv1a("tags-section") ^ category_hash,
             .parent = {}, // IMPORTANT: set later
             .heading = category_info.name,
             .icon = category_info.font_awesome_icon,
@@ -1517,7 +1539,7 @@ void DoBrowserTagsFilters(GuiBoxSystem& box_system,
     if (non_standard_tags.size) {
         BrowserSection inner_section {
             .state = context.state,
-            .id = context.browser_id ^ HashComptime("tags-section-uncategorised"),
+            .id = context.browser_id ^ HashFnv1a("tags-section-uncategorised"),
             .parent = {}, // IMPORTANT: set later
             .heading = "UNCATEGORISED",
             .multiline_contents = true,

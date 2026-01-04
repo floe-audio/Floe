@@ -101,7 +101,7 @@ static void DoOverlayGradient(Gui* g, Rect r) {
 // reduces chance of floating point errors
 static f32 RoundUpToNearestMultiple(f32 value, f32 multiple) { return multiple * Ceil(value / multiple); }
 
-void MidPanel(Gui* g) {
+void MidPanel(Gui* g, GuiFrameContext const& frame_context) {
     auto& imgui = g->imgui;
     auto& lay = g->layout;
     auto& engine = g->engine;
@@ -207,13 +207,11 @@ void MidPanel(Gui* g) {
                     .library_images = g->library_images,
                     .engine = g->engine,
                     .prefs = g->prefs,
-                    .unknown_library_icon = UnknownLibraryIcon(g),
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,
                     .confirmation_dialog_state = g->confirmation_dialog_state,
+                    .frame_context = frame_context,
                 };
-                context.Init(g->scratch_arena);
-                DEFER { context.Deinit(); };
                 LoadRandomInstrument(context, g->inst_browser_state[layer.index]);
             }
         }
@@ -232,7 +230,7 @@ void MidPanel(Gui* g) {
             layout::RunContext(lay);
 
             layer_gui::Draw(g,
-                            &engine,
+                            frame_context,
                             {.xywh {(f32)i * layer_width_minus_pad,
                                     mid_panel_title_height,
                                     layer_width_minus_pad,
@@ -302,19 +300,18 @@ void MidPanel(Gui* g) {
                     .library_images = g->library_images,
                     .engine = g->engine,
                     .prefs = g->prefs,
-                    .unknown_library_icon = UnknownLibraryIcon(g),
                     .notifications = g->notifications,
                     .persistent_store = g->shared_engine_systems.persistent_store,
                     .confirmation_dialog_state = g->confirmation_dialog_state,
+                    .frame_context = frame_context,
                 };
-                ir_context.Init(g->scratch_arena);
-                DEFER { ir_context.Deinit(); };
                 LoadRandomIr(ir_context, g->ir_browser_state);
             }
         }
 
         DoEffectsWindow(
             g,
+            frame_context,
             {.xywh {0, mid_panel_title_height, imgui.Width(), imgui.Height() - mid_panel_title_height}});
 
         imgui.EndWindow();

@@ -181,7 +181,7 @@ void AutosaveToFileIfNeeded(AutosaveState& state, FloePaths const& paths) {
     }
     if (snapshot) {
         TRY_OR(Autosave(state, *snapshot, paths),
-               ReportError(ErrorLevel::Error, HashComptime("autosave"), "autosave failed: {}", error););
+               ReportError(ErrorLevel::Error, HashFnv1a("autosave"), "autosave failed: {}", error););
         ArenaAllocatorWithInlineStorage<1000> scratch_arena {PageAllocator::Instance()};
         static bool first_call = true;
         if (Exchange(first_call, false)) {
@@ -192,7 +192,7 @@ void AutosaveToFileIfNeeded(AutosaveState& state, FloePaths const& paths) {
                 {
                     if (error != FilesystemError::PathDoesNotExist)
                         ReportError(ErrorLevel::Error,
-                                    HashComptime("autosave cleanup"),
+                                    HashFnv1a("autosave cleanup"),
                                     "cleanup old autosaves failed: {}",
                                     error);
                 });
@@ -200,7 +200,7 @@ void AutosaveToFileIfNeeded(AutosaveState& state, FloePaths const& paths) {
         TRY_OR(CleanupExcessInstanceAutosaves(state, paths, scratch_arena), {
             if (error != FilesystemError::PathDoesNotExist)
                 ReportError(ErrorLevel::Error,
-                            HashComptime("autosave cleanup"),
+                            HashFnv1a("autosave cleanup"),
                             "cleanup excess autosaves failed: {}",
                             error);
         });

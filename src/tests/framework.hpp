@@ -69,6 +69,7 @@ namespace tests {
 // this-repo/test_files/<folder>
 constexpr auto k_preset_test_files_subdir = "presets"_s;
 constexpr auto k_libraries_test_files_subdir = "libraries"_s;
+constexpr auto k_extra_libraries_test_files_subdir = "libraries_extra"_s;
 
 struct Result {
     __attribute__((noinline)) Result(ErrorCode ec)
@@ -237,8 +238,16 @@ void Check(Tester& tester,
            String file = FromNullTerminated(__builtin_FILE()),
            int line = __builtin_LINE());
 
-String TempFolder(Tester& tester); // exists, writable, unique, deleted on exit
-String TempFilename(Tester& tester); // unique path inside TempFolder(), doesn't exist
+// The top-level temp folder for this run. It exists, is writable, is unique, and is cleaned up by runner at
+// program exit.
+String TempFolder(Tester& tester);
+
+// Get a created, writable, private subfolder inside the runner's temp folder. You don't need to delete this,
+// it will cleanup up after the program exits.
+String TempFolderUnique(Tester& tester);
+
+// Get a unique name inside a TempFolderUnique(). It doesn't exist but it's in a folder that does.
+String TempFilename(Tester& tester);
 
 String TestFilesFolder(Tester& tester); // this repo's folder that contains test files
 String HumanCheckableOutputFilesFolder(Tester& tester); // place to put files that need manually checking
@@ -324,6 +333,14 @@ Type& CreateOrFetchFixtureObject(Tester& tester) {
                          fmt::Format(tester.scratch_arena, "ErrorCodeOr has an error: {}", outcome.Error()), \
                          tests::FailureAction::FailAndExitTest);                                             \
         outcome.ReleaseValue();                                                                              \
+    })
+#define REQUIRE_DEREF(ptr)                                                                                   \
+    ({                                                                                                       \
+        auto ptr_require_deref = ptr;                                                                        \
+        if (!ptr_require_deref) {                                                                            \
+            tests::Check(tester, false, #ptr " is null", tests::FailureAction::FailAndExitTest);             \
+        }                                                                                                    \
+        *ptr_require_deref;                                                                                  \
     })
 
 #define CHECK(...)                     tests::Check(tester, !!(__VA_ARGS__), #__VA_ARGS__, tests::FailureAction::FailAndContinue)

@@ -355,7 +355,7 @@ void DoSavePresetPanel(GuiBoxSystem& box_system,
                                 {.text = "Overwrite"_s, .tooltip = "Overwrite the existing preset"_s})) {
                             CommitMetadataToEngine(context.engine, state);
                             SaveCurrentStateToFile(context.engine, *existing_path);
-                            state.open = false;
+                            if (!state.modeless) state.open = false;
                         }
 
                         if (TextButton(
@@ -366,7 +366,7 @@ void DoSavePresetPanel(GuiBoxSystem& box_system,
                             OpenFilePickerSavePreset(context.file_picker_state,
                                                      box_system.imgui.frame_output,
                                                      context.paths);
-                            state.open = false;
+                            if (!state.modeless) state.open = false;
                         }
                     } else if (TextButton(box_system,
                                           button_container,
@@ -375,7 +375,7 @@ void DoSavePresetPanel(GuiBoxSystem& box_system,
                         OpenFilePickerSavePreset(context.file_picker_state,
                                                  box_system.imgui.frame_output,
                                                  context.paths);
-                        state.open = false;
+                        if (!state.modeless) state.open = false;
                     }
                 },
             .data =

@@ -1178,6 +1178,7 @@ struct TableFields<ImpulseResponse> {
 
     enum class Field : u32 {
         Name,
+        Id,
         Path,
         Folder,
         Tags,
@@ -1191,7 +1192,7 @@ struct TableFields<ImpulseResponse> {
             case Field::Name:
                 return {
                     .name = "name",
-                    .description_sentence = "The name of the IR. Must be unique.",
+                    .description_sentence = "The name of the IR.",
                     .example = "Cathedral",
                     .lua_type = LUA_TSTRING,
                     .required = true,
@@ -1202,6 +1203,24 @@ struct TableFields<ImpulseResponse> {
                                 luaL_error(ctx.lua,
                                            "IR name must be less than %d characters long.",
                                            (int)k_max_ir_name_size);
+                        },
+                };
+            case Field::Id:
+                return {
+                    .name = "id",
+                    .description_sentence =
+                        "A unique identifier for the IR. If not specified, it will be the name of the IR. Either way, IR IDs must be unqiue within a library. It can be any text but it's recommended to use a human-readable identifier (similar to the name). IDs are how presets and settings refer to IRs.",
+                    .example = "Cathedral",
+                    .default_value = "same as name",
+                    .lua_type = LUA_TSTRING,
+                    .required = false,
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            FIELD_OBJ.id = StringFromTop(ctx);
+                            if (FIELD_OBJ.id.size > k_max_ir_id_size)
+                                luaL_error(ctx.lua,
+                                           "IR ID must be less than %d characters long.",
+                                           (int)k_max_ir_id_size);
                         },
                 };
             case Field::Path:
@@ -1290,6 +1309,7 @@ struct TableFields<Instrument> {
 
     enum class Field : u32 {
         Name,
+        Id,
         Folder,
         Description,
         Tags,
@@ -1302,7 +1322,7 @@ struct TableFields<Instrument> {
             case Field::Name:
                 return {
                     .name = "name",
-                    .description_sentence = "The name of the instrument. Must be unique.",
+                    .description_sentence = "The name of the instrument.",
                     .example = "Metal Fence Strike",
                     .lua_type = LUA_TSTRING,
                     .required = true,
@@ -1313,6 +1333,24 @@ struct TableFields<Instrument> {
                                 luaL_error(ctx.lua,
                                            "Instrument name must be less than %d characters long.",
                                            (int)k_max_instrument_name_size);
+                        },
+                };
+            case Field::Id:
+                return {
+                    .name = "id",
+                    .description_sentence =
+                        "A unique identifier for the instrument. If not specified, it will be the name of the instrument. Either way, IDs must be unqiue within a library. It can be any text but it's recommended to use a human-readable identifier (similar to the name). IDs are how presets and settings refer to instruments.",
+                    .example = "Metal Fence Strike",
+                    .default_value = "same as name",
+                    .lua_type = LUA_TSTRING,
+                    .required = false,
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            FIELD_OBJ.id = StringFromTop(ctx);
+                            if (FIELD_OBJ.id.size > k_max_instrument_id_size)
+                                luaL_error(ctx.lua,
+                                           "Instrument ID must be less than %d characters long.",
+                                           (int)k_max_instrument_id_size);
                         },
                 };
             case Field::Folder:
@@ -1400,6 +1438,7 @@ struct TableFields<Library> {
         LibraryUrl,
         Description,
         Author,
+        Id,
         AuthorUrl,
         MinorVersion,
         BackgroundImagePath,
@@ -1472,6 +1511,24 @@ struct TableFields<Library> {
                                 luaL_error(ctx.lua,
                                            "Library author must be less than %d characters long.",
                                            (int)k_max_library_author_size);
+                        },
+                };
+            case Field::Id:
+                return {
+                    .name = "id",
+                    .description_sentence =
+                        "A unique identifier for this library. Specifying this field overrides the default ID of \"library-name - author\". It can be any text, its only meaning is to uniquely identify this library from others. However, in rare cases it may be shown on the UI so it should be human-readable and representative of the library. This field is useful if you want to change the name of the library: set this to the previous ID (otherwise the ID will change to \"new-library-name - author\") and bump the minor_version field.",
+                    .example = "Iron Vibrations - Found-sound Labs",
+                    .default_value = "\"library-name\" - \"author\"",
+                    .lua_type = LUA_TSTRING,
+                    .required = false,
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            FIELD_OBJ.id = StringFromTop(ctx);
+                            if (FIELD_OBJ.id.size > k_max_library_id_size)
+                                luaL_error(ctx.lua,
+                                           "Library ID must be less than %d characters long.",
+                                           (int)k_max_library_id_size);
                         },
                 };
             case Field::AuthorUrl:
@@ -1625,9 +1682,14 @@ static int NewInstrument(lua_State* lua) {
     auto& inst = ptr->obj;
     InterpretTable<Instrument>(ctx, 2, inst);
 
-    if (!library->insts_by_name.InsertGrowIfNeeded(ctx.result_arena, inst.name, &inst)) {
-        DynamicArrayBounded<char, k_max_instrument_name_size + 1> name {inst.name};
-        luaL_error(lua, "Instrument names must be unique: %s is found twice", dyn::NullTerminated(name));
+    if (!inst.id.size) inst.id = inst.name;
+
+    if (!library->insts_by_id.InsertGrowIfNeeded(ctx.result_arena, inst.id, &inst)) {
+        DynamicArrayBounded<char, k_max_instrument_id_size + 1> name {inst.id};
+        luaL_error(
+            lua,
+            "Instrument IDs must be unique within a library: %s was found twice. If the 'id' field is not specified, the instrument name is used as the ID. Resolve this by changing/setting the ID, or changing the name.",
+            dyn::NullTerminated(name));
     }
 
     return 1;
@@ -1687,9 +1749,14 @@ static int AddIr(lua_State* lua) {
     auto& ir = ptr->obj;
     InterpretTable<ImpulseResponse>(ctx, 2, ir);
 
-    if (!library->irs_by_name.InsertGrowIfNeeded(ctx.result_arena, ir.name, &ir)) {
-        DynamicArrayBounded<char, k_max_ir_name_size + 1> name {ir.name};
-        luaL_error(lua, "IR names must be unique: %s is found twice", dyn::NullTerminated(name));
+    if (!ir.id.size) ir.id = ir.name;
+
+    if (!library->irs_by_id.InsertGrowIfNeeded(ctx.result_arena, ir.id, &ir)) {
+        DynamicArrayBounded<char, k_max_ir_id_size + 1> name {ir.id};
+        luaL_error(
+            lua,
+            "IR IDs must be unique: %s is found twice. If the 'id' field is not specified, the IR name is used as the ID. Resolve this by changing/setting the ID, or changing the name.",
+            dyn::NullTerminated(name));
     }
 
     return 0;
@@ -2072,7 +2139,7 @@ LibraryPtrOrError ReadLua(Reader& reader,
             });
         }
 
-        for (auto const [key, inst_ptr, _] : library->insts_by_name) {
+        for (auto const [key, inst_ptr, _] : library->insts_by_id) {
             auto const& inst = *inst_ptr;
             struct RegionRef {
                 Region* data;
@@ -2116,7 +2183,7 @@ LibraryPtrOrError ReadLua(Reader& reader,
             };
         }
 
-        for (auto [key, inst_ptr, _] : library->insts_by_name) {
+        for (auto [key, inst_ptr, _] : library->insts_by_id) {
             auto const& inst = *inst_ptr;
             if (inst.regions.size == 0) {
                 return ErrorAndNotify(ctx, LuaErrorCode::Runtime, [&](DynamicArray<char>& message) {
@@ -2126,14 +2193,14 @@ LibraryPtrOrError ReadLua(Reader& reader,
         }
 
         library->num_regions = 0;
-        for (auto [key, inst_ptr, _] : library->insts_by_name) {
+        for (auto [key, inst_ptr, _] : library->insts_by_id) {
             auto const& inst = *inst_ptr;
             library->num_regions += inst.regions.size;
         }
 
         {
             auto audio_paths = Set<String>::Create(scratch_arena, library->num_regions);
-            for (auto [key, inst_ptr, _] : library->insts_by_name) {
+            for (auto [key, inst_ptr, _] : library->insts_by_id) {
                 auto const& inst = *inst_ptr;
                 for (auto& region : inst.regions)
                     audio_paths.InsertWithoutGrowing(region.path.str);
@@ -2803,13 +2870,13 @@ bool CheckAllReferencedFilesExist(Library const& lib, Writer error_writer) {
     if (lib.background_image_path) check_file(*lib.background_image_path);
     if (lib.icon_image_path) check_file(*lib.icon_image_path);
 
-    for (auto [key, inst_ptr, _] : lib.insts_by_name) {
+    for (auto [key, inst_ptr, _] : lib.insts_by_id) {
         auto inst = *inst_ptr;
         for (auto& region : inst.regions)
             check_file(region.path);
     }
 
-    for (auto [key, ir_ptr, _] : lib.irs_by_name) {
+    for (auto [key, ir_ptr, _] : lib.irs_by_id) {
         auto ir = *ir_ptr;
         check_file(ir.path);
     }
@@ -2967,8 +3034,8 @@ TEST_CASE(TestAutoMapKeyRange) {
         REQUIRE(!r.Is<Error>());
 
         auto library = r.Get<Library*>();
-        REQUIRE(library->insts_by_name.size);
-        auto const& inst = *(*library->insts_by_name.begin()).value;
+        REQUIRE(library->insts_by_id.size);
+        auto const& inst = *(*library->insts_by_id.begin()).value;
         REQUIRE(inst.regions.size == 2);
 
         CHECK_EQ(inst.regions[0].root_key, 10);
@@ -2986,8 +3053,8 @@ TEST_CASE(TestAutoMapKeyRange) {
         REQUIRE(!r.Is<Error>());
 
         auto library = r.Get<Library*>();
-        REQUIRE(library->insts_by_name.size);
-        auto const& inst = *(*library->insts_by_name.begin()).value;
+        REQUIRE(library->insts_by_id.size);
+        auto const& inst = *(*library->insts_by_id.begin()).value;
         REQUIRE(inst.regions.size == 1);
 
         CHECK_EQ(inst.regions[0].trigger.key_range.start, 0);
@@ -3057,10 +3124,10 @@ TEST_CASE(TestBasicFile) {
     CHECK_EQ(lib.author, "Sam"_s);
     CHECK_EQ(lib.minor_version, 1u);
 
-    REQUIRE(lib.insts_by_name.size);
+    REQUIRE(lib.insts_by_id.size);
 
     {
-        auto inst2_ptr = lib.insts_by_name.Find("Inst2");
+        auto inst2_ptr = lib.insts_by_id.Find("Inst2");
         REQUIRE(inst2_ptr);
         auto inst2 = *inst2_ptr;
         CHECK_EQ(inst2->name, "Inst2"_s);
@@ -3070,7 +3137,7 @@ TEST_CASE(TestBasicFile) {
     }
 
     {
-        auto inst1_ptr = lib.insts_by_name.Find("Inst1");
+        auto inst1_ptr = lib.insts_by_id.Find("Inst1");
         REQUIRE(inst1_ptr);
         auto inst1 = *inst1_ptr;
         CHECK_EQ(inst1->name, "Inst1"_s);
@@ -3097,7 +3164,7 @@ TEST_CASE(TestBasicFile) {
     }
 
     {
-        auto ir = lib.irs_by_name.Find("IR1");
+        auto ir = lib.irs_by_id.Find("IR1");
         REQUIRE(ir);
         CHECK_EQ((*ir)->name, "IR1"_s);
         CHECK_EQ((*ir)->path, "bar/bar.flac"_s);

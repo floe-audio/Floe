@@ -13,6 +13,8 @@
 
 #include "foundation/foundation.hpp"
 
+#include "common_infrastructure/error_reporting.hpp"
+
 #include "aspect_ratio.hpp"
 #include "engine/engine.hpp"
 #include "gui/gui.hpp"

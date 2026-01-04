@@ -5,16 +5,54 @@
 
 #include "tests/framework.hpp"
 
-ErrorCodeOr<void>
-CustomValueToString(Writer writer, sample_lib::LibraryIdRef id, fmt::FormatOptions options) {
-    auto const sep = " - "_s;
-    TRY(PadToRequiredWidthIfNeeded(writer, options, id.author.size + sep.size + id.name.size));
-    TRY(writer.WriteChars(id.author));
-    TRY(writer.WriteChars(sep));
-    return writer.WriteChars(id.name);
+namespace sample_lib {
+
+usize IdFromAuthorAndName(String author, String name, MutableString out) {
+    ASSERT(author.size <= k_max_library_author_size);
+    ASSERT(name.size <= k_max_library_name_size);
+    ASSERT(out.size >= author.size + name.size + k_default_library_id_separator.size);
+    usize pos = 0;
+    WriteAndIncrement(pos, out, name);
+    WriteAndIncrement(pos, out, " - "_s);
+    WriteAndIncrement(pos, out, author);
+    return pos;
 }
 
-namespace sample_lib {
+LibraryId IdFromAuthorAndNameInline(String author, String name) {
+    LibraryId id {};
+    id.size = IdFromAuthorAndName(author, name, {id.data, id.Capacity()});
+    return id;
+}
+
+LibraryIdRef IdFromAuthorAndNameAlloc(String author, String name, Allocator& allocator) {
+    auto const result = allocator.AllocateExactSizeUninitialised<char>(author.size + name.size +
+                                                                       k_default_library_id_separator.size);
+    IdFromAuthorAndName(author, name, result);
+    return result;
+}
+
+constexpr auto k_mirage_library_id_suffix = " - FrozenPlain - OG"_s;
+
+usize IdForMdataLibrary(String name, MutableString out) {
+    ASSERT(name.size + k_mirage_library_id_suffix.size <= k_max_library_id_size);
+    usize pos = 0;
+    WriteAndIncrement(pos, out, name);
+    WriteAndIncrement(pos, out, k_mirage_library_id_suffix);
+    return pos;
+}
+
+LibraryId IdForMdataLibraryInline(String name) {
+    LibraryId id {};
+    id.size = IdForMdataLibrary(name, {id.data, id.Capacity()});
+    return id;
+}
+
+LibraryIdRef IdForMdataLibraryAlloc(String name, Allocator& arena) {
+    auto const result =
+        arena.AllocateExactSizeUninitialised<char>(name.size + k_mirage_library_id_suffix.size);
+    IdForMdataLibrary(name, result);
+    return result;
+}
 
 ErrorCodeOr<u64> Hash(String path, Reader& reader, FileFormat format) {
     switch (format) {
@@ -24,6 +62,25 @@ ErrorCodeOr<u64> Hash(String path, Reader& reader, FileFormat format) {
     PanicIfReached();
     return {};
 }
+
+u64 LegacyPersistentInstHash(Instrument const& inst) {
+    return HashMultipleFnv1a(Array {inst.name,
+                                    inst.library.file_format_specifics.tag == FileFormat::Mdata
+                                        ? k_old_mirage_author
+                                        : inst.library.author,
+                                    inst.library.name});
+}
+
+u64 LegacyPersistentIrHash(ImpulseResponse const& ir) {
+    return HashMultipleFnv1a(Array {
+        ir.name,
+        ir.library.file_format_specifics.tag == FileFormat::Mdata ? k_old_mirage_author : ir.library.author,
+        ir.library.name});
+}
+
+u64 PersistentInstHash(Instrument const& inst) { return HashMultipleFnv1a(Array {inst.library.id, inst.id}); }
+
+u64 PersistentIrHash(ImpulseResponse const& ir) { return HashMultipleFnv1a(Array {ir.library.id, ir.id}); }
 
 bool FilenameIsFloeLuaFile(String filename) {
     return IsEqualToCaseInsensitiveAscii(filename, "floe.lua") ||
@@ -92,6 +149,7 @@ static void AddItemFromFolder(FolderNode const* node, auto output_items, usize& 
 static auto BuildSorted(Allocator& arena, auto hash_table, FolderNode const* root_folder) {
     using ValueType = typename decltype(hash_table)::ValueType;
     auto result = arena.AllocateExactSizeUninitialised<ValueType>(hash_table.size);
+    if (result.size) ASSERT(result.data);
     usize index = 0;
 
     AddItemFromFolder(root_folder, result, index, hash_table);
@@ -102,15 +160,17 @@ static auto BuildSorted(Allocator& arena, auto hash_table, FolderNode const* roo
 }
 
 VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAllocator& scratch_arena) {
-    if (lib.insts_by_name.size)
-        FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Instrument)], lib.insts_by_name);
-    if (lib.irs_by_name.size) FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Ir)], lib.irs_by_name);
+    if (lib.insts_by_id.size)
+        FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Instrument)], lib.insts_by_id);
+    if (lib.irs_by_id.size) FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Ir)], lib.irs_by_id);
+
+    if (!lib.id.size) lib.id = IdFromAuthorAndNameAlloc(lib.author, lib.name, arena);
 
     lib.sorted_instruments =
-        BuildSorted(arena, lib.insts_by_name, &lib.root_folders[ToInt(ResourceType::Instrument)]);
-    lib.sorted_irs = BuildSorted(arena, lib.irs_by_name, &lib.root_folders[ToInt(ResourceType::Ir)]);
+        BuildSorted(arena, lib.insts_by_id, &lib.root_folders[ToInt(ResourceType::Instrument)]);
+    lib.sorted_irs = BuildSorted(arena, lib.irs_by_id, &lib.root_folders[ToInt(ResourceType::Ir)]);
 
-    for (auto [key, value, _] : lib.insts_by_name) {
+    for (auto [key, value, _] : lib.insts_by_id) {
         auto& inst = *value;
 
         inst.loop_overview.all_regions_require_looping = true;
@@ -170,7 +230,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
         }
     }
 
-    for (auto [key, inst_ptr, _] : lib.insts_by_name) {
+    for (auto [key, inst_ptr, _] : lib.insts_by_id) {
         auto& inst = *inst_ptr;
         struct RoundRobinGroupInfo {
             u8 max_rr_pos;
@@ -203,7 +263,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
                     return (String)fmt::Format(arena,
                                                "More than {} round robin groups in instrument {}",
                                                k_max_round_robin_sequence_groups,
-                                               inst.name);
+                                               inst.id);
                 }
 
                 auto& new_group = e.element.data;
@@ -228,7 +288,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
         }
     }
 
-    for (auto [key, inst_ptr, _] : lib.insts_by_name) {
+    for (auto [key, inst_ptr, _] : lib.insts_by_id) {
         auto const& inst = *inst_ptr;
         for (auto const& region : inst.regions) {
             if (!region.trigger.feather_overlapping_velocity_layers) continue;
@@ -277,7 +337,7 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
             }
         }
     }
-    for (auto [key, inst_ptr, _] : lib.insts_by_name) {
+    for (auto [key, inst_ptr, _] : lib.insts_by_id) {
         auto const& inst = *inst_ptr;
         for (auto const& region : inst.regions) {
             if (!region.timbre_layering.layer_range) continue;

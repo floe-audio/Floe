@@ -17,6 +17,7 @@
 #include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "clap/ext/timer-support.h"
+#include "engine/favourite_items.hpp"
 #include "plugin/plugin.hpp"
 #include "processor/layer_processor.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
@@ -66,7 +67,7 @@ static void UpdateAttributionText(Engine& engine, ArenaAllocator& scratch_arena)
                 sample_lib_server::FindLibraryRetained(engine.shared_engine_systems.sample_library_server,
                                                        ir_id->library);
             if (ir_lib) {
-                if (auto const found_ir = ir_lib->irs_by_name.Find(ir_id->ir_name)) ir = *found_ir;
+                if (auto const found_ir = ir_lib->irs_by_id.Find(ir_id->ir_id)) ir = *found_ir;
             }
         }
     }
@@ -351,6 +352,22 @@ bool StateChangedSinceLastSnapshot(Engine& engine) {
     return changed;
 }
 
+String IrName(Engine const& engine) {
+    ASSERT(g_is_logical_main_thread);
+    if (!engine.processor.convo.ir_id) return "None"_s;
+
+    auto const& id = *engine.processor.convo.ir_id;
+    auto lib = sample_lib_server::FindLibraryRetained(engine.shared_engine_systems.sample_library_server,
+                                                      id.library);
+    DEFER { lib.Release(); };
+    if (!lib) return id.ir_id;
+
+    auto const ir = lib->irs_by_id.Find(id.ir_id);
+    if (!ir) return id.ir_id;
+
+    return (*ir)->name;
+}
+
 // one-off load
 void LoadConvolutionIr(Engine& engine, Optional<sample_lib::IrId> ir_id) {
     ASSERT(g_is_logical_main_thread);
@@ -454,6 +471,16 @@ static void OnMainThread(Engine& engine) {
     if (AttributionTextNeedsUpdate(engine.attribution_requirements))
         UpdateAttributionText(engine, scratch_arena);
 
+    if (HasLegacyFavourites(engine.shared_engine_systems.prefs)) {
+        auto& server = engine.shared_engine_systems.sample_library_server;
+        sample_lib_server::RequestScanningOfUnscannedFolders(server);
+        if (!sample_lib_server::AreLibrariesLoading(server))
+            MigrateLegacyFavourites(engine.shared_engine_systems.prefs, server);
+        else
+            // Let's try again in a bit.
+            engine.request_main_thread_callback_at.Store(TimePoint::Now() + 2.0, StoreMemoryOrder::Release);
+    }
+
     if (engine.update_gui.Exchange(false, RmwMemoryOrder::Relaxed))
         engine.plugin_instance_messages.UpdateGui();
 
@@ -528,6 +555,22 @@ static void PluginOnPollThread(Engine& engine) {
         if (engine.last_poll_thread_time.SecondsFromNow() >= 0.5) {
             engine.last_poll_thread_time = TimePoint::Now();
             engine.host.request_callback(&engine.host);
+        }
+    }
+
+    {
+        auto const now = TimePoint::Now();
+        auto t = engine.request_main_thread_callback_at.Load(LoadMemoryOrder::Acquire);
+        while (true) {
+            if (t.Raw() == 0) break;
+            if (now < t) break;
+            if (engine.request_main_thread_callback_at.CompareExchangeWeak(t,
+                                                                           TimePoint {},
+                                                                           RmwMemoryOrder::AcquireRelease,
+                                                                           LoadMemoryOrder::Acquire)) {
+                engine.host.request_callback(&engine.host);
+                break;
+            }
         }
     }
 

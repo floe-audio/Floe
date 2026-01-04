@@ -161,18 +161,14 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
 }
 
 struct PreferencesPanelContext {
-    void Init(PresetServer& preset_server, ArenaAllocator& arena) {
-        presets_snapshot = BeginReadFolders(preset_server, arena);
-    }
-    static void Deinit(PresetServer& preset_server) { EndReadFolders(preset_server); }
-
     prefs::Preferences& prefs;
     FloePaths const& paths;
     sample_lib_server::Server& sample_lib_server;
     package::InstallJobs& package_install_jobs;
     ThreadPool& thread_pool;
     FilePickerState& file_picker_state;
-    PresetsSnapshot presets_snapshot {};
+    PresetServer& presets_server;
+    Optional<BeginReadFoldersResult> presets {};
 };
 
 static void SetFolderSubtext(DynamicArrayBounded<char, 200>& out,
@@ -263,7 +259,7 @@ static void FolderPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCon
                              true,
                              (ScanFolderType)scan_folder_type,
                              context.sample_lib_server,
-                             context.presets_snapshot);
+                             context.presets->snapshot);
             if (auto const o = PreferencesFolderSelector(box_system, rhs_column, dir, subtext_buffer, false);
                 o.open_pressed)
                 OpenFolderInFileBrowser(dir);
@@ -276,7 +272,7 @@ static void FolderPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCon
                              false,
                              (ScanFolderType)scan_folder_type,
                              context.sample_lib_server,
-                             context.presets_snapshot);
+                             context.presets->snapshot);
             if (auto const o = PreferencesFolderSelector(box_system, rhs_column, dir, subtext_buffer, true);
                 o.open_pressed || o.delete_pressed) {
                 if (o.open_pressed) OpenFolderInFileBrowser(dir);
@@ -343,7 +339,7 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
                          true,
                          scan_folder_type,
                          context.sample_lib_server,
-                         context.presets_snapshot);
+                         context.presets->snapshot);
         if (MenuItem(box_system,
                      root,
                      {
@@ -364,7 +360,7 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
                          false,
                          scan_folder_type,
                          context.sample_lib_server,
-                         context.presets_snapshot);
+                         context.presets->snapshot);
         if (MenuItem(box_system,
                      root,
                      {
@@ -682,6 +678,15 @@ PUBLIC void
 DoPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context, PreferencesPanelState& state) {
     ASSERT(box_system.imgui.Width() > 0);
     if (state.open) {
+        bool init = false;
+        if (!context.presets) {
+            context.presets = BeginReadFolders(context.presets_server, box_system.arena);
+            init = true;
+        }
+        DEFER {
+            if (init) EndReadFolders(context.presets_server, context.presets->handle);
+        };
+
         RunPanel(box_system,
                  Panel {
                      .run = [&context, &state](GuiBoxSystem& b) { PreferencesPanel(b, context, state); },

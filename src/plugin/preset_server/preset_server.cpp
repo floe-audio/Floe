@@ -5,6 +5,7 @@
 
 #include <xxhash.h>
 
+#include "tests/framework.hpp"
 #include "utils/logger/logger.hpp"
 
 #include "common_infrastructure/state/state_coding.hpp"
@@ -57,7 +58,7 @@ Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& nod
     return k_nullopt;
 }
 
-PresetBank const* PresetBankForNode(FolderNode const& node) {
+PresetBank const* PresetBankAtNode(FolderNode const& node) {
     PresetBank const* metadata {};
     auto const listing = node.user_data.As<PresetFolderListing const>();
     if (listing->folder && listing->folder->preset_bank_info)
@@ -69,8 +70,21 @@ PresetBank const* PresetBankForNode(FolderNode const& node) {
 
 PresetBank const* ContainingPresetBank(FolderNode const* node) {
     for (auto f = node; f; f = f->parent)
-        if (auto const info = PresetBankForNode(*f); info) return info;
+        if (auto const info = PresetBankAtNode(*f); info) return info;
     return nullptr;
+}
+
+Optional<String> FolderPath(FolderNode const* folder, ArenaAllocator& arena) {
+    if (!folder) return k_nullopt;
+
+    DynamicArrayBounded<String, 20> parts;
+    for (auto f = folder; f; f = f->parent) {
+        auto const appended = dyn::Append(parts, f->name);
+        ASSERT(appended);
+    }
+    Reverse(parts);
+
+    return path::Join(arena, parts);
 }
 
 bool IsInsideFolder(PresetFolderListing const* node, usize folder_node_hash) {
@@ -85,6 +99,19 @@ bool IsInsideFolder(PresetFolderListing const* node, usize folder_node_hash) {
     // The node and the possible parent must be in the same preset bank.
     if (ContainingPresetBank(&node->node) != ContainingPresetBank(possible_parent)) return false;
     return true;
+}
+
+bool HasNestedBank(FolderNode const& folder) {
+    bool has_child_bank = false;
+    auto root_pack = PresetBankAtNode(folder);
+    ForEachNode(const_cast<FolderNode*>(&folder), [&](FolderNode const* node) {
+        if (has_child_bank) return;
+        if (node == &folder) return;
+        auto bank = PresetBankAtNode(*node);
+        if (!bank) return;
+        if (root_pack != bank) has_child_bank = true;
+    });
+    return has_child_bank;
 }
 
 static u64 FolderContentsHash(FolderNode const* node) {
@@ -167,29 +194,48 @@ void StartScanningIfNeeded(PresetServer& server) {
     server.enable_scanning.Store(true, StoreMemoryOrder::Relaxed);
 }
 
+static u64 OldestVersion(Span<u64> versions) {
+    auto oldest = versions[0];
+    for (auto const v : versions)
+        oldest = Min(oldest, v);
+    return oldest;
+}
+
 // Reader thread
-PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
+static void BeginReaderUsingVersion(MutexProtected<DynamicArray<u64>>& active_versions,
+                                    Atomic<u64>& oldest_version_in_use,
+                                    u64 version) {
+    active_versions.Use([&](auto& array) {
+        dyn::Append(array, version);
+        oldest_version_in_use.Store(OldestVersion(array), StoreMemoryOrder::Release);
+    });
+}
+
+// Reader thread
+static void EndReaderUsingVersion(MutexProtected<DynamicArray<u64>>& active_versions,
+                                  Atomic<u64>& oldest_version_in_use,
+                                  u64 version) {
+    active_versions.Use([&](auto& array) {
+        dyn::RemoveValueSwapLast(array, version);
+        if (array.size == 0)
+            oldest_version_in_use.Store(PresetServer::k_no_version, StoreMemoryOrder::Release);
+        else
+            oldest_version_in_use.Store(OldestVersion(array), StoreMemoryOrder::Release);
+    });
+}
+
+// Reader thread
+BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
     // Trigger the server to start the scanning process if its not already doing so.
     StartScanningIfNeeded(server);
 
     // We tell the server that we're reading the current version so that it knows not to delete any folders
     // that we might be using.
-    {
-        auto const current_version = server.published_version.Load(LoadMemoryOrder::Acquire);
-
-        auto expected = PresetServer::k_no_version;
-        if (!server.version_in_use.CompareExchangeStrong(expected,
-                                                         current_version,
-                                                         RmwMemoryOrder::AcquireRelease,
-                                                         LoadMemoryOrder::Relaxed)) {
-            PanicF(
-                SourceLocation::Current(),
-                "we only allow one reader, and it must not re-enter this function while it's already reading");
-        }
-    }
+    auto const current_version = server.published_version.Load(LoadMemoryOrder::Acquire);
+    BeginReaderUsingVersion(server.active_reader_versions, server.oldest_version_in_use, current_version);
 
     // We take a snapshot of the folders list so that the server can continue to modify it while we're
-    // reading and we don't have to do locking or reference counting.
+    // reading and we don't have to do locking or reference counting. We only copy pointers.
     server.mutex.Lock();
     DEFER { server.mutex.Unlock(); };
 
@@ -205,23 +251,28 @@ PresetsSnapshot BeginReadFolders(PresetServer& server, ArenaAllocator& arena) {
         preset_folders[i] = node_listing;
     }
 
-    auto preset_banks =
-        arena.AllocateExactSizeUninitialised<FolderNode const*>(server.folder_node_preset_bank_indices.size);
+    auto preset_banks = arena.AllocateExactSizeUninitialised<PresetFolderListing const*>(
+        server.folder_node_preset_bank_indices.size);
     for (auto const i : Range(server.folder_node_preset_bank_indices.size))
-        preset_banks[i] = &folders_nodes[server.folder_node_preset_bank_indices[i]];
+        preset_banks[i] =
+            folders_nodes[server.folder_node_preset_bank_indices[i]].user_data.As<PresetFolderListing>();
 
     return {
-        .folders = preset_folders,
-        .preset_banks = preset_banks,
-        .used_tags = {server.used_tags.table.Clone(arena, CloneType::Deep)},
-        .used_libraries = {server.used_libraries.table.Clone(arena, CloneType::Deep)},
-        .authors = {server.authors.table.Clone(arena, CloneType::Deep)},
-        .has_preset_type = server.has_preset_type,
+        .snapshot =
+            {
+                .folders = preset_folders,
+                .banks = preset_banks,
+                .used_tags = {server.used_tags.table.Clone(arena, CloneType::Deep)},
+                .used_libraries = {server.used_libraries.table.Clone(arena, CloneType::Deep)},
+                .authors = {server.authors.table.Clone(arena, CloneType::Deep)},
+                .has_preset_type = server.has_preset_type,
+            },
+        .handle = (PresetServerReadHandle)current_version,
     };
 }
 
-void EndReadFolders(PresetServer& server) {
-    server.version_in_use.Store(PresetServer::k_no_version, StoreMemoryOrder::Release);
+void EndReadFolders(PresetServer& server, PresetServerReadHandle handle) {
+    EndReaderUsingVersion(server.active_reader_versions, server.oldest_version_in_use, (u64)handle);
 }
 
 static bool FolderIsSafeForDeletion(PresetFolder const& folder, u64 current_version, u64 in_use_version) {
@@ -246,7 +297,7 @@ static void DeleteUnusedFolders(PresetServer& server) {
     ASSERT(CurrentThreadId() == server.server_thread_id);
 
     auto const current_version = server.published_version.Load(LoadMemoryOrder::Relaxed);
-    auto const in_use_version = server.version_in_use.Load(LoadMemoryOrder::Acquire);
+    auto const in_use_version = server.oldest_version_in_use.Load(LoadMemoryOrder::Acquire);
 
     server.folder_pool.RemoveIf([&](PresetFolder const& folder) {
         if (FolderIsSafeForDeletion(folder, current_version, in_use_version)) {
@@ -288,28 +339,18 @@ static void AddPresetToFolder(PresetFolder& folder,
                                                                      folder.arena);
 
     auto used_libraries = OrderedSet<sample_lib::LibraryIdRef>::Create(folder.arena, k_num_layers + 1);
-    auto used_library_authors = Set<String>::Create(folder.arena, k_num_layers + 1);
 
     for (auto const& inst_id : state.inst_ids) {
         if (auto const& sampled_inst = inst_id.TryGet<sample_lib::InstrumentId>()) {
             auto const lib_id =
                 FindOrCloneLibraryIdRef(folder, (sample_lib::LibraryIdRef)sampled_inst->library);
             used_libraries.InsertWithoutGrowing(lib_id);
-
-            auto found_author =
-                folder.used_library_authors.FindOrInsertGrowIfNeeded(folder.arena, lib_id.author);
-            used_library_authors.InsertWithoutGrowing(found_author.element.key, found_author.element.hash);
         }
     }
 
     if (state.ir_id) {
         auto const lib_id = FindOrCloneLibraryIdRef(folder, (sample_lib::LibraryIdRef)state.ir_id->library);
-        if (lib_id != sample_lib::k_builtin_library_id) {
-            used_libraries.InsertWithoutGrowing(lib_id);
-            auto found_author =
-                folder.used_library_authors.FindOrInsertGrowIfNeeded(folder.arena, lib_id.author);
-            used_library_authors.InsertWithoutGrowing(found_author.element.key, found_author.element.hash);
-        }
+        if (lib_id != sample_lib::k_builtin_library_id) used_libraries.InsertWithoutGrowing(lib_id);
     }
 
     dyn::Append(presets,
@@ -326,7 +367,6 @@ static void AddPresetToFolder(PresetFolder& folder,
                         .description = folder.arena.Clone(state.metadata.description),
                     },
                     .used_libraries = used_libraries,
-                    .used_library_authors = used_library_authors,
                     .file_hash = file_hash,
                     .full_path_hash = HashMultiple(Array {folder.scan_folder, folder.folder, entry.subpath}),
                     .file_extension = file_format == PresetFormat::Mirage
@@ -484,13 +524,13 @@ struct FoldersAggregateInfo {
     }
 
     // Floe didn't use to have preset banks. To smooth the transition for users, we detect all the preset
-    // packs that existed before the Floe update and fill in the metadata for them.
+    // banks that existed before the Floe update and fill in the metadata for them.
     static PresetBank const* KnownPresetBank(FolderNode const* node) {
         auto const hash = FolderContentsHash(node);
         switch (hash) {
             case 17797709789825583399ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.AbstractEnergy.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.AbstractEnergy.1"),
                     .subtitle = "Factory presets for Abstract Energy (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -498,7 +538,7 @@ struct FoldersAggregateInfo {
             }
             case 17678716117694255396ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.Wraith.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.Wraith.1"),
                     .subtitle = "Factory presets for Wraith (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -506,7 +546,7 @@ struct FoldersAggregateInfo {
             }
             case 4522276088530940864ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.ArcticStrings.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.ArcticStrings.1"),
                     .subtitle = "Factory presets for Arctic Strings (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -514,7 +554,7 @@ struct FoldersAggregateInfo {
             }
             case 17067796986821586660ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.CinematicAtmosphereToolkit.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.CinematicAtmosphereToolkit.1"),
                     .subtitle = "Factory presets for Cinematic Atmosphere Toolkit (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -522,7 +562,7 @@ struct FoldersAggregateInfo {
             }
             case 1113295807784802420ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.DeepConjuring.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.DeepConjuring.1"),
                     .subtitle = "Factory presets for Deep Conjuring (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -530,7 +570,7 @@ struct FoldersAggregateInfo {
             }
             case 14194170911065684425ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.FeedbackLoops.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.FeedbackLoops.1"),
                     .subtitle = "Factory presets for Feedback Loops (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -538,7 +578,7 @@ struct FoldersAggregateInfo {
             }
             case 10657727448210940357ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.IsolatedSignals.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.IsolatedSignals.1"),
                     .subtitle = "Factory presets for Isolated Signals (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -546,7 +586,7 @@ struct FoldersAggregateInfo {
             }
             case 5014338070805093321ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.LostReveries.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.LostReveries.1"),
                     .subtitle = "Factory presets for Lost Reveries (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -554,7 +594,7 @@ struct FoldersAggregateInfo {
             }
             case 13346224102117216586ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.MusicBoxSuiteFree.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.MusicBoxSuiteFree.1"),
                     .subtitle = "Factory presets for Music Box Suite Free (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -562,7 +602,7 @@ struct FoldersAggregateInfo {
             }
             case 10450269504034189798ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.MusicBoxSuite.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.MusicBoxSuite.1"),
                     .subtitle = "Factory presets for Music Box Suite (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -570,7 +610,7 @@ struct FoldersAggregateInfo {
             }
             case 12314029761590835424ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.Phoenix.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.Phoenix.1"),
                     .subtitle = "Factory presets for Phoenix (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -578,7 +618,7 @@ struct FoldersAggregateInfo {
             }
             case 1979436314251425427ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.ScenicVibrations.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.ScenicVibrations.1"),
                     .subtitle = "Factory presets for Scenic Vibrations (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -586,7 +626,7 @@ struct FoldersAggregateInfo {
             }
             case 5617954846491642181ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.Slow.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.Slow.1"),
                     .subtitle = "Factory presets for Slow (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -594,7 +634,7 @@ struct FoldersAggregateInfo {
             }
             case 4523343789936516079ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.SqueakyGate.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.SqueakyGate.1"),
                     .subtitle = "Factory presets for Squeaky Gate (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -602,7 +642,7 @@ struct FoldersAggregateInfo {
             }
             case 15901798520857468560ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.Dreamstates.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.Dreamstates.1"),
                     .subtitle = "Factory presets for Dreamstates (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -610,7 +650,7 @@ struct FoldersAggregateInfo {
             }
             case 9622774010603600999ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.Paranormal.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.Paranormal.1"),
                     .subtitle = "Factory presets for Paranormal (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -618,7 +658,7 @@ struct FoldersAggregateInfo {
             }
             case 2299133524087718373ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.ScareTactics.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.ScareTactics.1"),
                     .subtitle = "Factory presets for Scare Tactics (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -626,7 +666,7 @@ struct FoldersAggregateInfo {
             }
             case 3960283021267125531ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.SignalInterference.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.SignalInterference.1"),
                     .subtitle = "Factory presets for Signal Interference (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -634,7 +674,7 @@ struct FoldersAggregateInfo {
             }
             case 2834298600494183622ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.Terracotta.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.Terracotta.1"),
                     .subtitle = "Factory presets for Terracotta (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -642,7 +682,7 @@ struct FoldersAggregateInfo {
             }
             case 7286607532220839066ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.WraithDemo.Mirage"),
+                    .id = HashFnv1a("com.FrozenPlain.WraithDemo.1"),
                     .subtitle = "Factory presets for Wraith Demo (Mirage presets)"_s,
                     .minor_version = 1,
                 };
@@ -650,7 +690,7 @@ struct FoldersAggregateInfo {
             }
             case 3719497291850758672ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.Dulcitone"),
+                    .id = HashFnv1a("com.FrozenPlain.Dulcitone"),
                     .subtitle = "Factory presets for Dulcitone"_s,
                     .minor_version = 1,
                 };
@@ -658,7 +698,7 @@ struct FoldersAggregateInfo {
             }
             case 6899967127661925909ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.MusicBoxSuite"),
+                    .id = HashFnv1a("com.FrozenPlain.MusicBoxSuite"),
                     .subtitle = "Factory presets for Music Box Suite (Floe edition)"_s,
                     .minor_version = 1,
                 };
@@ -666,7 +706,7 @@ struct FoldersAggregateInfo {
             }
             case 9336774792391258852ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.MusicBoxSuiteFree"),
+                    .id = HashFnv1a("com.FrozenPlain.MusicBoxSuiteFree"),
                     .subtitle = "Factory presets for Music Box Suite Free (Floe edition)"_s,
                     .minor_version = 1,
                 };
@@ -674,7 +714,7 @@ struct FoldersAggregateInfo {
             }
             case 11142846282151865892ull: {
                 static constexpr PresetBank k_metadata {
-                    .id = HashComptime("com.FrozenPlain.MusicBoxSuiteFree.Beta"),
+                    .id = HashFnv1a("com.FrozenPlain.MusicBoxSuiteFree.Beta"),
                     .subtitle = "Factory presets for Music Box Suite Free (Floe beta edition)"_s,
                     .minor_version = 1,
                 };
@@ -686,22 +726,37 @@ struct FoldersAggregateInfo {
 
     void Finalise(ArenaAllocator& scratch_arena) {
         for (auto [_, root, _] : scan_folder_nodes) {
-            // Add preset bank info for packs that we know existed before Floe had metadata files.
+            // Add preset bank info for banks that we know existed before Floe had metadata files.
             ForEachNode(root, [&](FolderNode* node) {
                 auto listing = node->user_data.As<PresetFolderListing>();
                 ASSERT(listing);
-                if (auto const metadata = KnownPresetBank(node))
-                    listing->fallback_preset_bank_info = metadata;
+                if (auto const bank = KnownPresetBank(node)) listing->fallback_preset_bank_info = bank;
             });
 
-            DynamicArray<FolderNode*> miscellaneous_packs {scratch_arena};
+            // We want to avoid root nodes from being 'known preset banks' because it has a strange UX and
+            // complicates finding Floe-Details.
+            if (auto root_listing = root->user_data.As<PresetFolderListing>();
+                root_listing && root_listing->fallback_preset_bank_info) {
+                for (auto* child = root->first_child; child; child = child->next) {
+                    auto child_listing = child->user_data.As<PresetFolderListing>();
+                    if (child_listing &&
+                        child_listing->fallback_preset_bank_info == root_listing->fallback_preset_bank_info) {
+                        // We found a child that has the same known bank. Let's prefer this over the root
+                        // node.
+                        root_listing->fallback_preset_bank_info = nullptr;
+                        break;
+                    }
+                }
+            }
 
-            // Add orphaned PresetFolder nodes to new "Miscellaneous" packs.
+            DynamicArray<FolderNode*> miscellaneous_banks {scratch_arena};
+
+            // Add orphaned PresetFolder nodes to new "Miscellaneous" banks.
             ForEachNode(root, [&](FolderNode* node) {
                 if (!node->user_data.As<PresetFolderListing>()->folder) return;
 
                 for (auto n = node; n; n = n->parent)
-                    if (PresetBankForNode(*n)) return;
+                    if (PresetBankAtNode(*n)) return;
 
                 // The node is not part of any bank. We should see if we should create metadata for it
                 // by again walking up the tree, this time looking for the topmost parent that has a
@@ -712,31 +767,32 @@ struct FoldersAggregateInfo {
 
                 // Walk back down the lineage looking for a PresetFolder, we use the topmost one we find.
                 for (usize i = lineage.size; i-- > 0;) {
-                    if (auto listing = lineage[i]->user_data.As<PresetFolderListing>(); listing->folder) {
-                        dyn::AppendIfNotAlreadyThere(miscellaneous_packs, lineage[i]);
+                    if (auto const listing = lineage[i]->user_data.As<PresetFolderListing>();
+                        listing->folder) {
+                        dyn::AppendIfNotAlreadyThere(miscellaneous_banks, lineage[i]);
                         break;
                     }
                 }
             });
 
-            if (miscellaneous_packs.size) {
+            if (miscellaneous_banks.size) {
                 static constexpr PresetBank k_miscellaneous_info {
-                    .id = HashComptime("misc"),
+                    .id = k_misc_bank_id,
                     .subtitle = ""_s,
                 };
-                auto const node = FirstCommonAncestor(miscellaneous_packs, scratch_arena);
+                auto const node = FirstCommonAncestor(miscellaneous_banks, scratch_arena);
                 auto listing = node->user_data.As<PresetFolderListing>();
                 listing->fallback_preset_bank_info = &k_miscellaneous_info;
             }
 
             ForEachNode(root, [&](FolderNode* node) {
-                if (auto m = PresetBankForNode(*node)) {
-                    // Since we consider nesting of folders to be unimportant when identifying legacy packs,
+                if (auto m = PresetBankAtNode(*node)) {
+                    // Since we consider nesting of folders to be unimportant when identifying legacy banks,
                     // we can end up with the subfolder having the same metadata as the parent. We don't want
-                    // to list both as separate packs so we walk up the tree to find the topmost folder with
+                    // to list both as separate banks so we walk up the tree to find the topmost folder with
                     // the same metadata. This was quite common with the old Mirage factory presets which had
                     // folders like LibraryName/Factory.
-                    for (; node->parent && PresetBankForNode(*node->parent) == m; node = node->parent)
+                    for (; node->parent && PresetBankAtNode(*node->parent) == m; node = node->parent)
                         ;
                     auto const index = CheckedCast<usize>(node - folder_node_allocator.folders.data);
                     dyn::AppendIfNotAlreadyThere(folder_node_preset_bank_indices, index);
@@ -836,6 +892,38 @@ static void RemoveFolderAndPublish(PresetServer& server, usize index, ArenaAlloc
     server.published_version.FetchAdd(1, RmwMemoryOrder::AcquireRelease);
 }
 
+static void ReplaceAndPublish(PresetServer& server,
+                              usize existing_index,
+                              PresetFolder* new_preset_folder,
+                              ArenaAllocator& scratch_arena) {
+    ASSERT(CurrentThreadId() == server.server_thread_id);
+
+    auto& old_folder = *server.folders[existing_index];
+    old_folder.delete_after_version = server.published_version.Load(LoadMemoryOrder::Relaxed);
+
+    if constexpr (k_skip_duplicate_presets)
+        for (auto const& preset : old_folder.presets)
+            server.preset_file_hashes.Delete(preset.file_hash);
+
+    FoldersAggregateInfo info {scratch_arena,
+                               ((server.folders.size + 1) * k_max_nested_folders) + server.scan_folders.size};
+    for (auto const folder_index : Range(server.folders.size))
+        if (folder_index == existing_index)
+            info.AddFolder(*new_preset_folder);
+        else
+            info.AddFolder(*server.folders[folder_index]);
+    info.Finalise(scratch_arena);
+
+    server.mutex.Lock();
+    DEFER { server.mutex.Unlock(); };
+
+    server.folders[existing_index] = new_preset_folder;
+
+    info.CopyToServer(server);
+
+    server.published_version.FetchAdd(1, RmwMemoryOrder::AcquireRelease);
+}
+
 static PresetFolder*
 CreatePresetFolder(PresetServer& server, String scan_folder, String subfolder_of_scan_folder) {
     auto preset_folder = server.folder_pool.PrependUninitialised(server.arena);
@@ -894,7 +982,7 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
     for (auto const& entry : entries) {
         if (entry.type != FileType::File) continue;
 
-        if (path::Equal(entry.subpath, k_metadata_filename)) {
+        if (path::Equal(entry.subpath, k_preset_bank_filename)) {
             if (!preset_folder)
                 preset_folder = CreatePresetFolder(server, scan_folder.path, subfolder_of_scan_folder);
             preset_folder->preset_bank_info =
@@ -938,11 +1026,25 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
              [](PresetFolder::Preset const& a, PresetFolder::Preset const& b) { return a.name < b.name; });
 
         // After sorting, we can compute the overall hash.
-        preset_folder->all_presets_hash = HashInit();
+        preset_folder->all_presets_hash = HashInitFnv1a();
         for (auto const& preset : preset_folder->presets)
-            HashUpdate(preset_folder->all_presets_hash, preset.file_hash);
+            HashUpdateFnv1a(preset_folder->all_presets_hash, preset.file_hash);
 
-        AppendFolderAndPublish(server, preset_folder, scratch_arena);
+        // Check if there's an existing folder with the same scan_folder and folder path.
+        Optional<usize> existing_folder_index {};
+        for (auto const i : Range(server.folders.size)) {
+            auto const& existing = *server.folders[i];
+            if (existing.scan_folder == preset_folder->scan_folder &&
+                existing.folder == preset_folder->folder) {
+                existing_folder_index = i;
+                break;
+            }
+        }
+
+        if (existing_folder_index)
+            ReplaceAndPublish(server, *existing_folder_index, preset_folder, scratch_arena);
+        else
+            AppendFolderAndPublish(server, preset_folder, scratch_arena);
     }
 
     for (auto const& entry : entries) {
@@ -1044,6 +1146,20 @@ static void ServerThread(PresetServer& server) {
             server.scan_folders_request_arena.FreeAll();
         }
 
+        // Batch up changes.
+        DynamicArray<PresetServer::ScanFolder*> rescan_folders {scratch_arena};
+
+        // Consume rescan-requests
+        server.rescan_folder_requests.Use([&](auto& buf) {
+            for (auto const rescan_folder :
+                 SplitIterator {.whole = buf, .token = '\0', .skip_consecutive = true}) {
+                for (auto& f : server.scan_folders)
+                    if (path::Equal(f.path, rescan_folder) || path::IsWithinDirectory(rescan_folder, f.path))
+                        dyn::AppendIfNotAlreadyThere(rescan_folders, &f);
+            }
+            dyn::Clear(buf);
+        });
+
         if (watcher) {
             auto const dirs_to_watch = ({
                 DynamicArray<DirectoryToWatch> dirs {scratch_arena};
@@ -1057,9 +1173,6 @@ static void ServerThread(PresetServer& server) {
                 }
                 dirs.ToOwnedSpan();
             });
-
-            // Batch up changes.
-            DynamicArray<PresetServer::ScanFolder*> rescan_folders {scratch_arena};
 
             if (auto const outcome = PollDirectoryChanges(*watcher,
                                                           {
@@ -1102,23 +1215,22 @@ static void ServerThread(PresetServer& server) {
                         if (subpath_changeset.subpath.size == 0) continue;
 
                         // For now, we ignore the granularity of the changes and just rescan the whole
-                        // folder. IMPROVE: handle changes more granularly
+                        // folder. IMPROVE: handle changes more granularly.
                         dyn::AppendIfNotAlreadyThere(rescan_folders, &scan_folder);
                     }
                 }
             }
+        }
 
-            for (auto scan_folder : rescan_folders) {
-                for (usize i = 0; i < server.folders.size;) {
-                    auto& preset_folder = *server.folders[i];
-                    if (preset_folder.scan_folder == scan_folder->path)
-                        RemoveFolderAndPublish(server, i, scratch_arena);
-                    else
-                        ++i;
-                }
+        DynamicArray<PresetFolder*> maybe_remove_folders {scratch_arena};
 
-                scan_folder->scanned = false; // force a rescan
-            }
+        // Mark rescan for any requested.
+        for (auto scan_folder : rescan_folders) {
+            for (auto& f : server.folders)
+                if (f->scan_folder == scan_folder->path)
+                    dyn::AppendIfNotAlreadyThere(maybe_remove_folders, f);
+
+            scan_folder->scanned = false; // Force a rescan.
         }
 
         for (auto& scan_folder : server.scan_folders) {
@@ -1138,18 +1250,88 @@ static void ServerThread(PresetServer& server) {
             }
         }
 
+        // After a rescan, if any folders have not been replaced as part of the rescan we can consider them
+        // non-existent and remove them.
+        for (auto maybe_remove_folder : maybe_remove_folders) {
+            Optional<usize> i {};
+            for (auto [index, active_f] : Enumerate(server.folders)) {
+                if (maybe_remove_folder == active_f) {
+                    i = index;
+                    break;
+                }
+            }
+            if (!i) continue; // It's already been removed/replaced.
+
+            RemoveFolderAndPublish(server, *i, scratch_arena);
+        }
+
+        // At the end of the tick, check if we can set is_scanning to false.
+        bool wake_is_scanning = false;
+        {
+            server.scan_folders_request_mutex.Lock();
+            DEFER { server.scan_folders_request_mutex.Unlock(); };
+
+            server.rescan_folder_requests.mutex.Lock();
+            DEFER { server.rescan_folder_requests.mutex.Unlock(); };
+
+            auto const has_rescan_requests = server.rescan_folder_requests.GetWithoutMutexProtection().size;
+            auto const has_new_scan_folders_request = server.scan_folders_request.HasValue();
+            if (!has_new_scan_folders_request && !has_rescan_requests) {
+                if (server.is_scanning.Exchange(false, RmwMemoryOrder::AcquireRelease))
+                    wake_is_scanning = true;
+            }
+        }
+        if (wake_is_scanning) WakeWaitingThreads(server.is_scanning, NumWaitingThreads::All);
+
         DeleteUnusedFolders(server);
     }
 
-    ASSERT(server.version_in_use.Load(LoadMemoryOrder::Relaxed) == PresetServer::k_no_version);
+    ASSERT(server.oldest_version_in_use.Load(LoadMemoryOrder::Relaxed) == PresetServer::k_no_version);
     server.folder_pool.Clear();
 }
 
-void SetExtraScanFolders(PresetServer& server, Span<String const> folders) {
-    server.scan_folders_request_mutex.Lock();
-    DEFER { server.scan_folders_request_mutex.Unlock(); };
+bool WaitIfFoldersAreScanning(PresetServer& server, Optional<u32> timeout) {
+    ASSERT(server.enable_scanning.Load(LoadMemoryOrder::Acquire));
 
-    server.scan_folders_request = server.scan_folders_request_arena.Clone(folders, CloneType::Deep);
+    Stopwatch stopwatch;
+    while (true) {
+        auto const elapsed = stopwatch.MillisecondsElapsed();
+        if (timeout && *timeout != 0 && elapsed >= *timeout) return false;
+
+        if (server.is_scanning.Load(LoadMemoryOrder::Acquire)) {
+            if (timeout && *timeout == 0) return false;
+            WaitIfValueIsExpected(server.is_scanning,
+                                  true,
+                                  timeout ? CheckedCast<u32>(*timeout - elapsed) : k_nullopt);
+            continue;
+        } else {
+            break;
+        }
+    }
+
+    return true;
+}
+
+bool AreFoldersScanning(PresetServer& server) { return !WaitIfFoldersAreScanning(server, 0u); }
+
+void RescanFolder(PresetServer& server, String folder) {
+    server.rescan_folder_requests.Use([&](auto& buf) {
+        dyn::AppendSpan(buf, folder);
+        dyn::Append(buf, '\0');
+        server.is_scanning.Store(true, StoreMemoryOrder::Release);
+    });
+    server.work_signaller.Signal();
+}
+
+void SetExtraScanFolders(PresetServer& server, Span<String const> folders) {
+    {
+        server.scan_folders_request_mutex.Lock();
+        DEFER { server.scan_folders_request_mutex.Unlock(); };
+
+        server.scan_folders_request = server.scan_folders_request_arena.Clone(folders, CloneType::Deep);
+        server.is_scanning.Store(true, StoreMemoryOrder::Release);
+    }
+    server.work_signaller.Signal();
 }
 
 void InitPresetServer(PresetServer& server, String always_scanned_folder) {
@@ -1159,6 +1341,7 @@ void InitPresetServer(PresetServer& server, String always_scanned_folder) {
                     // We can use the server arena directly because the server thread isn't running yet.
                     .path = {server.arena.Clone(always_scanned_folder)},
                 });
+    server.is_scanning.Store(true, StoreMemoryOrder::Release);
 
     server.thread.Start([&server]() { ServerThread(server); }, "presets");
 }
@@ -1167,4 +1350,50 @@ void ShutdownPresetServer(PresetServer& server) {
     server.end_thread.Store(true, StoreMemoryOrder::Release);
     server.work_signaller.Signal();
     server.thread.Join();
+    if (server.is_scanning.Exchange(false, RmwMemoryOrder::AcquireRelease))
+        WakeWaitingThreads(server.is_scanning, NumWaitingThreads::All);
 }
+
+TEST_CASE(TestPresetServer) {
+    auto const folder =
+        (String)path::Join(tester.scratch_arena,
+                           Array {tests::TestFilesFolder(tester), tests::k_preset_test_files_subdir});
+
+    ThreadsafeErrorNotifications errors;
+    PresetServer server {.error_notifications = errors};
+
+    InitPresetServer(server, folder);
+    DEFER { ShutdownPresetServer(server); };
+
+    SUBCASE("instant shutdown") {}
+
+    SUBCASE("enable and shutdown") { StartScanningIfNeeded(server); }
+
+    SUBCASE("wait") {
+        StartScanningIfNeeded(server);
+        CHECK(WaitIfFoldersAreScanning(server, k_nullopt));
+
+        CHECK(!AreFoldersScanning(server));
+
+        // We should now have some folders.
+        auto const [snapshot, handle] = BeginReadFolders(server, tester.scratch_arena);
+        DEFER { EndReadFolders(server, handle); };
+
+        CHECK_EQ(snapshot.folders.size, 1u);
+        CHECK_EQ(snapshot.banks.size, 1u);
+
+        auto const& bank_listing = REQUIRE_DEREF(snapshot.banks[0]);
+        auto const bank = PresetBankAtNode(bank_listing.node);
+        REQUIRE(bank);
+
+        auto const& f = REQUIRE_DEREF(snapshot.folders[0]);
+        REQUIRE(f.folder);
+        CHECK(ContainingPresetBank(&f.node) == bank);
+
+        CHECK_EQ(FolderPath(&f.node, tester.scratch_arena), folder);
+    }
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterPresetServerTests) { REGISTER_TEST(TestPresetServer); }

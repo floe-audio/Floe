@@ -11,8 +11,8 @@ Additionally, this repository contains Floe's website in the subdirectory `websi
 
 # Commands
 Building is done inside a Nix flake shell. You can use `nix develop .#with-validators` to enter the shell. Or to run a command inside a shell (normally recommended), use `nix develop .#with-validators --command <command>`. All these commands should be prefixed with `nix develop .#with-validators --command` if you're not already in the shell:
-- Compile the project: `zig build -Dtargets=native -Dbuild-mode=development`. Cross-compiling is supported. Alternatives options instead of `native` are: `linux`, `windows`, `mac_arm`, `mac_x86`. You can add `-Dsanitize-thread` to enable Clang's thread sanitizer.
-- Run unit tests: `zig build test -- --filter=*`.
+- Compile the project: `zig build -Dtargets=native -Dbuild-mode=development`. NEVER grep, tail or head the output. Cross-compiling is supported. Alternatives options instead of `native` are: `linux`, `windows`, `mac_arm`, `mac_x86`. You can add `-Dsanitize-thread` to enable Clang's thread sanitizer.
+- Compile and run unit tests: `zig build test -- --filter=*`. `--filter` should match the whole name, or use wildcards. You can use `--filter` multiple times to match multiple cases.
 - Format all code using clang-tidy: `zig build script:format`
 - Check spelling : `zig build script:check-spelling`
   - Be prepared to add exceptions to ignored-spellings.dic since our spell-check is not smart and will often think non-words are words. We use British English.

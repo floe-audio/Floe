@@ -55,7 +55,8 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
         if (header.id_magic != mdata::HeaderIdMasterMagic) return ErrorCode(CommonError::InvalidFileFormat);
         library.name = arena.Clone(header.Name());
         library.minor_version = header.version;
-        library.author = k_mdata_library_author;
+        library.author = "FrozenPlain";
+        library.id = IdForMdataLibraryAlloc(library.name, arena);
     }
 
     {
@@ -228,7 +229,7 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
                         .name = name,
                         .path = {path},
                     };
-                    library.irs_by_name.InsertGrowIfNeeded(arena, name, ir);
+                    library.irs_by_id.InsertGrowIfNeeded(arena, name, ir);
                 }
 
                 for (auto const& f : mdata_info.file_infos)
@@ -246,7 +247,7 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
         }
     }
 
-    library.insts_by_name = decltype(library.insts_by_name)::Create(arena, inst_infos.size);
+    library.insts_by_id = decltype(library.insts_by_id)::Create(arena, inst_infos.size);
 
     PathPool folders_path_pool;
     detail::InitialiseRootFolders(library, arena);
@@ -256,21 +257,26 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
 
         if (mdata::SpecialAudioDataFromInstPath(path) != mdata::SpecialAudioDataTypeNone) continue;
 
-        auto name = path::Filename(path);
-        if (library.insts_by_name.Find(name)) {
-            // The MDATA format didn't require instrument names to be unique, but we now do. Most instrument
-            // names were unique anyways in the available MDATA libraries. However, the few conflicts that
-            // existed must be handled when we read old presets. Therefore, be careful changing this renaming
-            // algorithm, it will effect the conflict-resolution code used when parsing old presets.
-            int num = 2;
-            DynamicArray<char> buf {arena};
-            do {
-                fmt::Assign(buf, "{} {}", name, num++);
-            } while (library.insts_by_name.Find(buf));
-            name = buf.ToOwnedSpan();
-        } else {
-            name = arena.Clone(name);
-        }
+        auto const id = ({
+            auto ident = path::Filename(path);
+            if (library.insts_by_id.Find(ident)) {
+                // The MDATA format didn't require instrument names to be unique, but we need uniqueness for
+                // IDs now. Most instrument names were unique anyways in the available MDATA libraries.
+                // However, the few conflicts that existed must be handled when we read old presets.
+                // Therefore, be careful changing this renaming algorithm, it will effect the
+                // conflict-resolution code used when parsing old presets.
+                int num = 2;
+                DynamicArray<char> buf {arena};
+                do {
+                    fmt::Assign(buf, "{} {}", ident, num++);
+                } while (library.insts_by_id.Find(buf));
+                ident = buf.ToOwnedSpan();
+            } else {
+                ident = arena.Clone(ident);
+            }
+            ASSERT(ident.size <= k_max_instrument_id_size);
+            ident;
+        });
 
         auto folders = path::Directory(path).ValueOr({});
         folders = TrimStartIfMatches(folders, "sampler"_s);
@@ -283,7 +289,8 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
         PLACEMENT_NEW(inst)
         Instrument {
             .library = library,
-            .name = name,
+            .name = id,
+            .id = id,
             .folder =
                 FindOrInsertFolderNode(&library.root_folders[ToInt(sample_lib::ResourceType::Instrument)],
                                        folders,
@@ -443,8 +450,7 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
             }
         }
 
-        ASSERT(name.size <= k_max_instrument_name_size);
-        auto const inserted = library.insts_by_name.InsertWithoutGrowing(name, inst);
+        auto const inserted = library.insts_by_id.InsertWithoutGrowing(id, inst);
         ASSERT(inserted);
     }
 
@@ -483,7 +489,7 @@ ReadMdata(Reader& reader, String filepath, ArenaAllocator& result_arena, ArenaAl
     // In the MDATA format when velocity-feathering was enabled for an instrument, adjacent velocity layers
     // were automatically made to overlap. We recreate that old behaviour here, taking into account that now
     // velocity feathering is a per-region setting.
-    for (auto [key, inst_ptr, _] : library->insts_by_name) {
+    for (auto [key, inst_ptr, _] : library->insts_by_id) {
         auto inst = *inst_ptr;
 
         // With MDATA, the velocity feathering feature was instrument-wide rather then per-region so we can

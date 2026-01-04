@@ -116,6 +116,7 @@ Multisampled
 Musio
 NoiseCollector
 NumberedOverlay
+O9CsI
 OSPanel
 OSTabs
 OSs
@@ -166,9 +167,12 @@ Wordmark
 X11
 YAML
 Zulip
+aVeAIswaTK
 aarch64
+accelerometer
 algorithmically
 alignItems
+allowfullscreen
 analog
 api
 aren
@@ -179,6 +183,7 @@ asc
 async
 autocompletion
 automatable
+autoplay
 autosave
 autosaves
 blockquote
@@ -233,6 +238,7 @@ flexDirection
 floelua
 fm
 foldback
+frameborder
 frozenplain
 fx
 gh
@@ -247,6 +253,7 @@ harddrive
 hpp
 href
 html
+iframe
 img
 impactful
 incrementing
@@ -273,6 +280,7 @@ malloc
 marginBottom
 marginTop
 math
+maxWidth
 md
 mdata
 mdbook
@@ -292,6 +300,7 @@ oneshot
 os
 overdriven
 packageDatabase
+paddingBottom
 param
 pdf
 performant
@@ -302,6 +311,7 @@ polyphonically
 pre
 preprocess
 preprocessor
+referrerpolicy
 reinstallation
 relicense
 repro
