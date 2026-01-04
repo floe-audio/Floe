@@ -1310,7 +1310,7 @@ TEST_CASE(TestFilesystemApi) {
     }
 
     SUBCASE("relocate files") {
-        auto const dir = (String)tests::TempFolderUnique(tester);
+        auto const dir = tests::TempFolderUnique(tester);
         auto const path1 = (String)path::Join(a, Array {dir, "test-path1"});
         auto const path2 = (String)path::Join(a, Array {dir, "test-path2"});
 
