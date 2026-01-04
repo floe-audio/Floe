@@ -494,7 +494,7 @@ enum class StateVersion : u16 {
     AddedMacroAndKeyRangeAndPitchBendParameters,
 
     // Changed to using a single ID string for libraries instead of name+author.
-    ReverseDnsLibraryId,
+    AddLibraryIdInsteadOfNameAndAuthor,
 
     // Changed Monophonic from bool to enum with Off, Retrigger, and Latch modes.
     AddedMonophonicModeParameter,
@@ -1198,7 +1198,7 @@ struct StateCoder {
 };
 
 ErrorCodeOr<void> CodeLibraryId(StateCoder& coder, sample_lib::LibraryId& library_id) {
-    if (coder.IsReading() && coder.version < StateVersion::ReverseDnsLibraryId) {
+    if (coder.IsReading() && coder.version < StateVersion::AddLibraryIdInsteadOfNameAndAuthor) {
         DynamicArrayBounded<char, k_max_library_author_size> library_author;
         DynamicArrayBounded<char, k_max_library_name_size> library_name;
         TRY(coder.CodeDynArray(library_author, StateVersion::Initial));
@@ -1208,7 +1208,7 @@ ErrorCodeOr<void> CodeLibraryId(StateCoder& coder, sample_lib::LibraryId& librar
         else
             library_id = sample_lib::IdFromAuthorAndNameInline(library_author, library_name);
     } else {
-        TRY(coder.CodeDynArray(library_id, StateVersion::ReverseDnsLibraryId));
+        TRY(coder.CodeDynArray(library_id, StateVersion::AddLibraryIdInsteadOfNameAndAuthor));
     }
     return k_success;
 }
