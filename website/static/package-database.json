@@ -165,5 +165,22 @@
         "instruments": 25,
         "presets": 28,
         "irs": 0
+    },
+    {
+        "name": "Slow",
+        "slug": "slow",
+        "developer": "FrozenPlain",
+        "last_updated": "2026-01-05",
+        "developer_icon": "https://www.frozenplain.com/icons/icon-128.png",
+        "developer_website": "https://www.frozenplain.com",
+        "background_image": "https://www.frozenplain.com/_vercel/image?url=https%3A%2F%2Ffrozenplain-public.s3.eu-west-2.amazonaws.com%2Fproducts%2Fslow%2Fnew-thumbnail.png&w=800&q=80",
+        "attribution_required": false,
+        "description": "Crystalline ambient pads and soundscapes. Slumberous serene pads, feedbacking tones, and flittering noise-textures inspired by the sound design of pioneering ambient producers. ",
+        "category": "professional",
+        "direct_download_link": null,
+        "external_product_page": "https://www.frozenplain.com/product/slow",
+        "instruments": 63,
+        "presets": 100,
+        "irs": 0
     }
 ]
