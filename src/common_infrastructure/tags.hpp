@@ -141,6 +141,7 @@ enum class TagType : u16 {
     SoundFx,
     Transition,
 
+    Drone,
     Pulsing,
     Evolving,
     Fluctuating,
@@ -344,11 +345,12 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         case TagType::Dissonant: return {"dissonant"_s, "Contains harmonically clashing pitches"_s};
 
         // Sound types (long duration)
-        case TagType::Pad: return {"pad"_s, "Sustained, pitched background harmonic element"_s};
+        case TagType::Drone: return {"drone"_s, "Sustained, minimal, static foundation with little movement"_s};
+        case TagType::Pad: return {"pad"_s, "Playable harmonic support, pitched and chord-capable"_s};
         case TagType::Texture:
             return {"texture"_s,
                     "Sustained atmospheric element, typically less of a musical pitch than `pad`"_s};
-        case TagType::Soundscape: return {"soundscape"_s, "Complex and rich sonic environment"_s};
+        case TagType::Soundscape: return {"soundscape"_s, "A complete environment or scene, complex sonic space"_s};
         case TagType::Underscore:
             return {"underscore"_s, "Background tones or sequences for underneath dialogue"_s};
         case TagType::Noise: return {"noise"_s, "Non-pitched and constant, similar to white noise"_s};
@@ -715,6 +717,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
         }
         case TagCategory::SoundTypeLong: {
             static constexpr auto k_tags = Array {
+                Drone,
                 Pad,
                 Texture,
                 Soundscape,
