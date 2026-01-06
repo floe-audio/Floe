@@ -135,7 +135,8 @@ bool DoTagsGui(GuiBoxSystem& box_system,
                                                                   : style::Colour::Background1},
                           .background_fill_auto_hot_active_overlay = true,
                           .round_background_corners = 0b1100,
-                          .tooltip = tag_info.description,
+                          .tooltip = tag_info.description.size ? TooltipString(tag_info.description)
+                                                               : TooltipStringType::None,
                           .behaviour = Behaviour::Button,
                       });
 
