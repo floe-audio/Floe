@@ -9,7 +9,7 @@ PUBLIC Box DoModalRootBox(GuiBoxSystem& box_system) {
     return DoBox(box_system,
                  {
                      .layout {
-                         .size = box_system.imgui.PixelsToVw(box_system.imgui.Size()),
+                         .size = layout::k_fill_parent,
                          .contents_direction = layout::Direction::Column,
                          .contents_align = layout::Alignment::Start,
                      },

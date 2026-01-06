@@ -403,6 +403,14 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                                            layout.contents_gap *= builder.imgui.pixels_per_vw;
                                            layout.contents_padding.lrtb *= builder.imgui.pixels_per_vw;
 
+                                           // Root items need a real size.
+                                           if (builder.layout.num_items == 0) {
+                                               if (layout.size.x == layout::k_fill_parent)
+                                                   layout.size.x = builder.imgui.Width();
+                                               if (layout.size.y == layout::k_fill_parent)
+                                                   layout.size.y = builder.imgui.Height();
+                                           }
+
                                            if (config.size_from_text) {
                                                if (wrap_width != k_wrap_to_parent) {
                                                    layout.size = font->CalcTextSizeA(font_size,

@@ -72,7 +72,7 @@ PUBLIC void PackageInstallAlertsPanel(GuiBoxSystem& box_system, package::Install
     auto const root = DoBox(box_system,
                             {
                                 .layout {
-                                    .size = box_system.imgui.PixelsToVw(box_system.imgui.Size()),
+                                    .size = layout::k_fill_parent,
                                     .contents_padding = {.lrtb = style::k_spacing},
                                     .contents_gap = style::k_spacing,
                                     .contents_direction = layout::Direction::Column,
