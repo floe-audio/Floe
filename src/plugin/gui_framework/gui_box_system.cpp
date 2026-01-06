@@ -153,7 +153,7 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
 
             if (modal.close_on_esc) {
                 builder.imgui.frame_output.wants_keyboard_keys.Set(ToInt(KeyCode::Escape));
-                if (builder.imgui.RequestKeyboardFocus(modal.imgui_id))
+                if (!builder.imgui.active_text_input && builder.imgui.RequestKeyboardFocus(modal.imgui_id))
                     if (builder.imgui.frame_input.Key(KeyCode::Escape).presses.size) modal.on_close();
             }
 
