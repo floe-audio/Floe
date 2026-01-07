@@ -5,7 +5,6 @@
 #include <clap/ext/posix-fd-support.h>
 #include <clap/ext/timer-support.h>
 #include <clap/host.h>
-#include <pugl/gl.h> // on windows this includes windows.h
 #include <pugl/pugl.h>
 //
 #include "os/undef_windows_macros.h"
@@ -109,6 +108,12 @@ static ErrorCodeOr<void> Required(PuglStatus status) {
     }
     return k_success;
 }
+
+#if FLOE_USE_DIRECTX_BACKEND
+PuglBackend const* puglD3D9Backend();
+#else
+extern "C" const PuglBackend* puglGlBackend();
+#endif
 
 namespace detail {
 
@@ -282,12 +287,16 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
     puglSetHandle(platform.view, &platform);
     TRY(Required(puglSetEventFunc(platform.view, detail::EventHandler)));
 
-    // IMPROVE: we might want a DirectX backend for Windows
+    // Select graphics backend
+#if FLOE_USE_DIRECTX_BACKEND
+    TRY(Required(puglSetBackend(platform.view, puglD3D9Backend())));
+#else
     TRY(Required(puglSetBackend(platform.view, puglGlBackend())));
     TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_VERSION_MAJOR, 3)));
     TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_VERSION_MINOR, 3)));
     TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_PROFILE, PUGL_OPENGL_COMPATIBILITY_PROFILE)));
     puglSetViewHint(platform.view, PUGL_CONTEXT_DEBUG, RUNTIME_SAFETY_CHECKS_ON);
+#endif
 
     return k_success;
 }
@@ -802,7 +811,15 @@ static void UpdateAndRender(GuiPlatform& platform) {
 
     // We delete our textures if the window size changes because we want to scale up all fonts/images to be
     // more appropriate for the new window size. We could be smarter about this in the future.
-    if (platform.frame_state.window_size != window_size) platform.graphics_ctx->DestroyDeviceObjects();
+    if (platform.frame_state.window_size != window_size) {
+        platform.graphics_ctx->DestroyDeviceObjects();
+        auto const outcome =
+            platform.graphics_ctx->CreateDeviceObjects((void*)puglGetNativeView(platform.view));
+        if (outcome.HasError()) {
+            LogError(ModuleName::Gui, "Failed to recreate graphics context: {}", outcome.Error());
+            return;
+        }
+    }
 
     platform.frame_state.graphics_ctx = platform.graphics_ctx;
     platform.frame_state.native_window = (void*)puglGetNativeView(platform.view);

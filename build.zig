@@ -280,6 +280,7 @@ fn applyUniversalSettings(
     step.addIncludePath(context.dep_flac.path("include"));
     step.addIncludePath(context.dep_lua.path(""));
     step.addIncludePath(context.dep_pugl.path("include"));
+    step.addIncludePath(context.dep_pugl.path("src"));
     step.addIncludePath(context.dep_clap_wrapper.path("include"));
     step.addIncludePath(context.dep_tracy.path("public"));
     step.addIncludePath(context.dep_valgrind_h.path(""));
@@ -682,6 +683,8 @@ fn doTarget(
     var concat_cdb = ConcatCompileCommandsStep.create(b, target, set_as_cdb, config_hash);
     steps.compile_all_step.dependOn(&concat_cdb.step);
 
+    const use_directx_backend = resolved_target.result.os.tag == .windows;
+
     const floe_config_h = b.addConfigHeader(.{
         .style = .blank,
     }, .{
@@ -700,6 +703,7 @@ fn doTarget(
         .FLOE_PROJECT_CACHE_PATH = b.pathJoin(&.{ b.build_root.path.?, constants.floe_cache_relative }),
         .FLOE_VENDOR = constants.floe_vendor,
         .FLOE_CLAP_ID = constants.floe_clap_id,
+        .FLOE_USE_DIRECTX_BACKEND = use_directx_backend,
         .IS_WINDOWS = target.os.tag == .windows,
         .IS_MACOS = target.os.tag == .macos,
         .IS_LINUX = target.os.tag == .linux,
@@ -1410,7 +1414,6 @@ fn doTarget(
                 "gui/gui_widget_helpers.cpp",
                 "gui/gui_window.cpp",
                 "gui_framework/draw_list.cpp",
-                "gui_framework/draw_list_opengl.cpp",
                 "gui_framework/gui_box_system.cpp",
                 "gui_framework/gui_imgui.cpp",
                 "gui_framework/gui_platform.cpp",
@@ -1431,11 +1434,19 @@ fn doTarget(
 
         switch (target.os.tag) {
             .windows => {
+                var windows_files = std.ArrayList([]const u8).init(b.allocator);
+                windows_files.append("gui_framework/gui_platform_windows.cpp") catch @panic("OOM");
+
+                if (use_directx_backend) {
+                    windows_files.append("gui_framework/draw_list_directx.cpp") catch @panic("OOM");
+                    lib.linkSystemLibrary("d3d9");
+                } else {
+                    windows_files.append("gui_framework/draw_list_opengl.cpp") catch @panic("OOM");
+                }
+
                 lib.addCSourceFiles(.{
                     .root = src_root,
-                    .files = &.{
-                        "gui_framework/gui_platform_windows.cpp",
-                    },
+                    .files = windows_files.items,
                     .flags = flags,
                 });
             },
@@ -1444,6 +1455,7 @@ fn doTarget(
                     .root = src_root,
                     .files = &.{
                         "gui_framework/gui_platform_linux.cpp",
+                        "gui_framework/draw_list_opengl.cpp",
                     },
                     .flags = flags,
                 });
@@ -1453,6 +1465,7 @@ fn doTarget(
                     .root = src_root,
                     .files = &.{
                         "gui_framework/gui_platform_mac.mm",
+                        "gui_framework/draw_list_opengl.cpp",
                     },
                     .flags = FlagsBuilder.init(build_context, target, .{
                         .full_diagnostics = true,
