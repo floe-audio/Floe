@@ -52,6 +52,8 @@ UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const&) {
                     // Calculate logical pixels per inch, then multiply by backing scale for physical pixels
                     // per inch
                     dpi = (logical_pixel_size.width / (physical_size_mm.width / 25.4)) * backing_scale;
+
+                    if (dpi < 50.0 || dpi > 500.0) dpi = 0.0; // Force fallback
                 }
             }
         }
