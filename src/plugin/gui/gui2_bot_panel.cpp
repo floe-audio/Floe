@@ -224,8 +224,7 @@ static void DoBotPanel(Gui* g) {
 
             auto& preferences = g->prefs;
             auto const keyboard_octave =
-                Clamp<s64>(prefs::LookupInt(preferences, prefs::key::k_gui_keyboard_octave)
-                               .ValueOr(k_octave_default_offset),
+                Clamp<s64>(prefs::LookupInt(preferences, prefs::key::k_gui_keyboard_octave).ValueOr(0),
                            k_octave_lowest,
                            k_octave_highest);
 
