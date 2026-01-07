@@ -289,6 +289,9 @@ static bool OpenMidi(Standalone& standalone) {
         }
     }
 
+    // No MIDI input devices found (only output devices present)
+    if (!id_to_use) return true;
+
     if (auto result = Pm_OpenInput(&standalone.midi_stream, *id_to_use, nullptr, 200, nullptr, nullptr);
         result != pmNoError) {
         standalone.floe_host_ext.standalone_midi_device_error = true;
