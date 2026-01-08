@@ -110,6 +110,23 @@ UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const& platform) {
     return result;
 }
 
+Optional<UiSize> detail::GetParentWindowSize(GuiPlatform const& platform) {
+    if (!platform.view) return k_nullopt;
+
+    auto const parent = puglGetParent(platform.view);
+    if (!parent) return k_nullopt;
+
+    NSView* parent_view = (__bridge NSView*)(void*)parent;
+    NSRect parent_frame = [parent_view frame];
+    NSWindow* parent_window = [parent_view window];
+    if (!parent_window) return k_nullopt;
+
+    auto const backing_scale = [parent_window backingScaleFactor];
+    auto const width = (CGFloat)Min((CGFloat)k_max_gui_width, parent_frame.size.width * backing_scale);
+    auto const height = (CGFloat)Min((CGFloat)k_max_gui_width, parent_frame.size.height * backing_scale);
+    return UiSize {(u16)width, (u16)height};
+}
+
 #define DIALOG_DELEGATE_CLASS MAKE_UNIQUE_OBJC_NAME(DialogDelegate)
 
 @interface DIALOG_DELEGATE_CLASS : NSObject <NSOpenSavePanelDelegate>

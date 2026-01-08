@@ -54,6 +54,7 @@ struct GuiPlatform {
     ArenaAllocator file_picker_result_arena {Malloc::Instance()};
     Optional<OpaqueHandle<IS_WINDOWS ? 184 : IS_MACOS ? 80 : 16>> native_file_picker {};
     bool windows_keyboard_hook_added {};
+    TimePoint last_parent_size_check {};
 };
 
 // Public API
@@ -141,6 +142,7 @@ void RemoveWindowsKeyboardHook(GuiPlatform& platform);
 
 f64 DoubleClickTimeMs(GuiPlatform const& platform);
 UiSize DefaultUiSizeFromDpi(GuiPlatform const& platform);
+Optional<UiSize> GetParentWindowSize(GuiPlatform const& platform);
 
 enum class SetTimerType : u8 { Start, Stop };
 static void SetTimers(GuiPlatform& platform, SetTimerType type) {
@@ -423,6 +425,34 @@ inline FloeClapExtensionHost const* CustomFloeHost(clap_host const& host) {
 static void LogIfSlow(Stopwatch& stopwatch, String message) {
     auto const elapsed = stopwatch.MillisecondsElapsed();
     if (elapsed > 10) LogWarning(ModuleName::Gui, "{} took {}ms", message, elapsed);
+}
+
+static void EnsureWindowFitsParent(GuiPlatform& platform) {
+    if (!platform.view) return;
+
+    auto const parent_size = GetParentWindowSize(platform);
+    if (!parent_size) return;
+
+    auto const current_size = GetSize(platform);
+    if (current_size.width <= parent_size->width && current_size.height <= parent_size->height) return;
+
+    auto target_width = Min(current_size.width, parent_size->width);
+    auto target_height = Min(current_size.height, parent_size->height);
+
+    if (target_width < k_min_gui_width) target_width = k_min_gui_width;
+
+    auto new_size = SizeWithAspectRatio(target_width, k_gui_aspect_ratio);
+
+    if (new_size.height > target_height) {
+        auto const width_from_height = (u16)(target_height * k_gui_aspect_ratio.width / k_gui_aspect_ratio.height);
+        if (width_from_height >= k_min_gui_width) {
+            new_size = SizeWithAspectRatio(width_from_height, k_gui_aspect_ratio);
+        } else {
+            new_size = SizeWithAspectRatio(k_min_gui_width, k_gui_aspect_ratio);
+        }
+    }
+
+    SetSize(platform, new_size);
 }
 
 static bool IsUpdateNeeded(GuiPlatform& platform) {
@@ -964,7 +994,13 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
             }
 
             case PUGL_TIMER: {
-                if (event->timer.id == platform.k_pugl_timer_id) post_redisplay = IsUpdateNeeded(platform);
+                if (event->timer.id == platform.k_pugl_timer_id) {
+                    if (auto const now = TimePoint::Now(); now - platform.last_parent_size_check >= 1.0) {
+                        platform.last_parent_size_check = now;
+                        EnsureWindowFitsParent(platform);
+                    }
+                    post_redisplay = IsUpdateNeeded(platform);
+                }
                 break;
             }
 

@@ -24,6 +24,24 @@ UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const&) {
     return SizeWithAspectRatio(target_width, k_gui_aspect_ratio);
 }
 
+Optional<UiSize> detail::GetParentWindowSize(GuiPlatform const& platform) {
+    if (!platform.view) return k_nullopt;
+
+    auto const parent = puglGetParent(platform.view);
+    if (!parent) return k_nullopt;
+
+    auto display = (Display*)puglGetNativeWorld(platform.world);
+    if (!display) return k_nullopt;
+
+    Window parent_window = (Window)parent;
+    XWindowAttributes attrs;
+    if (XGetWindowAttributes(display, parent_window, &attrs) == 0) return k_nullopt;
+
+    auto const width = Min(k_max_gui_width, (u32)attrs.width);
+    auto const height = Min(k_max_gui_width, (u32)attrs.height);
+    return UiSize {(u16)width, (u16)height};
+}
+
 ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& args) {
     ASSERT(g_is_logical_main_thread);
     if (platform.native_file_picker) return k_success;
