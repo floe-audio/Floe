@@ -1,0 +1,115 @@
+# Copyright 2024 Sam Windell
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+
+env:
+  SENTRY_DSN: ${{ secrets.SENTRY_DSN_PRODUCTION }}
+  # Specify a relative path for reproducible builds (no absolute paths in binaries).
+  ZIG_GLOBAL_CACHE_DIR: .zig-cache-global
+  ZIG_RELEASE_FOLDER: zig-out/release
+
+jobs:
+  # We need a macOS system for the macOS build.
+  build-macos:
+    runs-on: macos-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/flakehub-cache-action@main
+      - uses: nicknovitski/nix-develop@v1.1.0
+
+      - run: zig build release -Dbuild-mode=production -Dtargets=mac_arm,mac_x86 -Dfetch-floe-logos=true
+        env:
+          MACOS_APP_STORE_CONNECT_API_KEY_JSON: ${{ secrets.MACOS_APP_STORE_CONNECT_API_KEY_JSON }}
+          MACOS_DEV_INSTALLER_CERT_P12_PASSWORD: ${{ secrets.MACOS_DEV_INSTALLER_CERT_P12_PASSWORD }}
+          MACOS_DEV_INSTALLER_CERT_P12: ${{ secrets.MACOS_DEV_INSTALLER_CERT_P12 }}
+          MACOS_DEV_APP_CERT_P12_PASSWORD: ${{ secrets.MACOS_DEV_APP_CERT_P12_PASSWORD }}
+          MACOS_DEV_APP_CERT_P12: ${{ secrets.MACOS_DEV_APP_CERT_P12 }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-macos
+          if-no-files-found: error
+          path: ${{ env.ZIG_RELEASE_FOLDER }}
+
+  # We can do the rest on a Linux runner.
+  build-and-release:
+    needs: [build-macos]
+    runs-on: ubuntu-22.04
+    permissions:
+      id-token: write
+      contents: write # Allow creating releases
+      actions: write # Allow workflow dispatch for website deployment
+      issues: write # Allow commenting, labeling, and closing issues
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/flakehub-cache-action@main
+      - uses: nicknovitski/nix-develop@v1.1.0
+
+      - name: Build Linux and Windows releases
+        run: zig build release -Dbuild-mode=production -Dtargets=linux,windows -Dfetch-floe-logos=true
+        env:
+          WINDOWS_CODESIGN_CERT_PFX: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX }}
+          WINDOWS_CODESIGN_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX_PASSWORD }}
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: final-*
+          path: ${{ env.ZIG_RELEASE_FOLDER }}
+          merge-multiple: true
+
+      - name: Get version
+        run: echo "VERSION=$(cat version.txt)" >> $GITHUB_ENV
+
+      - name: Create GitHub release
+        run: |
+          zig build script:create-gh-release
+          ls -la ${{ env.ZIG_RELEASE_FOLDER }}
+          gh release upload v${{ env.VERSION }} ${{ env.ZIG_RELEASE_FOLDER }}/*
+          gh release edit v${{ env.VERSION }} --draft=false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Sentry release
+        uses: getsentry/action-release@v3
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        with:
+          release: floe@${{ env.VERSION }}
+
+      - name: Clean up awaiting-release labels
+        run: just close-released-issues ${{ env.VERSION }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trigger website deployment
+        if: success()
+        run: |
+          gh workflow run deploy-website.yml --ref main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - if: "!cancelled()"
+        run: |
+          icon=""
+          if [ "${{ job.status }}" == "success" ]; then
+            icon="✅"
+          else
+            icon="❌"
+          fi
+          status="$icon Floe release v${{ env.VERSION }}: ${{ job.status }}"
+          curl -d "$status" "ntfy.sh/${{ secrets.NTFY_RELEASE_URL }}"
