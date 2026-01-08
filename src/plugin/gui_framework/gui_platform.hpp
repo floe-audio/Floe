@@ -110,7 +110,7 @@ static ErrorCodeOr<void> Required(PuglStatus status) {
 }
 
 #if FLOE_USE_DIRECTX_BACKEND
-PuglBackend const* puglD3D9Backend();
+PuglBackend const* D3D9Backend();
 #else
 extern "C" const PuglBackend* puglGlBackend();
 #endif
@@ -287,9 +287,8 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
     puglSetHandle(platform.view, &platform);
     TRY(Required(puglSetEventFunc(platform.view, detail::EventHandler)));
 
-    // Select graphics backend
 #if FLOE_USE_DIRECTX_BACKEND
-    TRY(Required(puglSetBackend(platform.view, puglD3D9Backend())));
+    TRY(Required(puglSetBackend(platform.view, D3D9Backend())));
 #else
     TRY(Required(puglSetBackend(platform.view, puglGlBackend())));
     TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_VERSION_MAJOR, 3)));

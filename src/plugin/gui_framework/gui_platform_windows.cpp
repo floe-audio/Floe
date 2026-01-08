@@ -589,7 +589,7 @@ static PuglStatus Leave(PuglView* view, PuglExposeEvent const* expose) { return 
 
 static void* GetContext(PuglView* view) { return view->impl->hwnd; }
 
-PuglBackend const* puglD3D9Backend() {
+PuglBackend const* D3D9Backend() {
     static PuglBackend const backend = {
         Configure,
         Create,
