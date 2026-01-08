@@ -24,12 +24,23 @@ f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
     return result;
 }
 
-UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const&) {
+UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const& platform) {
     auto const main_screen = ({
-        auto s = [NSScreen mainScreen];
-        if (!s) s = [NSScreen screens][0]; // Fallback to first screen.
+        NSScreen* s = nil;
 
-        if (!s) return SizeWithAspectRatio(960, k_gui_aspect_ratio); // Default 96 DPI
+        if (platform.view) {
+            auto const parent = puglGetParent(platform.view);
+            if (parent) {
+                NSView* parent_view = (__bridge NSView*)(void*)parent;
+                NSWindow* parent_window = [parent_view window];
+                if (parent_window) s = [parent_window screen];
+            }
+        }
+
+        if (!s) s = [NSScreen mainScreen];
+        if (!s) s = [NSScreen screens][0];
+
+        if (!s) return SizeWithAspectRatio(960, k_gui_aspect_ratio);
         s;
     });
 
