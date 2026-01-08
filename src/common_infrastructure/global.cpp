@@ -134,7 +134,7 @@ void GlobalInit(GlobalInitOptions options) {
 
         // We might be running as a shared library and the crash could have occurred in a callstack
         // completely unrelated to us. We don't want to write a crash report in that case.
-        if (!HasAddressesInCurrentModule(stacktrace)) return;
+        if (HasAddressesInCurrentModule(stacktrace) == InSelfModule::No) return;
 
         if (!PRODUCTION_BUILD && IsRunningUnderDebugger()) __builtin_debugtrap();
 
