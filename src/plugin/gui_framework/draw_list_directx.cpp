@@ -28,44 +28,44 @@ struct CUSTOMVERTEX {
     f32 uv[2];
 };
 
-static String CodeToString(s64 code) {
+static Optional<String> CodeToString(s64 code) {
     switch (code) {
-        case D3DERR_WRONGTEXTUREFORMAT: return "WRONGTEXTUREFORMAT";
-        case D3DERR_UNSUPPORTEDCOLOROPERATION: return "UNSUPPORTEDCOLOROPERATION";
-        case D3DERR_UNSUPPORTEDCOLORARG: return "UNSUPPORTEDCOLORARG";
-        case D3DERR_UNSUPPORTEDALPHAOPERATION: return "UNSUPPORTEDALPHAOPERATION";
-        case D3DERR_UNSUPPORTEDALPHAARG: return "UNSUPPORTEDALPHAARG";
-        case D3DERR_TOOMANYOPERATIONS: return "TOOMANYOPERATIONS";
-        case D3DERR_CONFLICTINGTEXTUREFILTER: return "CONFLICTINGTEXTUREFILTER";
-        case D3DERR_UNSUPPORTEDFACTORVALUE: return "UNSUPPORTEDFACTORVALUE";
-        case D3DERR_CONFLICTINGRENDERSTATE: return "CONFLICTINGRENDERSTATE";
-        case D3DERR_UNSUPPORTEDTEXTUREFILTER: return "UNSUPPORTEDTEXTUREFILTER";
-        case D3DERR_CONFLICTINGTEXTUREPALETTE: return "CONFLICTINGTEXTUREPALETTE";
-        case D3DERR_DRIVERINTERNALERROR: return "DRIVERINTERNALERROR";
-        case D3DERR_NOTFOUND: return "NOTFOUND";
-        case D3DERR_MOREDATA: return "MOREDATA";
-        case D3DERR_DEVICELOST: return "DEVICELOST";
-        case D3DERR_DEVICENOTRESET: return "DEVICENOTRESET";
-        case D3DERR_NOTAVAILABLE: return "NOTAVAILABLE";
-        case D3DERR_OUTOFVIDEOMEMORY: return "OUTOFVIDEOMEMORY";
-        case D3DERR_INVALIDDEVICE: return "INVALIDDEVICE";
-        case D3DERR_INVALIDCALL: return "INVALIDCALL";
-        case D3DERR_DRIVERINVALIDCALL: return "DRIVERINVALIDCALL";
-        case D3DERR_WASSTILLDRAWING: return "WASSTILLDRAWING";
+        case D3DERR_WRONGTEXTUREFORMAT: return "WRONGTEXTUREFORMAT"_s;
+        case D3DERR_UNSUPPORTEDCOLOROPERATION: return "UNSUPPORTEDCOLOROPERATION"_s;
+        case D3DERR_UNSUPPORTEDCOLORARG: return "UNSUPPORTEDCOLORARG"_s;
+        case D3DERR_UNSUPPORTEDALPHAOPERATION: return "UNSUPPORTEDALPHAOPERATION"_s;
+        case D3DERR_UNSUPPORTEDALPHAARG: return "UNSUPPORTEDALPHAARG"_s;
+        case D3DERR_TOOMANYOPERATIONS: return "TOOMANYOPERATIONS"_s;
+        case D3DERR_CONFLICTINGTEXTUREFILTER: return "CONFLICTINGTEXTUREFILTER"_s;
+        case D3DERR_UNSUPPORTEDFACTORVALUE: return "UNSUPPORTEDFACTORVALUE"_s;
+        case D3DERR_CONFLICTINGRENDERSTATE: return "CONFLICTINGRENDERSTATE"_s;
+        case D3DERR_UNSUPPORTEDTEXTUREFILTER: return "UNSUPPORTEDTEXTUREFILTER"_s;
+        case D3DERR_CONFLICTINGTEXTUREPALETTE: return "CONFLICTINGTEXTUREPALETTE"_s;
+        case D3DERR_DRIVERINTERNALERROR: return "DRIVERINTERNALERROR"_s;
+        case D3DERR_NOTFOUND: return "NOTFOUND"_s;
+        case D3DERR_MOREDATA: return "MOREDATA"_s;
+        case D3DERR_DEVICELOST: return "DEVICELOST"_s;
+        case D3DERR_DEVICENOTRESET: return "DEVICENOTRESET"_s;
+        case D3DERR_NOTAVAILABLE: return "NOTAVAILABLE"_s;
+        case D3DERR_OUTOFVIDEOMEMORY: return "OUTOFVIDEOMEMORY"_s;
+        case D3DERR_INVALIDDEVICE: return "INVALIDDEVICE"_s;
+        case D3DERR_INVALIDCALL: return "INVALIDCALL"_s;
+        case D3DERR_DRIVERINVALIDCALL: return "DRIVERINVALIDCALL"_s;
+        case D3DERR_WASSTILLDRAWING: return "WASSTILLDRAWING"_s;
     }
-    return "";
+    return k_nullopt;
 }
 
 static constexpr ErrorCodeCategory k_d3d_error_category = {
     .category_id = "D3",
     .message = [](Writer const& writer, ErrorCode code) -> ErrorCodeOr<void> {
-        return writer.WriteChars(CodeToString(code.code));
+        return writer.WriteChars(CodeToString(code.code).ValueOr("unknown directx error"));
     },
 };
 
 #define D3DERR(code, ...)                                                                                    \
-    CodeToString((s64)code).size ? ErrorCode(k_d3d_error_category, (s64)code, ##__VA_ARGS__)                 \
-                                 : HresultErrorCode(code, ##__VA_ARGS__)
+    (CodeToString((s64)code) ? ErrorCode(k_d3d_error_category, (s64)code, ##__VA_ARGS__)                     \
+                             : HresultErrorCode(code, ##__VA_ARGS__))
 
 #define D3D_TRYV(d3d_call)                                                                                   \
     if (const auto hr_tryv = d3d_call; hr_tryv != D3D_OK) return D3DERR(hr_tryv, #d3d_call);
