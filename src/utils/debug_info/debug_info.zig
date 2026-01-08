@@ -76,7 +76,9 @@ fn Create() !*ModuleInfo {
     // We only need the module for this current binary - we just want stack traces for our own code, not
     // the whole process.
     self.module = try self.self.getModuleForAddress(address);
-    self.dwarf = try self.module.getDwarfInfoForAddress(self.arena.allocator(), address);
+
+    // It's not an error if dwarf info isn't available.
+    self.dwarf = self.module.getDwarfInfoForAddress(self.arena.allocator(), address) catch null;
 
     // We populate the cache here so it's not done in SymbolInfo where we want to be thread-safe and signal-safe.
     _ = try self.module.getSymbolAtAddress(self.self.allocator, address);

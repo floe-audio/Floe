@@ -1317,10 +1317,6 @@ TextInputResult Context::TextInput(Rect r,
 
     if (IsHotOrActive(id)) frame_output.cursor_type = CursorType::IBeam;
 
-    auto const shift_bit = [](GuiFrameInput::KeyState::Event const& event) -> int {
-        return event.modifiers.Get(ModifierKey::Shift) ? STB_TEXTEDIT_K_SHIFT : 0;
-    };
-
     // Select word
     for (auto const press : frame_input.Mouse(MouseButton::Left).presses) {
         if (!press.is_double_click) continue;
@@ -1343,6 +1339,10 @@ TextInputResult Context::TextInput(Rect r,
     }
 
     if (IsKeyboardFocus(id)) {
+        auto const shift_bit = [](GuiFrameInput::KeyState::Event const& event) -> int {
+            return event.modifiers.Get(ModifierKey::Shift) ? STB_TEXTEDIT_K_SHIFT : 0;
+        };
+
         if (auto const backspaces = frame_input.Key(KeyCode::Backspace).presses_or_repeats; backspaces.size) {
             for (auto const& event : backspaces)
                 stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_BACKSPACE | shift_bit(event));
@@ -1447,29 +1447,30 @@ TextInputResult Context::TextInput(Rect r,
                 }
             }
         }
-    }
 
-    if (frame_input.clipboard_text.size) {
-        ArenaAllocatorWithInlineStorage<2000> allocator {Malloc::Instance()};
-        DynamicArray<Char32> w_text {allocator};
-        dyn::Resize(w_text, frame_input.clipboard_text.size + 1);
-        dyn::Resize(w_text,
-                    (usize)imstring::Widen(w_text.data,
-                                           (int)w_text.size,
-                                           frame_input.clipboard_text.data,
-                                           frame_input.clipboard_text.data + frame_input.clipboard_text.size,
-                                           nullptr));
+        if (frame_input.clipboard_text.size) {
+            ArenaAllocatorWithInlineStorage<2000> allocator {Malloc::Instance()};
+            DynamicArray<Char32> w_text {allocator};
+            dyn::Resize(w_text, frame_input.clipboard_text.size + 1);
+            dyn::Resize(
+                w_text,
+                (usize)imstring::Widen(w_text.data,
+                                       (int)w_text.size,
+                                       frame_input.clipboard_text.data,
+                                       frame_input.clipboard_text.data + frame_input.clipboard_text.size,
+                                       nullptr));
 
-        stb_textedit_paste(this, &stb_state, w_text.data, (int)w_text.size);
-        result.buffer_changed = true;
-    }
+            stb_textedit_paste(this, &stb_state, w_text.data, (int)w_text.size);
+            result.buffer_changed = true;
+        }
 
-    if (frame_input.input_utf32_chars.size && !frame_input.modifiers.Get(ModifierKey::Modifier)) {
-        for (auto c : frame_input.input_utf32_chars) {
-            if (InputTextFilterCharacter(&c, flags)) {
-                stb_textedit_key(this, &stb_state, (int)c);
-                result.buffer_changed = true;
-                reset_cursor = true;
+        if (frame_input.input_utf32_chars.size && !frame_input.modifiers.Get(ModifierKey::Modifier)) {
+            for (auto c : frame_input.input_utf32_chars) {
+                if (InputTextFilterCharacter(&c, flags)) {
+                    stb_textedit_key(this, &stb_state, (int)c);
+                    result.buffer_changed = true;
+                    reset_cursor = true;
+                }
             }
         }
     }

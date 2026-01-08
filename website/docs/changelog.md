@@ -14,6 +14,13 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 1.1.2-beta.1
+- Improve graphics reliability on Windows (use DirectX instead of OpenGL)
+- GUI: fix the UI keyboard octave offset defaulting to 2 rather then 0 when first loading Floe
+- Fix possible memory leaks related to graphics (OpenGL texture destroying) and improve error checking
+- Improve automatic error reporting
+- Add 'drone' tag
+
 ## 1.1.1
 - New monophonic mode: latch. The monophonic switch parameter is replaced by a menu with this new option.
 In latch mode, the note only ends when all notes are released; new key-presses are ignored and the original note continues playing unchanged.

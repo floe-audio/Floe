@@ -42,16 +42,15 @@ struct Notifications : BoundedList<Notification, 10> {
 PUBLIC void NotificationsPanel(GuiBoxSystem& box_system, Notifications& notifications) {
     constexpr f64 k_dismiss_seconds = 6;
 
-    auto const root =
-        DoBox(box_system,
-              {
-                  .layout {
-                      .size = {box_system.imgui.PixelsToVw(box_system.imgui.Width()), layout::k_hug_contents},
-                      .contents_gap = style::k_spacing,
-                      .contents_direction = layout::Direction::Column,
-                      .contents_align = layout::Alignment::Start,
-                  },
-              });
+    auto const root = DoBox(box_system,
+                            {
+                                .layout {
+                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                    .contents_gap = style::k_spacing,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
 
     for (auto it = notifications.begin(); it != notifications.end();) {
         auto const& n = *it;

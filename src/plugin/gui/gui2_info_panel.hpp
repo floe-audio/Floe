@@ -37,7 +37,7 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
     auto const root = DoBox(box_system,
                             {
                                 .layout {
-                                    .size = box_system.imgui.PixelsToVw(box_system.imgui.Size()),
+                                    .size = layout::k_fill_parent,
                                     .contents_padding = {.lrtb = style::k_spacing},
                                     .contents_gap = style::k_spacing,
                                     .contents_direction = layout::Direction::Column,
@@ -182,7 +182,7 @@ static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, 
     auto const root = DoBox(box_system,
                             {
                                 .layout {
-                                    .size = box_system.imgui.PixelsToVw(box_system.imgui.Size()),
+                                    .size = layout::k_fill_parent,
                                     .contents_padding = {.lrtb = style::k_spacing},
                                     .contents_gap = style::k_spacing,
                                     .contents_direction = layout::Direction::Column,
@@ -293,7 +293,7 @@ static void MetricsInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context
     auto const root = DoBox(box_system,
                             {
                                 .layout {
-                                    .size = box_system.imgui.PixelsToVw(box_system.imgui.Size()),
+                                    .size = layout::k_fill_parent,
                                     .contents_padding = {.lrtb = style::k_spacing},
                                     .contents_gap = style::k_spacing,
                                     .contents_direction = layout::Direction::Column,
@@ -494,7 +494,7 @@ static void LegalInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&, InfoPane
     auto const root = DoBox(box_system,
                             {
                                 .layout {
-                                    .size = box_system.imgui.PixelsToVw(box_system.imgui.Size()),
+                                    .size = layout::k_fill_parent,
                                     .contents_padding = {.lrtb = style::k_spacing},
                                     .contents_gap = 4,
                                     .contents_direction = layout::Direction::Column,

@@ -57,10 +57,17 @@ ErrorCodeOr<void> CheckGLError(String function) {
     return k_success;
 }
 
+#define CHECKED_GL(call)                                                                                     \
+    call;                                                                                                    \
+    TRY(CheckGLError(#call));
+
 struct OpenGLDrawContext : public DrawContext {
     ErrorCodeOr<void> CreateDeviceObjects(void* _window) override {
         Trace(ModuleName::Gui);
         ASSERT(_window != nullptr);
+
+        glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture_size);
+        if (CheckGLError("get max texture size").HasError()) max_texture_size = 99999;
 
         {
             dyn::Clear(graphics_device_info);
@@ -70,6 +77,7 @@ struct OpenGLDrawContext : public DrawContext {
                 fmt::Append(graphics_device_info, "Renderer: {}\n", FromNullTerminated(renderer));
             if (auto const version = (char const*)glGetString(GL_VERSION); version)
                 fmt::Append(graphics_device_info, "Version:  {}\n", FromNullTerminated(version));
+            fmt::Append(graphics_device_info, "Max Texture Size: {}\n", max_texture_size);
             if (graphics_device_info.size) dyn::Pop(graphics_device_info); // remove last newline
         }
 
@@ -90,29 +98,44 @@ struct OpenGLDrawContext : public DrawContext {
         ASSERT(font_texture == 0);
         ASSERT(fonts.fonts.size > 0);
         Trace(ModuleName::Gui);
+        bool success = false;
+
         unsigned char* pixels;
         int width;
         int height;
         fonts.GetTexDataAsRGBA32(&pixels, &width, &height);
 
-        // Upload texture to graphics system
+        if (width > max_texture_size || height > max_texture_size)
+            return ErrorCode(k_gl_error_category, GL_INVALID_VALUE);
+
         GLint last_texture;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
-        glGenTextures(1, &font_texture);
-        glBindTexture(GL_TEXTURE_2D, font_texture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        CHECKED_GL(glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture));
+        CHECKED_GL(glGenTextures(1, &font_texture));
+        DEFER {
+            if (!success) {
+                glDeleteTextures(1, &font_texture);
+                font_texture = 0;
+            }
+        };
+
+        CHECKED_GL(glBindTexture(GL_TEXTURE_2D, font_texture));
+        DEFER {
+            // Restore previous
+            glBindTexture(GL_TEXTURE_2D, (GLuint)last_texture);
+        };
+
+        CHECKED_GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+        CHECKED_GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+        LogDebug(ModuleName::Gui, "Creating font texture: {}x{}", width, height);
+        CHECKED_GL(
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels));
 
         // Store our identifier
         fonts.tex_id = (void*)(intptr_t)font_texture;
 
-        // Restore state
-        glBindTexture(GL_TEXTURE_2D, (GLuint)last_texture);
         fonts.ClearTexData();
 
-        TRY(CheckGLError("CreateFontTexture"));
-
+        success = true;
         return k_success;
     }
 
@@ -237,24 +260,45 @@ struct OpenGLDrawContext : public DrawContext {
         Trace(ModuleName::Gui);
         ASSERT(bytes_per_pixel == 3 || bytes_per_pixel == 4);
         ASSERT(size.width && size.height);
+        bool success = false;
+
         // Upload texture to graphics system
         GLint last_texture;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
+        CHECKED_GL(glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture));
 
         GLuint texture = 0;
-        glGenTextures(1, &texture);
-        glBindTexture(GL_TEXTURE_2D, texture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        GLenum format = (bytes_per_pixel == 3) ? GL_RGB : GL_RGBA;
+        CHECKED_GL(glGenTextures(1, &texture));
+        DEFER {
+            if (!success) glDeleteTextures(1, &texture);
+        };
 
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size.width, size.height, 0, format, GL_UNSIGNED_BYTE, data);
+        CHECKED_GL(glBindTexture(GL_TEXTURE_2D, texture));
 
-        // Restore state
-        glBindTexture(GL_TEXTURE_2D, (GLuint)last_texture);
+        // Restore previous
+        DEFER { glBindTexture(GL_TEXTURE_2D, (GLuint)last_texture); };
 
-        TRY(CheckGLError("CreateTexture"));
+        CHECKED_GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+        CHECKED_GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
 
+        GLint const format = (bytes_per_pixel == 3) ? GL_RGB : GL_RGBA;
+        LogDebug(ModuleName::Gui,
+                 "Creating texture: {}x{}, format={}, bpp={}",
+                 size.width,
+                 size.height,
+                 format,
+                 bytes_per_pixel);
+
+        CHECKED_GL(glTexImage2D(GL_TEXTURE_2D,
+                                0,
+                                format,
+                                size.width,
+                                size.height,
+                                0,
+                                CheckedCast<GLenum>(format),
+                                GL_UNSIGNED_BYTE,
+                                data));
+
+        success = true;
         return (void*)(uintptr)texture;
     }
 
@@ -265,15 +309,11 @@ struct OpenGLDrawContext : public DrawContext {
             auto gluint_tex = (GLuint)(uintptr_t)texture;
             glDeleteTextures(1, &gluint_tex);
             texture = nullptr;
-
-            for (auto const _ : Range(20)) {
-                auto const gl_err = glGetError();
-                if (gl_err == GL_NO_ERROR) break;
-                LogWarning(ModuleName::Gui, "GL Error: DestroyTexture: {}", gl_err);
-            }
+            auto _ = CheckGLError("DestroyTexture");
         }
     }
 
+    GLint max_texture_size = 0;
     GLuint font_texture = 0;
 };
 

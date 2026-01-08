@@ -21,7 +21,7 @@ DoUtilitiesPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Libr
     auto const root = DoBox(box_system,
                             {
                                 .layout {
-                                    .size = box_system.imgui.PixelsToVw(box_system.imgui.Size()),
+                                    .size = layout::k_fill_parent,
                                     .contents_padding = {.lrtb = style::k_spacing},
                                     .contents_gap = style::k_spacing,
                                     .contents_direction = layout::Direction::Column,
@@ -274,7 +274,7 @@ DoTagBuilderPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Lib
     auto const root = DoBox(box_system,
                             {
                                 .layout {
-                                    .size = box_system.imgui.PixelsToVw(box_system.imgui.Size()),
+                                    .size = layout::k_fill_parent,
                                     .contents_padding = {.lrtb = style::k_spacing},
                                     .contents_gap = style::k_spacing,
                                     .contents_direction = layout::Direction::Column,

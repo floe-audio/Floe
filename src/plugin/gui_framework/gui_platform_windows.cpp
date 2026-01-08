@@ -8,6 +8,13 @@
 #include "os/undef_windows_macros.h"
 //
 
+#include <pugl/pugl.h>
+
+extern "C" {
+#include <win.h>
+}
+
+#include "foundation/foundation.hpp"
 #include "os/misc_windows.hpp"
 
 #include "gui_platform.hpp"
@@ -560,3 +567,61 @@ void detail::RemoveWindowsKeyboardHook(GuiPlatform&) {
     }
     g_keyboard_hook = nullptr;
 }
+
+#if FLOE_USE_DIRECTX_BACKEND
+
+static void EnsureHint(PuglView* view, int hint, int value) {
+    if (view->hints[hint] == PUGL_DONT_CARE) view->hints[hint] = value;
+}
+
+static PuglStatus Configure(PuglView* view) {
+    auto* impl = view->impl;
+
+    EnsureHint(view, PUGL_DEPTH_BITS, 16);
+    EnsureHint(view, PUGL_DOUBLE_BUFFER, 1);
+
+    impl->pfd = puglWinGetPixelFormatDescriptor(view->hints);
+    impl->pfId = 1; // Use first available format (D3D handles pixel format internally)
+
+    return PUGL_SUCCESS;
+}
+
+static PuglStatus Create(PuglView* view) {
+    auto* impl = view->impl;
+
+    if (auto const st = puglWinCreateWindow(view, "Pugl", &impl->hwnd, &impl->hdc); st != PUGL_SUCCESS)
+        return st;
+
+    if (!SetPixelFormat(impl->hdc, impl->pfId, &impl->pfd)) {
+        ReleaseDC(impl->hwnd, impl->hdc);
+        DestroyWindow(impl->hwnd);
+        impl->hwnd = nullptr;
+        impl->hdc = nullptr;
+        return PUGL_SET_FORMAT_FAILED;
+    }
+
+    return PUGL_SUCCESS;
+}
+
+static void Destroy(PuglView*) {}
+
+static PuglStatus Enter(PuglView* view, PuglExposeEvent const* expose) { return puglWinEnter(view, expose); }
+
+static PuglStatus Leave(PuglView* view, PuglExposeEvent const* expose) { return puglWinLeave(view, expose); }
+
+static void* GetContext(PuglView* view) { return view->impl->hwnd; }
+
+PuglBackend const* puglD3D9Backend() {
+    static PuglBackend const backend = {
+        Configure,
+        Create,
+        Destroy,
+        Enter,
+        Leave,
+        GetContext,
+    };
+
+    return &backend;
+}
+
+#endif

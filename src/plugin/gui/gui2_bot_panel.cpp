@@ -87,14 +87,13 @@ static Optional<s64> OctaveDragger(GuiBoxSystem& box_system, Box const parent, s
 
 static void DoBotPanel(Gui* g) {
     auto& box_system = g->box_system;
-    auto const root_size = box_system.imgui.PixelsToVw(box_system.imgui.Size());
 
     auto const root =
         DoBox(box_system,
               {
                   .background_fill_colours = {style::Colour::Background0 | style::Colour::DarkMode},
                   .layout {
-                      .size = root_size,
+                      .size = layout::k_fill_parent,
                       .contents_gap = 0,
                       .contents_direction = layout::Direction::Row,
                       .contents_align = layout::Alignment::Start,
@@ -225,8 +224,7 @@ static void DoBotPanel(Gui* g) {
 
             auto& preferences = g->prefs;
             auto const keyboard_octave =
-                Clamp<s64>(prefs::LookupInt(preferences, prefs::key::k_gui_keyboard_octave)
-                               .ValueOr(k_octave_default_offset),
+                Clamp<s64>(prefs::LookupInt(preferences, prefs::key::k_gui_keyboard_octave).ValueOr(0),
                            k_octave_lowest,
                            k_octave_highest);
 

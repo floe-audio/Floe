@@ -381,40 +381,39 @@ ErrorCodeCategory const g_stacktrace_error_category {
     },
 };
 
-struct BacktraceState {
+struct CurrentModuleInfo {
     Optional<DynamicArrayBounded<char, 256>> failed_init_error {};
-    SelfModuleHandle state = nullptr;
+    SelfModuleHandle impl = nullptr;
 };
 
-alignas(BacktraceState) static u8 g_backtrace_state_storage[sizeof(BacktraceState)] {};
-static Atomic<BacktraceState*> g_backtrace_state {};
+alignas(CurrentModuleInfo) static u8 g_current_module_info_storage[sizeof(CurrentModuleInfo)] {};
+static Atomic<CurrentModuleInfo*> g_current_module_info {};
 static CountedInitFlag g_init {};
 
 Optional<String> InitStacktraceState() {
     ZoneScoped;
     CountedInit(g_init, [] {
-        auto state = PLACEMENT_NEW(g_backtrace_state_storage) BacktraceState;
+        auto mod = PLACEMENT_NEW(g_current_module_info_storage) CurrentModuleInfo;
 
-        state->failed_init_error.Emplace();
-        state->state =
-            CreateSelfModuleInfo(state->failed_init_error->data, state->failed_init_error->Capacity());
-        if (state->state)
-            state->failed_init_error.Clear();
+        mod->failed_init_error.Emplace();
+        mod->impl = CreateSelfModuleInfo(mod->failed_init_error->data, mod->failed_init_error->Capacity());
+        if (mod->impl)
+            mod->failed_init_error.Clear();
         else {
             usize size = 0;
-            for (; size < state->failed_init_error->Capacity(); ++size)
-                if (state->failed_init_error->data[size] == '\0') break;
-            ASSERT(size < state->failed_init_error->Capacity(), "not null-terminated error message");
-            state->failed_init_error->size = size;
+            for (; size < mod->failed_init_error->Capacity(); ++size)
+                if (mod->failed_init_error->data[size] == '\0') break;
+            ASSERT(size < mod->failed_init_error->Capacity(), "not null-terminated error message");
+            mod->failed_init_error->size = size;
         }
 
-        g_backtrace_state.Store(state, StoreMemoryOrder::Release);
+        g_current_module_info.Store(mod, StoreMemoryOrder::Release);
     });
 
-    auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
-    if (state->failed_init_error) {
-        LogDebug(ModuleName::Global, "Failed to initialise backtrace state: {}", *state->failed_init_error);
-        return *state->failed_init_error;
+    auto const mod = g_current_module_info.Load(LoadMemoryOrder::Acquire);
+    if (mod->failed_init_error) {
+        LogDebug(ModuleName::Global, "Failed to get debug info: {}", *mod->failed_init_error);
+        return *mod->failed_init_error;
     }
     return k_nullopt;
 }
@@ -422,9 +421,9 @@ Optional<String> InitStacktraceState() {
 void ShutdownStacktraceState() {
     ZoneScoped;
     CountedDeinit(g_init, [] {
-        if (auto state = g_backtrace_state.Exchange(nullptr, RmwMemoryOrder::AcquireRelease)) {
-            DestroySelfModuleInfo(state->state);
-            state->~BacktraceState();
+        if (auto const mod = g_current_module_info.Exchange(nullptr, RmwMemoryOrder::AcquireRelease)) {
+            DestroySelfModuleInfo(mod->impl);
+            mod->~CurrentModuleInfo();
         }
     });
 }
@@ -439,10 +438,6 @@ static void SkipUntil(StacktraceStack& stack, uintptr pc) {
 }
 
 Optional<StacktraceStack> CurrentStacktrace(StacktraceSkipOptions skip) {
-    auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
-
-    if (!state || state->failed_init_error) return k_nullopt;
-
     StacktraceStack result;
     _Unwind_Backtrace(
         [](struct _Unwind_Context* context, void* user) -> _Unwind_Reason_Code {
@@ -484,69 +479,56 @@ void PanicHandler(char const* message, size_t message_length) {
     Panic(buffer, SourceLocation::Current());
 }
 
-ErrorCodeOr<void> WriteStacktrace(Span<uintptr const> stack, Writer writer, StacktracePrintOptions options) {
-    auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
-    if (!state) return ErrorCode {StacktraceError::NotInitialised};
+ErrorCodeOr<void>
+WriteStacktrace(Span<uintptr const> addresses, Writer writer, StacktracePrintOptions options) {
+    if (auto const mod = g_current_module_info.Load(LoadMemoryOrder::Acquire)) {
+        StacktraceContext ctx {.options = options, .writer = writer};
 
-    if (state->failed_init_error) return fmt::FormatToWriter(writer, "{}", *state->failed_init_error);
+        SymbolInfo(mod->impl,
+                   addresses.data,
+                   addresses.size,
+                   &ctx,
+                   [](void* user_data, struct SymbolInfoData const* symbol) {
+                       auto& ctx = *(StacktraceContext*)user_data;
+                       if (ctx.return_value.HasError()) return;
+                       FrameInfo const frame {
+                           .address = symbol->address,
+                           .function_name = FromNullTerminated(symbol->name),
+                           .filename = symbol->file ? FromNullTerminated(symbol->file)
+                                                    : FromNullTerminated(symbol->compile_unit_name),
+                           .line = symbol->line,
+                           .column = symbol->column,
+                           .in_self_module =
+                               symbol->address_in_self_module != 0 ? InSelfModule::Yes : InSelfModule::No,
+                       };
+                       ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
+                   });
+        if (ctx.return_value.HasError()) return ctx.return_value;
+    } else {
+        TRY(writer.WriteChars("[No module info available"_s));
+        if (mod->failed_init_error) {
+            TRY(writer.WriteChars(": "));
+            TRY(writer.WriteChars(*mod->failed_init_error));
+        }
+        TRY(writer.WriteChars("]\n"));
 
-    StacktraceContext ctx {.options = options, .writer = writer};
-
-    SymbolInfo(state->state,
-               stack.data,
-               stack.size,
-               &ctx,
-               [](void* user_data, struct SymbolInfoData const* symbol) {
-                   auto& ctx = *(StacktraceContext*)user_data;
-                   if (ctx.return_value.HasError()) return;
-                   FrameInfo const frame {
-                       .address = symbol->address,
-                       .function_name = FromNullTerminated(symbol->name),
-                       .filename = symbol->file ? FromNullTerminated(symbol->file)
-                                                : FromNullTerminated(symbol->compile_unit_name),
-                       .line = symbol->line,
-                       .column = symbol->column,
-                       .in_self_module = symbol->address_in_self_module != 0,
-                   };
-                   ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
-               });
-    if (ctx.return_value.HasError()) return ctx.return_value;
+        for (auto const addr : addresses)
+            TRY(fmt::FormatToWriter(writer, "{x}\n", addr));
+    }
 
     return k_success;
 }
 
 ErrorCodeOr<void>
 WriteCurrentStacktrace(Writer writer, StacktracePrintOptions options, StacktraceSkipOptions skip) {
-    if (auto stack = CurrentStacktrace(skip)) return WriteStacktrace(*stack, writer, options);
+    if (auto const stack = CurrentStacktrace(skip)) return WriteStacktrace(*stack, writer, options);
     return ErrorCode {StacktraceError::NotInitialised};
 }
 
 MutableString StacktraceString(Span<uintptr const> stack, Allocator& a, StacktracePrintOptions options) {
-    auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
-    if (!state) return a.Clone("Stacktrace error: not initialised"_s);
-    if (state->failed_init_error) return a.Clone(*state->failed_init_error);
-
     DynamicArray<char> result {a};
-    StacktraceContext ctx {.options = options, .writer = dyn::WriterFor(result)};
-    SymbolInfo(state->state,
-               stack.data,
-               stack.size,
-               &ctx,
-               [](void* user_data, struct SymbolInfoData const* symbol) {
-                   auto& ctx = *(StacktraceContext*)user_data;
-                   if (ctx.return_value.HasError()) return;
-                   FrameInfo const frame {
-                       .address = symbol->address,
-                       .function_name = FromNullTerminated(symbol->name),
-                       .filename = symbol->file ? FromNullTerminated(symbol->file)
-                                                : FromNullTerminated(symbol->compile_unit_name),
-                       .line = symbol->line,
-                       .column = symbol->column,
-                       .in_self_module = symbol->address_in_self_module != 0,
-                   };
-                   ctx.return_value = frame.Write(ctx.line_num++, ctx.writer, ctx.options);
-               });
-
+    auto const o = WriteStacktrace(stack, dyn::WriterFor(result), options);
+    if (o.HasError()) dyn::Clear(result);
     return result.ToOwnedSpan();
 }
 
@@ -556,37 +538,41 @@ CurrentStacktraceString(Allocator& a, StacktracePrintOptions options, Stacktrace
     return a.Clone("Stacktrace error: not initialised"_s);
 }
 
-void StacktraceToCallback(Span<uintptr const> stack,
+void StacktraceToCallback(Span<uintptr const> addresses,
                           FunctionRef<void(FrameInfo const&)> callback,
                           StacktracePrintOptions options) {
-    auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
-    if (!state || state->failed_init_error) return;
 
-    using CallbackType = decltype(callback);
+    if (auto const mod = g_current_module_info.Load(LoadMemoryOrder::Acquire)) {
+        using CallbackType = decltype(callback);
 
-    struct Context {
-        CallbackType& callback;
-        StacktracePrintOptions const& options;
-    };
-    Context context {callback, options};
+        struct Context {
+            CallbackType& callback;
+            StacktracePrintOptions const& options;
+        };
+        Context context {callback, options};
 
-    SymbolInfo(state->state,
-               stack.data,
-               stack.size,
-               &context,
-               [](void* data, struct SymbolInfoData const* symbol) {
-                   auto& ctx = *(Context*)data;
-                   FrameInfo const frame {
-                       .address = symbol->address,
-                       .function_name = FromNullTerminated(symbol->name),
-                       .filename = symbol->file ? FromNullTerminated(symbol->file)
-                                                : FromNullTerminated(symbol->compile_unit_name),
-                       .line = symbol->line,
-                       .column = symbol->column,
-                       .in_self_module = symbol->address_in_self_module != 0,
-                   };
-                   ctx.callback(frame);
-               });
+        SymbolInfo(mod->impl,
+                   addresses.data,
+                   addresses.size,
+                   &context,
+                   [](void* data, struct SymbolInfoData const* symbol) {
+                       auto& ctx = *(Context*)data;
+                       FrameInfo const frame {
+                           .address = symbol->address,
+                           .function_name = FromNullTerminated(symbol->name),
+                           .filename = symbol->file ? FromNullTerminated(symbol->file)
+                                                    : FromNullTerminated(symbol->compile_unit_name),
+                           .line = symbol->line,
+                           .column = symbol->column,
+                           .in_self_module =
+                               symbol->address_in_self_module != 0 ? InSelfModule::Yes : InSelfModule::No,
+                       };
+                       ctx.callback(frame);
+                   });
+    } else {
+        for (auto const addr : addresses)
+            callback({.address = addr});
+    }
 }
 
 void CurrentStacktraceToCallback(FunctionRef<void(FrameInfo const&)> callback,
@@ -601,34 +587,35 @@ PrintCurrentStacktrace(StdStream stream, StacktracePrintOptions options, Stacktr
     return WriteCurrentStacktrace(StdWriter(stream), options, skip);
 }
 
-bool HasAddressesInCurrentModule(Span<uintptr const> addresses) {
-    auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
-    if (!state || state->failed_init_error) return true;
+InSelfModule HasAddressesInCurrentModule(Span<uintptr const> addresses) {
+    auto const mod = g_current_module_info.Load(LoadMemoryOrder::Acquire);
+    if (!mod || mod->failed_init_error) return InSelfModule::Unknown;
     for (auto const address : addresses)
-        if (IsAddressInCurrentModule(state->state, address)) return true;
-    return false;
+        if (IsAddressInCurrentModule(mod->impl, address)) return InSelfModule::Yes;
+
+    return InSelfModule::No;
 }
 
-bool IsAddressInCurrentModule(usize address) {
-    auto state = g_backtrace_state.Load(LoadMemoryOrder::Acquire);
-    if (!state || state->failed_init_error) return false;
-    return IsAddressInCurrentModule(state->state, address);
+InSelfModule IsAddressInCurrentModule(usize address) {
+    auto const mod = g_current_module_info.Load(LoadMemoryOrder::Acquire);
+    if (!mod || mod->failed_init_error) return InSelfModule::Unknown;
+    return IsAddressInCurrentModule(mod->impl, address) ? InSelfModule::Yes : InSelfModule::No;
 }
 
 TEST_CASE(TestHasAddressesInCurrentModule) {
-    CHECK(IsAddressInCurrentModule((uintptr)&TestHasAddressesInCurrentModule));
-    CHECK(!IsAddressInCurrentModule(0));
-    CHECK(!IsAddressInCurrentModule(LargestRepresentableValue<usize>()));
+    CHECK_EQ(IsAddressInCurrentModule((uintptr)&TestHasAddressesInCurrentModule), InSelfModule::Yes);
+    CHECK_EQ(IsAddressInCurrentModule(0), InSelfModule::No);
+    CHECK_EQ(IsAddressInCurrentModule(LargestRepresentableValue<usize>()), InSelfModule::No);
 
     auto addrs = Array {0uz, 0};
-    CHECK(!HasAddressesInCurrentModule(addrs));
+    CHECK_EQ(HasAddressesInCurrentModule(addrs), InSelfModule::No);
 
     addrs[0] = CALL_SITE_PROGRAM_COUNTER;
-    CHECK(HasAddressesInCurrentModule(addrs));
+    CHECK_EQ(HasAddressesInCurrentModule(addrs), InSelfModule::Yes);
 
     // This doesn't work on Windows, perhaps because we're using mingw which means it actually is in the
     // current module?
-    if constexpr (!IS_WINDOWS) CHECK(!IsAddressInCurrentModule((uintptr)&powf));
+    if constexpr (!IS_WINDOWS) CHECK_EQ(IsAddressInCurrentModule((uintptr)&powf), InSelfModule::No);
 
     return k_success;
 }

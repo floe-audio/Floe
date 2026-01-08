@@ -573,34 +573,35 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
                 auto try_write = [&]() -> ErrorCodeOr<void> {
                     TRY(json::WriteObjectBegin(json_writer));
 
-                    if (ShouldSendFilepath(frame.filename)) {
+                    TRY(json::WriteKeyValue(json_writer,
+                                            "instruction_addr",
+                                            fmt::FormatInline<32>("0x{x}", frame.address)));
+
+                    if (ShouldSendFilepath(frame.filename))
                         TRY(json::WriteKeyValue(json_writer, "filename", frame.filename));
-                        TRY(json::WriteKeyValue(json_writer, "in_app", frame.in_self_module));
 
-                        if (frame.line > 0) {
-                            TRY(json::WriteKeyValue(json_writer, "lineno", frame.line));
-                            if (frame.in_self_module) HashUpdate(fingerprint, frame.line);
-                        }
+                    auto const in_self_module = frame.in_self_module == InSelfModule::Yes;
 
-                        if (frame.column > 0) {
-                            TRY(json::WriteKeyValue(json_writer, "colno", frame.column));
-                            if (frame.in_self_module) HashUpdate(fingerprint, frame.column);
-                        }
-
-                        TRY(json::WriteKeyValue(json_writer,
-                                                "instruction_addr",
-                                                fmt::FormatInline<32>("0x{x}", frame.address)));
-
-                        if (frame.in_self_module) HashUpdate(fingerprint, frame.filename);
-
-                        if (frame.function_name.size)
-                            TRY(json::WriteKeyValue(json_writer, "function", frame.function_name));
-                    } else {
-                        TRY(json::WriteKeyValue(json_writer, "filename", "external-file"_s));
-                        TRY(json::WriteKeyValue(json_writer, "in_app", false));
+                    if (frame.in_self_module != InSelfModule::Unknown) {
+                        TRY(json::WriteKeyValue(json_writer, "in_app", in_self_module));
+                        if (in_self_module) HashUpdate(fingerprint, frame.filename);
                     }
 
+                    if (frame.line > 0) {
+                        TRY(json::WriteKeyValue(json_writer, "lineno", frame.line));
+                        if (in_self_module) HashUpdate(fingerprint, frame.line);
+                    }
+
+                    if (frame.column > 0) {
+                        TRY(json::WriteKeyValue(json_writer, "colno", frame.column));
+                        if (in_self_module) HashUpdate(fingerprint, frame.column);
+                    }
+
+                    if (frame.function_name.size)
+                        TRY(json::WriteKeyValue(json_writer, "function", frame.function_name));
+
                     TRY(json::WriteObjectEnd(json_writer));
+
                     return k_success;
                 };
                 if (!stacktrace_error.HasError()) stacktrace_error = try_write();

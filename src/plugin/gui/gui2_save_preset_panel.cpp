@@ -123,21 +123,21 @@ bool DoTagsGui(GuiBoxSystem& box_system,
             bool grey_out = category_disallow_more_selection;
             if (is_selected) grey_out = false;
 
-            auto const button =
-                DoBox(box_system,
-                      BoxConfig {
-                          .parent = tags_list,
-                          .text = tag_info.name,
-                          .size_from_text = true,
-                          .font = FontType::Body,
-                          .text_colours = Splat(grey_out ? style::Colour::Overlay2 : style::Colour::Text),
-                          .background_fill_colours = {is_selected ? style::Colour::Highlight
-                                                                  : style::Colour::Background1},
-                          .background_fill_auto_hot_active_overlay = true,
-                          .round_background_corners = 0b1100,
-                          .tooltip = tag_info.description,
-                          .behaviour = Behaviour::Button,
-                      });
+            auto const button = DoBox(
+                box_system,
+                BoxConfig {
+                    .parent = tags_list,
+                    .text = tag_info.name,
+                    .size_from_text = true,
+                    .font = FontType::Body,
+                    .text_colours = Splat(grey_out ? style::Colour::Overlay2 : style::Colour::Text),
+                    .background_fill_colours = {is_selected ? style::Colour::Highlight
+                                                            : style::Colour::Background1},
+                    .background_fill_auto_hot_active_overlay = true,
+                    .round_background_corners = 0b1100,
+                    .tooltip = tag_info.description.size ? TooltipString(tag_info.description) : k_nullopt,
+                    .behaviour = Behaviour::Button,
+                });
 
             if (button.button_fired) {
                 result = true;

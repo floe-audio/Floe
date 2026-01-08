@@ -36,7 +36,10 @@ Optional<StacktraceStack> CurrentStacktrace(StacktraceSkipOptions skip = Stacktr
 Optional<String> InitStacktraceState(); // returns error message if failed
 void ShutdownStacktraceState();
 
+enum class InSelfModule : u8 { Unknown, Yes, No };
+
 struct FrameInfo {
+
     ErrorCodeOr<void> Write(u32 frame_index, Writer writer, StacktracePrintOptions options) const {
         return fmt::FormatToWriter(writer,
                                    "[{}] {x} {}{}{}:{}:{}: {}\n",
@@ -50,7 +53,7 @@ struct FrameInfo {
                                    function_name);
     }
 
-    static FrameInfo FromSourceLocation(SourceLocation loc, uintptr address, bool in_self_module) {
+    static FrameInfo FromSourceLocation(SourceLocation loc, uintptr address, InSelfModule in_self_module) {
         return {
             .address = address,
             .function_name = FromNullTerminated(loc.function),
@@ -66,7 +69,7 @@ struct FrameInfo {
     String filename;
     int line;
     int column = -1;
-    bool in_self_module = false; // if the filename is in the current module
+    InSelfModule in_self_module = InSelfModule::Unknown;
 };
 
 MutableString CurrentStacktraceString(Allocator& a,
@@ -87,8 +90,8 @@ ErrorCodeOr<void> WriteCurrentStacktrace(Writer writer,
                                          StacktracePrintOptions options,
                                          StacktraceSkipOptions skip = StacktraceFrames {1});
 
-bool HasAddressesInCurrentModule(Span<uintptr const> addresses);
-bool IsAddressInCurrentModule(uintptr address);
+InSelfModule HasAddressesInCurrentModule(Span<uintptr const> addresses);
+InSelfModule IsAddressInCurrentModule(uintptr address);
 
 constexpr auto k_floe_disaster_file_extension = "floe-disaster"_ca;
 constexpr u32 k_windows_nested_panic_code = 0xF10EDEAD;
