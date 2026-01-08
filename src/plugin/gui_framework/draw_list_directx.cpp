@@ -300,6 +300,15 @@ struct DirectXDrawContext : public DrawContext {
         ZoneScoped;
         auto constexpr k_d3_dfvf_customvertex = D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_TEX1;
 
+        // Setup viewport
+        D3DVIEWPORT9 vp;
+        vp.X = vp.Y = 0;
+        vp.Width = (DWORD)window_size.width;
+        vp.Height = (DWORD)window_size.height;
+        vp.MinZ = 0.0f;
+        vp.MaxZ = 1.0f;
+        pd3d_device->SetViewport(&vp);
+
         // Rendering
         pd3d_device->SetRenderState(D3DRS_ZENABLE, false);
         pd3d_device->SetRenderState(D3DRS_ALPHABLENDENABLE, false);
@@ -349,14 +358,6 @@ struct DirectXDrawContext : public DrawContext {
                                                    nullptr));
             }
 
-            // Backup the DX9 state
-            IDirect3DStateBlock9* d3d9_state_block = nullptr;
-            D3D_TRYV(pd3d_device->CreateStateBlock(D3DSBT_ALL, &d3d9_state_block));
-            DEFER {
-                d3d9_state_block->Apply();
-                d3d9_state_block->Release();
-            };
-
             // Copy and convert all vertices into a single contiguous buffer
             {
                 CUSTOMVERTEX* vtx_dst;
@@ -400,25 +401,38 @@ struct DirectXDrawContext : public DrawContext {
             // Setup render state: fixed-pipeline, alpha-blending, no face culling, no depth testing
             pd3d_device->SetPixelShader(nullptr);
             pd3d_device->SetVertexShader(nullptr);
+            pd3d_device->SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID);
+            pd3d_device->SetRenderState(D3DRS_SHADEMODE, D3DSHADE_GOURAUD);
+            pd3d_device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+            pd3d_device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
             pd3d_device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-            pd3d_device->SetRenderState(D3DRS_LIGHTING, false);
-            pd3d_device->SetRenderState(D3DRS_ZENABLE, false);
-            pd3d_device->SetRenderState(D3DRS_ALPHABLENDENABLE, true);
-            pd3d_device->SetRenderState(D3DRS_ALPHATESTENABLE, false);
+            pd3d_device->SetRenderState(D3DRS_ZENABLE, FALSE);
+            pd3d_device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
             pd3d_device->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
             pd3d_device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
             pd3d_device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-            pd3d_device->SetRenderState(D3DRS_SCISSORTESTENABLE, true);
-            pd3d_device->SetRenderState(D3DRS_SHADEMODE, D3DSHADE_GOURAUD);
-            pd3d_device->SetRenderState(D3DRS_FOGENABLE, false);
+            pd3d_device->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, TRUE);
+            pd3d_device->SetRenderState(D3DRS_SRCBLENDALPHA, D3DBLEND_ONE);
+            pd3d_device->SetRenderState(D3DRS_DESTBLENDALPHA, D3DBLEND_INVSRCALPHA);
+            pd3d_device->SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
+            pd3d_device->SetRenderState(D3DRS_FOGENABLE, FALSE);
+            pd3d_device->SetRenderState(D3DRS_RANGEFOGENABLE, FALSE);
+            pd3d_device->SetRenderState(D3DRS_SPECULARENABLE, FALSE);
+            pd3d_device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+            pd3d_device->SetRenderState(D3DRS_CLIPPING, TRUE);
+            pd3d_device->SetRenderState(D3DRS_LIGHTING, FALSE);
             pd3d_device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
             pd3d_device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
             pd3d_device->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
             pd3d_device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
             pd3d_device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
             pd3d_device->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+            pd3d_device->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+            pd3d_device->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
             pd3d_device->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
             pd3d_device->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+            pd3d_device->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+            pd3d_device->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
 
             // Setup orthographic projection matrix
             // Being agnostic of whether <d3dx9.h> or <DirectXMath.h> can be used, we aren't relying on

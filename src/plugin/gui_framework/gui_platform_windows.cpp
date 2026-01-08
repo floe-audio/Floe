@@ -570,35 +570,13 @@ void detail::RemoveWindowsKeyboardHook(GuiPlatform&) {
 
 #if FLOE_USE_DIRECTX_BACKEND
 
-static void EnsureHint(PuglView* view, int hint, int value) {
-    if (view->hints[hint] == PUGL_DONT_CARE) view->hints[hint] = value;
-}
-
-static PuglStatus Configure(PuglView* view) {
-    auto* impl = view->impl;
-
-    EnsureHint(view, PUGL_DEPTH_BITS, 16);
-    EnsureHint(view, PUGL_DOUBLE_BUFFER, 1);
-
-    impl->pfd = puglWinGetPixelFormatDescriptor(view->hints);
-    impl->pfId = 1; // Use first available format (D3D handles pixel format internally)
-
-    return PUGL_SUCCESS;
-}
+static PuglStatus Configure(PuglView*) { return PUGL_SUCCESS; }
 
 static PuglStatus Create(PuglView* view) {
     auto* impl = view->impl;
 
     if (auto const st = puglWinCreateWindow(view, "Pugl", &impl->hwnd, &impl->hdc); st != PUGL_SUCCESS)
         return st;
-
-    if (!SetPixelFormat(impl->hdc, impl->pfId, &impl->pfd)) {
-        ReleaseDC(impl->hwnd, impl->hdc);
-        DestroyWindow(impl->hwnd);
-        impl->hwnd = nullptr;
-        impl->hdc = nullptr;
-        return PUGL_SET_FORMAT_FAILED;
-    }
 
     return PUGL_SUCCESS;
 }
