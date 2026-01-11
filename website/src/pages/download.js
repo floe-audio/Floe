@@ -35,6 +35,59 @@ function CurrentVersionInfo() {
     );
 }
 
+function BetaDownloads({ os }) {
+    const betaData = data["latest-beta-release-version"];
+
+    if (!betaData) {
+        return (
+            <p>No beta versions are currently available. <a href="/docs/about-the-project/beta-testing">Learn more</a></p>
+        );
+    }
+
+    const changelogUrl = `/docs/beta/changelog#${betaData.version.replace(/\./g, '')}`;
+
+    const BetaItem = ({ downloadKey, eventName }) => {
+        if (!betaData[downloadKey]) return null;
+        return (
+            <li>
+                <a href={betaData[downloadKey].url} data-umami-event={eventName}>
+                    {betaData[downloadKey].name}
+                </a> ({betaData[downloadKey].size})
+            </li>
+        );
+    };
+
+    const downloadsByOs = {
+        windows: [
+            { key: 'Floe-Installer-Windows', event: 'Download Beta Windows Installer' },
+            { key: 'Floe-Manual-Install-Windows', event: 'Download Beta Windows Manual Install' }
+        ],
+        macos: [
+            { key: 'Floe-Installer-macOS-Apple-Silicon', event: 'Download Beta macOS Apple Silicon Installer' },
+            { key: 'Floe-Installer-macOS-Intel', event: 'Download Beta macOS Intel Installer' },
+            { key: 'Floe-Manual-Install-macOS-Apple-Silicon', event: 'Download Beta macOS Apple Silicon Manual Install' },
+            { key: 'Floe-Manual-Install-macOS-Intel', event: 'Download Beta macOS Intel Manual Install' }
+        ],
+        linux: [
+            { key: 'Floe-CLAP-Linux', event: 'Download Beta Linux CLAP' },
+            { key: 'Floe-VST3-Linux', event: 'Download Beta Linux VST3' }
+        ]
+    };
+
+    return (
+        <>
+            <p className={styles.betaDescription}>
+                Help us test new features ahead of the full release. <a href={changelogUrl}>Changelog</a> • <a href="/docs/about-the-project/beta-testing">Learn more</a>
+            </p>
+            <ul>
+                {downloadsByOs[os]?.map(({ key, event }) => (
+                    <BetaItem key={key} downloadKey={key} eventName={event} />
+                ))}
+            </ul>
+        </>
+    );
+}
+
 function AdditionalDownloads({ os }) {
     return (
         <div className={styles.additionalDownloads}>
@@ -85,83 +138,7 @@ function AdditionalDownloads({ os }) {
                     <> — v{data["latest-beta-release-version"].version}</>
                 )}
             </h5>
-            {data["latest-beta-release-version"] ? (
-                <>
-                    <p className={styles.betaDescription}>Help us test new features ahead of the full release. <a href="/docs/about-the-project/beta-testing">Learn more</a></p>
-                    <ul>
-                        {os === 'windows' && (
-                            <>
-                                {data["latest-beta-release-version"]["Floe-Installer-Windows"] && (
-                                    <li>
-                                        <a href={data["latest-beta-release-version"]["Floe-Installer-Windows"].url} data-umami-event="Download Beta Windows Installer">
-                                            {data["latest-beta-release-version"]["Floe-Installer-Windows"].name}
-                                        </a> ({data["latest-beta-release-version"]["Floe-Installer-Windows"].size})
-                                    </li>
-                                )}
-                                {data["latest-beta-release-version"]["Floe-Manual-Install-Windows"] && (
-                                    <li>
-                                        <a href={data["latest-beta-release-version"]["Floe-Manual-Install-Windows"].url} data-umami-event="Download Beta Windows Manual Install">
-                                            {data["latest-beta-release-version"]["Floe-Manual-Install-Windows"].name}
-                                        </a> ({data["latest-beta-release-version"]["Floe-Manual-Install-Windows"].size})
-                                    </li>
-                                )}
-                            </>
-                        )}
-                        {os === 'macos' && (
-                            <>
-                                {data["latest-beta-release-version"]["Floe-Installer-macOS-Apple-Silicon"] && (
-                                    <li>
-                                        <a href={data["latest-beta-release-version"]["Floe-Installer-macOS-Apple-Silicon"].url} data-umami-event="Download Beta macOS Apple Silicon Installer">
-                                            {data["latest-beta-release-version"]["Floe-Installer-macOS-Apple-Silicon"].name}
-                                        </a> ({data["latest-beta-release-version"]["Floe-Installer-macOS-Apple-Silicon"].size})
-                                    </li>
-                                )}
-                                {data["latest-beta-release-version"]["Floe-Installer-macOS-Intel"] && (
-                                    <li>
-                                        <a href={data["latest-beta-release-version"]["Floe-Installer-macOS-Intel"].url} data-umami-event="Download Beta macOS Intel Installer">
-                                            {data["latest-beta-release-version"]["Floe-Installer-macOS-Intel"].name}
-                                        </a> ({data["latest-beta-release-version"]["Floe-Installer-macOS-Intel"].size})
-                                    </li>
-                                )}
-                                {data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Apple-Silicon"] && (
-                                    <li>
-                                        <a href={data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Apple-Silicon"].url} data-umami-event="Download Beta macOS Apple Silicon Manual Install">
-                                            {data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Apple-Silicon"].name}
-                                        </a> ({data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Apple-Silicon"].size})
-                                    </li>
-                                )}
-                                {data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Intel"] && (
-                                    <li>
-                                        <a href={data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Intel"].url} data-umami-event="Download Beta macOS Intel Manual Install">
-                                            {data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Intel"].name}
-                                        </a> ({data["latest-beta-release-version"]["Floe-Manual-Install-macOS-Intel"].size})
-                                    </li>
-                                )}
-                            </>
-                        )}
-                        {os === 'linux' && (
-                            <>
-                                {data["latest-beta-release-version"]["Floe-CLAP-Linux"] && (
-                                    <li>
-                                        <a href={data["latest-beta-release-version"]["Floe-CLAP-Linux"].url} data-umami-event="Download Beta Linux CLAP">
-                                            {data["latest-beta-release-version"]["Floe-CLAP-Linux"].name}
-                                        </a> ({data["latest-beta-release-version"]["Floe-CLAP-Linux"].size})
-                                    </li>
-                                )}
-                                {data["latest-beta-release-version"]["Floe-VST3-Linux"] && (
-                                    <li>
-                                        <a href={data["latest-beta-release-version"]["Floe-VST3-Linux"].url} data-umami-event="Download Beta Linux VST3">
-                                            {data["latest-beta-release-version"]["Floe-VST3-Linux"].name}
-                                        </a> ({data["latest-beta-release-version"]["Floe-VST3-Linux"].size})
-                                    </li>
-                                )}
-                            </>
-                        )}
-                    </ul>
-                </>
-            ) : (
-                <p>No beta versions are currently available. <a href="/docs/about-the-project/beta-testing">Learn more</a></p>
-            )}
+            <BetaDownloads os={os} />
 
             <h5>Download Archive</h5>
             <p>Find all versions on the <a href="https://github.com/floe-audio/Floe/releases" target="_blank" rel="noopener noreferrer">GitHub releases page</a>; download links are under the <em>Assets</em> sections.</p>
