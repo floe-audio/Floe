@@ -385,6 +385,7 @@ PUBLIC graphics::ImageID CreateImageIdChecked(graphics::DrawContext& ctx, ImageB
 }
 
 PUBLIC f32x2 GetMaxUVToMaintainAspectRatio(graphics::ImageID img, f32x2 container_size) {
+    if (!img.size.width || !img.size.height) return {1, 1};
     auto const img_w = (f32)img.size.width;
     auto const img_h = (f32)img.size.height;
     auto const window_ratio = container_size.x / container_size.y;
