@@ -14,6 +14,9 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 1.1.2-beta.2
+- GUI: only show full paths for preset banks if there's ambiguity
+
 ## 1.1.2-beta.1
 - Improve graphics reliability on Windows (use DirectX instead of OpenGL)
 - GUI: fix the UI keyboard octave offset defaulting to 2 rather then 0 when first loading Floe

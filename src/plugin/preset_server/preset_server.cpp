@@ -175,6 +175,9 @@ static Span<FolderNode> CloneFolderNodes(Span<FolderNode> folders, ArenaAllocato
         result[i].first_child = old_pointer_to_new_pointer(folders[i].first_child);
         result[i].next = old_pointer_to_new_pointer(folders[i].next);
 
+        result[i].display_name = arena.Clone(folders[i].display_name);
+        // result[i].name doesn't need cloning because it references into PresetFolder memory.
+
         ASSERT(folders[i].user_data.As<PresetFolderListing>());
         auto old_listing = folders[i].user_data.As<PresetFolderListing>();
         PLACEMENT_NEW(&listings[i])
@@ -409,6 +412,7 @@ struct FoldersAggregateInfo {
             }
             return {};
         }
+        Span<FolderNode> UsedNodes() const { return {folders.data, used}; }
         Span<FolderNode> folders;
         usize used = 0;
     };
@@ -442,10 +446,7 @@ struct FoldersAggregateInfo {
     };
 
     FoldersAggregateInfo(ArenaAllocator& arena, usize folders_used)
-        : used_tags {arena}
-        , used_libraries {arena}
-        , authors {arena}
-        , scan_folder_nodes {arena}
+        : arena {arena}
         , folder_node_indices {arena}
         , folder_node_preset_bank_indices {arena} {
         // We must know the full size up front so no reallocation happens.
@@ -457,11 +458,10 @@ struct FoldersAggregateInfo {
     // the folders.
     void AddFolder(PresetFolder const& folder) {
         {
-            auto found = scan_folder_nodes.FindOrInsert(folder.scan_folder, nullptr);
+            auto found = scan_folder_nodes.FindOrInsertGrowIfNeeded(arena, folder.scan_folder, nullptr);
             if (found.inserted) {
                 found.element.data = folder_node_allocator.New<FolderNode>(FolderNode {
                     .name = folder.scan_folder,
-                    .display_name = folder.abbreviated_scan_folder,
                 });
             }
             auto& root = found.element.data;
@@ -471,6 +471,7 @@ struct FoldersAggregateInfo {
                                                k_max_nested_folders,
                                                {
                                                    .node_allocator = folder_node_allocator,
+                                                   .name_allocator = k_nullopt,
                                                });
             // It's possible that the folder is too nested, in which case we fallback to putting it inside the
             // root.
@@ -513,12 +514,12 @@ struct FoldersAggregateInfo {
         // folders.
 
         for (auto const [tag, tag_hash] : preset.metadata.tags)
-            used_tags.Insert(tag, tag_hash);
+            used_tags.InsertGrowIfNeeded(arena, tag, tag_hash);
 
         for (auto const [lib_id, lib_id_hash] : preset.used_libraries)
-            used_libraries.Insert(lib_id, lib_id_hash);
+            used_libraries.InsertGrowIfNeeded(arena, lib_id, lib_id_hash);
 
-        if (preset.metadata.author.size) authors.Insert(preset.metadata.author);
+        if (preset.metadata.author.size) authors.InsertGrowIfNeeded(arena, preset.metadata.author);
 
         has_preset_type.Set(ToInt(preset.file_format));
     }
@@ -798,6 +799,46 @@ struct FoldersAggregateInfo {
                     dyn::AppendIfNotAlreadyThere(folder_node_preset_bank_indices, index);
                 }
             });
+
+            // We want to tidy up bank display names to only show what is necessary but being verbose when we
+            // have to.
+            for (auto const node_index : folder_node_preset_bank_indices) {
+                auto& node = folder_node_allocator.folders[node_index];
+
+                auto const name = path::Filename(node.name);
+                bool is_unique = true;
+                for (auto const other_node_index : folder_node_preset_bank_indices) {
+                    auto& other_node = folder_node_allocator.folders[other_node_index];
+                    if (&node == &other_node) continue;
+                    if (!PresetBankAtNode(other_node)) continue;
+                    if (name == path::Filename(other_node.name)) {
+                        is_unique = false;
+                        break;
+                    }
+                }
+                if (is_unique)
+                    node.display_name = name;
+                else {
+                    auto listing = node.user_data.As<PresetFolderListing>();
+                    ASSERT(listing);
+
+                    PathArena temp_arena {PageAllocator::Instance()};
+
+                    auto const path =
+                        listing->folder
+                            ? (String)path::Join(
+                                  temp_arena,
+                                  Array {listing->folder->scan_folder, listing->folder->folder})
+                            : (path::IsAbsolute(node.name) ? node.name : *FolderPath(&node, temp_arena));
+
+                    node.display_name = path::MakeDisplayPath(path,
+                                                              {
+                                                                  .stylize_dir_separators = true,
+                                                                  .compact_middle_sections = true,
+                                                              },
+                                                              arena);
+                }
+            }
         }
     }
 
@@ -810,20 +851,19 @@ struct FoldersAggregateInfo {
         server.has_preset_type = has_preset_type;
 
         server.folder_node_arena.ResetCursorAndConsolidateRegions();
-        server.folder_nodes =
-            CloneFolderNodes(Span {folder_node_allocator.folders.data, folder_node_allocator.used},
-                             server.folder_node_arena);
+        server.folder_nodes = CloneFolderNodes(folder_node_allocator.UsedNodes(), server.folder_node_arena);
         server.folder_node_order_indices = server.folder_node_arena.Clone(folder_node_indices);
         server.folder_node_preset_bank_indices =
             server.folder_node_arena.Clone(folder_node_preset_bank_indices);
     }
 
-    DynamicSet<String> used_tags;
-    DynamicSet<sample_lib::LibraryIdRef> used_libraries;
-    DynamicSet<String> authors;
+    ArenaAllocator& arena;
+    Set<String> used_tags;
+    Set<sample_lib::LibraryIdRef> used_libraries;
+    Set<String> authors;
     FolderNodeAllocator folder_node_allocator;
     ListingAllocator listing_allocator;
-    DynamicOrderedHashTable<String, FolderNode*> scan_folder_nodes;
+    OrderedHashTable<String, FolderNode*> scan_folder_nodes;
     DynamicArray<usize> folder_node_indices;
     DynamicArray<usize> folder_node_preset_bank_indices;
     Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
@@ -929,17 +969,12 @@ CreatePresetFolder(PresetServer& server, String scan_folder, String subfolder_of
     auto preset_folder = server.folder_pool.PrependUninitialised(server.arena);
     PLACEMENT_NEW(preset_folder) PresetFolder();
     preset_folder->scan_folder = preset_folder->arena.Clone(scan_folder);
-    preset_folder->abbreviated_scan_folder = path::MakeDisplayPath(preset_folder->scan_folder,
-                                                                   {
-                                                                       .stylize_dir_separators = true,
-                                                                       .compact_middle_sections = true,
-                                                                   },
-                                                                   preset_folder->arena);
     preset_folder->folder = ({
         auto f = preset_folder->arena.Clone(subfolder_of_scan_folder);
         if constexpr (IS_WINDOWS) Replace(f, '\\', '/');
         f;
     });
+
     return preset_folder;
 }
 

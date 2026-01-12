@@ -882,8 +882,7 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                                         .parent = section.Do(box_system).Get<Box>(),
                                         .is_selected = state.common_state.selected_folder_hashes.Contains(
                                             folder->Hash()),
-                                        .text =
-                                            folder->display_name.size ? folder->display_name : folder->name,
+                                        .text = folder_name,
                                         .tooltip = folder->display_name.size ? TooltipString {folder->name}
                                                                              : k_nullopt,
                                         .hashes = state.common_state.selected_folder_hashes,
