@@ -82,7 +82,7 @@ PUBLIC void DoAttributionPanel(GuiBoxSystem& box_system, AttributionPanelContext
         return;
     }
     if (open) {
-        RunPanel(box_system,
+        RunOrEnqueuePanel(box_system,
                  Panel {
                      .run = [&context, &open](GuiBoxSystem& b) { AttributionPanel(b, context, open); },
                      .data =

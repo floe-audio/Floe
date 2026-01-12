@@ -259,7 +259,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBoxSystem& box_system,
         }
 
         if (user_input_needed) {
-            RunPanel(box_system,
+            RunOrEnqueuePanel(box_system,
                      Panel {
                          .run = [&package_install_jobs](
                                     GuiBoxSystem& b) { PackageInstallAlertsPanel(b, package_install_jobs); },

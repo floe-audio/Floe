@@ -288,7 +288,7 @@ static void DoBotPanel(Gui* g) {
 }
 
 void BotPanel(Gui* g, Rect const r) {
-    RunPanel(g->box_system,
+    RunOrEnqueuePanel(g->box_system,
              {
                  .run = [g](GuiBoxSystem&) { DoBotPanel(g); },
                  .data =

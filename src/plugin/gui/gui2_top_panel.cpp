@@ -441,7 +441,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g, GuiFrameContext const& 
         if (dots_button.button_fired) box_system.imgui.OpenPopup(popup_id, dots_button.imgui_id);
 
         if (box_system.imgui.IsPopupOpen(popup_id))
-            AddPanel(box_system,
+            RunOrEnqueuePanel(box_system,
                      Panel {
                          .run = [g, &frame_context](GuiBoxSystem&) { DoDotsMenu(g, frame_context); },
                          .data =
@@ -514,7 +514,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g, GuiFrameContext const& 
 }
 
 void TopPanel(Gui* g, f32 height, GuiFrameContext const& frame_context) {
-    RunPanel(g->box_system,
+    RunOrEnqueuePanel(g->box_system,
              {
                  .run = [&](GuiBoxSystem& box_system) { DoTopPanel(box_system, g, frame_context); },
                  .data =

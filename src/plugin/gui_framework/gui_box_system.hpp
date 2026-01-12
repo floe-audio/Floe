@@ -15,9 +15,9 @@
 //
 // This is a new GUI system that we intend to use universally. For now only a couple of parts use it.
 //
-// This API is built on top of our IMGUI and layout systems. It offers a higher-level API for making complete
-// UI elements using the flexbox-like layout system, drawing config, and input handling behaviour (button
-// behaviour, slider behaviour, etc.).
+// This API is built on top of our IMGUI (gui_imgui.hpp) and layout systems (layout.hpp). It offers a
+// higher-level API for making complete UI elements using the flexbox-like layout system, drawing config, and
+// input handling behaviour (button behaviour, slider behaviour, etc.).
 //
 // In order to have a single codepath for both layout and input-handling/rendering, we use a 2-pass approach.
 // This means that your functions that build the GUI are actually called twice per frame - this is almost
@@ -157,11 +157,9 @@ struct GuiBoxSystem {
     BoxSystemCurrentPanelState* state; // Ephemeral
 };
 
-void AddPanel(GuiBoxSystem& box_system, Panel panel);
-
 void BeginFrame(GuiBoxSystem& builder, bool show_tooltips);
 
-void RunPanel(GuiBoxSystem& builder, Panel initial_panel);
+void RunOrEnqueuePanel(GuiBoxSystem& box_system, Panel panel);
 
 enum class ActivationClickEvent : u32 { Up, Down, Count };
 

@@ -14,20 +14,6 @@ static f32 HeightOfWrappedText(GuiBoxSystem& box_system, layout::Id id, f32 widt
     return 0;
 }
 
-void AddPanel(GuiBoxSystem& box_system, Panel panel) {
-    if (box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender) {
-        auto p = box_system.arena.New<Panel>(panel);
-        if (box_system.state->current_panel->first_child) {
-            for (auto q = box_system.state->current_panel->first_child; q; q = q->next)
-                if (!q->next) {
-                    q->next = p;
-                    break;
-                }
-        } else
-            box_system.state->current_panel->first_child = p;
-    }
-}
-
 static void Run(GuiBoxSystem& builder, Panel* panel) {
     ZoneScoped;
     if (!panel) return;
@@ -257,9 +243,22 @@ void BeginFrame(GuiBoxSystem& builder, bool show_tooltips) {
     builder.show_tooltips = show_tooltips;
 }
 
-void RunPanel(GuiBoxSystem& builder, Panel initial_panel) {
-    auto panel = builder.arena.New<Panel>(initial_panel);
-    Run(builder, panel);
+void RunOrEnqueuePanel(GuiBoxSystem& box_system, Panel panel) {
+    if (box_system.state) {
+        if (box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender) {
+            auto p = box_system.arena.New<Panel>(panel);
+            if (box_system.state->current_panel->first_child) {
+                for (auto q = box_system.state->current_panel->first_child; q; q = q->next)
+                    if (!q->next) {
+                        q->next = p;
+                        break;
+                    }
+            } else
+                box_system.state->current_panel->first_child = p;
+        }
+    } else {
+        Run(box_system, box_system.arena.New<Panel>(panel));
+    }
 }
 
 static f32x2 AlignWithin(Rect container, f32x2 size, TextAlignX align_x, TextAlignY align_y) {

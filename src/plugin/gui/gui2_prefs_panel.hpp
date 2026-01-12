@@ -466,7 +466,7 @@ static void PackagesPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelC
         if (btn.button_fired) box_system.imgui.OpenPopup(popup_id, btn.imgui_id);
 
         if (box_system.imgui.IsPopupOpen(popup_id))
-            AddPanel(box_system,
+            RunOrEnqueuePanel(box_system,
                      Panel {
                          .run =
                              [scan_folder_type, &context](GuiBoxSystem& box_system) {
@@ -647,7 +647,7 @@ PreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context, Pre
                               });
 
     using TabPanelFunction = void (*)(GuiBoxSystem&, PreferencesPanelContext&);
-    AddPanel(box_system,
+    RunOrEnqueuePanel(box_system,
              Panel {
                  .run = ({
                      TabPanelFunction f {};
@@ -687,7 +687,7 @@ DoPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context, P
             if (init) EndReadFolders(context.presets_server, context.presets->handle);
         };
 
-        RunPanel(box_system,
+        RunOrEnqueuePanel(box_system,
                  Panel {
                      .run = [&context, &state](GuiBoxSystem& b) { PreferencesPanel(b, context, state); },
                      .data =

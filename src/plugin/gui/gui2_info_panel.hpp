@@ -607,7 +607,7 @@ static void InfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoP
                               });
 
     using TabPanelFunction = void (*)(GuiBoxSystem&, InfoPanelContext&, InfoPanelState&);
-    AddPanel(box_system,
+    RunOrEnqueuePanel(box_system,
              Panel {
                  .run = ({
                      TabPanelFunction f {};
@@ -642,7 +642,7 @@ PUBLIC void DoInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, Inf
             if (check_for_update::ShowNewVersionIndicator(context.check_for_update_state, context.prefs))
                 state.tab = InfoPanelState::Tab::About;
         }
-        RunPanel(box_system,
+        RunOrEnqueuePanel(box_system,
                  Panel {
                      .run = [&context, &state](GuiBoxSystem& b) { InfoPanel(b, context, state); },
                      .data =

@@ -287,7 +287,7 @@ void DoSavePresetPanel(GuiBoxSystem& box_system,
             box_system.imgui.SetYScroll(w, 0.0f);
     }
 
-    RunPanel(
+    RunOrEnqueuePanel(
         box_system,
         Panel {
             .run =
@@ -304,7 +304,7 @@ void DoSavePresetPanel(GuiBoxSystem& box_system,
 
                     DoModalDivider(box_system, root, {.horizontal = true});
 
-                    AddPanel(
+                    RunOrEnqueuePanel(
                         box_system,
                         Panel {
                             .run =

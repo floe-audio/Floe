@@ -210,7 +210,7 @@ Box DoParameterComponent(Gui* g,
         }
 
         if (builder.imgui.IsPopupOpen(popup_id))
-            AddPanel(builder,
+            RunOrEnqueuePanel(builder,
                      Panel {
                          .run = [g, index = param.info.index](GuiBoxSystem&) { DoMidiLearnMenu(g, index); },
                          .data =

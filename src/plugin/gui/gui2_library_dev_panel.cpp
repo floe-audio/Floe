@@ -385,7 +385,7 @@ static void DoPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, L
                               });
 
     using TabPanelFunction = void (*)(GuiBoxSystem&, LibraryDevPanelContext&, LibraryDevPanelState&);
-    AddPanel(box_system,
+    RunOrEnqueuePanel(box_system,
              Panel {
                  .run = ({
                      TabPanelFunction f {};
@@ -428,7 +428,7 @@ void DoLibraryDevPanel(GuiBoxSystem& box_system,
     pos.x += window_size.x - size.x;
     pos.y += (window_size.y - size.y) / 2;
 
-    RunPanel(box_system,
+    RunOrEnqueuePanel(box_system,
              Panel {
                  .run = [&context, &state](GuiBoxSystem& box_system) { DoPanel(box_system, context, state); },
                  .data =

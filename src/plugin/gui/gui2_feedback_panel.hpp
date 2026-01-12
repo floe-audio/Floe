@@ -139,7 +139,7 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
 PUBLIC void
 DoFeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackPanelState& state) {
     if (!state.open) return;
-    RunPanel(
+    RunOrEnqueuePanel(
         box_system,
         Panel {
             .run = [&context, &state](GuiBoxSystem& b) { FeedbackPanel(b, context, state); },

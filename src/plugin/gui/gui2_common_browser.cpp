@@ -1807,7 +1807,7 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
 
                 if (btn.button_fired) box_system.imgui.OpenPopup(popup_id, btn.imgui_id);
 
-                AddPanel(box_system,
+                RunOrEnqueuePanel(box_system,
                          Panel {
                              .run = [&context](
                                         GuiBoxSystem& box_system) { DoMoreOptionsMenu(box_system, context); },
@@ -1986,7 +1986,7 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
             }
         }
 
-        AddPanel(
+        RunOrEnqueuePanel(
             box_system,
             {
                 .run =
@@ -2327,7 +2327,7 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
             }
         }
 
-        AddPanel(
+        RunOrEnqueuePanel(
             box_system,
             {
                 .run = [&](GuiBoxSystem& box_system) { options.rhs_do_items(box_system); },
@@ -2350,7 +2350,7 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
             });
     }
 
-    AddPanel(box_system,
+    RunOrEnqueuePanel(box_system,
              Panel {
                  .run =
                      [&](GuiBoxSystem& box_system) {
@@ -2373,7 +2373,7 @@ void DoBrowserPopup(GuiBoxSystem& box_system,
 
     key_nav::BeginFrame(box_system.imgui, context.state.keyboard_navigation, context.browser_id);
 
-    RunPanel(
+    RunOrEnqueuePanel(
         box_system,
         Panel {
             .run = [&](GuiBoxSystem& box_system) { DoBrowserPopupInternal(box_system, context, options); },

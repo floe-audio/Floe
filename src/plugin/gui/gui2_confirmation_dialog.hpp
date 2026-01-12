@@ -63,7 +63,7 @@ static void ConfirmationDialog(GuiBoxSystem& box_system, ConfirmationDialogState
 
 PUBLIC void DoConfirmationDialog(GuiBoxSystem& box_system, ConfirmationDialogState& state) {
     if (!state.open) return;
-    RunPanel(box_system,
+    RunOrEnqueuePanel(box_system,
              Panel {
                  .run = [&state](GuiBoxSystem& b) { ConfirmationDialog(b, state); },
                  .data =

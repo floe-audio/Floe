@@ -179,7 +179,7 @@ PUBLIC void DoNotifications(GuiBoxSystem& box_system, Notifications& notificatio
         auto const width_px = box_system.imgui.VwToPixels(style::k_notification_panel_width);
         auto const spacing = box_system.imgui.PixelsToVw(style::k_spacing);
 
-        RunPanel(box_system,
+        RunOrEnqueuePanel(box_system,
                  Panel {
                      .run = [&notifications](GuiBoxSystem& b) { NotificationsPanel(b, notifications); },
                      .data =
