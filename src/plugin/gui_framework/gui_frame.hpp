@@ -231,16 +231,6 @@ struct GuiFrameOutput {
         dyn::AppendIfNotAlreadyThere(timed_wakeups, time);
     }
 
-    // Internal
-    void Reset() {
-        wants = {};
-        dyn::Clear(mouse_tracked_rects);
-        dyn::Clear(set_clipboard_text);
-        file_picker_dialog = k_nullopt;
-        file_picker_options_arena.ResetCursorAndConsolidateRegions();
-        dyn::Clear(draw_lists);
-    }
-
     // Set this if you want to be woken up at certain times in the future. Out-of-date wakeups will be removed
     // for you.
     DynamicArray<TimePoint> timed_wakeups {Malloc::Instance()};
@@ -261,6 +251,7 @@ struct GuiFrameOutput {
     DynamicArray<graphics::DrawList*> draw_lists {Malloc::Instance()};
     graphics::DrawListAllocator draw_list_allocator {};
 
+    // Simple impermanent state.
     struct Wants {
         UpdateInterval update_interval {UpdateInterval::Sleep};
 

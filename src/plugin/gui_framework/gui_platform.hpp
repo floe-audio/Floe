@@ -313,7 +313,8 @@ PUBLIC void DestroyView(GuiPlatform& platform) {
 
     if (platform.gui) {
         platform.gui.Clear();
-        platform.last_result.Reset();
+
+        // Free memory.
         platform.last_result.draw_list_allocator.Clear();
     }
 
@@ -767,6 +768,15 @@ static void ClearImpermanentState(GuiFrameInput& frame_state) {
     ++frame_state.update_count;
 }
 
+static void ClearImpermanentState(GuiFrameOutput& frame_output) {
+    frame_output.wants = {};
+    dyn::Clear(frame_output.mouse_tracked_rects);
+    dyn::Clear(frame_output.set_clipboard_text);
+    frame_output.file_picker_dialog = k_nullopt;
+    frame_output.file_picker_options_arena.ResetCursorAndConsolidateRegions();
+    dyn::Clear(frame_output.draw_lists);
+}
+
 static void HandlePostUpdateRequests(GuiPlatform& platform) {
     if (platform.last_result.wants.cursor_type != platform.current_cursor) {
         platform.current_cursor = platform.last_result.wants.cursor_type;
@@ -872,7 +882,7 @@ static void UpdateAndRender(GuiPlatform& platform) {
         BeginFrame(platform.frame_state);
 
         {
-            platform.last_result.Reset();
+            ClearImpermanentState(platform.last_result);
 
             SetGuiIo(&platform.frame_state, &platform.last_result);
             DEFER { SetGuiIo(nullptr, nullptr); };
