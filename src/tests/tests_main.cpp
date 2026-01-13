@@ -36,6 +36,7 @@
     X(RegisterGeometryTests)                                                                                 \
     X(RegisterHashTableTests)                                                                                \
     X(RegisterHostingTests)                                                                                  \
+    X(RegisterImageTests)                                                                                    \
     X(RegisterJsonReaderTests)                                                                               \
     X(RegisterJsonWriterTests)                                                                               \
     X(RegisterLayerProcessorTests)                                                                           \

@@ -98,11 +98,8 @@ static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
             auto pixels =
                 ImagePixelsFromLibrary(lib_id, LibraryImageType::Icon, server, scratch_arena, scratch_arena);
             if (!pixels) return k_nullopt;
-            auto const result = ShrinkImageIfNeeded(*pixels,
-                                                    desired_icon_size,
-                                                    desired_icon_size,
-                                                    ImageBytesAllocator(),
-                                                    true);
+            auto const result = ResizeImage(*pixels, desired_icon_size, ImageBytesAllocator())
+                                    .ValueOr(pixels->Clone(ImageBytesAllocator()));
             request_gui_update.Store(true, StoreMemoryOrder::Release);
             return result;
         },
@@ -159,18 +156,17 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryIdRef const& lib_id_ref,
 
             LibraryImages::LoadingBackgrounds result {};
 
-            auto const scaled_width = CheckedCast<u16>(window_width * 1.3f);
-            ASSERT(scaled_width);
-
             // If the image is quite a lot larger than we need, resize it down to avoid storing a huge
             // image on the GPU
-            auto const scaled_background =
-                ShrinkImageIfNeeded(*pixels, scaled_width, window_width, ImageBytesAllocator(), true);
+            auto const background = pixels->size.width > CheckedCast<u16>(window_width * 1.3f)
+                                        ? ResizeImage(*pixels, window_width, ImageBytesAllocator())
+                                              .ValueOr(pixels->Clone(ImageBytesAllocator()))
+                                        : pixels->Clone(ImageBytesAllocator());
 
-            if (reload_background) result.background = scaled_background;
+            if (reload_background) result.background = background;
 
             if (reload_blurred_background)
-                result.blurred_background = CreateBlurredLibraryBackground(scaled_background,
+                result.blurred_background = CreateBlurredLibraryBackground(background,
                                                                            ImageBytesAllocator(),
                                                                            scratch_arena,
                                                                            blur_options);
