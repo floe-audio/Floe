@@ -1909,11 +1909,6 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
         ASSERT(window->graphics);
     }
 
-    // TODO: what is this code! We seem to be completely ignoring our logic above for deciding if to reuse
-    // existing graphics and just always using our own...
-    if (!window->allocated_graphics) window->allocated_graphics = GuiIo().out.draw_list_allocator.Allocate();
-    window->graphics = window->allocated_graphics;
-
     window->graphics->context = GuiIo().in.graphics_ctx;
     if (window->graphics == window->allocated_graphics) window->graphics->BeginDraw();
     graphics = window->graphics;
