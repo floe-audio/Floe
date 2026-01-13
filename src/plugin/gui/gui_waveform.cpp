@@ -152,8 +152,8 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
                                       imgui.IsHotOrActive(id) ? back_hover_col : back_col,
                                       6,
                                       (int)rounding_corners);
-        g->frame_input.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Icons)]);
-        DEFER { g->frame_input.graphics_ctx->PopFont(); };
+        GuiIo().in.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Icons)]);
+        DEFER { GuiIo().in.graphics_ctx->PopFont(); };
         imgui.graphics->AddTextJustified(r,
                                          text,
                                          text_col,
@@ -185,14 +185,14 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
                                       {.slower_with_shift = true, .default_on_modifer = true});
 
         if (imgui.IsHotOrActive(id)) {
-            imgui.frame_output.cursor_type = CursorType::HorizontalArrows;
+            GuiIo().out.cursor_type = CursorType::HorizontalArrows;
             if (imgui::ClickCheck(
                     {
                         .left_mouse = true,
                         .double_click = true,
                         .triggers_on_mouse_down = true,
                     },
-                    imgui.frame_input))
+                    GuiIo().in))
                 g->param_text_editor_to_open = params[0];
         }
 
@@ -545,7 +545,7 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
                                   imgui.WindowPosToScreenPos(waveform_r.pos).x,
                                   {},
                                   intensity);
-            g->frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::Animate);
+            GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::Animate);
         }
     }
 
@@ -626,10 +626,10 @@ void GUIDoSampleWaveform(Gui* g, LayerProcessor* layer, Rect r) {
         waveform_r.h = Round(waveform_r.h);
         r.w = Round(r.w);
 
-        if (auto tex = imgui.frame_input.graphics_ctx->GetTextureFromImage(
+        if (auto tex = GuiIo().in.graphics_ctx->GetTextureFromImage(
                 GetWaveformImage(g->waveform_images,
                                  layer->instrument,
-                                 *g->frame_input.graphics_ctx,
+                                 *GuiIo().in.graphics_ctx,
                                  g->shared_engine_systems.thread_pool,
                                  r.size))) {
             g->imgui.graphics->AddImage(tex.Value(),

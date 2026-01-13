@@ -531,7 +531,7 @@ void ColoursGUISliders(EditorGUI* gui, String search) {
                     static_alpha = alpha;
                 }
 
-                f32 const pop_w = (f32)imgui->frame_input.window_size.width / 3.5f;
+                f32 const pop_w = (f32)GuiIo().in.window_size.width / 3.5f;
                 f32 const text_size = pop_w / 4;
                 f32 const itm_w = (pop_w - text_size) / 3;
                 f32 pop_pos = 0;
@@ -668,7 +668,7 @@ void ColoursGUISliders(EditorGUI* gui, String search) {
                     RecalculateBasedOnCol(other_c, c);
 
             WriteColoursFile(live_gui);
-            imgui->frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+            GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
         }
 
         EditorIncrementPos(gui);

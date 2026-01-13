@@ -70,7 +70,7 @@ static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
     if (layer_obj->instrument_id.tag == InstrumentType::Sampler) {
         auto sample_inst_id = layer_obj->instrument_id.Get<sample_lib::InstrumentId>();
         auto imgs = LibraryImagesFromLibraryId(g, sample_inst_id.library, LibraryImagesTypes::Icon);
-        if (imgs.icon) icon_tex = g->imgui.frame_input.graphics_ctx->GetTextureFromImage(*imgs.icon);
+        if (imgs.icon) icon_tex = GuiIo().in.graphics_ctx->GetTextureFromImage(*imgs.icon);
     }
 
     DoInstSelectorRightClickMenu(g, r, layer);
@@ -1346,7 +1346,7 @@ void Draw(Gui* g,
                     k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(layer->index,
                                                                             LayerParamIndex::MidiTranspose))]
                         .tooltip);
-                if (g->imgui.IsHot(label_id)) g->imgui.frame_output.cursor_type = CursorType::Default;
+                if (g->imgui.IsHot(label_id)) GuiIo().out.cursor_type = CursorType::Default;
             }
 
             buttons::Toggle(g,
@@ -1579,7 +1579,7 @@ void Draw(Gui* g,
             }();
             if (new_page && new_page != layer_gui->selected_page) {
                 layer_gui->selected_page = *new_page;
-                g->imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
             }
         }
     }

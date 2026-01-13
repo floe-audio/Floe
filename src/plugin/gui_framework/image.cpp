@@ -493,7 +493,8 @@ TEST_CASE(TestBlurPowerOfTwo) {
 
     for (auto const size : Array<u16, 5> {2, 4, 8, 16, 32}) {
         auto const num_pixels = (usize)size * size;
-        auto rgba_data = tester.scratch_arena.AllocateExactSizeUninitialised<u8>(num_pixels * k_rgba_channels);
+        auto rgba_data =
+            tester.scratch_arena.AllocateExactSizeUninitialised<u8>(num_pixels * k_rgba_channels);
 
         for (auto const [i, byte] : Enumerate(rgba_data))
             byte = (u8)(i % 256);

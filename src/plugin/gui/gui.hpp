@@ -42,7 +42,7 @@ struct DraggingFX {
 };
 
 struct Gui {
-    Gui(GuiFrameInput& frame_input, Engine& engine);
+    Gui(Engine& engine);
     ~Gui();
 
     PageAllocator page_allocator;
@@ -66,14 +66,12 @@ struct Gui {
 
     bool legacy_params_window_open {};
 
-    GuiFrameInput& frame_input;
-    GuiFrameResult frame_output;
     Engine& engine;
     SharedEngineSystems& shared_engine_systems;
     prefs::Preferences& prefs;
 
     layout::Context layout = {};
-    imgui::Context imgui {frame_input, frame_output};
+    imgui::Context imgui {};
     EditorGUI editor = {};
     Fonts fonts {};
     GuiBoxSystem box_system {
@@ -117,6 +115,6 @@ LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, LibraryI
 Optional<graphics::ImageID> LogoImage(Gui* g);
 
 void GUIPresetLoaded(Gui* g, Engine* a, bool is_first_preset);
-GuiFrameResult GuiUpdate(Gui* g);
+void GuiUpdate(Gui* g);
 void TopPanel(Gui* g, f32 height, GuiFrameContext const& frame_context);
 void MidPanel(Gui* g, GuiFrameContext const& frame_context);

@@ -3,7 +3,19 @@
 
 #include "gui_platform.hpp"
 
-#if !OS_LINUX
+#if !IS_LINUX
 int detail::FdFromPuglWorld(PuglWorld*) { return 0; }
 void detail::X11SetParent(PuglView*, uintptr) {}
 #endif
+
+GuiFrameInput* g_frame_input {};
+GuiFrameResult* g_frame_output {};
+
+GuiFrameIo GuiIo() { return {*g_frame_input, *g_frame_output}; }
+
+void SetGuiIo(GuiFrameInput* in, GuiFrameResult* out) {
+    g_frame_input = in;
+    g_frame_output = out;
+}
+
+Atomic<bool> g_request_gui_update {};

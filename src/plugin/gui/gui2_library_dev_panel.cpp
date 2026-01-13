@@ -425,7 +425,7 @@ void DoLibraryDevPanel(GuiBoxSystem& box_system,
     if (!state.open) return;
 
     f32x2 const size = {box_system.imgui.VwToPixels(350), box_system.imgui.VwToPixels(570)};
-    auto const window_size = box_system.imgui.frame_input.window_size.ToFloat2();
+    auto const window_size = GuiIo().in.window_size.ToFloat2();
     f32x2 pos = 0;
     pos.x += window_size.x - size.x;
     pos.y += (window_size.y - size.y) / 2;

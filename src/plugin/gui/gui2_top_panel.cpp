@@ -383,7 +383,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g, GuiFrameContext const& 
         auto const preset_load =
             do_icon_button(preset_box, ICON_FA_FILE_IMPORT, "Load a preset from a file"_s, 0.8f, 3);
         if (preset_load.button_fired)
-            OpenFilePickerLoadPreset(g->file_picker_state, g->frame_output, g->shared_engine_systems.paths);
+            OpenFilePickerLoadPreset(g->file_picker_state, g->shared_engine_systems.paths);
     }
 
     auto right_icon_buttons_container = DoBox(box_system,
@@ -489,8 +489,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g, GuiFrameContext const& 
         g->timbre_slider_is_held = box.is_active;
 
         if (box_system.imgui.WasJustActivated(box.imgui_id))
-            box_system.imgui.frame_output.ElevateUpdateRequest(
-                GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+            GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
     }
 
     DoParameterComponent(g,

@@ -362,6 +362,7 @@ struct DrawContext {
 
     virtual ErrorCodeOr<void> Render(DrawData draw_data, UiSize window_size) = 0;
 
+    // TODO: remove this
     void
     RequestScreenshotImage(TrivialFixedSizeFunction<8, void(u8 const*, int width, int height)>&& callback) {
         screenshot_callback = Move(callback);

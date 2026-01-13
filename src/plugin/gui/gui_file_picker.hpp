@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -34,7 +34,6 @@ struct FilePickerState {
 };
 
 PUBLIC void OpenFilePickerAddExtraScanFolders(FilePickerState& state,
-                                              GuiFrameResult& frame_result,
                                               prefs::Preferences const& prefs,
                                               FloePaths const& paths,
                                               AddScanFolderFilePickerState data) {
@@ -43,7 +42,7 @@ PUBLIC void OpenFilePickerAddExtraScanFolders(FilePickerState& state,
     if (auto const extra_paths = ExtraScanFolders(paths, prefs, data.type); extra_paths.size)
         default_folder = state.arena.Clone(extra_paths[0]);
 
-    frame_result.file_picker_dialog = FilePickerDialogOptions {
+    GuiIo().out.file_picker_dialog = FilePickerDialogOptions {
         .type = FilePickerDialogOptions::Type::SelectFolder,
         .title = ({
             String s {};
@@ -62,7 +61,7 @@ PUBLIC void OpenFilePickerAddExtraScanFolders(FilePickerState& state,
     state.data = data;
 }
 
-PUBLIC void OpenFilePickerInstallPackage(FilePickerState& state, GuiFrameResult& frame_result) {
+PUBLIC void OpenFilePickerInstallPackage(FilePickerState& state) {
     state.arena.ResetCursorAndConsolidateRegions();
 
     static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
@@ -72,7 +71,7 @@ PUBLIC void OpenFilePickerInstallPackage(FilePickerState& state, GuiFrameResult&
         },
     });
 
-    frame_result.file_picker_dialog = FilePickerDialogOptions {
+    GuiIo().out.file_picker_dialog = FilePickerDialogOptions {
         .type = FilePickerDialogOptions::Type::OpenFile,
         .title = "Select 1 or more Floe Package",
         .default_folder = KnownDirectory(state.arena, KnownDirectoryType::Downloads, {.create = false}),
@@ -94,8 +93,7 @@ static String PresetFileDefaultPath(FloePaths const& paths, PresetFilePickerMode
     return result;
 }
 
-PUBLIC void
-OpenFilePickerSavePreset(FilePickerState& state, GuiFrameResult& frame_result, FloePaths const& paths) {
+PUBLIC void OpenFilePickerSavePreset(FilePickerState& state, FloePaths const& paths) {
     state.arena.ResetCursorAndConsolidateRegions();
 
     static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
@@ -105,7 +103,7 @@ OpenFilePickerSavePreset(FilePickerState& state, GuiFrameResult& frame_result, F
         },
     });
 
-    frame_result.file_picker_dialog = FilePickerDialogOptions {
+    GuiIo().out.file_picker_dialog = FilePickerDialogOptions {
         .type = FilePickerDialogOptions::Type::SaveFile,
         .title = "Save Floe Preset",
         .default_folder = PresetFileDefaultPath(paths, PresetFilePickerMode::Save),
@@ -117,8 +115,7 @@ OpenFilePickerSavePreset(FilePickerState& state, GuiFrameResult& frame_result, F
     state.data = FilePickerStateType::SavePreset;
 }
 
-PUBLIC void
-OpenFilePickerLoadPreset(FilePickerState& state, GuiFrameResult& frame_result, FloePaths const& paths) {
+PUBLIC void OpenFilePickerLoadPreset(FilePickerState& state, FloePaths const& paths) {
     state.arena.ResetCursorAndConsolidateRegions();
     static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
         {
@@ -131,7 +128,7 @@ OpenFilePickerLoadPreset(FilePickerState& state, GuiFrameResult& frame_result, F
         },
     });
 
-    frame_result.file_picker_dialog = FilePickerDialogOptions {
+    GuiIo().out.file_picker_dialog = FilePickerDialogOptions {
         .type = FilePickerDialogOptions::Type::OpenFile,
         .title = "Load Floe Preset",
         .default_folder = PresetFileDefaultPath(paths, PresetFilePickerMode::Load),

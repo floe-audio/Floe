@@ -391,7 +391,7 @@ PUBLIC ErrorCodeOr<void> SetVisible(GuiPlatform& platform, bool visible, Engine&
         detail::SetTimers(platform, detail::SetTimerType::Start);
 
         // Create GUI if not already done.
-        if (!platform.gui) platform.gui.Emplace(platform.frame_state, engine);
+        if (!platform.gui) platform.gui.Emplace(engine);
 
     } else {
         platform.frame_state.Reset();
@@ -462,7 +462,7 @@ static bool IsUpdateNeeded(GuiPlatform& platform) {
     // not.
     if (!platform.first_update_made) update_needed = true;
 
-    if (platform.frame_state.request_update.Exchange(false, RmwMemoryOrder::Relaxed)) update_needed = true;
+    if (g_request_gui_update.Exchange(false, RmwMemoryOrder::Relaxed)) update_needed = true;
 
     if (platform.last_result.update_request > GuiFrameResult::UpdateRequest::Sleep) update_needed = true;
 
@@ -867,7 +867,14 @@ static void UpdateAndRender(GuiPlatform& platform) {
 
         BeginFrame(platform.frame_state);
 
-        platform.last_result = GuiUpdate(&*platform.gui);
+        {
+            platform.last_result = {};
+
+            SetGuiIo(&platform.frame_state, &platform.last_result);
+            DEFER { SetGuiIo(nullptr, nullptr); };
+
+            GuiUpdate(&*platform.gui);
+        }
 
         // clear the state ready for new events, and to ensure they're only processed once
         ClearImpermanentState(platform.frame_state);

@@ -816,7 +816,7 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
         BrowserPopupOptions {
             .title = "Presets",
             .height = ({
-                auto const window_height = box_system.imgui.frame_input.window_size.height;
+                auto const window_height = GuiIo().in.window_size.height;
                 auto const button_bottom = state.common_state.absolute_button_rect.Bottom();
                 auto const available_height = window_height - button_bottom - 20;
                 box_system.imgui.PixelsToVw(available_height);

@@ -768,7 +768,7 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
 
     layout::Id closest_divider = layout::k_invalid_id;
     if (dragging_fx_unit && imgui.HoveredWindow() == imgui.CurrentWindow()) {
-        f32 const rel_y_pos = imgui.ScreenPosToWindowPos(imgui.frame_input.cursor_pos).y;
+        f32 const rel_y_pos = imgui.ScreenPosToWindowPos(GuiIo().in.cursor_pos).y;
         f32 distance = Abs(layout::GetRect(lay, switches_bottom_divider).y - rel_y_pos);
         closest_divider = switches_bottom_divider;
         usize closest_slot = 0;
@@ -785,7 +785,7 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
 
         ASSERT(closest_slot <= ordered_effects.size);
         if (dragging_fx_unit->drop_slot != closest_slot)
-            imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+            GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
         dragging_fx_unit->drop_slot = closest_slot;
     }
 
@@ -852,10 +852,10 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
 
                 if (imgui.WasJustActivated(id)) {
                     dragging_fx_unit = DraggingFX {id, &fx, FindSlotInEffects(ordered_effects, &fx), {}};
-                    imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                    GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
                 }
 
-                if (imgui.IsHotOrActive(id)) g->frame_output.cursor_type = CursorType::AllArrows;
+                if (imgui.IsHotOrActive(id)) GuiIo().out.cursor_type = CursorType::AllArrows;
                 Tooltip(g,
                         id,
                         r,
@@ -1143,7 +1143,7 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
     }
 
     if (dragging_fx_unit) {
-        g->frame_output.cursor_type = CursorType::AllArrows;
+        GuiIo().out.cursor_type = CursorType::AllArrows;
         {
             auto style = buttons::EffectHeading(
                 imgui,
@@ -1152,7 +1152,7 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
             style.draw_with_overlay_graphics = true;
 
             auto const text = k_effect_info[ToInt(dragging_fx_unit->fx->type)].name;
-            Rect btn_r {.pos = g->frame_input.cursor_pos, .size = get_heading_size(text)};
+            Rect btn_r {.pos = GuiIo().in.cursor_pos, .size = get_heading_size(text)};
             btn_r.pos += {btn_r.h, 0};
             buttons::FakeButton(g, btn_r, text, style);
         }
@@ -1160,16 +1160,16 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
         {
             auto const space_around_cursor = 100.0f;
             Rect spacer_r;
-            spacer_r.pos = g->frame_input.cursor_pos;
+            spacer_r.pos = GuiIo().in.cursor_pos;
             spacer_r.y -= space_around_cursor / 2;
             spacer_r.w = 1;
             spacer_r.h = space_around_cursor;
 
             auto wnd = imgui.CurrentWindow();
             if (!Rect::DoRectsIntersect(spacer_r, wnd->clipping_rect.ReducedVertically(spacer_r.h))) {
-                bool const going_up = g->frame_input.cursor_pos.y < wnd->clipping_rect.CentreY();
+                bool const going_up = GuiIo().in.cursor_pos.y < wnd->clipping_rect.CentreY();
 
-                auto const d = 100.0f * g->frame_input.delta_time;
+                auto const d = 100.0f * GuiIo().in.delta_time;
                 imgui.WakeupAtTimedInterval(g->redraw_counter, 0.016);
 
                 imgui.SetYScroll(wnd,
@@ -1205,9 +1205,9 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
                           labels::Parameter(imgui));
 
             if (dragging_fx &&
-                (converted_slot_r.Contains(imgui.frame_input.cursor_pos) || dragging_fx->drop_slot == slot)) {
+                (converted_slot_r.Contains(GuiIo().in.cursor_pos) || dragging_fx->drop_slot == slot)) {
                 if (dragging_fx->drop_slot != slot)
-                    imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                    GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
                 dragging_fx->drop_slot = slot;
                 imgui.graphics->AddRectFilled(converted_slot_r.Min(),
                                               converted_slot_r.Max(),
@@ -1234,20 +1234,18 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
                     auto converted_grabber_r = imgui.GetRegisteredAndConvertedRect(grabber_r);
                     imgui.RegisterRegionForMouseTracking(converted_grabber_r);
 
-                    if (converted_grabber_r.Contains(g->frame_input.cursor_pos))
-                        g->frame_output.cursor_type = CursorType::AllArrows;
+                    if (converted_grabber_r.Contains(GuiIo().in.cursor_pos))
+                        GuiIo().out.cursor_type = CursorType::AllArrows;
                 }
 
                 if (imgui.IsActive(id) && !dragging_fx) {
-                    auto const click_pos = g->frame_input.mouse_buttons[0].last_press.point;
-                    auto const current_pos = g->frame_input.cursor_pos;
+                    auto const click_pos = GuiIo().in.mouse_buttons[0].last_press.point;
+                    auto const current_pos = GuiIo().in.cursor_pos;
                     auto const delta = current_pos - click_pos;
 
                     constexpr f32 k_wiggle_room = 3;
-                    if (Sqrt((delta.x * delta.x) + (delta.y * delta.y)) > k_wiggle_room) {
-                        dragging_fx =
-                            DraggingFX {id, fx, slot, g->frame_input.cursor_pos - converted_slot_r.pos};
-                    }
+                    if (Sqrt((delta.x * delta.x) + (delta.y * delta.y)) > k_wiggle_room)
+                        dragging_fx = DraggingFX {id, fx, slot, GuiIo().in.cursor_pos - converted_slot_r.pos};
                 }
             }
         }
@@ -1258,7 +1256,7 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
             style.draw_with_overlay_graphics = true;
 
             Rect btn_r {layout::GetRect(lay, switches[0])};
-            btn_r.pos = imgui.frame_input.cursor_pos - dragging_fx->relative_grab_point;
+            btn_r.pos = GuiIo().in.cursor_pos - dragging_fx->relative_grab_point;
 
             auto active_fx = dragging_fx->fx;
             buttons::FakeButton(g,
@@ -1266,7 +1264,7 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
                                 k_effect_info[ToInt(active_fx->type)].name,
                                 EffectIsOn(engine.processor.main_params, active_fx),
                                 style);
-            g->frame_output.cursor_type = CursorType::AllArrows;
+            GuiIo().out.cursor_type = CursorType::AllArrows;
         }
 
         if (dragging_fx && imgui.WasJustDeactivated(dragging_fx->id)) {

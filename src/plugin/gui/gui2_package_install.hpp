@@ -165,8 +165,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBoxSystem& box_system,
                 },
                 .id = k_installing_packages_notif_id,
             };
-            box_system.imgui.frame_output.ElevateUpdateRequest(
-                GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+            GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
         }
 
         bool user_input_needed = false;
@@ -231,8 +230,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBoxSystem& box_system,
                         },
                         .id = HashFnv1a("package install success"),
                     };
-                    box_system.imgui.frame_output.ElevateUpdateRequest(
-                        GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                    GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
 
                     next = package::RemoveJob(package_install_jobs, it);
                     break;
@@ -267,7 +265,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBoxSystem& box_system,
                     .data =
                         ModalPanel {
                             .r = CentredRect(
-                                {.pos = 0, .size = box_system.imgui.frame_input.window_size.ToFloat2()},
+                                {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()},
                                 f32x2 {box_system.imgui.VwToPixels(style::k_install_dialog_width),
                                        box_system.imgui.VwToPixels(style::k_install_dialog_height)}),
                             .imgui_id = box_system.imgui.GetID("install alerts"),

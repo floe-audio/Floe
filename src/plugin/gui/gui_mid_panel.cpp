@@ -29,7 +29,7 @@ static void DoBlurredBackground(Gui* g,
     auto imgs = LibraryImagesFromLibraryId(g, library_id, LibraryImagesTypes::Backgrounds);
 
     if (imgs.blurred_background) {
-        if (auto tex = g->frame_input.graphics_ctx->GetTextureFromImage(imgs.blurred_background)) {
+        if (auto tex = GuiIo().in.graphics_ctx->GetTextureFromImage(imgs.blurred_background)) {
             auto const whole_uv = GetMaxUVToMaintainAspectRatio(*imgs.blurred_background, mid_panel_size);
             auto const left_margin = r.x - window->parent_window->bounds.x;
             auto const top_margin = r.y - window->parent_window->bounds.y;

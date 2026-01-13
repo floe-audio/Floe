@@ -153,8 +153,6 @@ struct GuiFrameInput {
     void* native_window {}; // HWND, NSView*, etc.
     void* pugl_view {}; // PuglView* for the current frame
 
-    Atomic<bool> request_update {false};
-
     // internal
     ArenaAllocator event_arena {Malloc::Instance(), 256};
 };
@@ -263,3 +261,19 @@ struct GuiFrameResult {
     // Must be valid until the next frame.
     graphics::DrawData draw_data {};
 };
+
+struct GuiFrameIo {
+    GuiFrameInput const& in;
+    GuiFrameResult& out;
+};
+
+// Global data used within a GUI update. Outside of a GUI update it is invalid to use this data.
+// A large percentage of GUI code needs access to the frame input and output. Rather than pass it around
+// everywhere which will be incredibly noisy, we use this global.
+GuiFrameIo GuiIo();
+
+// Internal.
+void SetGuiIo(GuiFrameInput* in, GuiFrameResult* out);
+
+// Set this at any time from any thread to request a GUI update at some point in the future.
+extern Atomic<bool> g_request_gui_update;

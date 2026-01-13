@@ -19,16 +19,16 @@
 #include "gui_widget_helpers.hpp"
 #include "gui_window.hpp"
 
-PUBLIC Rect ModalRect(imgui::Context const& imgui, f32 width, f32 height) {
+PUBLIC Rect ModalRect(f32 width, f32 height) {
     auto const size = f32x2 {width, height};
     Rect r;
-    r.pos = imgui.frame_input.window_size.ToFloat2() / 2 - size / 2; // centre
+    r.pos = GuiIo().in.window_size.ToFloat2() / 2 - size / 2; // centre
     r.size = size;
     return r;
 }
 
 PUBLIC Rect ModalRect(imgui::Context const& imgui, UiSizeId width_id, UiSizeId height_id) {
-    return ModalRect(imgui, LiveSize(imgui, width_id), LiveSize(imgui, height_id));
+    return ModalRect(LiveSize(imgui, width_id), LiveSize(imgui, height_id));
 }
 
 static imgui::Id IdForModal(ModalWindowType type) { return (imgui::Id)(ToInt(type) + 1000); }
@@ -179,8 +179,8 @@ static void DoLegacyParamsModal(Gui* g) {
     if (!g->legacy_params_window_open) return;
 
     auto body_font = g->fonts[ToInt(FontType::Body)];
-    g->frame_input.graphics_ctx->PushFont(body_font);
-    DEFER { g->frame_input.graphics_ctx->PopFont(); };
+    GuiIo().in.graphics_ctx->PushFont(body_font);
+    DEFER { GuiIo().in.graphics_ctx->PopFont(); };
     auto& imgui = g->imgui;
 
     auto const r = ModalRect(imgui, UiSizeId::LegacyParamsWindowWidth, UiSizeId::LegacyParamsWindowHeight);
@@ -308,8 +308,8 @@ static void DoLegacyParamsModal(Gui* g) {
 }
 
 static void DoErrorsModal(Gui* g) {
-    g->frame_input.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Body)]);
-    DEFER { g->frame_input.graphics_ctx->PopFont(); };
+    GuiIo().in.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Body)]);
+    DEFER { GuiIo().in.graphics_ctx->PopFont(); };
     auto& imgui = g->imgui;
 
     auto const r = ModalRect(imgui, UiSizeId::ErrorWindowWidth, UiSizeId::ErrorWindowHeight);
@@ -403,8 +403,8 @@ static void DoErrorsModal(Gui* g) {
 }
 
 static void DoLoadingOverlay(Gui* g) {
-    g->frame_input.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Body)]);
-    DEFER { g->frame_input.graphics_ctx->PopFont(); };
+    GuiIo().in.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Body)]);
+    DEFER { GuiIo().in.graphics_ctx->PopFont(); };
     auto& imgui = g->imgui;
 
     auto const r = ModalRect(imgui, UiSizeId::LoadingOverlayBoxWidth, UiSizeId::LoadingOverlayBoxHeight);

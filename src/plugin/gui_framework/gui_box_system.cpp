@@ -123,8 +123,8 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
 
                 if (modal.close_on_click_outside) {
                     if (builder.imgui.IsWindowHovered(invis_window)) {
-                        builder.imgui.frame_output.cursor_type = CursorType::Hand;
-                        if (builder.imgui.frame_input.Mouse(MouseButton::Left).presses.size) modal.on_close();
+                        GuiIo().out.cursor_type = CursorType::Hand;
+                        if (GuiIo().in.Mouse(MouseButton::Left).presses.size) modal.on_close();
                     }
                 }
             }
@@ -138,9 +138,9 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
             builder.imgui.BeginWindow(settings, modal.imgui_id, modal.r);
 
             if (modal.close_on_esc) {
-                builder.imgui.frame_output.wants_keyboard_keys.Set(ToInt(KeyCode::Escape));
+                GuiIo().out.wants_keyboard_keys.Set(ToInt(KeyCode::Escape));
                 if (!builder.imgui.active_text_input && builder.imgui.RequestKeyboardFocus(modal.imgui_id))
-                    if (builder.imgui.frame_input.Key(KeyCode::Escape).presses.size) modal.on_close();
+                    if (GuiIo().in.Key(KeyCode::Escape).presses.size) modal.on_close();
             }
 
             break;
@@ -288,7 +288,7 @@ static bool Tooltip(GuiBoxSystem& builder,
 
     auto& imgui = builder.imgui;
     if (imgui.WasJustMadeHot(id))
-        imgui.AddTimedWakeup(imgui.frame_input.current_time + style::k_tooltip_open_delay, "Tooltip");
+        imgui.AddTimedWakeup(GuiIo().in.current_time + style::k_tooltip_open_delay, "Tooltip");
 
     auto hot_seconds = imgui.SecondsSpentHot();
     if (imgui.IsHot(id) && hot_seconds >= style::k_tooltip_open_delay) {
@@ -327,7 +327,7 @@ static bool Tooltip(GuiBoxSystem& builder,
         popup_r.w = text_size.x + pad_x * 2;
         popup_r.h = text_size.y + pad_y * 2;
 
-        auto const cursor_pos = imgui.frame_input.cursor_pos;
+        auto const cursor_pos = GuiIo().in.cursor_pos;
 
         // Shift the x so that it's centred on the cursor.
         popup_r.x = cursor_pos.x - popup_r.w / 2;
@@ -335,10 +335,8 @@ static bool Tooltip(GuiBoxSystem& builder,
         auto avoid_r = r;
         if (additional_avoid_r) avoid_r = Rect::MakeRectThatEnclosesRects(avoid_r, *additional_avoid_r);
 
-        popup_r.pos = imgui::BestPopupPos(popup_r,
-                                          avoid_r,
-                                          imgui.frame_input.window_size.ToFloat2(),
-                                          show_left_or_right);
+        popup_r.pos =
+            imgui::BestPopupPos(popup_r, avoid_r, GuiIo().in.window_size.ToFloat2(), show_left_or_right);
 
         f32x2 text_start;
         text_start.x = popup_r.x + pad_x;
@@ -625,7 +623,7 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
 
                 // Convert ImageID to TextureHandle for rendering
                 if (auto const texture =
-                        builder.imgui.frame_input.graphics_ctx->GetTextureFromImage(*config.background_tex)) {
+                        GuiIo().in.graphics_ctx->GetTextureFromImage(*config.background_tex)) {
                     auto const corner_flags = __builtin_bitreverse32(config.round_background_corners) >> 28;
                     auto const rounding = config.round_background_corners
                                               ? (config.round_background_fully
@@ -807,7 +805,7 @@ bool AdditionalClickBehaviour(GuiBoxSystem& box_system,
     auto const item_r =
         box_system.imgui.WindowRectToScreenRect(layout::GetRect(box_system.layout, box.layout_id));
 
-    auto const result = imgui::ClickCheck(config, box_system.imgui.frame_input, &item_r);
+    auto const result = imgui::ClickCheck(config, GuiIo().in, &item_r);
     if (result && out_item_rect) *out_item_rect = item_r;
     return result;
 }

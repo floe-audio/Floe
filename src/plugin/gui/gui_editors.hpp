@@ -111,6 +111,7 @@ static void DoGUISizeEditor(Gui* g, Rect r) {
 static bool g_show_editor = false;
 static bool g_show_editor_on_left = true;
 
+// TODO remove this
 static void TakeScreenshot(Gui* g) {
     for (auto wnd : g->imgui.windows) {
         if (wnd->name == "DebugR") {
@@ -119,7 +120,7 @@ static void TakeScreenshot(Gui* g) {
         }
     }
 
-    g->frame_input.graphics_ctx->RequestScreenshotImage([g](u8 const* data, int width, int height) {
+    GuiIo().in.graphics_ctx->RequestScreenshotImage([g](u8 const* data, int width, int height) {
         auto path = DynamicArray<char>::FromOwnedSpan(
             KnownDirectoryWithSubdirectories(g->scratch_arena,
                                              KnownDirectoryType::Documents,
@@ -164,12 +165,12 @@ PUBLIC void DoWholeEditor(Gui* g) {
     if constexpr (!k_editor_enabled) return;
     auto& imgui = g->imgui;
 
-    g->frame_output.wants_text_input = true; // for debug panel open/close
+    GuiIo().out.wants_text_input = true; // for debug panel open/close
 
-    if (g->frame_input.Key(KeyCode::F1).presses.size) g_show_editor = !g_show_editor;
+    if (GuiIo().in.Key(KeyCode::F1).presses.size) g_show_editor = !g_show_editor;
 
     if (g_show_editor) {
-        if (g->frame_input.Key(KeyCode::F2).presses.size) g_show_editor_on_left = !g_show_editor_on_left;
+        if (GuiIo().in.Key(KeyCode::F2).presses.size) g_show_editor_on_left = !g_show_editor_on_left;
         auto const half_w = (f32)(int)(imgui.Width() / 2);
         Rect debug_r;
         if (g_show_editor_on_left)

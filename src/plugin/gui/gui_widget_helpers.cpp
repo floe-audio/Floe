@@ -60,7 +60,7 @@ void DoTooltipText(Gui* g, String str, Rect r, bool rect_is_window_pos) {
 
     popup_r.pos = imgui::BestPopupPos(popup_r,
                                       {.pos = abs_pos, .size = r.size},
-                                      g->frame_input.window_size.ToFloat2(),
+                                      GuiIo().in.window_size.ToFloat2(),
                                       false);
 
     f32x2 text_start;
@@ -81,7 +81,7 @@ bool Tooltip(Gui* g, imgui::Id id, Rect r, String str, bool rect_is_window_pos, 
 
     auto& imgui = g->imgui;
     f64 const delay {0.5};
-    if (imgui.WasJustMadeHot(id)) imgui.AddTimedWakeup(g->frame_input.current_time + delay, "Tooltip");
+    if (imgui.WasJustMadeHot(id)) imgui.AddTimedWakeup(GuiIo().in.current_time + delay, "Tooltip");
     auto hot_seconds = imgui.SecondsSpentHot();
     if (imgui.IsHot(id) && hot_seconds >= delay) {
         DoTooltipText(g, str, r, rect_is_window_pos);
@@ -183,7 +183,7 @@ void MidiLearnMenu(Gui* g, Span<ParamIndex> params, Rect r) {
     auto popup_pos = imgui::BestPopupPos(
         Rect {.x = centred_x, .y = r.y, .w = item_width, .h = item_height * (f32)num_items},
         r,
-        g->frame_input.window_size.ToFloat2(),
+        GuiIo().in.window_size.ToFloat2(),
         false);
     Rect const popup_r {.pos = popup_pos};
 
@@ -415,8 +415,8 @@ bool DoOverlayClickableBackground(Gui* g) {
     auto invis_window = imgui.CurrentWindow();
 
     if (imgui.IsWindowHovered(invis_window)) {
-        imgui.frame_output.cursor_type = CursorType::Hand;
-        if (imgui.frame_input.Mouse(MouseButton::Left).presses.size) clicked = true;
+        GuiIo().out.cursor_type = CursorType::Hand;
+        if (GuiIo().in.Mouse(MouseButton::Left).presses.size) clicked = true;
     }
 
     imgui.EndWindow();
@@ -479,8 +479,7 @@ void HandleShowingTextEditorForParams(Gui* g, Rect r, Span<ParamIndex const> par
                 if (text_input.enter_pressed || g->imgui.TextInputJustUnfocused(id)) {
                     if (auto val = p_obj.info.StringToLinearValue(text_input.text)) {
                         SetParameterValue(g->engine.processor, p, *val, {});
-                        g->imgui.frame_output.ElevateUpdateRequest(
-                            GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                        GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
                     }
                     g->param_text_editor_to_open.Clear();
                 }

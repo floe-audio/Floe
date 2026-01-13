@@ -200,7 +200,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
         if (!keyboard.Get((usize)this_abs_key)) {
             if (imgui.ButtonBehavior(key_r, id, {.left_mouse = true, .triggers_on_mouse_down = true})) {
                 g->midi_keyboard_note_held_with_mouse = CheckedCast<u7>(this_abs_key);
-                f32 const rel_yclick_pos = imgui.frame_input.cursor_pos.y - key_r.y;
+                f32 const rel_yclick_pos = GuiIo().in.cursor_pos.y - key_r.y;
                 result = KeyboardGuiKeyPressed {.is_down = true,
                                                 .note = CheckedCast<u7>(this_abs_key),
                                                 .velocity = (rel_yclick_pos / key_r.h)};
@@ -251,7 +251,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
         if (!keyboard.Get((usize)this_abs_key)) {
             if (imgui.ButtonBehavior(key_r, id, {.left_mouse = true, .triggers_on_mouse_down = true})) {
                 g->midi_keyboard_note_held_with_mouse = CheckedCast<u7>(this_abs_key);
-                f32 const rel_yclick_pos = imgui.frame_input.cursor_pos.y - key_r.y;
+                f32 const rel_yclick_pos = GuiIo().in.cursor_pos.y - key_r.y;
                 result = KeyboardGuiKeyPressed {.is_down = true,
                                                 .note = CheckedCast<u7>(this_abs_key),
                                                 .velocity = (rel_yclick_pos / key_r.h)};
@@ -275,7 +275,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
     }
     imgui.PopID();
 
-    if (!imgui.frame_input.mouse_buttons[0].is_down && g->midi_keyboard_note_held_with_mouse) {
+    if (!GuiIo().in.mouse_buttons[0].is_down && g->midi_keyboard_note_held_with_mouse) {
         result =
             KeyboardGuiKeyPressed {.is_down = false, .note = g->midi_keyboard_note_held_with_mouse.Value()};
         g->midi_keyboard_note_held_with_mouse = {};
@@ -704,9 +704,9 @@ static void TopDisplay(Gui* g, Rect r, s32 starting_octave, Rect keyboard_rect) 
                                 });
 
         if (auto const bounds = g->imgui.CurrentWindow()->unpadded_bounds;
-            All(bounds.size > 0.0f) && !bounds.Contains(g->imgui.frame_input.cursor_pos)) {
+            All(bounds.size > 0.0f) && !bounds.Contains(GuiIo().in.cursor_pos)) {
             imgui.ClosePopupToLevel(0);
-            imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+            GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
         }
     } else {
         RenderTopDisplayContent(g,

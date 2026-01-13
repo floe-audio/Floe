@@ -42,8 +42,7 @@ static void DrawPopupTextbox(Gui* g, String str, Rect r) {
     popup_r.w = size.x + pad_x * 2;
     popup_r.h = size.y + pad_y * 2;
 
-    popup_r.pos =
-        imgui::BestPopupPos(popup_r, r, g->box_system.imgui.frame_input.window_size.ToFloat2(), false);
+    popup_r.pos = imgui::BestPopupPos(popup_r, r, GuiIo().in.window_size.ToFloat2(), false);
 
     f32x2 text_start;
     text_start.x = popup_r.x + pad_x;
@@ -71,7 +70,7 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
             auto const& a = initial_active_destination_knob;
             auto const& b = g->macros_gui_state.active_destination_knob;
             if (a.HasValue() != b.HasValue() || (b.HasValue() && a->dest.param_index != b->dest.param_index))
-                g->imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
         }
     };
 
@@ -255,8 +254,7 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                         g->macros_gui_state.open_remove_destination_button_id = remove_button_id;
 
                     if (g->macros_gui_state.open_remove_destination_button_id == remove_button_id) {
-                        auto const hovering_remove_button =
-                            remove_button_r.Contains(box_system.imgui.frame_input.cursor_pos);
+                        auto const hovering_remove_button = remove_button_r.Contains(GuiIo().in.cursor_pos);
 
                         if (hovering_remove_button) {
                             // We are using overlay graphics; we need to make sure any item underneath this
@@ -272,7 +270,7 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                                     .left_mouse = true,
                                     .triggers_on_mouse_up = true,
                                 },
-                                box_system.imgui.frame_input)) {
+                                GuiIo().in)) {
                             remove_destination_index = dest_knob_index;
                         }
 
@@ -492,16 +490,16 @@ void MacroGuiBeginFrame(Gui* g) {
 
 void MacroGuiEndFrame(Gui* g) {
     if (g->macros_gui_state.macro_destination_select_mode) {
-        g->imgui.frame_output.wants_keyboard_keys.Set(ToInt(KeyCode::Escape));
+        GuiIo().out.wants_keyboard_keys.Set(ToInt(KeyCode::Escape));
         if (imgui::ClickCheck(
                 {
                     .left_mouse = true,
                     .triggers_on_mouse_down = true,
                 },
-                g->imgui.frame_input) &&
+                GuiIo().in) &&
             !g->imgui.AnItemIsHot()) {
             g->macros_gui_state.macro_destination_select_mode.Clear();
-        } else if (g->imgui.frame_input.Key(KeyCode::Escape).presses.size) {
+        } else if (GuiIo().in.Key(KeyCode::Escape).presses.size) {
             g->macros_gui_state.macro_destination_select_mode.Clear();
         }
     }

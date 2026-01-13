@@ -83,7 +83,7 @@ bool Knob(Gui* g, imgui::Id id, DescribedParamValue const& param, Rect r, Style 
     if (result.new_string_value) {
         if (auto v = param.info.StringToLinearValue(*result.new_string_value)) {
             new_val = v;
-            g->imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+            GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
         }
     }
 

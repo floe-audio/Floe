@@ -306,7 +306,7 @@ struct TextInputResult {
 extern LiveEditGui g_live_edit_values;
 
 struct Context {
-    Context(GuiFrameInput& frame_input, GuiFrameResult& frame_output);
+    Context();
     ~Context();
 
     void Begin(WindowSettings settings); // Call at the start of the frame
@@ -403,13 +403,13 @@ struct Context {
 
     Window* FindWindow(Id id);
 
-    void SetYScroll(Window* window, f32 val) {
+    static void SetYScroll(Window* window, f32 val) {
         window->scroll_offset.y = val;
-        frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+        GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
     }
-    void SetXScroll(Window* window, f32 val) {
+    static void SetXScroll(Window* window, f32 val) {
         window->scroll_offset.x = val;
-        frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+        GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
     }
     bool ScrollWindowToShowRectangle(Rect r);
 
@@ -471,7 +471,7 @@ struct Context {
     bool AnItemIsHot();
     Id GetHot() { return hot_item; }
     f64 SecondsSpentHot() {
-        return time_when_turned_hot ? frame_input.current_time - time_when_turned_hot : 0;
+        return time_when_turned_hot ? GuiIo().in.current_time - time_when_turned_hot : 0;
     }
 
     bool IsHotOrActive(Id id) const { return IsHot(id) || IsActive(id); }
@@ -661,8 +661,6 @@ struct Context {
     f32 pixels_per_vw = 1.0f;
 
     graphics::DrawList* graphics = nullptr; // Shortcut to the current windows graphics
-    GuiFrameInput& frame_input;
-    GuiFrameResult& frame_output;
 
     DynamicArray<MouseTrackedRect> mouse_tracked_rects {Malloc::Instance()}; // internal
     DynamicArray<char> clipboard_for_os {Malloc::Instance()}; // internal
@@ -812,7 +810,7 @@ PUBLIC IMGUI_DRAW_BUTTON(DefaultDrawButton) {
     imgui.graphics->AddRectFilled(r.Min(), r.Max(), col);
 
     auto font_size = imgui.graphics->context->CurrentFontSize();
-    auto pad = (f32)imgui.frame_input.window_size.width / 200.0f;
+    auto pad = (f32)GuiIo().in.window_size.width / 200.0f;
     imgui.graphics->AddText(f32x2 {r.x + pad, r.y + (r.h / 2 - font_size / 2)}, 0xff000000, str);
 }
 

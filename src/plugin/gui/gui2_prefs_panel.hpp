@@ -304,7 +304,6 @@ static void FolderPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCon
                 })) {
             OpenFilePickerAddExtraScanFolders(
                 context.file_picker_state,
-                box_system.imgui.frame_output,
                 context.prefs,
                 context.paths,
                 {.type = (ScanFolderType)scan_folder_type, .set_as_install_folder = false});
@@ -410,7 +409,6 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
 
     if (add_button.button_fired) {
         OpenFilePickerAddExtraScanFolders(context.file_picker_state,
-                                          box_system.imgui.frame_output,
                                           context.prefs,
                                           context.paths,
                                           {.type = scan_folder_type, .set_as_install_folder = true});
@@ -491,7 +489,7 @@ static void PackagesPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelC
                 box_system,
                 rhs,
                 {.text = "Install package", .tooltip = "Install libraries and presets from a ZIP file"_s})) {
-            OpenFilePickerInstallPackage(context.file_picker_state, box_system.imgui.frame_output);
+            OpenFilePickerInstallPackage(context.file_picker_state);
         }
     }
 }
@@ -698,10 +696,9 @@ DoPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context, P
                 .run = [&context, &state](GuiBoxSystem& b) { PreferencesPanel(b, context, state); },
                 .data =
                     ModalPanel {
-                        .r = CentredRect(
-                            {.pos = 0, .size = box_system.imgui.frame_input.window_size.ToFloat2()},
-                            f32x2 {box_system.imgui.VwToPixels(style::k_prefs_dialog_width),
-                                   box_system.imgui.VwToPixels(style::k_prefs_dialog_height)}),
+                        .r = CentredRect({.pos = 0, .size = GuiIo().in.window_size.ToFloat2()},
+                                         f32x2 {box_system.imgui.VwToPixels(style::k_prefs_dialog_width),
+                                                box_system.imgui.VwToPixels(style::k_prefs_dialog_height)}),
                         .imgui_id = box_system.imgui.GetID("prefs"),
                         .on_close = [&state]() { state.open = false; },
                         .close_on_click_outside = true,
