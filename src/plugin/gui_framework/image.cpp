@@ -369,80 +369,149 @@ f32x2 GetMaxUVToMaintainAspectRatio(graphics::ImageID img, f32x2 container_size)
 
 #include "tests/framework.hpp"
 
-TEST_CASE(TestBlurWithSmallImages) {
-    ArenaAllocatorWithInlineStorage<Kb(64)> scratch_arena {PageAllocator::Instance()};
-    ArenaAllocatorWithInlineStorage<Kb(64)> result_arena {PageAllocator::Instance()};
+TEST_CASE(TestBlurZeroHeight) {
+    ArenaAllocator result_arena {PageAllocator::Instance()};
 
-    SUBCASE("resize that would produce zero height") {
-        constexpr u16 k_width = 100;
-        constexpr u16 k_height = 1;
-        auto const num_pixels = k_width * k_height;
-        auto rgba_data = scratch_arena.AllocateExactSizeUninitialised<u8>(num_pixels * k_rgba_channels);
+    constexpr u16 k_width = 100;
+    constexpr u16 k_height = 1;
+    auto const num_pixels = k_width * k_height;
+    auto rgba_data = tester.scratch_arena.AllocateExactSizeUninitialised<u8>(num_pixels * k_rgba_channels);
+
+    for (auto const [i, byte] : Enumerate(rgba_data))
+        byte = (u8)(i % 256);
+
+    ImageBytes const original {.rgba = rgba_data.data, .size = {k_width, k_height}};
+
+    auto const resized = ResizeImage(original, 50, result_arena);
+    CHECK(!resized.HasValue());
+
+    BlurredImageBackgroundOptions const options {
+        .downscale_factor = 0.5f,
+        .brightness_scaling_exponent = 1.0f,
+        .overlay_value = 0.2f,
+        .overlay_alpha = 0.5f,
+        .blur1_radius_percent = 0.1f,
+        .blur2_radius_percent = 0.2f,
+        .blur2_alpha = 0.5f,
+    };
+
+    auto const blurred =
+        CreateBlurredLibraryBackground(original, result_arena, tester.scratch_arena, options);
+    CHECK(blurred.size.width > 0);
+    CHECK(blurred.size.height > 0);
+
+    return k_success;
+}
+
+TEST_CASE(TestBlurTallNarrowImage) {
+    ArenaAllocator result_arena {PageAllocator::Instance()};
+
+    constexpr u16 k_width = 2;
+    constexpr u16 k_height = 100;
+    auto const num_pixels = k_width * k_height;
+    auto rgba_data = tester.scratch_arena.AllocateExactSizeUninitialised<u8>(num_pixels * k_rgba_channels);
+
+    for (auto const [i, byte] : Enumerate(rgba_data))
+        byte = (u8)(i % 256);
+
+    ImageBytes const original {.rgba = rgba_data.data, .size = {k_width, k_height}};
+    auto const resized = ResizeImage(original, 1, result_arena);
+
+    CHECK(resized.HasValue());
+    if (resized) {
+        CHECK(resized->size.width > 0);
+        CHECK(resized->size.height > 0);
+    }
+
+    return k_success;
+}
+
+TEST_CASE(TestBlurExtremeAspectRatio) {
+    ArenaAllocator result_arena {PageAllocator::Instance()};
+
+    constexpr u16 k_width = 20;
+    constexpr u16 k_height = 1;
+    auto const num_pixels = k_width * k_height;
+    auto rgba_data = tester.scratch_arena.AllocateExactSizeUninitialised<u8>(num_pixels * k_rgba_channels);
+
+    for (auto const [i, byte] : Enumerate(rgba_data))
+        byte = (u8)((i * 17 + 42) % 256);
+
+    ImageBytes const original {.rgba = rgba_data.data, .size = {k_width, k_height}};
+
+    BlurredImageBackgroundOptions const options {
+        .downscale_factor = 0.5f,
+        .brightness_scaling_exponent = 1.0f,
+        .overlay_value = 0.2f,
+        .overlay_alpha = 0.5f,
+        .blur1_radius_percent = 0.15f,
+        .blur2_radius_percent = 0.3f,
+        .blur2_alpha = 0.5f,
+    };
+
+    auto const blurred =
+        CreateBlurredLibraryBackground(original, result_arena, tester.scratch_arena, options);
+    CHECK(blurred.size.width > 0);
+    CHECK(blurred.size.height > 0);
+
+    return k_success;
+}
+
+TEST_CASE(TestBlurMaxRadius) {
+    ArenaAllocator result_arena {PageAllocator::Instance()};
+
+    constexpr u16 k_width = 64;
+    constexpr u16 k_height = 64;
+    auto const num_pixels = k_width * k_height;
+    auto rgba_data = tester.scratch_arena.AllocateExactSizeUninitialised<u8>(num_pixels * k_rgba_channels);
+
+    for (auto const [i, byte] : Enumerate(rgba_data))
+        byte = (u8)((i * 7) % 256);
+
+    ImageBytes const original {.rgba = rgba_data.data, .size = {k_width, k_height}};
+
+    BlurredImageBackgroundOptions const options {
+        .downscale_factor = 1.0f,
+        .brightness_scaling_exponent = 1.0f,
+        .overlay_value = 0.5f,
+        .overlay_alpha = 0.5f,
+        .blur1_radius_percent = 0.5f,
+        .blur2_radius_percent = 0.5f,
+        .blur2_alpha = 0.5f,
+    };
+
+    auto const blurred =
+        CreateBlurredLibraryBackground(original, result_arena, tester.scratch_arena, options);
+    CHECK(blurred.size.width == k_width);
+    CHECK(blurred.size.height == k_height);
+
+    return k_success;
+}
+
+TEST_CASE(TestBlurPowerOfTwo) {
+    ArenaAllocator result_arena {PageAllocator::Instance()};
+
+    for (auto const size : Array<u16, 5> {2, 4, 8, 16, 32}) {
+        auto const num_pixels = (usize)size * size;
+        auto rgba_data = tester.scratch_arena.AllocateExactSizeUninitialised<u8>(num_pixels * k_rgba_channels);
 
         for (auto const [i, byte] : Enumerate(rgba_data))
             byte = (u8)(i % 256);
 
-        ImageBytes const original {.rgba = rgba_data.data, .size = {k_width, k_height}};
-
-        auto const resized = ResizeImage(original, 50, result_arena);
-        CHECK(!resized.HasValue());
+        ImageBytes const original {.rgba = rgba_data.data, .size = {size, size}};
 
         BlurredImageBackgroundOptions const options {
-            .downscale_factor = 0.5f,
+            .downscale_factor = 0.7f,
             .brightness_scaling_exponent = 1.0f,
             .overlay_value = 0.2f,
             .overlay_alpha = 0.5f,
-            .blur1_radius_percent = 0.1f,
-            .blur2_radius_percent = 0.2f,
-            .blur2_alpha = 0.5f,
-        };
-
-        auto const blurred = CreateBlurredLibraryBackground(original, result_arena, scratch_arena, options);
-        CHECK(blurred.size.width > 0);
-        CHECK(blurred.size.height > 0);
-    }
-
-    SUBCASE("valid resize of tall narrow image") {
-        constexpr u16 k_width = 2;
-        constexpr u16 k_height = 100;
-        auto const num_pixels = k_width * k_height;
-        auto rgba_data = scratch_arena.AllocateExactSizeUninitialised<u8>(num_pixels * k_rgba_channels);
-
-        for (auto const [i, byte] : Enumerate(rgba_data))
-            byte = (u8)(i % 256);
-
-        ImageBytes const original {.rgba = rgba_data.data, .size = {k_width, k_height}};
-        auto const resized = ResizeImage(original, 1, result_arena);
-
-        CHECK(resized.HasValue());
-        if (resized) {
-            CHECK(resized->size.width > 0);
-            CHECK(resized->size.height > 0);
-        }
-    }
-
-    SUBCASE("blur with extreme aspect ratio") {
-        constexpr u16 k_width = 20;
-        constexpr u16 k_height = 1;
-        auto const num_pixels = k_width * k_height;
-        auto rgba_data = scratch_arena.AllocateExactSizeUninitialised<u8>(num_pixels * k_rgba_channels);
-
-        for (auto const [i, byte] : Enumerate(rgba_data))
-            byte = (u8)((i * 17 + 42) % 256);
-
-        ImageBytes const original {.rgba = rgba_data.data, .size = {k_width, k_height}};
-
-        BlurredImageBackgroundOptions const options {
-            .downscale_factor = 0.5f,
-            .brightness_scaling_exponent = 1.0f,
-            .overlay_value = 0.2f,
-            .overlay_alpha = 0.5f,
-            .blur1_radius_percent = 0.15f,
+            .blur1_radius_percent = 0.2f,
             .blur2_radius_percent = 0.3f,
             .blur2_alpha = 0.5f,
         };
 
-        auto const blurred = CreateBlurredLibraryBackground(original, result_arena, scratch_arena, options);
+        auto const blurred =
+            CreateBlurredLibraryBackground(original, result_arena, tester.scratch_arena, options);
         CHECK(blurred.size.width > 0);
         CHECK(blurred.size.height > 0);
     }
@@ -450,4 +519,53 @@ TEST_CASE(TestBlurWithSmallImages) {
     return k_success;
 }
 
-TEST_REGISTRATION(RegisterImageTests) { REGISTER_TEST(TestBlurWithSmallImages); }
+TEST_CASE(TestBlurRealisticSizes) {
+    struct TestSize {
+        u16 w, h;
+    };
+    for (auto const size : Array {
+             TestSize {800, 600},
+             TestSize {1920, 1080},
+             TestSize {1024, 1024},
+             TestSize {640, 480},
+             TestSize {3840, 2160},
+             TestSize {1280, 720},
+         }) {
+        ArenaAllocator result_arena {PageAllocator::Instance()};
+
+        auto const num_pixels = (usize)size.w * size.h;
+        auto rgba_data =
+            tester.scratch_arena.AllocateExactSizeUninitialised<u8>(num_pixels * k_rgba_channels);
+
+        for (auto const [i, byte] : Enumerate(rgba_data))
+            byte = (u8)((i * 13 + 7) % 256);
+
+        ImageBytes const original {.rgba = rgba_data.data, .size = {size.w, size.h}};
+
+        BlurredImageBackgroundOptions const options {
+            .downscale_factor = 0.3f,
+            .brightness_scaling_exponent = 1.5f,
+            .overlay_value = 0.2f,
+            .overlay_alpha = 0.6f,
+            .blur1_radius_percent = 0.15f,
+            .blur2_radius_percent = 0.25f,
+            .blur2_alpha = 0.4f,
+        };
+
+        auto const blurred =
+            CreateBlurredLibraryBackground(original, result_arena, tester.scratch_arena, options);
+        CHECK(blurred.size.width > 0);
+        CHECK(blurred.size.height > 0);
+    }
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterImageTests) {
+    REGISTER_TEST(TestBlurZeroHeight);
+    REGISTER_TEST(TestBlurTallNarrowImage);
+    REGISTER_TEST(TestBlurExtremeAspectRatio);
+    REGISTER_TEST(TestBlurMaxRadius);
+    REGISTER_TEST(TestBlurPowerOfTwo);
+    REGISTER_TEST(TestBlurRealisticSizes);
+}
