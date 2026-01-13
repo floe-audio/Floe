@@ -342,12 +342,6 @@ struct Font {
 
 struct DrawList;
 
-struct DrawData {
-    Span<DrawList*> draw_lists;
-    int total_vtx_count; // For convenience, sum of all draw_lists vtx_buffer.size
-    int total_idx_count; // For convenience, sum of all draw_lists idx_buffer.size
-};
-
 struct DrawContext {
     virtual ~DrawContext() {}
     virtual ErrorCodeOr<void> CreateDeviceObjects(void* hwnd) = 0;
@@ -360,7 +354,7 @@ struct DrawContext {
     virtual ErrorCodeOr<TextureHandle> CreateTexture(u8 const* data, UiSize size, u16 bytes_per_pixel) = 0;
     virtual void DestroyTexture(TextureHandle& id) = 0;
 
-    virtual ErrorCodeOr<void> Render(DrawData draw_data, UiSize window_size) = 0;
+    virtual ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size) = 0;
 
     // TODO: remove this
     void
@@ -368,7 +362,7 @@ struct DrawContext {
         screenshot_callback = Move(callback);
     }
 
-    static void ScaleClipRects(DrawData draw_data, f32 display_ratio);
+    static void ScaleClipRects(Span<DrawList*> draw_lists, f32 display_ratio);
 
     // void SetCurrentFont(Font *font); // use push pop instead
     void PushFont(Font* font);
@@ -720,13 +714,25 @@ struct DrawList {
     Vector<f32x4> clip_rect_stack;
     Vector<TextureHandle> texture_id_stack;
     Vector<f32x2> path; // [Internal] current path building
-                        //
+
     int channels_current;
     int channels_count;
 
     // [Internal] draw channels for columns API (not resized down so _ChannelsCount may be smaller than
     // _Channels.Size)
     Vector<DrawChannel> channels;
+};
+
+struct DrawListAllocator {
+    void Clear() {
+        lists.Clear();
+        arena.FreeAll();
+    }
+
+    DrawList* Allocate() { return lists.Prepend(arena); }
+
+    ArenaAllocator arena {PageAllocator::Instance()};
+    ArenaList<DrawList> lists {};
 };
 
 } // namespace graphics

@@ -21,10 +21,10 @@ static void DrawLinkLine(Gui* g, f32x2 p1, f32x2 p2) {
     p1 = p1 + unit_direction * padding_radius_p1;
     p2 = p2 - unit_direction * padding_radius_p2;
 
-    g->imgui.overlay_graphics.AddLine(p1,
-                                      p2,
-                                      colours::ChangeAlpha(style::Col(style::Colour::Blue), 0.7f),
-                                      Max(1.0f, g->imgui.VwToPixels(2)));
+    g->imgui.overlay_graphics->AddLine(p1,
+                                       p2,
+                                       colours::ChangeAlpha(style::Col(style::Colour::Blue), 0.7f),
+                                       Max(1.0f, g->imgui.VwToPixels(2)));
 }
 
 static void DrawPopupTextbox(Gui* g, String str, Rect r) {
@@ -49,14 +49,14 @@ static void DrawPopupTextbox(Gui* g, String str, Rect r) {
     text_start.y = popup_r.y + pad_y;
 
     draw::DropShadow(g->box_system.imgui, popup_r);
-    g->box_system.imgui.overlay_graphics.AddRectFilled(
+    g->box_system.imgui.overlay_graphics->AddRectFilled(
         popup_r.Min(),
         popup_r.Max(),
         LiveCol(g->box_system.imgui, UiColMap::TooltipBack),
         LiveSize(g->box_system.imgui, UiSizeId::CornerRounding));
-    g->box_system.imgui.overlay_graphics.AddText(text_start,
-                                                 LiveCol(g->box_system.imgui, UiColMap::TooltipText),
-                                                 str);
+    g->box_system.imgui.overlay_graphics->AddText(text_start,
+                                                  LiveCol(g->box_system.imgui, UiColMap::TooltipText),
+                                                  str);
 }
 
 void DoMacrosEditGui(Gui* g, Box const& parent) {
@@ -277,15 +277,15 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                         dyn::Append(g->macros_gui_state.draw_overlays,
                                     [r = remove_button_r, hot = hovering_remove_button](Gui* g) {
                                         // Draw a dark circle with a circle-minus icon inside it.
-                                        g->box_system.imgui.overlay_graphics.context->PushFont(
+                                        g->box_system.imgui.overlay_graphics->context->PushFont(
                                             g->fonts[ToInt(FontType::Icons)]);
-                                        DEFER { g->box_system.imgui.overlay_graphics.context->PopFont(); };
-                                        g->box_system.imgui.overlay_graphics.AddCircleFilled(
+                                        DEFER { g->box_system.imgui.overlay_graphics->context->PopFont(); };
+                                        g->box_system.imgui.overlay_graphics->AddCircleFilled(
                                             r.Centre(),
                                             r.w * 0.5f,
                                             style::Col(style::Colour::Background0 | style::Colour::DarkMode),
                                             12);
-                                        g->box_system.imgui.overlay_graphics.AddTextJustified(
+                                        g->box_system.imgui.overlay_graphics->AddTextJustified(
                                             r,
                                             ICON_FA_CIRCLE_MINUS,
                                             ({
@@ -460,18 +460,18 @@ void MacroAddDestinationRegion(Gui* g, Rect rel_r, ParamIndex param_index) {
     // Draw.
     {
         auto const clip_rect = g->imgui.graphics->clip_rect_stack.Back();
-        g->imgui.overlay_graphics.PushClipRect(clip_rect.xy, clip_rect.zw);
-        DEFER { g->imgui.overlay_graphics.PopClipRect(); };
+        g->imgui.overlay_graphics->PushClipRect(clip_rect.xy, clip_rect.zw);
+        DEFER { g->imgui.overlay_graphics->PopClipRect(); };
 
-        g->imgui.overlay_graphics.context->PushFont(g->fonts[ToInt(FontType::Icons)]);
-        DEFER { g->imgui.overlay_graphics.context->PopFont(); };
+        g->imgui.overlay_graphics->context->PushFont(g->fonts[ToInt(FontType::Icons)]);
+        DEFER { g->imgui.overlay_graphics->context->PopFont(); };
 
-        g->imgui.overlay_graphics.AddCircleFilled(
+        g->imgui.overlay_graphics->AddCircleFilled(
             r.Centre(),
-            g->imgui.overlay_graphics.context->CurrentFontSize() * 0.4f,
+            g->imgui.overlay_graphics->context->CurrentFontSize() * 0.4f,
             style::Col(style::Colour::Background0 | style::Colour::DarkMode));
 
-        g->imgui.overlay_graphics.AddTextJustified(
+        g->imgui.overlay_graphics->AddTextJustified(
             r,
             ICON_FA_CIRCLE_PLUS,
             g->imgui.IsHotOrActive(imgui_id)

@@ -21,8 +21,8 @@ static inline f32 InvLength(f32x2 const& lhs, f32 fail_value) {
     return fail_value;
 }
 
-void DrawContext::ScaleClipRects(DrawData draw_data, f32 display_ratio) {
-    for (auto const& list : draw_data.draw_lists) {
+void DrawContext::ScaleClipRects(Span<DrawList*> draw_lists, f32 display_ratio) {
+    for (auto const& list : draw_lists) {
         for (int i = 0; i < list->cmd_buffer.size; i++) {
             auto& cmd = list->cmd_buffer[i];
             cmd.clip_rect = f32x4 {cmd.clip_rect.x * display_ratio,

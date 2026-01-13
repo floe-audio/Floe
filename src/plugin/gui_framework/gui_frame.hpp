@@ -238,6 +238,7 @@ struct GuiFrameOutput {
         dyn::Clear(set_clipboard_text);
         file_picker_dialog = k_nullopt;
         file_picker_options_arena.ResetCursorAndConsolidateRegions();
+        dyn::Clear(draw_lists);
     }
 
     // Set this if you want to be woken up at certain times in the future. Out-of-date wakeups will be removed
@@ -256,8 +257,9 @@ struct GuiFrameOutput {
     Optional<FilePickerDialogOptions> file_picker_dialog {};
     ArenaAllocator file_picker_options_arena {Malloc::Instance()};
 
-    // Must be valid until the next frame.
-    graphics::DrawData draw_data {};
+    // Add draw lists to render.
+    DynamicArray<graphics::DrawList*> draw_lists {Malloc::Instance()};
+    graphics::DrawListAllocator draw_list_allocator {};
 
     struct Wants {
         UpdateInterval update_interval {UpdateInterval::Sleep};

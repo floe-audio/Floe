@@ -311,7 +311,11 @@ PUBLIC void DestroyView(GuiPlatform& platform) {
 
     detail::CloseNativeFilePicker(platform);
 
-    if (platform.gui) platform.gui.Clear();
+    if (platform.gui) {
+        platform.gui.Clear();
+        platform.last_result.Reset();
+        platform.last_result.draw_list_allocator.Clear();
+    }
 
     detail::SetTimers(platform, detail::SetTimerType::Stop);
 
@@ -884,9 +888,9 @@ static void UpdateAndRender(GuiPlatform& platform) {
         HandlePostUpdateRequests(platform);
     } while (platform.last_result.wants.update_interval == GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 
-    if (platform.last_result.draw_data.draw_lists.size) {
+    if (platform.last_result.draw_lists.size) {
         ZoneNamedN(render, "render", true);
-        auto o = platform.graphics_ctx->Render(platform.last_result.draw_data, window_size);
+        auto o = platform.graphics_ctx->Render(platform.last_result.draw_lists, window_size);
         if (o.HasError()) LogError(ModuleName::Gui, "GUI render failed: {}", o.Error());
     }
 

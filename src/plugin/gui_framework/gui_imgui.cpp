@@ -629,10 +629,6 @@ void Context::Begin(WindowSettings settings) {
     ASSERT_EQ(window_stack.size, 0u);
     ASSERT_EQ(current_popup_stack.size, 0u);
 
-    draw_data.draw_lists = {};
-    draw_data.total_vtx_count = 0;
-    draw_data.total_idx_count = 0;
-
     tab_just_used_to_focus = false;
     frame_counter++;
     window_just_created = nullptr;
@@ -723,8 +719,9 @@ void Context::Begin(WindowSettings settings) {
 
     active_text_input_shown = false;
 
-    overlay_graphics.context = frame_input.graphics_ctx;
-    overlay_graphics.BeginDraw();
+    if (!overlay_graphics) overlay_graphics = GuiIo().out.draw_list_allocator.Allocate();
+    overlay_graphics->context = frame_input.graphics_ctx;
+    overlay_graphics->BeginDraw();
 
     BeginWindow(settings,
                 k_imgui_app_window_id,
@@ -743,25 +740,23 @@ void Context::End(ArenaAllocator& scratch_arena) {
         for (auto& w : GuiIo().out.mouse_tracked_rects) {
             auto col = 0xffff00ff;
             if (w.mouse_over) col = 0xff00ffff;
-            overlay_graphics.AddRect(w.rect.Min(), w.rect.Max(), col);
+            overlay_graphics->AddRect(w.rect.Min(), w.rect.Max(), col);
         }
     }
 
-    overlay_graphics.EndDraw();
+    overlay_graphics->EndDraw();
 
     //
     // Flush buffers with sorting
     //
 
-    dyn::Clear(output_draw_lists);
+    ASSERT(GuiIo().out.draw_lists.size == 0);
 
     auto confirm_window = [&](Window* window, DynamicArray<Window*>& sorted_buf) {
         if (!window->has_been_sorted) {
             window->has_been_sorted = true;
             dyn::Append(sorted_buf, window);
-            dyn::Append(output_draw_lists, window->graphics);
-            draw_data.total_vtx_count += window->graphics->vtx_buffer.Size();
-            draw_data.total_idx_count += window->graphics->idx_buffer.Size();
+            dyn::AppendIfNotAlreadyThere(GuiIo().out.draw_lists, window->graphics);
         }
     };
 
@@ -827,9 +822,7 @@ void Context::End(ArenaAllocator& scratch_arena) {
     }
     dyn::Clear(active_windows);
 
-    dyn::Append(output_draw_lists, &overlay_graphics);
-    draw_data.total_vtx_count += overlay_graphics.vtx_buffer.Size();
-    draw_data.total_idx_count += overlay_graphics.idx_buffer.Size();
+    dyn::Append(GuiIo().out.draw_lists, overlay_graphics);
 
     if (GuiIo().in.Mouse(MouseButton::Left).presses.size && temp_active_item.id == 0 && temp_hot_item == 0) {
         if (hovered_window != nullptr) {
@@ -889,9 +882,6 @@ void Context::End(ArenaAllocator& scratch_arena) {
     frame_output.wants.all_left_clicks = focused_popup_window != nullptr || GetTextInput();
     frame_output.wants.all_right_clicks = false;
     frame_output.wants.all_middle_clicks = false;
-
-    draw_data.draw_lists = output_draw_lists;
-    frame_output.draw_data = draw_data;
 
     active_item_last_frame = active_item.id;
     hot_item_last_frame = hot_item;
@@ -1777,7 +1767,6 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     window->flags = flags;
     window->is_open = true;
     window->style = settings;
-    window->local_graphics.context = GuiIo().in.graphics_ctx;
 
     if (next_window_contents_size.x != 0) window->prev_content_size.x = next_window_contents_size.x;
     if (next_window_contents_size.y != 0) window->prev_content_size.y = next_window_contents_size.y;
@@ -1910,14 +1899,23 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     if (window->root_window == window || is_apopup || draw_on_top) {
         window->child_nesting_counter = 0;
         window->nested_level = 0;
-        window->graphics = &window->local_graphics;
+        if (!window->allocated_graphics)
+            window->allocated_graphics = GuiIo().out.draw_list_allocator.Allocate();
+        window->graphics = window->allocated_graphics;
     } else {
         window->root_window->child_nesting_counter++;
         window->nested_level = window->root_window->child_nesting_counter;
-        window->graphics = &window->root_window->local_graphics;
+        window->graphics = window->root_window->allocated_graphics;
+        ASSERT(window->graphics);
     }
-    window->graphics = &window->local_graphics;
-    window->graphics->BeginDraw();
+
+    // TODO: what is this code! We seem to be completely ignoring our logic above for deciding if to reuse
+    // existing graphics and just always using our own...
+    if (!window->allocated_graphics) window->allocated_graphics = GuiIo().out.draw_list_allocator.Allocate();
+    window->graphics = window->allocated_graphics;
+
+    window->graphics->context = GuiIo().in.graphics_ctx;
+    if (window->graphics == window->allocated_graphics) window->graphics->BeginDraw();
     graphics = window->graphics;
 
     curr_window = window;
@@ -2088,7 +2086,7 @@ void Context::EndWindow() {
     } else if (Last(window_stack)->flags & WindowFlags_DrawOnTop) {
         PopScissorStack();
     }
-    window->graphics->EndDraw();
+    if (window->graphics == window->allocated_graphics) window->graphics->EndDraw();
     dyn::Pop(window_stack);
     if (window_stack.size != 0) {
         curr_window = Last(window_stack);

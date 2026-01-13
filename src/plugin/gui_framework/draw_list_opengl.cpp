@@ -157,10 +157,10 @@ struct OpenGLDrawContext : public DrawContext {
         fonts.Clear();
     }
 
-    ErrorCodeOr<void> Render(DrawData draw_data, UiSize window_size) override {
+    ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size) override {
         ZoneScoped;
         TracyGpuZone("Render");
-        if (draw_data.draw_lists.size == 0) return k_success;
+        if (draw_lists.size == 0) return k_success;
 
         GLint last_texture;
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
@@ -193,7 +193,7 @@ struct OpenGLDrawContext : public DrawContext {
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        for (auto const& draw_list : draw_data.draw_lists) {
+        for (auto const& draw_list : draw_lists) {
             if (draw_list->idx_buffer.size == 0 || draw_list->idx_buffer.size == 0) continue;
             DrawVert const* vtx_buffer = draw_list->vtx_buffer.data;
             DrawIdx const* idx_buffer = draw_list->idx_buffer.data;

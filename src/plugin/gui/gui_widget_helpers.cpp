@@ -40,7 +40,7 @@ void DoTooltipText(Gui* g, String str, Rect r, bool rect_is_window_pos) {
     DEFER { g->imgui.graphics->context->PopFont(); };
 
     auto& imgui = g->imgui;
-    auto font = imgui.overlay_graphics.context->CurrentFont();
+    auto font = imgui.overlay_graphics->context->CurrentFont();
     auto size = LiveSize(imgui, UiSizeId::TooltipMaxWidth);
     auto pad_x = LiveSize(imgui, UiSizeId::TooltipPadX);
     auto pad_y = LiveSize(imgui, UiSizeId::TooltipPadY);
@@ -68,12 +68,12 @@ void DoTooltipText(Gui* g, String str, Rect r, bool rect_is_window_pos) {
     text_start.y = popup_r.y + pad_y;
 
     draw::DropShadow(imgui, popup_r);
-    imgui.overlay_graphics.AddRectFilled(popup_r.Min(),
-                                         popup_r.Max(),
-                                         LiveCol(imgui, UiColMap::TooltipBack),
-                                         LiveSize(imgui, UiSizeId::CornerRounding));
+    imgui.overlay_graphics->AddRectFilled(popup_r.Min(),
+                                          popup_r.Max(),
+                                          LiveCol(imgui, UiColMap::TooltipBack),
+                                          LiveSize(imgui, UiSizeId::CornerRounding));
     imgui.overlay_graphics
-        .AddText(font, font->font_size, text_start, LiveCol(imgui, UiColMap::TooltipText), str, size + 1);
+        ->AddText(font, font->font_size, text_start, LiveCol(imgui, UiColMap::TooltipText), str, size + 1);
 }
 
 bool Tooltip(Gui* g, imgui::Id id, Rect r, String str, bool rect_is_window_pos, bool force_show) {

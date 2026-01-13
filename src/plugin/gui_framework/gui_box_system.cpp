@@ -295,7 +295,7 @@ static bool Tooltip(GuiBoxSystem& builder,
         builder.imgui.graphics->context->PushFont(builder.fonts[ToInt(FontType::Body)]);
         DEFER { builder.imgui.graphics->context->PopFont(); };
 
-        auto const font = imgui.overlay_graphics.context->CurrentFont();
+        auto const font = imgui.overlay_graphics->context->CurrentFont();
         auto const pad_x = imgui.VwToPixels(style::k_tooltip_pad_x);
         auto const pad_y = imgui.VwToPixels(style::k_tooltip_pad_y);
 
@@ -343,16 +343,16 @@ static bool Tooltip(GuiBoxSystem& builder,
         text_start.y = popup_r.y + pad_y;
 
         draw::DropShadow(imgui, popup_r);
-        imgui.overlay_graphics.AddRectFilled(popup_r.Min(),
-                                             popup_r.Max(),
-                                             style::Col(style::Colour::Background0),
-                                             style::k_tooltip_rounding);
-        imgui.overlay_graphics.AddText(font,
-                                       font->font_size,
-                                       text_start,
-                                       style::Col(style::Colour::Text),
-                                       str,
-                                       text_size.x + 1);
+        imgui.overlay_graphics->AddRectFilled(popup_r.Min(),
+                                              popup_r.Max(),
+                                              style::Col(style::Colour::Background0),
+                                              style::k_tooltip_rounding);
+        imgui.overlay_graphics->AddText(font,
+                                        font->font_size,
+                                        text_start,
+                                        style::Col(style::Colour::Text),
+                                        str,
+                                        text_size.x + 1);
         return true;
     }
     return false;

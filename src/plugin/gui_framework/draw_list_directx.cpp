@@ -296,7 +296,7 @@ struct DirectXDrawContext : public DrawContext {
         fonts.Clear();
     }
 
-    ErrorCodeOr<void> Render(DrawData draw_data, UiSize window_size) override {
+    ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size) override {
         ZoneScoped;
         auto constexpr k_d3_dfvf_customvertex = D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_TEX1;
 
@@ -323,7 +323,7 @@ struct DirectXDrawContext : public DrawContext {
             // Calculate total vertex and index counts
             int total_vtx_count = 0;
             int total_idx_count = 0;
-            for (auto const& draw_list : draw_data.draw_lists) {
+            for (auto const& draw_list : draw_lists) {
                 total_vtx_count += draw_list->vtx_buffer.size;
                 total_idx_count += draw_list->idx_buffer.size;
             }
@@ -374,7 +374,7 @@ struct DirectXDrawContext : public DrawContext {
                                     D3DLOCK_DISCARD));
                 DEFER { p_ib->Unlock(); };
 
-                for (auto const& draw_list : draw_data.draw_lists) {
+                for (auto const& draw_list : draw_lists) {
                     DrawVert const* vtx_src = draw_list->vtx_buffer.data;
                     for (int i = 0; i < draw_list->vtx_buffer.size; i++) {
                         vtx_dst->pos[0] = vtx_src->pos.x;
@@ -485,7 +485,7 @@ struct DirectXDrawContext : public DrawContext {
             // Render command lists
             int vtx_offset = 0;
             int idx_offset = 0;
-            for (auto const& draw_list : draw_data.draw_lists) {
+            for (auto const& draw_list : draw_lists) {
                 for (int cmd_i = 0; cmd_i < draw_list->cmd_buffer.size; cmd_i++) {
                     DrawCmd const* pcmd = &draw_list->cmd_buffer[cmd_i];
                     if (pcmd->user_callback) {

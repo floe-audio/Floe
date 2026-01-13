@@ -221,7 +221,7 @@ static bool ButtonInternal(Gui* g,
         if (!style.draw_with_overlay_graphics) g->imgui.RegisterAndConvertRect(&r);
         imgui::Id const fake_id = 99;
         auto graphics = g->imgui.graphics;
-        if (style.draw_with_overlay_graphics) g->imgui.graphics = &g->imgui.overlay_graphics;
+        if (style.draw_with_overlay_graphics) g->imgui.graphics = g->imgui.overlay_graphics;
         im.draw(g->imgui, r, fake_id, str, state);
         g->imgui.graphics = graphics;
         return false;

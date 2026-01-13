@@ -213,7 +213,7 @@ struct Window {
     bool is_open = false;
     bool skip_drawing_this_frame = false;
 
-    graphics::DrawList local_graphics = {};
+    graphics::DrawList* allocated_graphics = nullptr;
     graphics::DrawList* graphics = nullptr;
 
     bool has_been_sorted = false; // internal
@@ -661,7 +661,7 @@ struct Context {
 
     u32 frame_counter = 0;
 
-    graphics::DrawList overlay_graphics = {};
+    graphics::DrawList* overlay_graphics = {};
 
     // we need a way for drawing functions that only have access to imgui::Context to get images from
     // your external object
@@ -674,8 +674,6 @@ struct Context {
     f32x2 cached_pos = {}; // misc cached variable
 
     Window* debug_window_to_inspect = nullptr;
-
-    graphics::DrawData draw_data = {}; // output draw data
 
     // input text
 
@@ -693,7 +691,6 @@ struct Context {
     // window
     DynamicArray<Window*> sorted_windows {Malloc::Instance()}; // internal
     DynamicArray<Window*> active_windows {Malloc::Instance()}; // internal
-    DynamicArray<graphics::DrawList*> output_draw_lists {Malloc::Instance()}; // internal
 
     // storage of windows, grows whenever a different BeginWindow is called for the first time
     // this array actually owns each window pointer, and will delete them when finished
