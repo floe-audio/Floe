@@ -135,27 +135,35 @@ Optional<UiSize> detail::GetParentWindowSize(GuiPlatform const& platform) {
 @end
 
 @implementation DIALOG_DELEGATE_CLASS
-// Not necessary main-thread.
+// Not necessarily main-thread.
 - (BOOL)panel:(id)sender shouldEnableURL:(NSURL*)url {
     if (!url) return NO;
 
     self.mutex->Lock();
     DEFER { self.mutex->Unlock(); };
 
-    // Enable directories so that the user can navigate into them.
-    BOOL is_directory;
-    [[NSFileManager defaultManager] fileExistsAtPath:[url path] isDirectory:&is_directory];
-    if (is_directory) return YES;
+    if (self.filters.size) {
+        if (NSString* ns_filename = [url lastPathComponent]) {
+            auto const filename = NSStringToString(ns_filename);
+            for (auto const filter : self.filters)
+                if (MatchWildcard(filter.wildcard_filter, filename)) return YES;
+        }
 
-    // Only enable files that match the filter.
-    NSString* ns_filename = [url lastPathComponent];
-    auto const filename = NSStringToString(ns_filename);
-    for (auto filter : self.filters) {
-        LogDebug(ModuleName::Gui, "comparing {}, filter: {}", filename, filter.wildcard_filter);
-        if (MatchWildcard(filter.wildcard_filter, filename)) return YES;
+        if ([url isFileURL]) {
+            if (auto const p = [url path]) {
+                BOOL is_directory {};
+                if ([[NSFileManager defaultManager] fileExistsAtPath:p isDirectory:&is_directory])
+                    // Accept directories since they allow the user to browse in subfolders, but disable files
+                    // since they must have already not matched the filters.
+                    return is_directory ? YES : NO;
+            }
+        }
     }
 
-    return NO;
+    // There's either no filters, or there's various strange cases or error branches that could get us to
+    // this codepath. We enable the file in any of these cases because it's better to err on the side of
+    // giving the user more options.
+    return YES;
 }
 @end
 
@@ -268,6 +276,7 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform,
         [panel beginWithCompletionHandler:^(NSInteger response) {
           // I don't think we can assert that this is always the main thread, so let's send it via
           // Pugl's event system which should guarantee main thread.
+          // This triggers NativeFilePickerOnClientMessage eventually.
           PuglEvent const event {.client = {
                                      .type = PUGL_CLIENT,
                                      .flags = PUGL_IS_SEND_EVENT,
