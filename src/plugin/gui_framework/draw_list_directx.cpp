@@ -488,22 +488,18 @@ struct DirectXDrawContext : public DrawContext {
             for (auto const& draw_list : draw_lists) {
                 for (int cmd_i = 0; cmd_i < draw_list->cmd_buffer.size; cmd_i++) {
                     DrawCmd const* pcmd = &draw_list->cmd_buffer[cmd_i];
-                    if (pcmd->user_callback) {
-                        pcmd->user_callback(draw_list, pcmd);
-                    } else {
-                        const RECT r = {(LONG)pcmd->clip_rect.x,
-                                        (LONG)pcmd->clip_rect.y,
-                                        (LONG)pcmd->clip_rect.z,
-                                        (LONG)pcmd->clip_rect.w};
-                        pd3d_device->SetTexture(0, (LPDIRECT3DTEXTURE9)pcmd->texture_id);
-                        pd3d_device->SetScissorRect(&r);
-                        pd3d_device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST,
-                                                          vtx_offset,
-                                                          0,
-                                                          (UINT)draw_list->vtx_buffer.size,
-                                                          (UINT)idx_offset,
-                                                          pcmd->elem_count / 3);
-                    }
+                    const RECT r = {(LONG)pcmd->clip_rect.x,
+                                    (LONG)pcmd->clip_rect.y,
+                                    (LONG)pcmd->clip_rect.z,
+                                    (LONG)pcmd->clip_rect.w};
+                    pd3d_device->SetTexture(0, (LPDIRECT3DTEXTURE9)pcmd->texture_id);
+                    pd3d_device->SetScissorRect(&r);
+                    pd3d_device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST,
+                                                      vtx_offset,
+                                                      0,
+                                                      (UINT)draw_list->vtx_buffer.size,
+                                                      (UINT)idx_offset,
+                                                      pcmd->elem_count / 3);
                     idx_offset += pcmd->elem_count;
                 }
                 vtx_offset += draw_list->vtx_buffer.size;

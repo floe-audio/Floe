@@ -100,18 +100,6 @@ void DrawList::AddDrawCmd() {
     cmd_buffer.PushBack(draw_cmd);
 }
 
-void DrawList::AddCallback(DrawCallback callback, void* callback_data) {
-    DrawCmd* current_cmd = cmd_buffer.size ? &cmd_buffer.Back() : nullptr;
-    if (!current_cmd || current_cmd->elem_count != 0 || current_cmd->user_callback != nullptr) {
-        AddDrawCmd();
-        current_cmd = &cmd_buffer.Back();
-    }
-    current_cmd->user_callback = callback;
-    current_cmd->user_callback_data = callback_data;
-
-    AddDrawCmd(); // Force a new command after us (see comment below)
-}
-
 // Our scheme may appears a bit unusual, basically we want the most-common calls AddLine AddRect etc. to not
 // have to perform any check so we always have a command ready in the stack. The cost of figuring out if a new
 // command has to be added or if we can merge is paid in those Update** functions only.
@@ -120,8 +108,7 @@ void DrawList::UpdateClipRect() {
     f32x4 const curr_clip_rect = GetCurrentClipRect(*this);
     DrawCmd* curr_cmd = cmd_buffer.size > 0 ? &cmd_buffer.data[cmd_buffer.size - 1] : nullptr;
     if (!curr_cmd ||
-        (curr_cmd->elem_count != 0 && !MemoryIsEqual(&curr_cmd->clip_rect, &curr_clip_rect, sizeof(f32x4))) ||
-        curr_cmd->user_callback != nullptr) {
+        (curr_cmd->elem_count != 0 && !MemoryIsEqual(&curr_cmd->clip_rect, &curr_clip_rect, sizeof(f32x4)))) {
         AddDrawCmd();
         return;
     }
@@ -130,7 +117,7 @@ void DrawList::UpdateClipRect() {
     DrawCmd* prev_cmd = cmd_buffer.size > 1 ? curr_cmd - 1 : nullptr;
     if (curr_cmd->elem_count == 0 && prev_cmd &&
         MemoryIsEqual(&prev_cmd->clip_rect, &curr_clip_rect, sizeof(f32x4)) &&
-        prev_cmd->texture_id == GetCurrentTextureId(*this) && prev_cmd->user_callback == nullptr)
+        prev_cmd->texture_id == GetCurrentTextureId(*this))
         cmd_buffer.PopBack();
     else
         curr_cmd->clip_rect = curr_clip_rect;
@@ -140,8 +127,7 @@ void DrawList::UpdateTexturePtr() {
     // If current command is used with different settings we need to add a new command
     TextureHandle const curr_texture_id = GetCurrentTextureId(*this);
     DrawCmd* curr_cmd = cmd_buffer.size ? &cmd_buffer.Back() : nullptr;
-    if (!curr_cmd || (curr_cmd->elem_count != 0 && curr_cmd->texture_id != curr_texture_id) ||
-        curr_cmd->user_callback != nullptr) {
+    if (!curr_cmd || (curr_cmd->elem_count != 0 && curr_cmd->texture_id != curr_texture_id)) {
         AddDrawCmd();
         return;
     }
@@ -150,8 +136,7 @@ void DrawList::UpdateTexturePtr() {
     DrawCmd* prev_cmd = cmd_buffer.size > 1 ? curr_cmd - 1 : nullptr;
     auto const curr_clip_rect = GetCurrentClipRect(*this);
     if (prev_cmd && prev_cmd->texture_id == curr_texture_id &&
-        MemoryIsEqual(&prev_cmd->clip_rect, &curr_clip_rect, sizeof(f32x4)) &&
-        prev_cmd->user_callback == nullptr)
+        MemoryIsEqual(&prev_cmd->clip_rect, &curr_clip_rect, sizeof(f32x4)))
         cmd_buffer.PopBack();
     else
         curr_cmd->texture_id = curr_texture_id;

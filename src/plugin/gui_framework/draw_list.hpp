@@ -155,14 +155,11 @@ struct DrawList;
 using DrawCallback = void (*)(DrawList const*, DrawCmd const*);
 
 struct DrawCmd {
+    f32x4 clip_rect {-8192, -8192, 8192, 8192};
+    TextureHandle texture_id {};
     // Number of indices (multiple of 3) to be rendered as triangles. Vertices are stored in the callee
     // DrawList's vtx_buffer[] array, indices in idx_buffer[].
     unsigned int elem_count = 0;
-
-    f32x4 clip_rect {-8192, -8192, 8192, 8192};
-    TextureHandle texture_id {};
-    DrawCallback user_callback {};
-    void* user_callback_data {};
 };
 
 struct DrawChannel {

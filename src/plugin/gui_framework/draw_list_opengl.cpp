@@ -212,19 +212,15 @@ struct OpenGLDrawContext : public DrawContext {
 
             for (int cmd_i = 0; cmd_i < draw_list->cmd_buffer.size; cmd_i++) {
                 DrawCmd const* pcmd = &draw_list->cmd_buffer[cmd_i];
-                if (pcmd->user_callback) {
-                    pcmd->user_callback(draw_list, pcmd);
-                } else {
-                    glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)pcmd->texture_id);
-                    glScissor((int)pcmd->clip_rect.x,
-                              (int)((window_size.height) - pcmd->clip_rect.w),
-                              (int)(pcmd->clip_rect.z - pcmd->clip_rect.x),
-                              (int)(pcmd->clip_rect.w - pcmd->clip_rect.y));
-                    glDrawElements(GL_TRIANGLES,
-                                   (GLsizei)pcmd->elem_count,
-                                   sizeof(DrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT,
-                                   idx_buffer);
-                }
+                glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)pcmd->texture_id);
+                glScissor((int)pcmd->clip_rect.x,
+                          (int)((window_size.height) - pcmd->clip_rect.w),
+                          (int)(pcmd->clip_rect.z - pcmd->clip_rect.x),
+                          (int)(pcmd->clip_rect.w - pcmd->clip_rect.y));
+                glDrawElements(GL_TRIANGLES,
+                               (GLsizei)pcmd->elem_count,
+                               sizeof(DrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT,
+                               idx_buffer);
                 idx_buffer += pcmd->elem_count;
             }
         }
