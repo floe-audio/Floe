@@ -165,7 +165,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBoxSystem& box_system,
                 },
                 .id = k_installing_packages_notif_id,
             };
-            GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+            GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
         }
 
         bool user_input_needed = false;
@@ -230,7 +230,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBoxSystem& box_system,
                         },
                         .id = HashFnv1a("package install success"),
                     };
-                    GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+                    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 
                     next = package::RemoveJob(package_install_jobs, it);
                     break;

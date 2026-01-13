@@ -664,7 +664,8 @@ static void TopDisplay(Gui* g, Rect r, s32 starting_octave, Rect keyboard_rect) 
     constexpr auto k_seconds_delay_before_enlarge = 0.1;
 
     if (imgui.WasJustMadeHot(id))
-        imgui.AddTimedWakeup(TimePoint::Now() + k_seconds_delay_before_enlarge, "enlarged-keyboard-display");
+        GuiIo().out.AddTimedWakeup(TimePoint::Now() + k_seconds_delay_before_enlarge,
+                                   "enlarged-keyboard-display");
 
     if (imgui.IsHot(id) && !imgui.IsPopupOpen(popup_id) &&
         imgui.SecondsSpentHot() > k_seconds_delay_before_enlarge)
@@ -706,7 +707,7 @@ static void TopDisplay(Gui* g, Rect r, s32 starting_octave, Rect keyboard_rect) 
         if (auto const bounds = g->imgui.CurrentWindow()->unpadded_bounds;
             All(bounds.size > 0.0f) && !bounds.Contains(GuiIo().in.cursor_pos)) {
             imgui.ClosePopupToLevel(0);
-            GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+            GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
         }
     } else {
         RenderTopDisplayContent(g,

@@ -162,7 +162,7 @@ struct MouseTrackedRect {
     bool mouse_over;
 };
 
-enum class CursorType {
+enum class CursorType : u8 {
     Default,
     Hand,
     IBeam,
@@ -175,8 +175,9 @@ enum class CursorType {
 
 struct FilePickerDialogOptions {
     enum class Type { SaveFile, OpenFile, SelectFolder };
+
     struct FileFilter {
-        FileFilter Clone(Allocator& a, CloneType t) const {
+        FileFilter Clone(Allocator& a, CloneType t = CloneType::Deep) const {
             return {
                 .description = description.Clone(a, t),
                 .wildcard_filter = wildcard_filter.Clone(a, t),
@@ -186,7 +187,7 @@ struct FilePickerDialogOptions {
         String wildcard_filter;
     };
 
-    FilePickerDialogOptions Clone(Allocator& a, CloneType t) const {
+    FilePickerDialogOptions Clone(Allocator& a, CloneType t = CloneType::Deep) const {
         return {
             .type = type,
             .title = title.Clone(a, t),
@@ -207,8 +208,9 @@ struct FilePickerDialogOptions {
 
 // Fill this struct every frame to instruct the framework about the application's needs.
 struct GuiFrameOutput {
-    enum class UpdateRequest {
-        // 1. GUI will sleep until there's user interaction or a timed wakeup fired.
+    enum class UpdateInterval {
+        // 1. GUI will sleep until there's user interaction, a timed wakeup fired or the global 'request
+        // update' bool is set.
         Sleep,
 
         // 2. GUI will update at the timer (normally 60Hz).
@@ -219,50 +221,75 @@ struct GuiFrameOutput {
         ImmediatelyUpdate,
     };
 
-    // only sets the status if it's more important than the current status
-    void ElevateUpdateRequest(UpdateRequest r) {
-        if (ToInt(r) > ToInt(update_request)) update_request = r;
+    // Only elevates, never decreases importance.
+    void IncreaseUpdateInterval(UpdateInterval r) {
+        if (ToInt(r) > ToInt(wants.update_interval)) wants.update_interval = r;
     }
 
-    UpdateRequest update_request {UpdateRequest::Sleep};
+    void AddTimedWakeup(TimePoint time, char const* timer_name) {
+        (void)timer_name;
+        dyn::AppendIfNotAlreadyThere(timed_wakeups, time);
+    }
+
+    // Internal
+    void Reset() {
+        wants = {};
+        dyn::Clear(mouse_tracked_rects);
+        dyn::Clear(set_clipboard_text);
+        file_picker_dialog = k_nullopt;
+        file_picker_options_arena.ResetCursorAndConsolidateRegions();
+    }
 
     // Set this if you want to be woken up at certain times in the future. Out-of-date wakeups will be removed
     // for you.
-    // Must be valid until the next frame.
-    DynamicArray<TimePoint>* timed_wakeups {};
+    DynamicArray<TimePoint> timed_wakeups {Malloc::Instance()};
 
     // Rectangles that will wake up the GUI when the mouse enters/leaves it.
-    // Must be valid until the next frame.
-    Span<MouseTrackedRect> mouse_tracked_rects {};
+    DynamicArray<MouseTrackedRect> mouse_tracked_rects {Malloc::Instance()};
 
-    bool wants_text_input = false;
-    Bitset<ToInt(KeyCode::Count)> wants_keyboard_keys {};
-    bool wants_mouse_capture = false;
-    bool wants_mouse_scroll = false;
-    bool wants_all_left_clicks = false;
-    bool wants_all_right_clicks = false;
-    bool wants_all_middle_clicks = false;
+    // Set this to the text that you want put into the OS clipboard.
+    DynamicArray<char> set_clipboard_text {Malloc::Instance()};
 
-    // Set this to the cursor that you want
-    CursorType cursor_type = CursorType::Default;
-
-    // Set this if you want text from the OS clipboard, it will be given to you in an upcoming frame
-    bool wants_clipboard_text_paste = false;
-
-    // Set this to the text that you want put into the OS clipboard
-    // Must be valid until the next frame.
-    Span<char> set_clipboard_text {};
-
-    // Set this to request a file picker dialog be opened. It's rejected if a dialog is already open. The
-    // application owns object, not the framework. The memory must persist until the next frame. You will
-    // receive the results in GuiFrameInput::file_picker_results - check that variable every frame.
+    // Set this to request a file picker dialog be opened. It's rejected if a dialog is already open. You will
+    // receive the results in GuiFrameInput::file_picker_results - check that variable every frame. Allocate
+    // strings using the arena or Clone method.
     Optional<FilePickerDialogOptions> file_picker_dialog {};
+    ArenaAllocator file_picker_options_arena {Malloc::Instance()};
 
     // Must be valid until the next frame.
     graphics::DrawData draw_data {};
+
+    struct Wants {
+        UpdateInterval update_interval {UpdateInterval::Sleep};
+
+        bool text_input = false;
+        Bitset<ToInt(KeyCode::Count)> keyboard_keys {};
+        bool mouse_capture = false;
+        bool mouse_scroll = false;
+        bool all_left_clicks = false;
+        bool all_right_clicks = false;
+        bool all_middle_clicks = false;
+
+        // Set this to the cursor that you want
+        CursorType cursor_type = CursorType::Default;
+
+        // Set this if you want text from the OS clipboard, it will be given to you in an upcoming frame
+        bool clipboard_text_paste = false;
+    } wants {};
 };
 
 struct GuiFrameIo {
+    // Returns true when it ticks
+    bool WakeupAtTimedInterval(TimePoint& counter, f64 interval_seconds) {
+        bool triggered = false;
+        if (in.current_time >= counter) {
+            counter = in.current_time + interval_seconds;
+            triggered = true;
+        }
+        out.AddTimedWakeup(counter, __FUNCTION__);
+        return triggered;
+    }
+
     GuiFrameInput const& in;
     GuiFrameOutput& out;
 };

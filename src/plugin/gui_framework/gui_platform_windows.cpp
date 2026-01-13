@@ -471,7 +471,7 @@ static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
                 case WM_CHAR:
                 case WM_SYSCHAR: {
                     // Character messages - only consume if we want text input
-                    wants = platform.last_result.wants_text_input;
+                    wants = platform.last_result.wants.text_input;
                     break;
                 }
                 case WM_KEYDOWN:
@@ -480,7 +480,7 @@ static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
                 case WM_SYSKEYUP: {
                     // Key up/down messages - only consume if we want this specific key
                     if (auto const key_code = WindowsVkToKeyCode(msg.wParam))
-                        wants = platform.last_result.wants_keyboard_keys.Get(ToInt(*key_code));
+                        wants = platform.last_result.wants.keyboard_keys.Get(ToInt(*key_code));
                     break;
                 }
             }
@@ -496,7 +496,7 @@ static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
         if (TranslateMessage(&msg)) {
             // Check if we want the character message that was generated. If we don't want it, leave it in the
             // queue for the host.
-            if (platform.last_result.wants_text_input) {
+            if (platform.last_result.wants.text_input) {
                 // We check it and, if needed, remove it from queue using PM_REMOVE so host doesn't get it.
                 if (PeekMessageW(&peeked, msg.hwnd, WM_CHAR, WM_DEADCHAR, PM_REMOVE) ||
                     PeekMessageW(&peeked, msg.hwnd, WM_SYSCHAR, WM_SYSDEADCHAR, PM_REMOVE)) {

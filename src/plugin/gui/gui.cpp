@@ -169,7 +169,7 @@ static void DoStandaloneErrorGUI(Gui* g) {
             error_window_open = false;
     }
     if (floe_ext->standalone_midi_device_error) {
-        GuiIo().out.wants_text_input = true;
+        GuiIo().out.wants.text_input = true;
         if (frame_input.modifiers.Get(ModifierKey::Shift)) {
             auto gen_midi_message = [&](bool on, u7 key) {
                 if (on)
@@ -234,10 +234,10 @@ static void DoResizeCorner(Gui* g) {
     if (g->imgui.ButtonBehavior(r, id, {.left_mouse = true, .triggers_on_mouse_down = true}))
         size_at_start = frame_input.window_size.ToFloat2();
 
-    if (g->imgui.IsHotOrActive(id)) frame_output.cursor_type = CursorType::UpLeftDownRight;
+    if (g->imgui.IsHotOrActive(id)) frame_output.wants.cursor_type = CursorType::UpLeftDownRight;
 
     if (g->imgui.IsActive(id)) {
-        frame_output.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::Animate);
+        frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
 
         auto const cursor = frame_input.cursor_pos;
         auto const delta = cursor - frame_input.Mouse(MouseButton::Left).last_press.point;

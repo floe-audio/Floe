@@ -489,7 +489,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g, GuiFrameContext const& 
         g->timbre_slider_is_held = box.is_active;
 
         if (box_system.imgui.WasJustActivated(box.imgui_id))
-            GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+            GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
 
     DoParameterComponent(g,

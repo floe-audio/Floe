@@ -1010,7 +1010,7 @@ void Draw(Gui* g,
             percent != -1) {
             f32 const load_percent = (f32)percent / 100.0f;
             DrawSelectorProgressBar(g->imgui, registered_selector_box_r, load_percent);
-            g->imgui.WakeupAtTimedInterval(g->redraw_counter, 0.1);
+            GuiIo().WakeupAtTimedInterval(g->redraw_counter, 0.1);
         }
 
         if (buttons::Button(g,
@@ -1346,7 +1346,7 @@ void Draw(Gui* g,
                     k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(layer->index,
                                                                             LayerParamIndex::MidiTranspose))]
                         .tooltip);
-                if (g->imgui.IsHot(label_id)) GuiIo().out.cursor_type = CursorType::Default;
+                if (g->imgui.IsHot(label_id)) GuiIo().out.wants.cursor_type = CursorType::Default;
             }
 
             buttons::Toggle(g,
@@ -1579,7 +1579,7 @@ void Draw(Gui* g,
             }();
             if (new_page && new_page != layer_gui->selected_page) {
                 layer_gui->selected_page = *new_page;
-                GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
             }
         }
     }

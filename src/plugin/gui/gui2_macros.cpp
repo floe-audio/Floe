@@ -70,7 +70,7 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
             auto const& a = initial_active_destination_knob;
             auto const& b = g->macros_gui_state.active_destination_knob;
             if (a.HasValue() != b.HasValue() || (b.HasValue() && a->dest.param_index != b->dest.param_index))
-                GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
         }
     };
 
@@ -208,7 +208,7 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                 }
 
                 if (box_system.imgui.WasJustMadeHot(imgui_id))
-                    g->imgui.AddTimedWakeup(TimePoint::Now() + 0.5, "macros_destination_knob_hot");
+                    GuiIo().out.AddTimedWakeup(TimePoint::Now() + 0.5, "macros_destination_knob_hot");
 
                 if (box_system.imgui.IsActive(imgui_id) ||
                     (box_system.imgui.IsHot(imgui_id) && box_system.imgui.SecondsSpentHot() > 0.5)) {
@@ -490,7 +490,7 @@ void MacroGuiBeginFrame(Gui* g) {
 
 void MacroGuiEndFrame(Gui* g) {
     if (g->macros_gui_state.macro_destination_select_mode) {
-        GuiIo().out.wants_keyboard_keys.Set(ToInt(KeyCode::Escape));
+        GuiIo().out.wants.keyboard_keys.Set(ToInt(KeyCode::Escape));
         if (imgui::ClickCheck(
                 {
                     .left_mouse = true,

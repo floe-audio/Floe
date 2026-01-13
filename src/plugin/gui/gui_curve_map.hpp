@@ -222,7 +222,7 @@ static bool DoCurveMap(Gui* g,
                     graphics.AddRectFilled(curve_handle_rect.Min(),
                                            curve_handle_rect.Max(),
                                            LiveCol(imgui, UiColMap::CurveMapLineHover));
-                    GuiIo().out.cursor_type = CursorType::VerticalArrows;
+                    GuiIo().out.wants.cursor_type = CursorType::VerticalArrows;
                 }
 
                 if (imgui.IsHot(curve_handle_imgui_id))
@@ -326,7 +326,7 @@ static bool DoCurveMap(Gui* g,
             }
 
             if (imgui.IsHotOrActive(imgui_id)) {
-                GuiIo().out.cursor_type = CursorType::AllArrows;
+                GuiIo().out.wants.cursor_type = CursorType::AllArrows;
                 if (imgui::ClickCheck(
                         {
                             .left_mouse = true,

@@ -81,7 +81,7 @@ bool Tooltip(Gui* g, imgui::Id id, Rect r, String str, bool rect_is_window_pos, 
 
     auto& imgui = g->imgui;
     f64 const delay {0.5};
-    if (imgui.WasJustMadeHot(id)) imgui.AddTimedWakeup(GuiIo().in.current_time + delay, "Tooltip");
+    if (imgui.WasJustMadeHot(id)) GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + delay, "Tooltip");
     auto hot_seconds = imgui.SecondsSpentHot();
     if (imgui.IsHot(id) && hot_seconds >= delay) {
         DoTooltipText(g, str, r, rect_is_window_pos);
@@ -415,7 +415,7 @@ bool DoOverlayClickableBackground(Gui* g) {
     auto invis_window = imgui.CurrentWindow();
 
     if (imgui.IsWindowHovered(invis_window)) {
-        GuiIo().out.cursor_type = CursorType::Hand;
+        GuiIo().out.wants.cursor_type = CursorType::Hand;
         if (GuiIo().in.Mouse(MouseButton::Left).presses.size) clicked = true;
     }
 
@@ -479,7 +479,7 @@ void HandleShowingTextEditorForParams(Gui* g, Rect r, Span<ParamIndex const> par
                 if (text_input.enter_pressed || g->imgui.TextInputJustUnfocused(id)) {
                     if (auto val = p_obj.info.StringToLinearValue(text_input.text)) {
                         SetParameterValue(g->engine.processor, p, *val, {});
-                        GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+                        GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
                     }
                     g->param_text_editor_to_open.Clear();
                 }

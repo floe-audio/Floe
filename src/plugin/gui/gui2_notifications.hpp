@@ -201,6 +201,6 @@ PUBLIC void DoNotifications(GuiBoxSystem& box_system, Notifications& notificatio
                     },
             });
 
-        box_system.imgui.WakeupAtTimedInterval(notifications.dismiss_check_counter, 1);
+        GuiIo().WakeupAtTimedInterval(notifications.dismiss_check_counter, 1);
     }
 }

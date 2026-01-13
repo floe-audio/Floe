@@ -97,7 +97,7 @@ void GUIDoEnvelope(Gui* g,
         }
 
         if (imgui.IsHotOrActive(attack_imgui_id)) {
-            GuiIo().out.cursor_type = CursorType::HorizontalArrows;
+            GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
             if (imgui::ClickCheck(
                     {
                         .left_mouse = true,
@@ -168,7 +168,7 @@ void GUIDoEnvelope(Gui* g,
         }
 
         if (imgui.IsHotOrActive(dec_sus_imgui_id)) {
-            GuiIo().out.cursor_type = CursorType::AllArrows;
+            GuiIo().out.wants.cursor_type = CursorType::AllArrows;
             if (imgui::ClickCheck(
                     {
                         .left_mouse = true,
@@ -259,7 +259,7 @@ void GUIDoEnvelope(Gui* g,
         }
 
         if (imgui.IsHotOrActive(release_imgui_id)) {
-            GuiIo().out.cursor_type = CursorType::HorizontalArrows;
+            GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
             if (imgui::ClickCheck(
                     {
                         .left_mouse = true,

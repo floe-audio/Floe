@@ -85,7 +85,7 @@ static void BeginFrame(imgui::Context& imgui, BrowserKeyboardNavigation& nav, im
         auto const& frame_input = GuiIo().in;
         auto& frame_output = GuiIo().out;
 
-        frame_output.wants_keyboard_keys.SetBits(k_navigation_keys);
+        frame_output.wants.keyboard_keys.SetBits(k_navigation_keys);
 
         auto const key_events = [&](KeyCode key) { return frame_input.Key(key).presses_or_repeats.size; };
 
@@ -149,7 +149,7 @@ static void EndFrame(imgui::Context& imgui, BrowserKeyboardNavigation& nav, imgu
             nav.panel_state.id_to_select = nav.panel_state.item_history.AtPrevious(1);
 
         if (nav.temp_focused_items != nav.focused_items || nav.panel_state.id_to_select)
-            frame_output.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+            frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
 }
 
@@ -1934,7 +1934,7 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
                              new_text = filter_text_input.text_input_result->text]() {
                                 dyn::AssignFitInCapacity(s, new_text);
                             });
-                GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
             }
 
             if (context.state.filter_search.size) {
@@ -2138,7 +2138,7 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
                                 [&s = context.state.search, new_text = text_input.text_input_result->text]() {
                                     dyn::AssignFitInCapacity(s, new_text);
                                 });
-                    GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+                    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
                 }
 
                 if (auto const r = BoxRect(box_system, search_box);
@@ -2180,7 +2180,7 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
                 if (box_system.InputAndRenderPass() && box_system.imgui.IsKeyboardFocus(context.browser_id)) {
                     auto const& frame_input = GuiIo().in;
                     auto& frame_output = GuiIo().out;
-                    frame_output.wants_keyboard_keys.Set(ToInt(KeyCode::F));
+                    frame_output.wants.keyboard_keys.Set(ToInt(KeyCode::F));
                     for (auto const& e : frame_input.Key(KeyCode::F).presses) {
                         if (e.modifiers.IsOnly(ModifierKey::Modifier)) {
                             box_system.imgui.SetTextInputFocus(text_input.imgui_id,

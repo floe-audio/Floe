@@ -123,7 +123,7 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
 
                 if (modal.close_on_click_outside) {
                     if (builder.imgui.IsWindowHovered(invis_window)) {
-                        GuiIo().out.cursor_type = CursorType::Hand;
+                        GuiIo().out.wants.cursor_type = CursorType::Hand;
                         if (GuiIo().in.Mouse(MouseButton::Left).presses.size) modal.on_close();
                     }
                 }
@@ -138,7 +138,7 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
             builder.imgui.BeginWindow(settings, modal.imgui_id, modal.r);
 
             if (modal.close_on_esc) {
-                GuiIo().out.wants_keyboard_keys.Set(ToInt(KeyCode::Escape));
+                GuiIo().out.wants.keyboard_keys.Set(ToInt(KeyCode::Escape));
                 if (!builder.imgui.active_text_input && builder.imgui.RequestKeyboardFocus(modal.imgui_id))
                     if (GuiIo().in.Key(KeyCode::Escape).presses.size) modal.on_close();
             }
@@ -288,7 +288,7 @@ static bool Tooltip(GuiBoxSystem& builder,
 
     auto& imgui = builder.imgui;
     if (imgui.WasJustMadeHot(id))
-        imgui.AddTimedWakeup(GuiIo().in.current_time + style::k_tooltip_open_delay, "Tooltip");
+        GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + style::k_tooltip_open_delay, "Tooltip");
 
     auto hot_seconds = imgui.SecondsSpentHot();
     if (imgui.IsHot(id) && hot_seconds >= style::k_tooltip_open_delay) {

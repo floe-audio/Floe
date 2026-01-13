@@ -464,17 +464,16 @@ static bool IsUpdateNeeded(GuiPlatform& platform) {
 
     if (g_request_gui_update.Exchange(false, RmwMemoryOrder::Relaxed)) update_needed = true;
 
-    if (platform.last_result.update_request > GuiFrameOutput::UpdateRequest::Sleep) update_needed = true;
+    if (platform.last_result.wants.update_interval > GuiFrameOutput::UpdateInterval::Sleep)
+        update_needed = true;
 
-    if (platform.last_result.timed_wakeups) {
-        for (usize i = 0; i < platform.last_result.timed_wakeups->size;) {
-            auto& t = (*platform.last_result.timed_wakeups)[i];
-            if (TimePoint::Now() >= t) {
-                update_needed = true;
-                dyn::Remove(*platform.last_result.timed_wakeups, i);
-            } else {
-                ++i;
-            }
+    for (usize i = 0; i < platform.last_result.timed_wakeups.size;) {
+        auto& t = platform.last_result.timed_wakeups[i];
+        if (TimePoint::Now() >= t) {
+            update_needed = true;
+            dyn::Remove(platform.last_result.timed_wakeups, i);
+        } else {
+            ++i;
         }
     }
 
@@ -498,7 +497,7 @@ static bool EventWheel(GuiPlatform& platform, PuglScrollEvent const& scroll_even
 
     auto const delta_lines = (f32)scroll_event.dy;
     platform.frame_state.mouse_scroll_delta_in_lines += delta_lines;
-    if (platform.last_result.wants_mouse_scroll) return true;
+    if (platform.last_result.wants.mouse_scroll) return true;
     return false;
 }
 
@@ -516,7 +515,7 @@ static bool EventMotion(GuiPlatform& platform, PuglMotionEvent const& motion_eve
         }
     }
 
-    if (platform.last_result.mouse_tracked_rects.size == 0 || platform.last_result.wants_mouse_capture) {
+    if (platform.last_result.mouse_tracked_rects.size == 0 || platform.last_result.wants.mouse_capture) {
         result = true;
     } else if (IsUpdateNeeded(platform)) {
         return true;
@@ -585,10 +584,10 @@ static bool EventMouseButton(GuiPlatform& platform, PuglButtonEvent const& butto
     }
 
     bool result = false;
-    if (platform.last_result.mouse_tracked_rects.size == 0 || platform.last_result.wants_mouse_capture ||
-        (platform.last_result.wants_all_left_clicks && button == MouseButton::Left) ||
-        (platform.last_result.wants_all_right_clicks && button == MouseButton::Right) ||
-        (platform.last_result.wants_all_middle_clicks && button == MouseButton::Middle)) {
+    if (platform.last_result.mouse_tracked_rects.size == 0 || platform.last_result.wants.mouse_capture ||
+        (platform.last_result.wants.all_left_clicks && button == MouseButton::Left) ||
+        (platform.last_result.wants.all_right_clicks && button == MouseButton::Right) ||
+        (platform.last_result.wants.all_middle_clicks && button == MouseButton::Middle)) {
         result = true;
     } else {
         for (auto const i : Range(platform.last_result.mouse_tracked_rects.size)) {
@@ -614,8 +613,8 @@ static bool EventKeyRegular(GuiPlatform& platform, KeyCode key_code, bool is_dow
     }
     key.is_down = is_down;
 
-    if (platform.last_result.wants_text_input) return true;
-    if (platform.last_result.wants_keyboard_keys.Get(ToInt(key_code))) return true;
+    if (platform.last_result.wants.text_input) return true;
+    if (platform.last_result.wants.keyboard_keys.Get(ToInt(key_code))) return true;
     return false;
 }
 
@@ -665,7 +664,7 @@ static bool EventKey(GuiPlatform& platform, PuglKeyEvent const& key_event, bool 
 static bool EventText(GuiPlatform& platform, PuglTextEvent const& text_event) {
     platform.frame_state.modifiers = CreateModifierFlags(text_event.state);
     dyn::Append(platform.frame_state.input_utf32_chars, text_event.character);
-    if (platform.last_result.wants_text_input) return true;
+    if (platform.last_result.wants.text_input) return true;
     return false;
 }
 
@@ -765,11 +764,11 @@ static void ClearImpermanentState(GuiFrameInput& frame_state) {
 }
 
 static void HandlePostUpdateRequests(GuiPlatform& platform) {
-    if (platform.last_result.cursor_type != platform.current_cursor) {
-        platform.current_cursor = platform.last_result.cursor_type;
+    if (platform.last_result.wants.cursor_type != platform.current_cursor) {
+        platform.current_cursor = platform.last_result.wants.cursor_type;
         puglSetCursor(platform.view, ({
                           PuglCursor cursor = PUGL_CURSOR_ARROW;
-                          switch (platform.last_result.cursor_type) {
+                          switch (platform.last_result.wants.cursor_type) {
                               case CursorType::Default: cursor = PUGL_CURSOR_ARROW; break;
                               case CursorType::Hand: cursor = PUGL_CURSOR_HAND; break;
                               case CursorType::IBeam: cursor = PUGL_CURSOR_CARET; break;
@@ -785,7 +784,7 @@ static void HandlePostUpdateRequests(GuiPlatform& platform) {
                       }));
     }
 
-    if (platform.last_result.wants_text_input || platform.last_result.wants_keyboard_keys.AnyValuesSet()) {
+    if (platform.last_result.wants.text_input || platform.last_result.wants.keyboard_keys.AnyValuesSet()) {
         if (!puglHasFocus(platform.view)) {
             auto const result = puglGrabFocus(platform.view);
             if (result != PUGL_SUCCESS) LogWarning(ModuleName::Gui, "failed to grab focus: {}", result);
@@ -798,14 +797,15 @@ static void HandlePostUpdateRequests(GuiPlatform& platform) {
         }
     }
 
-    if (platform.last_result.wants_clipboard_text_paste) {
+    if (platform.last_result.wants.clipboard_text_paste) {
         LogDebug(ModuleName::Gui, "requesting OS to give us clipboard");
         // IMPORTANT: this will call into our event handler function right from here rather than queue things
         // up
         puglPaste(platform.view);
     }
 
-    if (auto const cb = platform.last_result.set_clipboard_text; cb.size) {
+    if (platform.last_result.set_clipboard_text.size) {
+        auto& cb = platform.last_result.set_clipboard_text;
         LogDebug(ModuleName::Gui, "requesting copy into OS clipboard, size: {}", cb.size);
         puglSetClipboard(platform.view, IS_LINUX ? "UTF8_STRING" : "text/plain", cb.data, cb.size);
     }
@@ -868,7 +868,7 @@ static void UpdateAndRender(GuiPlatform& platform) {
         BeginFrame(platform.frame_state);
 
         {
-            platform.last_result = {};
+            platform.last_result.Reset();
 
             SetGuiIo(&platform.frame_state, &platform.last_result);
             DEFER { SetGuiIo(nullptr, nullptr); };
@@ -882,7 +882,7 @@ static void UpdateAndRender(GuiPlatform& platform) {
         // it's important to do this after clearing the impermanent state because this might add new events to
         // the frame
         HandlePostUpdateRequests(platform);
-    } while (platform.last_result.update_request == GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+    } while (platform.last_result.wants.update_interval == GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 
     if (platform.last_result.draw_data.draw_lists.size) {
         ZoneNamedN(render, "render", true);

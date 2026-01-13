@@ -97,7 +97,7 @@ struct FloePluginInstance : PluginInstanceMessages {
     void UpdateGui() override {
         ASSERT(g_is_logical_main_thread);
         if (gui_platform)
-            gui_platform->last_result.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::Animate);
+            gui_platform->last_result.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
     }
 
     ArenaAllocator arena {PageAllocator::Instance()};

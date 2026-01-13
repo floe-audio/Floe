@@ -82,7 +82,7 @@ DoUtilitiesPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Libr
                    {.text = "Copy Lua definitions path",
                     .tooltip = "Copy the path to the Lua definitions file to the clipboard"_s})) {
         auto const path = sample_lib::LuaDefinitionsFilepath(box_system.arena);
-        dyn::Assign(box_system.imgui.clipboard_for_os, path);
+        dyn::Assign(GuiIo().out.set_clipboard_text, path);
         auto const notification_id = SourceLocationHash();
         *context.notifications.FindOrAppendUninitalisedOverwrite(notification_id) = {
             .get_diplay_info =

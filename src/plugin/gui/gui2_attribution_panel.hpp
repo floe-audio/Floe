@@ -65,7 +65,7 @@ static void AttributionPanel(GuiBoxSystem& box_system, AttributionPanelContext& 
                                         });
 
     if (TextButton(box_system, button_container, {.text = "Copy to clipboard"}))
-        dyn::Assign(box_system.imgui.clipboard_for_os, context.attribution_text);
+        dyn::Assign(GuiIo().out.set_clipboard_text, context.attribution_text);
 
     DoBox(box_system,
           {

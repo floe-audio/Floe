@@ -165,7 +165,7 @@ PUBLIC void DoWholeEditor(Gui* g) {
     if constexpr (!k_editor_enabled) return;
     auto& imgui = g->imgui;
 
-    GuiIo().out.wants_text_input = true; // for debug panel open/close
+    GuiIo().out.wants.text_input = true; // for debug panel open/close
 
     if (GuiIo().in.Key(KeyCode::F1).presses.size) g_show_editor = !g_show_editor;
 

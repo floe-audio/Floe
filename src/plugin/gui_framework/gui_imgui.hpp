@@ -405,11 +405,11 @@ struct Context {
 
     static void SetYScroll(Window* window, f32 val) {
         window->scroll_offset.y = val;
-        GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+        GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
     static void SetXScroll(Window* window, f32 val) {
         window->scroll_offset.x = val;
-        GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+        GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
     bool ScrollWindowToShowRectangle(Rect r);
 
@@ -551,9 +551,6 @@ struct Context {
     Rect GetRegisteredAndConvertedRect(Rect r);
     void RegisterAndConvertRect(Rect* r);
 
-    void AddTimedWakeup(TimePoint time_ms, char const* timer_name);
-    bool WakeupAtTimedInterval(TimePoint& counter, f64 interval_seconds); // Returns true when it ticks
-
     //
     // > High level funcs
     //
@@ -661,10 +658,6 @@ struct Context {
     f32 pixels_per_vw = 1.0f;
 
     graphics::DrawList* graphics = nullptr; // Shortcut to the current windows graphics
-
-    DynamicArray<MouseTrackedRect> mouse_tracked_rects {Malloc::Instance()}; // internal
-    DynamicArray<char> clipboard_for_os {Malloc::Instance()}; // internal
-    DynamicArray<TimePoint> timed_wakeups {Malloc::Instance()}; // internal
 
     u32 frame_counter = 0;
 

@@ -785,7 +785,7 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
 
         ASSERT(closest_slot <= ordered_effects.size);
         if (dragging_fx_unit->drop_slot != closest_slot)
-            GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+            GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
         dragging_fx_unit->drop_slot = closest_slot;
     }
 
@@ -852,10 +852,10 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
 
                 if (imgui.WasJustActivated(id)) {
                     dragging_fx_unit = DraggingFX {id, &fx, FindSlotInEffects(ordered_effects, &fx), {}};
-                    GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+                    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
                 }
 
-                if (imgui.IsHotOrActive(id)) GuiIo().out.cursor_type = CursorType::AllArrows;
+                if (imgui.IsHotOrActive(id)) GuiIo().out.wants.cursor_type = CursorType::AllArrows;
                 Tooltip(g,
                         id,
                         r,
@@ -1143,7 +1143,7 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
     }
 
     if (dragging_fx_unit) {
-        GuiIo().out.cursor_type = CursorType::AllArrows;
+        GuiIo().out.wants.cursor_type = CursorType::AllArrows;
         {
             auto style = buttons::EffectHeading(
                 imgui,
@@ -1170,7 +1170,7 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
                 bool const going_up = GuiIo().in.cursor_pos.y < wnd->clipping_rect.CentreY();
 
                 auto const d = 100.0f * GuiIo().in.delta_time;
-                imgui.WakeupAtTimedInterval(g->redraw_counter, 0.016);
+                GuiIo().WakeupAtTimedInterval(g->redraw_counter, 0.016);
 
                 imgui.SetYScroll(wnd,
                                  Clamp(wnd->scroll_offset.y + (going_up ? -d : d), 0.0f, wnd->scroll_max.y));
@@ -1207,7 +1207,7 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
             if (dragging_fx &&
                 (converted_slot_r.Contains(GuiIo().in.cursor_pos) || dragging_fx->drop_slot == slot)) {
                 if (dragging_fx->drop_slot != slot)
-                    GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+                    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
                 dragging_fx->drop_slot = slot;
                 imgui.graphics->AddRectFilled(converted_slot_r.Min(),
                                               converted_slot_r.Max(),
@@ -1235,7 +1235,7 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
                     imgui.RegisterRegionForMouseTracking(converted_grabber_r);
 
                     if (converted_grabber_r.Contains(GuiIo().in.cursor_pos))
-                        GuiIo().out.cursor_type = CursorType::AllArrows;
+                        GuiIo().out.wants.cursor_type = CursorType::AllArrows;
                 }
 
                 if (imgui.IsActive(id) && !dragging_fx) {
@@ -1264,7 +1264,7 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
                                 k_effect_info[ToInt(active_fx->type)].name,
                                 EffectIsOn(engine.processor.main_params, active_fx),
                                 style);
-            GuiIo().out.cursor_type = CursorType::AllArrows;
+            GuiIo().out.wants.cursor_type = CursorType::AllArrows;
         }
 
         if (dragging_fx && imgui.WasJustDeactivated(dragging_fx->id)) {

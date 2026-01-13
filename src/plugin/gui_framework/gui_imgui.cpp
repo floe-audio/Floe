@@ -411,7 +411,8 @@ void Context::HandleHoverPopupOpeningAndClosing(Id id) {
 
         if (id != creator_of_next) {
             if (WasJustMadeHot(id))
-                AddTimedWakeup(GuiIo().in.current_time + k_popup_open_and_close_delay_sec, "Popup close");
+                GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_popup_open_and_close_delay_sec,
+                                           "Popup close");
             if (SecondsSpentHot() >= k_popup_open_and_close_delay_sec)
                 ClosePopupToLevel((int)current_popup_stack.size);
         }
@@ -568,21 +569,6 @@ static u32 ImguiHash(void const* data, int data_size, u32 seed = 0) {
     return ~crc;
 }
 
-bool Context::WakeupAtTimedInterval(TimePoint& counter, f64 interval_seconds) {
-    bool triggered = false;
-    if (GuiIo().in.current_time >= counter) {
-        counter = GuiIo().in.current_time + interval_seconds;
-        triggered = true;
-    }
-    AddTimedWakeup(counter, __FUNCTION__);
-    return triggered;
-}
-
-void Context::AddTimedWakeup(TimePoint time, char const* timer_name) {
-    (void)timer_name;
-    dyn::AppendIfNotAlreadyThere(timed_wakeups, time);
-}
-
 void Context::PushID(String str) { dyn::Append(id_stack, GetID(str)); }
 
 void Context::PushID(uintptr num) { dyn::Append(id_stack, GetID(num)); }
@@ -646,9 +632,6 @@ void Context::Begin(WindowSettings settings) {
     draw_data.draw_lists = {};
     draw_data.total_vtx_count = 0;
     draw_data.total_idx_count = 0;
-
-    dyn::Clear(mouse_tracked_rects);
-    dyn::Clear(clipboard_for_os);
 
     tab_just_used_to_focus = false;
     frame_counter++;
@@ -757,7 +740,7 @@ void Context::End(ArenaAllocator& scratch_arena) {
     if (!active_text_input_shown) SetTextInputFocus(0, {}, false);
 
     if (debug_show_register_widget_overlay) {
-        for (auto& w : mouse_tracked_rects) {
+        for (auto& w : GuiIo().out.mouse_tracked_rects) {
             auto col = 0xffff00ff;
             if (w.mouse_over) col = 0xff00ffff;
             overlay_graphics.AddRect(w.rect.Min(), w.rect.Max(), col);
@@ -900,19 +883,15 @@ void Context::End(ArenaAllocator& scratch_arena) {
 
     auto& frame_output = GuiIo().out;
 
-    frame_output.wants_text_input = active_text_input != 0;
-    frame_output.wants_mouse_capture = AnItemIsActive();
-    frame_output.wants_mouse_scroll = true;
-    frame_output.wants_all_left_clicks = focused_popup_window != nullptr || GetTextInput();
-    frame_output.wants_all_right_clicks = false;
-    frame_output.wants_all_middle_clicks = false;
+    frame_output.wants.text_input = active_text_input != 0;
+    frame_output.wants.mouse_capture = AnItemIsActive();
+    frame_output.wants.mouse_scroll = true;
+    frame_output.wants.all_left_clicks = focused_popup_window != nullptr || GetTextInput();
+    frame_output.wants.all_right_clicks = false;
+    frame_output.wants.all_middle_clicks = false;
 
     draw_data.draw_lists = output_draw_lists;
     frame_output.draw_data = draw_data;
-
-    frame_output.mouse_tracked_rects = mouse_tracked_rects;
-    frame_output.set_clipboard_text = clipboard_for_os;
-    frame_output.timed_wakeups = &timed_wakeups;
 
     active_item_last_frame = active_item.id;
     hot_item_last_frame = hot_item;
@@ -920,13 +899,13 @@ void Context::End(ArenaAllocator& scratch_arena) {
     prev_active_text_input = active_text_input;
 
     if (temp_hot_item != hot_item)
-        frame_output.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+        frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     if (temp_active_item.just_activated) {
         temp_hot_item = 0;
-        frame_output.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+        frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
     if (tab_to_focus_next_input)
-        frame_output.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+        frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
 
 bool Context::TextInputHasFocus(Id id) const { return active_text_input && active_text_input == id; }
@@ -1124,7 +1103,7 @@ bool Context::RegisterRegionForMouseTracking(Rect r, bool check_intersection) {
     MouseTrackedRect widget = {};
     widget.rect = r;
     widget.mouse_over = r.Contains(GuiIo().in.cursor_pos);
-    dyn::Append(mouse_tracked_rects, widget);
+    dyn::Append(GuiIo().out.mouse_tracked_rects, widget);
     return true;
 }
 
@@ -1247,11 +1226,13 @@ TextInputResult Context::TextInput(Rect r,
         auto const size = end - start;
         if (!size) return;
 
-        dyn::Resize(clipboard_for_os, size * 4); // 1 utf32 could at most be 4 utf8 bytes
+        auto& clipboard = GuiIo().out.set_clipboard_text;
 
-        dyn::Resize(clipboard_for_os,
-                    (usize)imstring::Narrow(clipboard_for_os.data,
-                                            (int)clipboard_for_os.size,
+        dyn::Resize(clipboard, size * 4); // 1 UTF32 could at most be 4 UTF8 bytes
+
+        dyn::Resize(clipboard,
+                    (usize)imstring::Narrow(clipboard.data,
+                                            (int)clipboard.size,
                                             textedit_text.data + start,
                                             textedit_text.data + end));
     };
@@ -1259,7 +1240,7 @@ TextInputResult Context::TextInput(Rect r,
     auto const& frame_input = GuiIo().in;
     auto& frame_output = GuiIo().out;
 
-    if (IsHot(id)) frame_output.cursor_type = CursorType::IBeam;
+    if (IsHot(id)) frame_output.wants.cursor_type = CursorType::IBeam;
 
     if (TextInputHasFocus(id)) {
         RequestKeyboardFocus(id);
@@ -1322,7 +1303,7 @@ TextInputResult Context::TextInput(Rect r,
         }
     }
 
-    if (IsHotOrActive(id)) frame_output.cursor_type = CursorType::IBeam;
+    if (IsHotOrActive(id)) frame_output.wants.cursor_type = CursorType::IBeam;
 
     // Select word
     for (auto const press : frame_input.Mouse(MouseButton::Left).presses) {
@@ -1415,7 +1396,7 @@ TextInputResult Context::TextInput(Rect r,
         if (auto const vs = frame_input.Key(KeyCode::V).presses_or_repeats; vs.size) {
             for (auto const event : vs) {
                 if (event.modifiers.Get(ModifierKey::Modifier)) {
-                    frame_output.wants_clipboard_text_paste = true;
+                    frame_output.wants.clipboard_text_paste = true;
                     break;
                 }
             }
@@ -1573,7 +1554,7 @@ TextInputResult Context::TextInput(Rect r,
     if (!result.HasSelection()) {
         if (starting_cursor != stb_state.cursor || reset_cursor)
             ResetTextInputCursorAnim();
-        else if (WakeupAtTimedInterval(cursor_blink_counter, k_text_cursor_blink_rate))
+        else if (GuiIo().WakeupAtTimedInterval(cursor_blink_counter, k_text_cursor_blink_rate))
             text_cursor_is_shown = !text_cursor_is_shown;
     }
 
@@ -1682,7 +1663,8 @@ bool Context::PopupButtonBehavior(Rect r, Id button_id, Id popup_id, ButtonFlags
     } else {
         if (ButtonBehavior(r, button_id, flags)) just_clicked = true;
         if (WasJustMadeHot(button_id))
-            AddTimedWakeup(GuiIo().in.current_time + k_popup_open_and_close_delay_sec, "Popup open");
+            GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_popup_open_and_close_delay_sec,
+                                       "Popup open");
         if ((just_clicked || (IsHot(button_id) && SecondsSpentHot() >= k_popup_open_and_close_delay_sec)) &&
             !IsPopupOpen(popup_id)) {
             ClosePopupToLevel((int)current_popup_stack.size);
@@ -1701,7 +1683,7 @@ bool Context::ButtonBehavior(Rect r, Id id, ButtonFlags flags) {
     if (flags.disabled) return false;
 
     if (flags.hold_to_repeat && IsActive(id)) {
-        if (WakeupAtTimedInterval(button_repeat_counter, button_repeat_rate)) result = true;
+        if (GuiIo().WakeupAtTimedInterval(button_repeat_counter, button_repeat_rate)) result = true;
     }
 
     if (SetHot(r, id, flags.is_non_window_content)) {
@@ -1709,7 +1691,8 @@ bool Context::ButtonBehavior(Rect r, Id id, ButtonFlags flags) {
             SetActiveID(id, flags.closes_popups, flags, !(flags.dont_check_for_release));
 
             button_repeat_counter = {};
-            if (flags.hold_to_repeat) WakeupAtTimedInterval(button_repeat_counter, button_repeat_rate);
+            if (flags.hold_to_repeat)
+                GuiIo().WakeupAtTimedInterval(button_repeat_counter, button_repeat_rate);
             if (!(flags.triggers_on_mouse_up)) result = true;
         }
     }
@@ -1718,7 +1701,7 @@ bool Context::ButtonBehavior(Rect r, Id id, ButtonFlags flags) {
         result = true;
     }
 
-    if (IsHotOrActive(id)) GuiIo().out.cursor_type = CursorType::Hand;
+    if (IsHotOrActive(id)) GuiIo().out.wants.cursor_type = CursorType::Hand;
 
     if (result && (flags.closes_popups)) CloseCurrentPopup();
 
@@ -2094,7 +2077,7 @@ void Context::EndWindow() {
     Window* window = Last(window_stack);
     if (window->prev_content_size.x != window->prevprev_content_size.x ||
         window->prev_content_size.y != window->prevprev_content_size.y) {
-        GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+        GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
 
     PopRectFromCurrentScissorStack();
@@ -2202,7 +2185,7 @@ void Context::SetTextInputFocus(Id id, String new_text, bool multiline) {
         update_needed = true;
     }
 
-    if (update_needed) GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+    if (update_needed) GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
 
 void Context::ResetTextInputCursorAnim() {
@@ -2214,13 +2197,13 @@ void Context::TextInputSelectAll() {
     stb_state.cursor = 0;
     stb_state.select_start = 0;
     stb_state.select_end = textedit_len;
-    GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
 
 void Context::SetActiveIDZero() { SetActiveID(0, false, {}, false); }
 
 void Context::SetActiveID(Id id, bool closes_popups, ButtonFlags button_flags, bool check_for_release) {
-    GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     temp_active_item.id = id;
     temp_active_item.closes_popups = closes_popups;
     temp_active_item.just_activated = (id != 0);
@@ -2248,7 +2231,7 @@ Window* Context::OpenPopup(Id id, Id creator_of_this_popup) {
     popup_menu_just_created = id;
     dyn::Append(persistent_popup_stack, popup);
     focused_popup_window = popup;
-    GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
+    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 
     return popup;
 }
@@ -2379,7 +2362,7 @@ void Context::DebugWindow(Rect r) {
     sets.flags = 0;
     BeginWindow(sets, r, "TextWindow");
 
-    GuiIo().out.wants_text_input = true;
+    GuiIo().out.wants.text_input = true;
 
     debug_y_pos = 0;
 
@@ -2399,7 +2382,7 @@ void Context::DebugWindow(Rect r) {
         debug_y_pos += graphics->context->CurrentFontSize() * 2;
 
         DebugTextItem("Timers:", "");
-        for (auto& t : timed_wakeups)
+        for (auto& t : GuiIo().out.timed_wakeups)
             DebugTextItem("Time:", "%lld", t);
     }
 

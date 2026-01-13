@@ -185,7 +185,7 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
                                       {.slower_with_shift = true, .default_on_modifer = true});
 
         if (imgui.IsHotOrActive(id)) {
-            GuiIo().out.cursor_type = CursorType::HorizontalArrows;
+            GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
             if (imgui::ClickCheck(
                     {
                         .left_mouse = true,
@@ -545,7 +545,7 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
                                   imgui.WindowPosToScreenPos(waveform_r.pos).x,
                                   {},
                                   intensity);
-            GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::Animate);
+            GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
         }
     }
 
