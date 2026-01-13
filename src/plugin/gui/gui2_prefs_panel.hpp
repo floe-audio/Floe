@@ -466,18 +466,19 @@ static void PackagesPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelC
         if (btn.button_fired) box_system.imgui.OpenPopup(popup_id, btn.imgui_id);
 
         if (box_system.imgui.IsPopupOpen(popup_id))
-            RunOrEnqueuePanel(box_system,
-                     Panel {
-                         .run =
-                             [scan_folder_type, &context](GuiBoxSystem& box_system) {
-                                 InstallLocationMenu(box_system, context, (ScanFolderType)scan_folder_type);
-                             },
-                         .data =
-                             PopupPanel {
-                                 .creator_layout_id = btn.layout_id,
-                                 .popup_imgui_id = popup_id,
-                             },
-                     });
+            RunOrEnqueuePanel(
+                box_system,
+                Panel {
+                    .run =
+                        [scan_folder_type, &context](GuiBoxSystem& box_system) {
+                            InstallLocationMenu(box_system, context, (ScanFolderType)scan_folder_type);
+                        },
+                    .data =
+                        PopupPanel {
+                            .creator_layout_id = btn.layout_id,
+                            .popup_imgui_id = popup_id,
+                        },
+                });
     }
 
     {
@@ -648,30 +649,34 @@ PreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context, Pre
 
     using TabPanelFunction = void (*)(GuiBoxSystem&, PreferencesPanelContext&);
     RunOrEnqueuePanel(box_system,
-             Panel {
-                 .run = ({
-                     TabPanelFunction f {};
-                     switch (state.tab) {
-                         case PreferencesPanelState::Tab::General: f = GeneralPreferencesPanel; break;
-                         case PreferencesPanelState::Tab::Folders: f = FolderPreferencesPanel; break;
-                         case PreferencesPanelState::Tab::Packages: f = PackagesPreferencesPanel; break;
-                         case PreferencesPanelState::Tab::Count: PanicIfReached();
-                     }
-                     [f, &context](GuiBoxSystem& box_system) { f(box_system, context); };
-                 }),
-                 .data =
-                     Subpanel {
-                         .id = DoBox(box_system,
-                                     {
-                                         .parent = root,
-                                         .layout {
-                                             .size = {layout::k_fill_parent, layout::k_fill_parent},
-                                         },
-                                     })
-                                   .layout_id,
-                         .imgui_id = box_system.imgui.GetID((u64)state.tab + 999999),
-                     },
-             });
+                      Panel {
+                          .run = ({
+                              TabPanelFunction f {};
+                              switch (state.tab) {
+                                  case PreferencesPanelState::Tab::General:
+                                      f = GeneralPreferencesPanel;
+                                      break;
+                                  case PreferencesPanelState::Tab::Folders: f = FolderPreferencesPanel; break;
+                                  case PreferencesPanelState::Tab::Packages:
+                                      f = PackagesPreferencesPanel;
+                                      break;
+                                  case PreferencesPanelState::Tab::Count: PanicIfReached();
+                              }
+                              [f, &context](GuiBoxSystem& box_system) { f(box_system, context); };
+                          }),
+                          .data =
+                              Subpanel {
+                                  .id = DoBox(box_system,
+                                              {
+                                                  .parent = root,
+                                                  .layout {
+                                                      .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                                  },
+                                              })
+                                            .layout_id,
+                                  .imgui_id = box_system.imgui.GetID((u64)state.tab + 999999),
+                              },
+                      });
 }
 
 PUBLIC void
@@ -687,21 +692,22 @@ DoPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context, P
             if (init) EndReadFolders(context.presets_server, context.presets->handle);
         };
 
-        RunOrEnqueuePanel(box_system,
-                 Panel {
-                     .run = [&context, &state](GuiBoxSystem& b) { PreferencesPanel(b, context, state); },
-                     .data =
-                         ModalPanel {
-                             .r = CentredRect(
-                                 {.pos = 0, .size = box_system.imgui.frame_input.window_size.ToFloat2()},
-                                 f32x2 {box_system.imgui.VwToPixels(style::k_prefs_dialog_width),
-                                        box_system.imgui.VwToPixels(style::k_prefs_dialog_height)}),
-                             .imgui_id = box_system.imgui.GetID("prefs"),
-                             .on_close = [&state]() { state.open = false; },
-                             .close_on_click_outside = true,
-                             .darken_background = true,
-                             .disable_other_interaction = true,
-                         },
-                 });
+        RunOrEnqueuePanel(
+            box_system,
+            Panel {
+                .run = [&context, &state](GuiBoxSystem& b) { PreferencesPanel(b, context, state); },
+                .data =
+                    ModalPanel {
+                        .r = CentredRect(
+                            {.pos = 0, .size = box_system.imgui.frame_input.window_size.ToFloat2()},
+                            f32x2 {box_system.imgui.VwToPixels(style::k_prefs_dialog_width),
+                                   box_system.imgui.VwToPixels(style::k_prefs_dialog_height)}),
+                        .imgui_id = box_system.imgui.GetID("prefs"),
+                        .on_close = [&state]() { state.open = false; },
+                        .close_on_click_outside = true,
+                        .darken_background = true,
+                        .disable_other_interaction = true,
+                    },
+            });
     }
 }

@@ -1807,19 +1807,20 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
 
                 if (btn.button_fired) box_system.imgui.OpenPopup(popup_id, btn.imgui_id);
 
-                RunOrEnqueuePanel(box_system,
-                         Panel {
-                             .run = [&context](
-                                        GuiBoxSystem& box_system) { DoMoreOptionsMenu(box_system, context); },
-                             .data =
-                                 PopupPanel {
-                                     .debug_name = "moreoptions",
-                                     .creator_layout_id = btn.layout_id,
-                                     .popup_imgui_id = popup_id,
-                                     .additional_imgui_window_flags =
-                                         imgui::WindowFlags_PositionOnTopOfParentPopup,
-                                 },
-                         });
+                RunOrEnqueuePanel(
+                    box_system,
+                    Panel {
+                        .run =
+                            [&context](GuiBoxSystem& box_system) { DoMoreOptionsMenu(box_system, context); },
+                        .data =
+                            PopupPanel {
+                                .debug_name = "moreoptions",
+                                .creator_layout_id = btn.layout_id,
+                                .popup_imgui_id = popup_id,
+                                .additional_imgui_window_flags =
+                                    imgui::WindowFlags_PositionOnTopOfParentPopup,
+                            },
+                    });
             }
         }
 
@@ -2350,19 +2351,20 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
             });
     }
 
-    RunOrEnqueuePanel(box_system,
-             Panel {
-                 .run =
-                     [&](GuiBoxSystem& box_system) {
-                         context.state.right_click_menu_state.do_menu(box_system,
-                                                                      context.state.right_click_menu_state);
-                     },
-                 .data =
-                     PopupPanel {
-                         .creator_absolute_rect = context.state.right_click_menu_state.absolute_creator_rect,
-                         .popup_imgui_id = k_right_click_menu_popup_id,
-                     },
-             });
+    RunOrEnqueuePanel(
+        box_system,
+        Panel {
+            .run =
+                [&](GuiBoxSystem& box_system) {
+                    context.state.right_click_menu_state.do_menu(box_system,
+                                                                 context.state.right_click_menu_state);
+                },
+            .data =
+                PopupPanel {
+                    .creator_absolute_rect = context.state.right_click_menu_state.absolute_creator_rect,
+                    .popup_imgui_id = k_right_click_menu_popup_id,
+                },
+        });
 }
 
 void DoBrowserPopup(GuiBoxSystem& box_system,

@@ -210,15 +210,16 @@ Box DoParameterComponent(Gui* g,
         }
 
         if (builder.imgui.IsPopupOpen(popup_id))
-            RunOrEnqueuePanel(builder,
-                     Panel {
-                         .run = [g, index = param.info.index](GuiBoxSystem&) { DoMidiLearnMenu(g, index); },
-                         .data =
-                             PopupPanel {
-                                 .creator_layout_id = container.layout_id,
-                                 .popup_imgui_id = popup_id,
-                             },
-                     });
+            RunOrEnqueuePanel(
+                builder,
+                Panel {
+                    .run = [g, index = param.info.index](GuiBoxSystem&) { DoMidiLearnMenu(g, index); },
+                    .data =
+                        PopupPanel {
+                            .creator_layout_id = container.layout_id,
+                            .popup_imgui_id = popup_id,
+                        },
+                });
     }
 
     // Focus the text input if requested.

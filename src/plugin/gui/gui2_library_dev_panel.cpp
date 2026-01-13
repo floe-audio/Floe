@@ -386,29 +386,31 @@ static void DoPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, L
 
     using TabPanelFunction = void (*)(GuiBoxSystem&, LibraryDevPanelContext&, LibraryDevPanelState&);
     RunOrEnqueuePanel(box_system,
-             Panel {
-                 .run = ({
-                     TabPanelFunction f {};
-                     switch (state.tab) {
-                         case LibraryDevPanelState::Tab::TagBuilder: f = DoTagBuilderPanel; break;
-                         case LibraryDevPanelState::Tab::Utilities: f = DoUtilitiesPanel; break;
-                         case LibraryDevPanelState::Tab::Count: PanicIfReached();
-                     }
-                     [f, &context, &state](GuiBoxSystem& box_system) { f(box_system, context, state); };
-                 }),
-                 .data =
-                     Subpanel {
-                         .id = DoBox(box_system,
-                                     {
-                                         .parent = root,
-                                         .layout {
-                                             .size = {layout::k_fill_parent, layout::k_fill_parent},
-                                         },
-                                     })
-                                   .layout_id,
-                         .imgui_id = box_system.imgui.GetID((u64)state.tab + 999999),
-                     },
-             });
+                      Panel {
+                          .run = ({
+                              TabPanelFunction f {};
+                              switch (state.tab) {
+                                  case LibraryDevPanelState::Tab::TagBuilder: f = DoTagBuilderPanel; break;
+                                  case LibraryDevPanelState::Tab::Utilities: f = DoUtilitiesPanel; break;
+                                  case LibraryDevPanelState::Tab::Count: PanicIfReached();
+                              }
+                              [f, &context, &state](GuiBoxSystem& box_system) {
+                                  f(box_system, context, state);
+                              };
+                          }),
+                          .data =
+                              Subpanel {
+                                  .id = DoBox(box_system,
+                                              {
+                                                  .parent = root,
+                                                  .layout {
+                                                      .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                                  },
+                                              })
+                                            .layout_id,
+                                  .imgui_id = box_system.imgui.GetID((u64)state.tab + 999999),
+                              },
+                      });
 }
 
 void DoLibraryDevPanel(GuiBoxSystem& box_system,
@@ -428,17 +430,18 @@ void DoLibraryDevPanel(GuiBoxSystem& box_system,
     pos.x += window_size.x - size.x;
     pos.y += (window_size.y - size.y) / 2;
 
-    RunOrEnqueuePanel(box_system,
-             Panel {
-                 .run = [&context, &state](GuiBoxSystem& box_system) { DoPanel(box_system, context, state); },
-                 .data =
-                     ModalPanel {
-                         .r = {.pos = pos, .size = size},
-                         .imgui_id = box_system.imgui.GetID("libdev-panel"),
-                         .on_close = [&state]() { state.open = false; },
-                         .close_on_click_outside = !state.modeless,
-                         .darken_background = !state.modeless,
-                         .disable_other_interaction = !state.modeless,
-                     },
-             });
+    RunOrEnqueuePanel(
+        box_system,
+        Panel {
+            .run = [&context, &state](GuiBoxSystem& box_system) { DoPanel(box_system, context, state); },
+            .data =
+                ModalPanel {
+                    .r = {.pos = pos, .size = size},
+                    .imgui_id = box_system.imgui.GetID("libdev-panel"),
+                    .on_close = [&state]() { state.open = false; },
+                    .close_on_click_outside = !state.modeless,
+                    .darken_background = !state.modeless,
+                    .disable_other_interaction = !state.modeless,
+                },
+        });
 }

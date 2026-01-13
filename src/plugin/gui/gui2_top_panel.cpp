@@ -442,14 +442,14 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g, GuiFrameContext const& 
 
         if (box_system.imgui.IsPopupOpen(popup_id))
             RunOrEnqueuePanel(box_system,
-                     Panel {
-                         .run = [g, &frame_context](GuiBoxSystem&) { DoDotsMenu(g, frame_context); },
-                         .data =
-                             PopupPanel {
-                                 .creator_layout_id = dots_button.layout_id,
-                                 .popup_imgui_id = popup_id,
-                             },
-                     });
+                              Panel {
+                                  .run = [g, &frame_context](GuiBoxSystem&) { DoDotsMenu(g, frame_context); },
+                                  .data =
+                                      PopupPanel {
+                                          .creator_layout_id = dots_button.layout_id,
+                                          .popup_imgui_id = popup_id,
+                                      },
+                              });
     }
 
     auto const knob_container = DoBox(box_system,
@@ -515,13 +515,13 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g, GuiFrameContext const& 
 
 void TopPanel(Gui* g, f32 height, GuiFrameContext const& frame_context) {
     RunOrEnqueuePanel(g->box_system,
-             {
-                 .run = [&](GuiBoxSystem& box_system) { DoTopPanel(box_system, g, frame_context); },
-                 .data =
-                     Subpanel {
-                         .rect = Rect {.xywh {0, 0, g->imgui.Width(), height}},
-                         .imgui_id = g->imgui.GetID("TopPanel"),
-                         .flags = imgui::WindowFlags_NoScrollbarX | imgui::WindowFlags_NoScrollbarY,
-                     },
-             });
+                      {
+                          .run = [&](GuiBoxSystem& box_system) { DoTopPanel(box_system, g, frame_context); },
+                          .data =
+                              Subpanel {
+                                  .rect = Rect {.xywh {0, 0, g->imgui.Width(), height}},
+                                  .imgui_id = g->imgui.GetID("TopPanel"),
+                                  .flags = imgui::WindowFlags_NoScrollbarX | imgui::WindowFlags_NoScrollbarY,
+                              },
+                      });
 }

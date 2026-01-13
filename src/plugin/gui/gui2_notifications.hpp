@@ -179,26 +179,27 @@ PUBLIC void DoNotifications(GuiBoxSystem& box_system, Notifications& notificatio
         auto const width_px = box_system.imgui.VwToPixels(style::k_notification_panel_width);
         auto const spacing = box_system.imgui.PixelsToVw(style::k_spacing);
 
-        RunOrEnqueuePanel(box_system,
-                 Panel {
-                     .run = [&notifications](GuiBoxSystem& b) { NotificationsPanel(b, notifications); },
-                     .data =
-                         ModalPanel {
-                             .r {
-                                 .x = box_system.imgui.Width() - width_px - spacing,
-                                 .y = spacing,
-                                 .w = width_px,
-                                 .h = 4,
-                             },
-                             .imgui_id = box_system.imgui.GetID("notifications"),
-                             .on_close = []() {},
-                             .close_on_click_outside = false,
-                             .darken_background = false,
-                             .disable_other_interaction = false,
-                             .auto_height = true,
-                             .transparent_panel = true,
-                         },
-                 });
+        RunOrEnqueuePanel(
+            box_system,
+            Panel {
+                .run = [&notifications](GuiBoxSystem& b) { NotificationsPanel(b, notifications); },
+                .data =
+                    ModalPanel {
+                        .r {
+                            .x = box_system.imgui.Width() - width_px - spacing,
+                            .y = spacing,
+                            .w = width_px,
+                            .h = 4,
+                        },
+                        .imgui_id = box_system.imgui.GetID("notifications"),
+                        .on_close = []() {},
+                        .close_on_click_outside = false,
+                        .darken_background = false,
+                        .disable_other_interaction = false,
+                        .auto_height = true,
+                        .transparent_panel = true,
+                    },
+            });
 
         box_system.imgui.WakeupAtTimedInterval(notifications.dismiss_check_counter, 1);
     }

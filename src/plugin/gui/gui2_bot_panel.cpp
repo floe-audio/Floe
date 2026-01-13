@@ -289,13 +289,13 @@ static void DoBotPanel(Gui* g) {
 
 void BotPanel(Gui* g, Rect const r) {
     RunOrEnqueuePanel(g->box_system,
-             {
-                 .run = [g](GuiBoxSystem&) { DoBotPanel(g); },
-                 .data =
-                     Subpanel {
-                         .rect = r,
-                         .imgui_id = g->imgui.GetID("BotPanel"),
-                         .flags = imgui::WindowFlags_NoScrollbarX | imgui::WindowFlags_NoScrollbarY,
-                     },
-             });
+                      {
+                          .run = [g](GuiBoxSystem&) { DoBotPanel(g); },
+                          .data =
+                              Subpanel {
+                                  .rect = r,
+                                  .imgui_id = g->imgui.GetID("BotPanel"),
+                                  .flags = imgui::WindowFlags_NoScrollbarX | imgui::WindowFlags_NoScrollbarY,
+                              },
+                      });
 }
