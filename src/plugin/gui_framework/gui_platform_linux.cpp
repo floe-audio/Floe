@@ -33,7 +33,7 @@ Optional<UiSize> detail::GetParentWindowSize(GuiPlatform const& platform) {
     auto display = (Display*)puglGetNativeWorld(platform.world);
     if (!display) return k_nullopt;
 
-    Window parent_window = (Window)parent;
+    auto parent_window = (Window)parent;
     XWindowAttributes attrs;
     if (XGetWindowAttributes(display, parent_window, &attrs) == 0) return k_nullopt;
 

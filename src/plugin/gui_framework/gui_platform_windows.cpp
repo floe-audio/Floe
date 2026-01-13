@@ -87,7 +87,7 @@ Optional<UiSize> detail::GetParentWindowSize(GuiPlatform const& platform) {
     auto const parent = puglGetParent(platform.view);
     if (!parent) return k_nullopt;
 
-    HWND parent_window = (HWND)parent;
+    auto parent_window = (HWND)parent;
     RECT rect;
     if (!GetClientRect(parent_window, &rect)) return k_nullopt;
 

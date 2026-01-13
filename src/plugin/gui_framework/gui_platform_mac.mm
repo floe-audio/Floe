@@ -31,8 +31,8 @@ UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const& platform) {
         if (platform.view) {
             auto const parent = puglGetParent(platform.view);
             if (parent) {
-                NSView* parent_view = (__bridge NSView*)(void*)parent;
-                NSWindow* parent_window = [parent_view window];
+                auto parent_view = (__bridge NSView*)(void*)parent;
+                auto parent_window = [parent_view window];
                 if (parent_window) s = [parent_window screen];
             }
         }
