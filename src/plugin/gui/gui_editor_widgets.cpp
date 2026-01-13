@@ -668,7 +668,7 @@ void ColoursGUISliders(EditorGUI* gui, String search) {
                     RecalculateBasedOnCol(other_c, c);
 
             WriteColoursFile(live_gui);
-            GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+            GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
         }
 
         EditorIncrementPos(gui);

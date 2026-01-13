@@ -920,13 +920,13 @@ void Context::End(ArenaAllocator& scratch_arena) {
     prev_active_text_input = active_text_input;
 
     if (temp_hot_item != hot_item)
-        frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+        frame_output.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
     if (temp_active_item.just_activated) {
         temp_hot_item = 0;
-        frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+        frame_output.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
     }
     if (tab_to_focus_next_input)
-        frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+        frame_output.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
 }
 
 bool Context::TextInputHasFocus(Id id) const { return active_text_input && active_text_input == id; }
@@ -2094,7 +2094,7 @@ void Context::EndWindow() {
     Window* window = Last(window_stack);
     if (window->prev_content_size.x != window->prevprev_content_size.x ||
         window->prev_content_size.y != window->prevprev_content_size.y) {
-        GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+        GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
     }
 
     PopRectFromCurrentScissorStack();
@@ -2202,7 +2202,7 @@ void Context::SetTextInputFocus(Id id, String new_text, bool multiline) {
         update_needed = true;
     }
 
-    if (update_needed) GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+    if (update_needed) GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
 }
 
 void Context::ResetTextInputCursorAnim() {
@@ -2214,13 +2214,13 @@ void Context::TextInputSelectAll() {
     stb_state.cursor = 0;
     stb_state.select_start = 0;
     stb_state.select_end = textedit_len;
-    GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+    GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
 }
 
 void Context::SetActiveIDZero() { SetActiveID(0, false, {}, false); }
 
 void Context::SetActiveID(Id id, bool closes_popups, ButtonFlags button_flags, bool check_for_release) {
-    GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+    GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
     temp_active_item.id = id;
     temp_active_item.closes_popups = closes_popups;
     temp_active_item.just_activated = (id != 0);
@@ -2248,7 +2248,7 @@ Window* Context::OpenPopup(Id id, Id creator_of_this_popup) {
     popup_menu_just_created = id;
     dyn::Append(persistent_popup_stack, popup);
     focused_popup_window = popup;
-    GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+    GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
 
     return popup;
 }

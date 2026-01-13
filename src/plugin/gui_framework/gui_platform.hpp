@@ -43,7 +43,7 @@ struct GuiPlatform {
     CursorType current_cursor {CursorType::Default};
     graphics::DrawContext* graphics_ctx {};
     f64 double_click_time_ms {300.0};
-    GuiFrameResult last_result {};
+    GuiFrameOutput last_result {};
     GuiFrameInput frame_state {};
     Optional<Gui> gui {};
     Optional<clap_id> clap_timer_id {};
@@ -464,7 +464,7 @@ static bool IsUpdateNeeded(GuiPlatform& platform) {
 
     if (g_request_gui_update.Exchange(false, RmwMemoryOrder::Relaxed)) update_needed = true;
 
-    if (platform.last_result.update_request > GuiFrameResult::UpdateRequest::Sleep) update_needed = true;
+    if (platform.last_result.update_request > GuiFrameOutput::UpdateRequest::Sleep) update_needed = true;
 
     if (platform.last_result.timed_wakeups) {
         for (usize i = 0; i < platform.last_result.timed_wakeups->size;) {
@@ -882,7 +882,7 @@ static void UpdateAndRender(GuiPlatform& platform) {
         // it's important to do this after clearing the impermanent state because this might add new events to
         // the frame
         HandlePostUpdateRequests(platform);
-    } while (platform.last_result.update_request == GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+    } while (platform.last_result.update_request == GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
 
     if (platform.last_result.draw_data.draw_lists.size) {
         ZoneNamedN(render, "render", true);

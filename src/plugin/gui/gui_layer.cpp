@@ -1579,7 +1579,7 @@ void Draw(Gui* g,
             }();
             if (new_page && new_page != layer_gui->selected_page) {
                 layer_gui->selected_page = *new_page;
-                GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
             }
         }
     }

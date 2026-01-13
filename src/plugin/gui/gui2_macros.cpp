@@ -70,7 +70,7 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
             auto const& a = initial_active_destination_knob;
             auto const& b = g->macros_gui_state.active_destination_knob;
             if (a.HasValue() != b.HasValue() || (b.HasValue() && a->dest.param_index != b->dest.param_index))
-                GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
         }
     };
 

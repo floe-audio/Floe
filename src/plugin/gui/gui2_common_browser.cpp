@@ -149,7 +149,7 @@ static void EndFrame(imgui::Context& imgui, BrowserKeyboardNavigation& nav, imgu
             nav.panel_state.id_to_select = nav.panel_state.item_history.AtPrevious(1);
 
         if (nav.temp_focused_items != nav.focused_items || nav.panel_state.id_to_select)
-            frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+            frame_output.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
     }
 }
 
@@ -1934,7 +1934,7 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
                              new_text = filter_text_input.text_input_result->text]() {
                                 dyn::AssignFitInCapacity(s, new_text);
                             });
-                GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
             }
 
             if (context.state.filter_search.size) {
@@ -2138,7 +2138,7 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
                                 [&s = context.state.search, new_text = text_input.text_input_result->text]() {
                                     dyn::AssignFitInCapacity(s, new_text);
                                 });
-                    GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                    GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
                 }
 
                 if (auto const r = BoxRect(box_system, search_box);

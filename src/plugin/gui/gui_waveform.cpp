@@ -545,7 +545,7 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
                                   imgui.WindowPosToScreenPos(waveform_r.pos).x,
                                   {},
                                   intensity);
-            GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::Animate);
+            GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::Animate);
         }
     }
 

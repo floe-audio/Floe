@@ -237,7 +237,7 @@ static void DoResizeCorner(Gui* g) {
     if (g->imgui.IsHotOrActive(id)) frame_output.cursor_type = CursorType::UpLeftDownRight;
 
     if (g->imgui.IsActive(id)) {
-        frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::Animate);
+        frame_output.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::Animate);
 
         auto const cursor = frame_input.cursor_pos;
         auto const delta = cursor - frame_input.Mouse(MouseButton::Left).last_press.point;

@@ -706,7 +706,7 @@ static void TopDisplay(Gui* g, Rect r, s32 starting_octave, Rect keyboard_rect) 
         if (auto const bounds = g->imgui.CurrentWindow()->unpadded_bounds;
             All(bounds.size > 0.0f) && !bounds.Contains(GuiIo().in.cursor_pos)) {
             imgui.ClosePopupToLevel(0);
-            GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+            GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
         }
     } else {
         RenderTopDisplayContent(g,

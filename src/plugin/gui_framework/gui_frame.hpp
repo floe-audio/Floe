@@ -206,7 +206,7 @@ struct FilePickerDialogOptions {
 };
 
 // Fill this struct every frame to instruct the framework about the application's needs.
-struct GuiFrameResult {
+struct GuiFrameOutput {
     enum class UpdateRequest {
         // 1. GUI will sleep until there's user interaction or a timed wakeup fired.
         Sleep,
@@ -264,7 +264,7 @@ struct GuiFrameResult {
 
 struct GuiFrameIo {
     GuiFrameInput const& in;
-    GuiFrameResult& out;
+    GuiFrameOutput& out;
 };
 
 // Global data used within a GUI update. Outside of a GUI update it is invalid to use this data.
@@ -273,7 +273,7 @@ struct GuiFrameIo {
 GuiFrameIo GuiIo();
 
 // Internal.
-void SetGuiIo(GuiFrameInput* in, GuiFrameResult* out);
+void SetGuiIo(GuiFrameInput* in, GuiFrameOutput* out);
 
 // Set this at any time from any thread to request a GUI update at some point in the future.
 extern Atomic<bool> g_request_gui_update;

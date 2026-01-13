@@ -187,7 +187,7 @@ Box DoParameterComponent(Gui* g,
             (container.text_input_result->buffer_changed || container.text_input_result->enter_pressed)) {
             if (auto v = param.info.StringToLinearValue(container.text_input_result->text)) {
                 new_val = v;
-                GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
             }
         }
 

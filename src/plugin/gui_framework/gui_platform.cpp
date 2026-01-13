@@ -9,11 +9,11 @@ void detail::X11SetParent(PuglView*, uintptr) {}
 #endif
 
 GuiFrameInput* g_frame_input {};
-GuiFrameResult* g_frame_output {};
+GuiFrameOutput* g_frame_output {};
 
 GuiFrameIo GuiIo() { return {*g_frame_input, *g_frame_output}; }
 
-void SetGuiIo(GuiFrameInput* in, GuiFrameResult* out) {
+void SetGuiIo(GuiFrameInput* in, GuiFrameOutput* out) {
     g_frame_input = in;
     g_frame_output = out;
 }

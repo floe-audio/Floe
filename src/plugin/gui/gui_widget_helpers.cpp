@@ -479,7 +479,7 @@ void HandleShowingTextEditorForParams(Gui* g, Rect r, Span<ParamIndex const> par
                 if (text_input.enter_pressed || g->imgui.TextInputJustUnfocused(id)) {
                     if (auto val = p_obj.info.StringToLinearValue(text_input.text)) {
                         SetParameterValue(g->engine.processor, p, *val, {});
-                        GuiIo().out.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                        GuiIo().out.ElevateUpdateRequest(GuiFrameOutput::UpdateRequest::ImmediatelyUpdate);
                     }
                     g->param_text_editor_to_open.Clear();
                 }
