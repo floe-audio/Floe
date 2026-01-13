@@ -529,13 +529,18 @@ static ErrorCodeOr<int> InotifyWatch(int inotify_id, char const* path) {
     return watch_id;
 }
 
-static void InotifyUnwatch(int inotify_id, int watch_id) { inotify_rm_watch(inotify_id, watch_id); }
+static void InotifyUnwatch(int inotify_id, int watch_id) {
+    auto const rc = inotify_rm_watch(inotify_id, watch_id);
+    // EINVAL is acceptable - watch may have been automatically removed by kernel
+    if (rc == -1) ASSERT_EQ(errno, EINVAL);
+}
 
 static void UnwatchDirectory(int inotify_id, DirectoryWatcher::WatchedDirectory& d) {
     auto native_data = (LinuxWatchedDirectory*)d.native_data.pointer;
     if (!native_data) return;
     auto const rc = inotify_rm_watch(inotify_id, native_data->root_watch_id);
-    ASSERT_EQ(rc, 0);
+    // EINVAL is acceptable - watch may have been automatically removed by kernel
+    if (rc == -1) ASSERT_EQ(errno, EINVAL);
     d.arena.Delete(native_data);
 }
 
@@ -666,7 +671,7 @@ PollDirectoryChanges(DirectoryWatcher& watcher, PollDirectoryChangesArgs args) {
                 if (dir.native_data.pointer != nullptr) {
                     auto& native_dir = *(LinuxWatchedDirectory*)dir.native_data.pointer;
                     for (auto& subdir : native_dir.subdirs) {
-                        ASSERT_EQ(subdir.watch_id_invalidated, false);
+                        // Note: subdir watch may have been automatically removed by kernel
                         InotifyUnwatch(watcher.native_data.int_id, subdir.watch_id);
                     }
                     UnwatchDirectory(watcher.native_data.int_id, dir);
