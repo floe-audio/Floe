@@ -116,9 +116,9 @@ Optional<UiSize> detail::GetParentWindowSize(GuiPlatform const& platform) {
     auto const parent = puglGetParent(platform.view);
     if (!parent) return k_nullopt;
 
-    NSView* parent_view = (__bridge NSView*)(void*)parent;
-    NSRect parent_frame = [parent_view frame];
-    NSWindow* parent_window = [parent_view window];
+    auto const parent_view = (__bridge NSView*)(void*)parent;
+    auto const parent_frame = [parent_view frame];
+    auto const parent_window = [parent_view window];
     if (!parent_window) return k_nullopt;
 
     auto const backing_scale = [parent_window backingScaleFactor];
