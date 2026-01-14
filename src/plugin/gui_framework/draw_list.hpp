@@ -143,11 +143,13 @@ struct Vector {
     T* data;
 };
 
+#pragma pack(push, 1)
 struct DrawVert {
     f32x2 pos;
     f32x2 uv;
     u32 col;
 };
+#pragma pack(pop)
 
 struct DrawCmd;
 struct DrawList;
@@ -341,7 +343,7 @@ struct DrawList;
 
 struct DrawContext {
     virtual ~DrawContext() {}
-    virtual ErrorCodeOr<void> CreateDeviceObjects(void* hwnd) = 0;
+    virtual ErrorCodeOr<void> CreateDeviceObjects(void* native_window, void* native_display) = 0;
     virtual void DestroyDeviceObjects() = 0;
 
     virtual ErrorCodeOr<void> CreateFontTexture() = 0;

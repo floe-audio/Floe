@@ -6,6 +6,7 @@
 #include <clap/ext/timer-support.h>
 #include <clap/host.h>
 #include <pugl/pugl.h>
+#include <pugl/stub.h>
 //
 #include "os/undef_windows_macros.h"
 //
@@ -110,10 +111,12 @@ static ErrorCodeOr<void> Required(PuglStatus status) {
     return k_success;
 }
 
-#if FLOE_USE_DIRECTX_BACKEND
-PuglBackend const* D3D9Backend();
-#else
+#if !FLOE_RENDERER_BGFX
+#if FLOE_GRAPHICS_API_OPENGL
 extern "C" const PuglBackend* puglGlBackend();
+#elif FLOE_GRAPHICS_API_VULKAN
+extern "C" const PuglBackend* puglVulkanBackend();
+#endif
 #endif
 
 namespace detail {
@@ -289,14 +292,18 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
     puglSetHandle(platform.view, &platform);
     TRY(Required(puglSetEventFunc(platform.view, detail::EventHandler)));
 
-#if FLOE_USE_DIRECTX_BACKEND
-    TRY(Required(puglSetBackend(platform.view, D3D9Backend())));
-#else
+#if FLOE_RENDERER_BGFX
+    TRY(Required(puglSetBackend(platform.view, puglStubBackend())));
+#elif FLOE_GRAPHICS_API_OPENGL
     TRY(Required(puglSetBackend(platform.view, puglGlBackend())));
     TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_VERSION_MAJOR, 3)));
     TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_VERSION_MINOR, 3)));
     TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_PROFILE, PUGL_OPENGL_COMPATIBILITY_PROFILE)));
     puglSetViewHint(platform.view, PUGL_CONTEXT_DEBUG, RUNTIME_SAFETY_CHECKS_ON);
+#elif FLOE_GRAPHICS_API_VULKAN
+    TRY(Required(puglSetBackend(platform.view, puglVulkanBackend())));
+#else
+    TRY(Required(puglSetBackend(platform.view, puglStubBackend())));
 #endif
 
     return k_success;
@@ -676,7 +683,10 @@ static bool EventText(GuiPlatform& platform, PuglTextEvent const& text_event) {
 static void CreateGraphicsContext(GuiPlatform& platform) {
     ZoneScoped;
     auto graphics_ctx = graphics::CreateNewDrawContext();
-    auto const outcome = graphics_ctx->CreateDeviceObjects((void*)puglGetNativeView(platform.view));
+
+    auto const outcome = graphics_ctx->CreateDeviceObjects((void*)puglGetNativeView(platform.view),
+                                                           puglGetNativeWorld(puglGetWorld(platform.view)));
+
     if (outcome.HasError()) {
         LogError(ModuleName::Gui, "Failed to create graphics context: {}", outcome.Error());
         delete graphics_ctx;
@@ -857,7 +867,8 @@ static void UpdateAndRender(GuiPlatform& platform) {
     if (platform.frame_state.window_size != window_size) {
         platform.graphics_ctx->DestroyDeviceObjects();
         auto const outcome =
-            platform.graphics_ctx->CreateDeviceObjects((void*)puglGetNativeView(platform.view));
+            platform.graphics_ctx->CreateDeviceObjects((void*)puglGetNativeView(platform.view),
+                                                       puglGetNativeWorld(puglGetWorld(platform.view)));
         if (outcome.HasError()) {
             LogError(ModuleName::Gui, "Failed to recreate graphics context: {}", outcome.Error());
             return;

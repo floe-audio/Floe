@@ -243,6 +243,26 @@ pub const InPlaceCmd = struct {
     }
 };
 
+// Combines multiple files into a single output file.
+// See combine_files_cmd.zig for more information.
+pub fn combineFiles(b: *std.Build, out_file_name: []const u8, input_files: []const std.Build.LazyPath) std.Build.LazyPath {
+    const run = b.addRunArtifact(b.addExecutable(.{
+        .name = b.fmt("combine-files-{s}", .{out_file_name}),
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/build/combine_files_cmd.zig"),
+            .target = b.graph.host,
+        }),
+    }));
+
+    const output_file = run.addOutputFileArg(out_file_name);
+
+    for (input_files) |input_file| {
+        run.addFileArg(input_file);
+    }
+
+    return output_file;
+}
+
 // Loads environment variables from a .env file into the build graph's env_map.
 // Based on https://github.com/zigster64/dotenv.zig
 // SPDX-License-Identifier: MIT

@@ -582,39 +582,3 @@ void detail::RemoveWindowsKeyboardHook(GuiPlatform&) {
     }
     g_keyboard_hook = nullptr;
 }
-
-#if FLOE_USE_DIRECTX_BACKEND
-
-static PuglStatus Configure(PuglView*) { return PUGL_SUCCESS; }
-
-static PuglStatus Create(PuglView* view) {
-    auto* impl = view->impl;
-
-    if (auto const st = puglWinCreateWindow(view, "Pugl", &impl->hwnd, &impl->hdc); st != PUGL_SUCCESS)
-        return st;
-
-    return PUGL_SUCCESS;
-}
-
-static void Destroy(PuglView*) {}
-
-static PuglStatus Enter(PuglView* view, PuglExposeEvent const* expose) { return puglWinEnter(view, expose); }
-
-static PuglStatus Leave(PuglView* view, PuglExposeEvent const* expose) { return puglWinLeave(view, expose); }
-
-static void* GetContext(PuglView* view) { return view->impl->hwnd; }
-
-PuglBackend const* D3D9Backend() {
-    static PuglBackend const backend = {
-        Configure,
-        Create,
-        Destroy,
-        Enter,
-        Leave,
-        GetContext,
-    };
-
-    return &backend;
-}
-
-#endif

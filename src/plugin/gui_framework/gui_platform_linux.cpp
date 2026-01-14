@@ -6,6 +6,12 @@
 
 #include "gui_platform.hpp"
 
+#if FLOE_USE_BGFX_BACKEND
+    #include <pugl/vulkan.h>
+#else
+    #include <pugl/gl.h>
+#endif
+
 //
 #define KeyCode XKeyCode
 #include <X11/Xlib.h>

@@ -9,17 +9,20 @@
 struct InlineSprintfBuffer {
     InlineSprintfBuffer() { buffer[0] = 0; }
 
-    void Append(char const* fmt, ...) __attribute__((__format__(__printf__, 2, 3))) {
-        va_list args;
-        va_start(args, fmt);
+    void Append(char const* fmt, va_list args) {
         auto const n = stbsp_vsnprintf(write_ptr, size_remaining, fmt, args);
-        va_end(args);
-
         if (n < 0) return;
 
         auto const num_written = Min(size_remaining, n);
         write_ptr += num_written;
         size_remaining -= num_written;
+    }
+
+    void Append(char const* fmt, ...) __attribute__((__format__(__printf__, 2, 3))) {
+        va_list args;
+        va_start(args, fmt);
+        Append(fmt, args);
+        va_end(args);
     }
 
     String AsString() { return {buffer, ArraySize(buffer) - (usize)size_remaining}; }

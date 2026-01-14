@@ -77,9 +77,10 @@ static constexpr ErrorCodeCategory k_d3d_error_category = {
     }
 
 struct DirectXDrawContext : public DrawContext {
-    ErrorCodeOr<void> CreateDeviceObjects(void* hwnd) override {
+    ErrorCodeOr<void> CreateDeviceObjects(void* hwnd, void* hmodule) override {
         Trace(ModuleName::Gui);
         ASSERT(hwnd);
+        (void)hmodule;
 
         render_count = 0;
         p_d3_d = Direct3DCreate9(D3D_SDK_VERSION);

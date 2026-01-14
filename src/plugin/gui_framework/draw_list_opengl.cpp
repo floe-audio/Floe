@@ -62,9 +62,10 @@ ErrorCodeOr<void> CheckGLError(String function) {
     TRY(CheckGLError(#call));
 
 struct OpenGLDrawContext : public DrawContext {
-    ErrorCodeOr<void> CreateDeviceObjects(void* _window) override {
+    ErrorCodeOr<void> CreateDeviceObjects(void* native_window, void* native_display) override {
         Trace(ModuleName::Gui);
-        ASSERT(_window != nullptr);
+        ASSERT(native_window != nullptr);
+        (void)native_display;
 
         glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture_size);
         if (CheckGLError("get max texture size").HasError()) max_texture_size = 99999;

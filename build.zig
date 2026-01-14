@@ -11,6 +11,7 @@ const ConcatCompileCommandsStep = @import("src/build/ConcatCompileCommandsStep.z
 const check_steps = @import("src/build/check_steps.zig");
 const configure_binaries = @import("src/build/configure_binaries.zig");
 const release_artifacts = @import("src/build/release_artifacts.zig");
+const bgfx_shaderc = @import("src/build/bgfx_shaderc.zig");
 
 comptime {
     const current_zig = builtin.zig_version;
@@ -28,6 +29,9 @@ const BuildMode = enum {
     performance_profiling,
     production, // a.k.a.: release, end-user, for-distribution
 };
+
+const RendererType = enum { custom_opengl2, custom_direct3d9, bgfx };
+const GraphicsApi = enum { opengl, vulkan, metal, direct3d };
 
 const BuildContext = struct {
     b: *std.Build,
@@ -57,6 +61,9 @@ const BuildContext = struct {
     dep_portmidi: *std.Build.Dependency,
     dep_tracy: *std.Build.Dependency,
     dep_vst3_sdk: *std.Build.Dependency,
+    dep_bx: *std.Build.Dependency,
+    dep_bimg: *std.Build.Dependency,
+    dep_bgfx: *std.Build.Dependency,
 };
 
 const FlagsBuilder = struct {
@@ -137,6 +144,9 @@ const FlagsBuilder = struct {
         try self.flags.append("-D__USE_FILE_OFFSET64");
         try self.flags.append("-D_FILE_OFFSET_BITS=64");
         try self.flags.append("-ftime-trace"); // ClangBuildAnalyzer
+
+        const is_debug: i32 = if (context.build_mode == .development) 1 else 0;
+        try self.flags.append(context.b.fmt("-DBX_CONFIG_DEBUG={}", .{is_debug}));
 
         try self.flags.append("-DMINIZ_USE_UNALIGNED_LOADS_AND_STORES=0");
         try self.flags.append("-DMINIZ_NO_STDIO");
@@ -424,6 +434,10 @@ pub fn build(b: *std.Build) void {
             "build-mode",
             "The preset for building the project, affects optimisation, debug settings, etc.",
         ) orelse .development,
+
+        .renderer_type = b.option(RendererType, "renderer-type", ""),
+        .graphics_api = b.option(GraphicsApi, "graphics-api", ""),
+
         // Installing plugins to global plugin folders requires admin rights but it's often easier to debug
         // things without requiring admin. For production builds it's always enabled.
         .windows_installer_require_admin = b.option(
@@ -469,6 +483,7 @@ pub fn build(b: *std.Build) void {
         .ci_step = b.step("script:ci", "Run CI checks"),
         .ci_basic_step = b.step("script:ci-basic", "Run basic CI checks"),
         .upload_errors_step = b.step("script:upload-errors", "Upload error reports to Sentry"),
+        .shaderc = b.step("script:shaderc", "Compile shaders"),
 
         .website_gen_step = b.step("script:website-generate", "Generate the static JSON for the website"),
         .website_build_step = b.step("script:website-build", "Build the website"),
@@ -530,6 +545,9 @@ pub fn build(b: *std.Build) void {
         .dep_portmidi = b.dependency("portmidi", .{}),
         .dep_tracy = b.dependency("tracy", .{}),
         .dep_vst3_sdk = b.dependency("vst3_sdk", .{}),
+        .dep_bx = b.dependency("bx", .{}),
+        .dep_bimg = b.dependency("bimg", .{}),
+        .dep_bgfx = b.dependency("bgfx", .{}),
     };
 
     b.build_root.handle.makeDir(constants.floe_cache_relative) catch {};
@@ -666,6 +684,20 @@ fn doTarget(
     const b = build_context.b;
     const target = resolved_target.result;
 
+    const renderer_type: RendererType = options.renderer_type orelse switch (target.os.tag) {
+        .windows => .custom_direct3d9,
+        .linux => .custom_opengl2,
+        .macos => .custom_opengl2,
+        else => @panic("unsupported OS"),
+    };
+
+    const graphics_api: GraphicsApi = options.graphics_api orelse switch (target.os.tag) {
+        .windows => .direct3d,
+        .linux => .opengl,
+        .macos => .opengl,
+        else => @panic("unsupported OS"),
+    };
+
     // Create a unique hash for this configuration. We use when we need to unique generate folders even when
     // multiple zig builds processes are running simultaneously. Ideally we would use hashUserInputOptionsMap
     // from std.Build, but it's private and quite complicated to copy here. This manual approach is simple but
@@ -682,8 +714,6 @@ fn doTarget(
 
     var concat_cdb = ConcatCompileCommandsStep.create(b, target, set_as_cdb, config_hash);
     steps.compile_all_step.dependOn(&concat_cdb.step);
-
-    const use_directx_backend = resolved_target.result.os.tag == .windows;
 
     const floe_config_h = b.addConfigHeader(.{
         .style = .blank,
@@ -703,7 +733,13 @@ fn doTarget(
         .FLOE_PROJECT_CACHE_PATH = b.pathJoin(&.{ b.build_root.path.?, constants.floe_cache_relative }),
         .FLOE_VENDOR = constants.floe_vendor,
         .FLOE_CLAP_ID = constants.floe_clap_id,
-        .FLOE_USE_DIRECTX_BACKEND = use_directx_backend,
+        .FLOE_RENDERER_CUSTOM_OPENGL2 = renderer_type == .custom_opengl2,
+        .FLOE_RENDERER_CUSTOM_DIRECT9 = renderer_type == .custom_direct3d9,
+        .FLOE_RENDERER_BGFX = renderer_type == .bgfx,
+        .FLOE_GRAPHICS_API_OPENGL = graphics_api == .opengl,
+        .FLOE_GRAPHICS_API_VULKAN = graphics_api == .vulkan,
+        .FLOE_GRAPHICS_API_METAL = graphics_api == .metal,
+        .FLOE_GRAPHICS_API_DIRECT3D = graphics_api == .direct3d,
         .IS_WINDOWS = target.os.tag == .windows,
         .IS_MACOS = target.os.tag == .macos,
         .IS_LINUX = target.os.tag == .linux,
@@ -891,10 +927,14 @@ fn doTarget(
             else => {
                 lib.addCSourceFiles(.{
                     .root = src_path,
-                    .files = &.{
+                    .files = &[_][]const u8{
                         "x11.c",
-                        "x11_gl.c",
                         "x11_stub.c",
+                        switch (graphics_api) {
+                            .opengl => "x11_gl.c",
+                            .vulkan => "x11_vulkan.c",
+                            .direct3d, .metal => @panic("invalid graphics config"),
+                        },
                     },
                     .flags = pugl_flags,
                 });
@@ -1204,6 +1244,259 @@ fn doTarget(
         break :blk lib;
     };
 
+    const bgfx = blk: {
+        var flags = std.ArrayList([]const u8).init(b.allocator);
+        const is_debug: i32 = if (build_context.build_mode == .development) 1 else 0;
+        flags.appendSlice(&[_][]const u8{
+            b.fmt("-DBX_CONFIG_DEBUG={}", .{is_debug}),
+            "-std=c++20",
+            "-fno-sanitize=all",
+            "-fno-strict-aliasing",
+            "-fno-exceptions",
+            "-fno-rtti",
+            "-ffast-math",
+            "-Wno-tautological-constant-compare",
+            "-DBGFX_CONFIG_MULTITHREADED=1",
+            switch (graphics_api) {
+                .vulkan => "-DBGFX_CONFIG_RENDERER_VULKAN=1",
+                .metal => "-DBGFX_CONFIG_RENDERER_METAL=1",
+                .direct3d => "-DBGFX_CONFIG_RENDERER_DIRECT3D11=1",
+                .opengl => "-DBGFX_CONFIG_RENDERER_OPENGL=1",
+            },
+        }) catch @panic("OOM");
+
+        const bx = bx_blk: {
+            const bx = b.addStaticLibrary(.{
+                .name = "bx",
+                .root_module = b.createModule(module_options),
+            });
+            bx.addCSourceFile(.{
+                .file = build_context.dep_bx.path("src/amalgamated.cpp"),
+                .flags = flags.items,
+            });
+            bx.addIncludePath(build_context.dep_bx.path("include"));
+            bx.addIncludePath(build_context.dep_bx.path("3rdparty"));
+            switch (target.os.tag) {
+                .macos => {
+                    bx.linkFramework("CoreFoundation");
+                    bx.linkFramework("Foundation");
+                    bx.addIncludePath(build_context.dep_bx.path("include/compat/osx"));
+                },
+                .windows => {
+                    if (graphics_api == .opengl)
+                        bx.linkSystemLibrary("opengl32");
+                    bx.linkSystemLibrary("gdi32");
+                    bx.addIncludePath(build_context.dep_bx.path("include/compat/mingw"));
+                },
+                .linux => {
+                    bx.addIncludePath(build_context.dep_bx.path("include/compat/linux"));
+                },
+                else => {},
+            }
+            bx.linkLibCpp();
+            break :bx_blk bx;
+        };
+
+        const bimg = bimg_blk: {
+            const bimg = b.addStaticLibrary(.{
+                .name = "bimg",
+                .root_module = b.createModule(module_options),
+            });
+
+            bimg.addCSourceFiles(.{
+                .root = build_context.dep_bimg.path("src"),
+                .files = &.{
+                    "image.cpp",
+                    "image_gnf.cpp",
+                },
+                .flags = flags.items,
+            });
+
+            bimg.addCSourceFiles(.{
+                .root = build_context.dep_bimg.path("3rdparty/astc-encoder/source"),
+                .files = &.{
+                    "astcenc_averages_and_directions.cpp",
+                    "astcenc_block_sizes.cpp",
+                    "astcenc_color_quantize.cpp",
+                    "astcenc_color_unquantize.cpp",
+                    "astcenc_compress_symbolic.cpp",
+                    "astcenc_compute_variance.cpp",
+                    "astcenc_decompress_symbolic.cpp",
+                    "astcenc_diagnostic_trace.cpp",
+                    "astcenc_entry.cpp",
+                    "astcenc_find_best_partitioning.cpp",
+                    "astcenc_ideal_endpoints_and_weights.cpp",
+                    "astcenc_image.cpp",
+                    "astcenc_integer_sequence.cpp",
+                    "astcenc_mathlib.cpp",
+                    "astcenc_mathlib_softfloat.cpp",
+                    "astcenc_partition_tables.cpp",
+                    "astcenc_percentile_tables.cpp",
+                    "astcenc_pick_best_endpoint_format.cpp",
+                    "astcenc_quantization.cpp",
+                    "astcenc_symbolic_physical.cpp",
+                    "astcenc_weight_align.cpp",
+                    "astcenc_weight_quant_xfer_tables.cpp",
+                },
+                .flags = flags.items,
+            });
+
+            bimg.linkLibrary(bx);
+            bimg.addIncludePath(build_context.dep_bx.path("include"));
+            bimg.addIncludePath(build_context.dep_bx.path("3rdparty"));
+            bimg.addIncludePath(build_context.dep_bimg.path("include"));
+            bimg.addIncludePath(build_context.dep_bimg.path("3rdparty"));
+            bimg.addIncludePath(build_context.dep_bimg.path("3rdparty/astc-encoder/include"));
+            bimg.linkLibCpp();
+
+            break :bimg_blk bimg;
+        };
+
+        const shaderc = shader_blk: {
+            const exe = b.addExecutable(.{
+                .name = "shaderc",
+                .root_module = b.createModule(module_options),
+            });
+            bgfx_shaderc.configBgfxShaderc(exe, .{
+                .bgfx = build_context.dep_bgfx,
+                .bimg = build_context.dep_bimg,
+            });
+            exe.linkLibCpp();
+            exe.linkLibrary(bx);
+            exe.addIncludePath(build_context.dep_bx.path("include"));
+
+            break :shader_blk exe;
+        };
+        {
+            const install = b.addInstallArtifact(shaderc, .{});
+            steps.install_all_step.dependOn(&install.step);
+        }
+        {
+            for ([_][]const u8{
+                "vs_draw_list.sc",
+                "fs_draw_list.sc",
+            }) |file| {
+                std.debug.assert(std.mem.endsWith(u8, file, ".sc"));
+
+                const stem = std.fs.path.stem(file);
+
+                const ShaderType = enum { fragment, vertex, compute };
+                const ShaderProfile = enum { spirv, glsl, dx11, metal, essl };
+
+                var shader_type: ShaderType = undefined;
+                if (std.mem.startsWith(u8, file, "fs_")) {
+                    shader_type = .fragment;
+                } else if (std.mem.startsWith(u8, file, "vs_")) {
+                    shader_type = .vertex;
+                } else if (std.mem.startsWith(u8, file, "cs_")) {
+                    shader_type = .compute;
+                }
+
+                var files = std.ArrayList(std.Build.LazyPath).init(b.allocator);
+
+                for (std.enums.values(ShaderProfile)) |profile| {
+                    if (shader_type == .compute and profile == .metal) continue; // not supported.
+
+                    if (profile == .dx11 and target.os.tag != .windows) continue; // TODO: we need to run in under wine
+
+                    const run = std_extras.createCommandWithStdoutToStderr(b, builtin.target, b.fmt("run shaderc {s}", .{@tagName(profile)}));
+                    run.addFileArg(shaderc.getEmittedBin());
+
+                    run.addArgs(&.{ "--platform", switch (profile) {
+                        .glsl => "linux",
+                        .metal => "osx",
+                        .dx11 => "windows",
+                        .spirv => "linux",
+                        .essl => "linux",
+                    } });
+
+                    run.addArgs(&.{ "--profile", switch (profile) {
+                        .glsl => "120",
+                        .spirv => "spirv",
+                        .dx11 => "s_5_0",
+                        .metal => "metal",
+                        .essl => "100_es",
+                    } });
+
+                    run.addArgs(&.{ "--type", @tagName(shader_type) });
+
+                    if (profile == .dx11 or profile == .metal) run.addArgs(&.{ "-O", "3" });
+
+                    {
+                        var c_array_name = std.ArrayList(u8).init(b.allocator);
+                        c_array_name.appendSlice(stem) catch @panic("OOM");
+                        for (c_array_name.items) |*c| {
+                            if (!std.ascii.isAlphanumeric(c.*)) {
+                                c.* = '_';
+                            }
+                        }
+                        c_array_name.append('_') catch @panic("OOM");
+                        c_array_name.appendSlice(switch (profile) {
+                            .glsl => "glsl",
+                            .dx11 => "dx11",
+                            .metal => "mtl",
+                            .spirv => "spv",
+                            .essl => "essl",
+                        }) catch @panic("OOM");
+
+                        run.addArgs(&.{ "--bin2c", c_array_name.items });
+                    }
+
+                    run.addArg("-f");
+                    run.addFileArg(b.path(b.fmt("src/shaders/{s}", .{file})));
+
+                    run.addArg("-o");
+                    files.append(run.addOutputFileArg(b.fmt("{s}.bin.h", .{stem}))) catch @panic("OOM");
+
+                    run.addArg("-i");
+                    run.addDirectoryArg(build_context.dep_bgfx.path("src")); // for bgfx_shader.sh
+
+                    run.expectExitCode(0);
+                }
+
+                const combined = std_extras.combineFiles(b, stem, files.items);
+
+                const update = b.addUpdateSourceFiles();
+                update.addCopyFileToSource(combined, b.fmt("src/shaders/{s}.bin.h", .{stem}));
+
+                steps.shaderc.dependOn(&update.step);
+            }
+        }
+
+        const lib = b.addStaticLibrary(.{
+            .name = "bgfx",
+            .root_module = b.createModule(module_options),
+        });
+
+        lib.addCSourceFile(.{
+            .file = build_context.dep_bgfx.path(
+                if (target.os.tag == .macos) "src/amalgamated.mm" else "src/amalgamated.cpp",
+            ),
+            .flags = flags.items,
+        });
+
+        switch (target.os.tag) {
+            .linux => {
+                lib.linkSystemLibrary("X11");
+                if (graphics_api == .vulkan)
+                    lib.linkSystemLibrary("vulkan");
+            },
+            .windows => {
+                lib.addIncludePath(build_context.dep_bgfx.path("3rdparty/directx-headers/include/directx"));
+            },
+            else => {},
+        }
+
+        lib.linkLibrary(bx);
+        lib.linkLibrary(bimg);
+        lib.addIncludePath(build_context.dep_bx.path("include"));
+        lib.addIncludePath(build_context.dep_bimg.path("include"));
+        lib.addIncludePath(build_context.dep_bgfx.path("include"));
+        lib.addIncludePath(build_context.dep_bgfx.path("3rdparty"));
+        lib.addIncludePath(build_context.dep_bgfx.path("3rdparty/khronos"));
+        break :blk lib;
+    };
+
     const fft_convolver = blk: {
         const lib = b.addStaticLibrary(.{
             .name = "fftconvolver",
@@ -1435,28 +1728,31 @@ fn doTarget(
 
         switch (target.os.tag) {
             .windows => {
-                var windows_files = std.ArrayList([]const u8).init(b.allocator);
-                windows_files.append("gui_framework/gui_platform_windows.cpp") catch @panic("OOM");
-
-                if (use_directx_backend) {
-                    windows_files.append("gui_framework/draw_list_directx.cpp") catch @panic("OOM");
-                    lib.linkSystemLibrary("d3d9");
-                } else {
-                    windows_files.append("gui_framework/draw_list_opengl.cpp") catch @panic("OOM");
-                }
-
                 lib.addCSourceFiles(.{
                     .root = src_root,
-                    .files = windows_files.items,
+                    .files = &[_][]const u8{
+                        "gui_framework/gui_platform_windows.cpp",
+                        switch (renderer_type) {
+                            .custom_opengl2 => "gui_framework/draw_list_opengl.cpp",
+                            .custom_direct3d9 => "gui_framework/draw_list_directx.cpp",
+                            .bgfx => "gui_framework/draw_list_bgfx.cpp",
+                        },
+                    },
                     .flags = flags,
                 });
+                if (renderer_type == .custom_direct3d9)
+                    lib.linkSystemLibrary("d3d9");
             },
             .linux => {
                 lib.addCSourceFiles(.{
                     .root = src_root,
-                    .files = &.{
+                    .files = &[_][]const u8{
                         "gui_framework/gui_platform_linux.cpp",
-                        "gui_framework/draw_list_opengl.cpp",
+                        switch (renderer_type) {
+                            .custom_opengl2 => "gui_framework/draw_list_opengl.cpp",
+                            .custom_direct3d9 => @panic("invalid graphics config"),
+                            .bgfx => "gui_framework/draw_list_bgfx.cpp",
+                        },
                     },
                     .flags = flags,
                 });
@@ -1464,9 +1760,13 @@ fn doTarget(
             .macos => {
                 lib.addCSourceFiles(.{
                     .root = src_root,
-                    .files = &.{
+                    .files = &[_][]const u8{
                         "gui_framework/gui_platform_mac.mm",
-                        "gui_framework/draw_list_opengl.cpp",
+                        switch (renderer_type) {
+                            .custom_opengl2 => "gui_framework/draw_list_opengl.cpp",
+                            .custom_direct3d9 => @panic("invalid graphics config"),
+                            .bgfx => "gui_framework/draw_list_bgfx.cpp",
+                        },
                     },
                     .flags = FlagsBuilder.init(build_context, target, .{
                         .full_diagnostics = true,
@@ -1538,6 +1838,12 @@ fn doTarget(
         lib.addObject(embedded_files);
         lib.linkLibrary(tracy);
         lib.linkLibrary(pugl);
+        if (renderer_type == .bgfx) {
+            lib.linkLibrary(bgfx);
+            lib.addIncludePath(build_context.dep_bx.path("include"));
+            lib.addIncludePath(build_context.dep_bimg.path("include"));
+            lib.addIncludePath(build_context.dep_bgfx.path("include"));
+        }
         lib.addObject(stb_image);
         lib.addIncludePath(b.path("src/plugin/gui/live_edit_defs"));
         lib.linkLibrary(vitfx);

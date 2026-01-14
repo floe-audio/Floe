@@ -122,6 +122,18 @@
             .hash = "N-V-__8AAFDvhAD7wsMQHzT9s_hiRLUTXJp4mBwyx_O7gZxZ",
             .lazy = true,
         },
+        .bgfx = .{
+            .url = "git+https://github.com/bkaradzic/bgfx#fbff26d5e5943ce20e4e67b2247100bbfb216ad1",
+            .hash = "N-V-__8AAGWdHwpFLhcKRmman91iiYjX9G4gIlvwSFEnzz6N",
+        },
+        .bx = .{
+            .url = "git+https://github.com/bkaradzic/bx#a5ce3bed947ab1c9e386f1c98f0ed66cf4eb410f",
+            .hash = "N-V-__8AAEf5TQCNdZyN4RGDyeTw-jnJskEC9uHwZi0qXX9n",
+        },
+        .bimg = .{
+            .url = "git+https://github.com/bkaradzic/bimg#4f1916fca2a0ae1ed9d6e0424323cd45fe2d6ed5",
+            .hash = "N-V-__8AAFpnOQB6_cqjml8VTQsqI9pWa7OWoIL3geoldRHy",
+        },
     },
     .paths = .{"src"},
 }

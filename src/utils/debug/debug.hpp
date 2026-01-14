@@ -39,7 +39,6 @@ void ShutdownStacktraceState();
 enum class InSelfModule : u8 { Unknown, Yes, No };
 
 struct FrameInfo {
-
     ErrorCodeOr<void> Write(u32 frame_index, Writer writer, StacktracePrintOptions options) const {
         return fmt::FormatToWriter(writer,
                                    "[{}] {x} {}{}{}:{}:{}: {}\n",
