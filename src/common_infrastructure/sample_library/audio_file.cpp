@@ -19,6 +19,7 @@ ErrorCodeCategory const audio_file_error_category {
             case AudioFileError::FileHasInvalidData: str = "file does not contain valid data"; break;
             case AudioFileError::NotFlacOrWav: str = "file must be FLAC or WAV"; break;
             case AudioFileError::NotMonoOrStereo: str = "file must be mono or stereo"; break;
+            case AudioFileError::ApiError: str = "bug in FLAC decoder"; break;
         }
         return writer.WriteChars(str);
     },
@@ -52,8 +53,13 @@ static ErrorCodeOr<AudioData> DecodeFlac(Reader& reader, Allocator& allocator) {
             -> FLAC__StreamDecoderReadStatus {
             ZoneScopedN("reading file");
             // Read callback
+            if (!user_data) return FLAC__STREAM_DECODER_READ_STATUS_ABORT;
             auto& context = *((Context*)user_data);
 
+            if (!bytes) {
+                context.error_code = AudioFileError::ApiError;
+                return FLAC__STREAM_DECODER_READ_STATUS_ABORT;
+            }
             auto const requested_bytes = *bytes;
 
             auto outcome = context.reader.Read({buffer, *bytes});
@@ -71,6 +77,7 @@ static ErrorCodeOr<AudioData> DecodeFlac(Reader& reader, Allocator& allocator) {
            FLAC__uint64 absolute_byte_offset,
            void* user_data) -> FLAC__StreamDecoderSeekStatus {
             // Seek callback
+            if (!user_data) return FLAC__STREAM_DECODER_SEEK_STATUS_ERROR;
             auto& context = *((Context*)user_data);
             context.reader.pos = (usize)absolute_byte_offset;
             return FLAC__STREAM_DECODER_SEEK_STATUS_OK;
@@ -79,7 +86,12 @@ static ErrorCodeOr<AudioData> DecodeFlac(Reader& reader, Allocator& allocator) {
            FLAC__uint64* absolute_byte_offset,
            void* user_data) -> FLAC__StreamDecoderTellStatus {
             // Tell callback
+            if (!user_data) return FLAC__STREAM_DECODER_TELL_STATUS_ERROR;
             auto& context = *((Context*)user_data);
+            if (!absolute_byte_offset) {
+                context.error_code = AudioFileError::ApiError;
+                return FLAC__STREAM_DECODER_TELL_STATUS_ERROR;
+            }
             *absolute_byte_offset = context.reader.pos;
             return FLAC__STREAM_DECODER_TELL_STATUS_OK;
         },
@@ -87,12 +99,18 @@ static ErrorCodeOr<AudioData> DecodeFlac(Reader& reader, Allocator& allocator) {
            FLAC__uint64* stream_length,
            void* user_data) -> FLAC__StreamDecoderLengthStatus {
             // Length callback
+            if (!user_data) return FLAC__STREAM_DECODER_LENGTH_STATUS_ERROR;
             auto& context = *((Context*)user_data);
+            if (!stream_length) {
+                context.error_code = AudioFileError::ApiError;
+                return FLAC__STREAM_DECODER_LENGTH_STATUS_ERROR;
+            }
             *stream_length = context.reader.size;
             return FLAC__STREAM_DECODER_LENGTH_STATUS_OK;
         },
         [](FLAC__StreamDecoder const*, void* user_data) -> FLAC__bool {
             // Is end-of-file callback
+            if (!user_data) return false;
             auto& context = *((Context*)user_data);
             return context.reader.pos == context.reader.size;
         },
@@ -102,7 +120,13 @@ static ErrorCodeOr<AudioData> DecodeFlac(Reader& reader, Allocator& allocator) {
            void* user_data) -> FLAC__StreamDecoderWriteStatus {
             ZoneScopedN("writing");
             // Write callback
+            if (!user_data) return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
             auto& context = *((Context*)user_data);
+
+            if (!frame || !buffer) {
+                context.error_code = AudioFileError::ApiError;
+                return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
+            }
 
             auto const start_pos = context.samples_pos;
 
@@ -131,7 +155,9 @@ static ErrorCodeOr<AudioData> DecodeFlac(Reader& reader, Allocator& allocator) {
             ZoneScopedN("metadata");
             // Metadata callback
             // The StreamInfo block will always be before the stream
+            if (!user_data) return;
             auto& context = *((Context*)user_data);
+            if (!metadata) return;
             if (metadata->type != FLAC__METADATA_TYPE_STREAMINFO) return;
             auto const& info = metadata->data.stream_info;
 
@@ -153,6 +179,7 @@ static ErrorCodeOr<AudioData> DecodeFlac(Reader& reader, Allocator& allocator) {
         },
         [](FLAC__StreamDecoder const*, FLAC__StreamDecoderErrorStatus status, void* user_data) {
             // Error callback
+            if (!user_data) return;
             auto& context = *((Context*)user_data);
             context.flac_error = status;
         },

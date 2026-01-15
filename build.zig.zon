@@ -46,8 +46,8 @@
             .hash = "N-V-__8AAJpbLQAEwHIs7OLypQPQ7n5ICizvwIEb98KtT_9_",
         },
         .flac = .{
-            .url = "https://github.com/xiph/flac/archive/refs/tags/1.4.3.tar.gz",
-            .hash = "N-V-__8AAKJvQgB9LG_sXNxRcDa309N0l1eEBnJ9dHTGaPBB",
+            .url = "https://github.com/xiph/flac/releases/download/1.5.0/flac-1.5.0.tar.xz",
+            .hash = "N-V-__8AAHSrwgDkuwylGkEyZxj-_xKsppp8z8563UYjXs2B",
         },
         .icon_font_cpp_headers = .{
             .url = "git+https://github.com/juliettef/IconFontCppHeaders#f30b1e73b2d71eb331d77619c3f1de34199afc38",
