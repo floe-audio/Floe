@@ -120,8 +120,6 @@ const TargetConfig = struct {
             .target = resolved_target.result,
         };
 
-        ctx.compile_all_step.dependOn(&result.concat_cdb.step);
-
         if (target.os.tag == .windows and options.sanitize_thread) {
             std.log.err("thread sanitiser is not supported on Windows targets", .{});
             @panic("thread sanitiser is not supported on Windows targets");
@@ -664,9 +662,10 @@ pub fn build(b: *std.Build) void {
         const archiver = blk: {
             if (ctx.native_archiver) |a| break :blk a;
 
-            // We need to add steps for the native target.
-            _ = doTarget(&ctx, b.graph.host, false, options);
-            break :blk ctx.native_archiver.?;
+            const native_target_cfg = TargetConfig.create(&ctx, b.graph.host, options, false);
+            break :blk buildArchiver(&ctx, &native_target_cfg, .{
+                .miniz = buildMiniz(&ctx, &native_target_cfg),
+            });
         };
 
         for (artifacts_list, 0..) |artifacts, i| {
@@ -686,9 +685,20 @@ pub fn build(b: *std.Build) void {
         const docs_generator = blk: {
             if (ctx.native_docs_generator) |d| break :blk d;
 
-            // We need to add steps for the native target.
-            _ = doTarget(&ctx, b.graph.host, false, options);
-            break :blk ctx.native_docs_generator.?;
+            const native_target_cfg = TargetConfig.create(&ctx, b.graph.host, options, false);
+            break :blk buildDocsGenerator(&ctx, &native_target_cfg, .{
+                .common_infrastructure = buildCommonInfrastructure(&ctx, &native_target_cfg, .{
+                    .dr_wav = buildDrWav(&ctx, &native_target_cfg),
+                    .flac = buildFlac(&ctx, &native_target_cfg),
+                    .xxhash = buildXxhash(&ctx, &native_target_cfg),
+                    .library = buildFloeLibrary(&ctx, &native_target_cfg, .{
+                        .stb_sprintf = buildStbSprintf(&ctx, &native_target_cfg),
+                        .debug_info_lib = buildDebugInfo(&ctx, &native_target_cfg),
+                        .tracy = buildTracy(&ctx, &native_target_cfg),
+                    }),
+                    .miniz = buildMiniz(&ctx, &native_target_cfg),
+                }),
+            });
         };
 
         // Run the docs generator. It takes no args but outputs JSON to stdout.
@@ -2836,6 +2846,7 @@ fn doTarget(
     options: Options,
 ) release_artifacts.Artifacts {
     const cfg = TargetConfig.create(ctx, resolved_target, options, set_as_cdb);
+    ctx.compile_all_step.dependOn(&cfg.concat_cdb.step);
 
     const stb_sprintf = buildStbSprintf(ctx, &cfg);
     const xxhash = buildXxhash(ctx, &cfg);
@@ -2843,6 +2854,13 @@ fn doTarget(
     const vitfx = buildVitfx(ctx, &cfg);
     const pugl = buildPugl(ctx, &cfg);
     const debug_info_lib = buildDebugInfo(ctx, &cfg);
+    const stb_image = buildStbImage(ctx, &cfg);
+    const dr_wav = buildDrWav(ctx, &cfg);
+    const miniz = buildMiniz(ctx, &cfg);
+    const flac = buildFlac(ctx, &cfg);
+    const fft_convolver = buildFftConvolver(ctx, &cfg);
+
+    const embedded_files = buildEmbeddedFiles(ctx, &cfg);
 
     const library = buildFloeLibrary(ctx, &cfg, .{
         .stb_sprintf = stb_sprintf,
@@ -2850,25 +2868,16 @@ fn doTarget(
         .debug_info_lib = debug_info_lib,
     });
 
-    const stb_image = buildStbImage(ctx, &cfg);
-    const dr_wav = buildDrWav(ctx, &cfg);
-    const miniz = buildMiniz(ctx, &cfg);
-
     if (targetCanRunNatively(cfg.target)) {
         ctx.native_archiver = buildArchiver(ctx, &cfg, .{ .miniz = miniz });
     }
 
-    const flac = buildFlac(ctx, &cfg);
-
     const bx = buildBx(ctx, &cfg);
     const bimg = buildBimg(ctx, &cfg, .{ .bx = bx });
-    const shaderc = buildBgfxShaderC(ctx, &cfg, .{ .bx = bx });
-
-    runGenerateShaderBinH(ctx, &cfg, .{ .shaderc = shaderc });
-
     const bgfx = buildBgfx(ctx, &cfg, .{ .bx = bx, .bimg = bimg });
 
-    const fft_convolver = buildFftConvolver(ctx, &cfg);
+    const shaderc = buildBgfxShaderC(ctx, &cfg, .{ .bx = bx });
+    runGenerateShaderBinH(ctx, &cfg, .{ .shaderc = shaderc });
 
     const common_infrastructure = buildCommonInfrastructure(ctx, &cfg, .{
         .dr_wav = dr_wav,
@@ -2877,8 +2886,6 @@ fn doTarget(
         .miniz = miniz,
         .xxhash = xxhash,
     });
-
-    const embedded_files = buildEmbeddedFiles(ctx, &cfg);
 
     const plugin = buildPluginLib(ctx, &cfg, .{
         .common_infrastructure = common_infrastructure,
