@@ -684,7 +684,8 @@ static void CreateGraphicsContext(GuiPlatform& platform) {
     ZoneScoped;
     auto graphics_ctx = graphics::CreateNewDrawContext();
 
-    auto const outcome = graphics_ctx->CreateDeviceObjects((void*)puglGetNativeView(platform.view),
+    auto const outcome = graphics_ctx->CreateDeviceObjects(GetSize(platform),
+                                                           (void*)puglGetNativeView(platform.view),
                                                            puglGetNativeWorld(puglGetWorld(platform.view)));
 
     if (outcome.HasError()) {
@@ -867,7 +868,8 @@ static void UpdateAndRender(GuiPlatform& platform) {
     if (platform.frame_state.window_size != window_size) {
         platform.graphics_ctx->DestroyDeviceObjects();
         auto const outcome =
-            platform.graphics_ctx->CreateDeviceObjects((void*)puglGetNativeView(platform.view),
+            platform.graphics_ctx->CreateDeviceObjects(GetSize(platform),
+                                                       (void*)puglGetNativeView(platform.view),
                                                        puglGetNativeWorld(puglGetWorld(platform.view)));
         if (outcome.HasError()) {
             LogError(ModuleName::Gui, "Failed to recreate graphics context: {}", outcome.Error());

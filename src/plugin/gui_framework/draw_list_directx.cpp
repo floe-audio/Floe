@@ -77,7 +77,7 @@ static constexpr ErrorCodeCategory k_d3d_error_category = {
     }
 
 struct DirectXDrawContext : public DrawContext {
-    ErrorCodeOr<void> CreateDeviceObjects(void* hwnd, void* hmodule) override {
+    ErrorCodeOr<void> CreateDeviceObjects(UiSize, void* hwnd, void* hmodule) override {
         Trace(ModuleName::Gui);
         ASSERT(hwnd);
         (void)hmodule;

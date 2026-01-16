@@ -62,7 +62,7 @@ ErrorCodeOr<void> CheckGLError(String function) {
     TRY(CheckGLError(#call));
 
 struct OpenGLDrawContext : public DrawContext {
-    ErrorCodeOr<void> CreateDeviceObjects(void* native_window, void* native_display) override {
+    ErrorCodeOr<void> CreateDeviceObjects(UiSize, void* native_window, void* native_display) override {
         Trace(ModuleName::Gui);
         ASSERT(native_window != nullptr);
         (void)native_display;

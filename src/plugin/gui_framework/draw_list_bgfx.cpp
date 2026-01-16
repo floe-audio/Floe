@@ -97,7 +97,7 @@ struct BgfxDrawContext : public DrawContext {
         if (has_init) bgfx::shutdown();
     }
 
-    ErrorCodeOr<void> CreateDeviceObjects(void* native_window, void* native_display) override {
+    ErrorCodeOr<void> CreateDeviceObjects(UiSize size, void* native_window, void* native_display) override {
         ZoneScoped;
         Trace(ModuleName::Bgfx);
 
@@ -114,8 +114,8 @@ struct BgfxDrawContext : public DrawContext {
             if constexpr (FLOE_GRAPHICS_API_METAL) init.type = bgfx::RendererType::Metal;
             if (init.type == bgfx::RendererType::Count) PanicIfReached();
 
-            init.resolution.width = 0;
-            init.resolution.height = 0;
+            init.resolution.width = size.width;
+            init.resolution.height = size.height;
             init.resolution.reset = BGFX_RESET_VSYNC;
             init.callback = &callbacks;
 

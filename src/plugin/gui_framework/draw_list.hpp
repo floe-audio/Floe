@@ -343,7 +343,7 @@ struct DrawList;
 
 struct DrawContext {
     virtual ~DrawContext() {}
-    virtual ErrorCodeOr<void> CreateDeviceObjects(void* native_window, void* native_display) = 0;
+    virtual ErrorCodeOr<void> CreateDeviceObjects(UiSize size, void* native_window, void* native_display) = 0;
     virtual void DestroyDeviceObjects() = 0;
 
     virtual ErrorCodeOr<void> CreateFontTexture() = 0;
