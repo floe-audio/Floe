@@ -192,6 +192,7 @@ pub fn createCommandWithStdoutToStderr(
 
     if (builtin.os.tag == .linux and b.enable_wine and target != null and target.?.os.tag == .windows) {
         run.addArg("wine64");
+        run.setEnvironmentVariable("WINEDEBUG", "-all");
     }
 
     return run;
