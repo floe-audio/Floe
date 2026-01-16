@@ -1405,6 +1405,14 @@ fn buildBgfxShaderC(ctx: *const BuildContext, cfg: *const TargetConfig, deps: st
 fn runGenerateShaderBinH(ctx: *const BuildContext, target: std.Target, deps: struct {
     shaderc: *std.Build.Step.Compile,
 }) void {
+    if (target.os.tag != .windows) {
+        const warn = std_extras.addWarn(
+            ctx.b,
+            "compiling dx11 shaders requires a Windows host, no dx11 shaders will be included",
+        );
+        ctx.shaderc.dependOn(&warn.step);
+    }
+
     for ([_][]const u8{
         "vs_draw_list.sc",
         "fs_draw_list.sc",
