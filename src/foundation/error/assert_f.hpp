@@ -9,7 +9,7 @@
 struct InlineSprintfBuffer {
     InlineSprintfBuffer() { buffer[0] = 0; }
 
-    void Append(char const* fmt, va_list args) {
+    void AppendV(char const* fmt, va_list args) {
         auto const n = stbsp_vsnprintf(write_ptr, size_remaining, fmt, args);
         if (n < 0) return;
 
@@ -21,7 +21,7 @@ struct InlineSprintfBuffer {
     void Append(char const* fmt, ...) __attribute__((__format__(__printf__, 2, 3))) {
         va_list args;
         va_start(args, fmt);
-        Append(fmt, args);
+        AppendV(fmt, args);
         va_end(args);
     }
 

@@ -60,7 +60,7 @@ struct Callback : public bgfx::CallbackI {
 
     virtual void traceVargs(char const* filepath, u16 line, char const* format, va_list args) override {
         InlineSprintfBuffer buffer;
-        buffer.Append(format, args);
+        buffer.AppendV(format, args);
         if (buffer.AsString().size && EndsWith(buffer.AsString(), '\n')) buffer.size_remaining++;
         LogDebug(ModuleName::Bgfx,
                  "{} ({}): {}",
