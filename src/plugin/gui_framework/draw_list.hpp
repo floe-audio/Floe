@@ -441,8 +441,21 @@ struct DrawContext {
                      // Fonts array.
 };
 
-// Defined ether draw_list_opengl or draw_list_directx, call delete on result
-DrawContext* CreateNewDrawContext();
+// Call delete on the result.
+DrawContext* CreateNewDrawContextBgfx();
+DrawContext* CreateNewDrawContextOpenGl();
+DrawContext* CreateNewDrawContextDirect3D9();
+enum class DrawContextBackend : u8 { Bgfx, OpenGl, Direct3D9, Count };
+inline DrawContext* CreateNewDrawContext(DrawContextBackend backend) {
+    switch (backend) {
+        case DrawContextBackend::Bgfx: return CreateNewDrawContextBgfx();
+        case DrawContextBackend::OpenGl: return CreateNewDrawContextOpenGl();
+        case DrawContextBackend::Direct3D9: return CreateNewDrawContextDirect3D9();
+        case DrawContextBackend::Count: PanicIfReached();
+    }
+    PanicIfReached();
+    return nullptr;
+}
 
 struct OverflowTextArgs {
     Font* font;

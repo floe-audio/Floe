@@ -13,6 +13,18 @@
 
 namespace graphics {
 
+#if !IS_WINDOWS
+DrawContext* CreateNewDrawContextDirect3D9() {
+    PanicIfReached();
+    return nullptr;
+}
+#else
+DrawContext* CreateNewDrawContextOpenGl() {
+    PanicIfReached();
+    return nullptr;
+}
+#endif
+
 constexpr u32 k_max_u16_codepoint = 0xFFFF;
 
 static inline f32 InvLength(f32x2 const& lhs, f32 fail_value) {

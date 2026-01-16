@@ -108,10 +108,9 @@ struct BgfxDrawContext : public DrawContext {
             init.platformData.ndt = native_display;
             init.platformData.type = bgfx::NativeWindowHandleType::Default;
 
-            if constexpr (FLOE_GRAPHICS_API_VULKAN) init.type = bgfx::RendererType::Vulkan;
-            if constexpr (FLOE_GRAPHICS_API_OPENGL) init.type = bgfx::RendererType::OpenGL;
-            if constexpr (FLOE_GRAPHICS_API_DIRECT3D) init.type = bgfx::RendererType::Direct3D11;
-            if constexpr (FLOE_GRAPHICS_API_METAL) init.type = bgfx::RendererType::Metal;
+            if constexpr (FLOE_BGFX_API_VULKAN) init.type = bgfx::RendererType::Vulkan;
+            if constexpr (FLOE_BGFX_API_DIRECT3D11) init.type = bgfx::RendererType::Direct3D11;
+            if constexpr (FLOE_BGFX_API_METAL) init.type = bgfx::RendererType::Metal;
             if (init.type == bgfx::RendererType::Count) PanicIfReached();
 
             init.resolution.width = size.width;
@@ -407,6 +406,6 @@ struct BgfxDrawContext : public DrawContext {
     UiSize last_window_size {0, 0};
 };
 
-DrawContext* CreateNewDrawContext() { return new BgfxDrawContext(); }
+DrawContext* CreateNewDrawContextBgfx() { return new BgfxDrawContext(); }
 
 } // namespace graphics

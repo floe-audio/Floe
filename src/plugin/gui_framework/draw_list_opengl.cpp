@@ -14,15 +14,16 @@
 #include <OpenGL/gl.h>
 #include <OpenGL/glext.h>
 #else
-// NOTE: on windows this includes windows.h
 #include <GL/gl.h>
 #include <GL/glext.h>
 #endif
-#include "os/undef_windows_macros.h"
+
 #include "utils/debug/tracy_wrapped.hpp"
 
 #include "draw_list.hpp"
 #include "tracy/TracyOpenGL.hpp"
+
+static_assert(!IS_WINDOWS);
 
 namespace graphics {
 
@@ -314,7 +315,7 @@ struct OpenGLDrawContext : public DrawContext {
     GLuint font_texture = 0;
 };
 
-DrawContext* CreateNewDrawContext() {
+DrawContext* CreateNewDrawContextOpenGl() {
     TracyGpuContext;
     return new OpenGLDrawContext();
 }

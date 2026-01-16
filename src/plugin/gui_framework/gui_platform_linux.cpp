@@ -2,15 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <errno.h>
+#include <pugl/gl.h>
 #include <stdio.h>
 
 #include "gui_platform.hpp"
-
-#if FLOE_USE_BGFX_BACKEND
-    #include <pugl/vulkan.h>
-#else
-    #include <pugl/gl.h>
-#endif
 
 //
 #define KeyCode XKeyCode

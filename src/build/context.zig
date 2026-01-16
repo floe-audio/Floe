@@ -11,13 +11,10 @@ pub const BuildMode = enum {
     production, // a.k.a.: release, end-user, for-distribution
 };
 
-pub const RendererType = enum { custom_opengl2, custom_direct3d9, bgfx };
-pub const GraphicsApi = enum { opengl, vulkan, metal, direct3d };
+pub const BgfxApi = enum { vulkan, direct3d11, metal };
 
 pub const Options = struct {
     build_mode: BuildMode,
-    renderer_type: ?RendererType,
-    graphics_api: ?GraphicsApi,
     windows_installer_require_admin: bool,
     enable_tracy: bool,
     sanitize_thread: bool,
@@ -105,25 +102,15 @@ pub const TargetConfig = struct {
             hasher.update(std.mem.asBytes(&options.enable_tracy));
             hasher.update(std.mem.asBytes(&options.sanitize_thread));
             hasher.update(std.mem.asBytes(&options.windows_installer_require_admin));
-            hasher.update(std.mem.asBytes(&options.renderer_type));
-            hasher.update(std.mem.asBytes(&options.graphics_api));
             break :blk hasher.final();
         };
-        const renderer_type: RendererType = options.renderer_type orelse switch (target.os.tag) {
-            .windows => .custom_direct3d9,
-            .linux => .custom_opengl2,
-            .macos => .custom_opengl2,
-            else => @panic("unsupported OS"),
-        };
-        const graphics_api: GraphicsApi = options.graphics_api orelse switch (target.os.tag) {
-            .windows => .direct3d,
-            .linux => .opengl,
-            .macos => .opengl,
-            else => @panic("unsupported OS"),
+        const bgfx_api: BgfxApi = switch (resolved_target.result.os.tag) {
+            .windows => .direct3d11,
+            .macos => .metal,
+            .linux => .vulkan,
+            else => .vulkan,
         };
         const result: TargetConfig = .{
-            .renderer_type = renderer_type,
-            .graphics_api = graphics_api,
             .concat_cdb = ConcatCompileCommandsStep.create(ctx.b, target, set_as_cdb, config_hash),
             .floe_config_h = ctx.b.addConfigHeader(.{
                 .style = .blank,
@@ -146,13 +133,9 @@ pub const TargetConfig = struct {
                 }),
                 .FLOE_VENDOR = constants.floe_vendor,
                 .FLOE_CLAP_ID = constants.floe_clap_id,
-                .FLOE_RENDERER_CUSTOM_OPENGL2 = renderer_type == .custom_opengl2,
-                .FLOE_RENDERER_CUSTOM_DIRECT9 = renderer_type == .custom_direct3d9,
-                .FLOE_RENDERER_BGFX = renderer_type == .bgfx,
-                .FLOE_GRAPHICS_API_OPENGL = graphics_api == .opengl,
-                .FLOE_GRAPHICS_API_VULKAN = graphics_api == .vulkan,
-                .FLOE_GRAPHICS_API_METAL = graphics_api == .metal,
-                .FLOE_GRAPHICS_API_DIRECT3D = graphics_api == .direct3d,
+                .FLOE_BGFX_API_METAL = bgfx_api == .metal,
+                .FLOE_BGFX_API_VULKAN = bgfx_api == .vulkan,
+                .FLOE_BGFX_API_DIRECT3D11 = bgfx_api == .direct3d11,
                 .IS_WINDOWS = target.os.tag == .windows,
                 .IS_MACOS = target.os.tag == .macos,
                 .IS_LINUX = target.os.tag == .linux,
@@ -176,16 +159,16 @@ pub const TargetConfig = struct {
             },
             .resolved_target = resolved_target,
             .target = resolved_target.result,
+            .bgfx_api = bgfx_api,
         };
 
         return result;
     }
 
-    renderer_type: RendererType,
-    graphics_api: GraphicsApi,
     concat_cdb: *ConcatCompileCommandsStep,
     floe_config_h: *std.Build.Step.ConfigHeader,
     module_options: std.Build.Module.CreateOptions,
     resolved_target: std.Build.ResolvedTarget,
     target: std.Target,
+    bgfx_api: BgfxApi,
 };

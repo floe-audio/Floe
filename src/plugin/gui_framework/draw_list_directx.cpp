@@ -533,6 +533,6 @@ struct DirectXDrawContext : public DrawContext {
     int vertex_buffer_size = 5000, index_buffer_size = 10000;
 };
 
-DrawContext* CreateNewDrawContext() { return new DirectXDrawContext(); }
+DrawContext* CreateNewDrawContextDirect3D9() { return new DirectXDrawContext(); }
 
 } // namespace graphics

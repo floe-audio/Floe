@@ -7,9 +7,6 @@
 #include <clap/host.h>
 #include <pugl/pugl.h>
 #include <pugl/stub.h>
-//
-#include "os/undef_windows_macros.h"
-//
 
 #include "foundation/foundation.hpp"
 
@@ -42,6 +39,7 @@ struct GuiPlatform {
     PuglWorld* world {};
     PuglView* view {};
     CursorType current_cursor {CursorType::Default};
+    graphics::DrawContextBackend draw_backend {};
     graphics::DrawContext* graphics_ctx {};
     f64 double_click_time_ms {300.0};
     GuiFrameOutput last_result {};
@@ -111,13 +109,7 @@ static ErrorCodeOr<void> Required(PuglStatus status) {
     return k_success;
 }
 
-#if !FLOE_RENDERER_BGFX
-#if FLOE_GRAPHICS_API_OPENGL
-extern "C" const PuglBackend* puglGlBackend();
-#elif FLOE_GRAPHICS_API_VULKAN
-extern "C" const PuglBackend* puglVulkanBackend();
-#endif
-#endif
+extern "C" PuglBackend const* puglGlBackend(); // NOLINT
 
 namespace detail {
 
@@ -292,19 +284,48 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
     puglSetHandle(platform.view, &platform);
     TRY(Required(puglSetEventFunc(platform.view, detail::EventHandler)));
 
-#if FLOE_RENDERER_BGFX
-    TRY(Required(puglSetBackend(platform.view, puglStubBackend())));
-#elif FLOE_GRAPHICS_API_OPENGL
-    TRY(Required(puglSetBackend(platform.view, puglGlBackend())));
-    TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_VERSION_MAJOR, 3)));
-    TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_VERSION_MINOR, 3)));
-    TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_PROFILE, PUGL_OPENGL_COMPATIBILITY_PROFILE)));
-    puglSetViewHint(platform.view, PUGL_CONTEXT_DEBUG, RUNTIME_SAFETY_CHECKS_ON);
-#elif FLOE_GRAPHICS_API_VULKAN
-    TRY(Required(puglSetBackend(platform.view, puglVulkanBackend())));
-#else
-    TRY(Required(puglSetBackend(platform.view, puglStubBackend())));
-#endif
+    platform.draw_backend = ({
+        graphics::DrawContextBackend b {};
+        if constexpr (IS_WINDOWS) b = graphics::DrawContextBackend::Bgfx;
+        if constexpr (IS_LINUX) b = graphics::DrawContextBackend::Bgfx;
+        if constexpr (IS_MACOS) {
+            // bgfx only supports macOS 13 (Darwin version 22) and above. We use our old OpenGL backend
+            // for older systems.
+            auto const darwin_version = GetOsInfo().kernel_version;
+            // We've only ever seen kernel_version in the format x.x.x, so we can reasonably assume a new
+            // format that we can't parse is newer.
+            auto const major = ParseInt(darwin_version, ParseIntBase::Decimal);
+            if (!major || major.Value() >= 22)
+                b = graphics::DrawContextBackend::Bgfx;
+            else
+                b = graphics::DrawContextBackend::OpenGl;
+        }
+        b;
+    });
+
+    LogInfo(ModuleName::Gui, "Selected backend {}", EnumToString(platform.draw_backend));
+
+    switch (platform.draw_backend) {
+        case graphics::DrawContextBackend::OpenGl: {
+            if constexpr (!IS_WINDOWS) {
+                TRY(Required(puglSetBackend(platform.view, puglGlBackend())));
+                TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_VERSION_MAJOR, 3)));
+                TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_VERSION_MINOR, 3)));
+                TRY(Required(
+                    puglSetViewHint(platform.view, PUGL_CONTEXT_PROFILE, PUGL_OPENGL_COMPATIBILITY_PROFILE)));
+                puglSetViewHint(platform.view, PUGL_CONTEXT_DEBUG, RUNTIME_SAFETY_CHECKS_ON);
+            } else {
+                Panic("Bug: OpenGL is not supported on Windows");
+            }
+            break;
+        }
+        case graphics::DrawContextBackend::Bgfx:
+        case graphics::DrawContextBackend::Direct3D9: {
+            TRY(Required(puglSetBackend(platform.view, puglStubBackend())));
+            break;
+        }
+        case graphics::DrawContextBackend::Count: PanicIfReached();
+    }
 
     return k_success;
 }
@@ -682,7 +703,7 @@ static bool EventText(GuiPlatform& platform, PuglTextEvent const& text_event) {
 
 static void CreateGraphicsContext(GuiPlatform& platform) {
     ZoneScoped;
-    auto graphics_ctx = graphics::CreateNewDrawContext();
+    auto graphics_ctx = graphics::CreateNewDrawContext(platform.draw_backend);
 
     auto const outcome = graphics_ctx->CreateDeviceObjects(GetSize(platform),
                                                            (void*)puglGetNativeView(platform.view),

@@ -418,9 +418,6 @@ pub fn build(b: *std.Build) void {
             "The preset for building the project, affects optimisation, debug settings, etc.",
         ) orelse .development,
 
-        .renderer_type = b.option(build_context.RendererType, "renderer-type", ""),
-        .graphics_api = b.option(build_context.GraphicsApi, "graphics-api", ""),
-
         // Installing plugins to global plugin folders requires admin rights but it's often easier to debug
         // things without requiring admin. For production builds it's always enabled.
         .windows_installer_require_admin = b.option(
@@ -809,7 +806,6 @@ fn buildPugl(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step
                 .root = src_path,
                 .files = &.{
                     "win.c",
-                    "win_gl.c",
                     "win_stub.c",
                 },
                 .flags = pugl_flags,
@@ -842,11 +838,7 @@ fn buildPugl(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step
                 .files = &[_][]const u8{
                     "x11.c",
                     "x11_stub.c",
-                    switch (cfg.graphics_api) {
-                        .opengl => "x11_gl.c",
-                        .vulkan => "x11_vulkan.c",
-                        .direct3d, .metal => @panic("invalid graphics config"),
-                    },
+                    "x11_gl.c",
                 },
                 .flags = pugl_flags,
             });
@@ -1176,11 +1168,10 @@ fn bgfxFlags(ctx: *const BuildContext, cfg: *const TargetConfig) []const []const
         "-fno-rtti",
         "-Wno-tautological-constant-compare",
         "-DBGFX_CONFIG_MULTITHREADED=1",
-        switch (cfg.graphics_api) {
+        switch (cfg.bgfx_api) {
             .vulkan => "-DBGFX_CONFIG_RENDERER_VULKAN=1",
             .metal => "-DBGFX_CONFIG_RENDERER_METAL=1",
-            .direct3d => "-DBGFX_CONFIG_RENDERER_DIRECT3D11=1",
-            .opengl => "-DBGFX_CONFIG_RENDERER_OPENGL=1",
+            .direct3d11 => "-DBGFX_CONFIG_RENDERER_DIRECT3D11=1",
         },
     });
     return flags_builder.flags.items;
@@ -1204,8 +1195,6 @@ fn buildBx(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.C
             lib.addIncludePath(ctx.dep_bx.path("include/compat/osx"));
         },
         .windows => {
-            if (cfg.graphics_api == .opengl)
-                lib.linkSystemLibrary("opengl32");
             lib.linkSystemLibrary("gdi32");
             lib.addIncludePath(ctx.dep_bx.path("include/compat/mingw"));
         },
@@ -1300,8 +1289,7 @@ fn buildBgfx(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     switch (cfg.target.os.tag) {
         .linux => {
             lib.linkSystemLibrary("X11");
-            if (cfg.graphics_api == .vulkan)
-                lib.linkSystemLibrary("vulkan");
+            lib.linkSystemLibrary("vulkan");
         },
         .windows => {
             lib.addIncludePath(ctx.dep_bgfx.path("3rdparty/directx-headers/include/directx"));
@@ -1309,10 +1297,8 @@ fn buildBgfx(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
         .macos => {
             lib.linkFramework("QuartzCore");
             lib.linkFramework("IOKit");
-            if (cfg.graphics_api == .metal)
-                lib.linkFramework("Metal");
-            if (cfg.graphics_api == .opengl)
-                lib.linkFramework("OpenGL");
+            lib.linkFramework("Metal");
+            lib.linkFramework("OpenGL");
             lib.linkFramework("Cocoa");
         },
         else => {},
@@ -1498,7 +1484,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
     pugl: *std.Build.Step.Compile,
     stb_image: *std.Build.Step.Compile,
     vitfx: *std.Build.Step.Compile,
-    bgfx: ?*std.Build.Step.Compile,
+    bgfx: *std.Build.Step.Compile,
 }) *std.Build.Step.Compile {
     const lib = ctx.b.addStaticLibrary(.{
         .name = "plugin",
@@ -1579,27 +1565,20 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
                 .root = src_root,
                 .files = &[_][]const u8{
                     "gui_framework/gui_platform_windows.cpp",
-                    switch (cfg.renderer_type) {
-                        .custom_opengl2 => "gui_framework/draw_list_opengl.cpp",
-                        .custom_direct3d9 => "gui_framework/draw_list_directx.cpp",
-                        .bgfx => "gui_framework/draw_list_bgfx.cpp",
-                    },
+                    "gui_framework/draw_list_directx.cpp",
+                    "gui_framework/draw_list_bgfx.cpp",
                 },
                 .flags = flags,
             });
-            if (cfg.renderer_type == .custom_direct3d9)
-                lib.linkSystemLibrary("d3d9");
+            lib.linkSystemLibrary("d3d9");
         },
         .linux => {
             lib.addCSourceFiles(.{
                 .root = src_root,
                 .files = &[_][]const u8{
                     "gui_framework/gui_platform_linux.cpp",
-                    switch (cfg.renderer_type) {
-                        .custom_opengl2 => "gui_framework/draw_list_opengl.cpp",
-                        .custom_direct3d9 => @panic("invalid graphics config"),
-                        .bgfx => "gui_framework/draw_list_bgfx.cpp",
-                    },
+                    "gui_framework/draw_list_opengl.cpp",
+                    "gui_framework/draw_list_bgfx.cpp",
                 },
                 .flags = flags,
             });
@@ -1609,11 +1588,8 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
                 .root = src_root,
                 .files = &[_][]const u8{
                     "gui_framework/gui_platform_mac.mm",
-                    switch (cfg.renderer_type) {
-                        .custom_opengl2 => "gui_framework/draw_list_opengl.cpp",
-                        .custom_direct3d9 => @panic("invalid graphics config"),
-                        .bgfx => "gui_framework/draw_list_bgfx.cpp",
-                    },
+                    "gui_framework/draw_list_opengl.cpp",
+                    "gui_framework/draw_list_bgfx.cpp",
                 },
                 .flags = FlagsBuilder.init(ctx, cfg, .{
                     .all_warnings = true,
@@ -1685,12 +1661,10 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
     lib.addObject(deps.embedded_files);
     lib.linkLibrary(deps.tracy);
     lib.linkLibrary(deps.pugl);
-    if (cfg.renderer_type == .bgfx) {
-        lib.linkLibrary(deps.bgfx.?);
-        lib.addIncludePath(ctx.dep_bx.path("include"));
-        lib.addIncludePath(ctx.dep_bimg.path("include"));
-        lib.addIncludePath(ctx.dep_bgfx.path("include"));
-    }
+    lib.linkLibrary(deps.bgfx);
+    lib.addIncludePath(ctx.dep_bx.path("include"));
+    lib.addIncludePath(ctx.dep_bimg.path("include"));
+    lib.addIncludePath(ctx.dep_bgfx.path("include"));
     lib.addObject(deps.stb_image);
     lib.addIncludePath(ctx.b.path("src/plugin/gui/live_edit_defs"));
     lib.linkLibrary(deps.vitfx);
@@ -2713,15 +2687,9 @@ fn doTarget(
         ctx.native_archiver = buildArchiver(ctx, &cfg, .{ .miniz = miniz });
     }
 
-    const bgfx = blk: {
-        var lib: ?*std.Build.Step.Compile = null;
-        if (cfg.renderer_type == .bgfx) {
-            const bx = buildBx(ctx, &cfg);
-            const bimg = buildBimg(ctx, &cfg, .{ .bx = bx });
-            lib = buildBgfx(ctx, &cfg, .{ .bx = bx, .bimg = bimg });
-        }
-        break :blk lib;
-    };
+    const bx = buildBx(ctx, &cfg);
+    const bimg = buildBimg(ctx, &cfg, .{ .bx = bx });
+    const bgfx = buildBgfx(ctx, &cfg, .{ .bx = bx, .bimg = bimg });
 
     const common_infrastructure = buildCommonInfrastructure(ctx, &cfg, .{
         .dr_wav = dr_wav,
