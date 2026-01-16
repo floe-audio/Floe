@@ -6,7 +6,6 @@ const builtin = @import("builtin");
 
 const std_extras = @import("src/build/std_extras.zig");
 const constants = @import("src/build/constants.zig");
-
 const ConcatCompileCommandsStep = @import("src/build/ConcatCompileCommandsStep.zig");
 const check_steps = @import("src/build/check_steps.zig");
 const configure_binaries = @import("src/build/configure_binaries.zig");
@@ -16,6 +15,7 @@ const build_context = @import("src/build/context.zig");
 
 const BuildContext = build_context.BuildContext;
 const Options = build_context.Options;
+const TargetConfig = build_context.TargetConfig;
 
 comptime {
     const current_zig = builtin.zig_version;
@@ -27,115 +27,6 @@ comptime {
         ));
     }
 }
-
-const TargetConfig = struct {
-    pub fn create(
-        ctx: *BuildContext,
-        resolved_target: std.Build.ResolvedTarget,
-        options: Options,
-        set_as_cdb: bool,
-    ) TargetConfig {
-        const target = resolved_target.result;
-        // Create a unique hash for this configuration. We use when we need to unique generate folders even when
-        // multiple zig builds processes are running simultaneously. Ideally we would use hashUserInputOptionsMap
-        // from std.Build, but it's private and quite complicated to copy here. This manual approach is simple but
-        // not as robust.
-        const config_hash = blk: {
-            var hasher = std.hash.Wyhash.init(0);
-            hasher.update(target.zigTriple(ctx.b.allocator) catch "");
-            hasher.update(@tagName(options.build_mode));
-            hasher.update(std.mem.asBytes(&options.enable_tracy));
-            hasher.update(std.mem.asBytes(&options.sanitize_thread));
-            hasher.update(std.mem.asBytes(&options.windows_installer_require_admin));
-            hasher.update(std.mem.asBytes(&options.renderer_type));
-            hasher.update(std.mem.asBytes(&options.graphics_api));
-            break :blk hasher.final();
-        };
-        const renderer_type: build_context.RendererType = options.renderer_type orelse switch (target.os.tag) {
-            .windows => .custom_direct3d9,
-            .linux => .custom_opengl2,
-            .macos => .custom_opengl2,
-            else => @panic("unsupported OS"),
-        };
-        const graphics_api: build_context.GraphicsApi = options.graphics_api orelse switch (target.os.tag) {
-            .windows => .direct3d,
-            .linux => .opengl,
-            .macos => .opengl,
-            else => @panic("unsupported OS"),
-        };
-        const result: TargetConfig = .{
-            .renderer_type = renderer_type,
-            .graphics_api = graphics_api,
-            .concat_cdb = ConcatCompileCommandsStep.create(ctx.b, target, set_as_cdb, config_hash),
-            .floe_config_h = ctx.b.addConfigHeader(.{
-                .style = .blank,
-            }, .{
-                .PRODUCTION_BUILD = ctx.build_mode == .production,
-                .OPTIMISED_BUILD = ctx.optimise != .Debug,
-                .RUNTIME_SAFETY_CHECKS_ON = ctx.optimise == .Debug or ctx.optimise == .ReleaseSafe,
-                .FLOE_VERSION_STRING = ctx.floe_version_string,
-                .FLOE_VERSION_HASH = ctx.floe_version_hash,
-                .FLOE_DESCRIPTION = constants.floe_description,
-                .FLOE_HOMEPAGE_URL = constants.floe_homepage_url,
-                .FLOE_MANUAL_URL = constants.floe_manual_url,
-                .FLOE_DOWNLOAD_URL = constants.floe_download_url,
-                .FLOE_CHANGELOG_URL = constants.floe_changelog_url,
-                .FLOE_SOURCE_CODE_URL = constants.floe_source_code_url,
-                .FLOE_PROJECT_ROOT_PATH = ctx.b.build_root.path.?,
-                .FLOE_PROJECT_CACHE_PATH = ctx.b.pathJoin(&.{
-                    ctx.b.build_root.path.?,
-                    constants.floe_cache_relative,
-                }),
-                .FLOE_VENDOR = constants.floe_vendor,
-                .FLOE_CLAP_ID = constants.floe_clap_id,
-                .FLOE_RENDERER_CUSTOM_OPENGL2 = renderer_type == .custom_opengl2,
-                .FLOE_RENDERER_CUSTOM_DIRECT9 = renderer_type == .custom_direct3d9,
-                .FLOE_RENDERER_BGFX = renderer_type == .bgfx,
-                .FLOE_GRAPHICS_API_OPENGL = graphics_api == .opengl,
-                .FLOE_GRAPHICS_API_VULKAN = graphics_api == .vulkan,
-                .FLOE_GRAPHICS_API_METAL = graphics_api == .metal,
-                .FLOE_GRAPHICS_API_DIRECT3D = graphics_api == .direct3d,
-                .IS_WINDOWS = target.os.tag == .windows,
-                .IS_MACOS = target.os.tag == .macos,
-                .IS_LINUX = target.os.tag == .linux,
-                .OS_DISPLAY_NAME = ctx.b.fmt("{s}", .{@tagName(target.os.tag)}),
-                .ARCH_DISPLAY_NAME = ctx.b.fmt("{s}", .{@tagName(target.cpu.arch)}),
-                .MIN_WINDOWS_NTDDI_VERSION = @intFromEnum(std.Target.Os.WindowsVersion.parse(
-                    constants.min_windows_version,
-                ) catch @panic("invalid win ver")),
-                .MIN_MACOS_VERSION = constants.min_macos_version,
-                .SENTRY_DSN = ctx.b.graph.env_map.get("SENTRY_DSN"),
-            }),
-            .module_options = .{
-                .target = resolved_target,
-                .optimize = ctx.optimise,
-                .strip = false,
-                .pic = true,
-                .link_libc = true,
-                .omit_frame_pointer = false,
-                .unwind_tables = .sync,
-                .sanitize_thread = options.sanitize_thread,
-            },
-            .resolved_target = resolved_target,
-            .target = resolved_target.result,
-        };
-
-        if (target.os.tag == .windows and options.sanitize_thread) {
-            std.log.err("thread sanitiser is not supported on Windows targets", .{});
-            @panic("thread sanitiser is not supported on Windows targets");
-        }
-
-        return result;
-    }
-
-    renderer_type: build_context.RendererType,
-    graphics_api: build_context.GraphicsApi,
-    concat_cdb: *ConcatCompileCommandsStep,
-    floe_config_h: *std.Build.Step.ConfigHeader,
-    module_options: std.Build.Module.CreateOptions,
-    resolved_target: std.Build.ResolvedTarget,
-    target: std.Target,
-};
 
 const FlagsBuilder = struct {
     flags: std.ArrayList([]const u8),
@@ -689,10 +580,11 @@ pub fn build(b: *std.Build) void {
 
         const cfg = TargetConfig.create(&ctx, target, options, false);
 
-        const shaderc = buildBgfxShaderC(&ctx, &cfg, .{
+        const shaderc = bgfx_shaderc.buildShaderC(&ctx, &cfg, .{
             .bx = buildBx(&ctx, &cfg),
         });
-        runGenerateShaderBinH(&ctx, target.result, .{ .shaderc = shaderc });
+        const run = bgfx_shaderc.shaderCRunSteps(&ctx, target.result, shaderc);
+        ctx.shaderc.dependOn(run);
     }
 
     // Make release artifacts
@@ -1383,138 +1275,6 @@ fn buildBimg(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     applyUniversalSettings(ctx, lib, cfg.concat_cdb);
 
     return lib;
-}
-
-fn buildBgfxShaderC(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
-    bx: *std.Build.Step.Compile,
-}) *std.Build.Step.Compile {
-    const exe = ctx.b.addExecutable(.{
-        .name = "shaderc",
-        .root_module = ctx.b.createModule(cfg.module_options),
-    });
-    bgfx_shaderc.configBgfxShaderc(exe, .{
-        .bgfx = ctx.dep_bgfx,
-        .bimg = ctx.dep_bimg,
-    });
-    exe.linkLibCpp();
-    exe.linkLibrary(deps.bx);
-    exe.addIncludePath(ctx.dep_bx.path("include"));
-    return exe;
-}
-
-fn runGenerateShaderBinH(ctx: *const BuildContext, target: std.Target, deps: struct {
-    shaderc: *std.Build.Step.Compile,
-}) void {
-    if (target.os.tag != .windows) {
-        const warn = std_extras.addWarn(
-            ctx.b,
-            "compiling dx11 shaders requires a Windows host, no dx11 shaders will be included",
-        );
-        ctx.shaderc.dependOn(&warn.step);
-    }
-
-    for ([_][]const u8{
-        "vs_draw_list.sc",
-        "fs_draw_list.sc",
-    }) |file| {
-        std.debug.assert(std.mem.endsWith(u8, file, ".sc"));
-
-        const stem = std.fs.path.stem(file);
-
-        const ShaderType = enum { fragment, vertex, compute };
-        const ShaderProfile = enum { spirv, glsl, dx11, metal, essl };
-
-        var shader_type: ShaderType = undefined;
-        if (std.mem.startsWith(u8, file, "fs_")) {
-            shader_type = .fragment;
-        } else if (std.mem.startsWith(u8, file, "vs_")) {
-            shader_type = .vertex;
-        } else if (std.mem.startsWith(u8, file, "cs_")) {
-            shader_type = .compute;
-        }
-
-        var files = std.ArrayList(std.Build.LazyPath).init(ctx.b.allocator);
-
-        for (std.enums.values(ShaderProfile)) |profile| {
-            if (shader_type == .compute and profile == .metal) continue; // not supported.
-
-            if (profile == .dx11 and target.os.tag != .windows) {
-                std.log.warn("IMPORTANT: no dx11 shaders will be compiled; it's only possible on Windows", .{});
-                continue;
-            }
-
-            // shaderc runs great under wine, allowing compiling of DX11 shaders.
-            const initial_wine = ctx.b.enable_wine;
-            ctx.b.enable_wine = true;
-            defer ctx.b.enable_wine = initial_wine;
-
-            const run = std_extras.createCommandWithStdoutToStderr(
-                ctx.b,
-                target,
-                ctx.b.fmt("run-shaderc-{s}", .{@tagName(profile)}),
-            );
-
-            run.addFileArg(deps.shaderc.getEmittedBin());
-
-            run.addArgs(&.{ "--platform", switch (profile) {
-                .glsl => "linux",
-                .metal => "osx",
-                .dx11 => "windows",
-                .spirv => "linux",
-                .essl => "linux",
-            } });
-
-            run.addArgs(&.{ "--profile", switch (profile) {
-                .glsl => "120",
-                .spirv => "spirv",
-                .dx11 => "s_5_0",
-                .metal => "metal",
-                .essl => "100_es",
-            } });
-
-            run.addArgs(&.{ "--type", @tagName(shader_type) });
-
-            if (profile == .dx11 or profile == .metal) run.addArgs(&.{ "-O", "3" });
-
-            {
-                var c_array_name = std.ArrayList(u8).init(ctx.b.allocator);
-                c_array_name.appendSlice(stem) catch @panic("OOM");
-                for (c_array_name.items) |*c| {
-                    if (!std.ascii.isAlphanumeric(c.*)) {
-                        c.* = '_';
-                    }
-                }
-                c_array_name.append('_') catch @panic("OOM");
-                c_array_name.appendSlice(switch (profile) {
-                    .glsl => "glsl",
-                    .dx11 => "dx11",
-                    .metal => "mtl",
-                    .spirv => "spv",
-                    .essl => "essl",
-                }) catch @panic("OOM");
-
-                run.addArgs(&.{ "--bin2c", c_array_name.items });
-            }
-
-            run.addArg("-f");
-            run.addFileArg(ctx.b.path(ctx.b.fmt("src/shaders/{s}", .{file})));
-
-            run.addArg("-o");
-            files.append(run.addOutputFileArg(ctx.b.fmt("{s}.bin.h", .{stem}))) catch @panic("OOM");
-
-            run.addArg("-i");
-            run.addDirectoryArg(ctx.dep_bgfx.path("src")); // for bgfx_shader.sh
-
-            run.expectExitCode(0);
-        }
-
-        const combined = std_extras.combineFiles(ctx.b, stem, files.items);
-
-        const update = ctx.b.addUpdateSourceFiles();
-        update.addCopyFileToSource(combined, ctx.b.fmt("src/shaders/{s}.bin.h", .{stem}));
-
-        ctx.shaderc.dependOn(&update.step);
-    }
 }
 
 fn buildBgfx(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {

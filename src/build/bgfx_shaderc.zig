@@ -6,28 +6,162 @@
 // SPDX-License-Identifier: MIT
 
 const std = @import("std");
+const build_context = @import("context.zig");
+const std_extras = @import("std_extras.zig");
 
-pub fn configBgfxShaderc(exe: *std.Build.Step.Compile, config: struct {
-    bgfx: *std.Build.Dependency,
-    bimg: *std.Build.Dependency,
-}) void {
+pub fn shaderCRunSteps(
+    ctx: *const build_context.BuildContext,
+    target: std.Target,
+    shaderc: *std.Build.Step.Compile,
+) *std.Build.Step {
+    if (target.os.tag != .windows) {
+        const warn = std_extras.addWarn(
+            ctx.b,
+            "compiling dx11 shaders requires a Windows host, no dx11 shaders will be included",
+        );
+        return &warn.step;
+    }
+
+    const all_step = ctx.b.allocator.create(std.Build.Step) catch @panic("OOM");
+    all_step.* = std.Build.Step.init(.{
+        .id = .custom,
+        .name = "shaderc",
+        .owner = ctx.b,
+    });
+
+    for ([_][]const u8{
+        "vs_draw_list.sc",
+        "fs_draw_list.sc",
+    }) |file| {
+        std.debug.assert(std.mem.endsWith(u8, file, ".sc"));
+
+        const stem = std.fs.path.stem(file);
+
+        const ShaderType = enum { fragment, vertex, compute };
+        const ShaderProfile = enum { spirv, glsl, dx11, metal, essl };
+
+        var shader_type: ShaderType = undefined;
+        if (std.mem.startsWith(u8, file, "fs_")) {
+            shader_type = .fragment;
+        } else if (std.mem.startsWith(u8, file, "vs_")) {
+            shader_type = .vertex;
+        } else if (std.mem.startsWith(u8, file, "cs_")) {
+            shader_type = .compute;
+        }
+
+        var files = std.ArrayList(std.Build.LazyPath).init(ctx.b.allocator);
+
+        for (std.enums.values(ShaderProfile)) |profile| {
+            // Unsupported cases:
+            if (shader_type == .compute and profile == .metal) continue;
+            if (profile == .dx11 and target.os.tag != .windows) continue;
+
+            // shaderc runs great under Wine, allowing compilation of DX11 shaders.
+            // We enable Wine if possible.
+            const initial_wine = ctx.b.enable_wine;
+            ctx.b.enable_wine = true;
+            defer ctx.b.enable_wine = initial_wine;
+
+            const run = std_extras.createCommandWithStdoutToStderr(
+                ctx.b,
+                target,
+                ctx.b.fmt("run-shaderc-{s}", .{@tagName(profile)}),
+            );
+
+            run.addFileArg(shaderc.getEmittedBin());
+
+            run.addArgs(&.{ "--platform", switch (profile) {
+                .glsl => "linux",
+                .metal => "osx",
+                .dx11 => "windows",
+                .spirv => "linux",
+                .essl => "linux",
+            } });
+
+            run.addArgs(&.{ "--profile", switch (profile) {
+                .glsl => "120",
+                .spirv => "spirv",
+                .dx11 => "s_5_0",
+                .metal => "metal",
+                .essl => "100_es",
+            } });
+
+            run.addArgs(&.{ "--type", @tagName(shader_type) });
+
+            if (profile == .dx11 or profile == .metal) run.addArgs(&.{ "-O", "3" });
+
+            {
+                var c_array_name = std.ArrayList(u8).init(ctx.b.allocator);
+                c_array_name.appendSlice(stem) catch @panic("OOM");
+                for (c_array_name.items) |*c| {
+                    if (!std.ascii.isAlphanumeric(c.*)) {
+                        c.* = '_';
+                    }
+                }
+                c_array_name.append('_') catch @panic("OOM");
+                c_array_name.appendSlice(switch (profile) {
+                    .glsl => "glsl",
+                    .dx11 => "dx11",
+                    .metal => "mtl",
+                    .spirv => "spv",
+                    .essl => "essl",
+                }) catch @panic("OOM");
+
+                run.addArgs(&.{ "--bin2c", c_array_name.items });
+            }
+
+            run.addArg("-f");
+            run.addFileArg(ctx.b.path(ctx.b.fmt("src/shaders/{s}", .{file})));
+
+            run.addArg("-o");
+            files.append(run.addOutputFileArg(ctx.b.fmt("{s}.bin.h", .{stem}))) catch @panic("OOM");
+
+            run.addArg("-i");
+            run.addDirectoryArg(ctx.dep_bgfx.path("src")); // for bgfx_shader.sh
+
+            run.expectExitCode(0);
+        }
+
+        const combined = std_extras.combineFiles(ctx.b, stem, files.items);
+
+        const update = ctx.b.addUpdateSourceFiles();
+        update.addCopyFileToSource(combined, ctx.b.fmt("src/shaders/{s}.bin.h", .{stem}));
+
+        all_step.dependOn(&update.step);
+    }
+
+    return all_step;
+}
+
+pub fn buildShaderC(
+    ctx: *const build_context.BuildContext,
+    cfg: *const build_context.TargetConfig,
+    deps: struct {
+        bx: *std.Build.Step.Compile,
+    },
+) *std.Build.Step.Compile {
+    const exe = ctx.b.addExecutable(.{
+        .name = "shaderc",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+
     // spirv-tools
-    exe.addIncludePath(config.bgfx.path("3rdparty/spirv-tools"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/spirv-tools/include"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/spirv-tools/include/generated"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/spirv-tools/source"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/spirv-headers/include"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/spirv-tools"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/spirv-tools/include"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/spirv-tools/include/generated"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/spirv-tools/source"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/spirv-headers/include"));
     exe.addCSourceFiles(.{
-        .root = config.bgfx.path("3rdparty/spirv-tools/source"),
+        .root = ctx.dep_bgfx.path("3rdparty/spirv-tools/source"),
         .files = spirv_tools_src_files,
         .flags = spirv_tools_cpp_flags,
     });
 
     // spirv-cross
     exe.root_module.addCMacro("SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS", "");
-    exe.addIncludePath(config.bgfx.path("3rdparty/spirv-cross/include"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/spirv-cross/include"));
     exe.addCSourceFiles(.{
-        .root = config.bgfx.path("3rdparty/spirv-cross"),
+        .root = ctx.dep_bgfx.path("3rdparty/spirv-cross"),
         .files = spirv_cross_src_files,
         .flags = spirv_cross_cpp_flags,
     });
@@ -35,38 +169,38 @@ pub fn configBgfxShaderc(exe: *std.Build.Step.Compile, config: struct {
     // glslang
     exe.root_module.addCMacro("ENABLE_OPT", "1");
     exe.root_module.addCMacro("ENABLE_HLSL", "1");
-    exe.addIncludePath(config.bgfx.path("3rdparty/glslang"));
-    exe.addIncludePath(config.bgfx.path("3rdparty"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/spirv-tools/include"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/spirv-tools/source"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/glslang"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/spirv-tools/include"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/spirv-tools/source"));
     exe.addCSourceFiles(.{
-        .root = config.bgfx.path("3rdparty/glslang"),
+        .root = ctx.dep_bgfx.path("3rdparty/glslang"),
         .files = glslang_src_files,
         .flags = glslang_cpp_flags,
     });
 
     if (exe.rootModuleTarget().os.tag == .windows) {
         exe.addCSourceFiles(.{
-            .root = config.bgfx.path("3rdparty/glslang"),
+            .root = ctx.dep_bgfx.path("3rdparty/glslang"),
             .files = windows_glslang_src_files,
             .flags = glslang_cpp_flags,
         });
     } else {
         exe.addCSourceFiles(.{
-            .root = config.bgfx.path("3rdparty/glslang"),
+            .root = ctx.dep_bgfx.path("3rdparty/glslang"),
             .files = not_windows_glslang_src_files,
             .flags = glslang_cpp_flags,
         });
     }
 
     // glsl-optimizer
-    exe.addIncludePath(config.bgfx.path("3rdparty/glsl-optimizer/include"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/glsl-optimizer/src"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/glsl-optimizer/src/mesa"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/glsl-optimizer/src/mapi"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/glsl-optimizer/src/glsl"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/glsl-optimizer/include"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/glsl-optimizer/src"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/glsl-optimizer/src/mesa"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/glsl-optimizer/src/mapi"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/glsl-optimizer/src/glsl"));
     exe.addCSourceFiles(.{
-        .root = config.bgfx.path("3rdparty/glsl-optimizer/src"),
+        .root = ctx.dep_bgfx.path("3rdparty/glsl-optimizer/src"),
         .files = glsl_optimizer_src_files,
         .flags = glsl_optimizer_cpp_flags,
     });
@@ -77,25 +211,25 @@ pub fn configBgfxShaderc(exe: *std.Build.Step.Compile, config: struct {
     exe.root_module.addCMacro("NBUF", "65536");
     exe.root_module.addCMacro("OLD_PREPROCESSOR", "0");
     exe.addCSourceFiles(.{
-        .root = config.bgfx.path("3rdparty/fcpp"),
+        .root = ctx.dep_bgfx.path("3rdparty/fcpp"),
         .files = fcpp_src_files,
         .flags = fcpp_cpp_flags,
     });
 
     // shaderc
-    exe.addIncludePath(config.bimg.path("include"));
-    exe.addIncludePath(config.bgfx.path("include"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/dxsdk/include"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/fcpp"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/glslang/glslang/Public"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/glslang/glslang/Include"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/glslang"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/glsl-optimizer/include"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/glsl-optimizer/src/glsl"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/spirv-cross"));
-    exe.addIncludePath(config.bgfx.path("3rdparty/spirv-tools/include"));
+    exe.addIncludePath(ctx.dep_bimg.path("include"));
+    exe.addIncludePath(ctx.dep_bgfx.path("include"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/dxsdk/include"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/fcpp"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/glslang/glslang/Public"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/glslang/glslang/Include"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/glslang"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/glsl-optimizer/include"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/glsl-optimizer/src/glsl"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/spirv-cross"));
+    exe.addIncludePath(ctx.dep_bgfx.path("3rdparty/spirv-tools/include"));
     exe.addCSourceFiles(.{
-        .root = config.bgfx.path(""),
+        .root = ctx.dep_bgfx.path(""),
         .files = shaderc_src_files,
         .flags = shaderc_cpp_flags,
     });
@@ -105,6 +239,11 @@ pub fn configBgfxShaderc(exe: *std.Build.Step.Compile, config: struct {
     }
 
     exe.root_module.addCMacro("BX_CONFIG_DEBUG", "0");
+
+    exe.linkLibCpp();
+    exe.linkLibrary(deps.bx);
+    exe.addIncludePath(ctx.dep_bx.path("include"));
+    return exe;
 }
 
 const spirv_tools_cpp_flags = &.{
