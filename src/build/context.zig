@@ -178,11 +178,6 @@ pub const TargetConfig = struct {
             .target = resolved_target.result,
         };
 
-        if (target.os.tag == .windows and options.sanitize_thread) {
-            std.log.err("thread sanitiser is not supported on Windows targets", .{});
-            @panic("thread sanitiser is not supported on Windows targets");
-        }
-
         return result;
     }
 

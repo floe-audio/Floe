@@ -34,6 +34,7 @@ const FlagsBuilder = struct {
     const Options = struct {
         ubsan: bool = false,
         add_compile_commands: bool = false,
+        minimise_windows: bool = true,
         all_warnings: bool = false,
         cpp: bool = false,
         objcpp: bool = false,
@@ -85,7 +86,7 @@ const FlagsBuilder = struct {
             });
         }
 
-        if (cfg.target.os.tag == .windows) {
+        if (options.minimise_windows and cfg.target.os.tag == .windows) {
             // Minimise windows.h size for faster compile times:
             // "Define one or more of the NOapi symbols to exclude the API. For example, NOCOMM excludes
             // the serial communication API. For a list of support NOapi symbols, see Windows.h."
@@ -789,6 +790,7 @@ fn buildPugl(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step
 
     const pugl_flags = FlagsBuilder.init(ctx, cfg, .{
         .add_compile_commands = true,
+        .minimise_windows = false,
     }).flags.items;
 
     lib.addCSourceFiles(.{
@@ -1867,6 +1869,7 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
         const pm_root = ctx.dep_portmidi.path("");
         const pm_flags = FlagsBuilder.init(ctx, cfg, .{
             .add_compile_commands = true,
+            .minimise_windows = false,
         }).flags.items;
         lib.addCSourceFiles(.{
             .root = pm_root,
@@ -1965,6 +1968,7 @@ fn vst3Flags(ctx: *const BuildContext, cfg: *const TargetConfig) [][]const u8 {
     var flags = FlagsBuilder.init(ctx, cfg, .{
         .ubsan = false,
         .add_compile_commands = true,
+        .minimise_windows = false,
     });
     if (ctx.optimise == .Debug) {
         flags.addFlag("-DDEVELOPMENT=1");
@@ -2681,6 +2685,9 @@ fn doTarget(
 ) release_artifacts.Artifacts {
     const cfg = TargetConfig.create(ctx, resolved_target, options, set_as_cdb);
     ctx.compile_all_step.dependOn(&cfg.concat_cdb.step);
+    if (cfg.target.os.tag == .windows and options.sanitize_thread) {
+        @panic("thread sanitiser is not supported on Windows targets");
+    }
 
     const stb_sprintf = buildStbSprintf(ctx, &cfg);
     const xxhash = buildXxhash(ctx, &cfg);
