@@ -74,7 +74,7 @@ const CheckFormatStep = struct {
         const source_files = try std_extras.findSourceFiles(self.builder.allocator, .{
             .dir_path = "src",
             .extensions = &.{ ".cpp", ".hpp", ".h", ".mm" },
-            .exclude_folders = &.{},
+            .exclude_folders = &.{"shaders"},
         });
 
         var args = std.ArrayList([]const u8).init(self.builder.allocator);

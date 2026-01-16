@@ -33,9 +33,29 @@ pub fn findSourceFiles(allocator: std.mem.Allocator, options: struct {
         }
 
         for (options.exclude_folders) |exclude_folder| {
-            if (std.mem.indexOf(u8, entry.path, exclude_folder) != null) {
-                should_exclude = true;
-                break;
+            if (exclude_folder.len > entry.path.len) continue;
+
+            var matches = true;
+            for (exclude_folder, 0..) |c, i| {
+                const entry_c = entry.path[i];
+                const chars_equal = if (builtin.os.tag == .windows)
+                    (c == entry_c) or ((c == '/' or c == '\\') and (entry_c == '/' or entry_c == '\\'))
+                else
+                    c == entry_c;
+
+                if (!chars_equal) {
+                    matches = false;
+                    break;
+                }
+            }
+
+            if (matches) {
+                if (entry.path.len == exclude_folder.len or
+                    std.fs.path.isSep(entry.path[exclude_folder.len]))
+                {
+                    should_exclude = true;
+                    break;
+                }
             }
         }
         if (should_exclude) continue;
