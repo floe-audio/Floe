@@ -9,8 +9,7 @@
 #include <bgfx/embedded_shader.h>
 
 #pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wconversion"
-#pragma clang diagnostic ignored "-Wdouble-promotion"
+#pragma clang diagnostic ignored "-Weverything"
 #include <bx/math.h>
 #pragma clang diagnostic pop
 

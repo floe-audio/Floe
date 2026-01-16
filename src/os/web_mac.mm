@@ -3,8 +3,7 @@
 
 #define Rect MacRect
 #pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter"
-#pragma clang diagnostic ignored "-Wextra-semi"
+#pragma clang diagnostic ignored "-Weverything"
 #include <Foundation/Foundation.h>
 #pragma clang diagnostic pop
 #undef Rect
