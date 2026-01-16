@@ -13,8 +13,8 @@
     .version = "0.0.0",
     .dependencies = .{
         .macos_sdk = .{
-            .url = "https://github.com/joseluisq/macosx-sdks/releases/download/12.0/MacOSX12.0.sdk.tar.xz",
-            .hash = "N-V-__8AAEpIpEAVUsVmubwDn1oMDpNDF5ZZBTmP9Jcc-5Nr",
+            .url = "https://github.com/joseluisq/macosx-sdks/releases/download/13.0/MacOSX13.0.sdk.tar.xz",
+            .hash = "N-V-__8AAB9_nUSdLMKeije7VseY73LAq089gUM1JhO-EAWC",
             .lazy = true,
         },
         .xxhash = .{
