@@ -657,6 +657,22 @@ pub fn build(b: *std.Build) void {
         addRunScript(exe, ctx.website_promote_step, "website-promote-beta-to-stable");
     }
 
+    // Shader compiler. It's only possible to compile DX11 shaders on Windows, so we try to use wine
+    // if we can.
+    {
+        const target = if (builtin.target.os.tag == .linux) b.resolveTargetQuery(std.Target.Query.parse(.{
+            .arch_os_abi = "x86_64-windows.win10",
+            .cpu_features = "x86_64",
+        }) catch unreachable) else b.graph.host;
+
+        const cfg = TargetConfig.create(&ctx, target, options, false);
+
+        const shaderc = buildBgfxShaderC(&ctx, &cfg, .{
+            .bx = buildBx(&ctx, &cfg),
+        });
+        runGenerateShaderBinH(&ctx, target.result, .{ .shaderc = shaderc });
+    }
+
     // Make release artifacts
     {
         const archiver = blk: {
@@ -1358,7 +1374,7 @@ fn buildBgfxShaderC(ctx: *const BuildContext, cfg: *const TargetConfig, deps: st
     return exe;
 }
 
-fn runGenerateShaderBinH(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+fn runGenerateShaderBinH(ctx: *const BuildContext, target: std.Target, deps: struct {
     shaderc: *std.Build.Step.Compile,
 }) void {
     for ([_][]const u8{
@@ -1386,9 +1402,22 @@ fn runGenerateShaderBinH(ctx: *const BuildContext, cfg: *const TargetConfig, dep
         for (std.enums.values(ShaderProfile)) |profile| {
             if (shader_type == .compute and profile == .metal) continue; // not supported.
 
-            if (profile == .dx11 and cfg.target.os.tag != .windows) continue; // TODO: we need to run in under wine
+            if (profile == .dx11 and target.os.tag != .windows) {
+                std.log.warn("IMPORTANT: no dx11 shaders will be compiled; it's only possible on Windows", .{});
+                continue;
+            }
 
-            const run = std_extras.createCommandWithStdoutToStderr(ctx.b, builtin.target, ctx.b.fmt("run shaderc {s}", .{@tagName(profile)}));
+            // shaderc runs great under wine, allowing compiling of DX11 shaders.
+            const initial_wine = ctx.b.enable_wine;
+            ctx.b.enable_wine = true;
+            defer ctx.b.enable_wine = initial_wine;
+
+            const run = std_extras.createCommandWithStdoutToStderr(
+                ctx.b,
+                target,
+                ctx.b.fmt("run-shaderc-{s}", .{@tagName(profile)}),
+            );
+
             run.addFileArg(deps.shaderc.getEmittedBin());
 
             run.addArgs(&.{ "--platform", switch (profile) {
@@ -1443,7 +1472,6 @@ fn runGenerateShaderBinH(ctx: *const BuildContext, cfg: *const TargetConfig, dep
             run.expectExitCode(0);
         }
 
-        // TODO: probably don't do this here, but pass steps back to caller to combine
         const combined = std_extras.combineFiles(ctx.b, stem, files.items);
 
         const update = ctx.b.addUpdateSourceFiles();
@@ -2875,9 +2903,6 @@ fn doTarget(
     const bx = buildBx(ctx, &cfg);
     const bimg = buildBimg(ctx, &cfg, .{ .bx = bx });
     const bgfx = buildBgfx(ctx, &cfg, .{ .bx = bx, .bimg = bimg });
-
-    const shaderc = buildBgfxShaderC(ctx, &cfg, .{ .bx = bx });
-    runGenerateShaderBinH(ctx, &cfg, .{ .shaderc = shaderc });
 
     const common_infrastructure = buildCommonInfrastructure(ctx, &cfg, .{
         .dr_wav = dr_wav,

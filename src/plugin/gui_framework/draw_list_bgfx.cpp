@@ -5,8 +5,6 @@
 // - BIGG (unlicense): https://github.com/JoshuaBrookover/bigg
 // - bgfx imgui (BSD-2-Clause): https://github.com/bkaradzic/bgfx/blob/master/examples/common/imgui/imgui.cpp
 
-#define BGFX_PLATFORM_SUPPORTS_DXBC 0 // TODO: support direct3D
-
 #include <bgfx/bgfx.h>
 #include <bgfx/embedded_shader.h>
 
