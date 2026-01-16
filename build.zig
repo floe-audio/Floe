@@ -143,7 +143,7 @@ const FlagsBuilder = struct {
     const Options = struct {
         ubsan: bool = false,
         add_compile_commands: bool = false,
-        full_diagnostics: bool = false,
+        all_warnings: bool = false,
         cpp: bool = false,
         objcpp: bool = false,
     };
@@ -164,13 +164,17 @@ const FlagsBuilder = struct {
         self.flags.append(flag) catch @panic("OOM");
     }
 
+    fn addFlags(self: *FlagsBuilder, flags: []const []const u8) void {
+        for (flags) |flag| self.addFlag(flag);
+    }
+
     fn addCoreFlags(
         self: *FlagsBuilder,
         ctx: *const BuildContext,
         cfg: *const TargetConfig,
         options: FlagsBuilder.Options,
     ) !void {
-        if (options.full_diagnostics) {
+        if (options.all_warnings) {
             try self.flags.appendSlice(&.{
                 "-Werror",
                 "-Wconversion",
@@ -187,13 +191,14 @@ const FlagsBuilder = struct {
                 "-Wdouble-promotion",
                 "-Woverloaded-virtual",
                 "-Wno-missing-field-initializers",
-                "-DFLAC__NO_DLL",
-                "-DPUGL_DISABLE_DEPRECATED",
-                "-DPUGL_STATIC",
+            });
+        }
 
-                // Minimise windows.h size for faster compile times:
-                // "Define one or more of the NOapi symbols to exclude the API. For example, NOCOMM excludes
-                // the serial communication API. For a list of support NOapi symbols, see Windows.h."
+        if (cfg.target.os.tag == .windows) {
+            // Minimise windows.h size for faster compile times:
+            // "Define one or more of the NOapi symbols to exclude the API. For example, NOCOMM excludes
+            // the serial communication API. For a list of support NOapi symbols, see Windows.h."
+            try self.flags.appendSlice(&.{
                 "-DWIN32_LEAN_AND_MEAN",
                 "-DNOKANJI",
                 "-DNOHELP",
@@ -215,27 +220,7 @@ const FlagsBuilder = struct {
         try self.flags.append("-D__USE_FILE_OFFSET64");
         try self.flags.append("-D_FILE_OFFSET_BITS=64");
         try self.flags.append("-ftime-trace"); // ClangBuildAnalyzer
-
-        const is_debug: i32 = if (ctx.build_mode == .development) 1 else 0;
-        try self.flags.append(ctx.b.fmt("-DBX_CONFIG_DEBUG={}", .{is_debug}));
-
-        try self.flags.append("-DMINIZ_USE_UNALIGNED_LOADS_AND_STORES=0");
-        try self.flags.append("-DMINIZ_NO_STDIO");
-        try self.flags.append("-DMINIZ_NO_ZLIB_COMPATIBLE_NAMES");
-        try self.flags.append(ctx.b.fmt("-DMINIZ_LITTLE_ENDIAN={d}", .{@intFromBool(cfg.target.cpu.arch.endian() == .little)}));
-        try self.flags.append("-DMINIZ_HAS_64BIT_REGISTERS=1");
-
-        try self.flags.append("-DSTBI_NO_STDIO");
-        try self.flags.append("-DSTBI_MAX_DIMENSIONS=65535"); // we use u16 for dimensions
-
-        if (cfg.target.os.tag == .linux) {
-            // NOTE(Sam, June 2024): workaround for a bug in Zig (most likely) where our shared library always causes a
-            // crash after dlclose(), as described here: https://github.com/ziglang/zig/issues/17908
-            // The workaround involves adding this flag and also adding a custom bit of code using
-            // __attribute__((destructor)) to manually call __cxa_finalize():
-            // https://stackoverflow.com/questions/34308720/where-is-dso-handle-defined/48256026#48256026
-            try self.flags.append("-fno-use-cxa-atexit");
-        }
+        try self.flags.append("-fvisibility=hidden");
 
         // We want __builtin_FILE(), __FILE__ and debug info to be portable because we use this information in
         // stacktraces and logging so we change the absolute paths of all files to be relative to the build root.
@@ -246,22 +231,38 @@ const FlagsBuilder = struct {
             std.fs.path.sep_str,
         }));
 
-        try self.flags.append("-fvisibility=hidden");
+        switch (cfg.target.os.tag) {
+            .windows => {
+                // On Windows, fix compile errors related to deprecated usage of string in mingw.
+                try self.flags.append("-DSTRSAFE_NO_DEPRECATE");
+                try self.flags.append("-DUNICODE");
+                try self.flags.append("-D_UNICODE");
+            },
+            .macos => {
+                try self.flags.append("-DGL_SILENCE_DEPRECATION"); // disable opengl warnings on macos
 
-        if (ctx.build_mode != .production and ctx.enable_tracy) {
-            try self.flags.append("-DTRACY_ENABLE");
-            try self.flags.append("-DTRACY_MANUAL_LIFETIME");
-            try self.flags.append("-DTRACY_DELAYED_INIT");
-            try self.flags.append("-DTRACY_ONLY_LOCALHOST");
-            if (cfg.target.os.tag == .linux) {
-                // Couldn't get these working well so just disabling them
-                try self.flags.append("-DTRACY_NO_CALLSTACK");
-                try self.flags.append("-DTRACY_NO_SYSTEM_TRACING");
-            }
+                // Stop errors when compiling macOS obj-c SDK headers.
+                try self.flags.appendSlice(&.{
+                    "-Wno-elaborated-enum-base",
+                    "-Wno-missing-method-return-type",
+                    "-Wno-deprecated-declarations",
+                    "-Wno-deprecated-anon-enum-enum-conversion",
+                    "-D__kernel_ptr_semantics=",
+                    "-Wno-c99-extensions",
+                });
+            },
+            .linux => {
+                // NOTE(Sam, June 2024): workaround for a bug in Zig (most likely) where our shared library always causes a
+                // crash after dlclose(), as described here: https://github.com/ziglang/zig/issues/17908
+                // The workaround involves adding this flag and also adding a custom bit of code using
+                // __attribute__((destructor)) to manually call __cxa_finalize():
+                // https://stackoverflow.com/questions/34308720/where-is-dso-handle-defined/48256026#48256026
+                try self.flags.append("-fno-use-cxa-atexit");
+            },
+            else => {},
         }
 
         // A bit of information about debug symbols:
-        //
         // DWARF is a debugging information format. It is used widely, particularly on Linux and macOS.
         // Zig/libbacktrace, which we use for getting nice stack traces can read DWARF information from the
         // executable on any OS. All we need to do is make sure that the DWARF info is available for
@@ -310,6 +311,7 @@ const FlagsBuilder = struct {
         if (options.cpp) {
             try self.flags.append("-std=c++2c");
         }
+
         if (options.objcpp) {
             try self.flags.append("-std=c++2b");
             try self.flags.append("-ObjC++");
@@ -320,23 +322,43 @@ const FlagsBuilder = struct {
             try cfg.concat_cdb.addClangArgument(&self.flags);
         }
 
-        if (cfg.target.os.tag == .windows) {
-            // On Windows, fix compile errors related to deprecated usage of string in mingw
-            try self.flags.append("-DSTRSAFE_NO_DEPRECATE");
-            try self.flags.append("-DUNICODE");
-            try self.flags.append("-D_UNICODE");
-        } else if (cfg.target.os.tag == .macos) {
-            try self.flags.append("-DGL_SILENCE_DEPRECATION"); // disable opengl warnings on macos
+        //
+        // Library specific flags.
 
-            // don't fail when compiling macOS obj-c SDK headers
-            try self.flags.appendSlice(&.{
-                "-Wno-elaborated-enum-base",
-                "-Wno-missing-method-return-type",
-                "-Wno-deprecated-declarations",
-                "-Wno-deprecated-anon-enum-enum-conversion",
-                "-D__kernel_ptr_semantics=",
-                "-Wno-c99-extensions",
-            });
+        try self.flags.appendSlice(&.{
+            "-DFLAC__NO_DLL",
+        });
+
+        try self.flags.appendSlice(&.{
+            "-DPUGL_DISABLE_DEPRECATED",
+            "-DPUGL_STATIC",
+        });
+
+        try self.flags.append(ctx.b.fmt("-DBX_CONFIG_DEBUG={}", .{@intFromBool(ctx.build_mode == .development)}));
+
+        try self.flags.appendSlice(&.{
+            "-DMINIZ_USE_UNALIGNED_LOADS_AND_STORES=0",
+            "-DMINIZ_NO_STDIO",
+            "-DMINIZ_NO_ZLIB_COMPATIBLE_NAMES",
+            ctx.b.fmt("-DMINIZ_LITTLE_ENDIAN={d}", .{@intFromBool(cfg.target.cpu.arch.endian() == .little)}),
+            "-DMINIZ_HAS_64BIT_REGISTERS=1",
+        });
+
+        try self.flags.appendSlice(&.{
+            "-DSTBI_NO_STDIO",
+            "-DSTBI_MAX_DIMENSIONS=65535", // we use u16 for dimensions
+        });
+
+        if (ctx.build_mode != .production and ctx.enable_tracy) {
+            try self.flags.append("-DTRACY_ENABLE");
+            try self.flags.append("-DTRACY_MANUAL_LIFETIME");
+            try self.flags.append("-DTRACY_DELAYED_INIT");
+            try self.flags.append("-DTRACY_ONLY_LOCALHOST");
+            if (cfg.target.os.tag == .linux) {
+                // Couldn't get these working well so just disabling them
+                try self.flags.append("-DTRACY_NO_CALLSTACK");
+                try self.flags.append("-DTRACY_NO_SYSTEM_TRACING");
+            }
         }
     }
 };
@@ -920,7 +942,7 @@ fn buildPugl(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step
             lib.linkFramework("OpenGL");
             lib.linkFramework("CoreVideo");
         },
-        else => {
+        .linux => {
             lib.addCSourceFiles(.{
                 .root = src_path,
                 .files = &[_][]const u8{
@@ -944,6 +966,7 @@ fn buildPugl(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step
             lib.linkSystemLibrary2("xcursor", .{ .use_pkg_config = linux_use_pkg_config });
             lib.linkSystemLibrary2("xext", .{ .use_pkg_config = linux_use_pkg_config });
         },
+        else => {},
     }
 
     lib.root_module.addCMacro("PUGL_DISABLE_DEPRECATED", "1");
@@ -1019,7 +1042,7 @@ fn buildFloeLibrary(ctx: *const BuildContext, cfg: *const TargetConfig, deps: st
     };
 
     const library_flags = FlagsBuilder.init(ctx, cfg, .{
-        .full_diagnostics = true,
+        .all_warnings = true,
         .ubsan = true,
         .cpp = true,
         .add_compile_commands = true,
@@ -1049,7 +1072,7 @@ fn buildFloeLibrary(ctx: *const BuildContext, cfg: *const TargetConfig, deps: st
             lib.addCSourceFiles(.{
                 .files = &macos_source_files,
                 .flags = FlagsBuilder.init(ctx, cfg, .{
-                    .full_diagnostics = true,
+                    .all_warnings = true,
                     .ubsan = true,
                     .objcpp = true,
                     .add_compile_commands = true,
@@ -1246,14 +1269,17 @@ fn buildFlac(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step
 }
 
 fn bgfxFlags(ctx: *const BuildContext, cfg: *const TargetConfig) []const []const u8 {
-    const flags = [_][]const u8{
+    var flags_builder: FlagsBuilder = FlagsBuilder.init(ctx, cfg, .{
+        .ubsan = false,
+        .add_compile_commands = true,
+    });
+    flags_builder.addFlags(&[_][]const u8{
         ctx.b.fmt("-DBX_CONFIG_DEBUG={}", .{@intFromBool(ctx.build_mode == .development)}),
         "-std=c++20",
         "-fno-sanitize=all",
         "-fno-strict-aliasing",
         "-fno-exceptions",
         "-fno-rtti",
-        "-ffast-math",
         "-Wno-tautological-constant-compare",
         "-DBGFX_CONFIG_MULTITHREADED=1",
         switch (cfg.graphics_api) {
@@ -1262,8 +1288,8 @@ fn bgfxFlags(ctx: *const BuildContext, cfg: *const TargetConfig) []const []const
             .direct3d => "-DBGFX_CONFIG_RENDERER_DIRECT3D11=1",
             .opengl => "-DBGFX_CONFIG_RENDERER_OPENGL=1",
         },
-    };
-    return ctx.b.dupeStrings(&flags);
+    });
+    return flags_builder.flags.items;
 }
 
 fn buildBx(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
@@ -1295,6 +1321,7 @@ fn buildBx(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.C
         else => {},
     }
     lib.linkLibCpp();
+    applyUniversalSettings(ctx, lib, cfg.concat_cdb);
     return lib;
 }
 
@@ -1353,6 +1380,7 @@ fn buildBimg(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     lib.addIncludePath(ctx.dep_bimg.path("3rdparty"));
     lib.addIncludePath(ctx.dep_bimg.path("3rdparty/astc-encoder/include"));
     lib.linkLibCpp();
+    applyUniversalSettings(ctx, lib, cfg.concat_cdb);
 
     return lib;
 }
@@ -1508,6 +1536,15 @@ fn buildBgfx(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
         .windows => {
             lib.addIncludePath(ctx.dep_bgfx.path("3rdparty/directx-headers/include/directx"));
         },
+        .macos => {
+            lib.linkFramework("QuartzCore");
+            lib.linkFramework("IOKit");
+            if (cfg.graphics_api == .metal)
+                lib.linkFramework("Metal");
+            if (cfg.graphics_api == .opengl)
+                lib.linkFramework("OpenGL");
+            lib.linkFramework("Cocoa");
+        },
         else => {},
     }
 
@@ -1518,6 +1555,7 @@ fn buildBgfx(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     lib.addIncludePath(ctx.dep_bgfx.path("include"));
     lib.addIncludePath(ctx.dep_bgfx.path("3rdparty"));
     lib.addIncludePath(ctx.dep_bgfx.path("3rdparty/khronos"));
+    applyUniversalSettings(ctx, lib, cfg.concat_cdb);
     return lib;
 }
 
@@ -1625,7 +1663,7 @@ fn buildCommonInfrastructure(ctx: *const BuildContext, cfg: *const TargetConfig,
             "state/state_coding.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .full_diagnostics = true,
+            .all_warnings = true,
             .ubsan = true,
             .cpp = true,
             .add_compile_commands = true,
@@ -1699,7 +1737,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
     const src_root = ctx.b.path("src/plugin");
 
     const flags = FlagsBuilder.init(ctx, cfg, .{
-        .full_diagnostics = true,
+        .all_warnings = true,
         .ubsan = true,
         .cpp = true,
         .add_compile_commands = true,
@@ -1808,7 +1846,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
                     },
                 },
                 .flags = FlagsBuilder.init(ctx, cfg, .{
-                    .full_diagnostics = true,
+                    .all_warnings = true,
                     .ubsan = true,
                     .objcpp = true,
                     .add_compile_commands = true,
@@ -1904,7 +1942,7 @@ fn buildDocsGenerator(ctx: *const BuildContext, cfg: *const TargetConfig, deps: 
             "src/common_infrastructure/final_binary_type.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .full_diagnostics = true,
+            .all_warnings = true,
             .ubsan = true,
             .cpp = true,
             .add_compile_commands = true,
@@ -1934,7 +1972,7 @@ fn buildPackager(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struc
             "src/common_infrastructure/final_binary_type.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .full_diagnostics = true,
+            .all_warnings = true,
             .ubsan = true,
             .cpp = true,
             .add_compile_commands = true,
@@ -1966,7 +2004,7 @@ fn buildPresetEditor(ctx: *const BuildContext, cfg: *const TargetConfig, deps: s
             "src/common_infrastructure/final_binary_type.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .full_diagnostics = true,
+            .all_warnings = true,
             .ubsan = true,
             .cpp = true,
             .add_compile_commands = true,
@@ -1995,7 +2033,7 @@ fn buildClap(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
             "src/common_infrastructure/final_binary_type.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .full_diagnostics = true,
+            .all_warnings = true,
             .ubsan = true,
             .cpp = true,
             .add_compile_commands = true,
@@ -2136,7 +2174,7 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
             "src/common_infrastructure/final_binary_type.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .full_diagnostics = true,
+            .all_warnings = true,
             .ubsan = true,
             .cpp = true,
             .add_compile_commands = true,
@@ -2399,7 +2437,7 @@ fn buildVst3(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
             "src/common_infrastructure/final_binary_type.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .full_diagnostics = true,
+            .all_warnings = true,
             .ubsan = true,
             .cpp = true,
             .add_compile_commands = true,
@@ -2565,7 +2603,7 @@ fn buildAu(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
             "src/common_infrastructure/final_binary_type.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .full_diagnostics = true,
+            .all_warnings = true,
             .ubsan = true,
             .objcpp = true,
             .add_compile_commands = true,
@@ -2694,7 +2732,7 @@ fn buildWindowsUninstaller(ctx: *const BuildContext, cfg: *const TargetConfig, d
             "src/common_infrastructure/final_binary_type.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .full_diagnostics = true,
+            .all_warnings = true,
             .ubsan = true,
             .cpp = true,
             .add_compile_commands = true,
@@ -2783,7 +2821,7 @@ fn buildWindowsInstaller(ctx: *const BuildContext, cfg: *const TargetConfig, dep
             "src/common_infrastructure/final_binary_type.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .full_diagnostics = true,
+            .all_warnings = true,
             .ubsan = true,
             .cpp = true,
             .add_compile_commands = true,
@@ -2853,7 +2891,7 @@ fn buildTests(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
             "src/utils/thread_extra/thread_pool.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .full_diagnostics = true,
+            .all_warnings = true,
             .ubsan = true,
             .cpp = true,
             .add_compile_commands = true,
@@ -2900,9 +2938,15 @@ fn doTarget(
         ctx.native_archiver = buildArchiver(ctx, &cfg, .{ .miniz = miniz });
     }
 
-    const bx = buildBx(ctx, &cfg);
-    const bimg = buildBimg(ctx, &cfg, .{ .bx = bx });
-    const bgfx = buildBgfx(ctx, &cfg, .{ .bx = bx, .bimg = bimg });
+    const bgfx = blk: {
+        var lib: ?*std.Build.Step.Compile = null;
+        if (cfg.renderer_type == .bgfx) {
+            const bx = buildBx(ctx, &cfg);
+            const bimg = buildBimg(ctx, &cfg, .{ .bx = bx });
+            lib = buildBgfx(ctx, &cfg, .{ .bx = bx, .bimg = bimg });
+        }
+        break :blk lib;
+    };
 
     const common_infrastructure = buildCommonInfrastructure(ctx, &cfg, .{
         .dr_wav = dr_wav,
