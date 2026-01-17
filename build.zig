@@ -381,7 +381,7 @@ fn resolveTargets(b: *std.Build, user_given_target_presets: ?[]const u8) !std.Ar
                     cpu_features = x86_cpu;
                 },
                 .x86_64_linux => {
-                    arch_os_abi = "x86_64-linux-gnu.2.29";
+                    arch_os_abi = "x86_64-linux-gnu.2.31";
                     cpu_features = x86_cpu;
                 },
                 .x86_64_macos => {
