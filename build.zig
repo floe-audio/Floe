@@ -511,7 +511,7 @@ pub fn build(b: *std.Build) void {
         .ci_step = b.step("script:ci", "Run CI checks"),
         .ci_basic_step = b.step("script:ci-basic", "Run basic CI checks"),
         .upload_errors_step = b.step("script:upload-errors", "Upload error reports to Sentry"),
-        .shaderc = b.step("script:shaderc", "Compile shaders"),
+        .shaderc = b.step("script:shaderc", "Compile shaders in src/shaders into .bin.h"),
         .website_gen_step = b.step("script:website-generate", "Generate the static JSON for the website"),
         .website_build_step = b.step("script:website-build", "Build the website"),
         .website_dev_step = b.step("script:website-dev", "Start website dev build locally"),
@@ -568,13 +568,16 @@ pub fn build(b: *std.Build) void {
         addRunScript(exe, ctx.website_promote_step, "website-promote-beta-to-stable");
     }
 
-    // Shader compiler. It's only possible to compile DX11 shaders on Windows, so we try to use wine
-    // if we can.
+    // Shader compiler.
     {
-        const target = if (builtin.target.os.tag == .linux) b.resolveTargetQuery(std.Target.Query.parse(.{
-            .arch_os_abi = "x86_64-windows.win10",
-            .cpu_features = "x86_64",
-        }) catch unreachable) else b.graph.host;
+        const target = if (builtin.target.os.tag == .linux)
+            // It's only possible to compile DX11 shaders on Windows, so we try to use wine if we can.
+            b.resolveTargetQuery(std.Target.Query.parse(.{
+                .arch_os_abi = "x86_64-windows.win10",
+                .cpu_features = "x86_64",
+            }) catch unreachable)
+        else
+            b.graph.host;
 
         const cfg = TargetConfig.create(&ctx, target, options, false);
 
