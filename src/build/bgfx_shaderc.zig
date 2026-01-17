@@ -60,9 +60,37 @@ pub fn shaderCRunSteps(
         files.append(bin_h_heading) catch @panic("OOM");
 
         for (std.enums.values(ShaderProfile)) |profile| {
-            // Unsupported cases:
-            if (shader_type == .compute and profile == .metal) continue;
-            if (profile == .dx11 and target.os.tag != .windows) continue;
+            if (shader_type == .compute and profile == .metal) continue; // Unsupported.
+
+            const c_array_name = blk: {
+                var buf = std.ArrayList(u8).init(ctx.b.allocator);
+                buf.appendSlice(stem) catch @panic("OOM");
+                for (buf.items) |*c| {
+                    if (!std.ascii.isAlphanumeric(c.*)) {
+                        c.* = '_';
+                    }
+                }
+                buf.append('_') catch @panic("OOM");
+                buf.appendSlice(switch (profile) {
+                    .glsl => "glsl",
+                    .dx11 => "dx11",
+                    .metal => "mtl",
+                    .spirv => "spv",
+                    .essl => "essl",
+                }) catch @panic("OOM");
+                break :blk buf.toOwnedSlice() catch @panic("OOM");
+            };
+
+            if (profile == .dx11 and target.os.tag != .windows) {
+                // Unsupported, shaderc requires a Windows host to build DX11 shaders. However, we still
+                // want the program to be compilable so you can at least test shaders on macOS/Linux,
+                // so we just add a stub.
+                files.append(ctx.b.addWriteFiles().add(
+                    "stub_dx11.bin.h",
+                    ctx.b.fmt("static const uint8_t {s}[1] = {{0}};\n", .{c_array_name}),
+                )) catch @panic("OOM");
+                continue;
+            }
 
             // shaderc runs great under Wine, allowing compilation of DX11 shaders.
             // We enable Wine if possible.
@@ -98,25 +126,7 @@ pub fn shaderCRunSteps(
 
             if (profile == .dx11 or profile == .metal) run.addArgs(&.{ "-O", "3" });
 
-            {
-                var c_array_name = std.ArrayList(u8).init(ctx.b.allocator);
-                c_array_name.appendSlice(stem) catch @panic("OOM");
-                for (c_array_name.items) |*c| {
-                    if (!std.ascii.isAlphanumeric(c.*)) {
-                        c.* = '_';
-                    }
-                }
-                c_array_name.append('_') catch @panic("OOM");
-                c_array_name.appendSlice(switch (profile) {
-                    .glsl => "glsl",
-                    .dx11 => "dx11",
-                    .metal => "mtl",
-                    .spirv => "spv",
-                    .essl => "essl",
-                }) catch @panic("OOM");
-
-                run.addArgs(&.{ "--bin2c", c_array_name.items });
-            }
+            run.addArgs(&.{ "--bin2c", c_array_name });
 
             run.addArg("-f");
             run.addFileArg(ctx.b.path(ctx.b.fmt("src/shaders/{s}", .{file})));
