@@ -15,6 +15,7 @@ const build_context = @import("src/build/context.zig");
 
 const BuildContext = build_context.BuildContext;
 const Options = build_context.Options;
+const TopLevelSetps = build_context.TopLevelSteps;
 const TargetConfig = build_context.TargetConfig;
 
 comptime {
@@ -493,8 +494,10 @@ pub fn build(b: *std.Build) void {
         .dep_bx = b.dependency("bx", .{}),
         .dep_bimg = b.dependency("bimg", .{}),
         .dep_bgfx = b.dependency("bgfx", .{}),
+    };
 
-        .compile_all_step = b.step("compile", "Compile all"),
+    const top_level_steps: TopLevelSetps = .{
+        .compile_all = b.step("compile", "Compile all"),
         .release = b.step("release", "Create release artifacts"),
         .test_step = b.step("test", "Run unit tests"),
         .coverage = b.step("test-coverage", "Generate code coverage report of unit tests"),
@@ -519,8 +522,8 @@ pub fn build(b: *std.Build) void {
         .install_all_step = b.step("install:all", "Install all; development files as well as plugins"),
     };
 
-    b.default_step = ctx.compile_all_step;
-    ctx.install_all_step.dependOn(b.getInstallStep());
+    b.default_step = top_level_steps.compile_all;
+    top_level_steps.install_all_step.dependOn(b.getInstallStep());
 
     b.build_root.handle.makeDir(constants.floe_cache_relative) catch {};
 
@@ -543,7 +546,8 @@ pub fn build(b: *std.Build) void {
             &ctx,
             target,
             target.query.eql(target_for_compile_commands.query),
-            options,
+            &top_level_steps,
+            &options,
         );
         artifacts_list[i] = artifacts;
     }
@@ -560,12 +564,12 @@ pub fn build(b: *std.Build) void {
         });
         if (b.graph.host.result.os.tag == .windows) exe.linkLibC(); // GetTempPath2W
 
-        addRunScript(exe, ctx.format_step, "format");
-        addRunScript(exe, ctx.gh_release_step, "create-gh-release");
-        addRunScript(exe, ctx.upload_errors_step, "upload-errors");
-        addRunScript(exe, ctx.ci_step, "ci");
-        addRunScript(exe, ctx.ci_basic_step, "ci-basic");
-        addRunScript(exe, ctx.website_promote_step, "website-promote-beta-to-stable");
+        addRunScript(exe, top_level_steps.format_step, "format");
+        addRunScript(exe, top_level_steps.gh_release_step, "create-gh-release");
+        addRunScript(exe, top_level_steps.upload_errors_step, "upload-errors");
+        addRunScript(exe, top_level_steps.ci_step, "ci");
+        addRunScript(exe, top_level_steps.ci_basic_step, "ci-basic");
+        addRunScript(exe, top_level_steps.website_promote_step, "website-promote-beta-to-stable");
     }
 
     // Shader compiler.
@@ -579,13 +583,13 @@ pub fn build(b: *std.Build) void {
         else
             b.graph.host;
 
-        const cfg = TargetConfig.create(&ctx, target, options, false);
+        const cfg = TargetConfig.create(&ctx, target, &options, false);
 
         const shaderc = bgfx_shaderc.buildShaderC(&ctx, &cfg, .{
             .bx = buildBx(&ctx, &cfg),
         });
         const run = bgfx_shaderc.shaderCRunSteps(&ctx, target.result, shaderc);
-        ctx.shaderc.dependOn(run);
+        top_level_steps.shaderc.dependOn(run);
     }
 
     // Make release artifacts
@@ -593,7 +597,7 @@ pub fn build(b: *std.Build) void {
         const archiver = blk: {
             if (ctx.native_archiver) |a| break :blk a;
 
-            const native_target_cfg = TargetConfig.create(&ctx, b.graph.host, options, false);
+            const native_target_cfg = TargetConfig.create(&ctx, b.graph.host, &options, false);
             break :blk buildArchiver(&ctx, &native_target_cfg, .{
                 .miniz = buildMiniz(&ctx, &native_target_cfg),
             });
@@ -607,7 +611,7 @@ pub fn build(b: *std.Build) void {
                 targets.items[i].result,
                 artifacts,
             );
-            ctx.release.dependOn(install_steps);
+            top_level_steps.release.dependOn(install_steps);
         }
     }
 
@@ -616,7 +620,7 @@ pub fn build(b: *std.Build) void {
         const docs_generator = blk: {
             if (ctx.native_docs_generator) |d| break :blk d;
 
-            const native_target_cfg = TargetConfig.create(&ctx, b.graph.host, options, false);
+            const native_target_cfg = TargetConfig.create(&ctx, b.graph.host, &options, false);
             break :blk buildDocsGenerator(&ctx, &native_target_cfg, .{
                 .common_infrastructure = buildCommonInfrastructure(&ctx, &native_target_cfg, .{
                     .dr_wav = buildDrWav(&ctx, &native_target_cfg),
@@ -639,7 +643,7 @@ pub fn build(b: *std.Build) void {
 
             const copy = b.addUpdateSourceFiles();
             copy.addCopyFileToSource(run.captureStdOut(), "website/static/generated-data.json");
-            ctx.website_gen_step.dependOn(&copy.step);
+            top_level_steps.website_gen_step.dependOn(&copy.step);
         }
 
         // Build the site for production
@@ -653,11 +657,11 @@ pub fn build(b: *std.Build) void {
             const run = std_extras.createCommandWithStdoutToStderr(b, builtin.target, "run docusaurus build");
             run.addArgs(&.{ "npm", "run", "build" });
             run.setCwd(b.path("website"));
-            run.step.dependOn(ctx.website_gen_step);
+            run.step.dependOn(top_level_steps.website_gen_step);
             run.step.dependOn(&npm_install.step);
             run.step.dependOn(&create_api.step);
             run.expectExitCode(0);
-            ctx.website_build_step.dependOn(&run.step);
+            top_level_steps.website_build_step.dependOn(&run.step);
         }
 
         // Start the website locally
@@ -669,10 +673,10 @@ pub fn build(b: *std.Build) void {
             const run = std_extras.createCommandWithStdoutToStderr(b, builtin.target, "run docusaurus start");
             run.addArgs(&.{ "npm", "run", "start" });
             run.setCwd(b.path("website"));
-            run.step.dependOn(ctx.website_gen_step);
+            run.step.dependOn(top_level_steps.website_gen_step);
             run.step.dependOn(&npm_install.step);
 
-            ctx.website_dev_step.dependOn(&run.step);
+            top_level_steps.website_dev_step.dependOn(&run.step);
         }
     }
 }
@@ -2659,10 +2663,13 @@ fn doTarget(
     ctx: *BuildContext,
     resolved_target: std.Build.ResolvedTarget,
     set_as_cdb: bool,
-    options: Options,
+    top_level_steps: *const TopLevelSetps,
+    options: *const Options,
 ) release_artifacts.Artifacts {
     const cfg = TargetConfig.create(ctx, resolved_target, options, set_as_cdb);
-    ctx.compile_all_step.dependOn(&cfg.concat_cdb.step);
+
+    top_level_steps.compile_all.dependOn(&cfg.concat_cdb.step);
+
     if (cfg.target.os.tag == .windows and options.sanitize_thread) {
         @panic("thread sanitiser is not supported on Windows targets");
     }
@@ -2733,7 +2740,7 @@ fn doTarget(
         );
 
         const install = ctx.b.addInstallBinFile(codesigned_exe, exe.out_filename);
-        ctx.install_all_step.dependOn(&install.step);
+        top_level_steps.install_all_step.dependOn(&install.step);
 
         break :blk release_artifacts.Artifact{
             .out_filename = exe.out_filename,
@@ -2748,7 +2755,7 @@ fn doTarget(
         });
 
         const install = ctx.b.addInstallArtifact(exe, .{});
-        ctx.install_all_step.dependOn(&install.step);
+        top_level_steps.install_all_step.dependOn(&install.step);
 
         // IMPROVE: export preset-editor as a production artifact?
     }
@@ -2774,7 +2781,7 @@ fn doTarget(
         const exe = buildStandalone(ctx, &cfg, .{ .plugin = plugin });
 
         const install = ctx.b.addInstallArtifact(exe, .{});
-        ctx.install_all_step.dependOn(&install.step);
+        top_level_steps.install_all_step.dependOn(&install.step);
     }
 
     const vst3_sdk = buildVst3Sdk(ctx, &cfg);
@@ -2804,12 +2811,12 @@ fn doTarget(
                 configured_vst3.addToRunStepArgs(run_tests);
                 run_tests.expectExitCode(0);
 
-                ctx.test_vst3_validator.dependOn(&run_tests.step);
+                top_level_steps.test_vst3_validator.dependOn(&run_tests.step);
             }
 
             break :blk configured_vst3;
         } else {
-            ctx.test_vst3_validator.dependOn(&ctx.b.addFail("VST3 tests not allowed with this configuration").step);
+            top_level_steps.test_vst3_validator.dependOn(&ctx.b.addFail("VST3 tests not allowed with this configuration").step);
             break :blk null;
         }
     };
@@ -2836,7 +2843,7 @@ fn doTarget(
                         run.step.dependOn(configured_au.install_step);
                         run.expectExitCode(0);
 
-                        ctx.pluginval_au.dependOn(&run.step);
+                        top_level_steps.pluginval_au.dependOn(&run.step);
                     }
 
                     // auval
@@ -2871,25 +2878,25 @@ fn doTarget(
                             ctx.auval.dependOn(&cmd.step);
                         }
 
-                        ctx.auval.dependOn(&run_auval.step);
+                        top_level_steps.auval.dependOn(&run_auval.step);
                     }
                 } else {
                     const fail = ctx.b.addFail("You must specify a global/user Library/Audio/Plug-Ins " ++
                         "--prefix to zig build in order to run AU tests");
                     ctx.pluginval_au.dependOn(&fail.step);
-                    ctx.auval.dependOn(&fail.step);
+                    top_level_steps.auval.dependOn(&fail.step);
                 }
             } else {
                 const fail = ctx.b.addFail("AU tests can only be run on macOS hosts");
-                ctx.pluginval_au.dependOn(&fail.step);
-                ctx.auval.dependOn(&fail.step);
+                top_level_steps.pluginval_au.dependOn(&fail.step);
+                top_level_steps.auval.dependOn(&fail.step);
             }
 
             break :blk configured_au;
         } else {
             const fail = ctx.b.addFail("AU tests not allowed with this configuration");
-            ctx.pluginval_au.dependOn(&fail.step);
-            ctx.auval.dependOn(&fail.step);
+            top_level_steps.pluginval_au.dependOn(&fail.step);
+            top_level_steps.auval.dependOn(&fail.step);
             break :blk null;
         }
     };
@@ -2909,7 +2916,7 @@ fn doTarget(
                 );
 
                 const install = ctx.b.addInstallBinFile(codesigned_exe, exe.out_filename);
-                ctx.install_all_step.dependOn(&install.step);
+                top_level_steps.install_all_step.dependOn(&install.step);
 
                 break :blk2 .{
                     .step = exe,
@@ -2947,13 +2954,13 @@ fn doTarget(
                 run_uninstaller.expectExitCode(0);
                 run_uninstaller.step.dependOn(&run_installer.step);
 
-                ctx.test_windows_install.dependOn(&run_uninstaller.step);
+                top_level_steps.test_windows_install.dependOn(&run_uninstaller.step);
             }
 
             // Install
             {
                 const install = ctx.b.addInstallBinFile(codesigned_path, installer.out_filename);
-                ctx.install_all_step.dependOn(&install.step);
+                top_level_steps.install_all_step.dependOn(&install.step);
             }
 
             break :blk release_artifacts.Artifact{
@@ -2961,7 +2968,7 @@ fn doTarget(
                 .path = codesigned_path,
             };
         } else {
-            ctx.test_windows_install.dependOn(&ctx.b.addFail("Windows installer tests not allowed with this configuration").step);
+            top_level_steps.test_windows_install.dependOn(&ctx.b.addFail("Windows installer tests not allowed with this configuration").step);
             break :blk null;
         }
     };
@@ -2973,7 +2980,7 @@ fn doTarget(
         const test_binary = configure_binaries.nix_helper.maybePatchElfExecutable(exe);
 
         const install = ctx.b.addInstallBinFile(test_binary, exe.out_filename);
-        ctx.install_all_step.dependOn(&install.step);
+        top_level_steps.install_all_step.dependOn(&install.step);
 
         const add_tests_args = struct {
             pub fn do(run: *std.Build.Step.Run, clap_plugin: ?configure_binaries.ConfiguredPlugin) void {
@@ -3003,7 +3010,7 @@ fn doTarget(
 
             run_tests.expectExitCode(0);
 
-            ctx.test_step.dependOn(&run_tests.step);
+            top_level_steps.test_step.dependOn(&run_tests.step);
         }
 
         // Coverage tests
@@ -3016,9 +3023,9 @@ fn doTarget(
             run_coverage.addFileArg(test_binary);
             add_tests_args(run_coverage, configured_clap);
             run_coverage.expectExitCode(0);
-            ctx.coverage.dependOn(&run_coverage.step);
+            top_level_steps.coverage.dependOn(&run_coverage.step);
         } else {
-            ctx.coverage.dependOn(&ctx.b.addFail("coverage not supported on this OS").step);
+            top_level_steps.coverage.dependOn(&ctx.b.addFail("coverage not supported on this OS").step);
         }
 
         // Valgrind test
@@ -3037,9 +3044,9 @@ fn doTarget(
             add_tests_args(run, configured_clap);
             run.expectExitCode(0);
 
-            ctx.valgrind.dependOn(&run.step);
+            top_level_steps.valgrind.dependOn(&run.step);
         } else {
-            ctx.valgrind.dependOn(&ctx.b.addFail("valgrind not allowed for this build configuration").step);
+            top_level_steps.valgrind.dependOn(&ctx.b.addFail("valgrind not allowed for this build configuration").step);
         }
     }
 
@@ -3091,9 +3098,9 @@ fn doTarget(
         p.addToRunStepArgs(run);
         run.expectExitCode(0);
 
-        ctx.clap_val.dependOn(&run.step);
+        top_level_steps.clap_val.dependOn(&run.step);
     } else {
-        ctx.clap_val.dependOn(&ctx.b.addFail("clap-validator not allowed for this build configuration").step);
+        top_level_steps.clap_val.dependOn(&ctx.b.addFail("clap-validator not allowed for this build configuration").step);
     }
 
     // Pluginval test
@@ -3112,16 +3119,16 @@ fn doTarget(
         p.addToRunStepArgs(run);
         run.expectExitCode(0);
 
-        ctx.pluginval.dependOn(&run.step);
+        top_level_steps.pluginval.dependOn(&run.step);
     } else {
-        ctx.pluginval.dependOn(&ctx.b.addFail("pluginval not allowed for this build configuration").step);
+        top_level_steps.pluginval.dependOn(&ctx.b.addFail("pluginval not allowed for this build configuration").step);
     }
 
     // clang-tidy
     {
         const clang_tidy_step = check_steps.ClangTidyStep.create(ctx.b, cfg.target);
         clang_tidy_step.step.dependOn(&cfg.concat_cdb.step);
-        ctx.clang_tidy.dependOn(&clang_tidy_step.step);
+        top_level_steps.clang_tidy.dependOn(&clang_tidy_step.step);
     }
 
     return .{

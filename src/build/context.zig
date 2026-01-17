@@ -56,9 +56,10 @@ pub const BuildContext = struct {
     dep_bx: *std.Build.Dependency,
     dep_bimg: *std.Build.Dependency,
     dep_bgfx: *std.Build.Dependency,
+};
 
-    // Top-level steps.
-    compile_all_step: *std.Build.Step,
+pub const TopLevelSteps = struct {
+    compile_all: *std.Build.Step,
     release: *std.Build.Step,
     test_step: *std.Build.Step,
     coverage: *std.Build.Step,
@@ -85,9 +86,9 @@ pub const BuildContext = struct {
 
 pub const TargetConfig = struct {
     pub fn create(
-        ctx: *BuildContext,
+        ctx: *const BuildContext,
         resolved_target: std.Build.ResolvedTarget,
-        options: Options,
+        options: *const Options,
         set_as_cdb: bool,
     ) TargetConfig {
         const target = resolved_target.result;
