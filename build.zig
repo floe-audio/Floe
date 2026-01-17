@@ -510,20 +510,20 @@ pub fn build(b: *std.Build) void {
         .test_windows_install = b.step("test:windows-install", "Test installation and uninstallation on Windows"),
         .clang_tidy = b.step("check:clang-tidy", "Run clang-tidy on source files"),
         .format_step = b.step("script:format", "Format code with clang-format"),
-        .gh_release_step = b.step("script:create-gh-release", "Create a GitHub release"),
-        .ci_step = b.step("script:ci", "Run CI checks"),
-        .ci_basic_step = b.step("script:ci-basic", "Run basic CI checks"),
-        .upload_errors_step = b.step("script:upload-errors", "Upload error reports to Sentry"),
+        .release_step = b.step("script:create-gh-release", "Create a GitHub release"),
+        .ci = b.step("script:ci", "Run CI checks"),
+        .ci_basic = b.step("script:ci-basic", "Run basic CI checks"),
+        .upload_errors = b.step("script:upload-errors", "Upload error reports to Sentry"),
         .shaderc = b.step("script:shaderc", "Compile shaders in src/shaders into .bin.h"),
-        .website_gen_step = b.step("script:website-generate", "Generate the static JSON for the website"),
-        .website_build_step = b.step("script:website-build", "Build the website"),
-        .website_dev_step = b.step("script:website-dev", "Start website dev build locally"),
-        .website_promote_step = b.step("script:website-promote-beta-to-stable", "Promote the 'beta' documentation to be the latest stable version"),
-        .install_all_step = b.step("install:all", "Install all; development files as well as plugins"),
+        .website_gen = b.step("script:website-generate", "Generate the static JSON for the website"),
+        .website_build = b.step("script:website-build", "Build the website"),
+        .website_dev = b.step("script:website-dev", "Start website dev build locally"),
+        .website_promote = b.step("script:website-promote-beta-to-stable", "Promote the 'beta' documentation to be the latest stable version"),
+        .install_all = b.step("install:all", "Install all; development files as well as plugins"),
     };
 
     b.default_step = top_level_steps.compile_all;
-    top_level_steps.install_all_step.dependOn(b.getInstallStep());
+    top_level_steps.install_all.dependOn(b.getInstallStep());
 
     b.build_root.handle.makeDir(constants.floe_cache_relative) catch {};
 
@@ -565,11 +565,11 @@ pub fn build(b: *std.Build) void {
         if (b.graph.host.result.os.tag == .windows) exe.linkLibC(); // GetTempPath2W
 
         addRunScript(exe, top_level_steps.format_step, "format");
-        addRunScript(exe, top_level_steps.gh_release_step, "create-gh-release");
-        addRunScript(exe, top_level_steps.upload_errors_step, "upload-errors");
-        addRunScript(exe, top_level_steps.ci_step, "ci");
-        addRunScript(exe, top_level_steps.ci_basic_step, "ci-basic");
-        addRunScript(exe, top_level_steps.website_promote_step, "website-promote-beta-to-stable");
+        addRunScript(exe, top_level_steps.release_step, "create-gh-release");
+        addRunScript(exe, top_level_steps.upload_errors, "upload-errors");
+        addRunScript(exe, top_level_steps.ci, "ci");
+        addRunScript(exe, top_level_steps.ci_basic, "ci-basic");
+        addRunScript(exe, top_level_steps.website_promote, "website-promote-beta-to-stable");
     }
 
     // Shader compiler.
@@ -643,7 +643,7 @@ pub fn build(b: *std.Build) void {
 
             const copy = b.addUpdateSourceFiles();
             copy.addCopyFileToSource(run.captureStdOut(), "website/static/generated-data.json");
-            top_level_steps.website_gen_step.dependOn(&copy.step);
+            top_level_steps.website_gen.dependOn(&copy.step);
         }
 
         // Build the site for production
@@ -657,11 +657,11 @@ pub fn build(b: *std.Build) void {
             const run = std_extras.createCommandWithStdoutToStderr(b, builtin.target, "run docusaurus build");
             run.addArgs(&.{ "npm", "run", "build" });
             run.setCwd(b.path("website"));
-            run.step.dependOn(top_level_steps.website_gen_step);
+            run.step.dependOn(top_level_steps.website_gen);
             run.step.dependOn(&npm_install.step);
             run.step.dependOn(&create_api.step);
             run.expectExitCode(0);
-            top_level_steps.website_build_step.dependOn(&run.step);
+            top_level_steps.website_build.dependOn(&run.step);
         }
 
         // Start the website locally
@@ -673,10 +673,10 @@ pub fn build(b: *std.Build) void {
             const run = std_extras.createCommandWithStdoutToStderr(b, builtin.target, "run docusaurus start");
             run.addArgs(&.{ "npm", "run", "start" });
             run.setCwd(b.path("website"));
-            run.step.dependOn(top_level_steps.website_gen_step);
+            run.step.dependOn(top_level_steps.website_gen);
             run.step.dependOn(&npm_install.step);
 
-            top_level_steps.website_dev_step.dependOn(&run.step);
+            top_level_steps.website_dev.dependOn(&run.step);
         }
     }
 }
@@ -2740,7 +2740,7 @@ fn doTarget(
         );
 
         const install = ctx.b.addInstallBinFile(codesigned_exe, exe.out_filename);
-        top_level_steps.install_all_step.dependOn(&install.step);
+        top_level_steps.install_all.dependOn(&install.step);
 
         break :blk release_artifacts.Artifact{
             .out_filename = exe.out_filename,
@@ -2755,7 +2755,7 @@ fn doTarget(
         });
 
         const install = ctx.b.addInstallArtifact(exe, .{});
-        top_level_steps.install_all_step.dependOn(&install.step);
+        top_level_steps.install_all.dependOn(&install.step);
 
         // IMPROVE: export preset-editor as a production artifact?
     }
@@ -2781,7 +2781,7 @@ fn doTarget(
         const exe = buildStandalone(ctx, &cfg, .{ .plugin = plugin });
 
         const install = ctx.b.addInstallArtifact(exe, .{});
-        top_level_steps.install_all_step.dependOn(&install.step);
+        top_level_steps.install_all.dependOn(&install.step);
     }
 
     const vst3_sdk = buildVst3Sdk(ctx, &cfg);
@@ -2916,7 +2916,7 @@ fn doTarget(
                 );
 
                 const install = ctx.b.addInstallBinFile(codesigned_exe, exe.out_filename);
-                top_level_steps.install_all_step.dependOn(&install.step);
+                top_level_steps.install_all.dependOn(&install.step);
 
                 break :blk2 .{
                     .step = exe,
@@ -2960,7 +2960,7 @@ fn doTarget(
             // Install
             {
                 const install = ctx.b.addInstallBinFile(codesigned_path, installer.out_filename);
-                top_level_steps.install_all_step.dependOn(&install.step);
+                top_level_steps.install_all.dependOn(&install.step);
             }
 
             break :blk release_artifacts.Artifact{
@@ -2980,7 +2980,7 @@ fn doTarget(
         const test_binary = configure_binaries.nix_helper.maybePatchElfExecutable(exe);
 
         const install = ctx.b.addInstallBinFile(test_binary, exe.out_filename);
-        top_level_steps.install_all_step.dependOn(&install.step);
+        top_level_steps.install_all.dependOn(&install.step);
 
         const add_tests_args = struct {
             pub fn do(run: *std.Build.Step.Run, clap_plugin: ?configure_binaries.ConfiguredPlugin) void {
