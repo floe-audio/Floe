@@ -1163,6 +1163,7 @@ fn bgfxFlags(ctx: *const BuildContext, cfg: *const TargetConfig) []const []const
         ctx.b.fmt("-DBX_CONFIG_DEBUG={}", .{@intFromBool(ctx.build_mode == .development)}),
         "-std=c++20",
         "-fno-sanitize=all",
+        "-Wno-date-time",
         "-fno-strict-aliasing",
         "-fno-exceptions",
         "-fno-rtti",
