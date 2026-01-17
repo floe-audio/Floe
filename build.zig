@@ -1297,8 +1297,9 @@ fn buildBgfx(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
 
     switch (cfg.target.os.tag) {
         .linux => {
-            lib.linkSystemLibrary("X11");
-            lib.linkSystemLibrary("vulkan");
+            lib.linkSystemLibrary2("x11", .{ .use_pkg_config = linux_use_pkg_config });
+            lib.linkSystemLibrary2("xcb", .{ .use_pkg_config = linux_use_pkg_config });
+            lib.linkSystemLibrary2("vulkan", .{ .use_pkg_config = linux_use_pkg_config });
         },
         .windows => {
             lib.addIncludePath(ctx.dep_bgfx.path("3rdparty/directx-headers/include/directx"));
@@ -2880,7 +2881,7 @@ fn doTarget(
                                 .check = std.ArrayListUnmanaged(std.Build.Step.Run.StdIo.Check).empty,
                             };
 
-                            ctx.auval.dependOn(&cmd.step);
+                            top_level_steps.auval.dependOn(&cmd.step);
                         }
 
                         top_level_steps.auval.dependOn(&run_auval.step);
@@ -3132,7 +3133,7 @@ fn doTarget(
     // clang-tidy
     {
         const clang_tidy_step = check_steps.ClangTidyStep.create(ctx.b, cfg.target);
-        clang_tidy_step.step.dependOn(&cfg.concat_cdb.step);
+        clang_tidy_step.step.dependOn(top_level_steps.compile_all);
         top_level_steps.clang_tidy.dependOn(&clang_tidy_step.step);
     }
 
