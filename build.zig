@@ -498,7 +498,7 @@ pub fn build(b: *std.Build) void {
 
     const top_level_steps: TopLevelSetps = .{
         .compile_all = b.step("compile", "Compile all"),
-        .release = b.step("release", "Create release artifacts"),
+        .build_release = b.step("release", "Create release artifacts (zipped, codesigned, etc.)"),
         .test_step = b.step("test", "Run unit tests"),
         .coverage = b.step("test-coverage", "Generate code coverage report of unit tests"),
         .clap_val = b.step("test:clap-val", "Test using clap-validator"),
@@ -510,7 +510,7 @@ pub fn build(b: *std.Build) void {
         .test_windows_install = b.step("test:windows-install", "Test installation and uninstallation on Windows"),
         .clang_tidy = b.step("check:clang-tidy", "Run clang-tidy on source files"),
         .format_step = b.step("script:format", "Format code with clang-format"),
-        .release_step = b.step("script:create-gh-release", "Create a GitHub release"),
+        .create_gh_release = b.step("script:create-gh-release", "Create a GitHub release"),
         .ci = b.step("script:ci", "Run CI checks"),
         .ci_basic = b.step("script:ci-basic", "Run basic CI checks"),
         .upload_errors = b.step("script:upload-errors", "Upload error reports to Sentry"),
@@ -519,6 +519,7 @@ pub fn build(b: *std.Build) void {
         .website_build = b.step("script:website-build", "Build the website"),
         .website_dev = b.step("script:website-dev", "Start website dev build locally"),
         .website_promote = b.step("script:website-promote-beta-to-stable", "Promote the 'beta' documentation to be the latest stable version"),
+        .install_plugins = b.getInstallStep(),
         .install_all = b.step("install:all", "Install all; development files as well as plugins"),
     };
 
@@ -565,7 +566,7 @@ pub fn build(b: *std.Build) void {
         if (b.graph.host.result.os.tag == .windows) exe.linkLibC(); // GetTempPath2W
 
         addRunScript(exe, top_level_steps.format_step, "format");
-        addRunScript(exe, top_level_steps.release_step, "create-gh-release");
+        addRunScript(exe, top_level_steps.create_gh_release, "create-gh-release");
         addRunScript(exe, top_level_steps.upload_errors, "upload-errors");
         addRunScript(exe, top_level_steps.ci, "ci");
         addRunScript(exe, top_level_steps.ci_basic, "ci-basic");
@@ -611,7 +612,7 @@ pub fn build(b: *std.Build) void {
                 targets.items[i].result,
                 artifacts,
             );
-            top_level_steps.release.dependOn(install_steps);
+            top_level_steps.build_release.dependOn(install_steps);
         }
     }
 
@@ -2764,12 +2765,14 @@ fn doTarget(
         if (!options.sanitize_thread) {
             const dso = buildClap(ctx, &cfg, .{ .plugin = plugin });
 
-            break :blk configure_binaries.addConfiguredPlugin(
+            const clap = configure_binaries.addConfiguredPlugin(
                 ctx.b,
                 .clap,
                 dso,
                 configure_binaries.CodesignInfo{ .description = "Floe CLAP Plugin" },
             );
+            top_level_steps.install_plugins.dependOn(clap.install_step);
+            break :blk clap;
         } else {
             break :blk null;
         }
@@ -2792,29 +2795,30 @@ fn doTarget(
 
     const configured_vst3: ?configure_binaries.ConfiguredPlugin = blk: {
         if (!options.sanitize_thread) {
-            const vst3 = buildVst3(ctx, &cfg, .{
+            const dso = buildVst3(ctx, &cfg, .{
                 .vst3_sdk = vst3_sdk,
                 .plugin = plugin,
             });
 
-            const configured_vst3 = configure_binaries.addConfiguredPlugin(
+            const vst3 = configure_binaries.addConfiguredPlugin(
                 ctx.b,
                 .vst3,
-                vst3,
+                dso,
                 configure_binaries.CodesignInfo{ .description = "Floe VST3 Plugin" },
             );
+            top_level_steps.install_plugins.dependOn(vst3.install_step);
 
             // Test VST3
             {
                 const run_tests = std_extras.createCommandWithStdoutToStderr(ctx.b, cfg.target, "run VST3-Validator");
                 run_tests.addFileArg(configure_binaries.nix_helper.maybePatchElfExecutable(vst3_validator));
-                configured_vst3.addToRunStepArgs(run_tests);
+                vst3.addToRunStepArgs(run_tests);
                 run_tests.expectExitCode(0);
 
                 top_level_steps.test_vst3_validator.dependOn(&run_tests.step);
             }
 
-            break :blk configured_vst3;
+            break :blk vst3;
         } else {
             top_level_steps.test_vst3_validator.dependOn(&ctx.b.addFail("VST3 tests not allowed with this configuration").step);
             break :blk null;
@@ -2823,9 +2827,10 @@ fn doTarget(
 
     const configured_au: ?configure_binaries.ConfiguredPlugin = blk: {
         if (cfg.target.os.tag == .macos and !options.sanitize_thread) {
-            const au = buildAu(ctx, &cfg, .{ .plugin = plugin });
+            const dso = buildAu(ctx, &cfg, .{ .plugin = plugin });
 
-            const configured_au = configure_binaries.addConfiguredPlugin(ctx.b, .au, au, null);
+            const au = configure_binaries.addConfiguredPlugin(ctx.b, .au, dso, null);
+            top_level_steps.install_plugins.dependOn(au.install_step);
 
             if (builtin.os.tag == .macos) {
                 if (std.mem.endsWith(u8, std.mem.trimRight(u8, ctx.b.install_path, "/"), "Library/Audio/Plug-Ins")) {
@@ -2840,7 +2845,7 @@ fn doTarget(
 
                         run.addArgs(&.{ "--validate", installed_au_path });
 
-                        run.step.dependOn(configured_au.install_step);
+                        run.step.dependOn(au.install_step);
                         run.expectExitCode(0);
 
                         top_level_steps.pluginval_au.dependOn(&run.step);
@@ -2856,7 +2861,7 @@ fn doTarget(
                             constants.floe_au_subtype,
                             constants.floe_au_manufacturer_code,
                         });
-                        run_auval.step.dependOn(configured_au.install_step);
+                        run_auval.step.dependOn(au.install_step);
                         run_auval.expectExitCode(0);
 
                         // We need to make sure that the audio component service is aware of the new AU.
@@ -2892,7 +2897,7 @@ fn doTarget(
                 top_level_steps.auval.dependOn(&fail.step);
             }
 
-            break :blk configured_au;
+            break :blk au;
         } else {
             const fail = ctx.b.addFail("AU tests not allowed with this configuration");
             top_level_steps.pluginval_au.dependOn(&fail.step);

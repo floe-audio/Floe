@@ -60,7 +60,13 @@ pub const BuildContext = struct {
 
 pub const TopLevelSteps = struct {
     compile_all: *std.Build.Step,
-    release: *std.Build.Step,
+
+    // Installs.
+    build_release: *std.Build.Step,
+    install_plugins: *std.Build.Step, // only plugins
+    install_all: *std.Build.Step, // everything, dev tools as well
+
+    // Tests.
     test_step: *std.Build.Step,
     coverage: *std.Build.Step,
     clap_val: *std.Build.Step,
@@ -70,18 +76,19 @@ pub const TopLevelSteps = struct {
     pluginval: *std.Build.Step,
     valgrind: *std.Build.Step,
     test_windows_install: *std.Build.Step,
-    clang_tidy: *std.Build.Step,
-    format_step: *std.Build.Step,
-    release_step: *std.Build.Step,
     ci: *std.Build.Step,
     ci_basic: *std.Build.Step,
+
+    // Scripts.
+    clang_tidy: *std.Build.Step,
+    format_step: *std.Build.Step,
+    create_gh_release: *std.Build.Step,
     upload_errors: *std.Build.Step,
     shaderc: *std.Build.Step,
     website_gen: *std.Build.Step,
     website_build: *std.Build.Step,
     website_dev: *std.Build.Step,
     website_promote: *std.Build.Step,
-    install_all: *std.Build.Step,
 };
 
 pub const TargetConfig = struct {
