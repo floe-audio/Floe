@@ -286,19 +286,26 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
 
     platform.draw_backend = ({
         graphics::DrawContextBackend b {};
-        if constexpr (IS_WINDOWS) b = graphics::DrawContextBackend::Bgfx;
-        if constexpr (IS_LINUX) b = graphics::DrawContextBackend::Bgfx;
-        if constexpr (IS_MACOS) {
-            // bgfx only supports macOS 13 (Darwin version 22) and above. We use our old OpenGL backend
-            // for older systems.
-            auto const darwin_version = GetOsInfo().kernel_version;
-            // We've only ever seen kernel_version in the format x.x.x, so we can reasonably assume a new
-            // format that we can't parse is newer.
-            auto const major = ParseInt(darwin_version, ParseIntBase::Decimal);
-            if (!major || major.Value() >= 22)
-                b = graphics::DrawContextBackend::Bgfx;
-            else
-                b = graphics::DrawContextBackend::OpenGl;
+
+        constexpr bool k_use_experimental_bgfx = false;
+        if constexpr (k_use_experimental_bgfx) {
+            if constexpr (IS_WINDOWS) b = graphics::DrawContextBackend::Bgfx;
+            if constexpr (IS_LINUX) b = graphics::DrawContextBackend::Bgfx;
+            if constexpr (IS_MACOS) {
+                // bgfx only supports macOS 13 (Darwin version 22) and above. We use our old OpenGL backend
+                // for older systems. We've only ever seen kernel_version in the format x.x.x, so we can
+                // reasonably assume that this simple parsing will work. If it doesn't, it's likely something
+                // newer.
+                auto const darwin_version = ParseInt(GetOsInfo().kernel_version, ParseIntBase::Decimal);
+                if (!darwin_version || darwin_version.Value() >= 22)
+                    b = graphics::DrawContextBackend::Bgfx;
+                else
+                    b = graphics::DrawContextBackend::OpenGl;
+            }
+        } else {
+            if constexpr (IS_WINDOWS) b = graphics::DrawContextBackend::Direct3D9;
+            if constexpr (IS_MACOS) b = graphics::DrawContextBackend::OpenGl;
+            if constexpr (IS_LINUX) b = graphics::DrawContextBackend::OpenGl;
         }
         b;
     });
