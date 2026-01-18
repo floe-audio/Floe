@@ -432,6 +432,11 @@ ErrorCodeOr<void> ReaderInit(PackageReader& package) {
     package.zip.m_pRead =
         [](void* io_opaque_ptr, mz_uint64 file_offset, void* buffer, usize buffer_size) -> usize {
         auto& package = *(PackageReader*)io_opaque_ptr;
+        // Seen in production: truncated/corrupted ZIPs with offsets beyond actual file size.
+        if (file_offset > package.zip_file_reader.size) {
+            package.read_callback_error = ErrorCode(PackageError::FileCorrupted);
+            return 0;
+        }
         package.zip_file_reader.pos = file_offset;
         auto const num_read = TRY_OR(package.zip_file_reader.Read(buffer, buffer_size), {
             // We store the error because we can't pass it out in the return value.
