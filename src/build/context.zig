@@ -112,13 +112,10 @@ pub const TargetConfig = struct {
             break :blk hasher.final();
         };
 
-        // To better avoid collisions when multiple 'zig build' processes are running simultaneously we use a
-        // unique hash based on the config.
         const cdb_dir = blk: {
-            const path = ctx.b.fmt("tmp{s}cdb{x}", .{
-                std.fs.path.sep_str,
-                config_hash,
-            });
+            // To better avoid collisions when multiple 'zig build' processes are running simultaneously we use a
+            // unique hash based on the config.
+            const path = ctx.b.fmt("tmp{s}cdb{x}", .{ std.fs.path.sep_str, config_hash });
             ctx.b.cache_root.handle.makePath(path) catch |err| {
                 std.debug.print("failed to make fragments path: {any}\n", .{err});
             };

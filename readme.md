@@ -37,7 +37,7 @@ To build an optimised release binaries, do something like `zig build install -Db
 
 We support cross-compiling using the `-Dtargets=` option. So for example you can compile the Windows and macOS plugins on a Linux machine. Valid targets are `x86_64-windows`, `x86_64-linux`, `x86_64-macos` and `aarch64-macos`. You can specify multiple targets separated by commas. Note that we don't support cross-compiling to Linux from any OS; you need to be on Linux to build Linux binaries at the moment.
 
-Building on Linux, you will need libraries for curl, x11, OpenGL and GLX (handled automatically in the Nix environment); these are also normally installed by default on your distro. Runtime dependencies are `xdg-open` and `zenity`.
+Building on Linux, you will need libraries for curl, x11, OpenGL, GLX, Vulkan (handled automatically in the Nix environment); these are also normally installed by default on your distro. Runtime dependencies are `xdg-open` and `zenity`.
 
 ### Testing
 Run `zig build test` to run the unit tests. Add arguments after `--` to configure our test runner's command-line options. We also have easy to use testing using pluginval, vst3-validator, clap-validator, valgrind, thread sanitizer, clang-tidy; see `zig build --help`.
