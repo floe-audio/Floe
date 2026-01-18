@@ -437,7 +437,6 @@ void ShutdownStacktraceState() {
 }
 
 static void SkipUntil(StacktraceStack& stack, uintptr pc) {
-    ASSERT(pc);
     for (auto const i : Range(stack.size))
         if (stack[i] == pc) {
             dyn::Remove(stack, 0, i);
