@@ -468,8 +468,6 @@ Optional<StacktraceStack> CurrentStacktrace(StacktraceSkipOptions skip) {
             break;
     }
 
-    if (auto const pc = skip.TryGet<ProgramCounter>()) SkipUntil(result, (uintptr)*pc);
-
     return result;
 }
 
