@@ -573,7 +573,7 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
         }
 
         if (auto hook = g_crash_hook.Load(LoadMemoryOrder::Acquire)) {
-            auto const stacktrace = GetInterruptedStackTrace((ucontext_t*)(context));
+            auto const stacktrace = GetInterruptedStackTrace((ucontext_t*)context);
             hook(signal_description, stacktrace);
         }
 
