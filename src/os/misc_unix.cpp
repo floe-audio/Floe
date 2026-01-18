@@ -483,6 +483,8 @@ static bool IsValidMemoryAddress(void* addr) {
 static StacktraceStack GetInterruptedStackTrace(ucontext_t* uctx) {
     StacktraceStack result;
 
+    if (!uctx) return {};
+
     uintptr crash_pc = 0;
     uintptr fp = 0;
     uintptr sp = 0;
