@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 const std = @import("std");
-const ConcatCompileCommandsStep = @import("ConcatCompileCommandsStep.zig");
 const constants = @import("constants.zig");
 
 pub const BuildMode = enum {
@@ -56,11 +55,12 @@ pub const BuildContext = struct {
     dep_bx: *std.Build.Dependency,
     dep_bimg: *std.Build.Dependency,
     dep_bgfx: *std.Build.Dependency,
+
+    // The compile-all top-level step is special in that it lives on the context.
+    compile_all: *std.Build.Step,
 };
 
 pub const TopLevelSteps = struct {
-    compile_all: *std.Build.Step,
-
     // Installs.
     build_release: *std.Build.Step,
     install_plugins: *std.Build.Step, // only plugins
@@ -96,7 +96,6 @@ pub const TargetConfig = struct {
         ctx: *const BuildContext,
         resolved_target: std.Build.ResolvedTarget,
         options: *const Options,
-        set_as_cdb: bool,
     ) TargetConfig {
         const target = resolved_target.result;
         // Create a unique hash for this configuration. We use when we need to unique generate folders even when
@@ -112,6 +111,20 @@ pub const TargetConfig = struct {
             hasher.update(std.mem.asBytes(&options.windows_installer_require_admin));
             break :blk hasher.final();
         };
+
+        // To better avoid collisions when multiple 'zig build' processes are running simultaneously we use a
+        // unique hash based on the config.
+        const cdb_dir = blk: {
+            const path = ctx.b.fmt("tmp{s}cdb{x}", .{
+                std.fs.path.sep_str,
+                config_hash,
+            });
+            ctx.b.cache_root.handle.makePath(path) catch |err| {
+                std.debug.print("failed to make fragments path: {any}\n", .{err});
+            };
+            break :blk path;
+        };
+
         const bgfx_api: BgfxApi = switch (resolved_target.result.os.tag) {
             .windows => .direct3d11,
             .macos => .metal,
@@ -119,7 +132,6 @@ pub const TargetConfig = struct {
             else => .vulkan,
         };
         const result: TargetConfig = .{
-            .concat_cdb = ConcatCompileCommandsStep.create(ctx.b, target, set_as_cdb, config_hash),
             .floe_config_h = ctx.b.addConfigHeader(.{
                 .style = .blank,
             }, .{
@@ -168,15 +180,18 @@ pub const TargetConfig = struct {
             .resolved_target = resolved_target,
             .target = resolved_target.result,
             .bgfx_api = bgfx_api,
+            .cdb_fragments_dir = cdb_dir,
+            .cdb_fragments_dir_real = ctx.b.cache_root.handle.realpathAlloc(ctx.b.allocator, cdb_dir) catch unreachable,
         };
 
         return result;
     }
 
-    concat_cdb: *ConcatCompileCommandsStep,
     floe_config_h: *std.Build.Step.ConfigHeader,
     module_options: std.Build.Module.CreateOptions,
     resolved_target: std.Build.ResolvedTarget,
     target: std.Target,
     bgfx_api: BgfxApi,
+    cdb_fragments_dir: []const u8,
+    cdb_fragments_dir_real: []const u8,
 };

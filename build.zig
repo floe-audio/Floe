@@ -6,7 +6,7 @@ const builtin = @import("builtin");
 
 const std_extras = @import("src/build/std_extras.zig");
 const constants = @import("src/build/constants.zig");
-const ConcatCompileCommandsStep = @import("src/build/ConcatCompileCommandsStep.zig");
+const cdb = @import("src/build/combine_cdb_fragments.zig");
 const check_steps = @import("src/build/check_steps.zig");
 const configure_binaries = @import("src/build/configure_binaries.zig");
 const release_artifacts = @import("src/build/release_artifacts.zig");
@@ -15,7 +15,7 @@ const build_context = @import("src/build/context.zig");
 
 const BuildContext = build_context.BuildContext;
 const Options = build_context.Options;
-const TopLevelSetps = build_context.TopLevelSteps;
+const TopLevelSteps = build_context.TopLevelSteps;
 const TargetConfig = build_context.TargetConfig;
 
 comptime {
@@ -33,10 +33,19 @@ const FlagsBuilder = struct {
     flags: std.ArrayList([]const u8),
 
     const Options = struct {
+        // Enable undefined behaviour sanitizer.
         ubsan: bool = false,
-        add_compile_commands: bool = false,
+
+        // Generate JSON fragments for making compile_commands.json.
+        gen_cdb_fragments: bool = false,
+
+        // Reduce size of windows.h to speed up compilation. Although it can sometimes cut too much.
         minimise_windows: bool = true,
+
+        // Add all reasonable warnings as possible.
         all_warnings: bool = false,
+
+        // Language modes.
         cpp: bool = false,
         objcpp: bool = false,
     };
@@ -211,9 +220,8 @@ const FlagsBuilder = struct {
             try self.flags.append("-fobjc-arc");
         }
 
-        if (options.add_compile_commands) {
-            try cfg.concat_cdb.addClangArgument(&self.flags);
-        }
+        if (options.gen_cdb_fragments)
+            try cdb.addGenerateCdbFragmentFlags(&self.flags, cfg.cdb_fragments_dir_real);
 
         //
         // Library specific flags.
@@ -259,7 +267,6 @@ const FlagsBuilder = struct {
 fn applyUniversalSettings(
     ctx: *const BuildContext,
     step: *std.Build.Step.Compile,
-    compile_commands: *ConcatCompileCommandsStep,
 ) void {
     var b = ctx.b;
     // NOTE (May 2025, Zig 0.14): LTO on Windows results in debug_info generation that fails to parse with Zig's
@@ -308,7 +315,7 @@ fn applyUniversalSettings(
         }
     }
 
-    compile_commands.step.dependOn(&step.step);
+    ctx.compile_all.dependOn(&step.step);
 
     if (step.rootModuleTarget().os.tag == .macos and step.kind == .exe) {
         // TODO: is dsymutil step needed
@@ -494,11 +501,16 @@ pub fn build(b: *std.Build) void {
         .dep_bx = b.dependency("bx", .{}),
         .dep_bimg = b.dependency("bimg", .{}),
         .dep_bgfx = b.dependency("bgfx", .{}),
+
+        // Steps are normally on TopLevelSteps, but compile-all is a special case.
+        .compile_all = b.step("compile", "Compile all"),
     };
 
-    const top_level_steps: TopLevelSetps = .{
-        .compile_all = b.step("compile", "Compile all"),
+    var top_level_steps: TopLevelSteps = .{
         .build_release = b.step("release", "Create release artifacts (zipped, codesigned, etc.)"),
+        .install_plugins = b.getInstallStep(),
+        .install_all = b.step("install:all", "Install all; development files as well as plugins"),
+
         .test_step = b.step("test", "Run unit tests"),
         .coverage = b.step("test-coverage", "Generate code coverage report of unit tests"),
         .clap_val = b.step("test:clap-val", "Test using clap-validator"),
@@ -508,23 +520,25 @@ pub fn build(b: *std.Build) void {
         .pluginval = b.step("test:pluginval", "Test using pluginval"),
         .valgrind = b.step("test:valgrind", "Test using Valgrind"),
         .test_windows_install = b.step("test:windows-install", "Test installation and uninstallation on Windows"),
+        .ci = b.step("script:ci", "Run CI checks"),
+        .ci_basic = b.step("script:ci-basic", "Run basic CI checks"),
+
         .clang_tidy = b.step("check:clang-tidy", "Run clang-tidy on source files"),
         .format_step = b.step("script:format", "Format code with clang-format"),
         .create_gh_release = b.step("script:create-gh-release", "Create a GitHub release"),
-        .ci = b.step("script:ci", "Run CI checks"),
-        .ci_basic = b.step("script:ci-basic", "Run basic CI checks"),
         .upload_errors = b.step("script:upload-errors", "Upload error reports to Sentry"),
         .shaderc = b.step("script:shaderc", "Compile shaders in src/shaders into .bin.h"),
         .website_gen = b.step("script:website-generate", "Generate the static JSON for the website"),
         .website_build = b.step("script:website-build", "Build the website"),
         .website_dev = b.step("script:website-dev", "Start website dev build locally"),
         .website_promote = b.step("script:website-promote-beta-to-stable", "Promote the 'beta' documentation to be the latest stable version"),
-        .install_plugins = b.getInstallStep(),
-        .install_all = b.step("install:all", "Install all; development files as well as plugins"),
     };
 
-    b.default_step = top_level_steps.compile_all;
-    top_level_steps.install_all.dependOn(b.getInstallStep());
+    // The default is to compile everything.
+    b.default_step = ctx.compile_all;
+
+    // Include all plugin installation as part of 'install:all'
+    top_level_steps.install_all.dependOn(top_level_steps.install_plugins);
 
     b.build_root.handle.makeDir(constants.floe_cache_relative) catch {};
 
@@ -534,24 +548,42 @@ pub fn build(b: *std.Build) void {
     // final compile_commands.json. We just say the first one.
     const target_for_compile_commands = targets.items[0];
 
+    // We do something a little sneaky. We actual replace all the top-level steps with a hidden
+    // combine-CDB step. The rest of the code can carry on as if it's still the top level step, but
+    // it means that the combining of CDG fragments happens as the last step without the rest of the
+    // code having to worry about it.
+    var cdb_steps = std.ArrayList(*cdb.CombineCdbFragmentsStep).init(b.allocator);
+    cdb.insertHiddenCombineCdbStep(b, &ctx.compile_all, &cdb_steps);
+    inline for (@typeInfo(TopLevelSteps).@"struct".fields) |field| {
+        cdb.insertHiddenCombineCdbStep(b, &@field(&top_level_steps, field.name), &cdb_steps);
+    }
+
     // We'll try installing the desired compile_commands.json version here in case any previous build already
     // created it.
-    ConcatCompileCommandsStep.trySetCdb(b, target_for_compile_commands.result);
-
-    check_steps.addGlobalCheckSteps(b);
+    cdb.trySetCdb(b, target_for_compile_commands.result);
 
     const artifacts_list = b.allocator.alloc(release_artifacts.Artifacts, targets.items.len) catch @panic("OOM");
 
+    // Compile/install steps
     for (targets.items, 0..) |target, i| {
-        const artifacts = doTarget(
-            &ctx,
-            target,
-            target.query.eql(target_for_compile_commands.query),
-            &top_level_steps,
-            &options,
-        );
-        artifacts_list[i] = artifacts;
+        if (target.result.os.tag == .windows and options.sanitize_thread)
+            @panic("thread sanitiser is not supported on Windows targets");
+
+        const cfg = TargetConfig.create(&ctx, target, &options);
+
+        for (cdb_steps.items) |cdb_step| {
+            cdb_step.addTarget(.{
+                .fragments_dir = cfg.cdb_fragments_dir,
+                .target = cfg.target,
+                .set_as_active = target.query.eql(target_for_compile_commands.query),
+            }) catch unreachable;
+        }
+
+        artifacts_list[i] = doTarget(&ctx, &cfg, &top_level_steps, &options);
     }
+
+    // check:* steps.
+    check_steps.addGlobalCheckSteps(b);
 
     // Build scripts CLI program and add script steps
     {
@@ -584,7 +616,7 @@ pub fn build(b: *std.Build) void {
         else
             b.graph.host;
 
-        const cfg = TargetConfig.create(&ctx, target, &options, false);
+        const cfg = TargetConfig.create(&ctx, target, &options);
 
         const shaderc = bgfx_shaderc.buildShaderC(&ctx, &cfg, .{
             .bx = buildBx(&ctx, &cfg),
@@ -598,7 +630,7 @@ pub fn build(b: *std.Build) void {
         const archiver = blk: {
             if (ctx.native_archiver) |a| break :blk a;
 
-            const native_target_cfg = TargetConfig.create(&ctx, b.graph.host, &options, false);
+            const native_target_cfg = TargetConfig.create(&ctx, b.graph.host, &options);
             break :blk buildArchiver(&ctx, &native_target_cfg, .{
                 .miniz = buildMiniz(&ctx, &native_target_cfg),
             });
@@ -621,7 +653,7 @@ pub fn build(b: *std.Build) void {
         const docs_generator = blk: {
             if (ctx.native_docs_generator) |d| break :blk d;
 
-            const native_target_cfg = TargetConfig.create(&ctx, b.graph.host, &options, false);
+            const native_target_cfg = TargetConfig.create(&ctx, b.graph.host, &options);
             break :blk buildDocsGenerator(&ctx, &native_target_cfg, .{
                 .common_infrastructure = buildCommonInfrastructure(&ctx, &native_target_cfg, .{
                     .dr_wav = buildDrWav(&ctx, &native_target_cfg),
@@ -690,7 +722,7 @@ fn buildStbSprintf(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Buil
     obj.addCSourceFile(.{
         .file = ctx.b.path("third_party_libs/stb_sprintf.c"),
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
     obj.addIncludePath(ctx.dep_stb.path(""));
@@ -705,7 +737,7 @@ fn buildXxhash(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.St
     obj.addCSourceFile(.{
         .file = ctx.dep_xxhash.path("xxhash.c"),
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
     obj.linkLibC();
@@ -720,7 +752,7 @@ fn buildTracy(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Ste
     lib.addCSourceFile(.{
         .file = ctx.dep_tracy.path("public/TracyClient.cpp"),
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
 
@@ -735,7 +767,7 @@ fn buildTracy(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Ste
         },
     }
     lib.linkLibCpp();
-    applyUniversalSettings(ctx, lib, cfg.concat_cdb);
+    applyUniversalSettings(ctx, lib);
 
     return lib;
 }
@@ -770,7 +802,7 @@ fn buildVitfx(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Ste
             "wrapper.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
     lib.addIncludePath(ctx.b.path(path ++ "/src/synthesis"));
@@ -794,7 +826,7 @@ fn buildPugl(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step
     const pugl_ver_hash = std.hash.Fnv1a_32.hash(ctx.dep_pugl.builder.pkg_hash);
 
     const pugl_flags = FlagsBuilder.init(ctx, cfg, .{
-        .add_compile_commands = true,
+        .gen_cdb_fragments = true,
         .minimise_windows = false,
     }).flags.items;
 
@@ -866,7 +898,7 @@ fn buildPugl(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step
     lib.root_module.addCMacro("PUGL_DISABLE_DEPRECATED", "1");
     lib.root_module.addCMacro("PUGL_STATIC", "1");
 
-    applyUniversalSettings(ctx, lib, cfg.concat_cdb);
+    applyUniversalSettings(ctx, lib);
 
     return lib;
 }
@@ -939,7 +971,7 @@ fn buildFloeLibrary(ctx: *const BuildContext, cfg: *const TargetConfig, deps: st
         .all_warnings = true,
         .ubsan = true,
         .cpp = true,
-        .add_compile_commands = true,
+        .gen_cdb_fragments = true,
     }).flags.items;
 
     switch (cfg.target.os.tag) {
@@ -969,7 +1001,7 @@ fn buildFloeLibrary(ctx: *const BuildContext, cfg: *const TargetConfig, deps: st
                     .all_warnings = true,
                     .ubsan = true,
                     .objcpp = true,
-                    .add_compile_commands = true,
+                    .gen_cdb_fragments = true,
                 }).flags.items,
             });
             lib.linkFramework("Cocoa");
@@ -992,7 +1024,7 @@ fn buildFloeLibrary(ctx: *const BuildContext, cfg: *const TargetConfig, deps: st
     lib.linkLibrary(deps.tracy);
     lib.addObject(deps.debug_info_lib);
     lib.addObject(deps.stb_sprintf);
-    applyUniversalSettings(ctx, lib, cfg.concat_cdb);
+    applyUniversalSettings(ctx, lib);
 
     return lib;
 }
@@ -1005,7 +1037,7 @@ fn buildStbImage(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.
     obj.addCSourceFile(.{
         .file = ctx.b.path("third_party_libs/stb_image_impls.c"),
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
     obj.addIncludePath(ctx.dep_stb.path(""));
@@ -1022,7 +1054,7 @@ fn buildDrWav(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Ste
         .{
             .file = ctx.b.path("third_party_libs/dr_wav_implementation.c"),
             .flags = FlagsBuilder.init(ctx, cfg, .{
-                .add_compile_commands = true,
+                .gen_cdb_fragments = true,
             }).flags.items,
         },
     );
@@ -1045,7 +1077,7 @@ fn buildMiniz(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Ste
             "miniz_zip.c",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
     lib.addIncludePath(ctx.dep_miniz.path(""));
@@ -1066,7 +1098,7 @@ fn buildArchiver(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struc
     });
     exe.linkLibrary(deps.miniz);
     exe.linkLibC();
-    applyUniversalSettings(ctx, exe, cfg.concat_cdb);
+    applyUniversalSettings(ctx, exe);
 
     return exe;
 }
@@ -1077,7 +1109,7 @@ fn buildFlac(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step
         .root_module = ctx.b.createModule(cfg.module_options),
     });
     const flags = FlagsBuilder.init(ctx, cfg, .{
-        .add_compile_commands = true,
+        .gen_cdb_fragments = true,
     }).flags.items;
 
     lib.addCSourceFiles(.{
@@ -1165,7 +1197,7 @@ fn buildFlac(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step
 fn bgfxFlags(ctx: *const BuildContext, cfg: *const TargetConfig) []const []const u8 {
     var flags_builder: FlagsBuilder = FlagsBuilder.init(ctx, cfg, .{
         .ubsan = false,
-        .add_compile_commands = true,
+        .gen_cdb_fragments = true,
     });
     flags_builder.addFlags(&[_][]const u8{
         ctx.b.fmt("-DBX_CONFIG_DEBUG={}", .{@intFromBool(ctx.build_mode == .development)}),
@@ -1213,7 +1245,7 @@ fn buildBx(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.C
         else => {},
     }
     lib.linkLibCpp();
-    applyUniversalSettings(ctx, lib, cfg.concat_cdb);
+    applyUniversalSettings(ctx, lib);
     return lib;
 }
 
@@ -1272,7 +1304,7 @@ fn buildBimg(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     lib.addIncludePath(ctx.dep_bimg.path("3rdparty"));
     lib.addIncludePath(ctx.dep_bimg.path("3rdparty/astc-encoder/include"));
     lib.linkLibCpp();
-    applyUniversalSettings(ctx, lib, cfg.concat_cdb);
+    applyUniversalSettings(ctx, lib);
 
     return lib;
 }
@@ -1321,7 +1353,7 @@ fn buildBgfx(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     lib.addIncludePath(ctx.dep_bgfx.path("include"));
     lib.addIncludePath(ctx.dep_bgfx.path("3rdparty"));
     lib.addIncludePath(ctx.dep_bgfx.path("3rdparty/khronos"));
-    applyUniversalSettings(ctx, lib, cfg.concat_cdb);
+    applyUniversalSettings(ctx, lib);
     return lib;
 }
 
@@ -1331,7 +1363,7 @@ fn buildFftConvolver(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Bu
         .root_module = ctx.b.createModule(cfg.module_options),
     });
     var flags_builder: FlagsBuilder = FlagsBuilder.init(ctx, cfg, .{
-        .add_compile_commands = true,
+        .gen_cdb_fragments = true,
     });
     if (cfg.target.os.tag == .macos) {
         lib.linkFramework("Accelerate");
@@ -1341,7 +1373,7 @@ fn buildFftConvolver(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Bu
         lib.addCSourceFile(.{
             .file = ctx.dep_pffft.path("pffft.c"),
             .flags = FlagsBuilder.init(ctx, cfg, .{
-                .add_compile_commands = true,
+                .gen_cdb_fragments = true,
             }).flags.items,
         });
         flags_builder.addFlag("-DAUDIOFFT_PFFFT");
@@ -1359,7 +1391,7 @@ fn buildFftConvolver(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Bu
     });
     lib.linkLibCpp();
     lib.addIncludePath(ctx.dep_pffft.path(""));
-    applyUniversalSettings(ctx, lib, cfg.concat_cdb);
+    applyUniversalSettings(ctx, lib);
 
     return lib;
 }
@@ -1432,7 +1464,7 @@ fn buildCommonInfrastructure(ctx: *const BuildContext, cfg: *const TargetConfig,
             .all_warnings = true,
             .ubsan = true,
             .cpp = true,
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
 
@@ -1444,7 +1476,7 @@ fn buildCommonInfrastructure(ctx: *const BuildContext, cfg: *const TargetConfig,
     lib.addIncludePath(src_root);
     lib.linkLibrary(deps.library);
     lib.linkLibrary(deps.miniz);
-    applyUniversalSettings(ctx, lib, cfg.concat_cdb);
+    applyUniversalSettings(ctx, lib);
 
     return lib;
 }
@@ -1506,7 +1538,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
         .all_warnings = true,
         .ubsan = true,
         .cpp = true,
-        .add_compile_commands = true,
+        .gen_cdb_fragments = true,
     }).flags.items;
 
     lib.addCSourceFiles(.{
@@ -1605,7 +1637,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
                     .all_warnings = true,
                     .ubsan = true,
                     .objcpp = true,
-                    .add_compile_commands = true,
+                    .gen_cdb_fragments = true,
                 }).flags.items,
             });
         },
@@ -1678,7 +1710,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
     lib.addObject(deps.stb_image);
     lib.addIncludePath(ctx.b.path("src/plugin/gui/live_edit_defs"));
     lib.linkLibrary(deps.vitfx);
-    applyUniversalSettings(ctx, lib, cfg.concat_cdb);
+    applyUniversalSettings(ctx, lib);
 
     return lib;
 }
@@ -1699,14 +1731,14 @@ fn buildDocsGenerator(ctx: *const BuildContext, cfg: *const TargetConfig, deps: 
             .all_warnings = true,
             .ubsan = true,
             .cpp = true,
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
     exe.root_module.addCMacro("FINAL_BINARY_TYPE", "DocsGenerator");
     exe.linkLibrary(deps.common_infrastructure);
     exe.addIncludePath(ctx.b.path("src"));
     exe.addConfigHeader(cfg.floe_config_h);
-    applyUniversalSettings(ctx, exe, cfg.concat_cdb);
+    applyUniversalSettings(ctx, exe);
 
     return exe;
 }
@@ -1729,7 +1761,7 @@ fn buildPackager(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struc
             .all_warnings = true,
             .ubsan = true,
             .cpp = true,
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
     exe.root_module.addCMacro("FINAL_BINARY_TYPE", "Packager");
@@ -1738,7 +1770,7 @@ fn buildPackager(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struc
     exe.addConfigHeader(cfg.floe_config_h);
     exe.addObject(deps.embedded_files);
 
-    applyUniversalSettings(ctx, exe, cfg.concat_cdb);
+    applyUniversalSettings(ctx, exe);
 
     return exe;
 }
@@ -1761,7 +1793,7 @@ fn buildPresetEditor(ctx: *const BuildContext, cfg: *const TargetConfig, deps: s
             .all_warnings = true,
             .ubsan = true,
             .cpp = true,
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
     exe.root_module.addCMacro("FINAL_BINARY_TYPE", "PresetEditor");
@@ -1769,7 +1801,7 @@ fn buildPresetEditor(ctx: *const BuildContext, cfg: *const TargetConfig, deps: s
     exe.addIncludePath(ctx.b.path("src"));
     exe.addConfigHeader(cfg.floe_config_h);
     exe.addObject(deps.embedded_files);
-    applyUniversalSettings(ctx, exe, cfg.concat_cdb);
+    applyUniversalSettings(ctx, exe);
     return exe;
 }
 
@@ -1790,7 +1822,7 @@ fn buildClap(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
             .all_warnings = true,
             .ubsan = true,
             .cpp = true,
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
     dso.root_module.addCMacro("FINAL_BINARY_TYPE", "Clap");
@@ -1798,7 +1830,7 @@ fn buildClap(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     dso.addIncludePath(ctx.b.path("src"));
     dso.linkLibrary(deps.plugin);
 
-    applyUniversalSettings(ctx, dso, cfg.concat_cdb);
+    applyUniversalSettings(ctx, dso);
     addWindowsEmbedInfo(dso, .{
         .name = "Floe CLAP",
         .description = constants.floe_description,
@@ -1819,7 +1851,7 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
         lib.addCSourceFile(.{
             .file = ctx.b.path("third_party_libs/miniaudio.c"),
             .flags = FlagsBuilder.init(ctx, cfg, .{
-                .add_compile_commands = true,
+                .gen_cdb_fragments = true,
             }).flags.items,
         });
         // NOTE(Sam): disabling pulse audio because it was causing lots of stutters on my machine.
@@ -1840,7 +1872,7 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
                 unreachable;
             },
         }
-        applyUniversalSettings(ctx, lib, cfg.concat_cdb);
+        applyUniversalSettings(ctx, lib);
 
         break :blk lib;
     };
@@ -1852,7 +1884,7 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
         });
         const pm_root = ctx.dep_portmidi.path("");
         const pm_flags = FlagsBuilder.init(ctx, cfg, .{
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
             .minimise_windows = false,
         }).flags.items;
         lib.addCSourceFiles(.{
@@ -1912,7 +1944,7 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
         lib.linkLibC();
         lib.addIncludePath(ctx.dep_portmidi.path("porttime"));
         lib.addIncludePath(ctx.dep_portmidi.path("pm_common"));
-        applyUniversalSettings(ctx, lib, cfg.concat_cdb);
+        applyUniversalSettings(ctx, lib);
 
         break :blk lib;
     };
@@ -1932,7 +1964,7 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
             .all_warnings = true,
             .ubsan = true,
             .cpp = true,
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
 
@@ -1943,7 +1975,7 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
     exe.linkLibrary(miniaudio);
     exe.addIncludePath(ctx.dep_miniaudio.path(""));
     exe.linkLibrary(deps.plugin);
-    applyUniversalSettings(ctx, exe, cfg.concat_cdb);
+    applyUniversalSettings(ctx, exe);
 
     return exe;
 }
@@ -1951,7 +1983,7 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
 fn vst3Flags(ctx: *const BuildContext, cfg: *const TargetConfig) [][]const u8 {
     var flags = FlagsBuilder.init(ctx, cfg, .{
         .ubsan = false,
-        .add_compile_commands = true,
+        .gen_cdb_fragments = true,
         .minimise_windows = false,
     });
     if (ctx.optimise == .Debug) {
@@ -2031,7 +2063,7 @@ fn buildVst3Sdk(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.S
 
     lib.addIncludePath(ctx.dep_vst3_sdk.path(""));
     lib.linkLibCpp();
-    applyUniversalSettings(ctx, lib, cfg.concat_cdb);
+    applyUniversalSettings(ctx, lib);
 
     return lib;
 }
@@ -2135,7 +2167,7 @@ fn buildVst3Validator(ctx: *const BuildContext, cfg: *const TargetConfig, deps: 
                 .files = &.{"public.sdk/source/vst/hosting/module_mac.mm"},
                 .flags = FlagsBuilder.init(ctx, cfg, .{
                     .objcpp = true,
-                    .add_compile_commands = true,
+                    .gen_cdb_fragments = true,
                 }).flags.items,
             });
         },
@@ -2146,7 +2178,7 @@ fn buildVst3Validator(ctx: *const BuildContext, cfg: *const TargetConfig, deps: 
     exe.linkLibCpp();
     exe.linkLibrary(deps.vst3_sdk);
     exe.linkLibrary(deps.library); // for ubsan runtime
-    applyUniversalSettings(ctx, exe, cfg.concat_cdb);
+    applyUniversalSettings(ctx, exe);
 
     return exe;
 }
@@ -2183,7 +2215,7 @@ fn buildVst3(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
 
     var flags = FlagsBuilder.init(ctx, cfg, .{
         .ubsan = false,
-        .add_compile_commands = true,
+        .gen_cdb_fragments = true,
     });
     flags.addFlag("-fno-char8_t");
 
@@ -2196,7 +2228,7 @@ fn buildVst3(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
             .all_warnings = true,
             .ubsan = true,
             .cpp = true,
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
     dso.root_module.addCMacro("FINAL_BINARY_TYPE", "Vst3");
@@ -2273,7 +2305,7 @@ fn buildVst3(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     dso.addConfigHeader(cfg.floe_config_h);
     dso.addIncludePath(ctx.b.path("src"));
 
-    applyUniversalSettings(ctx, dso, cfg.concat_cdb);
+    applyUniversalSettings(ctx, dso);
     addWindowsEmbedInfo(dso, .{
         .name = "Floe VST3",
         .description = constants.floe_description,
@@ -2310,19 +2342,19 @@ fn buildAu(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
             },
             .flags = FlagsBuilder.init(ctx, cfg, .{
                 .cpp = true,
-                .add_compile_commands = true,
+                .gen_cdb_fragments = true,
             }).flags.items,
         });
         lib.addIncludePath(ctx.dep_au_sdk.path("include"));
         lib.linkLibCpp();
-        applyUniversalSettings(ctx, lib, cfg.concat_cdb);
+        applyUniversalSettings(ctx, lib);
 
         break :blk2 lib;
     };
 
     const flags = blk2: {
         var flags = FlagsBuilder.init(ctx, cfg, .{
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         });
         switch (cfg.target.os.tag) {
             .windows => {
@@ -2362,7 +2394,7 @@ fn buildAu(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
             .all_warnings = true,
             .ubsan = true,
             .objcpp = true,
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
     dso.root_module.addCMacro("FINAL_BINARY_TYPE", "AuV2");
@@ -2454,7 +2486,7 @@ fn buildAu(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     dso.addConfigHeader(cfg.floe_config_h);
     dso.addIncludePath(ctx.b.path("src"));
 
-    applyUniversalSettings(ctx, dso, cfg.concat_cdb);
+    applyUniversalSettings(ctx, dso);
 
     return dso;
 }
@@ -2491,7 +2523,7 @@ fn buildWindowsUninstaller(ctx: *const BuildContext, cfg: *const TargetConfig, d
             .all_warnings = true,
             .ubsan = true,
             .cpp = true,
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
     exe.root_module.addCMacro("FINAL_BINARY_TYPE", "WindowsUninstaller");
@@ -2503,7 +2535,7 @@ fn buildWindowsUninstaller(ctx: *const BuildContext, cfg: *const TargetConfig, d
     exe.addObject(deps.stb_image);
     exe.linkLibrary(deps.library);
     exe.linkLibrary(deps.common_infrastructure);
-    applyUniversalSettings(ctx, exe, cfg.concat_cdb);
+    applyUniversalSettings(ctx, exe);
 
     return exe;
 }
@@ -2580,7 +2612,7 @@ fn buildWindowsInstaller(ctx: *const BuildContext, cfg: *const TargetConfig, dep
             .all_warnings = true,
             .ubsan = true,
             .cpp = true,
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
 
@@ -2599,7 +2631,7 @@ fn buildWindowsInstaller(ctx: *const BuildContext, cfg: *const TargetConfig, dep
     exe.addObject(deps.stb_image);
     exe.linkLibrary(deps.library);
     exe.linkLibrary(deps.common_infrastructure);
-    applyUniversalSettings(ctx, exe, cfg.concat_cdb);
+    applyUniversalSettings(ctx, exe);
 
     return exe;
 }
@@ -2650,61 +2682,52 @@ fn buildTests(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
             .all_warnings = true,
             .ubsan = true,
             .cpp = true,
-            .add_compile_commands = true,
+            .gen_cdb_fragments = true,
         }).flags.items,
     });
     exe.root_module.addCMacro("FINAL_BINARY_TYPE", "Tests");
     exe.addConfigHeader(cfg.floe_config_h);
     exe.linkLibrary(deps.plugin);
-    applyUniversalSettings(ctx, exe, cfg.concat_cdb);
+    applyUniversalSettings(ctx, exe);
 
     return exe;
 }
 
 fn doTarget(
     ctx: *BuildContext,
-    resolved_target: std.Build.ResolvedTarget,
-    set_as_cdb: bool,
-    top_level_steps: *const TopLevelSetps,
+    cfg: *const TargetConfig,
+    top_level_steps: *const TopLevelSteps,
     options: *const Options,
 ) release_artifacts.Artifacts {
-    const cfg = TargetConfig.create(ctx, resolved_target, options, set_as_cdb);
+    const stb_sprintf = buildStbSprintf(ctx, cfg);
+    const xxhash = buildXxhash(ctx, cfg);
+    const tracy = buildTracy(ctx, cfg);
+    const vitfx = buildVitfx(ctx, cfg);
+    const pugl = buildPugl(ctx, cfg);
+    const debug_info_lib = buildDebugInfo(ctx, cfg);
+    const stb_image = buildStbImage(ctx, cfg);
+    const dr_wav = buildDrWav(ctx, cfg);
+    const miniz = buildMiniz(ctx, cfg);
+    const flac = buildFlac(ctx, cfg);
+    const fft_convolver = buildFftConvolver(ctx, cfg);
 
-    top_level_steps.compile_all.dependOn(&cfg.concat_cdb.step);
+    const embedded_files = buildEmbeddedFiles(ctx, cfg);
 
-    if (cfg.target.os.tag == .windows and options.sanitize_thread) {
-        @panic("thread sanitiser is not supported on Windows targets");
-    }
-
-    const stb_sprintf = buildStbSprintf(ctx, &cfg);
-    const xxhash = buildXxhash(ctx, &cfg);
-    const tracy = buildTracy(ctx, &cfg);
-    const vitfx = buildVitfx(ctx, &cfg);
-    const pugl = buildPugl(ctx, &cfg);
-    const debug_info_lib = buildDebugInfo(ctx, &cfg);
-    const stb_image = buildStbImage(ctx, &cfg);
-    const dr_wav = buildDrWav(ctx, &cfg);
-    const miniz = buildMiniz(ctx, &cfg);
-    const flac = buildFlac(ctx, &cfg);
-    const fft_convolver = buildFftConvolver(ctx, &cfg);
-
-    const embedded_files = buildEmbeddedFiles(ctx, &cfg);
-
-    const library = buildFloeLibrary(ctx, &cfg, .{
+    const library = buildFloeLibrary(ctx, cfg, .{
         .stb_sprintf = stb_sprintf,
         .tracy = tracy,
         .debug_info_lib = debug_info_lib,
     });
 
     if (targetCanRunNatively(cfg.target)) {
-        ctx.native_archiver = buildArchiver(ctx, &cfg, .{ .miniz = miniz });
+        ctx.native_archiver = buildArchiver(ctx, cfg, .{ .miniz = miniz });
     }
 
-    const bx = buildBx(ctx, &cfg);
-    const bimg = buildBimg(ctx, &cfg, .{ .bx = bx });
-    const bgfx = buildBgfx(ctx, &cfg, .{ .bx = bx, .bimg = bimg });
+    const bx = buildBx(ctx, cfg);
+    const bimg = buildBimg(ctx, cfg, .{ .bx = bx });
+    const bgfx = buildBgfx(ctx, cfg, .{ .bx = bx, .bimg = bimg });
 
-    const common_infrastructure = buildCommonInfrastructure(ctx, &cfg, .{
+    const common_infrastructure = buildCommonInfrastructure(ctx, cfg, .{
         .dr_wav = dr_wav,
         .flac = flac,
         .library = library,
@@ -2712,7 +2735,7 @@ fn doTarget(
         .xxhash = xxhash,
     });
 
-    const plugin = buildPluginLib(ctx, &cfg, .{
+    const plugin = buildPluginLib(ctx, cfg, .{
         .common_infrastructure = common_infrastructure,
         .library = library,
         .fft_convolver = fft_convolver,
@@ -2725,13 +2748,13 @@ fn doTarget(
     });
 
     if (targetCanRunNatively(cfg.target)) {
-        ctx.native_docs_generator = buildDocsGenerator(ctx, &cfg, .{
+        ctx.native_docs_generator = buildDocsGenerator(ctx, cfg, .{
             .common_infrastructure = common_infrastructure,
         });
     }
 
     const configured_packager = blk: {
-        const exe = buildPackager(ctx, &cfg, .{
+        const exe = buildPackager(ctx, cfg, .{
             .common_infrastructure = common_infrastructure,
             .embedded_files = embedded_files,
         });
@@ -2751,7 +2774,7 @@ fn doTarget(
     };
 
     {
-        const exe = buildPresetEditor(ctx, &cfg, .{
+        const exe = buildPresetEditor(ctx, cfg, .{
             .common_infrastructure = common_infrastructure,
             .embedded_files = embedded_files,
         });
@@ -2764,7 +2787,7 @@ fn doTarget(
 
     const configured_clap: ?configure_binaries.ConfiguredPlugin = blk: {
         if (!options.sanitize_thread) {
-            const dso = buildClap(ctx, &cfg, .{ .plugin = plugin });
+            const dso = buildClap(ctx, cfg, .{ .plugin = plugin });
 
             const clap = configure_binaries.addConfiguredPlugin(
                 ctx.b,
@@ -2782,21 +2805,21 @@ fn doTarget(
     // Standalone is for development-only at the moment, so we can save a bit of time by not building it
     // in production builds.
     if (ctx.build_mode != .production) {
-        const exe = buildStandalone(ctx, &cfg, .{ .plugin = plugin });
+        const exe = buildStandalone(ctx, cfg, .{ .plugin = plugin });
 
         const install = ctx.b.addInstallArtifact(exe, .{});
         top_level_steps.install_all.dependOn(&install.step);
     }
 
-    const vst3_sdk = buildVst3Sdk(ctx, &cfg);
-    const vst3_validator = buildVst3Validator(ctx, &cfg, .{
+    const vst3_sdk = buildVst3Sdk(ctx, cfg);
+    const vst3_validator = buildVst3Validator(ctx, cfg, .{
         .library = library,
         .vst3_sdk = vst3_sdk,
     });
 
     const configured_vst3: ?configure_binaries.ConfiguredPlugin = blk: {
         if (!options.sanitize_thread) {
-            const dso = buildVst3(ctx, &cfg, .{
+            const dso = buildVst3(ctx, cfg, .{
                 .vst3_sdk = vst3_sdk,
                 .plugin = plugin,
             });
@@ -2811,7 +2834,11 @@ fn doTarget(
 
             // Test VST3
             {
-                const run_tests = std_extras.createCommandWithStdoutToStderr(ctx.b, cfg.target, "run VST3-Validator");
+                const run_tests = std_extras.createCommandWithStdoutToStderr(
+                    ctx.b,
+                    cfg.target,
+                    "run VST3-Validator",
+                );
                 run_tests.addFileArg(configure_binaries.nix_helper.maybePatchElfExecutable(vst3_validator));
                 vst3.addToRunStepArgs(run_tests);
                 run_tests.expectExitCode(0);
@@ -2828,7 +2855,7 @@ fn doTarget(
 
     const configured_au: ?configure_binaries.ConfiguredPlugin = blk: {
         if (cfg.target.os.tag == .macos and !options.sanitize_thread) {
-            const dso = buildAu(ctx, &cfg, .{ .plugin = plugin });
+            const dso = buildAu(ctx, cfg, .{ .plugin = plugin });
 
             const au = configure_binaries.addConfiguredPlugin(ctx.b, .au, dso, null);
             top_level_steps.install_plugins.dependOn(au.install_step);
@@ -2910,7 +2937,7 @@ fn doTarget(
     const configured_windows_installer: ?release_artifacts.Artifact = blk: {
         if (cfg.target.os.tag == .windows) {
             const uninstaller = blk2: {
-                const exe = buildWindowsUninstaller(ctx, &cfg, .{
+                const exe = buildWindowsUninstaller(ctx, cfg, .{
                     .library = library,
                     .common_infrastructure = common_infrastructure,
                     .stb_image = stb_image,
@@ -2930,7 +2957,7 @@ fn doTarget(
                 };
             };
 
-            const installer = buildWindowsInstaller(ctx, &cfg, .{
+            const installer = buildWindowsInstaller(ctx, cfg, .{
                 .stb_image = stb_image,
                 .common_infrastructure = common_infrastructure,
                 .library = library,
@@ -2954,7 +2981,10 @@ fn doTarget(
 
                 // IMPROVE actually test for installation
 
-                const run_uninstaller = std.Build.Step.Run.create(ctx.b, ctx.b.fmt("run {s}", .{uninstaller.step.name}));
+                const run_uninstaller = std.Build.Step.Run.create(
+                    ctx.b,
+                    ctx.b.fmt("run {s}", .{uninstaller.step.name}),
+                );
                 run_uninstaller.addFileArg(uninstaller.codesigned_path);
                 run_uninstaller.addArg("--autorun");
                 run_uninstaller.expectExitCode(0);
@@ -2974,14 +3004,16 @@ fn doTarget(
                 .path = codesigned_path,
             };
         } else {
-            top_level_steps.test_windows_install.dependOn(&ctx.b.addFail("Windows installer tests not allowed with this configuration").step);
+            top_level_steps.test_windows_install.dependOn(
+                &ctx.b.addFail("Windows installer tests not allowed with this configuration").step,
+            );
             break :blk null;
         }
     };
 
     // We don't need tests in production builds so we can save some build time here.
     if (ctx.build_mode != .production) {
-        const exe = buildTests(ctx, &cfg, .{ .plugin = plugin });
+        const exe = buildTests(ctx, cfg, .{ .plugin = plugin });
 
         const test_binary = configure_binaries.nix_helper.maybePatchElfExecutable(exe);
 
@@ -3052,7 +3084,9 @@ fn doTarget(
 
             top_level_steps.valgrind.dependOn(&run.step);
         } else {
-            top_level_steps.valgrind.dependOn(&ctx.b.addFail("valgrind not allowed for this build configuration").step);
+            top_level_steps.valgrind.dependOn(
+                &ctx.b.addFail("valgrind not allowed for this build configuration").step,
+            );
         }
     }
 
@@ -3106,7 +3140,9 @@ fn doTarget(
 
         top_level_steps.clap_val.dependOn(&run.step);
     } else {
-        top_level_steps.clap_val.dependOn(&ctx.b.addFail("clap-validator not allowed for this build configuration").step);
+        top_level_steps.clap_val.dependOn(
+            &ctx.b.addFail("clap-validator not allowed for this build configuration").step,
+        );
     }
 
     // Pluginval test
@@ -3127,13 +3163,15 @@ fn doTarget(
 
         top_level_steps.pluginval.dependOn(&run.step);
     } else {
-        top_level_steps.pluginval.dependOn(&ctx.b.addFail("pluginval not allowed for this build configuration").step);
+        top_level_steps.pluginval.dependOn(
+            &ctx.b.addFail("pluginval not allowed for this build configuration").step,
+        );
     }
 
     // clang-tidy
     {
         const clang_tidy_step = check_steps.ClangTidyStep.create(ctx.b, cfg.target);
-        clang_tidy_step.step.dependOn(top_level_steps.compile_all);
+        clang_tidy_step.step.dependOn(ctx.compile_all);
         top_level_steps.clang_tidy.dependOn(&clang_tidy_step.step);
     }
 
