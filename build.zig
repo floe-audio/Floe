@@ -2916,7 +2916,7 @@ fn doTarget(
                 } else {
                     const fail = ctx.b.addFail("You must specify a global/user Library/Audio/Plug-Ins " ++
                         "--prefix to zig build in order to run AU tests");
-                    ctx.pluginval_au.dependOn(&fail.step);
+                    top_level_steps.pluginval_au.dependOn(&fail.step);
                     top_level_steps.auval.dependOn(&fail.step);
                 }
             } else {
