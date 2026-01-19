@@ -537,9 +537,6 @@ pub fn build(b: *std.Build) void {
     // The default is to compile everything.
     b.default_step = ctx.compile_all;
 
-    // Include all plugin installation as part of 'install:all'
-    top_level_steps.install_all.dependOn(top_level_steps.install_plugins);
-
     b.build_root.handle.makeDir(constants.floe_cache_relative) catch {};
 
     const targets = resolveTargets(b, options.targets) catch @panic("OOM");
@@ -2797,6 +2794,7 @@ fn doTarget(
                 configure_binaries.CodesignInfo{ .description = "Floe CLAP Plugin" },
             );
             top_level_steps.install_plugins.dependOn(clap.install_step);
+            top_level_steps.install_all.dependOn(clap.install_step);
             break :blk clap;
         } else {
             break :blk null;
@@ -2832,6 +2830,7 @@ fn doTarget(
                 configure_binaries.CodesignInfo{ .description = "Floe VST3 Plugin" },
             );
             top_level_steps.install_plugins.dependOn(vst3.install_step);
+            top_level_steps.install_all.dependOn(vst3.install_step);
 
             // Test VST3
             {
@@ -2860,6 +2859,7 @@ fn doTarget(
 
             const au = configure_binaries.addConfiguredPlugin(ctx.b, .au, dso, null);
             top_level_steps.install_plugins.dependOn(au.install_step);
+            top_level_steps.install_all.dependOn(au.install_step);
 
             if (builtin.os.tag == .macos) {
                 if (std.mem.endsWith(u8, std.mem.trimRight(u8, ctx.b.install_path, "/"), "Library/Audio/Plug-Ins")) {
