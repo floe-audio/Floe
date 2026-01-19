@@ -297,7 +297,7 @@ struct DirectXDrawContext : public DrawContext {
         fonts.Clear();
     }
 
-    ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size) override {
+    ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size, void*) override {
         ZoneScoped;
         auto constexpr k_d3_dfvf_customvertex = D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_TEX1;
 

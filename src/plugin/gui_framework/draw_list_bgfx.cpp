@@ -14,9 +14,11 @@
 #pragma clang diagnostic pop
 
 #include "foundation/foundation.hpp"
+#include "utils/debug/debug.hpp"
 #include "utils/debug/tracy_wrapped.hpp"
 #include "utils/logger/logger.hpp"
 
+#include "bgfx_init_window.hpp"
 #include "draw_list.hpp"
 #include "shaders/fs_draw_list.bin.h"
 #include "shaders/vs_draw_list.bin.h"
@@ -39,7 +41,7 @@ static constexpr ErrorCodeCategory k_bgfx_error_category = {
 static ErrorCode Error(char const* debug_msg) { return ErrorCode(k_bgfx_error_category, 0, debug_msg); }
 
 struct Callback : public bgfx::CallbackI {
-    virtual ~Callback() {}
+    virtual ~Callback() = default;
 
     virtual void fatal(char const* filePath, u16 line, bgfx::Fatal::Enum code, char const* str) override {
         LogError(ModuleName::Bgfx,
@@ -91,39 +93,53 @@ struct Callback : public bgfx::CallbackI {
     virtual void captureFrame(void const*, u32) override {}
 };
 
-struct BgfxDrawContext : public DrawContext {
-    ~BgfxDrawContext() override {
-        DestroyDeviceObjects();
-        if (has_init) bgfx::shutdown();
-    }
+struct Renderer {
+    ErrorCodeOr<void> InitIfNeeded(void* native_window, void* native_display) {
+        if (init) return k_success;
+        (void)native_window;
 
-    ErrorCodeOr<void> CreateDeviceObjects(UiSize size, void* native_window, void* native_display) override {
-        ZoneScoped;
-        Trace(ModuleName::Bgfx);
+        {
+            bx::setAssertHandler(
+                [](bx::Location const& location, uint32_t skip, char const* format, va_list args) -> bool {
+                    InlineSprintfBuffer buffer;
+                    buffer.AppendV(format, args);
+                    StdPrintF(StdStream::Err,
+                              "{} ({}): {}\n",
+                              location.filePath,
+                              location.line,
+                              buffer.AsString());
 
-        if (!has_init) {
-            bgfx::Init init {};
+                    DynamicArrayBounded<char, 2000> b2 {};
+                    auto _ = WriteCurrentStacktrace(dyn::WriterFor(b2),
+                                                    {.ansi_colours = true},
+                                                    StacktraceFrames {skip});
 
-            init.platformData.nwh = native_window;
-            init.platformData.ndt = native_display;
-            init.platformData.type = bgfx::NativeWindowHandleType::Default;
+                    Panic(dyn::NullTerminated(b2),
+                          {
+                              .file = location.filePath,
+                              .line = (int)location.line,
+                          });
+                });
 
-            if constexpr (FLOE_BGFX_API_VULKAN) init.type = bgfx::RendererType::Vulkan;
-            if constexpr (FLOE_BGFX_API_DIRECT3D11) init.type = bgfx::RendererType::Direct3D11;
-            if constexpr (FLOE_BGFX_API_METAL) init.type = bgfx::RendererType::Metal;
-            if (init.type == bgfx::RendererType::Count) PanicIfReached();
+            bgfx::Init cfg {};
 
-            init.resolution.width = size.width;
-            init.resolution.height = size.height;
-            init.resolution.reset = BGFX_RESET_VSYNC;
-            init.callback = &callbacks;
+            cfg.platformData.nwh = GetBgfxInitWindowHandle(native_display);
+            cfg.platformData.ndt = native_display;
+            cfg.platformData.type = bgfx::NativeWindowHandleType::Default;
 
-            if (!bgfx::init(init)) return Error("bgfx::init failed");
+            if constexpr (FLOE_BGFX_API_VULKAN) cfg.type = bgfx::RendererType::Vulkan;
+            if constexpr (FLOE_BGFX_API_DIRECT3D11) cfg.type = bgfx::RendererType::Direct3D11;
+            if constexpr (FLOE_BGFX_API_METAL) cfg.type = bgfx::RendererType::Metal;
+            if (cfg.type == bgfx::RendererType::Count) PanicIfReached();
 
-            has_init = true;
+            cfg.resolution.numBackBuffers = 1;
+            cfg.resolution.width = FLOE_BGFX_API_METAL ? 1 : 0;
+            cfg.resolution.height = FLOE_BGFX_API_METAL ? 1 : 0;
+            cfg.resolution.reset = BGFX_RESET_VSYNC;
+            cfg.callback = &callbacks;
+
+            if (!bgfx::init(cfg)) return Error("bgfx::init failed");
         }
-
-        LogDebug(ModuleName::Bgfx, "bgfx initialized successfully");
 
         static_assert(offsetof(DrawVert, pos) == 0);
         static_assert(offsetof(DrawVert, uv) == 8);
@@ -169,24 +185,14 @@ struct BgfxDrawContext : public DrawContext {
         shader_program = bgfx::createProgram(vs, fs, true);
         if (!bgfx::isValid(shader_program)) return Error("failed to create shader program");
 
-        {
-            auto const caps = bgfx::getCaps();
-            dyn::Clear(graphics_device_info);
-            fmt::Append(graphics_device_info, "Renderer: {}\n", EnumToString(type));
-            fmt::Append(graphics_device_info, "Vendor ID: 0x{x}\n", caps->vendorId);
-            fmt::Append(graphics_device_info, "Device ID: 0x{x}\n", caps->deviceId);
-            fmt::Append(graphics_device_info, "Max Texture Size: {}\n", caps->limits.maxTextureSize);
-        }
+        ASSERT(bgfx::getCaps()->supported & BGFX_CAPS_SWAP_CHAIN);
 
-        LogDebug(ModuleName::Bgfx, "bgfx device objects created successfully");
+        init = true;
         success = true;
         return k_success;
     }
 
-    void DestroyDeviceObjects() override {
-        ZoneScoped;
-        Trace(ModuleName::Bgfx);
-
+    void Shutdown() {
         if (bgfx::isValid(texture_uniform)) {
             bgfx::destroy(texture_uniform);
             texture_uniform = BGFX_INVALID_HANDLE;
@@ -196,8 +202,74 @@ struct BgfxDrawContext : public DrawContext {
             bgfx::destroy(shader_program);
             shader_program = BGFX_INVALID_HANDLE;
         }
+    }
+
+    void Render() {}
+
+    bool init {};
+    Callback callbacks {};
+    u16 view_id {};
+
+    bgfx::VertexLayout vertex_layout {};
+    bgfx::UniformHandle texture_uniform = BGFX_INVALID_HANDLE;
+    bgfx::ProgramHandle shader_program = BGFX_INVALID_HANDLE;
+};
+
+[[clang::no_destroy]] Renderer g_renderer {};
+
+struct BgfxDrawContext : public DrawContext {
+    ~BgfxDrawContext() override { DestroyDeviceObjects(); }
+
+    ErrorCodeOr<void> CreateDeviceObjects(UiSize size, void* native_window, void* native_display) override {
+        ZoneScoped;
+        Trace(ModuleName::Bgfx);
+
+        TRY(g_renderer.InitIfNeeded(native_window, native_display));
+
+        ASSERT(!bgfx::isValid(window_framebuffer));
+        ASSERT(size.width > 0 && size.height > 0);
+
+        LogDebug(ModuleName::Bgfx,
+                 "Creating framebuffer for window: {}x{}, nwh={}",
+                 size.width,
+                 size.height,
+                 native_window);
+
+        window_framebuffer = bgfx::createFrameBuffer(native_window, size.width, size.height);
+
+        if (!bgfx::isValid(window_framebuffer)) return Error("failed to create window framebuffer");
+
+        last_window_size = size;
+
+        {
+            auto const caps = bgfx::getCaps();
+            dyn::Clear(graphics_device_info);
+            fmt::Append(graphics_device_info, "Renderer: {}\n", EnumToString(bgfx::getRendererType()));
+            fmt::Append(graphics_device_info, "Vendor ID: 0x{x}\n", caps->vendorId);
+            fmt::Append(graphics_device_info, "Device ID: 0x{x}\n", caps->deviceId);
+            fmt::Append(graphics_device_info, "Max Texture Size: {}\n", caps->limits.maxTextureSize);
+        }
+
+        return k_success;
+    }
+
+    void DestroyDeviceObjects() override {
+        ZoneScoped;
+        Trace(ModuleName::Bgfx);
 
         DestroyFontTexture();
+
+        if (bgfx::isValid(window_framebuffer)) {
+            LogDebug(ModuleName::Bgfx, "Destroying framebuffer");
+
+            bgfx::destroy(window_framebuffer);
+            window_framebuffer.idx = bgfx::kInvalidHandle;
+
+            bgfx::frame();
+            bgfx::frame();
+
+            LogDebug(ModuleName::Bgfx, "Framebuffer destroyed and flushed");
+        }
     }
 
     ErrorCodeOr<void> CreateFontTexture() override {
@@ -287,7 +359,7 @@ struct BgfxDrawContext : public DrawContext {
         }
     }
 
-    ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size) override {
+    ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size, void* native_window) override {
         ZoneScoped;
         Trace(ModuleName::Bgfx);
 
@@ -299,21 +371,38 @@ struct BgfxDrawContext : public DrawContext {
                  window_size.height,
                  draw_lists.size);
 
-        // Update bgfx resolution if window size changed
-        if (last_window_size.width != window_size.width || last_window_size.height != window_size.height) {
+        bool const size_changed = last_window_size != window_size;
+        bool const needs_recreation = size_changed || !bgfx::isValid(window_framebuffer);
+
+        if (needs_recreation) {
             LogDebug(ModuleName::Bgfx,
-                     "Window size changed from {}x{} to {}x{}, calling bgfx::reset()",
+                     "Recreating framebuffer: size_changed={}, invalid={}, {}x{} -> {}x{}",
+                     size_changed,
+                     !bgfx::isValid(window_framebuffer),
                      last_window_size.width,
                      last_window_size.height,
                      window_size.width,
                      window_size.height);
-            bgfx::reset((u32)window_size.width, (u32)window_size.height, BGFX_RESET_VSYNC);
+
+            if (bgfx::isValid(window_framebuffer)) {
+                bgfx::destroy(window_framebuffer);
+                window_framebuffer.idx = bgfx::kInvalidHandle;
+            }
+
+            bgfx::frame();
+
+            window_framebuffer =
+                bgfx::createFrameBuffer(native_window, window_size.width, window_size.height);
+            if (!bgfx::isValid(window_framebuffer)) return Error("failed to create window framebuffer");
+
             last_window_size = window_size;
         }
 
         // Setup view
         bgfx::setViewName(k_view_id, "Floe GUI");
         bgfx::setViewMode(k_view_id, bgfx::ViewMode::Sequential);
+        bgfx::setViewFrameBuffer(k_view_id, window_framebuffer);
+        bgfx::setViewClear(k_view_id, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x303030ff, 1.0f, 0);
 
         // Setup orthographic projection matrix to transform from pixel coordinates to clip space
         auto const caps = bgfx::getCaps();
@@ -336,7 +425,7 @@ struct BgfxDrawContext : public DrawContext {
             auto const num_vertices = (u32)draw_list->vtx_buffer.size;
             auto const num_indices = (u32)draw_list->idx_buffer.size;
 
-            if (!bgfx::getAvailTransientVertexBuffer(num_vertices, vertex_layout) ||
+            if (!bgfx::getAvailTransientVertexBuffer(num_vertices, g_renderer.vertex_layout) ||
                 !bgfx::getAvailTransientIndexBuffer(num_indices)) {
                 LogWarning(ModuleName::Bgfx, "Transient buffers not available, skipping draw list");
                 break;
@@ -344,7 +433,7 @@ struct BgfxDrawContext : public DrawContext {
 
             bgfx::TransientVertexBuffer tvb;
             bgfx::TransientIndexBuffer tib;
-            bgfx::allocTransientVertexBuffer(&tvb, num_vertices, vertex_layout);
+            bgfx::allocTransientVertexBuffer(&tvb, num_vertices, g_renderer.vertex_layout);
             bgfx::allocTransientIndexBuffer(&tib, num_indices);
 
             // Copy index data directly
@@ -378,10 +467,10 @@ struct BgfxDrawContext : public DrawContext {
                 bgfx::setState(
                     BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_MSAA |
                     BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA));
-                bgfx::setTexture(0, texture_uniform, th);
+                bgfx::setTexture(0, g_renderer.texture_uniform, th);
                 bgfx::setVertexBuffer(0, &tvb, 0, num_vertices);
                 bgfx::setIndexBuffer(&tib, offset, cmd.elem_count);
-                bgfx::submit(k_view_id, shader_program);
+                bgfx::submit(k_view_id, g_renderer.shader_program);
 
                 offset += cmd.elem_count;
             }
@@ -393,16 +482,10 @@ struct BgfxDrawContext : public DrawContext {
         return k_success;
     }
 
-    static constexpr u16 k_view_id = 200;
+    static inline u16 const k_view_id = 200;
 
-    bool has_init {};
-
-    bgfx::VertexLayout vertex_layout {};
     bgfx::TextureHandle font_texture = BGFX_INVALID_HANDLE;
-    bgfx::UniformHandle texture_uniform = BGFX_INVALID_HANDLE;
-    bgfx::ProgramHandle shader_program = BGFX_INVALID_HANDLE;
-    Callback callbacks {};
-
+    bgfx::FrameBufferHandle window_framebuffer = BGFX_INVALID_HANDLE;
     UiSize last_window_size {0, 0};
 };
 

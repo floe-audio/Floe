@@ -159,7 +159,7 @@ struct OpenGLDrawContext : public DrawContext {
         fonts.Clear();
     }
 
-    ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size) override {
+    ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size, void*) override {
         ZoneScoped;
         TracyGpuZone("Render");
         if (draw_lists.size == 0) return k_success;

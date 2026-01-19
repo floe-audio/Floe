@@ -1582,6 +1582,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "gui/gui_widget_helpers.cpp",
             "gui/gui_window.cpp",
             "gui_framework/draw_list.cpp",
+            "gui_framework/draw_list_bgfx.cpp",
             "gui_framework/gui_box_system.cpp",
             "gui_framework/gui_imgui.cpp",
             "gui_framework/gui_platform.cpp",
@@ -1608,7 +1609,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
                 .files = &[_][]const u8{
                     "gui_framework/gui_platform_windows.cpp",
                     "gui_framework/draw_list_directx.cpp",
-                    "gui_framework/draw_list_bgfx.cpp",
+                    "gui_framework/bgfx_init_window_windows.cpp",
                 },
                 .flags = flags,
             });
@@ -1620,7 +1621,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
                 .files = &[_][]const u8{
                     "gui_framework/gui_platform_linux.cpp",
                     "gui_framework/draw_list_opengl.cpp",
-                    "gui_framework/draw_list_bgfx.cpp",
+                    "gui_framework/bgfx_init_window_linux.cpp",
                 },
                 .flags = flags,
             });
@@ -1631,7 +1632,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
                 .files = &[_][]const u8{
                     "gui_framework/gui_platform_mac.mm",
                     "gui_framework/draw_list_opengl.cpp",
-                    "gui_framework/draw_list_bgfx.cpp",
+                    "gui_framework/bgfx_init_window_macos.mm",
                 },
                 .flags = FlagsBuilder.init(ctx, cfg, .{
                     .all_warnings = true,

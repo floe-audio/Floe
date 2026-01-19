@@ -353,7 +353,7 @@ struct DrawContext {
     virtual ErrorCodeOr<TextureHandle> CreateTexture(u8 const* data, UiSize size, u16 bytes_per_pixel) = 0;
     virtual void DestroyTexture(TextureHandle& id) = 0;
 
-    virtual ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size) = 0;
+    virtual ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size, void* native_window) = 0;
 
     // TODO: remove this
     void

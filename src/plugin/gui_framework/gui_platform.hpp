@@ -941,7 +941,9 @@ static void UpdateAndRender(GuiPlatform& platform) {
 
     if (platform.last_result.draw_lists.size) {
         ZoneNamedN(render, "render", true);
-        auto o = platform.graphics_ctx->Render(platform.last_result.draw_lists, window_size);
+        auto o = platform.graphics_ctx->Render(platform.last_result.draw_lists,
+                                               window_size,
+                                               platform.frame_state.native_window);
         if (o.HasError()) LogError(ModuleName::Gui, "GUI render failed: {}", o.Error());
     }
 
