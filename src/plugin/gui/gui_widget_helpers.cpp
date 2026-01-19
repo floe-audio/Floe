@@ -14,9 +14,9 @@
 #include "gui_prefs.hpp"
 #include "gui_window.hpp"
 
-void StartFloeMenu(Gui* g) { g->imgui.graphics->context->PushFont(g->fonts[ToInt(FontType::Body)]); }
+void StartFloeMenu(Gui* g) { g->imgui.graphics->renderer->PushFont(g->fonts[ToInt(FontType::Body)]); }
 
-void EndFloeMenu(Gui* g) { g->imgui.graphics->context->PopFont(); }
+void EndFloeMenu(Gui* g) { g->imgui.graphics->renderer->PopFont(); }
 
 f32 MaxStringLength(Gui* g, void* items, int num, String (*GetStr)(void* items, int index)) {
     return g->imgui.LargestStringWidth(0, items, num, GetStr);
@@ -36,11 +36,11 @@ f32 MenuItemWidth(Gui* g, Span<String const> strs) {
 //
 
 void DoTooltipText(Gui* g, String str, Rect r, bool rect_is_window_pos) {
-    g->imgui.graphics->context->PushFont(g->fonts[ToInt(FontType::Body)]);
-    DEFER { g->imgui.graphics->context->PopFont(); };
+    g->imgui.graphics->renderer->PushFont(g->fonts[ToInt(FontType::Body)]);
+    DEFER { g->imgui.graphics->renderer->PopFont(); };
 
     auto& imgui = g->imgui;
-    auto font = imgui.overlay_graphics->context->CurrentFont();
+    auto font = imgui.overlay_graphics->renderer->CurrentFont();
     auto size = LiveSize(imgui, UiSizeId::TooltipMaxWidth);
     auto pad_x = LiveSize(imgui, UiSizeId::TooltipPadX);
     auto pad_y = LiveSize(imgui, UiSizeId::TooltipPadY);
@@ -137,7 +137,7 @@ void MidiLearnMenu(Gui* g, Span<ParamIndex> params, Rect r) {
 
     if (!imgui.IsPopupOpen(popup_id)) return;
 
-    auto item_height = imgui.graphics->context->CurrentFontSize() * 1.5f;
+    auto item_height = imgui.graphics->renderer->CurrentFontSize() * 1.5f;
     static constexpr String k_reset_text = "Set To Default Value";
     static constexpr String k_enter_text = "Enter Value";
     static constexpr String k_learn_text = "MIDI CC Learn";
@@ -430,9 +430,9 @@ imgui::TextInputSettings GetParameterTextInputSettings() {
         if (!imgui.TextInputHasFocus(id)) return;
 
         auto const text_pos = result->GetTextPos();
-        auto const w = Max(r.w, draw::GetTextWidth(imgui.graphics->context->CurrentFont(), text));
+        auto const w = Max(r.w, draw::GetTextWidth(imgui.graphics->renderer->CurrentFont(), text));
         Rect const background_r {
-            .xywh {r.CentreX() - (w / 2), text_pos.y, w, imgui.graphics->context->CurrentFontSize()}};
+            .xywh {r.CentreX() - (w / 2), text_pos.y, w, imgui.graphics->renderer->CurrentFontSize()}};
         auto const rounding = LiveSize(imgui, UiSizeId::CornerRounding);
 
         imgui.graphics->AddRectFilled(background_r.Min(),
@@ -445,7 +445,7 @@ imgui::TextInputSettings GetParameterTextInputSettings() {
                                 rounding);
 
         if (result->HasSelection()) {
-            imgui::TextInputResult::SelectionIterator it {.draw_ctx = *imgui.graphics->context};
+            imgui::TextInputResult::SelectionIterator it {.renderer = *imgui.graphics->renderer};
             while (auto rect = result->NextSelectionRect(it))
                 imgui.graphics->AddRectFilled(*rect, LiveCol(imgui, UiColMap::TextInputSelection));
         }

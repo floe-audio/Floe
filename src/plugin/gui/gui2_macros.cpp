@@ -28,7 +28,7 @@ static void DrawLinkLine(Gui* g, f32x2 p1, f32x2 p2) {
 }
 
 static void DrawPopupTextbox(Gui* g, String str, Rect r) {
-    auto const font = g->box_system.imgui.graphics->context->CurrentFont();
+    auto const font = g->box_system.imgui.graphics->renderer->CurrentFont();
 
     auto const size = draw::GetTextSize(font, str);
     auto const pad_x = LiveSize(g->box_system.imgui, UiSizeId::TooltipPadX);
@@ -277,9 +277,9 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                         dyn::Append(g->macros_gui_state.draw_overlays,
                                     [r = remove_button_r, hot = hovering_remove_button](Gui* g) {
                                         // Draw a dark circle with a circle-minus icon inside it.
-                                        g->box_system.imgui.overlay_graphics->context->PushFont(
+                                        g->box_system.imgui.overlay_graphics->renderer->PushFont(
                                             g->fonts[ToInt(FontType::Icons)]);
-                                        DEFER { g->box_system.imgui.overlay_graphics->context->PopFont(); };
+                                        DEFER { g->box_system.imgui.overlay_graphics->renderer->PopFont(); };
                                         g->box_system.imgui.overlay_graphics->AddCircleFilled(
                                             r.Centre(),
                                             r.w * 0.5f,
@@ -326,8 +326,8 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                         mode.Clear();
                 }
 
-                box_system.imgui.graphics->context->PushFont(g->fonts[ToInt(FontType::Icons)]);
-                DEFER { box_system.imgui.graphics->context->PopFont(); };
+                box_system.imgui.graphics->renderer->PushFont(g->fonts[ToInt(FontType::Icons)]);
+                DEFER { box_system.imgui.graphics->renderer->PopFont(); };
                 box_system.imgui.graphics->AddTextJustified(
                     knob_r,
                     ICON_FA_CIRCLE_PLUS,
@@ -463,12 +463,12 @@ void MacroAddDestinationRegion(Gui* g, Rect rel_r, ParamIndex param_index) {
         g->imgui.overlay_graphics->PushClipRect(clip_rect.xy, clip_rect.zw);
         DEFER { g->imgui.overlay_graphics->PopClipRect(); };
 
-        g->imgui.overlay_graphics->context->PushFont(g->fonts[ToInt(FontType::Icons)]);
-        DEFER { g->imgui.overlay_graphics->context->PopFont(); };
+        g->imgui.overlay_graphics->renderer->PushFont(g->fonts[ToInt(FontType::Icons)]);
+        DEFER { g->imgui.overlay_graphics->renderer->PopFont(); };
 
         g->imgui.overlay_graphics->AddCircleFilled(
             r.Centre(),
-            g->imgui.overlay_graphics->context->CurrentFontSize() * 0.4f,
+            g->imgui.overlay_graphics->renderer->CurrentFontSize() * 0.4f,
             style::Col(style::Colour::Background0 | style::Colour::DarkMode));
 
         g->imgui.overlay_graphics->AddTextJustified(

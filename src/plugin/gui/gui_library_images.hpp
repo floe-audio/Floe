@@ -61,4 +61,4 @@ void BeginFrame(LibraryImagesTable& table);
 void Shutdown(LibraryImagesTable& table);
 void InvalidateLibraryImages(LibraryImagesTable& table,
                              sample_lib::LibraryIdRef library_id,
-                             graphics::DrawContext& ctx);
+                             graphics::Renderer& renderer);

@@ -152,8 +152,8 @@ static void GUIDoSampleWaveformOverlay(Gui* g, LayerProcessor* layer, Rect r, Re
                                       imgui.IsHotOrActive(id) ? back_hover_col : back_col,
                                       6,
                                       (int)rounding_corners);
-        GuiIo().in.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Icons)]);
-        DEFER { GuiIo().in.graphics_ctx->PopFont(); };
+        GuiIo().in.renderer->PushFont(g->fonts[ToInt(FontType::Icons)]);
+        DEFER { GuiIo().in.renderer->PopFont(); };
         imgui.graphics->AddTextJustified(r,
                                          text,
                                          text_col,
@@ -626,10 +626,10 @@ void GUIDoSampleWaveform(Gui* g, LayerProcessor* layer, Rect r) {
         waveform_r.h = Round(waveform_r.h);
         r.w = Round(r.w);
 
-        if (auto tex = GuiIo().in.graphics_ctx->GetTextureFromImage(
+        if (auto tex = GuiIo().in.renderer->GetTextureFromImage(
                 GetWaveformImage(g->waveform_images,
                                  layer->instrument,
-                                 *GuiIo().in.graphics_ctx,
+                                 *GuiIo().in.renderer,
                                  g->shared_engine_systems.thread_pool,
                                  r.size))) {
             g->imgui.graphics->AddImage(tex.Value(),

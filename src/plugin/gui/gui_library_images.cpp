@@ -231,15 +231,15 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
 
 void InvalidateLibraryImages(LibraryImagesTable& table,
                              sample_lib::LibraryIdRef library_id,
-                             graphics::DrawContext& ctx) {
+                             graphics::Renderer& renderer) {
     ASSERT(g_is_logical_main_thread);
 
     if (auto imgs = table.table.Find(library_id)) {
         imgs->icon_missing = false;
         imgs->background_missing = false;
-        if (imgs->icon) ctx.DestroyImageID(*imgs->icon);
-        if (imgs->background) ctx.DestroyImageID(*imgs->background);
-        if (imgs->blurred_background) ctx.DestroyImageID(*imgs->blurred_background);
+        if (imgs->icon) renderer.DestroyImageID(*imgs->icon);
+        if (imgs->background) renderer.DestroyImageID(*imgs->background);
+        if (imgs->blurred_background) renderer.DestroyImageID(*imgs->blurred_background);
     }
 }
 
@@ -272,7 +272,7 @@ void BeginFrame(LibraryImagesTable& table) {
             if (auto const result = imgs.loading_icon->TryReleaseResult()) {
                 auto const icon_pixels = *result;
                 if (icon_pixels) {
-                    imgs.icon = CreateImageIdChecked(*GuiIo().in.graphics_ctx, *icon_pixels);
+                    imgs.icon = CreateImageIdChecked(*GuiIo().in.renderer, *icon_pixels);
                     icon_pixels->Free(ImageBytesAllocator());
                 } else
                     imgs.icon_missing = true;
@@ -285,12 +285,12 @@ void BeginFrame(LibraryImagesTable& table) {
                 if (backgrounds) {
                     if (backgrounds->background) {
                         imgs.background =
-                            CreateImageIdChecked(*GuiIo().in.graphics_ctx, *backgrounds->background);
+                            CreateImageIdChecked(*GuiIo().in.renderer, *backgrounds->background);
                         backgrounds->background->Free(ImageBytesAllocator());
                     }
                     if (backgrounds->blurred_background) {
                         imgs.blurred_background =
-                            CreateImageIdChecked(*GuiIo().in.graphics_ctx, *backgrounds->blurred_background);
+                            CreateImageIdChecked(*GuiIo().in.renderer, *backgrounds->blurred_background);
                         backgrounds->blurred_background->Free(ImageBytesAllocator());
                     }
                 } else {
@@ -303,7 +303,7 @@ void BeginFrame(LibraryImagesTable& table) {
         // defer it to the point where we know that the images are actually needed.
         {
             imgs.needs_reload.ClearAll();
-            auto& graphics = *GuiIo().in.graphics_ctx;
+            auto& graphics = *GuiIo().in.renderer;
 
             if (!graphics.ImageIdIsValid(imgs.icon) && !imgs.icon_missing)
                 imgs.needs_reload.Set(ToInt(LibraryImages::ImageType::Icon));

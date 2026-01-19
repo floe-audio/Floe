@@ -109,7 +109,7 @@ static f32 STB_TEXTEDIT_GETWIDTH(STB_TEXTEDIT_STRING* imgui, int i, int n) {
     (void)i;
     auto c = imgui->textedit_text[(usize)n];
     if (c == '\n') return STB_TEXTEDIT_GETWIDTH_NEWLINE;
-    auto font = imgui->graphics->context->CurrentFont();
+    auto font = imgui->graphics->renderer->CurrentFont();
     return font->GetCharAdvance((graphics::Char16)c);
 }
 
@@ -125,8 +125,8 @@ static f32x2 InputTextCalcTextSizeW(Context* imgui,
                                     Char32 const** remaining,
                                     f32x2* out_offset,
                                     bool stop_on_new_line) {
-    auto font = imgui->graphics->context->CurrentFont();
-    auto line_height = imgui->graphics->context->CurrentFontSize();
+    auto font = imgui->graphics->renderer->CurrentFont();
+    auto line_height = imgui->graphics->renderer->CurrentFontSize();
 
     auto text_size = f32x2 {0, 0};
     f32 line_width = 0.0f;
@@ -720,7 +720,7 @@ void Context::Begin(WindowSettings settings) {
     active_text_input_shown = false;
 
     if (!overlay_graphics) overlay_graphics = GuiIo().out.draw_list_allocator.Allocate();
-    overlay_graphics->context = frame_input.graphics_ctx;
+    overlay_graphics->renderer = frame_input.renderer;
     overlay_graphics->BeginDraw();
 
     BeginWindow(settings,
@@ -1178,7 +1178,7 @@ TextInputResult Context::TextInput(Rect r,
     };
 
     auto get_text_pos = [&](Rect r, f32 offset) {
-        auto font_size = graphics->context->CurrentFontSize();
+        auto font_size = graphics->renderer->CurrentFontSize();
         auto pos = r.pos;
         pos.x += offset;
         if (!flags.multiline) pos.y += (r.h - font_size) / 2; // centre Y
@@ -1203,7 +1203,7 @@ TextInputResult Context::TextInput(Rect r,
     auto get_offset = [&](String text) {
         auto x_offset = flags.x_padding;
         if (flags.centre_align) {
-            auto font = graphics->context->CurrentFont();
+            auto font = graphics->renderer->CurrentFont();
             auto size = font->CalcTextSizeA(font->font_size, FLT_MAX, 0.0f, text).x;
             x_offset = ((r.w / 2) - (size / 2));
         }
@@ -1453,8 +1453,8 @@ TextInputResult Context::TextInput(Rect r,
         }
     }
 
-    auto const font_size = graphics->context->CurrentFontSize();
-    auto font = graphics->context->CurrentFont();
+    auto const font_size = graphics->renderer->CurrentFontSize();
+    auto font = graphics->renderer->CurrentFont();
 
     if (result.buffer_changed) {
         for (u8 iteration = 0; iteration < 2; ++iteration) {
@@ -1481,7 +1481,7 @@ TextInputResult Context::TextInput(Rect r,
 
                 if (line_end <= line_start) break;
 
-                auto const line_width = font->CalcTextSizeA(graphics->context->CurrentFontSize(),
+                auto const line_width = font->CalcTextSizeA(graphics->renderer->CurrentFontSize(),
                                                             FLT_MAX,
                                                             0,
                                                             {line_start, (usize)(line_end - line_start)})
@@ -1598,8 +1598,8 @@ Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIter
 
         char const* end_pos = it.pos;
 
-        auto font = it.draw_ctx.CurrentFont();
-        auto font_size = it.draw_ctx.CurrentFontSize();
+        auto font = it.renderer.CurrentFont();
+        auto font_size = it.renderer.CurrentFontSize();
 
         Rect const result = {
             .x = text_pos.x + font->CalcTextSizeA(font_size,
@@ -1633,8 +1633,8 @@ Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIter
 
     auto const end_pos = it.pos;
 
-    auto font = it.draw_ctx.CurrentFont();
-    auto font_size = it.draw_ctx.CurrentFontSize();
+    auto font = it.renderer.CurrentFont();
+    auto font_size = it.renderer.CurrentFontSize();
 
     return Rect {.x = text_pos.x,
                  .y = text_pos.y - 2 + (start_line_index * font_size),
@@ -1909,7 +1909,7 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
         ASSERT(window->graphics);
     }
 
-    window->graphics->context = GuiIo().in.graphics_ctx;
+    window->graphics->renderer = GuiIo().in.renderer;
     if (window->graphics == window->allocated_graphics) window->graphics->BeginDraw();
     graphics = window->graphics;
 
@@ -2305,20 +2305,20 @@ void Context::DebugTextItem(char const* label, char const* text, ...) {
 
     f32 const label_width = 150;
     f32 const x_pad = 10;
-    auto const height = graphics->context->CurrentFontSize();
+    auto const height = graphics->renderer->CurrentFontSize();
 
     Rect r = {.xywh {0, debug_y_pos, Width(), height}};
     RegisterAndConvertRect(&r);
 
-    graphics->AddText(graphics->context->CurrentFont(),
-                      graphics->context->CurrentFontSize(),
+    graphics->AddText(graphics->renderer->CurrentFont(),
+                      graphics->renderer->CurrentFontSize(),
                       WindowPosToScreenPos({x_pad, debug_y_pos}),
                       0xffffffff,
                       FromNullTerminated(label),
                       label_width - 4);
 
-    graphics->AddText(graphics->context->CurrentFont(),
-                      graphics->context->CurrentFontSize(),
+    graphics->AddText(graphics->renderer->CurrentFont(),
+                      graphics->renderer->CurrentFontSize(),
                       WindowPosToScreenPos({x_pad + label_width, debug_y_pos}),
                       0xffffffff,
                       FromNullTerminated(buffer),
@@ -2327,7 +2327,7 @@ void Context::DebugTextItem(char const* label, char const* text, ...) {
 }
 
 bool Context::DebugTextHeading(bool& state, char const* text) {
-    f32 const height = graphics->context->CurrentFontSize() + 4;
+    f32 const height = graphics->renderer->CurrentFontSize() + 4;
 
     bool const clicked = Button(DefButton(),
                                 {.xywh {0, debug_y_pos, Width(), height}},
@@ -2339,7 +2339,7 @@ bool Context::DebugTextHeading(bool& state, char const* text) {
 }
 
 bool Context::DebugButton(char const* text) {
-    f32 const height = graphics->context->CurrentFontSize() + 4;
+    f32 const height = graphics->renderer->CurrentFontSize() + 4;
 
     bool const clicked = ToggleButton(DefToggleButton(),
                                       {.xywh {0, debug_y_pos, Width(), height}},
@@ -2372,7 +2372,7 @@ void Context::DebugWindow(Rect r) {
         DebugTextItem("WindowSize", "%hu, %hu", in.window_size.width, in.window_size.height);
         DebugTextItem("Widgets", "%d", (int)GuiIo().out.mouse_tracked_rects.size);
 
-        debug_y_pos += graphics->context->CurrentFontSize() * 2;
+        debug_y_pos += graphics->renderer->CurrentFontSize() * 2;
 
         DebugTextItem("Timers:", "");
         for (auto& t : GuiIo().out.timed_wakeups)
@@ -2419,7 +2419,7 @@ void Context::DebugWindow(Rect r) {
         else
             DebugTextItem("Hovered Size", "0 0 0 0");
         DebugTextItem("Hovered Flags", "%s", dyn::NullTerminated(buffer));
-        debug_y_pos += graphics->context->CurrentFontSize() * 3;
+        debug_y_pos += graphics->renderer->CurrentFontSize() * 3;
     }
 
     EndWindow();
@@ -2632,7 +2632,7 @@ void Context::Textf(TextSettings settings, Rect r, char const* text, va_list arg
 //
 //
 f32 Context::LargestStringWidth(f32 pad, void* items, int num, String (*GetStr)(void* items, int index)) {
-    auto font = graphics->context->CurrentFont();
+    auto font = graphics->renderer->CurrentFont();
     f32 result = 0;
     for (auto const i : Range(num)) {
         auto str = GetStr(items, i);

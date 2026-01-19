@@ -4,7 +4,7 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
-#include "draw_list.hpp"
+#include "graphics.hpp"
 #include "gui_frame.hpp"
 #include "gui_live_edit.hpp"
 
@@ -279,7 +279,7 @@ struct TextInputResult {
     f32x2 GetTextPos() const { return text_pos; }
 
     struct SelectionIterator {
-        graphics::DrawContext& draw_ctx;
+        graphics::Renderer& renderer;
         char const* pos;
         u32 remaining_chars;
         u32 line_index;
@@ -799,7 +799,7 @@ PUBLIC IMGUI_DRAW_BUTTON(DefaultDrawButton) {
     if (state) col = 0xff808080;
     imgui.graphics->AddRectFilled(r.Min(), r.Max(), col);
 
-    auto font_size = imgui.graphics->context->CurrentFontSize();
+    auto font_size = imgui.graphics->renderer->CurrentFontSize();
     auto pad = (f32)GuiIo().in.window_size.width / 200.0f;
     imgui.graphics->AddText(f32x2 {r.x + pad, r.y + (r.h / 2 - font_size / 2)}, 0xff000000, str);
 }
@@ -811,7 +811,7 @@ PUBLIC IMGUI_DRAW_BUTTON(DefaultDrawPopupButton) {
     if (imgui.IsActive(id)) col = 0xff808080;
     imgui.graphics->AddRectFilled(r.Min(), r.Max(), col);
 
-    auto font_size = imgui.graphics->context->CurrentFontSize();
+    auto font_size = imgui.graphics->renderer->CurrentFontSize();
     imgui.graphics->AddText(f32x2 {r.x + 4, r.y + ((r.h - font_size) / 2)}, 0xff000000, str);
 
     imgui.graphics->AddTriangleFilled({r.Right() - 14, r.y + 4},
@@ -832,7 +832,7 @@ PUBLIC void DefaultDrawTextInput(Context const& s, Rect r, Id id, String text, T
     s.graphics->AddRectFilled(r.Min(), r.Max(), col);
 
     if (result->HasSelection()) {
-        TextInputResult::SelectionIterator it {*s.graphics->context};
+        TextInputResult::SelectionIterator it {*s.graphics->renderer};
         while (auto const sel_r = result->NextSelectionRect(it))
             s.graphics->AddRectFilled(*sel_r, 0xff0000ff);
     }
@@ -955,12 +955,12 @@ PUBLIC TextSettings DefText() {
     TextSettings s;
     s.col = 0xffffffff;
     s.draw = [](IMGUI_DRAW_TEXT_ARGS) {
-        auto font_size = imgui.graphics->context->CurrentFontSize();
+        auto font_size = imgui.graphics->renderer->CurrentFontSize();
         f32x2 pos;
         pos.x = (f32)(int)r.x;
         pos.y = r.y + ((r.h / 2) - (font_size / 2));
         pos.y = (f32)(int)pos.y;
-        imgui.graphics->AddText(imgui.graphics->context->CurrentFont(), font_size, pos, col, str, 0);
+        imgui.graphics->AddText(imgui.graphics->renderer->CurrentFont(), font_size, pos, col, str, 0);
     };
     return s;
 }

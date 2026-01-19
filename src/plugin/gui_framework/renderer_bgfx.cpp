@@ -19,7 +19,7 @@
 #include "utils/logger/logger.hpp"
 
 #include "bgfx_init_window.hpp"
-#include "draw_list.hpp"
+#include "graphics.hpp"
 #include "shaders/fs_draw_list.bin.h"
 #include "shaders/vs_draw_list.bin.h"
 
@@ -93,7 +93,9 @@ struct Callback : public bgfx::CallbackI {
     virtual void captureFrame(void const*, u32) override {}
 };
 
-struct Renderer {
+constexpr u32 k_reset_flags = BGFX_RESET_VSYNC;
+
+struct SharedRendererState {
     ErrorCodeOr<void> InitIfNeeded(void* native_window, void* native_display) {
         if (init) return k_success;
         (void)native_window;
@@ -135,7 +137,7 @@ struct Renderer {
             cfg.resolution.numBackBuffers = 1;
             cfg.resolution.width = FLOE_BGFX_API_METAL ? 1 : 0;
             cfg.resolution.height = FLOE_BGFX_API_METAL ? 1 : 0;
-            cfg.resolution.reset = BGFX_RESET_VSYNC;
+            cfg.resolution.reset = k_reset_flags;
             cfg.callback = &callbacks;
 
             if (!bgfx::init(cfg)) return Error("bgfx::init failed");
@@ -215,16 +217,18 @@ struct Renderer {
     bgfx::ProgramHandle shader_program = BGFX_INVALID_HANDLE;
 };
 
-[[clang::no_destroy]] Renderer g_renderer {};
+[[clang::no_destroy]] SharedRendererState g_shared_renderer {};
 
-struct BgfxDrawContext : public DrawContext {
-    ~BgfxDrawContext() override { DestroyDeviceObjects(); }
+struct BgfxRenderer : public Renderer {
+    BgfxRenderer() : Renderer((TextureHandle)BGFX_INVALID_HANDLE) {}
 
-    ErrorCodeOr<void> CreateDeviceObjects(UiSize size, void* native_window, void* native_display) override {
+    ~BgfxRenderer() override { Deinit(); }
+
+    ErrorCodeOr<void> Init(UiSize size, void* native_window, void* native_display) override {
         ZoneScoped;
         Trace(ModuleName::Bgfx);
 
-        TRY(g_renderer.InitIfNeeded(native_window, native_display));
+        TRY(g_shared_renderer.InitIfNeeded(native_window, native_display));
 
         ASSERT(!bgfx::isValid(window_framebuffer));
         ASSERT(size.width > 0 && size.height > 0);
@@ -253,7 +257,7 @@ struct BgfxDrawContext : public DrawContext {
         return k_success;
     }
 
-    void DestroyDeviceObjects() override {
+    void Deinit() override {
         ZoneScoped;
         Trace(ModuleName::Bgfx);
 
@@ -271,6 +275,8 @@ struct BgfxDrawContext : public DrawContext {
             LogDebug(ModuleName::Bgfx, "Framebuffer destroyed and flushed");
         }
     }
+
+    void OnResize(UiSize size, void*) override { bgfx::reset(size.width, size.height, k_reset_flags); }
 
     ErrorCodeOr<void> CreateFontTexture() override {
         ZoneScoped;
@@ -299,7 +305,7 @@ struct BgfxDrawContext : public DrawContext {
 
         if (!bgfx::isValid(font_texture)) return Error("failed to create font texture");
 
-        fonts.tex_id = (void*)(uintptr)font_texture.idx;
+        fonts.tex_id = (TextureHandle)font_texture.idx;
 
         fonts.ClearTexData();
 
@@ -314,7 +320,7 @@ struct BgfxDrawContext : public DrawContext {
         if (bgfx::isValid(font_texture)) {
             bgfx::destroy(font_texture);
             font_texture = BGFX_INVALID_HANDLE;
-            fonts.tex_id = nullptr;
+            fonts.tex_id = BGFX_INVALID_HANDLE;
             LogDebug(ModuleName::Bgfx, "Font texture destroyed");
         }
 
@@ -345,18 +351,16 @@ struct BgfxDrawContext : public DrawContext {
                                                bgfx::copy(data, size.width * size.height * bytes_per_pixel));
 
         if (!bgfx::isValid(tex)) return Error("failed to create texture");
-        return (void*)(uintptr_t)tex.idx;
+        return TextureHandle {tex.idx};
     }
 
-    void DestroyTexture(TextureHandle& id) override {
+    void DestroyTexture(TextureHandle& handle) override {
         ZoneScoped;
         Trace(ModuleName::Bgfx);
 
-        if (id != nullptr) {
-            bgfx::TextureHandle const tex {(u16)(uintptr_t)id};
-            if (bgfx::isValid(tex)) bgfx::destroy(tex);
-            id = nullptr;
-        }
+        bgfx::TextureHandle const tex {CheckedCast<u16>(handle)};
+        if (bgfx::isValid(tex)) bgfx::destroy(tex);
+        handle = BGFX_INVALID_HANDLE;
     }
 
     ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size, void* native_window) override {
@@ -425,7 +429,7 @@ struct BgfxDrawContext : public DrawContext {
             auto const num_vertices = (u32)draw_list->vtx_buffer.size;
             auto const num_indices = (u32)draw_list->idx_buffer.size;
 
-            if (!bgfx::getAvailTransientVertexBuffer(num_vertices, g_renderer.vertex_layout) ||
+            if (!bgfx::getAvailTransientVertexBuffer(num_vertices, g_shared_renderer.vertex_layout) ||
                 !bgfx::getAvailTransientIndexBuffer(num_indices)) {
                 LogWarning(ModuleName::Bgfx, "Transient buffers not available, skipping draw list");
                 break;
@@ -433,7 +437,7 @@ struct BgfxDrawContext : public DrawContext {
 
             bgfx::TransientVertexBuffer tvb;
             bgfx::TransientIndexBuffer tib;
-            bgfx::allocTransientVertexBuffer(&tvb, num_vertices, g_renderer.vertex_layout);
+            bgfx::allocTransientVertexBuffer(&tvb, num_vertices, g_shared_renderer.vertex_layout);
             bgfx::allocTransientIndexBuffer(&tib, num_indices);
 
             // Copy index data directly
@@ -456,7 +460,9 @@ struct BgfxDrawContext : public DrawContext {
                 if (cmd.elem_count == 0) continue;
 
                 auto th = font_texture;
-                if (cmd.texture_id != nullptr) th.idx = (u16)(uintptr)cmd.texture_id;
+                if (auto const cmd_tex = bgfx::TextureHandle {CheckedCast<u16>(cmd.texture_id)};
+                    bgfx::isValid(cmd_tex))
+                    th = {cmd_tex};
 
                 auto const x = (u16)Max(cmd.clip_rect.x, 0.0f);
                 auto const y = (u16)Max(cmd.clip_rect.y, 0.0f);
@@ -467,10 +473,10 @@ struct BgfxDrawContext : public DrawContext {
                 bgfx::setState(
                     BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_MSAA |
                     BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA));
-                bgfx::setTexture(0, g_renderer.texture_uniform, th);
+                bgfx::setTexture(0, g_shared_renderer.texture_uniform, th);
                 bgfx::setVertexBuffer(0, &tvb, 0, num_vertices);
                 bgfx::setIndexBuffer(&tib, offset, cmd.elem_count);
-                bgfx::submit(k_view_id, g_renderer.shader_program);
+                bgfx::submit(k_view_id, g_shared_renderer.shader_program);
 
                 offset += cmd.elem_count;
             }
@@ -489,6 +495,6 @@ struct BgfxDrawContext : public DrawContext {
     UiSize last_window_size {0, 0};
 };
 
-DrawContext* CreateNewDrawContextBgfx() { return new BgfxDrawContext(); }
+Renderer* CreateNewRendererBgfx() { return new BgfxRenderer(); }
 
 } // namespace graphics

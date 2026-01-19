@@ -70,7 +70,7 @@ static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
     if (layer_obj->instrument_id.tag == InstrumentType::Sampler) {
         auto sample_inst_id = layer_obj->instrument_id.Get<sample_lib::InstrumentId>();
         auto imgs = LibraryImagesFromLibraryId(g, sample_inst_id.library, LibraryImagesTypes::Icon);
-        if (imgs.icon) icon_tex = GuiIo().in.graphics_ctx->GetTextureFromImage(*imgs.icon);
+        if (imgs.icon) icon_tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.icon);
     }
 
     DoInstSelectorRightClickMenu(g, r, layer);
@@ -454,7 +454,7 @@ void Layout(Gui* g,
         for (auto const i : Range(k_num_pages)) {
             auto const page_type = (PageType)i;
             auto size =
-                draw::GetTextWidth(g->imgui.graphics->context->CurrentFont(), GetPageTitle(page_type));
+                draw::GetTextWidth(g->imgui.graphics->renderer->CurrentFont(), GetPageTitle(page_type));
             if (page_type == PageType::Filter || page_type == PageType::Lfo || page_type == PageType::Eq)
                 size += LiveSize(g->imgui, LayerParamsGroupTabsIconW2);
             c.tabs[i] =

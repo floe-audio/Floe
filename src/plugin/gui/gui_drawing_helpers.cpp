@@ -44,8 +44,8 @@ void VoiceMarkerLine(imgui::Context const& imgui,
         f32 const tail_size = Min(pos.x - left_min, k_tail_size_max);
 
         if (tail_size > 1) {
-            auto const aa = imgui.graphics->context->fill_anti_alias;
-            imgui.graphics->context->fill_anti_alias = false;
+            auto const aa = imgui.graphics->renderer->fill_anti_alias;
+            imgui.graphics->renderer->fill_anti_alias = false;
             auto const darkened_col =
                 colours::ChangeBrightness(LiveCol(imgui, UiColMap::Waveform_LoopVoiceMarkers), 0.7f);
             auto const col = colours::WithAlpha(darkened_col, (u8)MapFrom01(opacity, 10, 40));
@@ -71,18 +71,18 @@ void VoiceMarkerLine(imgui::Context const& imgui,
                                                         transparent_col);
             }
 
-            imgui.graphics->context->fill_anti_alias = aa;
+            imgui.graphics->renderer->fill_anti_alias = aa;
         }
     }
 
     {
-        auto const aa = imgui.graphics->context->anti_aliased_lines;
-        imgui.graphics->context->anti_aliased_lines = false;
+        auto const aa = imgui.graphics->renderer->anti_aliased_lines;
+        imgui.graphics->renderer->anti_aliased_lines = false;
         auto const col =
             colours::WithAlpha(LiveCol(imgui, UiColMap::Waveform_LoopVoiceMarkers), (u8)(opacity * 255.0f));
 
         imgui.graphics->AddLine(pos, pos + f32x2 {0, height}, col);
-        imgui.graphics->context->anti_aliased_lines = aa;
+        imgui.graphics->renderer->anti_aliased_lines = aa;
     }
 }
 

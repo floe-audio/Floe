@@ -26,7 +26,7 @@
 #include "gui/gui_frame_context.hpp"
 #include "gui_editor_widgets.hpp"
 #include "gui_editors.hpp"
-#include "gui_framework/draw_list.hpp"
+#include "gui_framework/graphics.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_framework/gui_platform.hpp"
@@ -52,34 +52,34 @@ LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, LibraryI
 }
 
 Optional<graphics::ImageID> LogoImage(Gui* g) {
-    if (!g->imgui.graphics->context->ImageIdIsValid(g->floe_logo_image)) {
+    if (!g->imgui.graphics->renderer->ImageIdIsValid(g->floe_logo_image)) {
         auto const data = EmbeddedLogoImage();
         if (data.size) {
             auto outcome = DecodeImage({data.data, data.size}, g->scratch_arena);
             ASSERT(!outcome.HasError());
             auto const pixels = outcome.ReleaseValue();
-            g->floe_logo_image = CreateImageIdChecked(*g->imgui.graphics->context, pixels);
+            g->floe_logo_image = CreateImageIdChecked(*g->imgui.graphics->renderer, pixels);
         }
     }
     return g->floe_logo_image;
 }
 
 static void SampleLibraryChanged(Gui* g, sample_lib::LibraryIdRef library_id) {
-    InvalidateLibraryImages(g->library_images, library_id, *GuiIo().in.graphics_ctx);
+    InvalidateLibraryImages(g->library_images, library_id, *GuiIo().in.renderer);
 }
 
 static void CreateFontsIfNeeded(Gui* g) {
     //
     // Fonts
     //
-    auto& graphics_ctx = *GuiIo().in.graphics_ctx;
+    auto& renderer = *GuiIo().in.renderer;
 
-    if (graphics_ctx.fonts.tex_id == nullptr) {
-        graphics_ctx.fonts.Clear();
+    if (!renderer.HasFontTexture()) {
+        renderer.fonts.Clear();
 
-        LoadFonts(graphics_ctx, g->fonts, g->imgui.pixels_per_vw);
+        LoadFonts(renderer.fonts, g->fonts, g->imgui.pixels_per_vw);
 
-        auto const outcome = graphics_ctx.CreateFontTexture();
+        auto const outcome = renderer.CreateFontTexture();
         if (outcome.HasError())
             LogError(ModuleName::Gui, "Failed to create font texture: {}", outcome.Error());
     }
@@ -144,8 +144,8 @@ static void DoStandaloneErrorGUI(Gui* g) {
 
     auto const& frame_input = GuiIo().in;
 
-    frame_input.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Body)]);
-    DEFER { frame_input.graphics_ctx->PopFont(); };
+    frame_input.renderer->PushFont(g->fonts[ToInt(FontType::Body)]);
+    DEFER { frame_input.renderer->PopFont(); };
     auto& imgui = g->imgui;
     static bool error_window_open = true;
 
@@ -329,15 +329,15 @@ void GuiUpdate(Gui* g) {
 
     MacroGuiBeginFrame(g);
 
-    StartFrame(g->waveform_images, *frame_input.graphics_ctx);
-    DEFER { EndFrame(g->waveform_images, *frame_input.graphics_ctx); };
+    StartFrame(g->waveform_images, *frame_input.renderer);
+    DEFER { EndFrame(g->waveform_images, *frame_input.renderer); };
 
     auto whole_window_sets = imgui::DefMainWindow();
     whole_window_sets.draw_routine_window_background = [&](IMGUI_DRAW_WINDOW_BG_ARGS_TYPES) {};
     imgui.Begin(whole_window_sets);
 
-    frame_input.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Body)]);
-    DEFER { frame_input.graphics_ctx->PopFont(); };
+    frame_input.renderer->PushFont(g->fonts[ToInt(FontType::Body)]);
+    DEFER { frame_input.renderer->PopFont(); };
 
     auto const top_h = Round(LiveSize(imgui, UiSizeId::Top2Height));
     auto const bot_h = Round(LiveSize(imgui, UiSizeId::BotPanelHeight));
@@ -353,7 +353,7 @@ void GuiUpdate(Gui* g) {
             if (overall_library) {
                 auto imgs = LibraryImagesFromLibraryId(g, *overall_library, LibraryImagesTypes::Backgrounds);
                 if (imgs.background) {
-                    auto tex = GuiIo().in.graphics_ctx->GetTextureFromImage(*imgs.background);
+                    auto tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.background);
                     if (tex) {
                         imgui.graphics->AddImage(*tex,
                                                  r.Min(),

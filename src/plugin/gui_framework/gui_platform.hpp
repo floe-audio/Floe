@@ -39,8 +39,8 @@ struct GuiPlatform {
     PuglWorld* world {};
     PuglView* view {};
     CursorType current_cursor {CursorType::Default};
-    graphics::DrawContextBackend draw_backend {};
-    graphics::DrawContext* graphics_ctx {};
+    graphics::RendererBackend renderer_backend {};
+    graphics::Renderer* renderer {};
     f64 double_click_time_ms {300.0};
     GuiFrameOutput last_result {};
     GuiFrameInput frame_state {};
@@ -245,7 +245,7 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
 
     ASSERT(platform.world == nullptr);
     ASSERT(platform.view == nullptr);
-    ASSERT(platform.graphics_ctx == nullptr);
+    ASSERT(platform.renderer == nullptr);
     ASSERT(!platform.gui);
     ASSERT(!platform.clap_timer_id);
     ASSERT(!platform.clap_posix_fd);
@@ -284,13 +284,13 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
     puglSetHandle(platform.view, &platform);
     TRY(Required(puglSetEventFunc(platform.view, detail::EventHandler)));
 
-    platform.draw_backend = ({
-        graphics::DrawContextBackend b {};
+    platform.renderer_backend = ({
+        graphics::RendererBackend b {};
 
         constexpr bool k_use_experimental_bgfx = false;
         if constexpr (k_use_experimental_bgfx) {
-            if constexpr (IS_WINDOWS) b = graphics::DrawContextBackend::Bgfx;
-            if constexpr (IS_LINUX) b = graphics::DrawContextBackend::Bgfx;
+            if constexpr (IS_WINDOWS) b = graphics::RendererBackend::Bgfx;
+            if constexpr (IS_LINUX) b = graphics::RendererBackend::Bgfx;
             if constexpr (IS_MACOS) {
                 // bgfx only supports macOS 13 (Darwin version 22) and above. We use our old OpenGL backend
                 // for older systems. We've only ever seen kernel_version in the format x.x.x, so we can
@@ -298,22 +298,22 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
                 // newer.
                 auto const darwin_version = ParseInt(GetOsInfo().kernel_version, ParseIntBase::Decimal);
                 if (!darwin_version || darwin_version.Value() >= 22)
-                    b = graphics::DrawContextBackend::Bgfx;
+                    b = graphics::RendererBackend::Bgfx;
                 else
-                    b = graphics::DrawContextBackend::OpenGl;
+                    b = graphics::RendererBackend::OpenGl;
             }
         } else {
-            if constexpr (IS_WINDOWS) b = graphics::DrawContextBackend::Direct3D9;
-            if constexpr (IS_MACOS) b = graphics::DrawContextBackend::OpenGl;
-            if constexpr (IS_LINUX) b = graphics::DrawContextBackend::OpenGl;
+            if constexpr (IS_WINDOWS) b = graphics::RendererBackend::Direct3D9;
+            if constexpr (IS_MACOS) b = graphics::RendererBackend::OpenGl;
+            if constexpr (IS_LINUX) b = graphics::RendererBackend::OpenGl;
         }
         b;
     });
 
-    LogInfo(ModuleName::Gui, "Selected backend {}", EnumToString(platform.draw_backend));
+    LogInfo(ModuleName::Gui, "Selected backend {}", EnumToString(platform.renderer_backend));
 
-    switch (platform.draw_backend) {
-        case graphics::DrawContextBackend::OpenGl: {
+    switch (platform.renderer_backend) {
+        case graphics::RendererBackend::OpenGl: {
             if constexpr (!IS_WINDOWS) {
                 TRY(Required(puglSetBackend(platform.view, puglGlBackend())));
                 TRY(Required(puglSetViewHint(platform.view, PUGL_CONTEXT_VERSION_MAJOR, 3)));
@@ -326,12 +326,12 @@ PUBLIC ErrorCodeOr<void> CreateView(GuiPlatform& platform) {
             }
             break;
         }
-        case graphics::DrawContextBackend::Bgfx:
-        case graphics::DrawContextBackend::Direct3D9: {
+        case graphics::RendererBackend::Bgfx:
+        case graphics::RendererBackend::Direct3D9: {
             TRY(Required(puglSetBackend(platform.view, puglStubBackend())));
             break;
         }
-        case graphics::DrawContextBackend::Count: PanicIfReached();
+        case graphics::RendererBackend::Count: PanicIfReached();
     }
 
     return k_success;
@@ -708,28 +708,28 @@ static bool EventText(GuiPlatform& platform, PuglTextEvent const& text_event) {
     return false;
 }
 
-static void CreateGraphicsContext(GuiPlatform& platform) {
+static void CreateRenderer(GuiPlatform& platform) {
     ZoneScoped;
-    auto graphics_ctx = graphics::CreateNewDrawContext(platform.draw_backend);
+    auto renderer = graphics::CreateNewRenderer(platform.renderer_backend);
 
-    auto const outcome = graphics_ctx->CreateDeviceObjects(GetSize(platform),
-                                                           (void*)puglGetNativeView(platform.view),
-                                                           puglGetNativeWorld(puglGetWorld(platform.view)));
-
-    if (outcome.HasError()) {
-        LogError(ModuleName::Gui, "Failed to create graphics context: {}", outcome.Error());
-        delete graphics_ctx;
+    if (auto const outcome = renderer->Init(GetSize(platform),
+                                            (void*)puglGetNativeView(platform.view),
+                                            puglGetNativeWorld(puglGetWorld(platform.view)));
+        outcome.HasError()) {
+        LogError(ModuleName::Gui, "Failed to init renderer: {}", outcome.Error());
+        delete renderer;
         return;
     }
-    platform.graphics_ctx = graphics_ctx;
+
+    platform.renderer = renderer;
 }
 
-static void DestroyGraphicsContext(GuiPlatform& platform) {
+static void DestroyRenderer(GuiPlatform& platform) {
     ZoneScoped;
-    if (platform.graphics_ctx) {
-        platform.graphics_ctx->DestroyDeviceObjects();
-        delete platform.graphics_ctx;
-        platform.graphics_ctx = nullptr;
+    if (platform.renderer) {
+        platform.renderer->Deinit();
+        delete platform.renderer;
+        platform.renderer = nullptr;
     }
 }
 
@@ -874,7 +874,7 @@ static void HandlePostUpdateRequests(GuiPlatform& platform) {
 }
 
 static void UpdateAndRender(GuiPlatform& platform) {
-    if (!platform.graphics_ctx) return;
+    if (!platform.renderer) return;
     if constexpr (!IS_MACOS) // doesn't seem to work on macOS
         if (!puglGetVisible(platform.view)) return;
 
@@ -891,21 +891,20 @@ static void UpdateAndRender(GuiPlatform& platform) {
         return;
     }
 
-    // We delete our textures if the window size changes because we want to scale up all fonts/images to be
-    // more appropriate for the new window size. We could be smarter about this in the future.
     if (platform.frame_state.window_size != window_size) {
-        platform.graphics_ctx->DestroyDeviceObjects();
-        auto const outcome =
-            platform.graphics_ctx->CreateDeviceObjects(GetSize(platform),
-                                                       (void*)puglGetNativeView(platform.view),
-                                                       puglGetNativeWorld(puglGetWorld(platform.view)));
-        if (outcome.HasError()) {
-            LogError(ModuleName::Gui, "Failed to recreate graphics context: {}", outcome.Error());
-            return;
-        }
+        // When Floe resizes, all graphics scale up. Resizing is really 'rescaling'. Therefore, we delete our
+        // textures if the window size changes so fonts/images are more appropriate for the new window size.
+        // Our app knows these resources can disappear at any time and will recreate them.
+        platform.renderer->DestroyAllTextures();
+        platform.renderer->DestroyFontTexture();
+
+        // We notify the renderer of the resize here because it gives the renderer freer scope in this
+        // PUGL_EXPOSE event rather than in a PUGL_CONFIGURE event (where some graphics usage might be
+        // invalid).
+        platform.renderer->OnResize(window_size, (void*)puglGetNativeView(platform.view));
     }
 
-    platform.frame_state.graphics_ctx = platform.graphics_ctx;
+    platform.frame_state.renderer = platform.renderer;
     platform.frame_state.native_window = (void*)puglGetNativeView(platform.view);
     platform.frame_state.window_size = window_size;
     platform.frame_state.pugl_view = platform.view;
@@ -941,9 +940,9 @@ static void UpdateAndRender(GuiPlatform& platform) {
 
     if (platform.last_result.draw_lists.size) {
         ZoneNamedN(render, "render", true);
-        auto o = platform.graphics_ctx->Render(platform.last_result.draw_lists,
-                                               window_size,
-                                               platform.frame_state.native_window);
+        auto o = platform.renderer->Render(platform.last_result.draw_lists,
+                                           window_size,
+                                           platform.frame_state.native_window);
         if (o.HasError()) LogError(ModuleName::Gui, "GUI render failed: {}", o.Error());
     }
 
@@ -968,13 +967,14 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
 
             case PUGL_REALIZE: {
                 LogDebug(ModuleName::Gui, "realize: {}", fmt::DumpStruct(event->any));
-                CreateGraphicsContext(platform);
+                CreateRenderer(platform);
+                platform.frame_state.window_size = GetSize(platform);
                 break;
             }
 
             case PUGL_UNREALIZE: {
                 LogDebug(ModuleName::Gui, "unrealize {}", fmt::DumpStruct(event->any));
-                DestroyGraphicsContext(platform);
+                DestroyRenderer(platform);
                 break;
             }
 

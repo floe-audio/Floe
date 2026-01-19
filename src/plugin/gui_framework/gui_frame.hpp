@@ -5,7 +5,7 @@
 #include "foundation/foundation.hpp"
 #include "os/misc.hpp"
 
-#include "draw_list.hpp"
+#include "graphics.hpp"
 
 static constexpr u8 k_gui_refresh_rate_hz = 60;
 
@@ -127,7 +127,7 @@ struct GuiFrameInput {
         dyn::Clear(input_utf32_chars);
     }
 
-    graphics::DrawContext* graphics_ctx {};
+    graphics::Renderer* renderer {};
 
     f32x2 cursor_pos {};
     f32x2 cursor_pos_prev {};

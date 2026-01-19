@@ -37,7 +37,7 @@ static void CreateWaveformImageAsync(WaveformImage::FuturePixels& future,
 
 Optional<graphics::ImageID> GetWaveformImage(WaveformImagesTable& table,
                                              Instrument const& inst,
-                                             graphics::DrawContext& graphics,
+                                             graphics::Renderer& renderer,
                                              ThreadPool& thread_pool,
                                              f32x2 f32_size) {
     auto const size = UiSize::FromFloat2(f32_size);
@@ -73,7 +73,7 @@ Optional<graphics::ImageID> GetWaveformImage(WaveformImagesTable& table,
     auto& waveform = e.element.data;
     waveform.used = true;
 
-    if (!graphics.ImageIdIsValid(waveform.image_id)) {
+    if (!renderer.ImageIdIsValid(waveform.image_id)) {
         bool need_start_loading = false;
         if (!waveform.loading_pixels) {
             waveform.loading_pixels = table.loading_pixels.Prepend(table.arena);
@@ -89,25 +89,25 @@ Optional<graphics::ImageID> GetWaveformImage(WaveformImagesTable& table,
     return waveform.image_id;
 }
 
-void StartFrame(WaveformImagesTable& table, graphics::DrawContext& graphics) {
+void StartFrame(WaveformImagesTable& table, graphics::Renderer& renderer) {
     for (auto [_, waveform, _] : table.table) {
         waveform.used = false;
 
         // Consume any finished loading operations.
         if (waveform.loading_pixels) {
             if (auto const result = waveform.loading_pixels->TryReleaseResult()) {
-                waveform.image_id = CreateImageIdChecked(graphics, *result); // Create GPU resource.
+                waveform.image_id = CreateImageIdChecked(renderer, *result); // Create GPU resource.
                 result->Free(PixelsAllocator());
             }
         }
     }
 }
 
-void EndFrame(WaveformImagesTable& table, graphics::DrawContext& graphics) {
+void EndFrame(WaveformImagesTable& table, graphics::Renderer& renderer) {
     table.table.RemoveIf([&](u64 const&, WaveformImage& waveform) {
         if (!waveform.used) {
             if (waveform.image_id) {
-                graphics.DestroyImageID(*waveform.image_id);
+                renderer.DestroyImageID(*waveform.image_id);
                 waveform.image_id = k_nullopt;
             }
             if (waveform.loading_pixels) {

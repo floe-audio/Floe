@@ -11,7 +11,7 @@
 #include "gui.hpp"
 #include "gui/gui_button_widgets.hpp"
 #include "gui_drawing_helpers.hpp"
-#include "gui_framework/draw_list.hpp"
+#include "gui_framework/graphics.hpp"
 #include "gui_framework/gui_frame.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -55,7 +55,7 @@ struct DoButtonArgs {
 static bool DoButton(Gui* g, String button_text, DoButtonArgs args) {
     auto& imgui = g->imgui;
 
-    auto const line_height = imgui.graphics->context->CurrentFontSize();
+    auto const line_height = imgui.graphics->renderer->CurrentFontSize();
     auto const rounding = LiveSize(g->imgui, UiSizeId::CornerRounding);
     auto const icon_scaling = 0.8f;
     auto const icon_size = line_height * icon_scaling;
@@ -65,7 +65,7 @@ static bool DoButton(Gui* g, String button_text, DoButtonArgs args) {
     auto const y_pos = args.incrementing_y ? args.incrementing_y->y : args.y.ValueOr(0);
 
     auto const text_width =
-        draw::GetTextSize(imgui.graphics->context->CurrentFont(), button_text, imgui.Width()).x;
+        draw::GetTextSize(imgui.graphics->renderer->CurrentFont(), button_text, imgui.Width()).x;
 
     auto const content_width = text_width + (args.icon.size ? icon_size + gap_between_icon_and_text : 0);
 
@@ -102,8 +102,8 @@ static bool DoButton(Gui* g, String button_text, DoButtonArgs args) {
     rect_cut::CutRight(button_r, required_padding);
 
     if (args.icon.size) {
-        imgui.graphics->context->PushFont(g->fonts[ToInt(FontType::Icons)]);
-        DEFER { imgui.graphics->context->PopFont(); };
+        imgui.graphics->renderer->PushFont(g->fonts[ToInt(FontType::Icons)]);
+        DEFER { imgui.graphics->renderer->PopFont(); };
 
         auto const icon_r = rect_cut::CutLeft(button_r, icon_size);
         rect_cut::CutLeft(button_r, gap_between_icon_and_text);
@@ -152,8 +152,8 @@ static void DoHeading(Gui* g,
     auto const window_title_h = LiveSize(imgui, UiSizeId::ModalWindowTitleH);
     auto const window_title_gap_y = LiveSize(imgui, UiSizeId::ModalWindowTitleGapY);
 
-    imgui.graphics->context->PushFont(g->fonts[ToInt(FontType::Heading1)]);
-    DEFER { imgui.graphics->context->PopFont(); };
+    imgui.graphics->renderer->PushFont(g->fonts[ToInt(FontType::Heading1)]);
+    DEFER { imgui.graphics->renderer->PopFont(); };
     auto const r = imgui.GetRegisteredAndConvertedRect({.xywh {0, y_pos, imgui.Width(), window_title_h}});
     g->imgui.graphics->AddTextJustified(r, str, LiveCol(imgui, col), justification);
 
@@ -179,8 +179,8 @@ static void DoLegacyParamsModal(Gui* g) {
     if (!g->legacy_params_window_open) return;
 
     auto body_font = g->fonts[ToInt(FontType::Body)];
-    GuiIo().in.graphics_ctx->PushFont(body_font);
-    DEFER { GuiIo().in.graphics_ctx->PopFont(); };
+    GuiIo().in.renderer->PushFont(body_font);
+    DEFER { GuiIo().in.renderer->PopFont(); };
     auto& imgui = g->imgui;
 
     auto const r = ModalRect(imgui, UiSizeId::LegacyParamsWindowWidth, UiSizeId::LegacyParamsWindowHeight);
@@ -256,7 +256,7 @@ static void DoLegacyParamsModal(Gui* g) {
                                      g->engine.processor.main_params.DescribedValue(p.index),
                                      UiSizeId::Top2KnobsGapX);
         } else {
-            auto const font = imgui.graphics->context->CurrentFont();
+            auto const font = imgui.graphics->renderer->CurrentFont();
             auto const text_width = font->CalcTextSizeA(font->font_size, FLT_MAX, 0.0f, desc.name).x;
             auto const toggle_width = text_width + (LiveSize(imgui, UiSizeId::MenuButtonTextMarginL) * 2);
             auto const btn_h = LiveSize(g->imgui, UiSizeId::ParamPopupButtonHeight);
@@ -308,14 +308,14 @@ static void DoLegacyParamsModal(Gui* g) {
 }
 
 static void DoErrorsModal(Gui* g) {
-    GuiIo().in.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Body)]);
-    DEFER { GuiIo().in.graphics_ctx->PopFont(); };
+    GuiIo().in.renderer->PushFont(g->fonts[ToInt(FontType::Body)]);
+    DEFER { GuiIo().in.renderer->PopFont(); };
     auto& imgui = g->imgui;
 
     auto const r = ModalRect(imgui, UiSizeId::ErrorWindowWidth, UiSizeId::ErrorWindowHeight);
     auto const settings = ModalWindowSettings(g->imgui);
 
-    auto font = imgui.graphics->context->CurrentFont();
+    auto font = imgui.graphics->renderer->CurrentFont();
 
     if (imgui.BeginWindowPopup(settings, IdForModal(ModalWindowType::LoadError), r, "ErrorModal")) {
         DEFER { imgui.EndWindow(); };
@@ -351,13 +351,13 @@ static void DoErrorsModal(Gui* g) {
 
                     // title
                     {
-                        imgui.graphics->context->PushFont(g->fonts[ToInt(FontType::Heading2)]);
+                        imgui.graphics->renderer->PushFont(g->fonts[ToInt(FontType::Heading2)]);
                         auto const error_window_item_h = LiveSize(imgui, UiSizeId::ErrorWindowItemH);
                         labels::Label(g,
                                       {.xywh {0, y_pos, imgui.Width(), (f32)error_window_item_h}},
                                       e.title,
                                       text_style);
-                        imgui.graphics->context->PopFont();
+                        imgui.graphics->renderer->PopFont();
 
                         y_pos += (f32)error_window_item_h;
                     }
@@ -396,15 +396,15 @@ static void DoErrorsModal(Gui* g) {
 
         // Add space to the bottom of the scroll window
         imgui.GetRegisteredAndConvertedRect(
-            {.xywh {0, y_pos, 1, imgui.graphics->context->CurrentFontSize()}});
+            {.xywh {0, y_pos, 1, imgui.graphics->renderer->CurrentFontSize()}});
 
         if (!num_errors) imgui.ClosePopupToLevel(0);
     }
 }
 
 static void DoLoadingOverlay(Gui* g) {
-    GuiIo().in.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Body)]);
-    DEFER { GuiIo().in.graphics_ctx->PopFont(); };
+    GuiIo().in.renderer->PushFont(g->fonts[ToInt(FontType::Body)]);
+    DEFER { GuiIo().in.renderer->PopFont(); };
     auto& imgui = g->imgui;
 
     auto const r = ModalRect(imgui, UiSizeId::LoadingOverlayBoxWidth, UiSizeId::LoadingOverlayBoxHeight);

@@ -13,7 +13,7 @@
 
 #include "common_infrastructure/common_errors.hpp"
 
-#include "gui_framework/draw_list.hpp"
+#include "gui_framework/graphics.hpp"
 
 static ErrorCodeOr<ImageBytes> DecodeJpgOrPng(Span<u8 const> image_data, Allocator& allocator) {
     if (!image_data.size) return ErrorCode(CommonError::InvalidFileFormat);
@@ -335,9 +335,9 @@ ImageBytes CreateBlurredLibraryBackground(ImageBytes original,
     return result;
 }
 
-graphics::ImageID CreateImageIdChecked(graphics::DrawContext& ctx, ImageBytes const& px) {
+graphics::ImageID CreateImageIdChecked(graphics::Renderer& renderer, ImageBytes const& px) {
     ASSERT(px.rgba);
-    auto const outcome = ctx.CreateImageID(px.rgba, px.size, k_rgba_channels);
+    auto const outcome = renderer.CreateImageID(px.rgba, px.size, k_rgba_channels);
     if (outcome.HasError()) {
         LogError(ModuleName::Gui,
                  "Failed to create a texture (size {}x{}): {}",

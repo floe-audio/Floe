@@ -292,10 +292,10 @@ static bool Tooltip(GuiBoxSystem& builder,
 
     auto hot_seconds = imgui.SecondsSpentHot();
     if (imgui.IsHot(id) && hot_seconds >= style::k_tooltip_open_delay) {
-        builder.imgui.graphics->context->PushFont(builder.fonts[ToInt(FontType::Body)]);
-        DEFER { builder.imgui.graphics->context->PopFont(); };
+        builder.imgui.graphics->renderer->PushFont(builder.fonts[ToInt(FontType::Body)]);
+        DEFER { builder.imgui.graphics->renderer->PopFont(); };
 
-        auto const font = imgui.overlay_graphics->context->CurrentFont();
+        auto const font = imgui.overlay_graphics->renderer->CurrentFont();
         auto const pad_x = imgui.VwToPixels(style::k_tooltip_pad_x);
         auto const pad_y = imgui.VwToPixels(style::k_tooltip_pad_y);
 
@@ -622,8 +622,7 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                 }
 
                 // Convert ImageID to TextureHandle for rendering
-                if (auto const texture =
-                        GuiIo().in.graphics_ctx->GetTextureFromImage(*config.background_tex)) {
+                if (auto const texture = GuiIo().in.renderer->GetTextureFromImage(*config.background_tex)) {
                     auto const corner_flags = __builtin_bitreverse32(config.round_background_corners) >> 28;
                     auto const rounding = config.round_background_corners
                                               ? (config.round_background_fully
@@ -777,7 +776,7 @@ void DrawTextInput(GuiBoxSystem& builder, Box const& box, DrawTextInputConfig co
     if (!input_result) return;
 
     if (input_result->HasSelection()) {
-        imgui::TextInputResult::SelectionIterator it {*builder.imgui.graphics->context};
+        imgui::TextInputResult::SelectionIterator it {*builder.imgui.graphics->renderer};
         auto const selection_col = style::Col(config.selection_col);
         while (auto const r = input_result->NextSelectionRect(it))
             builder.imgui.graphics->AddRectFilled(*r, selection_col);

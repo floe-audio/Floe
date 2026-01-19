@@ -20,7 +20,7 @@
 
 #include "utils/debug/tracy_wrapped.hpp"
 
-#include "draw_list.hpp"
+#include "graphics.hpp"
 #include "tracy/TracyOpenGL.hpp"
 
 static_assert(!IS_WINDOWS);
@@ -62,8 +62,10 @@ ErrorCodeOr<void> CheckGLError(String function) {
     call;                                                                                                    \
     TRY(CheckGLError(#call));
 
-struct OpenGLDrawContext : public DrawContext {
-    ErrorCodeOr<void> CreateDeviceObjects(UiSize, void* native_window, void* native_display) override {
+struct OpenGLRenderer : public Renderer {
+    OpenGLRenderer() : Renderer((TextureHandle)0) {}
+
+    ErrorCodeOr<void> Init(UiSize, void* native_window, void* native_display) override {
         Trace(ModuleName::Gui);
         ASSERT(native_window != nullptr);
         (void)native_display;
@@ -86,13 +88,15 @@ struct OpenGLDrawContext : public DrawContext {
         return k_success;
     }
 
-    void DestroyDeviceObjects() override {
+    void Deinit() override {
         ZoneScoped;
-        TracyGpuZone("DestroyDeviceObjects");
+        TracyGpuZone("Deinit");
         Trace(ModuleName::Gui);
         DestroyAllTextures();
         DestroyFontTexture();
     }
+
+    void OnResize(UiSize, void*) override {}
 
     ErrorCodeOr<void> CreateFontTexture() override {
         ZoneScoped;
@@ -133,7 +137,7 @@ struct OpenGLDrawContext : public DrawContext {
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels));
 
         // Store our identifier
-        fonts.tex_id = (void*)(intptr_t)font_texture;
+        fonts.tex_id = (TextureHandle)font_texture;
 
         fonts.ClearTexData();
 
@@ -147,7 +151,7 @@ struct OpenGLDrawContext : public DrawContext {
         Trace(ModuleName::Gui);
         if (font_texture) {
             glDeleteTextures(1, &font_texture);
-            fonts.tex_id = nullptr;
+            fonts.tex_id = invalid_texture;
             font_texture = 0;
 
             for (auto const _ : Range(20)) {
@@ -297,16 +301,16 @@ struct OpenGLDrawContext : public DrawContext {
                                 data));
 
         success = true;
-        return (void*)(uintptr)texture;
+        return (TextureHandle)texture;
     }
 
     void DestroyTexture(TextureHandle& texture) override {
         ZoneScoped;
         TracyGpuZone("DestroyTexture");
-        if (texture) {
-            auto gluint_tex = (GLuint)(uintptr_t)texture;
+        if (texture != invalid_texture) {
+            auto gluint_tex = (GLuint)texture;
             glDeleteTextures(1, &gluint_tex);
-            texture = nullptr;
+            texture = invalid_texture;
             auto _ = CheckGLError("DestroyTexture");
         }
     }
@@ -315,9 +319,9 @@ struct OpenGLDrawContext : public DrawContext {
     GLuint font_texture = 0;
 };
 
-DrawContext* CreateNewDrawContextOpenGl() {
+Renderer* CreateNewRendererOpenGl() {
     TracyGpuContext;
-    return new OpenGLDrawContext();
+    return new OpenGLRenderer();
 }
 
 } // namespace graphics

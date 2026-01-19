@@ -36,7 +36,7 @@ bool Dragger(Gui* g, imgui::Id id, Rect r, int min, int max, int& value, Style c
     settings.slider_settings.draw = [](IMGUI_DRAW_SLIDER_ARGS) {};
     settings.text_input_settings.draw = [&style](IMGUI_DRAW_TEXT_INPUT_ARGS) {
         if (result->HasSelection()) {
-            imgui::TextInputResult::SelectionIterator it {.draw_ctx = *imgui.graphics->context};
+            imgui::TextInputResult::SelectionIterator it {.renderer = *imgui.graphics->renderer};
             while (auto rect = result->NextSelectionRect(it))
                 imgui.graphics->AddRectFilled(*rect, style.selection_back);
         }

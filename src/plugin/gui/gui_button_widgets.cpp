@@ -116,8 +116,8 @@ static void DrawIconAndTextButton(Gui* g, Style const& style, Rect r, imgui::Id 
     DrawBackground(g, style, r, id, state);
 
     if (style.type != LayoutAndSizeType::IconAndTextInstSelector) {
-        im.graphics->context->PushFont(g->fonts[ToInt(FontType::Icons)]);
-        DEFER { im.graphics->context->PopFont(); };
+        im.graphics->renderer->PushFont(g->fonts[ToInt(FontType::Icons)]);
+        DEFER { im.graphics->renderer->PopFont(); };
         auto just = TextJustification::CentredLeft;
         auto btn_r = r;
         if (style.type == LayoutAndSizeType::IconAndTextLayerTab) {
@@ -189,7 +189,7 @@ static bool ButtonInternal(Gui* g,
             }
             case LayoutAndSizeType::IconOrText: {
                 if (!str.size) str = style.icon_or_text.default_icon;
-                auto& ctx = *g->imgui.graphics->context;
+                auto& ctx = *g->imgui.graphics->renderer;
                 auto const using_icon_font = str.size && (str[0] & 0x80);
                 if (using_icon_font) ctx.PushFont(g->fonts[ToInt(FontType::Icons)]);
                 DEFER {
