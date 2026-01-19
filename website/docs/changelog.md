@@ -16,6 +16,14 @@ For instance: 0.0.1. Don't change the headings.
 # Changelog
 ## 1.1.2-beta.2
 - GUI: only show full paths for preset banks if there's ambiguity
+- Fix error related to trying to install invalid ZIP files
+- Windows: fix error related to graphics change in 1.1.2-beta.1
+- Linux: changed required glibc from 2.29 to 2.31
+- Improve GUI performance slightly (batched draw-calls and smaller memory usage)
+- Update FLAC library and protect against edge cases
+- Linux: fix error related to filesystem watching
+- macOS: fix error related to opening a file dialog
+- Handle edge cases related to loading images for sample libraries
 
 ## 1.1.2-beta.1
 - Improve graphics reliability on Windows (use DirectX instead of OpenGL)
