@@ -21,6 +21,8 @@ extern "C" {
 
 #include "app_window.hpp"
 
+namespace native {
+
 struct NativeFilePicker {
     bool running {};
     HANDLE thread {};
@@ -569,3 +571,5 @@ void RemoveWindowsKeyboardHook(AppWindow&) {
     }
     g_keyboard_hook = nullptr;
 }
+
+} // namespace native

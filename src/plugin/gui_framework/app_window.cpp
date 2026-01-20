@@ -19,23 +19,6 @@
 #include "gui/gui_prefs.hpp"
 #include "gui_frame.hpp"
 
-// #if !IS_LINUX
-// int detail::FdFromPuglWorld(PuglWorld*) { return 0; }
-// void detail::X11SetParent(PuglView*, uintptr) {}
-// #endif
-
-GuiFrameInput* g_frame_input {};
-GuiFrameOutput* g_frame_output {};
-
-GuiFrameIo GuiIo() { return {*g_frame_input, *g_frame_output}; }
-
-void SetGuiIo(GuiFrameInput* in, GuiFrameOutput* out) {
-    g_frame_input = in;
-    g_frame_output = out;
-}
-
-Atomic<bool> g_request_gui_update {};
-
 ErrorCodeCategory const app_window_error_code {
     .category_id = "APPW",
     .message = [](Writer const& writer, ErrorCode code) -> ErrorCodeOr<void> {
@@ -111,7 +94,7 @@ static void SetTimers(AppWindow& window, SetTimerType type) {
                             (clap_host_posix_fd_support const*)
                                 window.host.get_extension(&window.host, CLAP_EXT_POSIX_FD_SUPPORT);
                         posix_fd_extension && posix_fd_extension->register_fd) {
-                        auto const fd = FdFromPuglWorld(window.world);
+                        auto const fd = native::FdFromPuglWorld(window.world);
                         ASSERT(fd != -1);
                         if (posix_fd_extension->register_fd(&window.host, fd, CLAP_POSIX_FD_READ))
                             window.clap_posix_fd = fd;
@@ -532,7 +515,7 @@ static void HandlePostUpdateRequests(AppWindow& window) {
         }
         if constexpr (IS_WINDOWS) {
             if (!window.windows_keyboard_hook_added) {
-                AddWindowsKeyboardHook(window);
+                native::AddWindowsKeyboardHook(window);
                 window.windows_keyboard_hook_added = true;
             }
         }
@@ -552,7 +535,7 @@ static void HandlePostUpdateRequests(AppWindow& window) {
     }
 
     if (window.last_result.file_picker_dialog)
-        if (auto const o = OpenNativeFilePicker(window, *window.last_result.file_picker_dialog);
+        if (auto const o = native::OpenNativeFilePicker(window, *window.last_result.file_picker_dialog);
             o.HasError()) {
             ReportError(ErrorLevel::Error,
                         SourceLocationHash(),
@@ -563,7 +546,7 @@ static void HandlePostUpdateRequests(AppWindow& window) {
 
 static void UpdateAndRender(AppWindow& window) {
     if (!window.renderer) return;
-    if constexpr (!IS_MACOS) // doesn't seem to work on macOS
+    if constexpr (!IS_MACOS) // Doesn't seem to work on macOS.
         if (!puglGetVisible(window.view)) return;
 
     Stopwatch sw {};
@@ -762,7 +745,7 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
 
             case PUGL_CLIENT: {
                 post_redisplay =
-                    NativeFilePickerOnClientMessage(window, event->client.data1, event->client.data2);
+                    native::NativeFilePickerOnClientMessage(window, event->client.data1, event->client.data2);
                 break;
             }
 
@@ -782,9 +765,9 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
     }
 }
 
-UiSize DefaultUiSize(AppWindow& window) { return DefaultUiSizeFromDpi(window); }
+UiSize DefaultUiSize(AppWindow& window) { return native::DefaultUiSizeFromDpi(window); }
 
-ErrorCodeOr<void> CreateView(AppWindow& window) {
+ErrorCodeOr<void> Init(AppWindow& window) {
     Trace(ModuleName::Gui);
 
     ASSERT(window.world == nullptr);
@@ -881,14 +864,14 @@ ErrorCodeOr<void> CreateView(AppWindow& window) {
     return k_success;
 }
 
-void DestroyView(AppWindow& window) {
+void Deinit(AppWindow& window) {
     Trace(ModuleName::Gui);
 
     if constexpr (IS_WINDOWS) {
-        if (window.windows_keyboard_hook_added) RemoveWindowsKeyboardHook(window);
+        if (window.windows_keyboard_hook_added) native::RemoveWindowsKeyboardHook(window);
     }
 
-    CloseNativeFilePicker(window);
+    native::CloseNativeFilePicker(window);
 
     if (window.gui) {
         window.gui.Clear();
@@ -941,8 +924,8 @@ ErrorCodeOr<void> SetParent(AppWindow& window, clap_window_t const& new_parent) 
         // Pluginval tries to re-parent us. I'm not sure if this is a quirk of pluginval or if it's more
         // common than that. Either way, we try to support it.
 
-        DestroyView(window);
-        TRY(CreateView(window));
+        Deinit(window);
+        TRY(Init(window));
     }
 
     ASSERT(!puglGetNativeView(window.view), "SetParent called after window realised");
@@ -967,8 +950,8 @@ ErrorCodeOr<void> SetVisible(AppWindow& window, bool visible, Engine& engine) {
         // Realize if not already done.
         if (!puglGetNativeView(window.view)) {
             TRY(Required(puglRealize(window.view)));
-            window.double_click_time_ms = DoubleClickTimeMs(window);
-            if constexpr (IS_LINUX) X11SetParent(window.view, puglGetParent(window.view));
+            window.double_click_time_ms = native::DoubleClickTimeMs(window);
+            if constexpr (IS_LINUX) native::X11SetParent(window.view, puglGetParent(window.view));
         }
 
         // Start timers if needed.
@@ -979,7 +962,7 @@ ErrorCodeOr<void> SetVisible(AppWindow& window, bool visible, Engine& engine) {
 
     } else {
         window.frame_state.Reset();
-        CloseNativeFilePicker(window);
+        native::CloseNativeFilePicker(window);
         SetTimers(window, SetTimerType::Stop);
     }
 

@@ -341,7 +341,7 @@ static bool ClapGuiCreate(clap_plugin_t const* plugin, char const* api, bool is_
 
         floe.app_window.Emplace(floe.host, g_shared_engine_systems->prefs);
         floe.gui_opened = true;
-        return ReportIfError(CreateView(*floe.app_window), "CreateView");
+        return ReportIfError(Init(*floe.app_window), "CreateView");
     } catch (PanicException) {
         return false;
     }
@@ -369,7 +369,7 @@ static void ClapGuiDestroy(clap_plugin const* plugin) {
 
         if (!floe.app_window) return;
 
-        DestroyView(*floe.app_window);
+        Deinit(*floe.app_window);
         floe.app_window.Clear();
     } catch (PanicException) {
         return;

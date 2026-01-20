@@ -67,9 +67,8 @@ inline ErrorCodeCategory const& ErrorCategoryForEnum(AppWindowErrorCode) { retur
 
 UiSize DefaultUiSize(AppWindow& window);
 
-ErrorCodeOr<void> CreateView(AppWindow& window);
-
-void DestroyView(AppWindow& window);
+ErrorCodeOr<void> Init(AppWindow& window);
+void Deinit(AppWindow& window);
 
 void OnClapTimer(AppWindow& window, clap_id timer_id);
 
@@ -83,8 +82,9 @@ UiSize GetSize(AppWindow& window);
 
 ErrorCodeOr<void> SetVisible(AppWindow& window, bool visible, Engine& engine);
 
-// Internals
-// ==========================================================================================================
+// We mostly use pugl to abstract away OS-specific windowing, however we sometimes still need some
+// particulars.
+namespace native {
 
 // Due to the way Windows, Linux and macOS handle file browsers, we have this design:
 // - This function may or may not block, depending on the platform.
@@ -106,3 +106,5 @@ void X11SetParent(PuglView* view, uintptr parent);
 // Windows only
 void AddWindowsKeyboardHook(AppWindow& window);
 void RemoveWindowsKeyboardHook(AppWindow& window);
+
+} // namespace native

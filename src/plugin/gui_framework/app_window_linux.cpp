@@ -11,6 +11,8 @@
 #define KeyCode XKeyCode
 #include <X11/Xlib.h>
 
+namespace native {
+
 void CloseNativeFilePicker(AppWindow&) {}
 bool NativeFilePickerOnClientMessage(AppWindow&, uintptr, uintptr) { return false; }
 
@@ -118,3 +120,5 @@ void X11SetParent(PuglView* view, uintptr parent) {
                     (u8*)embed_info_data,
                     ArraySize(embed_info_data));
 }
+
+} // namespace native
