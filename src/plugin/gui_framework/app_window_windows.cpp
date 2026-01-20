@@ -19,7 +19,7 @@ extern "C" {
 
 #include "common_infrastructure/error_reporting.hpp"
 
-#include "gui_platform.hpp"
+#include "app_window.hpp"
 
 struct NativeFilePicker {
     bool running {};
@@ -37,13 +37,13 @@ constexpr uintptr k_file_picker_message_data = 0xD1A106;
         return Win32ErrorCode(HresultToWin32(hr), #windows_call);                                            \
     }
 
-f64 DoubleClickTimeMs(GuiPlatform const&) {
+f64 DoubleClickTimeMs(AppWindow const&) {
     auto result = GetDoubleClickTime();
     if (result == 0) result = 300;
     return result;
 }
 
-UiSize DefaultUiSizeFromDpi(GuiPlatform const&) {
+UiSize DefaultUiSizeFromDpi(AppWindow const&) {
     HDC hdc = GetDC(nullptr);
     DEFER { ReleaseDC(nullptr, hdc); };
 
@@ -83,9 +83,9 @@ UiSize DefaultUiSizeFromDpi(GuiPlatform const&) {
     return result;
 }
 
-void CloseNativeFilePicker(GuiPlatform& platform) {
-    if (!platform.native_file_picker) return;
-    auto& native = platform.native_file_picker->As<NativeFilePicker>();
+void CloseNativeFilePicker(AppWindow& window) {
+    if (!window.native_file_picker) return;
+    auto& native = window.native_file_picker->As<NativeFilePicker>();
     if (native.thread) {
         PostThreadMessageW(GetThreadId(native.thread), WM_CLOSE, 0, 0);
         // Blocking wait for the thread to finish.
@@ -94,7 +94,7 @@ void CloseNativeFilePicker(GuiPlatform& platform) {
         CloseHandle(native.thread);
     }
     native.~NativeFilePicker();
-    platform.native_file_picker.Clear();
+    window.native_file_picker.Clear();
 }
 
 ErrorCodeOr<Span<MutableString>>
@@ -242,14 +242,14 @@ RunFilePicker(FilePickerDialogOptions const& args, ArenaAllocator& arena, HWND p
     }
 }
 
-bool NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data1, uintptr data2) {
+bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr data2) {
     ASSERT(g_is_logical_main_thread);
 
     if (data1 != k_file_picker_message_data) return false;
     if (data2 != k_file_picker_message_data) return false;
-    if (!platform.native_file_picker) return false;
+    if (!window.native_file_picker) return false;
 
-    auto& native_file_picker = platform.native_file_picker->As<NativeFilePicker>();
+    auto& native_file_picker = window.native_file_picker->As<NativeFilePicker>();
 
     // The thread should have exited by now so this should be immediate.
     auto const wait_result = WaitForSingleObject(native_file_picker.thread, INFINITE);
@@ -257,11 +257,11 @@ bool NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data1, uintp
     CloseHandle(native_file_picker.thread);
     native_file_picker.thread = nullptr;
 
-    platform.frame_state.file_picker_results.Clear();
-    platform.file_picker_result_arena.ResetCursorAndConsolidateRegions();
+    window.frame_state.file_picker_results.Clear();
+    window.file_picker_result_arena.ResetCursorAndConsolidateRegions();
     for (auto const path : native_file_picker.result)
-        platform.frame_state.file_picker_results.Append(path.Clone(platform.file_picker_result_arena),
-                                                        platform.file_picker_result_arena);
+        window.frame_state.file_picker_results.Append(path.Clone(window.file_picker_result_arena),
+                                                      window.file_picker_result_arena);
     native_file_picker.running = false;
 
     return false;
@@ -298,18 +298,18 @@ bool NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data1, uintp
 //   parent HWND that you pass in. You will be sent WM_SHOWWINDOW for example. You must consume this event
 //   otherwise IFileDialog::Show() will block forever, and never show it's own dialog.
 
-ErrorCodeOr<void> OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& args) {
+ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOptions const& args) {
     ASSERT(g_is_logical_main_thread);
 
     NativeFilePicker* native_file_picker = nullptr;
 
-    if (!platform.native_file_picker) {
-        platform.native_file_picker.Emplace(); // Create the OpaqueHandle
-        native_file_picker = &platform.native_file_picker->As<NativeFilePicker>();
+    if (!window.native_file_picker) {
+        window.native_file_picker.Emplace(); // Create the OpaqueHandle
+        native_file_picker = &window.native_file_picker->As<NativeFilePicker>();
         PLACEMENT_NEW(native_file_picker)
         NativeFilePicker {}; // Initialise the NativeFilePicker in the OpaqueHandle
     } else {
-        native_file_picker = &platform.native_file_picker->As<NativeFilePicker>();
+        native_file_picker = &window.native_file_picker->As<NativeFilePicker>();
     }
 
     if (native_file_picker->running) {
@@ -321,14 +321,14 @@ ErrorCodeOr<void> OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOp
     native_file_picker->running = true;
     native_file_picker->thread_arena.ResetCursorAndConsolidateRegions();
     native_file_picker->args = args.Clone(native_file_picker->thread_arena, CloneType::Deep);
-    native_file_picker->parent = (HWND)puglGetNativeView(platform.view);
+    native_file_picker->parent = (HWND)puglGetNativeView(window.view);
     native_file_picker->thread = CreateThread(
         nullptr,
         0,
         [](void* p) -> DWORD {
             try {
-                auto& platform = *(GuiPlatform*)p;
-                auto& native_file_picker = platform.native_file_picker->As<NativeFilePicker>();
+                auto& window = *(AppWindow*)p;
+                auto& native_file_picker = window.native_file_picker->As<NativeFilePicker>();
 
                 auto const hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
                 ASSERT(SUCCEEDED(hr), "new thread couldn't initialise COM");
@@ -357,14 +357,14 @@ ErrorCodeOr<void> OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOp
                 // problem. It just means the file picker result won't be processed. I think this occurs when
                 // the GUI is being destroyed - a case where we don't care about the file picker result
                 // anyways.
-                puglSendEvent(platform.view, &event);
+                puglSendEvent(window.view, &event);
 
                 return 0;
             } catch (PanicException) {
             }
             return 0;
         },
-        &platform,
+        &window,
         0,
         nullptr);
     ASSERT(native_file_picker->thread);
@@ -428,7 +428,7 @@ static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
 
         // We only care about messages to our window.
         {
-            constexpr auto k_floe_class_name_len = NullTerminatedSize(GuiPlatform::k_window_class_name);
+            constexpr auto k_floe_class_name_len = NullTerminatedSize(AppWindow::k_window_class_name);
             char class_name[k_floe_class_name_len + 1];
             auto const class_name_len = GetClassNameA(msg.hwnd, class_name, sizeof(class_name));
             if (class_name_len == 0) {
@@ -440,7 +440,7 @@ static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
             }
 
             if (class_name_len != k_floe_class_name_len) return false; // Not our window.
-            if (!MemoryIsEqual(class_name, GuiPlatform::k_window_class_name, k_floe_class_name_len))
+            if (!MemoryIsEqual(class_name, AppWindow::k_window_class_name, k_floe_class_name_len))
                 return false; // Not our window.
         }
 
@@ -449,7 +449,7 @@ static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
         // WARNING: doing this is not part of Pugl's public API - it might break.
         auto view = (PuglView*)GetWindowLongPtrW(msg.hwnd, GWLP_USERDATA);
         ASSERT(view);
-        auto& platform = *(GuiPlatform*)puglGetHandle(view);
+        auto& window = *(AppWindow*)puglGetHandle(view);
 
         // Determine if we want to consume the original message
         bool const consume_original_message = ({
@@ -458,7 +458,7 @@ static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
                 case WM_CHAR:
                 case WM_SYSCHAR: {
                     // Character messages - only consume if we want text input
-                    wants = platform.last_result.wants.text_input;
+                    wants = window.last_result.wants.text_input;
                     break;
                 }
                 case WM_KEYDOWN:
@@ -467,7 +467,7 @@ static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
                 case WM_SYSKEYUP: {
                     // Key up/down messages - only consume if we want this specific key
                     if (auto const key_code = WindowsVkToKeyCode(msg.wParam))
-                        wants = platform.last_result.wants.keyboard_keys.Get(ToInt(*key_code));
+                        wants = window.last_result.wants.keyboard_keys.Get(ToInt(*key_code));
                     break;
                 }
             }
@@ -483,7 +483,7 @@ static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
         if (TranslateMessage(&msg)) {
             // Check if we want the character message that was generated. If we don't want it, leave it in the
             // queue for the host.
-            if (platform.last_result.wants.text_input) {
+            if (window.last_result.wants.text_input) {
                 // We check it and, if needed, remove it from queue using PM_REMOVE so host doesn't get it.
                 if (PeekMessageW(&peeked, msg.hwnd, WM_CHAR, WM_DEADCHAR, PM_REMOVE) ||
                     PeekMessageW(&peeked, msg.hwnd, WM_SYSCHAR, WM_SYSDEADCHAR, PM_REMOVE)) {
@@ -520,15 +520,15 @@ static LRESULT CALLBACK MessageHook(int code, WPARAM w_param, LPARAM l_param) {
 static HHOOK g_keyboard_hook {};
 static u32 g_keyboard_hook_ref_count {};
 
-void AddWindowsKeyboardHook(GuiPlatform& platform) {
+void AddWindowsKeyboardHook(AppWindow& window) {
     ASSERT(g_is_logical_main_thread);
 
     if (g_keyboard_hook_ref_count++ > 0) return;
 
     ASSERT(!g_keyboard_hook);
 
-    auto window = (HWND)puglGetNativeView(platform.view);
-    ASSERT(window);
+    auto hwnd = (HWND)puglGetNativeView(window.view);
+    ASSERT(hwnd);
 
     HMODULE instance = nullptr;
     bool got_module_handle_from_address = false;
@@ -553,7 +553,7 @@ void AddWindowsKeyboardHook(GuiPlatform& platform) {
     }
 }
 
-void RemoveWindowsKeyboardHook(GuiPlatform&) {
+void RemoveWindowsKeyboardHook(AppWindow&) {
     ASSERT(g_is_logical_main_thread);
 
     if (--g_keyboard_hook_ref_count > 0) return;

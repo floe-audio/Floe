@@ -3,7 +3,7 @@
 
 #include "gui_prefs.hpp"
 
-#include "gui_framework/gui_platform.hpp"
+#include "gui_framework/app_window.hpp"
 
 prefs::Descriptor SettingDescriptor(GuiSetting setting) {
     ASSERT(g_is_logical_main_thread);

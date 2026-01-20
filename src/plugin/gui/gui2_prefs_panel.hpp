@@ -14,8 +14,8 @@
 #include "gui/gui_prefs.hpp"
 #include "gui2_common_modal_panel.hpp"
 #include "gui2_prefs_panel_state.hpp"
+#include "gui_framework/app_window.hpp"
 #include "gui_framework/gui_box_system.hpp"
-#include "gui_framework/gui_platform.hpp"
 #include "processor/processor.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 

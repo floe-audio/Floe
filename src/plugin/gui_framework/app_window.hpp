@@ -14,7 +14,7 @@
 #include "gui/gui.hpp"
 #include "gui_frame.hpp"
 
-constexpr bool k_debug_gui_platform = false;
+constexpr bool k_debug_app_window = false;
 
 constexpr UiSize k_gui_aspect_ratio = {10, 7};
 
@@ -26,7 +26,7 @@ constexpr u32 k_max_gui_width =
 constexpr f32 k_default_gui_width_inches = 9.0f;
 constexpr f32 k_screen_fit_percentage = 0.7f;
 
-struct GuiPlatform {
+struct AppWindow {
     static constexpr uintptr k_pugl_timer_id = 200;
     static constexpr char const* k_window_class_name = "FloeSampler";
 
@@ -51,7 +51,7 @@ struct GuiPlatform {
     bool windows_keyboard_hook_added {};
 };
 
-enum class GuiPlatformErrorCode {
+enum class AppWindowErrorCode {
     UnknownError,
     Unsupported,
     BackendFailed,
@@ -61,27 +61,27 @@ enum class GuiPlatformErrorCode {
     CreateContextFailed,
 };
 
-extern ErrorCodeCategory const gui_platform_error_code;
+extern ErrorCodeCategory const app_window_error_code;
 
-inline ErrorCodeCategory const& ErrorCategoryForEnum(GuiPlatformErrorCode) { return gui_platform_error_code; }
+inline ErrorCodeCategory const& ErrorCategoryForEnum(AppWindowErrorCode) { return app_window_error_code; }
 
-UiSize DefaultUiSize(GuiPlatform& platform);
+UiSize DefaultUiSize(AppWindow& window);
 
-ErrorCodeOr<void> CreateView(GuiPlatform& platform);
+ErrorCodeOr<void> CreateView(AppWindow& window);
 
-void DestroyView(GuiPlatform& platform);
+void DestroyView(AppWindow& window);
 
-void OnClapTimer(GuiPlatform& platform, clap_id timer_id);
+void OnClapTimer(AppWindow& window, clap_id timer_id);
 
-void OnPosixFd(GuiPlatform& platform, int fd);
+void OnPosixFd(AppWindow& window, int fd);
 
-ErrorCodeOr<void> SetParent(GuiPlatform& platform, clap_window_t const& window);
+ErrorCodeOr<void> SetParent(AppWindow& window, clap_window_t const& parent);
 
-bool SetSize(GuiPlatform& platform, UiSize new_size);
+bool SetSize(AppWindow& window, UiSize new_size);
 
-UiSize GetSize(GuiPlatform& platform);
+UiSize GetSize(AppWindow& window);
 
-ErrorCodeOr<void> SetVisible(GuiPlatform& platform, bool visible, Engine& engine);
+ErrorCodeOr<void> SetVisible(AppWindow& window, bool visible, Engine& engine);
 
 // Internals
 // ==========================================================================================================
@@ -90,19 +90,19 @@ ErrorCodeOr<void> SetVisible(GuiPlatform& platform, bool visible, Engine& engine
 // - This function may or may not block, depending on the platform.
 // - Either way, it will at some point fill GuiFrameInput::file_picker_results with the selected file paths
 //   for the application to consume on its next frame.
-ErrorCodeOr<void> OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& options);
-void CloseNativeFilePicker(GuiPlatform& platform);
+ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOptions const& options);
+void CloseNativeFilePicker(AppWindow& window);
 
 // Returns true to request the platform to update the GUI.
-bool NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data1, uintptr data2);
+bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr data2);
 
-f64 DoubleClickTimeMs(GuiPlatform const& platform);
-UiSize DefaultUiSizeFromDpi(GuiPlatform const& platform);
+f64 DoubleClickTimeMs(AppWindow const& window);
+UiSize DefaultUiSizeFromDpi(AppWindow const& window);
 
 // Linux only
 int FdFromPuglWorld(PuglWorld* world);
 void X11SetParent(PuglView* view, uintptr parent);
 
 // Windows only
-void AddWindowsKeyboardHook(GuiPlatform& platform);
-void RemoveWindowsKeyboardHook(GuiPlatform& platform);
+void AddWindowsKeyboardHook(AppWindow& window);
+void RemoveWindowsKeyboardHook(AppWindow& window);

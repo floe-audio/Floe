@@ -1582,7 +1582,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "gui_framework/renderer_bgfx.cpp",
             "gui_framework/gui_box_system.cpp",
             "gui_framework/gui_imgui.cpp",
-            "gui_framework/gui_platform.cpp",
+            "gui_framework/app_window.cpp",
             "gui_framework/image.cpp",
             "gui_framework/layout.cpp",
             "plugin/hosting_tests.cpp",
@@ -1604,7 +1604,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             lib.addCSourceFiles(.{
                 .root = src_root,
                 .files = &[_][]const u8{
-                    "gui_framework/gui_platform_windows.cpp",
+                    "gui_framework/app_window_windows.cpp",
                     "gui_framework/renderer_direct3d9.cpp",
                     "gui_framework/bgfx_init_window_windows.cpp",
                 },
@@ -1616,7 +1616,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             lib.addCSourceFiles(.{
                 .root = src_root,
                 .files = &[_][]const u8{
-                    "gui_framework/gui_platform_linux.cpp",
+                    "gui_framework/app_window_linux.cpp",
                     "gui_framework/renderer_opengl.cpp",
                     "gui_framework/bgfx_init_window_linux.cpp",
                 },
@@ -1627,7 +1627,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             lib.addCSourceFiles(.{
                 .root = src_root,
                 .files = &[_][]const u8{
-                    "gui_framework/gui_platform_mac.mm",
+                    "gui_framework/app_window_mac.mm",
                     "gui_framework/renderer_opengl.cpp",
                     "gui_framework/bgfx_init_window_macos.mm",
                 },

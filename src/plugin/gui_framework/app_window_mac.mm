@@ -13,20 +13,20 @@
 
 #include "os/misc_mac.hpp"
 
-#include "gui_platform.hpp"
+#include "app_window.hpp"
 
-f64 DoubleClickTimeMs(GuiPlatform const&) {
+f64 DoubleClickTimeMs(AppWindow const&) {
     auto result = [NSEvent doubleClickInterval] * 1000.0;
     if (result <= 0) result = 300;
     return result;
 }
 
-UiSize DefaultUiSizeFromDpi(GuiPlatform const& platform) {
+UiSize DefaultUiSizeFromDpi(AppWindow const& window) {
     auto const main_screen = ({
         NSScreen* s = nil;
 
-        if (platform.view) {
-            auto const parent = puglGetParent(platform.view);
+        if (window.view) {
+            auto const parent = puglGetParent(window.view);
             if (parent) {
                 auto parent_view = (__bridge NSView*)(void*)parent;
                 auto parent_window = [parent_view window];
@@ -155,18 +155,18 @@ struct NativeFilePicker {
 
 constexpr uintptr k_file_picker_completed = 0xD1A106;
 
-bool NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data1, uintptr data2) {
+bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr data2) {
     ASSERT(g_is_logical_main_thread);
-    if (!platform.native_file_picker) return false;
+    if (!window.native_file_picker) return false;
     if (data1 != k_file_picker_completed) return false;
 
-    auto& native_file_picker = platform.native_file_picker->As<NativeFilePicker>();
+    auto& native_file_picker = window.native_file_picker->As<NativeFilePicker>();
     if (!native_file_picker.panel) return false;
 
     ASSERT([NSThread isMainThread]);
     ASSERT(!native_file_picker.panel.visible, "panel should be closed");
-    platform.frame_state.file_picker_results = {};
-    platform.file_picker_result_arena.ResetCursorAndConsolidateRegions();
+    window.frame_state.file_picker_results = {};
+    window.file_picker_result_arena.ResetCursorAndConsolidateRegions();
 
     bool update_gui = false;
 
@@ -178,8 +178,8 @@ bool NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data1, uintp
             ASSERT(path::IsAbsolute(utf8));
             ASSERT(IsValidUtf8(utf8));
 
-            platform.frame_state.file_picker_results.Append(utf8.Clone(platform.file_picker_result_arena),
-                                                            platform.file_picker_result_arena);
+            window.frame_state.file_picker_results.Append(utf8.Clone(window.file_picker_result_arena),
+                                                          window.file_picker_result_arena);
         };
 
         if ([native_file_picker.panel isKindOfClass:[NSOpenPanel class]]) {
@@ -196,17 +196,17 @@ bool NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data1, uintp
 
     native_file_picker.panel = nullptr; // release
     native_file_picker.delegate = nullptr; // release
-    platform.native_file_picker.Clear();
+    window.native_file_picker.Clear();
 
     return update_gui;
 }
 
-ErrorCodeOr<void> OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& options) {
-    ASSERT(platform.view);
+ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOptions const& options) {
+    ASSERT(window.view);
     ASSERT(g_is_logical_main_thread);
-    if (platform.native_file_picker) return k_success;
-    platform.native_file_picker.Emplace();
-    auto& native_file_picker = platform.native_file_picker->As<NativeFilePicker>();
+    if (window.native_file_picker) return k_success;
+    window.native_file_picker.Emplace();
+    auto& native_file_picker = window.native_file_picker->As<NativeFilePicker>();
 
     @try {
         ASSERT([NSThread isMainThread]);
@@ -221,7 +221,7 @@ ErrorCodeOr<void> OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOp
                 native_file_picker.delegate = [[DIALOG_DELEGATE_CLASS alloc] init];
                 native_file_picker.delegate.mutex = &native_file_picker.mutex;
                 native_file_picker.delegate.filters =
-                    platform.file_picker_result_arena.Clone(options.filters, CloneType::Deep);
+                    window.file_picker_result_arena.Clone(options.filters, CloneType::Deep);
                 open_panel.delegate = native_file_picker.delegate;
 
                 open_panel.canChooseDirectories = options.type == FilePickerDialogOptions::Type::SelectFolder;
@@ -243,7 +243,7 @@ ErrorCodeOr<void> OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOp
 
         auto panel = native_file_picker.panel;
 
-        panel.parentWindow = ((__bridge NSView*)(void*)puglGetNativeView(platform.view)).window;
+        panel.parentWindow = ((__bridge NSView*)(void*)puglGetNativeView(window.view)).window;
         panel.title = StringToNSString(options.title);
         [panel setLevel:NSModalPanelWindowLevel];
         panel.showsResizeIndicator = YES;
@@ -262,7 +262,7 @@ ErrorCodeOr<void> OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOp
                                      .data1 = k_file_picker_completed,
                                      .data2 = (uintptr)response,
                                  }};
-          auto const rc = puglSendEvent(platform.view, &event);
+          auto const rc = puglSendEvent(window.view, &event);
           ASSERT(rc == PUGL_SUCCESS);
         }];
 
@@ -273,14 +273,14 @@ ErrorCodeOr<void> OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOp
     return k_success;
 }
 
-void CloseNativeFilePicker(GuiPlatform& platform) {
+void CloseNativeFilePicker(AppWindow& window) {
     // On rare ocassions in Logic Pro 11.0.1 (CLAP-as-AUv2), we've actually found it's possible that [NSThread
     // isMainThread] is false here. However, this is still workable so long as it's at least the logical main
     // thread.
     ASSERT(g_is_logical_main_thread);
 
-    if (!platform.native_file_picker) return;
-    auto& native_file_picker = platform.native_file_picker->As<NativeFilePicker>();
+    if (!window.native_file_picker) return;
+    auto& native_file_picker = window.native_file_picker->As<NativeFilePicker>();
     if (!native_file_picker.panel) return;
     {
         native_file_picker.mutex.Lock();
@@ -297,5 +297,5 @@ void CloseNativeFilePicker(GuiPlatform& platform) {
         native_file_picker.panel = nullptr; // release
         native_file_picker.delegate = nullptr; // release
     }
-    platform.native_file_picker.Clear();
+    window.native_file_picker.Clear();
 }

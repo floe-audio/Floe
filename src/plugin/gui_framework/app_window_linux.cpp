@@ -5,38 +5,38 @@
 #include <pugl/gl.h>
 #include <stdio.h>
 
-#include "gui_platform.hpp"
+#include "app_window.hpp"
 
 //
 #define KeyCode XKeyCode
 #include <X11/Xlib.h>
 
-void CloseNativeFilePicker(GuiPlatform&) {}
-bool NativeFilePickerOnClientMessage(GuiPlatform&, uintptr, uintptr) { return false; }
+void CloseNativeFilePicker(AppWindow&) {}
+bool NativeFilePickerOnClientMessage(AppWindow&, uintptr, uintptr) { return false; }
 
-f64 DoubleClickTimeMs(GuiPlatform const&) {
+f64 DoubleClickTimeMs(AppWindow const&) {
     // IMPROVE: get this somehow from the machine
     return 300.0;
 }
 
-UiSize DefaultUiSizeFromDpi(GuiPlatform const&) {
+UiSize DefaultUiSizeFromDpi(AppWindow const&) {
     // On Linux, use a reasonable hardcoded size: 10 inches * 96 DPI = 960 pixels
     auto target_width = (u16)(k_default_gui_width_inches * 96);
     return SizeWithAspectRatio(target_width, k_gui_aspect_ratio);
 }
 
-ErrorCodeOr<void> OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& args) {
+ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOptions const& args) {
     ASSERT(g_is_logical_main_thread);
-    if (platform.native_file_picker) return k_success;
+    if (window.native_file_picker) return k_success;
 
     if (args.default_folder) ASSERT(path::IsAbsolute(*args.default_folder));
 
     // This implmentation is blocking, so we only need to check for recursion.
-    platform.native_file_picker.Emplace();
-    DEFER { platform.native_file_picker.Clear(); };
+    window.native_file_picker.Emplace();
+    DEFER { window.native_file_picker.Clear(); };
 
-    platform.frame_state.file_picker_results.Clear();
-    platform.file_picker_result_arena.ResetCursorAndConsolidateRegions();
+    window.frame_state.file_picker_results.Clear();
+    window.file_picker_result_arena.ResetCursorAndConsolidateRegions();
 
     // IMPROVE: use Gtk Dialog directly instead of zenity so that we can associate the dialog with the window
     // so that there is better UX for the dialog appearing on top of the window.
@@ -86,8 +86,8 @@ ErrorCodeOr<void> OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOp
 
     for (auto part : SplitIterator {output, '|'})
         if (path::IsAbsolute(part))
-            platform.frame_state.file_picker_results.Append(platform.file_picker_result_arena.Clone(part),
-                                                            platform.file_picker_result_arena);
+            window.frame_state.file_picker_results.Append(window.file_picker_result_arena.Clone(part),
+                                                          window.file_picker_result_arena);
     return k_success;
 }
 
