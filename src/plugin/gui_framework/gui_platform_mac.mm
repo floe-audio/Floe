@@ -15,13 +15,13 @@
 
 #include "gui_platform.hpp"
 
-f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
+f64 DoubleClickTimeMs(GuiPlatform const&) {
     auto result = [NSEvent doubleClickInterval] * 1000.0;
     if (result <= 0) result = 300;
     return result;
 }
 
-UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const& platform) {
+UiSize DefaultUiSizeFromDpi(GuiPlatform const& platform) {
     auto const main_screen = ({
         NSScreen* s = nil;
 
@@ -155,7 +155,7 @@ struct NativeFilePicker {
 
 constexpr uintptr k_file_picker_completed = 0xD1A106;
 
-bool detail::NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data1, uintptr data2) {
+bool NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data1, uintptr data2) {
     ASSERT(g_is_logical_main_thread);
     if (!platform.native_file_picker) return false;
     if (data1 != k_file_picker_completed) return false;
@@ -201,8 +201,7 @@ bool detail::NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data
     return update_gui;
 }
 
-ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform,
-                                               FilePickerDialogOptions const& options) {
+ErrorCodeOr<void> OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& options) {
     ASSERT(platform.view);
     ASSERT(g_is_logical_main_thread);
     if (platform.native_file_picker) return k_success;
@@ -274,7 +273,7 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform,
     return k_success;
 }
 
-void detail::CloseNativeFilePicker(GuiPlatform& platform) {
+void CloseNativeFilePicker(GuiPlatform& platform) {
     // On rare ocassions in Logic Pro 11.0.1 (CLAP-as-AUv2), we've actually found it's possible that [NSThread
     // isMainThread] is false here. However, this is still workable so long as it's at least the logical main
     // thread.

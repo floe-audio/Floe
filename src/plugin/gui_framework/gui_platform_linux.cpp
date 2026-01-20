@@ -11,21 +11,21 @@
 #define KeyCode XKeyCode
 #include <X11/Xlib.h>
 
-void detail::CloseNativeFilePicker(GuiPlatform&) {}
-bool detail::NativeFilePickerOnClientMessage(GuiPlatform&, uintptr, uintptr) { return false; }
+void CloseNativeFilePicker(GuiPlatform&) {}
+bool NativeFilePickerOnClientMessage(GuiPlatform&, uintptr, uintptr) { return false; }
 
-f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
+f64 DoubleClickTimeMs(GuiPlatform const&) {
     // IMPROVE: get this somehow from the machine
     return 300.0;
 }
 
-UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const&) {
+UiSize DefaultUiSizeFromDpi(GuiPlatform const&) {
     // On Linux, use a reasonable hardcoded size: 10 inches * 96 DPI = 960 pixels
     auto target_width = (u16)(k_default_gui_width_inches * 96);
     return SizeWithAspectRatio(target_width, k_gui_aspect_ratio);
 }
 
-ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& args) {
+ErrorCodeOr<void> OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& args) {
     ASSERT(g_is_logical_main_thread);
     if (platform.native_file_picker) return k_success;
 
@@ -91,13 +91,13 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePicker
     return k_success;
 }
 
-int detail::FdFromPuglWorld(PuglWorld* world) {
+int FdFromPuglWorld(PuglWorld* world) {
     auto display = (Display*)puglGetNativeWorld(world);
     return ConnectionNumber(display);
 }
 
 // The CLAP API says that we need to use XEMBED protocol. Pugl doesn't do that so we need to do it ourselves.
-void detail::X11SetParent(PuglView* view, uintptr parent) {
+void X11SetParent(PuglView* view, uintptr parent) {
     auto display = (Display*)puglGetNativeWorld(puglGetWorld(view));
     auto window = (Window)puglGetNativeView(view);
     ASSERT(window);

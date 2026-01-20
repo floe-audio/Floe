@@ -17,6 +17,8 @@ extern "C" {
 #include "foundation/foundation.hpp"
 #include "os/misc_windows.hpp"
 
+#include "common_infrastructure/error_reporting.hpp"
+
 #include "gui_platform.hpp"
 
 struct NativeFilePicker {
@@ -35,13 +37,13 @@ constexpr uintptr k_file_picker_message_data = 0xD1A106;
         return Win32ErrorCode(HresultToWin32(hr), #windows_call);                                            \
     }
 
-f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
+f64 DoubleClickTimeMs(GuiPlatform const&) {
     auto result = GetDoubleClickTime();
     if (result == 0) result = 300;
     return result;
 }
 
-UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const&) {
+UiSize DefaultUiSizeFromDpi(GuiPlatform const&) {
     HDC hdc = GetDC(nullptr);
     DEFER { ReleaseDC(nullptr, hdc); };
 
@@ -81,7 +83,7 @@ UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const&) {
     return result;
 }
 
-void detail::CloseNativeFilePicker(GuiPlatform& platform) {
+void CloseNativeFilePicker(GuiPlatform& platform) {
     if (!platform.native_file_picker) return;
     auto& native = platform.native_file_picker->As<NativeFilePicker>();
     if (native.thread) {
@@ -240,7 +242,7 @@ RunFilePicker(FilePickerDialogOptions const& args, ArenaAllocator& arena, HWND p
     }
 }
 
-bool detail::NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data1, uintptr data2) {
+bool NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data1, uintptr data2) {
     ASSERT(g_is_logical_main_thread);
 
     if (data1 != k_file_picker_message_data) return false;
@@ -296,7 +298,7 @@ bool detail::NativeFilePickerOnClientMessage(GuiPlatform& platform, uintptr data
 //   parent HWND that you pass in. You will be sent WM_SHOWWINDOW for example. You must consume this event
 //   otherwise IFileDialog::Show() will block forever, and never show it's own dialog.
 
-ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& args) {
+ErrorCodeOr<void> OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& args) {
     ASSERT(g_is_logical_main_thread);
 
     NativeFilePicker* native_file_picker = nullptr;
@@ -518,7 +520,7 @@ static LRESULT CALLBACK MessageHook(int code, WPARAM w_param, LPARAM l_param) {
 static HHOOK g_keyboard_hook {};
 static u32 g_keyboard_hook_ref_count {};
 
-void detail::AddWindowsKeyboardHook(GuiPlatform& platform) {
+void AddWindowsKeyboardHook(GuiPlatform& platform) {
     ASSERT(g_is_logical_main_thread);
 
     if (g_keyboard_hook_ref_count++ > 0) return;
@@ -532,7 +534,7 @@ void detail::AddWindowsKeyboardHook(GuiPlatform& platform) {
     bool got_module_handle_from_address = false;
     if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                                 GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                            (LPCTSTR)detail::AddWindowsKeyboardHook,
+                            (LPCTSTR)AddWindowsKeyboardHook,
                             &instance)) {
         instance = GetModuleHandleW(nullptr);
     } else {
@@ -551,7 +553,7 @@ void detail::AddWindowsKeyboardHook(GuiPlatform& platform) {
     }
 }
 
-void detail::RemoveWindowsKeyboardHook(GuiPlatform&) {
+void RemoveWindowsKeyboardHook(GuiPlatform&) {
     ASSERT(g_is_logical_main_thread);
 
     if (--g_keyboard_hook_ref_count > 0) return;
