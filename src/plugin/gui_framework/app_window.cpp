@@ -686,9 +686,10 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
                 break;
             }
 
-            case PUGL_FOCUS_IN:
+            case PUGL_FOCUS_IN: break;
             case PUGL_FOCUS_OUT: {
-                window.frame_state.Reset();
+                window.frame_state.keys = {};
+                window.frame_state.modifiers = {};
                 break;
             }
 
