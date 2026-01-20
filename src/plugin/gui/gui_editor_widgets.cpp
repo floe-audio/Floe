@@ -45,7 +45,7 @@ void EditorHeading(EditorGUI* g, String text) {
     auto r = EditorGetFullR(g);
     auto back_r = r;
     g->imgui->RegisterAndConvertRect(&back_r);
-    g->imgui->graphics->AddRectFilled(back_r.Min(), back_r.Max(), 0x50ffffff);
+    g->imgui->draw_list->AddRectFilled(back_r.Min(), back_r.Max(), 0x50ffffff);
     g->imgui->Text(imgui::DefText(), r, text);
     // g->imgui->graphics->AddLine(r.BottomLeft(), r.BottomRight(), 0xffffffff);
 
@@ -53,11 +53,11 @@ void EditorHeading(EditorGUI* g, String text) {
 }
 
 void EditorLabel(EditorGUI* g, Rect r, String text, TextJustification just) {
-    g->imgui->graphics->AddTextJustified(g->imgui->GetRegisteredAndConvertedRect(r.CutRight(4)),
-                                         text,
-                                         imgui::DefText().col,
-                                         just,
-                                         TextOverflowType::ShowDotsOnRight);
+    g->imgui->draw_list->AddTextJustified(g->imgui->GetRegisteredAndConvertedRect(r.CutRight(4)),
+                                          text,
+                                          imgui::DefText().col,
+                                          just,
+                                          TextOverflowType::ShowDotsOnRight);
 }
 
 void EditorLabel(EditorGUI* g, String text) {
@@ -172,7 +172,7 @@ void EditorLabelAlternatingBack(EditorGUI* g, Rect r, String text, bool extra_hi
         g->imgui->RegisterAndConvertRect(&reg);
         auto col = 0x15ffffffu;
         if (extra_highlight) col = 0x35ffbfbfu;
-        g->imgui->graphics->AddRectFilled(reg.Min(), reg.Max(), col);
+        g->imgui->draw_list->AddRectFilled(reg.Min(), reg.Max(), col);
     }
     g->alternating_back = !g->alternating_back;
     EditorLabel(g, r, text, TextJustification::CentredLeft);
@@ -600,7 +600,7 @@ void ColoursGUISliders(EditorGUI* gui, String search) {
 
         {
             imgui->RegisterAndConvertRect(&col_preview_r);
-            imgui->graphics->AddRectFilled(col_preview_r.Min(), col_preview_r.Max(), c.col);
+            imgui->draw_list->AddRectFilled(col_preview_r.Min(), col_preview_r.Max(), c.col);
         }
 
         auto float_dragger = [&](Rect slider_r, imgui::Id id, f32 min, f32 max, f32& value) {

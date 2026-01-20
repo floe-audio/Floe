@@ -32,6 +32,7 @@ struct AppWindow {
 
     clap_host const& host;
     prefs::Preferences& prefs;
+
     PuglWorld* world {};
     PuglView* view {};
     CursorType current_cursor {CursorType::Default};
@@ -76,6 +77,7 @@ void OnPosixFd(AppWindow& window, int fd);
 
 ErrorCodeOr<void> SetParent(AppWindow& window, clap_window_t const& parent);
 
+// Size is in pixels on all OS.
 bool SetSize(AppWindow& window, UiSize new_size);
 
 UiSize GetSize(AppWindow& window);
@@ -83,7 +85,7 @@ UiSize GetSize(AppWindow& window);
 ErrorCodeOr<void> SetVisible(AppWindow& window, bool visible, Engine& engine);
 
 // We mostly use pugl to abstract away OS-specific windowing, however we sometimes still need some
-// particulars.
+// particulars. Internal only.
 namespace native {
 
 // Due to the way Windows, Linux and macOS handle file browsers, we have this design:

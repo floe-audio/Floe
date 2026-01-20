@@ -152,10 +152,10 @@ static void DoImpulseResponseMenu(Gui* g, GuiFrameContext const& frame_context, 
     // Draw around the whole thing, not just the menu.
     if (style.back_cols.reg) {
         auto const converted_r = g->imgui.GetRegisteredAndConvertedRect(r);
-        g->imgui.graphics->AddRectFilled(converted_r.Min(),
-                                         converted_r.Max(),
-                                         style.back_cols.reg,
-                                         LiveSize(g->imgui, UiSizeId::CornerRounding));
+        g->imgui.draw_list->AddRectFilled(converted_r.Min(),
+                                          converted_r.Max(),
+                                          style.back_cols.reg,
+                                          LiveSize(g->imgui, UiSizeId::CornerRounding));
     }
 
     auto const arrow_btn_w = LiveSize(g->imgui, UiSizeId::NextPrevButtonSize);
@@ -793,10 +793,10 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
         auto const room_at_scroll_window_bottom = imgui.VwToPixels(15);
         auto const line_r =
             imgui.GetRegisteredAndConvertedRect(layout::GetRect(lay, id).WithH(room_at_scroll_window_bottom));
-        imgui.graphics->AddLine(line_r.TopLeft(),
-                                line_r.TopRight(),
-                                (id == closest_divider) ? LiveCol(imgui, UiColMap::FXDividerLineDropZone)
-                                                        : LiveCol(imgui, UiColMap::FXDividerLine));
+        imgui.draw_list->AddLine(line_r.TopLeft(),
+                                 line_r.TopRight(),
+                                 (id == closest_divider) ? LiveCol(imgui, UiColMap::FXDividerLineDropZone)
+                                                         : LiveCol(imgui, UiColMap::FXDividerLine));
     };
 
     auto const fx_knob_joining_line_thickness = LiveSize(imgui, FXKnobJoiningLineThickness);
@@ -807,10 +807,10 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
         f32x2 const start {r1.Right() + fx_knob_joining_line_pad_lr,
                            r1.CentreY() - (fx_knob_joining_line_thickness / 2)};
         f32x2 const end {r2.x - fx_knob_joining_line_pad_lr, start.y};
-        imgui.graphics->AddLine(start,
-                                end,
-                                LiveCol(imgui, UiColMap::FXKnobJoiningLine),
-                                fx_knob_joining_line_thickness);
+        imgui.draw_list->AddLine(start,
+                                 end,
+                                 LiveCol(imgui, UiColMap::FXKnobJoiningLine),
+                                 fx_knob_joining_line_thickness);
     };
 
     auto const do_all_ids = [&](Span<LayIDPair> ids, Span<ParamIndex const> params, FXColours cols) {
@@ -1209,10 +1209,10 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
                 if (dragging_fx->drop_slot != slot)
                     GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
                 dragging_fx->drop_slot = slot;
-                imgui.graphics->AddRectFilled(converted_slot_r.Min(),
-                                              converted_slot_r.Max(),
-                                              LiveCol(imgui, UiColMap::FXButtonDropZone),
-                                              corner_rounding);
+                imgui.draw_list->AddRectFilled(converted_slot_r.Min(),
+                                               converted_slot_r.Max(),
+                                               LiveCol(imgui, UiColMap::FXButtonDropZone),
+                                               corner_rounding);
             } else {
                 auto fx = ordered_effects[fx_index++];
                 if (dragging_fx && fx == dragging_fx->fx) fx = ordered_effects[fx_index++];

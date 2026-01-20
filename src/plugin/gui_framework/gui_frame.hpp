@@ -116,7 +116,7 @@ struct GuiFrameInput {
     auto const& Key(KeyCode n) const { return keys[ToInt(n)]; }
 
     void Reset() {
-        cursor_pos = {};
+        cursor_pos = {-1, -1};
         cursor_pos_prev = {};
         cursor_delta = {};
         mouse_scroll_delta_in_lines = {};

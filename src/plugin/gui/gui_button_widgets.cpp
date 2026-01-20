@@ -22,7 +22,7 @@ static u32 GetCol(Gui* g, Style const& style, ColourSet const& colours, imgui::I
 static bool DrawBackground(Gui* g, Style const& style, Rect r, imgui::Id id, bool state) {
     if (auto col = GetCol(g, style, style.back_cols, id, state)) {
         auto const rounding = LiveSize(g->imgui, UiSizeId::CornerRounding);
-        g->imgui.graphics->AddRectFilled(r.Min(), r.Max(), col, rounding, style.corner_rounding_flags);
+        g->imgui.draw_list->AddRectFilled(r.Min(), r.Max(), col, rounding, style.corner_rounding_flags);
         return true;
     }
     return false;
@@ -58,26 +58,26 @@ static void DrawKeyboardIcon(Gui* g, Style const& style, Rect r, imgui::Id id, b
         {
             Rect kr {.pos = start_pos + f32x2 {0, black_height},
                      .size = f32x2 {white_width, white_height - black_height}};
-            im.graphics->AddRectFilled(kr.Min(), kr.Max(), col, rounding, 4 | 8);
+            im.draw_list->AddRectFilled(kr.Min(), kr.Max(), col, rounding, 4 | 8);
 
             kr.x += white_width + gap;
-            im.graphics->AddRectFilled(kr.Min(), kr.Max(), col);
+            im.draw_list->AddRectFilled(kr.Min(), kr.Max(), col);
 
             kr.x += white_width + gap;
-            im.graphics->AddRectFilled(kr.Min(), kr.Max(), col, rounding, 1 | 2);
+            im.draw_list->AddRectFilled(kr.Min(), kr.Max(), col, rounding, 1 | 2);
         }
 
         {
             auto const white_top_width = (total_width - (black_width * 2 + gap * 4)) / 3;
             Rect kr {.pos = start_pos, .size = f32x2 {white_top_width, white_height}};
 
-            im.graphics->AddRectFilled(kr.Min(), kr.Max(), col, rounding, 4 | 8);
+            im.draw_list->AddRectFilled(kr.Min(), kr.Max(), col, rounding, 4 | 8);
 
             kr.x += white_top_width + gap + black_width + gap;
-            im.graphics->AddRectFilled(kr.Min(), kr.Max(), col);
+            im.draw_list->AddRectFilled(kr.Min(), kr.Max(), col);
 
             kr.x = start_pos.x + total_width - white_top_width;
-            im.graphics->AddRectFilled(kr.Min(), kr.Max(), col, rounding, 1 | 2);
+            im.draw_list->AddRectFilled(kr.Min(), kr.Max(), col, rounding, 1 | 2);
         }
     }
 }
@@ -99,12 +99,12 @@ static void DrawIconOrText(Gui* g,
     }
 
     if (style.icon_or_text.capitalise) str = GetTempCapitalisedString(str);
-    im.graphics->AddTextJustified(r,
-                                  str,
-                                  GetCol(g, style, style.main_cols, id, state),
-                                  style.icon_or_text.justification,
-                                  style.icon_or_text.overflow_type,
-                                  using_icon_font ? style.icon_scaling : style.text_scaling);
+    im.draw_list->AddTextJustified(r,
+                                   str,
+                                   GetCol(g, style, style.main_cols, id, state),
+                                   style.icon_or_text.justification,
+                                   style.icon_or_text.overflow_type,
+                                   using_icon_font ? style.icon_scaling : style.text_scaling);
 }
 
 static void DrawIconAndTextButton(Gui* g, Style const& style, Rect r, imgui::Id id, String str, bool state) {
@@ -116,8 +116,8 @@ static void DrawIconAndTextButton(Gui* g, Style const& style, Rect r, imgui::Id 
     DrawBackground(g, style, r, id, state);
 
     if (style.type != LayoutAndSizeType::IconAndTextInstSelector) {
-        im.graphics->renderer->PushFont(g->fonts[ToInt(FontType::Icons)]);
-        DEFER { im.graphics->renderer->PopFont(); };
+        im.draw_list->renderer->PushFont(g->fonts[ToInt(FontType::Icons)]);
+        DEFER { im.draw_list->renderer->PopFont(); };
         auto just = TextJustification::CentredLeft;
         auto btn_r = r;
         if (style.type == LayoutAndSizeType::IconAndTextLayerTab) {
@@ -134,15 +134,15 @@ static void DrawIconAndTextButton(Gui* g, Style const& style, Rect r, imgui::Id 
                         .CutRight(LiveSize(im, UiSizeId::MenuItem_IconMarginX));
             just = TextJustification::CentredRight;
         }
-        im.graphics->AddTextJustified(btn_r,
-                                      state ? style.icon_and_text.on_icon : style.icon_and_text.off_icon,
-                                      icon_col,
-                                      just,
-                                      TextOverflowType::AllowOverflow,
-                                      style.icon_scaling);
+        im.draw_list->AddTextJustified(btn_r,
+                                       state ? style.icon_and_text.on_icon : style.icon_and_text.off_icon,
+                                       icon_col,
+                                       just,
+                                       TextOverflowType::AllowOverflow,
+                                       style.icon_scaling);
     } else if (style.icon_and_text.icon_texture) {
         auto const icon_r = Rect {.x = r.x, .y = r.y, .w = r.h, .h = r.h}.Reduced(r.h / 10);
-        im.graphics->AddImage(*style.icon_and_text.icon_texture, icon_r.Min(), icon_r.Max());
+        im.draw_list->AddImage(*style.icon_and_text.icon_texture, icon_r.Min(), icon_r.Max());
     }
 
     if (style.icon_and_text.capitalise) str = GetTempCapitalisedString(str);
@@ -165,7 +165,7 @@ static void DrawIconAndTextButton(Gui* g, Style const& style, Rect r, imgui::Id 
         else
             text_offset = LiveSize(im, UiSizeId::MenuButtonTextMarginL);
     }
-    im.graphics->AddTextJustified(r.CutLeft(text_offset), str, text_col, just, overflow, style.text_scaling);
+    im.draw_list->AddTextJustified(r.CutLeft(text_offset), str, text_col, just, overflow, style.text_scaling);
 }
 
 static bool ButtonInternal(Gui* g,
@@ -189,7 +189,7 @@ static bool ButtonInternal(Gui* g,
             }
             case LayoutAndSizeType::IconOrText: {
                 if (!str.size) str = style.icon_or_text.default_icon;
-                auto& ctx = *g->imgui.graphics->renderer;
+                auto& ctx = *g->imgui.draw_list->renderer;
                 auto const using_icon_font = str.size && (str[0] & 0x80);
                 if (using_icon_font) ctx.PushFont(g->fonts[ToInt(FontType::Icons)]);
                 DEFER {
@@ -220,10 +220,10 @@ static bool ButtonInternal(Gui* g,
     } else {
         if (!style.draw_with_overlay_graphics) g->imgui.RegisterAndConvertRect(&r);
         imgui::Id const fake_id = 99;
-        auto graphics = g->imgui.graphics;
-        if (style.draw_with_overlay_graphics) g->imgui.graphics = g->imgui.overlay_graphics;
+        auto graphics = g->imgui.draw_list;
+        if (style.draw_with_overlay_graphics) g->imgui.draw_list = g->imgui.overlay_draw_list;
         im.draw(g->imgui, r, fake_id, str, state);
-        g->imgui.graphics = graphics;
+        g->imgui.draw_list = graphics;
         return false;
     }
 }
@@ -266,10 +266,10 @@ ButtonReturnObject PopupWithItems(Gui* g, DescribedParamValue const& param, Rect
     // draw it around the whole thing, not just the menu
     if (style.back_cols.reg) {
         auto const converted_r = g->imgui.GetRegisteredAndConvertedRect(r);
-        g->imgui.graphics->AddRectFilled(converted_r.Min(),
-                                         converted_r.Max(),
-                                         style.back_cols.reg,
-                                         LiveSize(g->imgui, UiSizeId::CornerRounding));
+        g->imgui.draw_list->AddRectFilled(converted_r.Min(),
+                                          converted_r.Max(),
+                                          style.back_cols.reg,
+                                          LiveSize(g->imgui, UiSizeId::CornerRounding));
     }
 
     auto const btn_w = LiveSize(g->imgui, UiSizeId::NextPrevButtonSize);

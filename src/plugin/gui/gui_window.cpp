@@ -14,19 +14,19 @@ imgui::WindowSettings PopupWindowSettings(imgui::Context const& imgui) {
     res.draw_routine_popup_background = [rounding](IMGUI_DRAW_WINDOW_BG_ARGS) {
         auto r = window->unpadded_bounds;
         draw::DropShadow(imgui, r, rounding);
-        imgui.graphics->AddRectFilled(r.Min(), r.Max(), LiveCol(imgui, UiColMap::PopupWindowBack), rounding);
-        imgui.graphics->AddRect(r.Min(), r.Max(), LiveCol(imgui, UiColMap::PopupWindowOutline), rounding);
+        imgui.draw_list->AddRectFilled(r.Min(), r.Max(), LiveCol(imgui, UiColMap::PopupWindowBack), rounding);
+        imgui.draw_list->AddRect(r.Min(), r.Max(), LiveCol(imgui, UiColMap::PopupWindowOutline), rounding);
     };
     res.draw_routine_scrollbar = [](IMGUI_DRAW_WINDOW_SCROLLBAR_ARGS) {
-        imgui.graphics->AddRectFilled(bounds.Min(),
-                                      bounds.Max(),
-                                      LiveCol(imgui, UiColMap::PopupScrollbarBack));
+        imgui.draw_list->AddRectFilled(bounds.Min(),
+                                       bounds.Max(),
+                                       LiveCol(imgui, UiColMap::PopupScrollbarBack));
         u32 handle_col = LiveCol(imgui, UiColMap::PopupScrollbarHandle);
         if (imgui.IsHotOrActive(id)) handle_col = LiveCol(imgui, UiColMap::PopupScrollbarHandleHover);
-        imgui.graphics->AddRectFilled(handle_rect.Min(),
-                                      handle_rect.Max(),
-                                      handle_col,
-                                      LiveSize(imgui, UiSizeId::CornerRounding));
+        imgui.draw_list->AddRectFilled(handle_rect.Min(),
+                                       handle_rect.Max(),
+                                       handle_col,
+                                       LiveSize(imgui, UiSizeId::CornerRounding));
     };
     res.scrollbar_width = LiveSize(imgui, UiSizeId::ScrollbarWidth);
     return res;
@@ -54,16 +54,16 @@ FloeWindowSettings(imgui::Context const& imgui,
     wnd_settings.scrollbar_width = LiveSize(imgui, UiSizeId::ScrollbarWidth);
     wnd_settings.draw_routine_scrollbar = [](IMGUI_DRAW_WINDOW_SCROLLBAR_ARGS) {
         auto const rounding = LiveSize(imgui, UiSizeId::CornerRounding);
-        imgui.graphics->AddRectFilled(bounds.Min(),
-                                      bounds.Max(),
-                                      LiveCol(imgui, UiColMap::ScrollbarBack),
-                                      rounding);
+        imgui.draw_list->AddRectFilled(bounds.Min(),
+                                       bounds.Max(),
+                                       LiveCol(imgui, UiColMap::ScrollbarBack),
+                                       rounding);
         u32 handle_col = LiveCol(imgui, UiColMap::ScrollbarHandle);
         if (imgui.IsHot(id))
             handle_col = LiveCol(imgui, UiColMap::ScrollbarHandleHover);
         else if (imgui.IsActive(id))
             handle_col = LiveCol(imgui, UiColMap::ScrollbarHandleActive);
-        imgui.graphics->AddRectFilled(handle_rect.Min(), handle_rect.Max(), handle_col, rounding);
+        imgui.draw_list->AddRectFilled(handle_rect.Min(), handle_rect.Max(), handle_col, rounding);
     };
     return wnd_settings;
 }

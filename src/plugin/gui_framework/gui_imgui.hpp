@@ -213,8 +213,13 @@ struct Window {
     bool is_open = false;
     bool skip_drawing_this_frame = false;
 
-    graphics::DrawList* allocated_graphics = nullptr;
-    graphics::DrawList* graphics = nullptr;
+    // The active draw list for this Window, it might be the same as owned_draw_list or it might be another
+    // Window's draw list in the case that it's more efficient to share a draw list. Shouldn't be null. Use
+    // this to do all your drawing for this window.
+    graphics::DrawList* draw_list = nullptr;
+
+    // The draw list that is actually allocated and owned by this window.
+    graphics::DrawList* owned_draw_list = nullptr;
 
     bool has_been_sorted = false; // internal
 
@@ -657,11 +662,11 @@ struct Context {
     WindowSettings default_window_style = {};
     f32 pixels_per_vw = 1.0f;
 
-    graphics::DrawList* graphics = nullptr; // Shortcut to the current windows graphics
+    graphics::DrawList* draw_list = nullptr; // Shortcut to the current window's draw list
 
     u32 frame_counter = 0;
 
-    graphics::DrawList* overlay_graphics = {};
+    graphics::DrawList* overlay_draw_list = {};
 
     // we need a way for drawing functions that only have access to imgui::Context to get images from
     // your external object
@@ -772,24 +777,24 @@ f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 window_size, bool find_left_
 
 PUBLIC IMGUI_DRAW_WINDOW_BG(DefaultDrawWindowBackground) {
     auto r = window->unpadded_bounds;
-    imgui.graphics->AddRectFilled(r.Min(), r.Max(), 0xff202020);
-    imgui.graphics->AddRect(r.Min(), r.Max(), 0xffffffff);
+    imgui.draw_list->AddRectFilled(r.Min(), r.Max(), 0xff202020);
+    imgui.draw_list->AddRect(r.Min(), r.Max(), 0xffffffff);
 }
 
 PUBLIC IMGUI_DRAW_WINDOW_BG(DefaultDrawPopupBackground) {
     auto r = window->unpadded_bounds;
-    imgui.graphics->AddRectFilled(r.Min(), r.Max(), 0xff202020);
-    imgui.graphics->AddRect(r.Min(), r.Max(), 0xffffffff);
+    imgui.draw_list->AddRectFilled(r.Min(), r.Max(), 0xff202020);
+    imgui.draw_list->AddRect(r.Min(), r.Max(), 0xffffffff);
 }
 
 PUBLIC IMGUI_DRAW_WINDOW_SCROLLBAR(DefaultDrawWindowScrollbar) {
-    imgui.graphics->AddRectFilled(bounds.Min(), bounds.Max(), 0xff404040);
+    imgui.draw_list->AddRectFilled(bounds.Min(), bounds.Max(), 0xff404040);
     u32 col = 0xffe5e5e5;
     if (imgui.IsHot(id))
         col = 0xffffffff;
     else if (imgui.IsActive(id))
         col = 0xffb5b5b5;
-    imgui.graphics->AddRectFilled(handle_rect.Min(), handle_rect.Max(), col);
+    imgui.draw_list->AddRectFilled(handle_rect.Min(), handle_rect.Max(), col);
 }
 
 PUBLIC IMGUI_DRAW_BUTTON(DefaultDrawButton) {
@@ -797,11 +802,11 @@ PUBLIC IMGUI_DRAW_BUTTON(DefaultDrawButton) {
     if (imgui.IsHot(id)) col = 0xfff0f0f0;
     if (imgui.IsActive(id)) col = 0xff808080;
     if (state) col = 0xff808080;
-    imgui.graphics->AddRectFilled(r.Min(), r.Max(), col);
+    imgui.draw_list->AddRectFilled(r.Min(), r.Max(), col);
 
-    auto font_size = imgui.graphics->renderer->CurrentFontSize();
+    auto font_size = imgui.draw_list->renderer->CurrentFontSize();
     auto pad = (f32)GuiIo().in.window_size.width / 200.0f;
-    imgui.graphics->AddText(f32x2 {r.x + pad, r.y + (r.h / 2 - font_size / 2)}, 0xff000000, str);
+    imgui.draw_list->AddText(f32x2 {r.x + pad, r.y + (r.h / 2 - font_size / 2)}, 0xff000000, str);
 }
 
 PUBLIC IMGUI_DRAW_BUTTON(DefaultDrawPopupButton) {
@@ -809,40 +814,40 @@ PUBLIC IMGUI_DRAW_BUTTON(DefaultDrawPopupButton) {
     u32 col = 0xffd5d5d5;
     if (imgui.IsHot(id)) col = 0xfff0f0f0;
     if (imgui.IsActive(id)) col = 0xff808080;
-    imgui.graphics->AddRectFilled(r.Min(), r.Max(), col);
+    imgui.draw_list->AddRectFilled(r.Min(), r.Max(), col);
 
-    auto font_size = imgui.graphics->renderer->CurrentFontSize();
-    imgui.graphics->AddText(f32x2 {r.x + 4, r.y + ((r.h - font_size) / 2)}, 0xff000000, str);
+    auto font_size = imgui.draw_list->renderer->CurrentFontSize();
+    imgui.draw_list->AddText(f32x2 {r.x + 4, r.y + ((r.h - font_size) / 2)}, 0xff000000, str);
 
-    imgui.graphics->AddTriangleFilled({r.Right() - 14, r.y + 4},
-                                      {r.Right() - 4, r.y + (r.h / 2)},
-                                      {r.Right() - 14, r.y + r.h - 4},
-                                      0xff000000);
+    imgui.draw_list->AddTriangleFilled({r.Right() - 14, r.y + 4},
+                                       {r.Right() - 4, r.y + (r.h / 2)},
+                                       {r.Right() - 14, r.y + r.h - 4},
+                                       0xff000000);
 }
 
 PUBLIC void DefaultDrawSlider(Context const& s, Rect r, Id, f32 percent, SliderSettings const*) {
-    s.graphics->AddRectFilled(r.Min(), r.Max(), 0xffffffff);
+    s.draw_list->AddRectFilled(r.Min(), r.Max(), 0xffffffff);
 
-    s.graphics->AddRectFilled(f32x2 {r.x, (r.y + r.h) - (percent * r.h)}, r.Max(), 0xff3f3f3f);
+    s.draw_list->AddRectFilled(f32x2 {r.x, (r.y + r.h) - (percent * r.h)}, r.Max(), 0xff3f3f3f);
 }
 
 PUBLIC void DefaultDrawTextInput(Context const& s, Rect r, Id id, String text, TextInputResult* result) {
     u32 col = 0xffffffff;
     if (s.IsHot(id) && !s.TextInputHasFocus(id)) col = 0xffe5e5e5;
-    s.graphics->AddRectFilled(r.Min(), r.Max(), col);
+    s.draw_list->AddRectFilled(r.Min(), r.Max(), col);
 
     if (result->HasSelection()) {
-        TextInputResult::SelectionIterator it {*s.graphics->renderer};
+        TextInputResult::SelectionIterator it {*s.draw_list->renderer};
         while (auto const sel_r = result->NextSelectionRect(it))
-            s.graphics->AddRectFilled(*sel_r, 0xff0000ff);
+            s.draw_list->AddRectFilled(*sel_r, 0xff0000ff);
     }
 
     if (result->show_cursor) {
         auto cursor_r = result->GetCursorRect();
-        s.graphics->AddRectFilled(cursor_r.Min(), cursor_r.Max(), 0xff000000);
+        s.draw_list->AddRectFilled(cursor_r.Min(), cursor_r.Max(), 0xff000000);
     }
 
-    s.graphics->AddText(result->GetTextPos(), 0xff000000, text);
+    s.draw_list->AddText(result->GetTextPos(), 0xff000000, text);
 }
 
 // These are functions instead of just constants so we can declare initial values with names
@@ -855,7 +860,7 @@ PUBLIC WindowSettings DefMainWindow() {
     s.pad_bottom_right = {4, 4};
     s.draw_routine_window_background = [](IMGUI_DRAW_WINDOW_BG_ARGS) {
         auto r = window->unpadded_bounds;
-        imgui.graphics->AddRectFilled(r.Min(), r.Max(), 0xff151515);
+        imgui.draw_list->AddRectFilled(r.Min(), r.Max(), 0xff151515);
     };
     return s;
 }
@@ -955,12 +960,12 @@ PUBLIC TextSettings DefText() {
     TextSettings s;
     s.col = 0xffffffff;
     s.draw = [](IMGUI_DRAW_TEXT_ARGS) {
-        auto font_size = imgui.graphics->renderer->CurrentFontSize();
+        auto font_size = imgui.draw_list->renderer->CurrentFontSize();
         f32x2 pos;
         pos.x = (f32)(int)r.x;
         pos.y = r.y + ((r.h / 2) - (font_size / 2));
         pos.y = (f32)(int)pos.y;
-        imgui.graphics->AddText(imgui.graphics->renderer->CurrentFont(), font_size, pos, col, str, 0);
+        imgui.draw_list->AddText(imgui.draw_list->renderer->CurrentFont(), font_size, pos, col, str, 0);
     };
     return s;
 }

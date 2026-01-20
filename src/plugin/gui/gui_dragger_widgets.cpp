@@ -36,17 +36,17 @@ bool Dragger(Gui* g, imgui::Id id, Rect r, int min, int max, int& value, Style c
     settings.slider_settings.draw = [](IMGUI_DRAW_SLIDER_ARGS) {};
     settings.text_input_settings.draw = [&style](IMGUI_DRAW_TEXT_INPUT_ARGS) {
         if (result->HasSelection()) {
-            imgui::TextInputResult::SelectionIterator it {.renderer = *imgui.graphics->renderer};
+            imgui::TextInputResult::SelectionIterator it {.renderer = *imgui.draw_list->renderer};
             while (auto rect = result->NextSelectionRect(it))
-                imgui.graphics->AddRectFilled(*rect, style.selection_back);
+                imgui.draw_list->AddRectFilled(*rect, style.selection_back);
         }
 
         if (result->show_cursor) {
             auto cursor_r = result->GetCursorRect();
-            imgui.graphics->AddRectFilled(cursor_r.Min(), cursor_r.Max(), style.cursor);
+            imgui.draw_list->AddRectFilled(cursor_r.Min(), cursor_r.Max(), style.cursor);
         }
 
-        imgui.graphics->AddText(result->GetTextPos(), style.text, text);
+        imgui.draw_list->AddText(result->GetTextPos(), style.text, text);
     };
     settings.text_input_settings.text_flags.centre_align = true;
 
@@ -86,10 +86,10 @@ bool Dragger(Gui* g, DescribedParamValue const& param, Rect r, Style const& styl
     // draw it around the whole thing, not just the dragger
     if (style.background) {
         auto const converted_r = imgui.GetRegisteredAndConvertedRect(r);
-        imgui.graphics->AddRectFilled(converted_r.Min(),
-                                      converted_r.Max(),
-                                      style.background,
-                                      LiveSize(imgui, UiSizeId::CornerRounding));
+        imgui.draw_list->AddRectFilled(converted_r.Min(),
+                                       converted_r.Max(),
+                                       style.background,
+                                       LiveSize(imgui, UiSizeId::CornerRounding));
     }
 
     auto const btn_w = LiveSize(imgui, UiSizeId::NextPrevButtonSize);

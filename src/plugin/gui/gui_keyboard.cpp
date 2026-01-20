@@ -178,9 +178,9 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
             auto overlay = colours::FromU32(LiveCol(imgui, col_index));
             overlay.a = (u8)Min(255, overlay.a + (40 * num_active_voices));
             auto overlay_u32 = colours::ToU32(overlay);
-            imgui.graphics->AddRectFilled(key_rect.Min(),
-                                          f32x2 {key_rect.Right(), key_rect.y + active_voice_marker_h},
-                                          overlay_u32);
+            imgui.draw_list->AddRectFilled(key_rect.Min(),
+                                           f32x2 {key_rect.Right(), key_rect.y + active_voice_marker_h},
+                                           overlay_u32);
         }
     };
 
@@ -212,7 +212,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
         u32 col = col_white_key;
         if (imgui.IsActive(id) || keyboard.Get((usize)this_abs_key)) col = col_white_key_down;
         if (imgui.IsHot(id)) col = col_white_key_hover;
-        imgui.graphics->AddRectFilled(key_r, col);
+        imgui.draw_list->AddRectFilled(key_r, col);
         overlay_key(this_abs_key, key_r, UiColMap::KeyboardWhiteVoiceOverlay);
 
         // Show the octave number if it's middle-C.
@@ -224,7 +224,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
             auto text_r = key_r;
             text_r.y += key_r.h - text_height;
             text_r.h = text_height;
-            g->imgui.graphics->AddTextJustified(
+            g->imgui.draw_list->AddTextJustified(
                 text_r,
                 "C3",
                 style::Col(style::Colour::Background2 | style::Colour::DarkMode),
@@ -265,12 +265,12 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
         if (imgui.IsHot(id)) col = col_black_key_hover;
 
         if (col != col_black_key) {
-            imgui.graphics->AddRectFilled(key_r, col_black_key_outline);
+            imgui.draw_list->AddRectFilled(key_r, col_black_key_outline);
             key_r.x += 1;
             key_r.w -= 2;
             key_r.h -= 1;
         }
-        imgui.graphics->AddRectFilled(key_r, col);
+        imgui.draw_list->AddRectFilled(key_r, col);
         overlay_key(this_abs_key, key_r, UiColMap::KeyboardBlackVoiceOverlay);
     }
     imgui.PopID();
@@ -323,12 +323,12 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
     if (options.display_type == DisplayType::Full) {
         // Title
         auto const font = g->fonts[ToInt(FontType::Heading2)];
-        imgui.graphics->AddText(font,
-                                font->font_size,
-                                imgui.WindowPosToScreenPos({options.start_pos.x + text_pad_x, y_pos}),
-                                style::Col(style::Colour::Text | style::Colour::DarkMode),
-                                "Key Ranges",
-                                0.0f);
+        imgui.draw_list->AddText(font,
+                                 font->font_size,
+                                 imgui.WindowPosToScreenPos({options.start_pos.x + text_pad_x, y_pos}),
+                                 style::Col(style::Colour::Text | style::Colour::DarkMode),
+                                 "Key Ranges",
+                                 0.0f);
         y_pos += font->font_size + text_gap;
     }
 
@@ -353,9 +353,9 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
                 auto const circle_x = x_pos + circle_radius;
                 auto const circle_y = y_pos + (text_height * 0.5f);
 
-                imgui.graphics->AddCircleFilled(imgui.WindowPosToScreenPos({circle_x, circle_y}),
-                                                circle_radius,
-                                                capsule_cols[layer_idx]);
+                imgui.draw_list->AddCircleFilled(imgui.WindowPosToScreenPos({circle_x, circle_y}),
+                                                 circle_radius,
+                                                 capsule_cols[layer_idx]);
                 x_pos += circle_radius * 2 + imgui.VwToPixels(6);
             }
 
@@ -367,7 +367,7 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
                                               "Layer {}  |  {}",
                                               layer_idx + 1,
                                               g->engine.Layer(layer_idx).InstName());
-                imgui.graphics->AddTextJustified(
+                imgui.draw_list->AddTextJustified(
                     text_r,
                     layer_text,
                     style::Col(style::Colour::Subtext1 | style::Colour::DarkMode),
@@ -434,9 +434,9 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
             auto const key_at_right_edge = Min(range_finish, highest_key_shown);
 
             if (!fade_in && !fade_out) {
-                imgui.graphics->AddRectFilled(f32x2 {line_draw_start, line_y_rounded},
-                                              f32x2 {line_draw_end, line_y_rounded + k_line_width},
-                                              line_cols[layer_idx]);
+                imgui.draw_list->AddRectFilled(f32x2 {line_draw_start, line_y_rounded},
+                                               f32x2 {line_draw_end, line_y_rounded + k_line_width},
+                                               line_cols[layer_idx]);
             } else {
                 f32 x_pos = line_draw_start;
                 u8 key = key_at_left_edge;
@@ -481,7 +481,7 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
                         break;
                     }
 
-                    imgui.graphics->AddRectFilled(
+                    imgui.draw_list->AddRectFilled(
                         f32x2 {x_pos, y_start},
                         f32x2 {next_x_pos - extra_offset, y_end},
                         colours::WithAlpha(line_cols[layer_idx],
@@ -576,10 +576,10 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
                     }
 
                     if (!fade_in && !fade_out) {
-                        imgui.graphics->AddRectFilled(capsule_rect,
-                                                      capsule_cols[layer_idx],
-                                                      capsule_radius > 1.0f ? capsule_radius : 0.0f,
-                                                      corner_flags);
+                        imgui.draw_list->AddRectFilled(capsule_rect,
+                                                       capsule_cols[layer_idx],
+                                                       capsule_radius > 1.0f ? capsule_radius : 0.0f,
+                                                       corner_flags);
                     }
 
                     if (options.display_type == DisplayType::Full) {
@@ -588,7 +588,7 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
                                            .w = clipped_end_x - clipped_start_x,
                                            .h = capsule_height};
 
-                        imgui.graphics->AddTextJustified(
+                        imgui.draw_list->AddTextJustified(
                             range_text_r,
                             named_range.name,
                             style::Col(style::Colour::Text | style::Colour::DarkMode),
@@ -607,42 +607,42 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
 
             if (layer_start_x >= container_left) {
                 auto const stopper_x = (f32)RoundPositiveFloat(layer_start_x);
-                imgui.graphics->AddRectFilled(f32x2 {stopper_x, stopper_top},
-                                              f32x2 {stopper_x + k_stopper_width, stopper_bottom},
-                                              line_cols[layer_idx]);
+                imgui.draw_list->AddRectFilled(f32x2 {stopper_x, stopper_top},
+                                               f32x2 {stopper_x + k_stopper_width, stopper_bottom},
+                                               line_cols[layer_idx]);
             } else {
                 auto const chevron_left_x = (f32)RoundPositiveFloat(container_left);
                 auto const chevron_right_x = chevron_left_x + chevron_x_delta;
                 auto const chevron_point = f32x2 {chevron_left_x, strip_y + (0.5f * strip_h)};
 
-                imgui.graphics->AddLine(chevron_point,
-                                        f32x2 {chevron_right_x, stopper_top},
-                                        line_cols[layer_idx],
-                                        k_line_width);
-                imgui.graphics->AddLine(chevron_point,
-                                        f32x2 {chevron_right_x, stopper_bottom},
-                                        line_cols[layer_idx],
-                                        k_line_width);
+                imgui.draw_list->AddLine(chevron_point,
+                                         f32x2 {chevron_right_x, stopper_top},
+                                         line_cols[layer_idx],
+                                         k_line_width);
+                imgui.draw_list->AddLine(chevron_point,
+                                         f32x2 {chevron_right_x, stopper_bottom},
+                                         line_cols[layer_idx],
+                                         k_line_width);
             }
 
             if (layer_end_x <= container_right) {
                 auto const stopper_x = (f32)Round(layer_end_x);
-                imgui.graphics->AddRectFilled(f32x2 {stopper_x - k_stopper_width, stopper_top},
-                                              f32x2 {stopper_x, stopper_bottom},
-                                              line_cols[layer_idx]);
+                imgui.draw_list->AddRectFilled(f32x2 {stopper_x - k_stopper_width, stopper_top},
+                                               f32x2 {stopper_x, stopper_bottom},
+                                               line_cols[layer_idx]);
             } else {
                 auto const chevron_right_x = (f32)RoundPositiveFloat(container_right);
                 auto const chevron_left_x = chevron_right_x - chevron_x_delta;
                 auto const chevron_point = f32x2 {chevron_right_x, strip_y + (0.5f * strip_h)};
 
-                imgui.graphics->AddLine(chevron_point,
-                                        f32x2 {chevron_left_x, stopper_top},
-                                        line_cols[layer_idx],
-                                        k_line_width);
-                imgui.graphics->AddLine(chevron_point,
-                                        f32x2 {chevron_left_x, stopper_bottom},
-                                        line_cols[layer_idx],
-                                        k_line_width);
+                imgui.draw_list->AddLine(chevron_point,
+                                         f32x2 {chevron_left_x, stopper_top},
+                                         line_cols[layer_idx],
+                                         k_line_width);
+                imgui.draw_list->AddLine(chevron_point,
+                                         f32x2 {chevron_left_x, stopper_bottom},
+                                         line_cols[layer_idx],
+                                         k_line_width);
             }
         }
     }
@@ -682,7 +682,7 @@ static void TopDisplay(Gui* g, Rect r, s32 starting_octave, Rect keyboard_rect) 
                 .pad_bottom_right = {0, enlarged_window_padding},
                 .draw_routine_popup_background =
                     [](IMGUI_DRAW_WINDOW_BG_ARGS) {
-                        imgui.graphics->AddRectFilled(
+                        imgui.draw_list->AddRectFilled(
                             window->unpadded_bounds.Min(),
                             window->unpadded_bounds.Max(),
                             style::Col(style::Colour::Background1 | style::Colour::DarkMode),

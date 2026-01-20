@@ -16,11 +16,11 @@ namespace draw {
 void DropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding_opt) {
     auto const rounding = rounding_opt ? *rounding_opt : LiveSize(imgui, UiSizeId::CornerRounding);
     auto const blur = LiveSize(imgui, UiSizeId::WindowDropShadowBlur);
-    imgui.graphics->AddDropShadow(r.Min(),
-                                  r.Max(),
-                                  LiveCol(imgui, UiColMap::WindowDropShadow),
-                                  blur,
-                                  rounding);
+    imgui.draw_list->AddDropShadow(r.Min(),
+                                   r.Max(),
+                                   LiveCol(imgui, UiColMap::WindowDropShadow),
+                                   blur,
+                                   rounding);
 }
 
 f32x2 GetTextSize(graphics::Font* font, String str, Optional<f32> wrap_width) {
@@ -44,8 +44,8 @@ void VoiceMarkerLine(imgui::Context const& imgui,
         f32 const tail_size = Min(pos.x - left_min, k_tail_size_max);
 
         if (tail_size > 1) {
-            auto const aa = imgui.graphics->renderer->fill_anti_alias;
-            imgui.graphics->renderer->fill_anti_alias = false;
+            auto const aa = imgui.draw_list->renderer->fill_anti_alias;
+            imgui.draw_list->renderer->fill_anti_alias = false;
             auto const darkened_col =
                 colours::ChangeBrightness(LiveCol(imgui, UiColMap::Waveform_LoopVoiceMarkers), 0.7f);
             auto const col = colours::WithAlpha(darkened_col, (u8)MapFrom01(opacity, 10, 40));
@@ -58,31 +58,31 @@ void VoiceMarkerLine(imgui::Context const& imgui,
                 auto p2 = pos + f32x2 {0, height};
                 auto p3 = pos + f32x2 {p0.x - pos.x, height};
 
-                imgui.graphics
+                imgui.draw_list
                     ->AddQuadFilledMultiColor(p0, p1, p2, p3, transparent_col, col, col, transparent_col);
             } else {
                 auto left = Max(left_min, pos.x - tail_size);
 
-                imgui.graphics->AddRectFilledMultiColor({left, pos.y},
-                                                        pos + f32x2 {0, height},
-                                                        transparent_col,
-                                                        col,
-                                                        col,
-                                                        transparent_col);
+                imgui.draw_list->AddRectFilledMultiColor({left, pos.y},
+                                                         pos + f32x2 {0, height},
+                                                         transparent_col,
+                                                         col,
+                                                         col,
+                                                         transparent_col);
             }
 
-            imgui.graphics->renderer->fill_anti_alias = aa;
+            imgui.draw_list->renderer->fill_anti_alias = aa;
         }
     }
 
     {
-        auto const aa = imgui.graphics->renderer->anti_aliased_lines;
-        imgui.graphics->renderer->anti_aliased_lines = false;
+        auto const aa = imgui.draw_list->renderer->anti_aliased_lines;
+        imgui.draw_list->renderer->anti_aliased_lines = false;
         auto const col =
             colours::WithAlpha(LiveCol(imgui, UiColMap::Waveform_LoopVoiceMarkers), (u8)(opacity * 255.0f));
 
-        imgui.graphics->AddLine(pos, pos + f32x2 {0, height}, col);
-        imgui.graphics->renderer->anti_aliased_lines = aa;
+        imgui.draw_list->AddLine(pos, pos + f32x2 {0, height}, col);
+        imgui.draw_list->renderer->anti_aliased_lines = aa;
     }
 }
 

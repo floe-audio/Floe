@@ -79,7 +79,7 @@ layout::Id LayoutParameterComponent(Gui* g,
                                    g->scratch_arena,
                                    {
                                        .parent = container,
-                                       .size = {width, (imgui.graphics->renderer->CurrentFontSize())},
+                                       .size = {width, (imgui.draw_list->renderer->CurrentFontSize())},
                                    });
 
     return container;

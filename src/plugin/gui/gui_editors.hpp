@@ -154,7 +154,7 @@ PUBLIC void DoWholeEditor(Gui* g) {
         };
         static auto const num_tabs = (int)ArraySize(tab_text);
         static int selected_tab = 0;
-        auto tab_h = imgui.graphics->renderer->CurrentFontSize() * 2;
+        auto tab_h = imgui.draw_list->renderer->CurrentFontSize() * 2;
         for (auto const i : Range(num_tabs)) {
             auto third = imgui.Width() / (f32)num_tabs;
             bool v = i == selected_tab;

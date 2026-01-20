@@ -34,7 +34,7 @@ void GUIDoEnvelope(Gui* g,
     settings.draw_routine_window_background = [&handle_size](IMGUI_DRAW_WINDOW_BG_ARGS) {
         auto const& r = window->bounds.Reduced(handle_size / 2);
         auto const rounding = LiveSize(imgui, UiSizeId::CornerRounding);
-        imgui.graphics->AddRectFilled(r.Min(), r.Max(), LiveCol(imgui, UiColMap::Envelope_Back), rounding);
+        imgui.draw_list->AddRectFilled(r.Min(), r.Max(), LiveCol(imgui, UiColMap::Envelope_Back), rounding);
     };
     imgui.PushID(layer->index);
     DEFER { imgui.PopID(); };
@@ -306,12 +306,12 @@ void GUIDoEnvelope(Gui* g,
         // range lines
         auto const do_range_lines = [&](Range range, imgui::Id id) {
             if (imgui.IsActive(id)) {
-                imgui.graphics->AddLine(imgui.WindowPosToScreenPos({range.min, padded_x}),
-                                        imgui.WindowPosToScreenPos({range.min, padded_bottom}),
-                                        range_lines_col);
-                imgui.graphics->AddLine(imgui.WindowPosToScreenPos({range.max, padded_x}),
-                                        imgui.WindowPosToScreenPos({range.max, padded_bottom}),
-                                        range_lines_col);
+                imgui.draw_list->AddLine(imgui.WindowPosToScreenPos({range.min, padded_x}),
+                                         imgui.WindowPosToScreenPos({range.min, padded_bottom}),
+                                         range_lines_col);
+                imgui.draw_list->AddLine(imgui.WindowPosToScreenPos({range.max, padded_x}),
+                                         imgui.WindowPosToScreenPos({range.max, padded_bottom}),
+                                         range_lines_col);
             }
         };
 
@@ -326,8 +326,8 @@ void GUIDoEnvelope(Gui* g,
                                   sustain_point_screen,
                                   release_point_screen,
                                   point_below_decay};
-        imgui.graphics->AddConvexPolyFilled(area_points_a, (int)ArraySize(area_points_a), area_col, false);
-        imgui.graphics->AddConvexPolyFilled(area_points_b, (int)ArraySize(area_points_b), area_col, false);
+        imgui.draw_list->AddConvexPolyFilled(area_points_a, (int)ArraySize(area_points_a), area_col, false);
+        imgui.draw_list->AddConvexPolyFilled(area_points_b, (int)ArraySize(area_points_b), area_col, false);
 
         if (!greyed_out) {
             auto& voice_markers =
@@ -405,7 +405,7 @@ void GUIDoEnvelope(Gui* g,
                                 decay_point_screen,
                                 sustain_point_screen,
                                 release_point_screen};
-        imgui.graphics
+        imgui.draw_list
             ->AddPolyline(line_points, 5, greyed_out ? greyed_out_line_col : line_col, false, 1, true);
 
         // handles
@@ -414,11 +414,11 @@ void GUIDoEnvelope(Gui* g,
             if (imgui.IsHot(id)) {
                 auto background_col = colours::FromU32(col);
                 background_col.a /= 2;
-                imgui.graphics->AddCircleFilled(point, handle_size / 5, colours::ToU32(background_col));
+                imgui.draw_list->AddCircleFilled(point, handle_size / 5, colours::ToU32(background_col));
                 col = hover_col;
             }
             if (imgui.IsActive(id)) col = hover_col;
-            imgui.graphics->AddCircleFilled(point, handle_visible_size, col);
+            imgui.draw_list->AddCircleFilled(point, handle_visible_size, col);
         };
         do_handle(attack_point_screen, attack_imgui_id);
         do_handle(decay_point_screen, dec_sus_imgui_id);

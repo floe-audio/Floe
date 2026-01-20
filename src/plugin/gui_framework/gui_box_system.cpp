@@ -28,7 +28,7 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
             // Channel.
             if (hot_or_active) {
                 u32 col = style::Col(style::Colour::Background2);
-                imgui.graphics->AddRectFilled(bounds.Min(), bounds.Max(), col, rounding);
+                imgui.draw_list->AddRectFilled(bounds.Min(), bounds.Max(), col, rounding);
             }
 
             // Handle.
@@ -44,7 +44,7 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
                         handle_rect.w -= total_pad;
                     }
                 }
-                imgui.graphics->AddRectFilled(handle_rect.Min(), handle_rect.Max(), handle_col, rounding);
+                imgui.draw_list->AddRectFilled(handle_rect.Min(), handle_rect.Max(), handle_col, rounding);
             }
         }
     };
@@ -53,7 +53,7 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
         auto const rounding = imgui.VwToPixels(style::k_panel_rounding);
         auto r = window->unpadded_bounds;
         draw::DropShadow(imgui, r, rounding);
-        imgui.graphics->AddRectFilled(r, style::Col(style::Colour::Background0), rounding);
+        imgui.draw_list->AddRectFilled(r, style::Col(style::Colour::Background0), rounding);
     };
 
     imgui::WindowSettings regular_window_settings {
@@ -114,7 +114,7 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
                         [darken = modal.darken_background](IMGUI_DRAW_WINDOW_BG_ARGS) {
                             if (!darken) return;
                             auto r = window->unpadded_bounds;
-                            imgui.graphics->AddRectFilled(r.Min(), r.Max(), 0x6c0f0d0d);
+                            imgui.draw_list->AddRectFilled(r.Min(), r.Max(), 0x6c0f0d0d);
                         },
                 };
                 builder.imgui.BeginWindow(invis_sets, {.pos = 0, .size = builder.imgui.Size()}, "invisible");
@@ -292,10 +292,10 @@ static bool Tooltip(GuiBoxSystem& builder,
 
     auto hot_seconds = imgui.SecondsSpentHot();
     if (imgui.IsHot(id) && hot_seconds >= style::k_tooltip_open_delay) {
-        builder.imgui.graphics->renderer->PushFont(builder.fonts[ToInt(FontType::Body)]);
-        DEFER { builder.imgui.graphics->renderer->PopFont(); };
+        builder.imgui.draw_list->renderer->PushFont(builder.fonts[ToInt(FontType::Body)]);
+        DEFER { builder.imgui.draw_list->renderer->PopFont(); };
 
-        auto const font = imgui.overlay_graphics->renderer->CurrentFont();
+        auto const font = imgui.overlay_draw_list->renderer->CurrentFont();
         auto const pad_x = imgui.VwToPixels(style::k_tooltip_pad_x);
         auto const pad_y = imgui.VwToPixels(style::k_tooltip_pad_y);
 
@@ -343,16 +343,16 @@ static bool Tooltip(GuiBoxSystem& builder,
         text_start.y = popup_r.y + pad_y;
 
         draw::DropShadow(imgui, popup_r);
-        imgui.overlay_graphics->AddRectFilled(popup_r.Min(),
-                                              popup_r.Max(),
-                                              style::Col(style::Colour::Background0),
-                                              style::k_tooltip_rounding);
-        imgui.overlay_graphics->AddText(font,
-                                        font->font_size,
-                                        text_start,
-                                        style::Col(style::Colour::Text),
-                                        str,
-                                        text_size.x + 1);
+        imgui.overlay_draw_list->AddRectFilled(popup_r.Min(),
+                                               popup_r.Max(),
+                                               style::Col(style::Colour::Background0),
+                                               style::k_tooltip_rounding);
+        imgui.overlay_draw_list->AddText(font,
+                                         font->font_size,
+                                         text_start,
+                                         style::Col(style::Colour::Text),
+                                         str,
+                                         text_size.x + 1);
         return true;
     }
     return false;
@@ -582,12 +582,12 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
 
                 switch (config.background_shape) {
                     case BackgroundShape::Rectangle:
-                        builder.imgui.graphics->AddRectFilled(r, col_u32, rounding, (int)corner_flags);
+                        builder.imgui.draw_list->AddRectFilled(r, col_u32, rounding, (int)corner_flags);
                         break;
                     case BackgroundShape::Circle: {
                         auto const centre = r.Centre();
                         auto const radius = Min(r.w, r.h) / 2;
-                        builder.imgui.graphics->AddCircleFilled(centre, radius, col_u32);
+                        builder.imgui.draw_list->AddCircleFilled(centre, radius, col_u32);
                         return box;
                     }
                     case BackgroundShape::Count: PanicIfReached();
@@ -629,14 +629,14 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                                                      ? Min(rect.w, rect.h) / 2
                                                      : builder.imgui.VwToPixels(style::k_button_rounding))
                                               : 0;
-                    builder.imgui.graphics->AddImageRounded(*texture,
-                                                            rect.Min(),
-                                                            rect.Max(),
-                                                            uv0,
-                                                            uv1,
-                                                            col,
-                                                            rounding,
-                                                            (int)corner_flags);
+                    builder.imgui.draw_list->AddImageRounded(*texture,
+                                                             rect.Min(),
+                                                             rect.Max(),
+                                                             uv0,
+                                                             uv1,
+                                                             col,
+                                                             rounding,
+                                                             (int)corner_flags);
                 }
             }
 
@@ -676,39 +676,39 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                     auto const rounding = config.round_background_corners
                                               ? builder.imgui.VwToPixels(style::k_button_rounding)
                                               : 0;
-                    builder.imgui.graphics->AddRect(r,
-                                                    col_u32,
-                                                    rounding,
-                                                    (int)corner_flags,
-                                                    config.border_width_pixels);
+                    builder.imgui.draw_list->AddRect(r,
+                                                     col_u32,
+                                                     rounding,
+                                                     (int)corner_flags,
+                                                     config.border_width_pixels);
                 } else {
                     if (config.border_edges & 0b1000) {
                         // Left edge
-                        builder.imgui.graphics->AddLine(r.Min(),
-                                                        {r.x, r.y + r.h},
-                                                        col_u32,
-                                                        config.border_width_pixels);
+                        builder.imgui.draw_list->AddLine(r.Min(),
+                                                         {r.x, r.y + r.h},
+                                                         col_u32,
+                                                         config.border_width_pixels);
                     }
                     if (config.border_edges & 0b0100) {
                         // Top edge
-                        builder.imgui.graphics->AddLine(r.Min(),
-                                                        {r.x + r.w, r.y},
-                                                        col_u32,
-                                                        config.border_width_pixels);
+                        builder.imgui.draw_list->AddLine(r.Min(),
+                                                         {r.x + r.w, r.y},
+                                                         col_u32,
+                                                         config.border_width_pixels);
                     }
                     if (config.border_edges & 0b0010) {
                         // Right edge
-                        builder.imgui.graphics->AddLine({r.x + r.w, r.y},
-                                                        {r.x + r.w, r.y + r.h},
-                                                        col_u32,
-                                                        config.border_width_pixels);
+                        builder.imgui.draw_list->AddLine({r.x + r.w, r.y},
+                                                         {r.x + r.w, r.y + r.h},
+                                                         col_u32,
+                                                         config.border_width_pixels);
                     }
                     if (config.border_edges & 0b0001) {
                         // Bottom edge
-                        builder.imgui.graphics->AddLine({r.x, r.y + r.h},
-                                                        {r.x + r.w, r.y + r.h},
-                                                        col_u32,
-                                                        config.border_width_pixels);
+                        builder.imgui.draw_list->AddLine({r.x, r.y + r.h},
+                                                         {r.x + r.w, r.y + r.h},
+                                                         col_u32,
+                                                         config.border_width_pixels);
                     }
                 }
             }
@@ -736,14 +736,14 @@ Box DoBox(GuiBoxSystem& builder, BoxConfig const& config, SourceLocation source_
                     });
                 }
 
-                builder.imgui.graphics->AddText(font,
-                                                font_size,
-                                                text_pos,
-                                                style::Col(is_hot      ? config.text_colours.hot
-                                                           : is_active ? config.text_colours.active
-                                                                       : config.text_colours.base),
-                                                text,
-                                                wrap_width == k_wrap_to_parent ? rect.w : wrap_width);
+                builder.imgui.draw_list->AddText(font,
+                                                 font_size,
+                                                 text_pos,
+                                                 style::Col(is_hot      ? config.text_colours.hot
+                                                            : is_active ? config.text_colours.active
+                                                                        : config.text_colours.base),
+                                                 text,
+                                                 wrap_width == k_wrap_to_parent ? rect.w : wrap_width);
             }
 
             if (config.tooltip.tag != TooltipStringType::None) {
@@ -776,18 +776,18 @@ void DrawTextInput(GuiBoxSystem& builder, Box const& box, DrawTextInputConfig co
     if (!input_result) return;
 
     if (input_result->HasSelection()) {
-        imgui::TextInputResult::SelectionIterator it {*builder.imgui.graphics->renderer};
+        imgui::TextInputResult::SelectionIterator it {*builder.imgui.draw_list->renderer};
         auto const selection_col = style::Col(config.selection_col);
         while (auto const r = input_result->NextSelectionRect(it))
-            builder.imgui.graphics->AddRectFilled(*r, selection_col);
+            builder.imgui.draw_list->AddRectFilled(*r, selection_col);
     }
 
     if (input_result->show_cursor) {
         auto cursor_r = input_result->GetCursorRect();
-        builder.imgui.graphics->AddRectFilled(cursor_r.Min(), cursor_r.Max(), style::Col(config.cursor_col));
+        builder.imgui.draw_list->AddRectFilled(cursor_r.Min(), cursor_r.Max(), style::Col(config.cursor_col));
     }
 
-    builder.imgui.graphics->AddText(
+    builder.imgui.draw_list->AddText(
         input_result->GetTextPos(),
         colours::WithAlpha(style::Col(config.text_col), input_result->is_placeholder ? 140 : 255),
         input_result->text);

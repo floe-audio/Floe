@@ -947,7 +947,7 @@ ErrorCodeOr<void> SetVisible(AppWindow& window, bool visible, Engine& engine) {
     ASSERT(window.view);
 
     if (visible) {
-        // Realize if not already done.
+        // Realise if not already done.
         if (!puglGetNativeView(window.view)) {
             TRY(Required(puglRealize(window.view)));
             window.double_click_time_ms = native::DoubleClickTimeMs(window);

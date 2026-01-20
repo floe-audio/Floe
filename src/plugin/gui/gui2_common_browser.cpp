@@ -165,11 +165,11 @@ struct ItemArgs {
 };
 
 static void DrawFocusBox(GuiBoxSystem& box_system, Rect relative_rect) {
-    box_system.imgui.graphics->AddRect(box_system.imgui.GetRegisteredAndConvertedRect(relative_rect),
-                                       style::Col(style::Colour::Blue),
-                                       box_system.imgui.VwToPixels(style::k_button_rounding),
-                                       ~0,
-                                       2);
+    box_system.imgui.draw_list->AddRect(box_system.imgui.GetRegisteredAndConvertedRect(relative_rect),
+                                        style::Col(style::Colour::Blue),
+                                        box_system.imgui.VwToPixels(style::k_button_rounding),
+                                        ~0,
+                                        2);
 }
 
 static bool DoItem(GuiBoxSystem& box_system, BrowserKeyboardNavigation& nav, ItemArgs const& args) {

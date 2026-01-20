@@ -273,12 +273,12 @@ Box DoParameterComponent(Gui* g,
             auto const r = builder.imgui.WindowRectToScreenRect(*rel_r);
             auto const rounding = LiveSize(builder.imgui, UiSizeId::CornerRounding);
 
-            builder.imgui.graphics->AddRectFilled(r,
-                                                  LiveCol(builder.imgui, UiColMap::KnobTextInputBack),
-                                                  rounding);
-            builder.imgui.graphics->AddRect(r,
-                                            LiveCol(builder.imgui, UiColMap::KnobTextInputBorder),
-                                            rounding);
+            builder.imgui.draw_list->AddRectFilled(r,
+                                                   LiveCol(builder.imgui, UiColMap::KnobTextInputBack),
+                                                   rounding);
+            builder.imgui.draw_list->AddRect(r,
+                                             LiveCol(builder.imgui, UiColMap::KnobTextInputBorder),
+                                             rounding);
 
             DrawTextInput(builder,
                           container,

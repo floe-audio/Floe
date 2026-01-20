@@ -52,10 +52,10 @@ static bool DoCurveMap(Gui* g,
 
     {
         auto const rounding = LiveSize(imgui, UiSizeId::CornerRounding);
-        imgui.graphics->AddRectFilled(rect, LiveCol(imgui, UiColMap::Envelope_Back), rounding);
+        imgui.draw_list->AddRectFilled(rect, LiveCol(imgui, UiColMap::Envelope_Back), rounding);
     }
 
-    auto& graphics = *imgui.graphics;
+    auto& graphics = *imgui.draw_list;
     auto& points = curve_map.points;
 
     bool changed = false;

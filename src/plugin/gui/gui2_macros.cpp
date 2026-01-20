@@ -21,14 +21,14 @@ static void DrawLinkLine(Gui* g, f32x2 p1, f32x2 p2) {
     p1 = p1 + unit_direction * padding_radius_p1;
     p2 = p2 - unit_direction * padding_radius_p2;
 
-    g->imgui.overlay_graphics->AddLine(p1,
-                                       p2,
-                                       colours::ChangeAlpha(style::Col(style::Colour::Blue), 0.7f),
-                                       Max(1.0f, g->imgui.VwToPixels(2)));
+    g->imgui.overlay_draw_list->AddLine(p1,
+                                        p2,
+                                        colours::ChangeAlpha(style::Col(style::Colour::Blue), 0.7f),
+                                        Max(1.0f, g->imgui.VwToPixels(2)));
 }
 
 static void DrawPopupTextbox(Gui* g, String str, Rect r) {
-    auto const font = g->box_system.imgui.graphics->renderer->CurrentFont();
+    auto const font = g->box_system.imgui.draw_list->renderer->CurrentFont();
 
     auto const size = draw::GetTextSize(font, str);
     auto const pad_x = LiveSize(g->box_system.imgui, UiSizeId::TooltipPadX);
@@ -49,14 +49,14 @@ static void DrawPopupTextbox(Gui* g, String str, Rect r) {
     text_start.y = popup_r.y + pad_y;
 
     draw::DropShadow(g->box_system.imgui, popup_r);
-    g->box_system.imgui.overlay_graphics->AddRectFilled(
+    g->box_system.imgui.overlay_draw_list->AddRectFilled(
         popup_r.Min(),
         popup_r.Max(),
         LiveCol(g->box_system.imgui, UiColMap::TooltipBack),
         LiveSize(g->box_system.imgui, UiSizeId::CornerRounding));
-    g->box_system.imgui.overlay_graphics->AddText(text_start,
-                                                  LiveCol(g->box_system.imgui, UiColMap::TooltipText),
-                                                  str);
+    g->box_system.imgui.overlay_draw_list->AddText(text_start,
+                                                   LiveCol(g->box_system.imgui, UiColMap::TooltipText),
+                                                   str);
 }
 
 void DoMacrosEditGui(Gui* g, Box const& parent) {
@@ -201,10 +201,10 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                 auto const arc_thickness = 5;
 
                 if (box_system.imgui.IsHotOrActive(imgui_id)) {
-                    box_system.imgui.graphics->AddCircleFilled(centre,
-                                                               radius - arc_thickness,
-                                                               style::Col(style::Colour::Blue),
-                                                               12);
+                    box_system.imgui.draw_list->AddCircleFilled(centre,
+                                                                radius - arc_thickness,
+                                                                style::Col(style::Colour::Blue),
+                                                                12);
                 }
 
                 if (box_system.imgui.WasJustMadeHot(imgui_id))
@@ -277,15 +277,15 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                         dyn::Append(g->macros_gui_state.draw_overlays,
                                     [r = remove_button_r, hot = hovering_remove_button](Gui* g) {
                                         // Draw a dark circle with a circle-minus icon inside it.
-                                        g->box_system.imgui.overlay_graphics->renderer->PushFont(
+                                        g->box_system.imgui.overlay_draw_list->renderer->PushFont(
                                             g->fonts[ToInt(FontType::Icons)]);
-                                        DEFER { g->box_system.imgui.overlay_graphics->renderer->PopFont(); };
-                                        g->box_system.imgui.overlay_graphics->AddCircleFilled(
+                                        DEFER { g->box_system.imgui.overlay_draw_list->renderer->PopFont(); };
+                                        g->box_system.imgui.overlay_draw_list->AddCircleFilled(
                                             r.Centre(),
                                             r.w * 0.5f,
                                             style::Col(style::Colour::Background0 | style::Colour::DarkMode),
                                             12);
-                                        g->box_system.imgui.overlay_graphics->AddTextJustified(
+                                        g->box_system.imgui.overlay_draw_list->AddTextJustified(
                                             r,
                                             ICON_FA_CIRCLE_MINUS,
                                             ({
@@ -326,9 +326,9 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                         mode.Clear();
                 }
 
-                box_system.imgui.graphics->renderer->PushFont(g->fonts[ToInt(FontType::Icons)]);
-                DEFER { box_system.imgui.graphics->renderer->PopFont(); };
-                box_system.imgui.graphics->AddTextJustified(
+                box_system.imgui.draw_list->renderer->PushFont(g->fonts[ToInt(FontType::Icons)]);
+                DEFER { box_system.imgui.draw_list->renderer->PopFont(); };
+                box_system.imgui.draw_list->AddTextJustified(
                     knob_r,
                     ICON_FA_CIRCLE_PLUS,
                     ({
@@ -459,19 +459,19 @@ void MacroAddDestinationRegion(Gui* g, Rect rel_r, ParamIndex param_index) {
 
     // Draw.
     {
-        auto const clip_rect = g->imgui.graphics->clip_rect_stack.Back();
-        g->imgui.overlay_graphics->PushClipRect(clip_rect.xy, clip_rect.zw);
-        DEFER { g->imgui.overlay_graphics->PopClipRect(); };
+        auto const clip_rect = g->imgui.draw_list->clip_rect_stack.Back();
+        g->imgui.overlay_draw_list->PushClipRect(clip_rect.xy, clip_rect.zw);
+        DEFER { g->imgui.overlay_draw_list->PopClipRect(); };
 
-        g->imgui.overlay_graphics->renderer->PushFont(g->fonts[ToInt(FontType::Icons)]);
-        DEFER { g->imgui.overlay_graphics->renderer->PopFont(); };
+        g->imgui.overlay_draw_list->renderer->PushFont(g->fonts[ToInt(FontType::Icons)]);
+        DEFER { g->imgui.overlay_draw_list->renderer->PopFont(); };
 
-        g->imgui.overlay_graphics->AddCircleFilled(
+        g->imgui.overlay_draw_list->AddCircleFilled(
             r.Centre(),
-            g->imgui.overlay_graphics->renderer->CurrentFontSize() * 0.4f,
+            g->imgui.overlay_draw_list->renderer->CurrentFontSize() * 0.4f,
             style::Col(style::Colour::Background0 | style::Colour::DarkMode));
 
-        g->imgui.overlay_graphics->AddTextJustified(
+        g->imgui.overlay_draw_list->AddTextJustified(
             r,
             ICON_FA_CIRCLE_PLUS,
             g->imgui.IsHotOrActive(imgui_id)

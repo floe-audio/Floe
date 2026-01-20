@@ -26,7 +26,6 @@
 #include "gui/gui_frame_context.hpp"
 #include "gui_editor_widgets.hpp"
 #include "gui_editors.hpp"
-#include "gui_framework/app_window.hpp"
 #include "gui_framework/graphics.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -52,13 +51,13 @@ LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, LibraryI
 }
 
 Optional<graphics::ImageID> LogoImage(Gui* g) {
-    if (!g->imgui.graphics->renderer->ImageIdIsValid(g->floe_logo_image)) {
+    if (!g->imgui.draw_list->renderer->ImageIdIsValid(g->floe_logo_image)) {
         auto const data = EmbeddedLogoImage();
         if (data.size) {
             auto outcome = DecodeImage({data.data, data.size}, g->scratch_arena);
             ASSERT(!outcome.HasError());
             auto const pixels = outcome.ReleaseValue();
-            g->floe_logo_image = CreateImageIdChecked(*g->imgui.graphics->renderer, pixels);
+            g->floe_logo_image = CreateImageIdChecked(*g->imgui.draw_list->renderer, pixels);
         }
     }
     return g->floe_logo_image;
@@ -252,21 +251,21 @@ static void DoResizeCorner(Gui* g) {
             prefs::SetValue(g->prefs, desc, (s64)new_size->width);
     }
 
-    imgui.graphics->AddTriangleFilled(r.TopRight(),
-                                      r.BottomRight(),
-                                      r.BottomLeft(),
-                                      style::Col(style::Colour::Background0 | style::Colour::DarkMode));
+    imgui.draw_list->AddTriangleFilled(r.TopRight(),
+                                       r.BottomRight(),
+                                       r.BottomLeft(),
+                                       style::Col(style::Colour::Background0 | style::Colour::DarkMode));
 
     auto const line_col =
         style::Col(imgui.IsHotOrActive(id) ? style::Colour::Text | style::Colour::DarkMode
                                            : style::Colour::Overlay2 | style::Colour::DarkMode);
     auto const line_gap = LiveSize(imgui, UiSizeId::WindowResizeCornerLineGap);
-    imgui.graphics->AddLine(r.TopRight() + f32x2 {0, line_gap},
-                            r.BottomLeft() + f32x2 {line_gap, 0},
-                            line_col);
-    imgui.graphics->AddLine(r.TopRight() + f32x2 {0, line_gap * 2},
-                            r.BottomLeft() + f32x2 {line_gap * 2, 0},
-                            line_col);
+    imgui.draw_list->AddLine(r.TopRight() + f32x2 {0, line_gap},
+                             r.BottomLeft() + f32x2 {line_gap, 0},
+                             line_col);
+    imgui.draw_list->AddLine(r.TopRight() + f32x2 {0, line_gap * 2},
+                             r.BottomLeft() + f32x2 {line_gap * 2, 0},
+                             line_col);
 }
 
 void GuiUpdate(Gui* g) {
@@ -346,7 +345,7 @@ void GuiUpdate(Gui* g) {
     auto draw_mid_window = [&](IMGUI_DRAW_WINDOW_BG_ARGS) {
         auto r = window->unpadded_bounds;
 
-        imgui.graphics->AddRectFilled(r.Min(), r.Max(), LiveCol(imgui, UiColMap::MidPanelBack));
+        imgui.draw_list->AddRectFilled(r.Min(), r.Max(), LiveCol(imgui, UiColMap::MidPanelBack));
 
         if (!prefs::GetBool(g->prefs, SettingDescriptor(GuiSetting::HighContrastGui))) {
             auto overall_library = LibraryForOverallBackground(g->engine);
@@ -355,17 +354,17 @@ void GuiUpdate(Gui* g) {
                 if (imgs.background) {
                     auto tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.background);
                     if (tex) {
-                        imgui.graphics->AddImage(*tex,
-                                                 r.Min(),
-                                                 r.Max(),
-                                                 {0, 0},
-                                                 GetMaxUVToMaintainAspectRatio(*imgs.background, r.size));
+                        imgui.draw_list->AddImage(*tex,
+                                                  r.Min(),
+                                                  r.Max(),
+                                                  {0, 0},
+                                                  GetMaxUVToMaintainAspectRatio(*imgs.background, r.size));
                     }
                 }
             }
         }
 
-        imgui.graphics->AddLine(r.TopLeft(), r.TopRight(), LiveCol(imgui, UiColMap::MidPanelTopLine));
+        imgui.draw_list->AddLine(r.TopLeft(), r.TopRight(), LiveCol(imgui, UiColMap::MidPanelTopLine));
     };
 
     {
