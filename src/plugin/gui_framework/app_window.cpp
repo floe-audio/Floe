@@ -510,6 +510,8 @@ static void HandlePostUpdateRequests(AppWindow& window) {
 
     if (window.last_result.wants.text_input || window.last_result.wants.keyboard_keys.AnyValuesSet()) {
         if (!puglHasFocus(window.view)) {
+            // TODO: we should capture what the last focused window was, and restore it when we no longer need
+            // focus. For instance in a DAW we would pass focus back to the DAW to deal with.
             auto const result = puglGrabFocus(window.view);
             if (result != PUGL_SUCCESS) LogWarning(ModuleName::Gui, "failed to grab focus: {}", result);
         }
@@ -524,7 +526,7 @@ static void HandlePostUpdateRequests(AppWindow& window) {
     if (window.last_result.wants.clipboard_text_paste) {
         LogDebug(ModuleName::Gui, "requesting OS to give us clipboard");
         // IMPORTANT: this will call into our event handler function right from here rather than queue things
-        // up
+        // up.
         puglPaste(window.view);
     }
 
