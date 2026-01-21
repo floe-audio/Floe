@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -29,42 +29,41 @@ using FilePickerUnion =
                 TypeAndTag<AddScanFolderFilePickerState, FilePickerStateType::AddScanFolder>>;
 
 struct FilePickerState {
-    ArenaAllocator arena {Malloc::Instance(), 256};
     FilePickerUnion data;
 };
 
 PUBLIC void OpenFilePickerAddExtraScanFolders(FilePickerState& state,
-                                              GuiFrameResult& frame_result,
                                               prefs::Preferences const& prefs,
                                               FloePaths const& paths,
                                               AddScanFolderFilePickerState data) {
-    state.arena.ResetCursorAndConsolidateRegions();
     Optional<String> default_folder {};
     if (auto const extra_paths = ExtraScanFolders(paths, prefs, data.type); extra_paths.size)
-        default_folder = state.arena.Clone(extra_paths[0]);
+        default_folder = extra_paths[0];
 
-    frame_result.file_picker_dialog = FilePickerDialogOptions {
-        .type = FilePickerDialogOptions::Type::SelectFolder,
-        .title = ({
-            String s {};
-            switch (data.type) {
-                case ScanFolderType::Libraries: s = "Select Libraries Folder"; break;
-                case ScanFolderType::Presets: s = "Select Presets Folder"; break;
-                case ScanFolderType::Count: PanicIfReached();
-            }
-            s;
-        }),
-        .default_folder = default_folder,
-        .filters = {},
-        .allow_multiple_selection = true,
-    };
+    auto& out = GuiIo().out;
+
+    out.file_picker_dialog =
+        FilePickerDialogOptions {
+            .type = FilePickerDialogOptions::Type::SelectFolder,
+            .title = ({
+                String s {};
+                switch (data.type) {
+                    case ScanFolderType::Libraries: s = "Select Libraries Folder"; break;
+                    case ScanFolderType::Presets: s = "Select Presets Folder"; break;
+                    case ScanFolderType::Count: PanicIfReached();
+                }
+                s;
+            }),
+            .default_folder = default_folder,
+            .filters = {},
+            .allow_multiple_selection = true,
+        }
+            .Clone(out.file_picker_options_arena);
 
     state.data = data;
 }
 
-PUBLIC void OpenFilePickerInstallPackage(FilePickerState& state, GuiFrameResult& frame_result) {
-    state.arena.ResetCursorAndConsolidateRegions();
-
+PUBLIC void OpenFilePickerInstallPackage(FilePickerState& state) {
     static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
         {
             .description = "Floe Package"_s,
@@ -72,10 +71,13 @@ PUBLIC void OpenFilePickerInstallPackage(FilePickerState& state, GuiFrameResult&
         },
     });
 
-    frame_result.file_picker_dialog = FilePickerDialogOptions {
+    auto& out = GuiIo().out;
+
+    out.file_picker_dialog = FilePickerDialogOptions {
         .type = FilePickerDialogOptions::Type::OpenFile,
         .title = "Select 1 or more Floe Package",
-        .default_folder = KnownDirectory(state.arena, KnownDirectoryType::Downloads, {.create = false}),
+        .default_folder =
+            KnownDirectory(out.file_picker_options_arena, KnownDirectoryType::Downloads, {.create = false}),
         .filters = k_filters,
         .allow_multiple_selection = true,
     };
@@ -94,10 +96,7 @@ static String PresetFileDefaultPath(FloePaths const& paths, PresetFilePickerMode
     return result;
 }
 
-PUBLIC void
-OpenFilePickerSavePreset(FilePickerState& state, GuiFrameResult& frame_result, FloePaths const& paths) {
-    state.arena.ResetCursorAndConsolidateRegions();
-
+PUBLIC void OpenFilePickerSavePreset(FilePickerState& state, FloePaths const& paths) {
     static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
         {
             .description = "Floe Preset"_s,
@@ -105,21 +104,23 @@ OpenFilePickerSavePreset(FilePickerState& state, GuiFrameResult& frame_result, F
         },
     });
 
-    frame_result.file_picker_dialog = FilePickerDialogOptions {
-        .type = FilePickerDialogOptions::Type::SaveFile,
-        .title = "Save Floe Preset",
-        .default_folder = PresetFileDefaultPath(paths, PresetFilePickerMode::Save),
-        .default_filename = "untitled" FLOE_PRESET_FILE_EXTENSION,
-        .filters = k_filters,
-        .allow_multiple_selection = false,
-    };
+    auto& out = GuiIo().out;
+
+    out.file_picker_dialog =
+        FilePickerDialogOptions {
+            .type = FilePickerDialogOptions::Type::SaveFile,
+            .title = "Save Floe Preset",
+            .default_folder = PresetFileDefaultPath(paths, PresetFilePickerMode::Save),
+            .default_filename = "untitled" FLOE_PRESET_FILE_EXTENSION,
+            .filters = k_filters,
+            .allow_multiple_selection = false,
+        }
+            .Clone(out.file_picker_options_arena);
 
     state.data = FilePickerStateType::SavePreset;
 }
 
-PUBLIC void
-OpenFilePickerLoadPreset(FilePickerState& state, GuiFrameResult& frame_result, FloePaths const& paths) {
-    state.arena.ResetCursorAndConsolidateRegions();
+PUBLIC void OpenFilePickerLoadPreset(FilePickerState& state, FloePaths const& paths) {
     static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
         {
             .description = "Floe Preset"_s,
@@ -131,13 +132,17 @@ OpenFilePickerLoadPreset(FilePickerState& state, GuiFrameResult& frame_result, F
         },
     });
 
-    frame_result.file_picker_dialog = FilePickerDialogOptions {
-        .type = FilePickerDialogOptions::Type::OpenFile,
-        .title = "Load Floe Preset",
-        .default_folder = PresetFileDefaultPath(paths, PresetFilePickerMode::Load),
-        .filters = k_filters,
-        .allow_multiple_selection = false,
-    };
+    auto& out = GuiIo().out;
+
+    out.file_picker_dialog =
+        FilePickerDialogOptions {
+            .type = FilePickerDialogOptions::Type::OpenFile,
+            .title = "Load Floe Preset",
+            .default_folder = PresetFileDefaultPath(paths, PresetFilePickerMode::Load),
+            .filters = k_filters,
+            .allow_multiple_selection = false,
+        }
+            .Clone(out.file_picker_options_arena);
 
     state.data = FilePickerStateType::LoadPreset;
 }

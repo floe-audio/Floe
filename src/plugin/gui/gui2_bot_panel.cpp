@@ -122,8 +122,8 @@ static void DoBotPanel(Gui* g) {
             auto const r = box_system.imgui.GetRegisteredAndConvertedRect(*rel_r);
             // Draw a divider line on the inside right side of the tab box. We do this here because it creates
             // a nice consistent line - active tabs will draw over it to connect with the main content.
-            box_system.imgui.graphics->AddRectFilled(Rect {.xywh {r.x + r.w - 1, r.y, 1, r.h}},
-                                                     style::Col(k_border_col));
+            box_system.imgui.draw_list->AddRectFilled(Rect {.xywh {r.x + r.w - 1, r.y, 1, r.h}},
+                                                      style::Col(k_border_col));
         }
 
         auto const tab_button = [&](BottomPanelType type, TooltipString tooltip) {
@@ -288,14 +288,14 @@ static void DoBotPanel(Gui* g) {
 }
 
 void BotPanel(Gui* g, Rect const r) {
-    RunPanel(g->box_system,
-             {
-                 .run = [g](GuiBoxSystem&) { DoBotPanel(g); },
-                 .data =
-                     Subpanel {
-                         .rect = r,
-                         .imgui_id = g->imgui.GetID("BotPanel"),
-                         .flags = imgui::WindowFlags_NoScrollbarX | imgui::WindowFlags_NoScrollbarY,
-                     },
-             });
+    RunOrEnqueuePanel(g->box_system,
+                      {
+                          .run = [g](GuiBoxSystem&) { DoBotPanel(g); },
+                          .data =
+                              Subpanel {
+                                  .rect = r,
+                                  .imgui_id = g->imgui.GetID("BotPanel"),
+                                  .flags = imgui::WindowFlags_NoScrollbarX | imgui::WindowFlags_NoScrollbarY,
+                              },
+                      });
 }

@@ -5,7 +5,7 @@ const std = @import("std");
 
 const constants = @import("constants.zig");
 const std_extras = @import("std_extras.zig");
-const ConcatCompileCommandsStep = @import("ConcatCompileCommandsStep.zig");
+const cdb = @import("combine_cdb_fragments.zig");
 
 pub fn addGlobalCheckSteps(b: *std.Build) void {
     {
@@ -74,7 +74,7 @@ const CheckFormatStep = struct {
         const source_files = try std_extras.findSourceFiles(self.builder.allocator, .{
             .dir_path = "src",
             .extensions = &.{ ".cpp", ".hpp", ".h", ".mm" },
-            .exclude_folders = &.{},
+            .exclude_folders = &.{"shaders"},
         });
 
         var args = std.ArrayList([]const u8).init(self.builder.allocator);
@@ -126,7 +126,7 @@ pub const ClangTidyStep = struct {
 
         // We specify the build root so that we get the correct cdb for the target.
         try args.append("-p");
-        try args.append(ConcatCompileCommandsStep.cdbDirPath(self.builder, self.target));
+        try args.append(cdb.cdbDirPath(self.builder, self.target));
 
         // We get all the source files that we compiled by reading the cdb ourselves and selecting our files.
         // This ensures we only check files that were actually compiled.
@@ -134,14 +134,14 @@ pub const ClangTidyStep = struct {
         // Read the entire compile_commands.json file
         const cdb_contents = try step.owner.build_root.handle.readFileAlloc(
             self.builder.allocator,
-            ConcatCompileCommandsStep.cdbFilePath(self.builder, self.target),
+            cdb.cdbFilePath(self.builder, self.target),
             1024 * 1024 * 10,
         ); // 10MB max
         defer self.builder.allocator.free(cdb_contents);
 
         // Parse JSON to extract file paths
         const parsed = try std.json.parseFromSlice(
-            []ConcatCompileCommandsStep.CompileFragment,
+            []cdb.CompileFragment,
             self.builder.allocator,
             cdb_contents,
             .{},

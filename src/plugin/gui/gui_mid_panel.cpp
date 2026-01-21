@@ -29,8 +29,8 @@ static void DoBlurredBackground(Gui* g,
     auto imgs = LibraryImagesFromLibraryId(g, library_id, LibraryImagesTypes::Backgrounds);
 
     if (imgs.blurred_background) {
-        if (auto tex = g->frame_input.graphics_ctx->GetTextureFromImage(imgs.blurred_background)) {
-            auto const whole_uv = GetMaxUVToMaintainAspectRatio(*imgs.background, mid_panel_size);
+        if (auto tex = GuiIo().in.renderer->GetTextureFromImage(imgs.blurred_background)) {
+            auto const whole_uv = GetMaxUVToMaintainAspectRatio(*imgs.blurred_background, mid_panel_size);
             auto const left_margin = r.x - window->parent_window->bounds.x;
             auto const top_margin = r.y - window->parent_window->bounds.y;
 
@@ -39,8 +39,8 @@ static void DoBlurredBackground(Gui* g,
             f32x2 max_uv = {whole_uv.x * (r.w + left_margin) / mid_panel_size.x,
                             whole_uv.y * (r.h + top_margin) / mid_panel_size.y};
 
-            imgui.graphics->PushClipRect(clipped_to.Min(), clipped_to.Max());
-            DEFER { imgui.graphics->PopClipRect(); };
+            imgui.draw_list->PushClipRect(clipped_to.Min(), clipped_to.Max());
+            DEFER { imgui.draw_list->PopClipRect(); };
 
             auto const image_draw_colour = colours::ToU32({
                 .a = (u8)(opacity * 255),
@@ -49,13 +49,13 @@ static void DoBlurredBackground(Gui* g,
                 .r = 255,
             });
 
-            imgui.graphics
+            imgui.draw_list
                 ->AddImageRounded(*tex, r.Min(), r.Max(), min_uv, max_uv, image_draw_colour, panel_rounding);
         } else {
-            imgui.graphics->AddRectFilled(r.Min(),
-                                          r.Max(),
-                                          LiveCol(imgui, UiColMap::BlurredImageFallback),
-                                          panel_rounding);
+            imgui.draw_list->AddRectFilled(r.Min(),
+                                           r.Max(),
+                                           LiveCol(imgui, UiColMap::BlurredImageFallback),
+                                           panel_rounding);
         }
     }
 }
@@ -64,13 +64,13 @@ static void DoOverlayGradient(Gui* g, Rect r) {
     auto& imgui = g->imgui;
     auto const panel_rounding = LiveSize(imgui, UiSizeId::BlurredPanelRounding);
 
-    int const vtx_idx_0 = imgui.graphics->vtx_buffer.size;
+    int const vtx_idx_0 = imgui.draw_list->vtx_buffer.size;
     auto const pos = r.Min() + f32x2 {1, 1};
     auto const size = f32x2 {r.w, r.h / 2} - f32x2 {2, 2};
-    imgui.graphics->AddRectFilled(pos, pos + size, 0xffffffff, panel_rounding);
-    int const vtx_idx_1 = imgui.graphics->vtx_buffer.size;
-    imgui.graphics->AddRectFilled(pos, pos + size, 0xffffffff, panel_rounding);
-    int const vtx_idx_2 = imgui.graphics->vtx_buffer.size;
+    imgui.draw_list->AddRectFilled(pos, pos + size, 0xffffffff, panel_rounding);
+    int const vtx_idx_1 = imgui.draw_list->vtx_buffer.size;
+    imgui.draw_list->AddRectFilled(pos, pos + size, 0xffffffff, panel_rounding);
+    int const vtx_idx_2 = imgui.draw_list->vtx_buffer.size;
 
     auto const col_value =
         (u8)(Clamp01(LiveSize(imgui, UiSizeId::BackgroundBlurringOverlayGradientColour) / 100.0f) * 255);
@@ -82,14 +82,14 @@ static void DoOverlayGradient(Gui* g, Rect r) {
         .r = col_value,
     });
 
-    graphics::DrawList::ShadeVertsLinearColorGradientSetAlpha(imgui.graphics,
+    graphics::DrawList::ShadeVertsLinearColorGradientSetAlpha(imgui.draw_list,
                                                               vtx_idx_0,
                                                               vtx_idx_1,
                                                               pos,
                                                               pos + f32x2 {0, size.y},
                                                               col,
                                                               0);
-    graphics::DrawList::ShadeVertsLinearColorGradientSetAlpha(imgui.graphics,
+    graphics::DrawList::ShadeVertsLinearColorGradientSetAlpha(imgui.draw_list,
                                                               vtx_idx_1,
                                                               vtx_idx_2,
                                                               pos + f32x2 {size.x, 0},
@@ -163,19 +163,19 @@ void MidPanel(Gui* g, GuiFrameContext const& frame_context) {
                 DoOverlayGradient(g, r);
             }
 
-            imgui.graphics->AddRect(r.Min(),
-                                    r.Max(),
-                                    LiveCol(imgui, UiColMap::BlurredImageBorder),
-                                    panel_rounding);
+            imgui.draw_list->AddRect(r.Min(),
+                                     r.Max(),
+                                     LiveCol(imgui, UiColMap::BlurredImageBorder),
+                                     panel_rounding);
 
-            imgui.graphics->AddLine({r.x, r.y + mid_panel_title_height},
-                                    {r.Right(), r.y + mid_panel_title_height},
-                                    LiveCol(imgui, UiColMap::LayerDividerLine));
+            imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
+                                     {r.Right(), r.y + mid_panel_title_height},
+                                     LiveCol(imgui, UiColMap::LayerDividerLine));
             for (u32 i = 1; i < k_num_layers; ++i) {
                 auto const x_pos = r.x + ((f32)i * layer_width_without_pad) - 1;
-                imgui.graphics->AddLine({x_pos, r.y + mid_panel_title_height},
-                                        {x_pos, r.Bottom()},
-                                        LiveCol(imgui, UiColMap::LayerDividerLine));
+                imgui.draw_list->AddLine({x_pos, r.y + mid_panel_title_height},
+                                         {x_pos, r.Bottom()},
+                                         LiveCol(imgui, UiColMap::LayerDividerLine));
             }
         });
 
@@ -192,10 +192,10 @@ void MidPanel(Gui* g, GuiFrameContext const& frame_context) {
                                  imgui.Width(),
                                  mid_panel_title_height}};
             imgui.RegisterAndConvertRect(&title_r);
-            imgui.graphics->AddTextJustified(title_r,
-                                             "Layers",
-                                             LiveCol(imgui, UiColMap::MidPanelTitleText),
-                                             TextJustification::CentredLeft);
+            imgui.draw_list->AddTextJustified(title_r,
+                                              "Layers",
+                                              LiveCol(imgui, UiColMap::MidPanelTitleText),
+                                              TextJustification::CentredLeft);
         }
 
         // randomise button
@@ -260,14 +260,14 @@ void MidPanel(Gui* g, GuiFrameContext const& frame_context) {
 
             DoOverlayGradient(g, r);
 
-            imgui.graphics->AddRect(r.Min(),
-                                    r.Max(),
-                                    LiveCol(imgui, UiColMap::BlurredImageBorder),
-                                    panel_rounding);
+            imgui.draw_list->AddRect(r.Min(),
+                                     r.Max(),
+                                     LiveCol(imgui, UiColMap::BlurredImageBorder),
+                                     panel_rounding);
 
-            imgui.graphics->AddLine({r.x, r.y + mid_panel_title_height},
-                                    {r.Right(), r.y + mid_panel_title_height},
-                                    LiveCol(imgui, UiColMap::LayerDividerLine));
+            imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
+                                     {r.Right(), r.y + mid_panel_title_height},
+                                     LiveCol(imgui, UiColMap::LayerDividerLine));
         });
         settings.pad_top_left.x = LiveSize(imgui, UiSizeId::FXListMarginL);
         settings.pad_top_left.y = LiveSize(imgui, UiSizeId::FXListMarginT);
@@ -285,10 +285,10 @@ void MidPanel(Gui* g, GuiFrameContext const& frame_context) {
                                  imgui.Width(),
                                  mid_panel_title_height}};
             imgui.RegisterAndConvertRect(&title_r);
-            imgui.graphics->AddTextJustified(title_r,
-                                             "Effects",
-                                             LiveCol(imgui, UiColMap::MidPanelTitleText),
-                                             TextJustification::CentredLeft);
+            imgui.draw_list->AddTextJustified(title_r,
+                                              "Effects",
+                                              LiveCol(imgui, UiColMap::MidPanelTitleText),
+                                              TextJustification::CentredLeft);
         }
 
         // randomise button

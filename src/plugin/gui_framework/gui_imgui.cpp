@@ -109,7 +109,7 @@ static f32 STB_TEXTEDIT_GETWIDTH(STB_TEXTEDIT_STRING* imgui, int i, int n) {
     (void)i;
     auto c = imgui->textedit_text[(usize)n];
     if (c == '\n') return STB_TEXTEDIT_GETWIDTH_NEWLINE;
-    auto font = imgui->graphics->context->CurrentFont();
+    auto font = imgui->draw_list->renderer->CurrentFont();
     return font->GetCharAdvance((graphics::Char16)c);
 }
 
@@ -125,8 +125,8 @@ static f32x2 InputTextCalcTextSizeW(Context* imgui,
                                     Char32 const** remaining,
                                     f32x2* out_offset,
                                     bool stop_on_new_line) {
-    auto font = imgui->graphics->context->CurrentFont();
-    auto line_height = imgui->graphics->context->CurrentFontSize();
+    auto font = imgui->draw_list->renderer->CurrentFont();
+    auto line_height = imgui->draw_list->renderer->CurrentFontSize();
 
     auto text_size = f32x2 {0, 0};
     f32 line_width = 0.0f;
@@ -411,7 +411,8 @@ void Context::HandleHoverPopupOpeningAndClosing(Id id) {
 
         if (id != creator_of_next) {
             if (WasJustMadeHot(id))
-                AddTimedWakeup(frame_input.current_time + k_popup_open_and_close_delay_sec, "Popup close");
+                GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_popup_open_and_close_delay_sec,
+                                           "Popup close");
             if (SecondsSpentHot() >= k_popup_open_and_close_delay_sec)
                 ClosePopupToLevel((int)current_popup_stack.size);
         }
@@ -427,9 +428,9 @@ static Rect CalculateScissorStack(DynamicArray<Rect>& s) {
 
 void Context::OnScissorChanged() const {
     if (scissor_rect_is_active)
-        graphics->SetClipRect(current_scissor_rect.pos, current_scissor_rect.Max());
+        draw_list->SetClipRect(current_scissor_rect.pos, current_scissor_rect.Max());
     else
-        graphics->SetClipRectFullscreen();
+        draw_list->SetClipRectFullscreen();
 }
 
 f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 window_size, bool find_left_or_right) {
@@ -568,21 +569,6 @@ static u32 ImguiHash(void const* data, int data_size, u32 seed = 0) {
     return ~crc;
 }
 
-bool Context::WakeupAtTimedInterval(TimePoint& counter, f64 interval_seconds) {
-    bool triggered = false;
-    if (frame_input.current_time >= counter) {
-        counter = frame_input.current_time + interval_seconds;
-        triggered = true;
-    }
-    AddTimedWakeup(counter, __FUNCTION__);
-    return triggered;
-}
-
-void Context::AddTimedWakeup(TimePoint time, char const* timer_name) {
-    (void)timer_name;
-    dyn::AppendIfNotAlreadyThere(timed_wakeups, time);
-}
-
 void Context::PushID(String str) { dyn::Append(id_stack, GetID(str)); }
 
 void Context::PushID(uintptr num) { dyn::Append(id_stack, GetID(num)); }
@@ -603,9 +589,7 @@ Id Context::GetID(uintptr i) {
     return result;
 }
 
-Context::Context(GuiFrameInput& frame_input, GuiFrameResult& frame_output)
-    : frame_input(frame_input)
-    , frame_output(frame_output) {
+Context::Context() {
     dyn::Append(id_stack, 0u);
     PushScissorStack();
     windows.Reserve(64);
@@ -645,13 +629,6 @@ void Context::Begin(WindowSettings settings) {
     ASSERT_EQ(window_stack.size, 0u);
     ASSERT_EQ(current_popup_stack.size, 0u);
 
-    draw_data.draw_lists = {};
-    draw_data.total_vtx_count = 0;
-    draw_data.total_idx_count = 0;
-
-    dyn::Clear(mouse_tracked_rects);
-    dyn::Clear(clipboard_for_os);
-
     tab_just_used_to_focus = false;
     frame_counter++;
     window_just_created = nullptr;
@@ -659,6 +636,8 @@ void Context::Begin(WindowSettings settings) {
     hovered_window_last_frame = hovered_window;
     hovered_window = nullptr;
     hovered_window_content = nullptr;
+
+    auto const& frame_input = GuiIo().in;
 
     for (usize i = sorted_windows.size; i-- > 0;) {
         auto window = sorted_windows[i];
@@ -740,8 +719,9 @@ void Context::Begin(WindowSettings settings) {
 
     active_text_input_shown = false;
 
-    overlay_graphics.context = frame_input.graphics_ctx;
-    overlay_graphics.BeginDraw();
+    if (!overlay_draw_list) overlay_draw_list = GuiIo().out.draw_list_allocator.Allocate();
+    overlay_draw_list->renderer = frame_input.renderer;
+    overlay_draw_list->BeginDraw();
 
     BeginWindow(settings,
                 k_imgui_app_window_id,
@@ -757,28 +737,26 @@ void Context::End(ArenaAllocator& scratch_arena) {
     if (!active_text_input_shown) SetTextInputFocus(0, {}, false);
 
     if (debug_show_register_widget_overlay) {
-        for (auto& w : mouse_tracked_rects) {
+        for (auto& w : GuiIo().out.mouse_tracked_rects) {
             auto col = 0xffff00ff;
             if (w.mouse_over) col = 0xff00ffff;
-            overlay_graphics.AddRect(w.rect.Min(), w.rect.Max(), col);
+            overlay_draw_list->AddRect(w.rect.Min(), w.rect.Max(), col);
         }
     }
 
-    overlay_graphics.EndDraw();
+    overlay_draw_list->EndDraw();
 
     //
     // Flush buffers with sorting
     //
 
-    dyn::Clear(output_draw_lists);
+    ASSERT(GuiIo().out.draw_lists.size == 0);
 
     auto confirm_window = [&](Window* window, DynamicArray<Window*>& sorted_buf) {
         if (!window->has_been_sorted) {
             window->has_been_sorted = true;
             dyn::Append(sorted_buf, window);
-            dyn::Append(output_draw_lists, window->graphics);
-            draw_data.total_vtx_count += window->graphics->vtx_buffer.Size();
-            draw_data.total_idx_count += window->graphics->idx_buffer.Size();
+            dyn::AppendIfNotAlreadyThere(GuiIo().out.draw_lists, window->draw_list);
         }
     };
 
@@ -844,11 +822,9 @@ void Context::End(ArenaAllocator& scratch_arena) {
     }
     dyn::Clear(active_windows);
 
-    dyn::Append(output_draw_lists, &overlay_graphics);
-    draw_data.total_vtx_count += overlay_graphics.vtx_buffer.Size();
-    draw_data.total_idx_count += overlay_graphics.idx_buffer.Size();
+    dyn::Append(GuiIo().out.draw_lists, overlay_draw_list);
 
-    if (frame_input.Mouse(MouseButton::Left).presses.size && temp_active_item.id == 0 && temp_hot_item == 0) {
+    if (GuiIo().in.Mouse(MouseButton::Left).presses.size && temp_active_item.id == 0 && temp_hot_item == 0) {
         if (hovered_window != nullptr) {
             Window* window = hovered_window;
             bool const closes_popups = (window->flags & WindowFlags_NeverClosesPopup) == 0;
@@ -898,19 +874,14 @@ void Context::End(ArenaAllocator& scratch_arena) {
     prev_popup_menu_just_created = popup_menu_just_created;
     popup_menu_just_created = 0;
 
-    frame_output.wants_text_input = active_text_input != 0;
-    frame_output.wants_mouse_capture = AnItemIsActive();
-    frame_output.wants_mouse_scroll = true;
-    frame_output.wants_all_left_clicks = focused_popup_window != nullptr || GetTextInput();
-    frame_output.wants_all_right_clicks = false;
-    frame_output.wants_all_middle_clicks = false;
+    auto& frame_output = GuiIo().out;
 
-    draw_data.draw_lists = output_draw_lists;
-    frame_output.draw_data = draw_data;
-
-    frame_output.mouse_tracked_rects = mouse_tracked_rects;
-    frame_output.set_clipboard_text = clipboard_for_os;
-    frame_output.timed_wakeups = &timed_wakeups;
+    frame_output.wants.text_input = active_text_input != 0;
+    frame_output.wants.mouse_capture = AnItemIsActive();
+    frame_output.wants.mouse_scroll = true;
+    frame_output.wants.all_left_clicks = focused_popup_window != nullptr || GetTextInput();
+    frame_output.wants.all_right_clicks = false;
+    frame_output.wants.all_middle_clicks = false;
 
     active_item_last_frame = active_item.id;
     hot_item_last_frame = hot_item;
@@ -918,13 +889,13 @@ void Context::End(ArenaAllocator& scratch_arena) {
     prev_active_text_input = active_text_input;
 
     if (temp_hot_item != hot_item)
-        frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+        frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     if (temp_active_item.just_activated) {
         temp_hot_item = 0;
-        frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+        frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
     if (tab_to_focus_next_input)
-        frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+        frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
 
 bool Context::TextInputHasFocus(Id id) const { return active_text_input && active_text_input == id; }
@@ -1017,6 +988,8 @@ bool Context::SliderUnboundedBehavior(Rect r,
     static f32x2 start_location = {};
     f32 const starting_val = val;
 
+    auto const& frame_input = GuiIo().in;
+
     // NOTE: this slider always responds both vertically and horizontally.
 
     if (ButtonBehavior(r, id, {.left_mouse = true, .triggers_on_mouse_down = true})) {
@@ -1108,7 +1081,7 @@ void Context::RegisterAndConvertRect(Rect* r) {
     r->pos = WindowPosToScreenPos(r->pos);
 
     // Debug: show boxes around registered rectangles.
-    // overlay_graphics.AddRect(r->Min(), r->Max(), 0xff0000ff);
+    // overlay_draw_list.AddRect(r->Min(), r->Max(), 0xff0000ff);
 }
 
 bool Context::RegisterRegionForMouseTracking(Rect r, bool check_intersection) {
@@ -1119,8 +1092,8 @@ bool Context::RegisterRegionForMouseTracking(Rect r, bool check_intersection) {
 
     MouseTrackedRect widget = {};
     widget.rect = r;
-    widget.mouse_over = r.Contains(frame_input.cursor_pos);
-    dyn::Append(mouse_tracked_rects, widget);
+    widget.mouse_over = r.Contains(GuiIo().in.cursor_pos);
+    dyn::Append(GuiIo().out.mouse_tracked_rects, widget);
     return true;
 }
 
@@ -1171,7 +1144,7 @@ bool Context::SetHot(Rect r, Id id, bool32 is_not_window_content) {
 
     // Only bother to check if the cursor is in the same window.
     if ((curr_window == hovered_window_content || (is_not_window_content && curr_window == hovered_window)) &&
-        r.Contains(frame_input.cursor_pos)) {
+        r.Contains(GuiIo().in.cursor_pos)) {
         temp_hovered_item = id;
         // Only allow it if there is not an active item (for example a disallow when a slider is held down).
         if (GetActive() == 0) {
@@ -1198,14 +1171,14 @@ TextInputResult Context::TextInput(Rect r,
     int const starting_cursor = stb_state.cursor;
     bool reset_cursor = false;
 
-    auto get_rel_click_point = [this](f32x2 pos, f32 offset) {
-        f32x2 relative_click = frame_input.cursor_pos - pos;
+    auto get_rel_click_point = [](f32x2 pos, f32 offset) {
+        f32x2 relative_click = GuiIo().in.cursor_pos - pos;
         relative_click -= f32x2 {offset, 0};
         return relative_click;
     };
 
     auto get_text_pos = [&](Rect r, f32 offset) {
-        auto font_size = graphics->context->CurrentFontSize();
+        auto font_size = draw_list->renderer->CurrentFontSize();
         auto pos = r.pos;
         pos.x += offset;
         if (!flags.multiline) pos.y += (r.h - font_size) / 2; // centre Y
@@ -1230,7 +1203,7 @@ TextInputResult Context::TextInput(Rect r,
     auto get_offset = [&](String text) {
         auto x_offset = flags.x_padding;
         if (flags.centre_align) {
-            auto font = graphics->context->CurrentFont();
+            auto font = draw_list->renderer->CurrentFont();
             auto size = font->CalcTextSizeA(font->font_size, FLT_MAX, 0.0f, text).x;
             x_offset = ((r.w / 2) - (size / 2));
         }
@@ -1243,16 +1216,21 @@ TextInputResult Context::TextInput(Rect r,
         auto const size = end - start;
         if (!size) return;
 
-        dyn::Resize(clipboard_for_os, size * 4); // 1 utf32 could at most be 4 utf8 bytes
+        auto& clipboard = GuiIo().out.set_clipboard_text;
 
-        dyn::Resize(clipboard_for_os,
-                    (usize)imstring::Narrow(clipboard_for_os.data,
-                                            (int)clipboard_for_os.size,
+        dyn::Resize(clipboard, size * 4); // 1 UTF32 could at most be 4 UTF8 bytes
+
+        dyn::Resize(clipboard,
+                    (usize)imstring::Narrow(clipboard.data,
+                                            (int)clipboard.size,
                                             textedit_text.data + start,
                                             textedit_text.data + end));
     };
 
-    if (IsHot(id)) frame_output.cursor_type = CursorType::IBeam;
+    auto const& frame_input = GuiIo().in;
+    auto& frame_output = GuiIo().out;
+
+    if (IsHot(id)) frame_output.wants.cursor_type = CursorType::IBeam;
 
     if (TextInputHasFocus(id)) {
         RequestKeyboardFocus(id);
@@ -1315,7 +1293,7 @@ TextInputResult Context::TextInput(Rect r,
         }
     }
 
-    if (IsHotOrActive(id)) frame_output.cursor_type = CursorType::IBeam;
+    if (IsHotOrActive(id)) frame_output.wants.cursor_type = CursorType::IBeam;
 
     // Select word
     for (auto const press : frame_input.Mouse(MouseButton::Left).presses) {
@@ -1408,7 +1386,7 @@ TextInputResult Context::TextInput(Rect r,
         if (auto const vs = frame_input.Key(KeyCode::V).presses_or_repeats; vs.size) {
             for (auto const event : vs) {
                 if (event.modifiers.Get(ModifierKey::Modifier)) {
-                    frame_output.wants_clipboard_text_paste = true;
+                    frame_output.wants.clipboard_text_paste = true;
                     break;
                 }
             }
@@ -1475,8 +1453,8 @@ TextInputResult Context::TextInput(Rect r,
         }
     }
 
-    auto const font_size = graphics->context->CurrentFontSize();
-    auto font = graphics->context->CurrentFont();
+    auto const font_size = draw_list->renderer->CurrentFontSize();
+    auto font = draw_list->renderer->CurrentFont();
 
     if (result.buffer_changed) {
         for (u8 iteration = 0; iteration < 2; ++iteration) {
@@ -1503,7 +1481,7 @@ TextInputResult Context::TextInput(Rect r,
 
                 if (line_end <= line_start) break;
 
-                auto const line_width = font->CalcTextSizeA(graphics->context->CurrentFontSize(),
+                auto const line_width = font->CalcTextSizeA(draw_list->renderer->CurrentFontSize(),
                                                             FLT_MAX,
                                                             0,
                                                             {line_start, (usize)(line_end - line_start)})
@@ -1566,7 +1544,7 @@ TextInputResult Context::TextInput(Rect r,
     if (!result.HasSelection()) {
         if (starting_cursor != stb_state.cursor || reset_cursor)
             ResetTextInputCursorAnim();
-        else if (WakeupAtTimedInterval(cursor_blink_counter, k_text_cursor_blink_rate))
+        else if (GuiIo().WakeupAtTimedInterval(cursor_blink_counter, k_text_cursor_blink_rate))
             text_cursor_is_shown = !text_cursor_is_shown;
     }
 
@@ -1620,8 +1598,8 @@ Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIter
 
         char const* end_pos = it.pos;
 
-        auto font = it.draw_ctx.CurrentFont();
-        auto font_size = it.draw_ctx.CurrentFontSize();
+        auto font = it.renderer.CurrentFont();
+        auto font_size = it.renderer.CurrentFontSize();
 
         Rect const result = {
             .x = text_pos.x + font->CalcTextSizeA(font_size,
@@ -1655,8 +1633,8 @@ Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIter
 
     auto const end_pos = it.pos;
 
-    auto font = it.draw_ctx.CurrentFont();
-    auto font_size = it.draw_ctx.CurrentFontSize();
+    auto font = it.renderer.CurrentFont();
+    auto font_size = it.renderer.CurrentFontSize();
 
     return Rect {.x = text_pos.x,
                  .y = text_pos.y - 2 + (start_line_index * font_size),
@@ -1675,7 +1653,8 @@ bool Context::PopupButtonBehavior(Rect r, Id button_id, Id popup_id, ButtonFlags
     } else {
         if (ButtonBehavior(r, button_id, flags)) just_clicked = true;
         if (WasJustMadeHot(button_id))
-            AddTimedWakeup(frame_input.current_time + k_popup_open_and_close_delay_sec, "Popup open");
+            GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_popup_open_and_close_delay_sec,
+                                       "Popup open");
         if ((just_clicked || (IsHot(button_id) && SecondsSpentHot() >= k_popup_open_and_close_delay_sec)) &&
             !IsPopupOpen(popup_id)) {
             ClosePopupToLevel((int)current_popup_stack.size);
@@ -1694,24 +1673,25 @@ bool Context::ButtonBehavior(Rect r, Id id, ButtonFlags flags) {
     if (flags.disabled) return false;
 
     if (flags.hold_to_repeat && IsActive(id)) {
-        if (WakeupAtTimedInterval(button_repeat_counter, button_repeat_rate)) result = true;
+        if (GuiIo().WakeupAtTimedInterval(button_repeat_counter, button_repeat_rate)) result = true;
     }
 
     if (SetHot(r, id, flags.is_non_window_content)) {
-        if (CheckForValidMouseDown(flags, frame_input)) {
+        if (CheckForValidMouseDown(flags, GuiIo().in)) {
             SetActiveID(id, flags.closes_popups, flags, !(flags.dont_check_for_release));
 
             button_repeat_counter = {};
-            if (flags.hold_to_repeat) WakeupAtTimedInterval(button_repeat_counter, button_repeat_rate);
+            if (flags.hold_to_repeat)
+                GuiIo().WakeupAtTimedInterval(button_repeat_counter, button_repeat_rate);
             if (!(flags.triggers_on_mouse_up)) result = true;
         }
     }
-    if ((flags.triggers_on_mouse_up) && r.Contains(frame_input.cursor_pos) && WasJustDeactivated(id)) {
+    if ((flags.triggers_on_mouse_up) && r.Contains(GuiIo().in.cursor_pos) && WasJustDeactivated(id)) {
         // the cursor is still over the rectangle and and mouse has just been released
         result = true;
     }
 
-    if (IsHotOrActive(id)) frame_output.cursor_type = CursorType::Hand;
+    if (IsHotOrActive(id)) GuiIo().out.wants.cursor_type = CursorType::Hand;
 
     if (result && (flags.closes_popups)) CloseCurrentPopup();
 
@@ -1787,7 +1767,6 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     window->flags = flags;
     window->is_open = true;
     window->style = settings;
-    window->local_graphics.context = frame_input.graphics_ctx;
 
     if (next_window_contents_size.x != 0) window->prev_content_size.x = next_window_contents_size.x;
     if (next_window_contents_size.y != 0) window->prev_content_size.y = next_window_contents_size.y;
@@ -1852,7 +1831,7 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
             }
 
             auto avoid_r = rect_to_avoid;
-            auto window_size = frame_input.window_size.ToFloat2();
+            auto window_size = GuiIo().in.window_size.ToFloat2();
 
             r.pos = BestPopupPos(base_r, avoid_r, window_size, has_parent_popup);
             r.pos = Trunc(r.pos);
@@ -1866,8 +1845,8 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     //
 
     if (!(is_apopup || draw_on_top) && curr_window) RegisterAndConvertRect(&r);
-    if (r.Bottom() > (f32)frame_input.window_size.height && is_apopup) {
-        r.SetBottomByResizing((f32)frame_input.window_size.height - 1);
+    if (r.Bottom() > (f32)GuiIo().in.window_size.height && is_apopup) {
+        r.SetBottomByResizing((f32)GuiIo().in.window_size.height - 1);
         if (!scrollbar_inside_padding) {
             f32 const scrollbar_size = window->style.scrollbar_width + window->style.scrollbar_padding;
             r.w += scrollbar_size;
@@ -1920,15 +1899,18 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     if (window->root_window == window || is_apopup || draw_on_top) {
         window->child_nesting_counter = 0;
         window->nested_level = 0;
-        window->graphics = &window->local_graphics;
+        if (!window->owned_draw_list) window->owned_draw_list = GuiIo().out.draw_list_allocator.Allocate();
+        window->draw_list = window->owned_draw_list;
     } else {
         window->root_window->child_nesting_counter++;
         window->nested_level = window->root_window->child_nesting_counter;
-        window->graphics = &window->root_window->local_graphics;
+        window->draw_list = window->root_window->owned_draw_list;
+        ASSERT(window->draw_list);
     }
-    window->graphics = &window->local_graphics;
-    window->graphics->BeginDraw();
-    graphics = window->graphics;
+
+    window->draw_list->renderer = GuiIo().in.renderer;
+    if (window->draw_list == window->owned_draw_list) window->draw_list->BeginDraw();
+    draw_list = window->draw_list;
 
     curr_window = window;
     dyn::Append(window_stack, window);
@@ -2010,7 +1992,7 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
                                       window->prev_content_size.y,
                                       window->scroll_offset.y,
                                       window->scroll_max.y,
-                                      frame_input.cursor_pos.y);
+                                      GuiIo().in.cursor_pos.y);
         window->scroll_offset.y = result.new_scroll_value;
         window->scroll_max.y = result.new_scroll_max;
 
@@ -2033,7 +2015,7 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
                                       window->prev_content_size.x,
                                       window->scroll_offset.x,
                                       window->scroll_max.x,
-                                      frame_input.cursor_pos.x);
+                                      GuiIo().in.cursor_pos.x);
         window->scroll_offset.x = result.new_scroll_value;
         window->scroll_max.x = result.new_scroll_max;
 
@@ -2087,7 +2069,7 @@ void Context::EndWindow() {
     Window* window = Last(window_stack);
     if (window->prev_content_size.x != window->prevprev_content_size.x ||
         window->prev_content_size.y != window->prevprev_content_size.y) {
-        frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+        GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
 
     PopRectFromCurrentScissorStack();
@@ -2098,11 +2080,11 @@ void Context::EndWindow() {
     } else if (Last(window_stack)->flags & WindowFlags_DrawOnTop) {
         PopScissorStack();
     }
-    window->graphics->EndDraw();
+    if (window->draw_list == window->owned_draw_list) window->draw_list->EndDraw();
     dyn::Pop(window_stack);
     if (window_stack.size != 0) {
         curr_window = Last(window_stack);
-        graphics = curr_window->graphics;
+        draw_list = curr_window->draw_list;
     } else {
         // should only happen in the End() function when the base window is ended
         curr_window = nullptr;
@@ -2195,25 +2177,25 @@ void Context::SetTextInputFocus(Id id, String new_text, bool multiline) {
         update_needed = true;
     }
 
-    if (update_needed) frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+    if (update_needed) GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
 
 void Context::ResetTextInputCursorAnim() {
     text_cursor_is_shown = true;
-    cursor_blink_counter = frame_input.current_time + k_text_cursor_blink_rate;
+    cursor_blink_counter = GuiIo().in.current_time + k_text_cursor_blink_rate;
 }
 
 void Context::TextInputSelectAll() {
     stb_state.cursor = 0;
     stb_state.select_start = 0;
     stb_state.select_end = textedit_len;
-    frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
 
 void Context::SetActiveIDZero() { SetActiveID(0, false, {}, false); }
 
 void Context::SetActiveID(Id id, bool closes_popups, ButtonFlags button_flags, bool check_for_release) {
-    frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     temp_active_item.id = id;
     temp_active_item.closes_popups = closes_popups;
     temp_active_item.just_activated = (id != 0);
@@ -2241,7 +2223,7 @@ Window* Context::OpenPopup(Id id, Id creator_of_this_popup) {
     popup_menu_just_created = id;
     dyn::Append(persistent_popup_stack, popup);
     focused_popup_window = popup;
-    frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 
     return popup;
 }
@@ -2322,29 +2304,29 @@ void Context::DebugTextItem(char const* label, char const* text, ...) {
 
     f32 const label_width = 150;
     f32 const x_pad = 10;
-    auto const height = graphics->context->CurrentFontSize();
+    auto const height = draw_list->renderer->CurrentFontSize();
 
     Rect r = {.xywh {0, debug_y_pos, Width(), height}};
     RegisterAndConvertRect(&r);
 
-    graphics->AddText(graphics->context->CurrentFont(),
-                      graphics->context->CurrentFontSize(),
-                      WindowPosToScreenPos({x_pad, debug_y_pos}),
-                      0xffffffff,
-                      FromNullTerminated(label),
-                      label_width - 4);
+    draw_list->AddText(draw_list->renderer->CurrentFont(),
+                       draw_list->renderer->CurrentFontSize(),
+                       WindowPosToScreenPos({x_pad, debug_y_pos}),
+                       0xffffffff,
+                       FromNullTerminated(label),
+                       label_width - 4);
 
-    graphics->AddText(graphics->context->CurrentFont(),
-                      graphics->context->CurrentFontSize(),
-                      WindowPosToScreenPos({x_pad + label_width, debug_y_pos}),
-                      0xffffffff,
-                      FromNullTerminated(buffer),
-                      Width() - (label_width + x_pad));
+    draw_list->AddText(draw_list->renderer->CurrentFont(),
+                       draw_list->renderer->CurrentFontSize(),
+                       WindowPosToScreenPos({x_pad + label_width, debug_y_pos}),
+                       0xffffffff,
+                       FromNullTerminated(buffer),
+                       Width() - (label_width + x_pad));
     debug_y_pos += height;
 }
 
 bool Context::DebugTextHeading(bool& state, char const* text) {
-    f32 const height = graphics->context->CurrentFontSize() + 4;
+    f32 const height = draw_list->renderer->CurrentFontSize() + 4;
 
     bool const clicked = Button(DefButton(),
                                 {.xywh {0, debug_y_pos, Width(), height}},
@@ -2356,7 +2338,7 @@ bool Context::DebugTextHeading(bool& state, char const* text) {
 }
 
 bool Context::DebugButton(char const* text) {
-    f32 const height = graphics->context->CurrentFontSize() + 4;
+    f32 const height = draw_list->renderer->CurrentFontSize() + 4;
 
     bool const clicked = ToggleButton(DefToggleButton(),
                                       {.xywh {0, debug_y_pos, Width(), height}},
@@ -2372,29 +2354,27 @@ void Context::DebugWindow(Rect r) {
     sets.flags = 0;
     BeginWindow(sets, r, "TextWindow");
 
-    frame_output.wants_text_input = true;
+    GuiIo().out.wants.text_input = true;
 
     debug_y_pos = 0;
 
     DebugButton("Toggle Registered Widget Overlay");
 
     if (DebugTextHeading(debug_general, "General")) {
-        DebugTextItem("Update", "%llu", frame_input.update_count);
-        DebugTextItem("Key shift", "%d", (int)frame_input.modifiers.Get(ModifierKey::Shift));
-        DebugTextItem("Key ctrl", "%d", (int)frame_input.modifiers.Get(ModifierKey::Ctrl));
-        DebugTextItem("Key modifer", "%d", (int)frame_input.modifiers.Get(ModifierKey::Modifier));
-        DebugTextItem("Key alt", "%d", (int)frame_input.modifiers.Get(ModifierKey::Alt));
-        DebugTextItem("Time", "%lld", frame_input.current_time);
-        DebugTextItem("WindowSize",
-                      "%hu, %hu",
-                      frame_input.window_size.width,
-                      frame_input.window_size.height);
-        DebugTextItem("Widgets", "%d", (int)frame_output.mouse_tracked_rects.size);
+        auto const& in = GuiIo().in;
+        DebugTextItem("Update", "%llu", in.update_count);
+        DebugTextItem("Key shift", "%d", (int)in.modifiers.Get(ModifierKey::Shift));
+        DebugTextItem("Key ctrl", "%d", (int)in.modifiers.Get(ModifierKey::Ctrl));
+        DebugTextItem("Key modifer", "%d", (int)in.modifiers.Get(ModifierKey::Modifier));
+        DebugTextItem("Key alt", "%d", (int)in.modifiers.Get(ModifierKey::Alt));
+        DebugTextItem("Time", "%lld", in.current_time);
+        DebugTextItem("WindowSize", "%hu, %hu", in.window_size.width, in.window_size.height);
+        DebugTextItem("Widgets", "%d", (int)GuiIo().out.mouse_tracked_rects.size);
 
-        debug_y_pos += graphics->context->CurrentFontSize() * 2;
+        debug_y_pos += draw_list->renderer->CurrentFontSize() * 2;
 
         DebugTextItem("Timers:", "");
-        for (auto& t : timed_wakeups)
+        for (auto& t : GuiIo().out.timed_wakeups)
             DebugTextItem("Time:", "%lld", t);
     }
 
@@ -2438,7 +2418,7 @@ void Context::DebugWindow(Rect r) {
         else
             DebugTextItem("Hovered Size", "0 0 0 0");
         DebugTextItem("Hovered Flags", "%s", dyn::NullTerminated(buffer));
-        debug_y_pos += graphics->context->CurrentFontSize() * 3;
+        debug_y_pos += draw_list->renderer->CurrentFontSize() * 3;
     }
 
     EndWindow();
@@ -2651,7 +2631,7 @@ void Context::Textf(TextSettings settings, Rect r, char const* text, va_list arg
 //
 //
 f32 Context::LargestStringWidth(f32 pad, void* items, int num, String (*GetStr)(void* items, int index)) {
-    auto font = graphics->context->CurrentFont();
+    auto font = draw_list->renderer->CurrentFont();
     f32 result = 0;
     for (auto const i : Range(num)) {
         auto str = GetStr(items, i);

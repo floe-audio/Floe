@@ -111,39 +111,6 @@ static void DoGUISizeEditor(Gui* g, Rect r) {
 static bool g_show_editor = false;
 static bool g_show_editor_on_left = true;
 
-static void TakeScreenshot(Gui* g) {
-    for (auto wnd : g->imgui.windows) {
-        if (wnd->name == "DebugR") {
-            wnd->skip_drawing_this_frame = true;
-            break;
-        }
-    }
-
-    g->frame_input.graphics_ctx->RequestScreenshotImage([g](u8 const* data, int width, int height) {
-        auto path = DynamicArray<char>::FromOwnedSpan(
-            KnownDirectoryWithSubdirectories(g->scratch_arena,
-                                             KnownDirectoryType::Documents,
-                                             Array {"Floe"_s, "Screenshots"},
-                                             k_nullopt,
-                                             {.create = true}),
-            g->scratch_arena);
-
-        int num = 1;
-        while (true) {
-            auto const initial_size = path.size;
-            fmt::Append(path, "-{}.jpg", num);
-            ++num;
-
-            if (auto o = GetFileType(path); o.HasValue() && o.Value() == FileType::File)
-                dyn::Resize(path, initial_size);
-            else
-                break;
-        }
-
-        if (!stbi_write_jpg(dyn::NullTerminated(path), width, height, 3, data, 95)) PanicIfReached();
-    });
-}
-
 static void DoCommandPanel(Gui* g, Rect r) {
     auto& imgui = g->imgui;
     auto sets = imgui::DefWindow();
@@ -155,8 +122,6 @@ static void DoCommandPanel(Gui* g, Rect r) {
     if (EditorButton(&g->editor, "Editor Left", "Editor position left: F2"))
         g_show_editor_on_left = !g_show_editor_on_left;
 
-    if (EditorButton(&g->editor, "Take Screenshot", "Save Screenshot: F3")) TakeScreenshot(g);
-
     imgui.EndWindow();
 }
 
@@ -164,12 +129,12 @@ PUBLIC void DoWholeEditor(Gui* g) {
     if constexpr (!k_editor_enabled) return;
     auto& imgui = g->imgui;
 
-    g->frame_output.wants_text_input = true; // for debug panel open/close
+    GuiIo().out.wants.text_input = true; // for debug panel open/close
 
-    if (g->frame_input.Key(KeyCode::F1).presses.size) g_show_editor = !g_show_editor;
+    if (GuiIo().in.Key(KeyCode::F1).presses.size) g_show_editor = !g_show_editor;
 
     if (g_show_editor) {
-        if (g->frame_input.Key(KeyCode::F2).presses.size) g_show_editor_on_left = !g_show_editor_on_left;
+        if (GuiIo().in.Key(KeyCode::F2).presses.size) g_show_editor_on_left = !g_show_editor_on_left;
         auto const half_w = (f32)(int)(imgui.Width() / 2);
         Rect debug_r;
         if (g_show_editor_on_left)
@@ -189,7 +154,7 @@ PUBLIC void DoWholeEditor(Gui* g) {
         };
         static auto const num_tabs = (int)ArraySize(tab_text);
         static int selected_tab = 0;
-        auto tab_h = imgui.graphics->context->CurrentFontSize() * 2;
+        auto tab_h = imgui.draw_list->renderer->CurrentFontSize() * 2;
         for (auto const i : Range(num_tabs)) {
             auto third = imgui.Width() / (f32)num_tabs;
             bool v = i == selected_tab;

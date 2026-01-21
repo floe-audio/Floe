@@ -187,7 +187,7 @@ Box DoParameterComponent(Gui* g,
             (container.text_input_result->buffer_changed || container.text_input_result->enter_pressed)) {
             if (auto v = param.info.StringToLinearValue(container.text_input_result->text)) {
                 new_val = v;
-                g->imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
             }
         }
 
@@ -210,15 +210,16 @@ Box DoParameterComponent(Gui* g,
         }
 
         if (builder.imgui.IsPopupOpen(popup_id))
-            AddPanel(builder,
-                     Panel {
-                         .run = [g, index = param.info.index](GuiBoxSystem&) { DoMidiLearnMenu(g, index); },
-                         .data =
-                             PopupPanel {
-                                 .creator_layout_id = container.layout_id,
-                                 .popup_imgui_id = popup_id,
-                             },
-                     });
+            RunOrEnqueuePanel(
+                builder,
+                Panel {
+                    .run = [g, index = param.info.index](GuiBoxSystem&) { DoMidiLearnMenu(g, index); },
+                    .data =
+                        PopupPanel {
+                            .creator_layout_id = container.layout_id,
+                            .popup_imgui_id = popup_id,
+                        },
+                });
     }
 
     // Focus the text input if requested.
@@ -272,12 +273,12 @@ Box DoParameterComponent(Gui* g,
             auto const r = builder.imgui.WindowRectToScreenRect(*rel_r);
             auto const rounding = LiveSize(builder.imgui, UiSizeId::CornerRounding);
 
-            builder.imgui.graphics->AddRectFilled(r,
-                                                  LiveCol(builder.imgui, UiColMap::KnobTextInputBack),
-                                                  rounding);
-            builder.imgui.graphics->AddRect(r,
-                                            LiveCol(builder.imgui, UiColMap::KnobTextInputBorder),
-                                            rounding);
+            builder.imgui.draw_list->AddRectFilled(r,
+                                                   LiveCol(builder.imgui, UiColMap::KnobTextInputBack),
+                                                   rounding);
+            builder.imgui.draw_list->AddRect(r,
+                                             LiveCol(builder.imgui, UiColMap::KnobTextInputBorder),
+                                             rounding);
 
             DrawTextInput(builder,
                           container,

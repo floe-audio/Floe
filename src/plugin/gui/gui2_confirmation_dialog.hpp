@@ -63,19 +63,19 @@ static void ConfirmationDialog(GuiBoxSystem& box_system, ConfirmationDialogState
 
 PUBLIC void DoConfirmationDialog(GuiBoxSystem& box_system, ConfirmationDialogState& state) {
     if (!state.open) return;
-    RunPanel(box_system,
-             Panel {
-                 .run = [&state](GuiBoxSystem& b) { ConfirmationDialog(b, state); },
-                 .data =
-                     ModalPanel {
-                         .r = CentredRect(
-                             {.pos = 0, .size = box_system.imgui.frame_input.window_size.ToFloat2()},
-                             f32x2 {box_system.imgui.VwToPixels(300), box_system.imgui.VwToPixels(220)}),
-                         .imgui_id = box_system.imgui.GetID("confirmation"),
-                         .on_close = [&state]() { state.open = false; },
-                         .close_on_click_outside = true,
-                         .darken_background = true,
-                         .disable_other_interaction = true,
-                     },
-             });
+    RunOrEnqueuePanel(box_system,
+                      Panel {
+                          .run = [&state](GuiBoxSystem& b) { ConfirmationDialog(b, state); },
+                          .data =
+                              ModalPanel {
+                                  .r = CentredRect({.pos = 0, .size = GuiIo().in.window_size.ToFloat2()},
+                                                   f32x2 {box_system.imgui.VwToPixels(300),
+                                                          box_system.imgui.VwToPixels(220)}),
+                                  .imgui_id = box_system.imgui.GetID("confirmation"),
+                                  .on_close = [&state]() { state.open = false; },
+                                  .close_on_click_outside = true,
+                                  .darken_background = true,
+                                  .disable_other_interaction = true,
+                              },
+                      });
 }

@@ -70,7 +70,7 @@ static void DoInstSelectorGUI(Gui* g, Rect r, u32 layer) {
     if (layer_obj->instrument_id.tag == InstrumentType::Sampler) {
         auto sample_inst_id = layer_obj->instrument_id.Get<sample_lib::InstrumentId>();
         auto imgs = LibraryImagesFromLibraryId(g, sample_inst_id.library, LibraryImagesTypes::Icon);
-        if (imgs.icon) icon_tex = g->imgui.frame_input.graphics_ctx->GetTextureFromImage(*imgs.icon);
+        if (imgs.icon) icon_tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.icon);
     }
 
     DoInstSelectorRightClickMenu(g, r, layer);
@@ -133,10 +133,10 @@ static void DoLoopModeSelectorGui(Gui* g, Rect r, LayerProcessor& layer) {
     // Draw around the whole thing, not just the menu.
     if (style.back_cols.reg) {
         auto const converted_r = g->imgui.GetRegisteredAndConvertedRect(r);
-        g->imgui.graphics->AddRectFilled(converted_r.Min(),
-                                         converted_r.Max(),
-                                         style.back_cols.reg,
-                                         LiveSize(g->imgui, UiSizeId::CornerRounding));
+        g->imgui.draw_list->AddRectFilled(converted_r.Min(),
+                                          converted_r.Max(),
+                                          style.back_cols.reg,
+                                          LiveSize(g->imgui, UiSizeId::CornerRounding));
     }
 
     auto const btn_w = LiveSize(g->imgui, UiSizeId::NextPrevButtonSize);
@@ -454,7 +454,7 @@ void Layout(Gui* g,
         for (auto const i : Range(k_num_pages)) {
             auto const page_type = (PageType)i;
             auto size =
-                draw::GetTextWidth(g->imgui.graphics->context->CurrentFont(), GetPageTitle(page_type));
+                draw::GetTextWidth(g->imgui.draw_list->renderer->CurrentFont(), GetPageTitle(page_type));
             if (page_type == PageType::Filter || page_type == PageType::Lfo || page_type == PageType::Eq)
                 size += LiveSize(g->imgui, LayerParamsGroupTabsIconW2);
             c.tabs[i] =
@@ -950,7 +950,7 @@ static void DrawSelectorProgressBar(imgui::Context const& imgui, Rect r, f32 loa
     auto max = f32x2 {r.x + Max(4.0f, r.w * load_percent), r.Bottom()};
     auto col = LiveCol(imgui, UiColMap::LayerSelectorMenuLoading);
     auto const rounding = LiveSize(imgui, UiSizeId::CornerRounding);
-    imgui.graphics->AddRectFilled(min, max, col, rounding);
+    imgui.draw_list->AddRectFilled(min, max, col, rounding);
 }
 
 void Draw(Gui* g,
@@ -971,9 +971,9 @@ void Draw(Gui* g,
     auto const draw_divider = [&](layout::Id id) {
         auto line_r = layout::GetRect(g->layout, id);
         g->imgui.RegisterAndConvertRect(&line_r);
-        g->imgui.graphics->AddLine({line_r.x, line_r.Bottom()},
-                                   {line_r.Right(), line_r.Bottom()},
-                                   LiveCol(g->imgui, UiColMap::LayerDividerLine));
+        g->imgui.draw_list->AddLine({line_r.x, line_r.Bottom()},
+                                    {line_r.Right(), line_r.Bottom()},
+                                    LiveCol(g->imgui, UiColMap::LayerDividerLine));
     };
 
     // Inst selector
@@ -997,10 +997,10 @@ void Draw(Gui* g,
             auto const rounding = LiveSize(g->imgui, UiSizeId::CornerRounding);
             auto const col = should_highlight ? LiveCol(g->imgui, UiColMap::LayerSelectorMenuBackHighlight)
                                               : LiveCol(g->imgui, UiColMap::LayerSelectorMenuBack);
-            g->imgui.graphics->AddRectFilled(registered_selector_box_r.Min(),
-                                             registered_selector_box_r.Max(),
-                                             col,
-                                             rounding);
+            g->imgui.draw_list->AddRectFilled(registered_selector_box_r.Min(),
+                                              registered_selector_box_r.Max(),
+                                              col,
+                                              rounding);
         }
 
         DoInstSelectorGUI(g, selector_menu_r, layer->index);
@@ -1010,7 +1010,7 @@ void Draw(Gui* g,
             percent != -1) {
             f32 const load_percent = (f32)percent / 100.0f;
             DrawSelectorProgressBar(g->imgui, registered_selector_box_r, load_percent);
-            g->imgui.WakeupAtTimedInterval(g->redraw_counter, 0.1);
+            GuiIo().WakeupAtTimedInterval(g->redraw_counter, 0.1);
         }
 
         if (buttons::Button(g,
@@ -1135,13 +1135,13 @@ void Draw(Gui* g,
         auto const rounding = LiveSize(g->imgui, UiSizeId::CornerRounding);
         auto reg_mute_solo_r = g->imgui.GetRegisteredAndConvertedRect(mute_solo_r);
         auto reg_mute_r = g->imgui.GetRegisteredAndConvertedRect(mute_r);
-        g->imgui.graphics->AddRectFilled(reg_mute_solo_r.Min(),
-                                         reg_mute_solo_r.Max(),
-                                         col_background,
-                                         rounding);
-        g->imgui.graphics->AddLine({reg_mute_r.Right(), reg_mute_r.y},
-                                   {reg_mute_r.Right(), reg_mute_r.Bottom()},
-                                   col_border);
+        g->imgui.draw_list->AddRectFilled(reg_mute_solo_r.Min(),
+                                          reg_mute_solo_r.Max(),
+                                          col_background,
+                                          rounding);
+        g->imgui.draw_list->AddLine({reg_mute_r.Right(), reg_mute_r.y},
+                                    {reg_mute_r.Right(), reg_mute_r.Bottom()},
+                                    col_border);
 
         buttons::Toggle(g,
                         params.DescribedValue(layer->index, LayerParamIndex::Mute),
@@ -1346,7 +1346,7 @@ void Draw(Gui* g,
                     k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(layer->index,
                                                                             LayerParamIndex::MidiTranspose))]
                         .tooltip);
-                if (g->imgui.IsHot(label_id)) g->imgui.frame_output.cursor_type = CursorType::Default;
+                if (g->imgui.IsHot(label_id)) GuiIo().out.wants.cursor_type = CursorType::Default;
             }
 
             buttons::Toggle(g,
@@ -1579,7 +1579,7 @@ void Draw(Gui* g,
             }();
             if (new_page && new_page != layer_gui->selected_page) {
                 layer_gui->selected_page = *new_page;
-                g->imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
             }
         }
     }
@@ -1587,9 +1587,9 @@ void Draw(Gui* g,
     // overlay
     if (LayerIsSilent(g->engine.processor, layer->index)) {
         auto const pos = g->imgui.curr_window->unpadded_bounds.pos;
-        g->imgui.graphics->AddRectFilled(pos,
-                                         pos + g->imgui.Size(),
-                                         LiveCol(g->imgui, UiColMap::LayerMutedOverlay));
+        g->imgui.draw_list->AddRectFilled(pos,
+                                          pos + g->imgui.Size(),
+                                          LiveCol(g->imgui, UiColMap::LayerMutedOverlay));
     }
 }
 

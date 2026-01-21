@@ -26,10 +26,9 @@
 #include "gui/gui_frame_context.hpp"
 #include "gui_editor_widgets.hpp"
 #include "gui_editors.hpp"
-#include "gui_framework/draw_list.hpp"
+#include "gui_framework/graphics.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
-#include "gui_framework/gui_platform.hpp"
 #include "gui_framework/image.hpp"
 #include "gui_modal_windows.hpp"
 #include "gui_prefs.hpp"
@@ -37,9 +36,9 @@
 #include "plugin/plugin.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 
-static f32 PixelsPerVw(Gui* g) {
+static f32 PixelsPerVw() {
     constexpr auto k_points_in_width = 1000.0f; // 1000 just because it's easy to work with
-    return (f32)g->frame_input.window_size.width / k_points_in_width;
+    return (f32)GuiIo().in.window_size.width / k_points_in_width;
 }
 
 LibraryImages
@@ -52,45 +51,43 @@ LibraryImagesFromLibraryId(Gui* g, sample_lib::LibraryIdRef library_id, LibraryI
 }
 
 Optional<graphics::ImageID> LogoImage(Gui* g) {
-    if (!g->imgui.graphics->context->ImageIdIsValid(g->floe_logo_image)) {
+    if (!g->imgui.draw_list->renderer->ImageIdIsValid(g->floe_logo_image)) {
         auto const data = EmbeddedLogoImage();
         if (data.size) {
             auto outcome = DecodeImage({data.data, data.size}, g->scratch_arena);
             ASSERT(!outcome.HasError());
             auto const pixels = outcome.ReleaseValue();
-            g->floe_logo_image = CreateImageIdChecked(*g->imgui.graphics->context, pixels);
+            g->floe_logo_image = CreateImageIdChecked(*g->imgui.draw_list->renderer, pixels);
         }
     }
     return g->floe_logo_image;
 }
 
 static void SampleLibraryChanged(Gui* g, sample_lib::LibraryIdRef library_id) {
-    InvalidateLibraryImages(g->library_images, library_id, *g->frame_input.graphics_ctx);
+    InvalidateLibraryImages(g->library_images, library_id, *GuiIo().in.renderer);
 }
 
 static void CreateFontsIfNeeded(Gui* g) {
     //
     // Fonts
     //
-    auto& graphics_ctx = g->frame_input.graphics_ctx;
+    auto& renderer = *GuiIo().in.renderer;
 
-    if (graphics_ctx->fonts.tex_id == nullptr) {
-        graphics_ctx->fonts.Clear();
+    if (!renderer.HasFontTexture()) {
+        renderer.fonts.Clear();
 
-        LoadFonts(*graphics_ctx, g->fonts, g->imgui.pixels_per_vw);
+        LoadFonts(renderer.fonts, g->fonts, g->imgui.pixels_per_vw);
 
-        auto const outcome = graphics_ctx->CreateFontTexture();
+        auto const outcome = renderer.CreateFontTexture();
         if (outcome.HasError())
             LogError(ModuleName::Gui, "Failed to create font texture: {}", outcome.Error());
     }
 }
 
-Gui::Gui(GuiFrameInput& frame_input, Engine& engine)
-    : frame_input(frame_input)
-    , engine(engine)
+Gui::Gui(Engine& engine)
+    : engine(engine)
     , shared_engine_systems(engine.shared_engine_systems)
     , prefs(engine.shared_engine_systems.prefs)
-    , imgui(frame_input, frame_output)
     , sample_lib_server_async_channel(sample_lib_server::OpenAsyncCommsChannel(
           engine.shared_engine_systems.sample_library_server,
           {
@@ -100,7 +97,7 @@ Gui::Gui(GuiFrameInput& frame_input, Engine& engine)
                   [gui = this](sample_lib::LibraryIdRef library_id_ref) {
                       sample_lib::LibraryId lib_id {library_id_ref};
                       gui->main_thread_callbacks.Push([gui, lib_id]() { SampleLibraryChanged(gui, lib_id); });
-                      gui->frame_input.request_update.Store(true, StoreMemoryOrder::Relaxed);
+                      g_request_gui_update.Store(true, StoreMemoryOrder::Relaxed);
                   },
           })) {
     Trace(ModuleName::Gui);
@@ -144,10 +141,11 @@ static void DoStandaloneErrorGUI(Gui* g) {
     auto const floe_ext = (FloeClapExtensionHost const*)host.get_extension(&host, k_floe_clap_extension_id);
     if (!floe_ext) return;
 
-    g->frame_input.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Body)]);
-    DEFER { g->frame_input.graphics_ctx->PopFont(); };
+    auto const& frame_input = GuiIo().in;
+
+    frame_input.renderer->PushFont(g->fonts[ToInt(FontType::Body)]);
+    DEFER { frame_input.renderer->PopFont(); };
     auto& imgui = g->imgui;
-    auto platform = &g->frame_input;
     static bool error_window_open = true;
 
     bool const there_is_an_error =
@@ -170,8 +168,8 @@ static void DoStandaloneErrorGUI(Gui* g) {
             error_window_open = false;
     }
     if (floe_ext->standalone_midi_device_error) {
-        imgui.frame_output.wants_text_input = true;
-        if (platform->modifiers.Get(ModifierKey::Shift)) {
+        GuiIo().out.wants.text_input = true;
+        if (frame_input.modifiers.Get(ModifierKey::Shift)) {
             auto gen_midi_message = [&](bool on, u7 key) {
                 if (on)
                     engine.processor.events_for_audio_thread.Push(
@@ -193,8 +191,8 @@ static void DoStandaloneErrorGUI(Gui* g) {
             };
 
             for (auto& i : keys) {
-                if (platform->Key(i.key).presses.size) gen_midi_message(true, i.midi_key);
-                if (platform->Key(i.key).releases.size) gen_midi_message(false, i.midi_key);
+                if (frame_input.Key(i.key).presses.size) gen_midi_message(true, i.midi_key);
+                if (frame_input.Key(i.key).releases.size) gen_midi_message(false, i.midi_key);
             }
         }
     }
@@ -210,6 +208,8 @@ static bool HasAnyErrorNotifications(Gui* g) {
 
 static void DoResizeCorner(Gui* g) {
     auto& imgui = g->imgui;
+    auto const& frame_input = GuiIo().in;
+    auto& frame_output = GuiIo().out;
 
     auto const corner_size = LiveSize(imgui, UiSizeId::WindowResizeCornerSize);
     imgui::WindowSettings settings {
@@ -231,15 +231,15 @@ static void DoResizeCorner(Gui* g) {
 
     static f32x2 size_at_start {};
     if (g->imgui.ButtonBehavior(r, id, {.left_mouse = true, .triggers_on_mouse_down = true}))
-        size_at_start = g->frame_input.window_size.ToFloat2();
+        size_at_start = frame_input.window_size.ToFloat2();
 
-    if (g->imgui.IsHotOrActive(id)) g->imgui.frame_output.cursor_type = CursorType::UpLeftDownRight;
+    if (g->imgui.IsHotOrActive(id)) frame_output.wants.cursor_type = CursorType::UpLeftDownRight;
 
     if (g->imgui.IsActive(id)) {
-        g->imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::Animate);
+        frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
 
-        auto const cursor = g->imgui.frame_input.cursor_pos;
-        auto const delta = cursor - g->frame_input.Mouse(MouseButton::Left).last_press.point;
+        auto const cursor = frame_input.cursor_pos;
+        auto const delta = cursor - frame_input.Mouse(MouseButton::Left).last_press.point;
         auto const desired_new_size = Max(size_at_start + delta, f32x2(0.0f));
 
         UiSize32 const ui_size {
@@ -251,32 +251,33 @@ static void DoResizeCorner(Gui* g) {
             prefs::SetValue(g->prefs, desc, (s64)new_size->width);
     }
 
-    imgui.graphics->AddTriangleFilled(r.TopRight(),
-                                      r.BottomRight(),
-                                      r.BottomLeft(),
-                                      style::Col(style::Colour::Background0 | style::Colour::DarkMode));
+    imgui.draw_list->AddTriangleFilled(r.TopRight(),
+                                       r.BottomRight(),
+                                       r.BottomLeft(),
+                                       style::Col(style::Colour::Background0 | style::Colour::DarkMode));
 
     auto const line_col =
         style::Col(imgui.IsHotOrActive(id) ? style::Colour::Text | style::Colour::DarkMode
                                            : style::Colour::Overlay2 | style::Colour::DarkMode);
     auto const line_gap = LiveSize(imgui, UiSizeId::WindowResizeCornerLineGap);
-    imgui.graphics->AddLine(r.TopRight() + f32x2 {0, line_gap},
-                            r.BottomLeft() + f32x2 {line_gap, 0},
-                            line_col);
-    imgui.graphics->AddLine(r.TopRight() + f32x2 {0, line_gap * 2},
-                            r.BottomLeft() + f32x2 {line_gap * 2, 0},
-                            line_col);
+    imgui.draw_list->AddLine(r.TopRight() + f32x2 {0, line_gap},
+                             r.BottomLeft() + f32x2 {line_gap, 0},
+                             line_col);
+    imgui.draw_list->AddLine(r.TopRight() + f32x2 {0, line_gap * 2},
+                             r.BottomLeft() + f32x2 {line_gap * 2, 0},
+                             line_col);
 }
 
-GuiFrameResult GuiUpdate(Gui* g) {
+void GuiUpdate(Gui* g) {
     ZoneScoped;
     ASSERT(g_is_logical_main_thread);
-    g->imgui.SetPixelsPerVw(PixelsPerVw(g));
+    g->imgui.SetPixelsPerVw(PixelsPerVw());
 
-    BeginFrame(g->library_images, g->imgui);
+    auto const& frame_input = GuiIo().in;
+
+    BeginFrame(g->library_images);
     BeginFrame(g->box_system, prefs::GetBool(g->prefs, SettingDescriptor(GuiSetting::ShowTooltips)));
 
-    g->frame_output = {};
     g->show_new_version_indicator =
         check_for_update::ShowNewVersionIndicator(g->shared_engine_systems.check_for_update_state, g->prefs);
 
@@ -308,7 +309,7 @@ GuiFrameResult GuiUpdate(Gui* g) {
         };
     }
 
-    CheckForFilePickerResults(g->imgui.frame_input,
+    CheckForFilePickerResults(frame_input,
                               g->file_picker_state,
                               {
                                   .prefs = g->prefs,
@@ -327,43 +328,43 @@ GuiFrameResult GuiUpdate(Gui* g) {
 
     MacroGuiBeginFrame(g);
 
-    StartFrame(g->waveform_images, *g->frame_input.graphics_ctx);
-    DEFER { EndFrame(g->waveform_images, *g->frame_input.graphics_ctx); };
+    StartFrame(g->waveform_images, *frame_input.renderer);
+    DEFER { EndFrame(g->waveform_images, *frame_input.renderer); };
 
     auto whole_window_sets = imgui::DefMainWindow();
     whole_window_sets.draw_routine_window_background = [&](IMGUI_DRAW_WINDOW_BG_ARGS_TYPES) {};
     imgui.Begin(whole_window_sets);
 
-    g->frame_input.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Body)]);
-    DEFER { g->frame_input.graphics_ctx->PopFont(); };
+    frame_input.renderer->PushFont(g->fonts[ToInt(FontType::Body)]);
+    DEFER { frame_input.renderer->PopFont(); };
 
     auto const top_h = Round(LiveSize(imgui, UiSizeId::Top2Height));
     auto const bot_h = Round(LiveSize(imgui, UiSizeId::BotPanelHeight));
-    auto const mid_h = g->frame_input.window_size.height - top_h - bot_h;
+    auto const mid_h = frame_input.window_size.height - top_h - bot_h;
 
     auto draw_mid_window = [&](IMGUI_DRAW_WINDOW_BG_ARGS) {
         auto r = window->unpadded_bounds;
 
-        imgui.graphics->AddRectFilled(r.Min(), r.Max(), LiveCol(imgui, UiColMap::MidPanelBack));
+        imgui.draw_list->AddRectFilled(r.Min(), r.Max(), LiveCol(imgui, UiColMap::MidPanelBack));
 
         if (!prefs::GetBool(g->prefs, SettingDescriptor(GuiSetting::HighContrastGui))) {
             auto overall_library = LibraryForOverallBackground(g->engine);
             if (overall_library) {
                 auto imgs = LibraryImagesFromLibraryId(g, *overall_library, LibraryImagesTypes::Backgrounds);
                 if (imgs.background) {
-                    auto tex = g->frame_input.graphics_ctx->GetTextureFromImage(*imgs.background);
+                    auto tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.background);
                     if (tex) {
-                        imgui.graphics->AddImage(*tex,
-                                                 r.Min(),
-                                                 r.Max(),
-                                                 {0, 0},
-                                                 GetMaxUVToMaintainAspectRatio(*imgs.background, r.size));
+                        imgui.draw_list->AddImage(*tex,
+                                                  r.Min(),
+                                                  r.Max(),
+                                                  {0, 0},
+                                                  GetMaxUVToMaintainAspectRatio(*imgs.background, r.size));
                     }
                 }
             }
         }
 
-        imgui.graphics->AddLine(r.TopLeft(), r.TopRight(), LiveCol(imgui, UiColMap::MidPanelTopLine));
+        imgui.draw_list->AddLine(r.TopLeft(), r.TopRight(), LiveCol(imgui, UiColMap::MidPanelTopLine));
     };
 
     {
@@ -529,6 +530,4 @@ GuiFrameResult GuiUpdate(Gui* g) {
     imgui.End(g->scratch_arena);
 
     prefs::WriteIfNeeded(g->prefs);
-
-    return g->frame_output;
 }

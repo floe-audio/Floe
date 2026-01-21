@@ -52,10 +52,10 @@ static bool DoCurveMap(Gui* g,
 
     {
         auto const rounding = LiveSize(imgui, UiSizeId::CornerRounding);
-        imgui.graphics->AddRectFilled(rect, LiveCol(imgui, UiColMap::Envelope_Back), rounding);
+        imgui.draw_list->AddRectFilled(rect, LiveCol(imgui, UiColMap::Envelope_Back), rounding);
     }
 
-    auto& graphics = *imgui.graphics;
+    auto& graphics = *imgui.draw_list;
     auto& points = curve_map.points;
 
     bool changed = false;
@@ -136,9 +136,9 @@ static bool DoCurveMap(Gui* g,
                                 .double_click = true,
                                 .triggers_on_mouse_down = true,
                             },
-                            imgui.frame_input,
+                            GuiIo().in,
                             &region_rect)) {
-                        new_point_at_gui_pos = imgui.frame_input.Mouse(MouseButton::Left).last_press.point;
+                        new_point_at_gui_pos = GuiIo().in.Mouse(MouseButton::Left).last_press.point;
                     }
                 }
             }
@@ -153,7 +153,7 @@ static bool DoCurveMap(Gui* g,
                                 .right_mouse = true,
                                 .triggers_on_mouse_up = true,
                             },
-                            imgui.frame_input,
+                            GuiIo().in,
                             &region_rect)) {
                         imgui.OpenPopup(right_click_id, imgui_id);
                     }
@@ -162,7 +162,7 @@ static bool DoCurveMap(Gui* g,
                 if (imgui.BeginWindowPopup(
                         PopupWindowSettings(imgui),
                         right_click_id,
-                        {.pos = imgui.frame_input.Mouse(MouseButton::Right).last_press.point, .size = {}})) {
+                        {.pos = GuiIo().in.Mouse(MouseButton::Right).last_press.point, .size = {}})) {
                     DEFER { imgui.EndWindow(); };
                     StartFloeMenu(g);
                     DEFER { EndFloeMenu(g); };
@@ -172,8 +172,7 @@ static bool DoCurveMap(Gui* g,
                     PopupMenuItems menu(g, k_items);
                     if (points.size != points.Capacity()) {
                         if (menu.DoButton(0))
-                            new_point_at_gui_pos =
-                                imgui.frame_input.Mouse(MouseButton::Right).last_press.point;
+                            new_point_at_gui_pos = GuiIo().in.Mouse(MouseButton::Right).last_press.point;
                     } else {
                         menu.DoFakeButton(0);
                     }
@@ -223,7 +222,7 @@ static bool DoCurveMap(Gui* g,
                     graphics.AddRectFilled(curve_handle_rect.Min(),
                                            curve_handle_rect.Max(),
                                            LiveCol(imgui, UiColMap::CurveMapLineHover));
-                    imgui.frame_output.cursor_type = CursorType::VerticalArrows;
+                    GuiIo().out.wants.cursor_type = CursorType::VerticalArrows;
                 }
 
                 if (imgui.IsHot(curve_handle_imgui_id))
@@ -244,10 +243,9 @@ static bool DoCurveMap(Gui* g,
                                     .double_click = true,
                                     .triggers_on_mouse_down = true,
                                 },
-                                imgui.frame_input,
+                                GuiIo().in,
                                 &curve_handle_rect)) {
-                            new_point_at_gui_pos =
-                                imgui.frame_input.Mouse(MouseButton::Left).last_press.point;
+                            new_point_at_gui_pos = GuiIo().in.Mouse(MouseButton::Left).last_press.point;
                         }
                     }
                 }
@@ -262,7 +260,7 @@ static bool DoCurveMap(Gui* g,
                                     .right_mouse = true,
                                     .triggers_on_mouse_up = true,
                                 },
-                                imgui.frame_input,
+                                GuiIo().in,
                                 &curve_handle_rect)) {
                             imgui.OpenPopup(right_click_id, curve_handle_imgui_id);
                         }
@@ -271,8 +269,7 @@ static bool DoCurveMap(Gui* g,
                     if (imgui.BeginWindowPopup(
                             PopupWindowSettings(imgui),
                             right_click_id,
-                            {.pos = imgui.frame_input.Mouse(MouseButton::Right).last_press.point,
-                             .size = {}})) {
+                            {.pos = GuiIo().in.Mouse(MouseButton::Right).last_press.point, .size = {}})) {
                         DEFER { imgui.EndWindow(); };
                         StartFloeMenu(g);
                         DEFER { EndFloeMenu(g); };
@@ -282,8 +279,7 @@ static bool DoCurveMap(Gui* g,
                         PopupMenuItems menu(g, k_items);
                         if (points.size != points.Capacity()) {
                             if (menu.DoButton(0))
-                                new_point_at_gui_pos =
-                                    imgui.frame_input.Mouse(MouseButton::Right).last_press.point;
+                                new_point_at_gui_pos = GuiIo().in.Mouse(MouseButton::Right).last_press.point;
                         } else {
                             menu.DoFakeButton(0);
                         }
@@ -304,7 +300,7 @@ static bool DoCurveMap(Gui* g,
                                  });
             if (imgui.IsActive(imgui_id)) {
                 // Dragging point
-                f32x2 mouse_pos = imgui.frame_input.cursor_pos;
+                f32x2 mouse_pos = GuiIo().in.cursor_pos;
                 f32x2 new_pos = {
                     (mouse_pos.x - rect_min.x) / width,
                     1.0f - ((mouse_pos.y - rect_min.y) / height),
@@ -330,14 +326,14 @@ static bool DoCurveMap(Gui* g,
             }
 
             if (imgui.IsHotOrActive(imgui_id)) {
-                imgui.frame_output.cursor_type = CursorType::AllArrows;
+                GuiIo().out.wants.cursor_type = CursorType::AllArrows;
                 if (imgui::ClickCheck(
                         {
                             .left_mouse = true,
                             .double_click = true,
                             .triggers_on_mouse_down = true,
                         },
-                        imgui.frame_input)) {
+                        GuiIo().in)) {
                     remove_working_index = working_index;
                     imgui.SetActiveIDZero();
                 }
@@ -361,7 +357,7 @@ static bool DoCurveMap(Gui* g,
                                 .right_mouse = true,
                                 .triggers_on_mouse_up = true,
                             },
-                            imgui.frame_input,
+                            GuiIo().in,
                             &grabber_rect)) {
                         imgui.OpenPopup(right_click_id, imgui_id);
                     }

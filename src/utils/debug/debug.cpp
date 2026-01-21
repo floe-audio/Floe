@@ -71,10 +71,14 @@ static void WriteDisasterFile(char const* message_c_str, String additional_messa
         auto _ = writer.WriteChars(additional_message);
         auto _ = writer.WriteChars("\n");
     }
+
+    // file:line
     auto _ = writer.WriteChars(FromNullTerminated(loc.file));
     auto _ = writer.WriteChars(":");
     auto _ = writer.WriteChars(fmt::IntToString(loc.line, fmt::IntToStringOptions {}));
     auto _ = writer.WriteChars("\n");
+
+    // os:
     auto _ = writer.WriteChars("os:");
     auto _ = writer.WriteChars(({
         String s {};
@@ -86,6 +90,10 @@ static void WriteDisasterFile(char const* message_c_str, String additional_messa
             s = "macOS"_s;
         s;
     }));
+    auto _ = writer.WriteChars("\n");
+
+    // version:
+    auto _ = writer.WriteChars("version:" FLOE_VERSION_STRING);
 }
 
 // noinline because we want __builtin_return_address(0) to return the address of the call site
@@ -429,7 +437,6 @@ void ShutdownStacktraceState() {
 }
 
 static void SkipUntil(StacktraceStack& stack, uintptr pc) {
-    ASSERT(pc);
     for (auto const i : Range(stack.size))
         if (stack[i] == pc) {
             dyn::Remove(stack, 0, i);
@@ -459,8 +466,6 @@ Optional<StacktraceStack> CurrentStacktrace(StacktraceSkipOptions skip) {
             SkipUntil(result, ToInt(skip.Get<ProgramCounter>()));
             break;
     }
-
-    if (auto const pc = skip.TryGet<ProgramCounter>()) SkipUntil(result, (uintptr)*pc);
 
     return result;
 }

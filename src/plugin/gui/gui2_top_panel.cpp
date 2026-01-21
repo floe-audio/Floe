@@ -383,7 +383,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g, GuiFrameContext const& 
         auto const preset_load =
             do_icon_button(preset_box, ICON_FA_FILE_IMPORT, "Load a preset from a file"_s, 0.8f, 3);
         if (preset_load.button_fired)
-            OpenFilePickerLoadPreset(g->file_picker_state, g->frame_output, g->shared_engine_systems.paths);
+            OpenFilePickerLoadPreset(g->file_picker_state, g->shared_engine_systems.paths);
     }
 
     auto right_icon_buttons_container = DoBox(box_system,
@@ -441,15 +441,15 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g, GuiFrameContext const& 
         if (dots_button.button_fired) box_system.imgui.OpenPopup(popup_id, dots_button.imgui_id);
 
         if (box_system.imgui.IsPopupOpen(popup_id))
-            AddPanel(box_system,
-                     Panel {
-                         .run = [g, &frame_context](GuiBoxSystem&) { DoDotsMenu(g, frame_context); },
-                         .data =
-                             PopupPanel {
-                                 .creator_layout_id = dots_button.layout_id,
-                                 .popup_imgui_id = popup_id,
-                             },
-                     });
+            RunOrEnqueuePanel(box_system,
+                              Panel {
+                                  .run = [g, &frame_context](GuiBoxSystem&) { DoDotsMenu(g, frame_context); },
+                                  .data =
+                                      PopupPanel {
+                                          .creator_layout_id = dots_button.layout_id,
+                                          .popup_imgui_id = popup_id,
+                                      },
+                              });
     }
 
     auto const knob_container = DoBox(box_system,
@@ -489,8 +489,7 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g, GuiFrameContext const& 
         g->timbre_slider_is_held = box.is_active;
 
         if (box_system.imgui.WasJustActivated(box.imgui_id))
-            box_system.imgui.frame_output.ElevateUpdateRequest(
-                GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+            GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
 
     DoParameterComponent(g,
@@ -514,14 +513,14 @@ static void DoTopPanel(GuiBoxSystem& box_system, Gui* g, GuiFrameContext const& 
 }
 
 void TopPanel(Gui* g, f32 height, GuiFrameContext const& frame_context) {
-    RunPanel(g->box_system,
-             {
-                 .run = [&](GuiBoxSystem& box_system) { DoTopPanel(box_system, g, frame_context); },
-                 .data =
-                     Subpanel {
-                         .rect = Rect {.xywh {0, 0, g->imgui.Width(), height}},
-                         .imgui_id = g->imgui.GetID("TopPanel"),
-                         .flags = imgui::WindowFlags_NoScrollbarX | imgui::WindowFlags_NoScrollbarY,
-                     },
-             });
+    RunOrEnqueuePanel(g->box_system,
+                      {
+                          .run = [&](GuiBoxSystem& box_system) { DoTopPanel(box_system, g, frame_context); },
+                          .data =
+                              Subpanel {
+                                  .rect = Rect {.xywh {0, 0, g->imgui.Width(), height}},
+                                  .imgui_id = g->imgui.GetID("TopPanel"),
+                                  .flags = imgui::WindowFlags_NoScrollbarX | imgui::WindowFlags_NoScrollbarY,
+                              },
+                      });
 }

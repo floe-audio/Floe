@@ -51,6 +51,7 @@ enum class ModuleName {
     Main,
     Package,
     Gui,
+    Bgfx,
     ErrorReporting,
     Filesystem,
     SampleLibrary,
@@ -68,6 +69,7 @@ constexpr String ModuleNameString(ModuleName module_name) {
         case ModuleName::Main: return "🚀main"_s;
         case ModuleName::Package: return "📦pkg";
         case ModuleName::Gui: return "🖥️gui";
+        case ModuleName::Bgfx: return "🎨bgfx";
         case ModuleName::ErrorReporting: return "⚠️report";
         case ModuleName::Filesystem: return "📁fs";
         case ModuleName::SampleLibrary: return "📚smpl-lib";

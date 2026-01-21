@@ -33,9 +33,29 @@ pub fn findSourceFiles(allocator: std.mem.Allocator, options: struct {
         }
 
         for (options.exclude_folders) |exclude_folder| {
-            if (std.mem.indexOf(u8, entry.path, exclude_folder) != null) {
-                should_exclude = true;
-                break;
+            if (exclude_folder.len > entry.path.len) continue;
+
+            var matches = true;
+            for (exclude_folder, 0..) |c, i| {
+                const entry_c = entry.path[i];
+                const chars_equal = if (builtin.os.tag == .windows)
+                    (c == entry_c) or ((c == '/' or c == '\\') and (entry_c == '/' or entry_c == '\\'))
+                else
+                    c == entry_c;
+
+                if (!chars_equal) {
+                    matches = false;
+                    break;
+                }
+            }
+
+            if (matches) {
+                if (entry.path.len == exclude_folder.len or
+                    std.fs.path.isSep(entry.path[exclude_folder.len]))
+                {
+                    should_exclude = true;
+                    break;
+                }
             }
         }
         if (should_exclude) continue;
@@ -192,6 +212,7 @@ pub fn createCommandWithStdoutToStderr(
 
     if (builtin.os.tag == .linux and b.enable_wine and target != null and target.?.os.tag == .windows) {
         run.addArg("wine64");
+        run.setEnvironmentVariable("WINEDEBUG", "-all");
     }
 
     return run;
@@ -242,6 +263,26 @@ pub const InPlaceCmd = struct {
         self.run.argv.items[1] = .{ .bytes = self.run.step.owner.fmt("{d}", .{self.run.argv.items.len - 1}) };
     }
 };
+
+// Combines multiple files into a single output file.
+// See combine_files_cmd.zig for more information.
+pub fn combineFiles(b: *std.Build, out_file_name: []const u8, input_files: []const std.Build.LazyPath) std.Build.LazyPath {
+    const run = b.addRunArtifact(b.addExecutable(.{
+        .name = b.fmt("combine-files-{s}", .{out_file_name}),
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/build/combine_files_cmd.zig"),
+            .target = b.graph.host,
+        }),
+    }));
+
+    const output_file = run.addOutputFileArg(out_file_name);
+
+    for (input_files) |input_file| {
+        run.addFileArg(input_file);
+    }
+
+    return output_file;
+}
 
 // Loads environment variables from a .env file into the build graph's env_map.
 // Based on https://github.com/zigster64/dotenv.zig

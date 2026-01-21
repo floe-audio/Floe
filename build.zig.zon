@@ -13,8 +13,8 @@
     .version = "0.0.0",
     .dependencies = .{
         .macos_sdk = .{
-            .url = "https://github.com/joseluisq/macosx-sdks/releases/download/12.0/MacOSX12.0.sdk.tar.xz",
-            .hash = "N-V-__8AAEpIpEAVUsVmubwDn1oMDpNDF5ZZBTmP9Jcc-5Nr",
+            .url = "https://github.com/joseluisq/macosx-sdks/releases/download/13.0/MacOSX13.0.sdk.tar.xz",
+            .hash = "N-V-__8AAB9_nUSdLMKeije7VseY73LAq089gUM1JhO-EAWC",
             .lazy = true,
         },
         .xxhash = .{
@@ -46,8 +46,8 @@
             .hash = "N-V-__8AAJpbLQAEwHIs7OLypQPQ7n5ICizvwIEb98KtT_9_",
         },
         .flac = .{
-            .url = "https://github.com/xiph/flac/archive/refs/tags/1.4.3.tar.gz",
-            .hash = "N-V-__8AAKJvQgB9LG_sXNxRcDa309N0l1eEBnJ9dHTGaPBB",
+            .url = "https://github.com/xiph/flac/releases/download/1.5.0/flac-1.5.0.tar.xz",
+            .hash = "N-V-__8AAHSrwgDkuwylGkEyZxj-_xKsppp8z8563UYjXs2B",
         },
         .icon_font_cpp_headers = .{
             .url = "git+https://github.com/juliettef/IconFontCppHeaders#f30b1e73b2d71eb331d77619c3f1de34199afc38",
@@ -121,6 +121,18 @@
             .url = "https://github.com/floe-audio/clap-validator/releases/download/v0.3.2/clap-validator-0.3.2-ubuntu-18.04.zip",
             .hash = "N-V-__8AAFDvhAD7wsMQHzT9s_hiRLUTXJp4mBwyx_O7gZxZ",
             .lazy = true,
+        },
+        .bgfx = .{
+            .url = "git+https://github.com/bkaradzic/bgfx#fbff26d5e5943ce20e4e67b2247100bbfb216ad1",
+            .hash = "N-V-__8AAGWdHwpFLhcKRmman91iiYjX9G4gIlvwSFEnzz6N",
+        },
+        .bx = .{
+            .url = "git+https://github.com/bkaradzic/bx#a5ce3bed947ab1c9e386f1c98f0ed66cf4eb410f",
+            .hash = "N-V-__8AAEf5TQCNdZyN4RGDyeTw-jnJskEC9uHwZi0qXX9n",
+        },
+        .bimg = .{
+            .url = "git+https://github.com/bkaradzic/bimg#4f1916fca2a0ae1ed9d6e0424323cd45fe2d6ed5",
+            .hash = "N-V-__8AAFpnOQB6_cqjml8VTQsqI9pWa7OWoIL3geoldRHy",
         },
     },
     .paths = .{"src"},

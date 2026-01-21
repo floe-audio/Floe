@@ -569,7 +569,7 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
                         if (mirage_compat_icon) dyn::Emplace(icons, *mirage_compat_icon);
 
                         if (!PRODUCTION_BUILD && preset.file_format == PresetFormat::Floe &&
-                            (preset.metadata.tags.size == 0 || preset.metadata.author.size == 0 ||
+                            (preset.metadata.tags.size <= 3 || preset.metadata.author.size == 0 ||
                              preset.metadata.description.size == 0))
                             dyn::Emplace(icons, String(ICON_FA_TRIANGLE_EXCLAMATION));
 
@@ -816,7 +816,7 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
         BrowserPopupOptions {
             .title = "Presets",
             .height = ({
-                auto const window_height = box_system.imgui.frame_input.window_size.height;
+                auto const window_height = GuiIo().in.window_size.height;
                 auto const button_bottom = state.common_state.absolute_button_rect.Bottom();
                 auto const available_height = window_height - button_bottom - 20;
                 box_system.imgui.PixelsToVw(available_height);
@@ -882,8 +882,7 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                                         .parent = section.Do(box_system).Get<Box>(),
                                         .is_selected = state.common_state.selected_folder_hashes.Contains(
                                             folder->Hash()),
-                                        .text =
-                                            folder->display_name.size ? folder->display_name : folder->name,
+                                        .text = folder_name,
                                         .tooltip = folder->display_name.size ? TooltipString {folder->name}
                                                                              : k_nullopt,
                                         .hashes = state.common_state.selected_folder_hashes,

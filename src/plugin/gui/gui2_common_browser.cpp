@@ -82,19 +82,20 @@ static void BeginFrame(imgui::Context& imgui, BrowserKeyboardNavigation& nav, im
     nav.input = {};
 
     if (imgui.IsKeyboardFocus(panel_id)) {
-        imgui.frame_output.wants_keyboard_keys.SetBits(k_navigation_keys);
+        auto const& frame_input = GuiIo().in;
+        auto& frame_output = GuiIo().out;
 
-        auto const key_events = [&](KeyCode key) {
-            return imgui.frame_input.Key(key).presses_or_repeats.size;
-        };
+        frame_output.wants.keyboard_keys.SetBits(k_navigation_keys);
 
-        for (auto const& e : imgui.frame_input.Key(KeyCode::DownArrow).presses_or_repeats)
+        auto const key_events = [&](KeyCode key) { return frame_input.Key(key).presses_or_repeats.size; };
+
+        for (auto const& e : frame_input.Key(KeyCode::DownArrow).presses_or_repeats)
             if (e.modifiers.IsOnly(ModifierKey::Modifier))
                 nav.input.next_section_presses++;
             else if (e.modifiers.IsNone())
                 nav.input.down_presses++;
 
-        for (auto const& e : imgui.frame_input.Key(KeyCode::UpArrow).presses_or_repeats)
+        for (auto const& e : frame_input.Key(KeyCode::UpArrow).presses_or_repeats)
             if (e.modifiers.IsOnly(ModifierKey::Modifier))
                 nav.input.previous_section_presses++;
             else if (e.modifiers.IsNone())
@@ -132,9 +133,10 @@ static void BeginFrame(imgui::Context& imgui, BrowserKeyboardNavigation& nav, im
 
 static void EndFrame(imgui::Context& imgui, BrowserKeyboardNavigation& nav, imgui::Id panel_id) {
     if (imgui.IsKeyboardFocus(panel_id)) {
-        auto const key_events = [&](KeyCode key) {
-            return imgui.frame_input.Key(key).presses_or_repeats.size;
-        };
+        auto const& frame_input = GuiIo().in;
+        auto& frame_output = GuiIo().out;
+
+        auto const key_events = [&](KeyCode key) { return frame_input.Key(key).presses_or_repeats.size; };
 
         if (key_events(KeyCode::End)) {
             nav.panel_state.id_to_select = nav.panel_state.item_history.AtPrevious(1);
@@ -147,7 +149,7 @@ static void EndFrame(imgui::Context& imgui, BrowserKeyboardNavigation& nav, imgu
             nav.panel_state.id_to_select = nav.panel_state.item_history.AtPrevious(1);
 
         if (nav.temp_focused_items != nav.focused_items || nav.panel_state.id_to_select)
-            imgui.frame_output.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+            frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
 }
 
@@ -163,11 +165,11 @@ struct ItemArgs {
 };
 
 static void DrawFocusBox(GuiBoxSystem& box_system, Rect relative_rect) {
-    box_system.imgui.graphics->AddRect(box_system.imgui.GetRegisteredAndConvertedRect(relative_rect),
-                                       style::Col(style::Colour::Blue),
-                                       box_system.imgui.VwToPixels(style::k_button_rounding),
-                                       ~0,
-                                       2);
+    box_system.imgui.draw_list->AddRect(box_system.imgui.GetRegisteredAndConvertedRect(relative_rect),
+                                        style::Col(style::Colour::Blue),
+                                        box_system.imgui.VwToPixels(style::k_button_rounding),
+                                        ~0,
+                                        2);
 }
 
 static bool DoItem(GuiBoxSystem& box_system, BrowserKeyboardNavigation& nav, ItemArgs const& args) {
@@ -231,7 +233,7 @@ static bool DoItem(GuiBoxSystem& box_system, BrowserKeyboardNavigation& nav, Ite
             }
 
             // Enter key.
-            if (box_system.imgui.frame_input.Key(KeyCode::Enter).presses_or_repeats.size % 2 == 1) {
+            if (GuiIo().in.Key(KeyCode::Enter).presses_or_repeats.size % 2 == 1) {
                 button_fired_from_keyboard = true;
                 nav.temp_focused_items[panel_index] = args.id;
                 g_show_focus_rectangles = true;
@@ -1807,19 +1809,20 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
 
                 if (btn.button_fired) box_system.imgui.OpenPopup(popup_id, btn.imgui_id);
 
-                AddPanel(box_system,
-                         Panel {
-                             .run = [&context](
-                                        GuiBoxSystem& box_system) { DoMoreOptionsMenu(box_system, context); },
-                             .data =
-                                 PopupPanel {
-                                     .debug_name = "moreoptions",
-                                     .creator_layout_id = btn.layout_id,
-                                     .popup_imgui_id = popup_id,
-                                     .additional_imgui_window_flags =
-                                         imgui::WindowFlags_PositionOnTopOfParentPopup,
-                                 },
-                         });
+                RunOrEnqueuePanel(
+                    box_system,
+                    Panel {
+                        .run =
+                            [&context](GuiBoxSystem& box_system) { DoMoreOptionsMenu(box_system, context); },
+                        .data =
+                            PopupPanel {
+                                .debug_name = "moreoptions",
+                                .creator_layout_id = btn.layout_id,
+                                .popup_imgui_id = popup_id,
+                                .additional_imgui_window_flags =
+                                    imgui::WindowFlags_PositionOnTopOfParentPopup,
+                            },
+                    });
             }
         }
 
@@ -1931,8 +1934,7 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
                              new_text = filter_text_input.text_input_result->text]() {
                                 dyn::AssignFitInCapacity(s, new_text);
                             });
-                box_system.imgui.frame_output.ElevateUpdateRequest(
-                    GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
             }
 
             if (context.state.filter_search.size) {
@@ -1986,7 +1988,7 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
             }
         }
 
-        AddPanel(
+        RunOrEnqueuePanel(
             box_system,
             {
                 .run =
@@ -2136,8 +2138,7 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
                                 [&s = context.state.search, new_text = text_input.text_input_result->text]() {
                                     dyn::AssignFitInCapacity(s, new_text);
                                 });
-                    box_system.imgui.frame_output.ElevateUpdateRequest(
-                        GuiFrameResult::UpdateRequest::ImmediatelyUpdate);
+                    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
                 }
 
                 if (auto const r = BoxRect(box_system, search_box);
@@ -2146,8 +2147,9 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
 
                 if (box_system.InputAndRenderPass() &&
                     box_system.imgui.IsKeyboardFocus(text_input.imgui_id)) {
-                    if (box_system.imgui.frame_input.Key(KeyCode::DownArrow).presses.size ||
-                        box_system.imgui.frame_input.Key(KeyCode::Tab).presses.size) {
+                    auto const& frame_input = GuiIo().in;
+                    if (frame_input.Key(KeyCode::DownArrow).presses.size ||
+                        frame_input.Key(KeyCode::Tab).presses.size) {
                         box_system.imgui.SetTextInputFocus(0, {}, false);
                         key_nav::FocusPanel(context.state.keyboard_navigation,
                                             BrowserKeyboardNavigation::Panel::Items,
@@ -2176,8 +2178,10 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
 
                 // CTRL+F focuses the search box.
                 if (box_system.InputAndRenderPass() && box_system.imgui.IsKeyboardFocus(context.browser_id)) {
-                    box_system.imgui.frame_output.wants_keyboard_keys.Set(ToInt(KeyCode::F));
-                    for (auto const& e : box_system.imgui.frame_input.Key(KeyCode::F).presses) {
+                    auto const& frame_input = GuiIo().in;
+                    auto& frame_output = GuiIo().out;
+                    frame_output.wants.keyboard_keys.Set(ToInt(KeyCode::F));
+                    for (auto const& e : frame_input.Key(KeyCode::F).presses) {
                         if (e.modifiers.IsOnly(ModifierKey::Modifier)) {
                             box_system.imgui.SetTextInputFocus(text_input.imgui_id,
                                                                context.state.search,
@@ -2327,7 +2331,7 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
             }
         }
 
-        AddPanel(
+        RunOrEnqueuePanel(
             box_system,
             {
                 .run = [&](GuiBoxSystem& box_system) { options.rhs_do_items(box_system); },
@@ -2350,19 +2354,20 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
             });
     }
 
-    AddPanel(box_system,
-             Panel {
-                 .run =
-                     [&](GuiBoxSystem& box_system) {
-                         context.state.right_click_menu_state.do_menu(box_system,
-                                                                      context.state.right_click_menu_state);
-                     },
-                 .data =
-                     PopupPanel {
-                         .creator_absolute_rect = context.state.right_click_menu_state.absolute_creator_rect,
-                         .popup_imgui_id = k_right_click_menu_popup_id,
-                     },
-             });
+    RunOrEnqueuePanel(
+        box_system,
+        Panel {
+            .run =
+                [&](GuiBoxSystem& box_system) {
+                    context.state.right_click_menu_state.do_menu(box_system,
+                                                                 context.state.right_click_menu_state);
+                },
+            .data =
+                PopupPanel {
+                    .creator_absolute_rect = context.state.right_click_menu_state.absolute_creator_rect,
+                    .popup_imgui_id = k_right_click_menu_popup_id,
+                },
+        });
 }
 
 void DoBrowserPopup(GuiBoxSystem& box_system,
@@ -2373,7 +2378,7 @@ void DoBrowserPopup(GuiBoxSystem& box_system,
 
     key_nav::BeginFrame(box_system.imgui, context.state.keyboard_navigation, context.browser_id);
 
-    RunPanel(
+    RunOrEnqueuePanel(
         box_system,
         Panel {
             .run = [&](GuiBoxSystem& box_system) { DoBrowserPopupInternal(box_system, context, options); },

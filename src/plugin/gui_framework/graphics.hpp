@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // This file is based on modified code from dear imgui:
@@ -42,7 +42,9 @@ inline TextJustification& operator|=(TextJustification& a, TextJustification b) 
 namespace graphics {
 
 using DrawIdx = unsigned short;
-using TextureHandle = void*;
+
+enum class TextureHandle : u64 {};
+
 using Char16 = u16;
 
 struct ImageID {
@@ -143,11 +145,13 @@ struct Vector {
     T* data;
 };
 
+#pragma pack(push, 1)
 struct DrawVert {
     f32x2 pos;
     f32x2 uv;
     u32 col;
 };
+#pragma pack(pop)
 
 struct DrawCmd;
 struct DrawList;
@@ -155,14 +159,11 @@ struct DrawList;
 using DrawCallback = void (*)(DrawList const*, DrawCmd const*);
 
 struct DrawCmd {
+    f32x4 clip_rect {-8192, -8192, 8192, 8192};
+    TextureHandle texture_id {};
     // Number of indices (multiple of 3) to be rendered as triangles. Vertices are stored in the callee
     // DrawList's vtx_buffer[] array, indices in idx_buffer[].
     unsigned int elem_count = 0;
-
-    f32x4 clip_rect {-8192, -8192, 8192, 8192};
-    TextureHandle texture_id {};
-    DrawCallback user_callback {};
-    void* user_callback_data {};
 };
 
 struct DrawChannel {
@@ -209,6 +210,7 @@ struct FontConfig {
 };
 
 struct FontAtlas {
+    FontAtlas(TextureHandle invalid_texture) : invalid_texture(invalid_texture) {}
     ~FontAtlas() { Clear(); }
 
     Font* AddFont(FontConfig const* font_cfg);
@@ -238,15 +240,17 @@ struct FontAtlas {
                             int* out_width,
                             int* out_height,
                             int* out_bytes_per_pixel = nullptr); // 4 bytes-per-pixel
-    void SetTexID(void* id) { tex_id = id; }
+    void SetTexID(TextureHandle id) { tex_id = id; }
 
     static GlyphRanges GetGlyphRangesDefault(); // Basic Latin, Extended Latin
     static GlyphRanges GetGlyphRangesDefaultAudioPlugin();
 
+    TextureHandle const invalid_texture;
+
     // (Access texture data via GetTexData*() calls which will setup a default font for you.)
     // User data to refer to the texture once it has been uploaded to user's graphic systems. It ia passed
     // back to you during rendering.
-    void* tex_id = nullptr;
+    TextureHandle tex_id = invalid_texture;
 
     // 1 component per pixel, each component is unsigned 8-bit. Total size = TexWidth * TexHeight
     unsigned char* tex_pixels_alpha8 = nullptr;
@@ -342,34 +346,28 @@ struct Font {
 
 struct DrawList;
 
-struct DrawData {
-    Span<DrawList*> draw_lists;
-    int total_vtx_count; // For convenience, sum of all draw_lists vtx_buffer.size
-    int total_idx_count; // For convenience, sum of all draw_lists idx_buffer.size
-};
+struct Renderer {
+    Renderer(TextureHandle invalid_texture) : invalid_texture(invalid_texture), fonts(invalid_texture) {}
+    virtual ~Renderer() {}
 
-struct DrawContext {
-    virtual ~DrawContext() {}
-    virtual ErrorCodeOr<void> CreateDeviceObjects(void* hwnd) = 0;
-    virtual void DestroyDeviceObjects() = 0;
+    virtual ErrorCodeOr<void> Init(UiSize size, void* native_window, void* native_display) = 0;
+    virtual void Deinit() = 0;
 
+    virtual void OnResize(UiSize size, void* native_display) = 0;
+
+    // The application must build the font atlas first, and then call this.
     virtual ErrorCodeOr<void> CreateFontTexture() = 0;
     virtual void DestroyFontTexture() = 0;
 
+    bool HasFontTexture() const { return fonts.tex_id != invalid_texture; }
+
     // Never store a TextureHandle longer than a single frame. It can become invalidated between frames.
+    // Data should be either RGB or RGBA bytes and bytes_per_pixel set accordingly.
     virtual ErrorCodeOr<TextureHandle> CreateTexture(u8 const* data, UiSize size, u16 bytes_per_pixel) = 0;
     virtual void DestroyTexture(TextureHandle& id) = 0;
 
-    virtual ErrorCodeOr<void> Render(DrawData draw_data, UiSize window_size) = 0;
+    virtual ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size, void* native_window) = 0;
 
-    void
-    RequestScreenshotImage(TrivialFixedSizeFunction<8, void(u8 const*, int width, int height)>&& callback) {
-        screenshot_callback = Move(callback);
-    }
-
-    static void ScaleClipRects(DrawData draw_data, f32 display_ratio);
-
-    // void SetCurrentFont(Font *font); // use push pop instead
     void PushFont(Font* font);
     void PopFont();
 
@@ -382,8 +380,8 @@ struct DrawContext {
         return font_stack.Back()->font_size;
     }
 
-    // TextureHandles can be invalidated between frames, use this method to check if your ID still has a
-    // corresponding texture.
+    // TextureHandles can be invalidated between frames, the application should use this method to check if
+    // the ID still has a corresponding texture.
     Optional<TextureHandle> GetTextureFromImage(ImageID id) {
         auto const index = FindIf(textures, [id](IdAndTexture const& i) { return i.id == id; });
         if (!index) return k_nullopt;
@@ -402,7 +400,7 @@ struct DrawContext {
 
     ErrorCodeOr<ImageID> CreateImageID(u8 const* data, UiSize size, u16 bytes_per_pixel) {
         auto tex = TRY(CreateTexture(data, size, bytes_per_pixel));
-        ASSERT(tex != nullptr);
+        ASSERT(tex != invalid_texture);
         auto const id = ImageID {image_id_counter++, size};
         dyn::Append(textures, IdAndTexture {id, tex});
         return id;
@@ -418,11 +416,13 @@ struct DrawContext {
 
     void DestroyAllTextures() {
         for (auto& i : textures) {
-            ASSERT(i.texture != nullptr);
+            ASSERT(i.texture != invalid_texture);
             DestroyTexture(i.texture);
         }
         dyn::Clear(textures);
     }
+
+    TextureHandle const invalid_texture;
 
     Vector<Font*> font_stack;
     u64 image_id_counter {1};
@@ -436,19 +436,29 @@ struct DrawContext {
 
     DynamicArray<IdAndTexture> textures {Malloc::Instance()};
 
-    TrivialFixedSizeFunction<8, void(u8 const*, int width, int height)> screenshot_callback {};
-
     bool anti_aliased_lines = true;
     bool anti_aliased_shapes = true;
     f32 curve_tessellation_tol = 1.25f; // increase for better quality
     f32 fill_anti_alias = 1.0f;
     f32 stroke_anti_alias = 1.0f;
-    FontAtlas fonts; // Load and assemble one or more fonts into a single tightly packed texture. Output to
-                     // Fonts array.
+    FontAtlas fonts;
 };
 
-// Defined ether draw_list_opengl or draw_list_directx, call delete on result
-DrawContext* CreateNewDrawContext();
+// Call delete on the result.
+Renderer* CreateNewRendererBgfx();
+Renderer* CreateNewRendererOpenGl();
+Renderer* CreateNewRendererDirect3D9();
+enum class RendererBackend : u8 { Bgfx, OpenGl, Direct3D9, Count };
+inline Renderer* CreateNewRenderer(RendererBackend backend) {
+    switch (backend) {
+        case RendererBackend::Bgfx: return CreateNewRendererBgfx();
+        case RendererBackend::OpenGl: return CreateNewRendererOpenGl();
+        case RendererBackend::Direct3D9: return CreateNewRendererDirect3D9();
+        case RendererBackend::Count: PanicIfReached();
+    }
+    PanicIfReached();
+    return nullptr;
+}
 
 struct OverflowTextArgs {
     Font* font;
@@ -473,7 +483,7 @@ struct DrawList {
     void BeginDraw() {
         Clear();
         PushClipRectFullScreen();
-        PushTextureHandle(context->fonts.tex_id); // IMPROVE: better font system
+        PushTextureHandle(renderer->fonts.tex_id); // IMPROVE: better font system
     }
     void EndDraw() {
         PopTextureHandle();
@@ -551,11 +561,11 @@ struct DrawList {
                        f32 rounding = 0.0f,
                        int rounding_corners_flags = ~0) {
         PushClipRectFullScreen();
-        auto const aa = context->fill_anti_alias;
-        context->fill_anti_alias = blur_size;
+        auto const aa = renderer->fill_anti_alias;
+        renderer->fill_anti_alias = blur_size;
         auto const offs = f32x2 {blur_size} / f32x2 {7.0f, 5.0f};
         AddRectFilled(a + offs, b + offs, col, rounding, rounding_corners_flags);
-        context->fill_anti_alias = aa;
+        renderer->fill_anti_alias = aa;
         PopClipRect();
     }
 
@@ -697,7 +707,7 @@ struct DrawList {
     void UpdateClipRect();
     void UpdateTexturePtr();
 
-    DrawContext* context;
+    Renderer* renderer;
 
     // This is what you have to render
     Vector<DrawCmd> cmd_buffer; // Commands. Typically 1 command = 1 gpu draw call.
@@ -719,13 +729,25 @@ struct DrawList {
     Vector<f32x4> clip_rect_stack;
     Vector<TextureHandle> texture_id_stack;
     Vector<f32x2> path; // [Internal] current path building
-                        //
+
     int channels_current;
     int channels_count;
 
     // [Internal] draw channels for columns API (not resized down so _ChannelsCount may be smaller than
     // _Channels.Size)
     Vector<DrawChannel> channels;
+};
+
+struct DrawListAllocator {
+    void Clear() {
+        lists.Clear();
+        arena.FreeAll();
+    }
+
+    DrawList* Allocate() { return lists.Prepend(arena); }
+
+    ArenaAllocator arena {PageAllocator::Instance()};
+    ArenaList<DrawList> lists {};
 };
 
 } // namespace graphics

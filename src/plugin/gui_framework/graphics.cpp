@@ -1,17 +1,29 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // This file is based on modified code from dear imgui:
 // Copyright (c) 2014-2024 Omar Cornut
 // SPDX-License-Identifier: MIT
 
-#include "draw_list.hpp"
+#include "graphics.hpp"
 
 #include <float.h>
 
 #include "foundation/foundation.hpp"
 
 namespace graphics {
+
+#if !IS_WINDOWS
+Renderer* CreateNewRendererDirect3D9() {
+    PanicIfReached();
+    return nullptr;
+}
+#else
+Renderer* CreateNewRendererOpenGl() {
+    PanicIfReached();
+    return nullptr;
+}
+#endif
 
 constexpr u32 k_max_u16_codepoint = 0xFFFF;
 
@@ -21,24 +33,12 @@ static inline f32 InvLength(f32x2 const& lhs, f32 fail_value) {
     return fail_value;
 }
 
-void DrawContext::ScaleClipRects(DrawData draw_data, f32 display_ratio) {
-    for (auto const& list : draw_data.draw_lists) {
-        for (int i = 0; i < list->cmd_buffer.size; i++) {
-            auto& cmd = list->cmd_buffer[i];
-            cmd.clip_rect = f32x4 {cmd.clip_rect.x * display_ratio,
-                                   cmd.clip_rect.y * display_ratio,
-                                   cmd.clip_rect.z * display_ratio,
-                                   cmd.clip_rect.w * display_ratio};
-        }
-    }
-}
-
-void DrawContext::PushFont(Font* font) {
+void Renderer::PushFont(Font* font) {
     ASSERT(font != nullptr);
     font_stack.PushBack(font);
 }
 
-void DrawContext::PopFont() { font_stack.PopBack(); }
+void Renderer::PopFont() { font_stack.PopBack(); }
 
 constexpr f32x4 k_null_clip_rect {-8192.0f,
                                   -8192.0f,
@@ -88,7 +88,8 @@ ALWAYS_INLINE f32x4 GetCurrentClipRect(DrawList const& l) {
 }
 
 ALWAYS_INLINE TextureHandle GetCurrentTextureId(DrawList const& l) {
-    return l.texture_id_stack.size ? l.texture_id_stack.data[l.texture_id_stack.size - 1] : nullptr;
+    return l.texture_id_stack.size ? l.texture_id_stack.data[l.texture_id_stack.size - 1]
+                                   : l.renderer->invalid_texture;
 }
 
 void DrawList::AddDrawCmd() {
@@ -100,18 +101,6 @@ void DrawList::AddDrawCmd() {
     cmd_buffer.PushBack(draw_cmd);
 }
 
-void DrawList::AddCallback(DrawCallback callback, void* callback_data) {
-    DrawCmd* current_cmd = cmd_buffer.size ? &cmd_buffer.Back() : nullptr;
-    if (!current_cmd || current_cmd->elem_count != 0 || current_cmd->user_callback != nullptr) {
-        AddDrawCmd();
-        current_cmd = &cmd_buffer.Back();
-    }
-    current_cmd->user_callback = callback;
-    current_cmd->user_callback_data = callback_data;
-
-    AddDrawCmd(); // Force a new command after us (see comment below)
-}
-
 // Our scheme may appears a bit unusual, basically we want the most-common calls AddLine AddRect etc. to not
 // have to perform any check so we always have a command ready in the stack. The cost of figuring out if a new
 // command has to be added or if we can merge is paid in those Update** functions only.
@@ -120,8 +109,7 @@ void DrawList::UpdateClipRect() {
     f32x4 const curr_clip_rect = GetCurrentClipRect(*this);
     DrawCmd* curr_cmd = cmd_buffer.size > 0 ? &cmd_buffer.data[cmd_buffer.size - 1] : nullptr;
     if (!curr_cmd ||
-        (curr_cmd->elem_count != 0 && !MemoryIsEqual(&curr_cmd->clip_rect, &curr_clip_rect, sizeof(f32x4))) ||
-        curr_cmd->user_callback != nullptr) {
+        (curr_cmd->elem_count != 0 && !MemoryIsEqual(&curr_cmd->clip_rect, &curr_clip_rect, sizeof(f32x4)))) {
         AddDrawCmd();
         return;
     }
@@ -130,7 +118,7 @@ void DrawList::UpdateClipRect() {
     DrawCmd* prev_cmd = cmd_buffer.size > 1 ? curr_cmd - 1 : nullptr;
     if (curr_cmd->elem_count == 0 && prev_cmd &&
         MemoryIsEqual(&prev_cmd->clip_rect, &curr_clip_rect, sizeof(f32x4)) &&
-        prev_cmd->texture_id == GetCurrentTextureId(*this) && prev_cmd->user_callback == nullptr)
+        prev_cmd->texture_id == GetCurrentTextureId(*this))
         cmd_buffer.PopBack();
     else
         curr_cmd->clip_rect = curr_clip_rect;
@@ -140,8 +128,7 @@ void DrawList::UpdateTexturePtr() {
     // If current command is used with different settings we need to add a new command
     TextureHandle const curr_texture_id = GetCurrentTextureId(*this);
     DrawCmd* curr_cmd = cmd_buffer.size ? &cmd_buffer.Back() : nullptr;
-    if (!curr_cmd || (curr_cmd->elem_count != 0 && curr_cmd->texture_id != curr_texture_id) ||
-        curr_cmd->user_callback != nullptr) {
+    if (!curr_cmd || (curr_cmd->elem_count != 0 && curr_cmd->texture_id != curr_texture_id)) {
         AddDrawCmd();
         return;
     }
@@ -150,8 +137,7 @@ void DrawList::UpdateTexturePtr() {
     DrawCmd* prev_cmd = cmd_buffer.size > 1 ? curr_cmd - 1 : nullptr;
     auto const curr_clip_rect = GetCurrentClipRect(*this);
     if (prev_cmd && prev_cmd->texture_id == curr_texture_id &&
-        MemoryIsEqual(&prev_cmd->clip_rect, &curr_clip_rect, sizeof(f32x4)) &&
-        prev_cmd->user_callback == nullptr)
+        MemoryIsEqual(&prev_cmd->clip_rect, &curr_clip_rect, sizeof(f32x4)))
         cmd_buffer.PopBack();
     else
         curr_cmd->texture_id = curr_texture_id;
@@ -307,7 +293,7 @@ void DrawList::PrimReserve(int idx_count, int vtx_count) {
 void DrawList::PrimRect(f32x2 const& a, f32x2 const& c, u32 col) {
     f32x2 const b {c.x, a.y};
     f32x2 const d {a.x, c.y};
-    f32x2 const uv(context->fonts.tex_uv_white_pixel);
+    f32x2 const uv(renderer->fonts.tex_uv_white_pixel);
     auto idx = (DrawIdx)vtx_current_idx;
     idx_write_ptr[0] = idx;
     idx_write_ptr[1] = (DrawIdx)(idx + 1);
@@ -412,8 +398,8 @@ void DrawList::AddPolyline(f32x2 const* points,
                            bool anti_aliased) {
     if (points_count < 2) return;
 
-    f32x2 const uv = context->fonts.tex_uv_white_pixel;
-    anti_aliased &= context->anti_aliased_lines;
+    f32x2 const uv = renderer->fonts.tex_uv_white_pixel;
+    anti_aliased &= renderer->anti_aliased_lines;
 
     int count = points_count;
     if (!closed) count = points_count - 1;
@@ -422,7 +408,7 @@ void DrawList::AddPolyline(f32x2 const* points,
     if (anti_aliased) {
         // Anti-aliased stroke
         // const f32 AA_SIZE = 1.0f;
-        f32 const aa_size = context->stroke_anti_alias;
+        f32 const aa_size = renderer->stroke_anti_alias;
         u32 const col_trans = col & ColU32(255, 255, 255, 0);
 
         int const idx_count = thick_line ? count * 18 : count * 12;
@@ -673,13 +659,13 @@ void DrawList::AddPolyline(f32x2 const* points,
 }
 
 void DrawList::AddConvexPolyFilled(f32x2 const* points, int const points_count, u32 col, bool anti_aliased) {
-    f32x2 const uv = context->fonts.tex_uv_white_pixel;
-    anti_aliased &= context->anti_aliased_shapes;
+    f32x2 const uv = renderer->fonts.tex_uv_white_pixel;
+    anti_aliased &= renderer->anti_aliased_shapes;
     // if (Gui::GetIO().KeyCtrl) anti_aliased = false; // Debug
 
     if (anti_aliased) {
         // Anti-aliased Fill
-        f32 const aa_size = context->fill_anti_alias;
+        f32 const aa_size = renderer->fill_anti_alias;
         u32 const col_trans = col & ColU32(255, 255, 255, 0);
         int const idx_count = ((points_count - 2) * 3) + (points_count * 6);
         int const vtx_count = (points_count * 2);
@@ -846,7 +832,7 @@ void DrawList::PathBezierCurveTo(f32x2 const& p2, f32x2 const& p3, f32x2 const& 
                               p3.y,
                               p4.x,
                               p4.y,
-                              context->curve_tessellation_tol,
+                              renderer->curve_tessellation_tol,
                               0);
     } else {
         f32 const t_step = 1.0f / (f32)num_segments;
@@ -910,7 +896,7 @@ void DrawList::AddNonAABox(f32x2 const& a, f32x2 const& b, u32 col, f32 thicknes
     f32x2 const& p3 = b;
     auto const p4 = f32x2 {a.x, b.y};
 
-    f32x2 const uv = context->fonts.tex_uv_white_pixel;
+    f32x2 const uv = renderer->fonts.tex_uv_white_pixel;
 
     // Non Anti-aliased Stroke
     int const idx_count = 4 * 6;
@@ -1097,7 +1083,7 @@ void DrawList::AddRectFilledMultiColor(f32x2 const& a,
                                        u32 col_bot_left) {
     if (((col_upr_left | col_upr_right | col_bot_right | col_bot_left) & k_alpha_mask) == 0) return;
 
-    f32x2 const uv = context->fonts.tex_uv_white_pixel;
+    f32x2 const uv = renderer->fonts.tex_uv_white_pixel;
     PrimReserve(6, 4);
     PrimWriteIdx((DrawIdx)(vtx_current_idx));
     PrimWriteIdx((DrawIdx)(vtx_current_idx + 1));
@@ -1121,7 +1107,7 @@ void DrawList::AddQuadFilledMultiColor(f32x2 const& upr_left,
                                        u32 col_bot_left) {
     if (((col_upr_left | col_upr_right | col_bot_right | col_bot_left) & k_alpha_mask) == 0) return;
 
-    f32x2 const uv = context->fonts.tex_uv_white_pixel;
+    f32x2 const uv = renderer->fonts.tex_uv_white_pixel;
     PrimReserve(6, 4);
     PrimWriteIdx((DrawIdx)(vtx_current_idx));
     PrimWriteIdx((DrawIdx)(vtx_current_idx + 1));
@@ -1344,8 +1330,8 @@ void DrawList::AddTextJustified(Rect r,
                                 TextJustification justification,
                                 TextOverflowType overflow_type,
                                 f32 font_scaling) {
-    auto font = context->CurrentFont();
-    auto font_size = context->CurrentFontSize() * font_scaling;
+    auto font = renderer->CurrentFont();
+    auto font_size = renderer->CurrentFontSize() * font_scaling;
 
     ArenaAllocatorWithInlineStorage<1000> temp_allocator {Malloc::Instance()};
 
@@ -1396,7 +1382,7 @@ void DrawList::AddText(Font const* font,
 }
 
 void DrawList::AddText(f32x2 const& pos, u32 col, String str) {
-    AddText(context->CurrentFont(), context->CurrentFont()->font_size, pos, col, str);
+    AddText(renderer->CurrentFont(), renderer->CurrentFont()->font_size, pos, col, str);
 }
 
 static inline f32x2 Mul(f32x2 const& lhs, f32x2 const& rhs) { return f32x2 {lhs.x * rhs.x, lhs.y * rhs.y}; }
@@ -1466,7 +1452,7 @@ void DrawList::AddImage(TextureHandle user_texture_id,
                         f32x2 const& uv1,
                         u32 col) {
     if ((col & k_alpha_mask) == 0) return;
-    if (user_texture_id == nullptr) return;
+    if (user_texture_id == renderer->invalid_texture) return;
 
     // FIXME-OPT: This is wasting draw calls.
     bool const push_texture_id = texture_id_stack.Empty() || user_texture_id != texture_id_stack.Back();
@@ -1487,7 +1473,7 @@ void DrawList::AddImageRounded(TextureHandle user_texture_id,
                                f32 rounding,
                                int rounding_corners) {
     if ((col & k_alpha_mask) == 0) return;
-    if (user_texture_id == nullptr) return;
+    if (user_texture_id == renderer->invalid_texture) return;
 
     if (rounding <= 0.0f || (rounding_corners & 0xf) == 0) {
         AddImage(user_texture_id, p_min, p_max, uv_min, uv_max, col);
@@ -1652,7 +1638,7 @@ Font* FontAtlas::AddFontFromMemoryTTF(void* ttf_data,
 bool FontAtlas::Build() {
     ASSERT(config_data.size > 0);
 
-    tex_id = nullptr;
+    tex_id = invalid_texture;
     tex_width = tex_height = 0;
     tex_uv_white_pixel = f32x2 {0, 0};
     ClearTexData();

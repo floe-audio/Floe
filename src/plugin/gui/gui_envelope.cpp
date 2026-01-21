@@ -34,7 +34,7 @@ void GUIDoEnvelope(Gui* g,
     settings.draw_routine_window_background = [&handle_size](IMGUI_DRAW_WINDOW_BG_ARGS) {
         auto const& r = window->bounds.Reduced(handle_size / 2);
         auto const rounding = LiveSize(imgui, UiSizeId::CornerRounding);
-        imgui.graphics->AddRectFilled(r.Min(), r.Max(), LiveCol(imgui, UiColMap::Envelope_Back), rounding);
+        imgui.draw_list->AddRectFilled(r.Min(), r.Max(), LiveCol(imgui, UiColMap::Envelope_Back), rounding);
     };
     imgui.PushID(layer->index);
     DEFER { imgui.PopID(); };
@@ -97,14 +97,14 @@ void GUIDoEnvelope(Gui* g,
         }
 
         if (imgui.IsHotOrActive(attack_imgui_id)) {
-            imgui.frame_output.cursor_type = CursorType::HorizontalArrows;
+            GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
             if (imgui::ClickCheck(
                     {
                         .left_mouse = true,
                         .double_click = true,
                         .triggers_on_mouse_down = true,
                     },
-                    imgui.frame_input))
+                    GuiIo().in))
                 g->param_text_editor_to_open = attack_param_id;
         }
 
@@ -164,18 +164,18 @@ void GUIDoEnvelope(Gui* g,
         if (imgui.ButtonBehavior(grabber,
                                  dec_sus_imgui_id,
                                  {.left_mouse = true, .triggers_on_mouse_down = true})) {
-            rel_click_pos = imgui.frame_input.cursor_pos - imgui.WindowPosToScreenPos(decay_point);
+            rel_click_pos = GuiIo().in.cursor_pos - imgui.WindowPosToScreenPos(decay_point);
         }
 
         if (imgui.IsHotOrActive(dec_sus_imgui_id)) {
-            imgui.frame_output.cursor_type = CursorType::AllArrows;
+            GuiIo().out.wants.cursor_type = CursorType::AllArrows;
             if (imgui::ClickCheck(
                     {
                         .left_mouse = true,
                         .double_click = true,
                         .triggers_on_mouse_down = true,
                     },
-                    imgui.frame_input))
+                    GuiIo().in))
                 g->param_text_editor_to_open = decay_id;
         }
 
@@ -187,7 +187,7 @@ void GUIDoEnvelope(Gui* g,
             {
                 auto const min_pixels_pos = imgui.WindowPosToScreenPos({get_x_coord_at_percent(0), 0}).x;
                 auto const max_pixels_pos = imgui.WindowPosToScreenPos({get_x_coord_at_percent(1), 0}).x;
-                auto curr_pos = imgui.frame_input.cursor_pos.x - rel_click_pos.x;
+                auto curr_pos = GuiIo().in.cursor_pos.x - rel_click_pos.x;
 
                 curr_pos = Clamp(curr_pos, min_pixels_pos, max_pixels_pos);
                 auto const curr_pos_percent = MapTo01(curr_pos, min_pixels_pos, max_pixels_pos);
@@ -197,7 +197,7 @@ void GUIDoEnvelope(Gui* g,
             {
                 auto const min_pixels_pos = imgui.WindowPosToScreenPos({0, get_y_coord_at_percent(0)}).y;
                 auto const max_pixels_pos = imgui.WindowPosToScreenPos({0, get_y_coord_at_percent(1)}).y;
-                auto curr_pos = imgui.frame_input.cursor_pos.y - rel_click_pos.y;
+                auto curr_pos = GuiIo().in.cursor_pos.y - rel_click_pos.y;
 
                 curr_pos = Clamp(curr_pos, min_pixels_pos, max_pixels_pos);
                 auto const curr_pos_percent = MapTo01(curr_pos, min_pixels_pos, max_pixels_pos);
@@ -259,14 +259,14 @@ void GUIDoEnvelope(Gui* g,
         }
 
         if (imgui.IsHotOrActive(release_imgui_id)) {
-            imgui.frame_output.cursor_type = CursorType::HorizontalArrows;
+            GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
             if (imgui::ClickCheck(
                     {
                         .left_mouse = true,
                         .double_click = true,
                         .triggers_on_mouse_down = true,
                     },
-                    imgui.frame_input))
+                    GuiIo().in))
                 g->param_text_editor_to_open = release_param_id;
         }
 
@@ -306,12 +306,12 @@ void GUIDoEnvelope(Gui* g,
         // range lines
         auto const do_range_lines = [&](Range range, imgui::Id id) {
             if (imgui.IsActive(id)) {
-                imgui.graphics->AddLine(imgui.WindowPosToScreenPos({range.min, padded_x}),
-                                        imgui.WindowPosToScreenPos({range.min, padded_bottom}),
-                                        range_lines_col);
-                imgui.graphics->AddLine(imgui.WindowPosToScreenPos({range.max, padded_x}),
-                                        imgui.WindowPosToScreenPos({range.max, padded_bottom}),
-                                        range_lines_col);
+                imgui.draw_list->AddLine(imgui.WindowPosToScreenPos({range.min, padded_x}),
+                                         imgui.WindowPosToScreenPos({range.min, padded_bottom}),
+                                         range_lines_col);
+                imgui.draw_list->AddLine(imgui.WindowPosToScreenPos({range.max, padded_x}),
+                                         imgui.WindowPosToScreenPos({range.max, padded_bottom}),
+                                         range_lines_col);
             }
         };
 
@@ -326,8 +326,8 @@ void GUIDoEnvelope(Gui* g,
                                   sustain_point_screen,
                                   release_point_screen,
                                   point_below_decay};
-        imgui.graphics->AddConvexPolyFilled(area_points_a, (int)ArraySize(area_points_a), area_col, false);
-        imgui.graphics->AddConvexPolyFilled(area_points_b, (int)ArraySize(area_points_b), area_col, false);
+        imgui.draw_list->AddConvexPolyFilled(area_points_a, (int)ArraySize(area_points_a), area_col, false);
+        imgui.draw_list->AddConvexPolyFilled(area_points_b, (int)ArraySize(area_points_b), area_col, false);
 
         if (!greyed_out) {
             auto& voice_markers =
@@ -405,7 +405,7 @@ void GUIDoEnvelope(Gui* g,
                                 decay_point_screen,
                                 sustain_point_screen,
                                 release_point_screen};
-        imgui.graphics
+        imgui.draw_list
             ->AddPolyline(line_points, 5, greyed_out ? greyed_out_line_col : line_col, false, 1, true);
 
         // handles
@@ -414,11 +414,11 @@ void GUIDoEnvelope(Gui* g,
             if (imgui.IsHot(id)) {
                 auto background_col = colours::FromU32(col);
                 background_col.a /= 2;
-                imgui.graphics->AddCircleFilled(point, handle_size / 5, colours::ToU32(background_col));
+                imgui.draw_list->AddCircleFilled(point, handle_size / 5, colours::ToU32(background_col));
                 col = hover_col;
             }
             if (imgui.IsActive(id)) col = hover_col;
-            imgui.graphics->AddCircleFilled(point, handle_visible_size, col);
+            imgui.draw_list->AddCircleFilled(point, handle_visible_size, col);
         };
         do_handle(attack_point_screen, attack_imgui_id);
         do_handle(decay_point_screen, dec_sus_imgui_id);

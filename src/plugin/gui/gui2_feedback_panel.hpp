@@ -139,13 +139,13 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
 PUBLIC void
 DoFeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackPanelState& state) {
     if (!state.open) return;
-    RunPanel(
+    RunOrEnqueuePanel(
         box_system,
         Panel {
             .run = [&context, &state](GuiBoxSystem& b) { FeedbackPanel(b, context, state); },
             .data =
                 ModalPanel {
-                    .r = CentredRect({.pos = 0, .size = box_system.imgui.frame_input.window_size.ToFloat2()},
+                    .r = CentredRect({.pos = 0, .size = GuiIo().in.window_size.ToFloat2()},
                                      f32x2 {box_system.imgui.VwToPixels(style::k_feedback_dialog_width),
                                             box_system.imgui.VwToPixels(style::k_feedback_dialog_height)}),
                     .imgui_id = box_system.imgui.GetID("feedback"),

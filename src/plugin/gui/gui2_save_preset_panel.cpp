@@ -287,7 +287,7 @@ void DoSavePresetPanel(GuiBoxSystem& box_system,
             box_system.imgui.SetYScroll(w, 0.0f);
     }
 
-    RunPanel(
+    RunOrEnqueuePanel(
         box_system,
         Panel {
             .run =
@@ -304,7 +304,7 @@ void DoSavePresetPanel(GuiBoxSystem& box_system,
 
                     DoModalDivider(box_system, root, {.horizontal = true});
 
-                    AddPanel(
+                    RunOrEnqueuePanel(
                         box_system,
                         Panel {
                             .run =
@@ -363,25 +363,21 @@ void DoSavePresetPanel(GuiBoxSystem& box_system,
                                 button_container,
                                 {.text = "Save As New"_s, .tooltip = "Save the preset as a new file"_s})) {
                             CommitMetadataToEngine(context.engine, state);
-                            OpenFilePickerSavePreset(context.file_picker_state,
-                                                     box_system.imgui.frame_output,
-                                                     context.paths);
+                            OpenFilePickerSavePreset(context.file_picker_state, context.paths);
                             if (!state.modeless) state.open = false;
                         }
                     } else if (TextButton(box_system,
                                           button_container,
                                           {.text = "Save"_s, .tooltip = "Save the preset to a new file"_s})) {
                         CommitMetadataToEngine(context.engine, state);
-                        OpenFilePickerSavePreset(context.file_picker_state,
-                                                 box_system.imgui.frame_output,
-                                                 context.paths);
+                        OpenFilePickerSavePreset(context.file_picker_state, context.paths);
                         if (!state.modeless) state.open = false;
                     }
                 },
             .data =
                 ModalPanel {
                     .r = CentredRect(
-                        {.pos = 0, .size = box_system.imgui.frame_input.window_size.ToFloat2()},
+                        {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()},
                         f32x2 {box_system.imgui.VwToPixels(640), box_system.imgui.VwToPixels(600)}),
                     .imgui_id = box_system.imgui.GetID("save-preset"),
                     .on_close = [&state]() { state.open = false; },

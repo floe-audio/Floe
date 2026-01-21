@@ -14,15 +14,16 @@
 #include <OpenGL/gl.h>
 #include <OpenGL/glext.h>
 #else
-// NOTE: on windows this includes windows.h
 #include <GL/gl.h>
 #include <GL/glext.h>
 #endif
-#include "os/undef_windows_macros.h"
+
 #include "utils/debug/tracy_wrapped.hpp"
 
-#include "draw_list.hpp"
+#include "graphics.hpp"
 #include "tracy/TracyOpenGL.hpp"
+
+static_assert(!IS_WINDOWS);
 
 namespace graphics {
 
@@ -61,10 +62,13 @@ ErrorCodeOr<void> CheckGLError(String function) {
     call;                                                                                                    \
     TRY(CheckGLError(#call));
 
-struct OpenGLDrawContext : public DrawContext {
-    ErrorCodeOr<void> CreateDeviceObjects(void* _window) override {
+struct OpenGLRenderer : public Renderer {
+    OpenGLRenderer() : Renderer((TextureHandle)0) {}
+
+    ErrorCodeOr<void> Init(UiSize, void* native_window, void* native_display) override {
         Trace(ModuleName::Gui);
-        ASSERT(_window != nullptr);
+        ASSERT(native_window != nullptr);
+        (void)native_display;
 
         glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture_size);
         if (CheckGLError("get max texture size").HasError()) max_texture_size = 99999;
@@ -84,13 +88,15 @@ struct OpenGLDrawContext : public DrawContext {
         return k_success;
     }
 
-    void DestroyDeviceObjects() override {
+    void Deinit() override {
         ZoneScoped;
-        TracyGpuZone("DestroyDeviceObjects");
+        TracyGpuZone("Deinit");
         Trace(ModuleName::Gui);
         DestroyAllTextures();
         DestroyFontTexture();
     }
+
+    void OnResize(UiSize, void*) override {}
 
     ErrorCodeOr<void> CreateFontTexture() override {
         ZoneScoped;
@@ -131,7 +137,7 @@ struct OpenGLDrawContext : public DrawContext {
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels));
 
         // Store our identifier
-        fonts.tex_id = (void*)(intptr_t)font_texture;
+        fonts.tex_id = (TextureHandle)font_texture;
 
         fonts.ClearTexData();
 
@@ -145,7 +151,7 @@ struct OpenGLDrawContext : public DrawContext {
         Trace(ModuleName::Gui);
         if (font_texture) {
             glDeleteTextures(1, &font_texture);
-            fonts.tex_id = nullptr;
+            fonts.tex_id = invalid_texture;
             font_texture = 0;
 
             for (auto const _ : Range(20)) {
@@ -157,10 +163,10 @@ struct OpenGLDrawContext : public DrawContext {
         fonts.Clear();
     }
 
-    ErrorCodeOr<void> Render(DrawData draw_data, UiSize window_size) override {
+    ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size, void*) override {
         ZoneScoped;
         TracyGpuZone("Render");
-        if (draw_data.draw_lists.size == 0) return k_success;
+        if (draw_lists.size == 0) return k_success;
 
         GLint last_texture;
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
@@ -193,7 +199,7 @@ struct OpenGLDrawContext : public DrawContext {
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        for (auto const& draw_list : draw_data.draw_lists) {
+        for (auto const& draw_list : draw_lists) {
             if (draw_list->idx_buffer.size == 0 || draw_list->idx_buffer.size == 0) continue;
             DrawVert const* vtx_buffer = draw_list->vtx_buffer.data;
             DrawIdx const* idx_buffer = draw_list->idx_buffer.data;
@@ -212,19 +218,15 @@ struct OpenGLDrawContext : public DrawContext {
 
             for (int cmd_i = 0; cmd_i < draw_list->cmd_buffer.size; cmd_i++) {
                 DrawCmd const* pcmd = &draw_list->cmd_buffer[cmd_i];
-                if (pcmd->user_callback) {
-                    pcmd->user_callback(draw_list, pcmd);
-                } else {
-                    glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)pcmd->texture_id);
-                    glScissor((int)pcmd->clip_rect.x,
-                              (int)((window_size.height) - pcmd->clip_rect.w),
-                              (int)(pcmd->clip_rect.z - pcmd->clip_rect.x),
-                              (int)(pcmd->clip_rect.w - pcmd->clip_rect.y));
-                    glDrawElements(GL_TRIANGLES,
-                                   (GLsizei)pcmd->elem_count,
-                                   sizeof(DrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT,
-                                   idx_buffer);
-                }
+                glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)pcmd->texture_id);
+                glScissor((int)pcmd->clip_rect.x,
+                          (int)((window_size.height) - pcmd->clip_rect.w),
+                          (int)(pcmd->clip_rect.z - pcmd->clip_rect.x),
+                          (int)(pcmd->clip_rect.w - pcmd->clip_rect.y));
+                glDrawElements(GL_TRIANGLES,
+                               (GLsizei)pcmd->elem_count,
+                               sizeof(DrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT,
+                               idx_buffer);
                 idx_buffer += pcmd->elem_count;
             }
         }
@@ -299,16 +301,16 @@ struct OpenGLDrawContext : public DrawContext {
                                 data));
 
         success = true;
-        return (void*)(uintptr)texture;
+        return (TextureHandle)texture;
     }
 
     void DestroyTexture(TextureHandle& texture) override {
         ZoneScoped;
         TracyGpuZone("DestroyTexture");
-        if (texture) {
-            auto gluint_tex = (GLuint)(uintptr_t)texture;
+        if (texture != invalid_texture) {
+            auto gluint_tex = (GLuint)texture;
             glDeleteTextures(1, &gluint_tex);
-            texture = nullptr;
+            texture = invalid_texture;
             auto _ = CheckGLError("DestroyTexture");
         }
     }
@@ -317,9 +319,9 @@ struct OpenGLDrawContext : public DrawContext {
     GLuint font_texture = 0;
 };
 
-DrawContext* CreateNewDrawContext() {
+Renderer* CreateNewRendererOpenGl() {
     TracyGpuContext;
-    return new OpenGLDrawContext();
+    return new OpenGLRenderer();
 }
 
 } // namespace graphics

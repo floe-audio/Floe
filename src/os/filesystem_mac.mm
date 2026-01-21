@@ -3,10 +3,7 @@
 
 #define Rect MacRect
 #pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter"
-#pragma clang diagnostic ignored "-Wcast-align"
-#pragma clang diagnostic ignored "-Wdouble-promotion"
-#pragma clang diagnostic ignored "-Wextra-semi"
+#pragma clang diagnostic ignored "-Weverything"
 #include <AppKit/AppKit.h>
 #include <CoreServices/CoreServices.h>
 #include <dirent.h>

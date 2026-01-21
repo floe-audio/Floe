@@ -549,7 +549,7 @@ void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, I
         BrowserPopupOptions {
             .title = fmt::Format(box_system.arena, "Layer {} Instrument", context.layer.index + 1),
             .height = ({
-                auto const window_height = box_system.imgui.frame_input.window_size.height;
+                auto const window_height = GuiIo().in.window_size.height;
                 auto const button_bottom = state.common_state.absolute_button_rect.Bottom();
                 auto const available_height = window_height - button_bottom - 20;
                 box_system.imgui.PixelsToVw(available_height);

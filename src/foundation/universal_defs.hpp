@@ -238,7 +238,7 @@ concept FunctionWithSignature = requires(Functor f) {
 };
 
 template <typename T>
-concept EnumWithCount = ScopedEnum<T> && requires { T::Count; };
+concept EnumWithCount = requires { T::Count; };
 
 // Vector helpers
 // ================================================================================================

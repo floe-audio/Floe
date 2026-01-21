@@ -483,6 +483,8 @@ static bool IsValidMemoryAddress(void* addr) {
 static StacktraceStack GetInterruptedStackTrace(ucontext_t* uctx) {
     StacktraceStack result;
 
+    if (!uctx) return {};
+
     uintptr crash_pc = 0;
     uintptr fp = 0;
     uintptr sp = 0;
@@ -571,7 +573,7 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
         }
 
         if (auto hook = g_crash_hook.Load(LoadMemoryOrder::Acquire)) {
-            auto const stacktrace = GetInterruptedStackTrace((ucontext_t*)(context));
+            auto const stacktrace = GetInterruptedStackTrace((ucontext_t*)context);
             hook(signal_description, stacktrace);
         }
 

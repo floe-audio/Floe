@@ -607,32 +607,34 @@ static void InfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoP
                               });
 
     using TabPanelFunction = void (*)(GuiBoxSystem&, InfoPanelContext&, InfoPanelState&);
-    AddPanel(box_system,
-             Panel {
-                 .run = ({
-                     TabPanelFunction f {};
-                     switch (state.tab) {
-                         case InfoPanelState::Tab::Libraries: f = LibrariesInfoPanel; break;
-                         case InfoPanelState::Tab::About: f = AboutInfoPanel; break;
-                         case InfoPanelState::Tab::Metrics: f = MetricsInfoPanel; break;
-                         case InfoPanelState::Tab::Legal: f = LegalInfoPanel; break;
-                         case InfoPanelState::Tab::Count: PanicIfReached();
-                     }
-                     [f, &context, &state](GuiBoxSystem& box_system) { f(box_system, context, state); };
-                 }),
-                 .data =
-                     Subpanel {
-                         .id = DoBox(box_system,
-                                     {
-                                         .parent = root,
-                                         .layout {
-                                             .size = {layout::k_fill_parent, layout::k_fill_parent},
-                                         },
-                                     })
-                                   .layout_id,
-                         .imgui_id = box_system.imgui.GetID((u64)state.tab + 999999),
-                     },
-             });
+    RunOrEnqueuePanel(box_system,
+                      Panel {
+                          .run = ({
+                              TabPanelFunction f {};
+                              switch (state.tab) {
+                                  case InfoPanelState::Tab::Libraries: f = LibrariesInfoPanel; break;
+                                  case InfoPanelState::Tab::About: f = AboutInfoPanel; break;
+                                  case InfoPanelState::Tab::Metrics: f = MetricsInfoPanel; break;
+                                  case InfoPanelState::Tab::Legal: f = LegalInfoPanel; break;
+                                  case InfoPanelState::Tab::Count: PanicIfReached();
+                              }
+                              [f, &context, &state](GuiBoxSystem& box_system) {
+                                  f(box_system, context, state);
+                              };
+                          }),
+                          .data =
+                              Subpanel {
+                                  .id = DoBox(box_system,
+                                              {
+                                                  .parent = root,
+                                                  .layout {
+                                                      .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                                  },
+                                              })
+                                            .layout_id,
+                                  .imgui_id = box_system.imgui.GetID((u64)state.tab + 999999),
+                              },
+                      });
 }
 
 PUBLIC void DoInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoPanelState& state) {
@@ -642,21 +644,21 @@ PUBLIC void DoInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, Inf
             if (check_for_update::ShowNewVersionIndicator(context.check_for_update_state, context.prefs))
                 state.tab = InfoPanelState::Tab::About;
         }
-        RunPanel(box_system,
-                 Panel {
-                     .run = [&context, &state](GuiBoxSystem& b) { InfoPanel(b, context, state); },
-                     .data =
-                         ModalPanel {
-                             .r = CentredRect(
-                                 {.pos = 0, .size = box_system.imgui.frame_input.window_size.ToFloat2()},
-                                 f32x2 {box_system.imgui.VwToPixels(style::k_info_dialog_width),
-                                        box_system.imgui.VwToPixels(style::k_info_dialog_height)}),
-                             .imgui_id = box_system.imgui.GetID("new info"),
-                             .on_close = [&state]() { state.open = false; },
-                             .close_on_click_outside = true,
-                             .darken_background = true,
-                             .disable_other_interaction = true,
-                         },
-                 });
+        RunOrEnqueuePanel(
+            box_system,
+            Panel {
+                .run = [&context, &state](GuiBoxSystem& b) { InfoPanel(b, context, state); },
+                .data =
+                    ModalPanel {
+                        .r = CentredRect({.pos = 0, .size = GuiIo().in.window_size.ToFloat2()},
+                                         f32x2 {box_system.imgui.VwToPixels(style::k_info_dialog_width),
+                                                box_system.imgui.VwToPixels(style::k_info_dialog_height)}),
+                        .imgui_id = box_system.imgui.GetID("new info"),
+                        .on_close = [&state]() { state.open = false; },
+                        .close_on_click_outside = true,
+                        .darken_background = true,
+                        .disable_other_interaction = true,
+                    },
+            });
     }
 }

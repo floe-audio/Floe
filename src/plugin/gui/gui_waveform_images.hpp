@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "gui_framework/draw_list.hpp"
+#include "gui_framework/graphics.hpp"
 #include "gui_framework/image.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 
@@ -22,10 +22,10 @@ struct WaveformImagesTable {
 
 Optional<graphics::ImageID> GetWaveformImage(WaveformImagesTable& table,
                                              Instrument const& inst,
-                                             graphics::DrawContext& graphics,
+                                             graphics::Renderer& renderer,
                                              ThreadPool& thread_pool,
                                              f32x2 size);
 
-void StartFrame(WaveformImagesTable& table, graphics::DrawContext& graphics);
-void EndFrame(WaveformImagesTable& table, graphics::DrawContext& graphics);
+void StartFrame(WaveformImagesTable& table, graphics::Renderer& renderer);
+void EndFrame(WaveformImagesTable& table, graphics::Renderer& renderer);
 void Shutdown(WaveformImagesTable& table);

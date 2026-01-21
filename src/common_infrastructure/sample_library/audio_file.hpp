@@ -13,6 +13,7 @@ enum class AudioFileError {
     FileHasInvalidData,
     NotFlacOrWav,
     NotMonoOrStereo,
+    ApiError,
 };
 extern ErrorCodeCategory const audio_file_error_category;
 inline ErrorCodeCategory const& ErrorCategoryForEnum(AudioFileError) { return audio_file_error_category; }

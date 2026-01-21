@@ -223,11 +223,9 @@ pub fn addConfiguredPlugin(
                         .install_dir = .prefix,
                         .install_subdir = b.pathJoin(&.{ install_subdir, plugin_path }),
                     });
-                    b.getInstallStep().dependOn(&install.step);
                     break :blk &install.step;
                 } else {
                     const install = b.addInstallFile(result_path, b.pathJoin(&.{ install_subdir, plugin_path }));
-                    b.getInstallStep().dependOn(&install.step);
                     break :blk &install.step;
                 }
             };
@@ -263,7 +261,6 @@ pub fn addConfiguredPlugin(
                 };
 
                 const install = b.addInstallFile(result_path, b.pathJoin(&.{ install_subdir, plugin_path }));
-                b.getInstallStep().dependOn(&install.step);
                 break :blk &install.step;
             };
 
@@ -432,7 +429,6 @@ pub fn addConfiguredPlugin(
                         .au => "Components",
                     }, install_path }),
                 });
-                b.getInstallStep().dependOn(&install.step);
                 break :blk &install.step;
             };
 

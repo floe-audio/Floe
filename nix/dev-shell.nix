@@ -70,6 +70,8 @@ pkgs.mkShell rec {
       pkgs.curl
       pkgs.libGLU
       pkgs.glibc
+      pkgs.vulkan-headers
+      pkgs.vulkan-loader
     ];
 
   shellHook = ''

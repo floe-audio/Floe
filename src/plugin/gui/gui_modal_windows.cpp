@@ -11,7 +11,7 @@
 #include "gui.hpp"
 #include "gui/gui_button_widgets.hpp"
 #include "gui_drawing_helpers.hpp"
-#include "gui_framework/draw_list.hpp"
+#include "gui_framework/graphics.hpp"
 #include "gui_framework/gui_frame.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -19,16 +19,16 @@
 #include "gui_widget_helpers.hpp"
 #include "gui_window.hpp"
 
-PUBLIC Rect ModalRect(imgui::Context const& imgui, f32 width, f32 height) {
+PUBLIC Rect ModalRect(f32 width, f32 height) {
     auto const size = f32x2 {width, height};
     Rect r;
-    r.pos = imgui.frame_input.window_size.ToFloat2() / 2 - size / 2; // centre
+    r.pos = GuiIo().in.window_size.ToFloat2() / 2 - size / 2; // centre
     r.size = size;
     return r;
 }
 
 PUBLIC Rect ModalRect(imgui::Context const& imgui, UiSizeId width_id, UiSizeId height_id) {
-    return ModalRect(imgui, LiveSize(imgui, width_id), LiveSize(imgui, height_id));
+    return ModalRect(LiveSize(imgui, width_id), LiveSize(imgui, height_id));
 }
 
 static imgui::Id IdForModal(ModalWindowType type) { return (imgui::Id)(ToInt(type) + 1000); }
@@ -55,7 +55,7 @@ struct DoButtonArgs {
 static bool DoButton(Gui* g, String button_text, DoButtonArgs args) {
     auto& imgui = g->imgui;
 
-    auto const line_height = imgui.graphics->context->CurrentFontSize();
+    auto const line_height = imgui.draw_list->renderer->CurrentFontSize();
     auto const rounding = LiveSize(g->imgui, UiSizeId::CornerRounding);
     auto const icon_scaling = 0.8f;
     auto const icon_size = line_height * icon_scaling;
@@ -65,7 +65,7 @@ static bool DoButton(Gui* g, String button_text, DoButtonArgs args) {
     auto const y_pos = args.incrementing_y ? args.incrementing_y->y : args.y.ValueOr(0);
 
     auto const text_width =
-        draw::GetTextSize(imgui.graphics->context->CurrentFont(), button_text, imgui.Width()).x;
+        draw::GetTextSize(imgui.draw_list->renderer->CurrentFont(), button_text, imgui.Width()).x;
 
     auto const content_width = text_width + (args.icon.size ? icon_size + gap_between_icon_and_text : 0);
 
@@ -82,7 +82,7 @@ static bool DoButton(Gui* g, String button_text, DoButtonArgs args) {
     if (!args.greyed_out)
         result = imgui.ButtonBehavior(button_r, id, {.left_mouse = true, .triggers_on_mouse_up = true});
 
-    imgui.graphics->AddRectFilled(
+    imgui.draw_list->AddRectFilled(
         button_r,
         LiveCol(imgui,
                 !imgui.IsHot(id)
@@ -91,34 +91,34 @@ static bool DoButton(Gui* g, String button_text, DoButtonArgs args) {
         rounding);
 
     if (!args.greyed_out)
-        imgui.graphics->AddRect(button_r,
-                                LiveCol(imgui,
-                                        args.significant ? UiColMap::ModalWindowButtonOutlineSignificant
-                                                         : UiColMap::ModalWindowButtonOutline),
-                                rounding);
+        imgui.draw_list->AddRect(button_r,
+                                 LiveCol(imgui,
+                                         args.significant ? UiColMap::ModalWindowButtonOutlineSignificant
+                                                          : UiColMap::ModalWindowButtonOutline),
+                                 rounding);
 
     auto const required_padding = (box_width - content_width) / 2;
     rect_cut::CutLeft(button_r, required_padding);
     rect_cut::CutRight(button_r, required_padding);
 
     if (args.icon.size) {
-        imgui.graphics->context->PushFont(g->fonts[ToInt(FontType::Icons)]);
-        DEFER { imgui.graphics->context->PopFont(); };
+        imgui.draw_list->renderer->PushFont(g->fonts[ToInt(FontType::Icons)]);
+        DEFER { imgui.draw_list->renderer->PopFont(); };
 
         auto const icon_r = rect_cut::CutLeft(button_r, icon_size);
         rect_cut::CutLeft(button_r, gap_between_icon_and_text);
 
-        imgui.graphics->AddTextJustified(icon_r,
-                                         args.icon,
-                                         LiveCol(imgui,
-                                                 args.greyed_out ? UiColMap::ModalWindowButtonTextInactive
-                                                                 : UiColMap::ModalWindowButtonIcon),
-                                         TextJustification::CentredLeft,
-                                         TextOverflowType::AllowOverflow,
-                                         icon_scaling);
+        imgui.draw_list->AddTextJustified(icon_r,
+                                          args.icon,
+                                          LiveCol(imgui,
+                                                  args.greyed_out ? UiColMap::ModalWindowButtonTextInactive
+                                                                  : UiColMap::ModalWindowButtonIcon),
+                                          TextJustification::CentredLeft,
+                                          TextOverflowType::AllowOverflow,
+                                          icon_scaling);
     }
 
-    imgui.graphics->AddTextJustified(
+    imgui.draw_list->AddTextJustified(
         button_r,
         button_text,
         LiveCol(imgui,
@@ -152,10 +152,10 @@ static void DoHeading(Gui* g,
     auto const window_title_h = LiveSize(imgui, UiSizeId::ModalWindowTitleH);
     auto const window_title_gap_y = LiveSize(imgui, UiSizeId::ModalWindowTitleGapY);
 
-    imgui.graphics->context->PushFont(g->fonts[ToInt(FontType::Heading1)]);
-    DEFER { imgui.graphics->context->PopFont(); };
+    imgui.draw_list->renderer->PushFont(g->fonts[ToInt(FontType::Heading1)]);
+    DEFER { imgui.draw_list->renderer->PopFont(); };
     auto const r = imgui.GetRegisteredAndConvertedRect({.xywh {0, y_pos, imgui.Width(), window_title_h}});
-    g->imgui.graphics->AddTextJustified(r, str, LiveCol(imgui, col), justification);
+    g->imgui.draw_list->AddTextJustified(r, str, LiveCol(imgui, col), justification);
 
     y_pos += window_title_h + window_title_gap_y;
 }
@@ -179,15 +179,15 @@ static void DoLegacyParamsModal(Gui* g) {
     if (!g->legacy_params_window_open) return;
 
     auto body_font = g->fonts[ToInt(FontType::Body)];
-    g->frame_input.graphics_ctx->PushFont(body_font);
-    DEFER { g->frame_input.graphics_ctx->PopFont(); };
+    GuiIo().in.renderer->PushFont(body_font);
+    DEFER { GuiIo().in.renderer->PopFont(); };
     auto& imgui = g->imgui;
 
     auto const r = ModalRect(imgui, UiSizeId::LegacyParamsWindowWidth, UiSizeId::LegacyParamsWindowHeight);
     auto settings = FloeWindowSettings(g->imgui, [](IMGUI_DRAW_WINDOW_BG_ARGS) {
         auto r = window->unpadded_bounds;
         auto const rounding = LiveSize(imgui, UiSizeId::CornerRounding);
-        imgui.graphics->AddRectFilled(r, LiveCol(imgui, UiColMap::TopPanelBackTop), rounding);
+        imgui.draw_list->AddRectFilled(r, LiveCol(imgui, UiColMap::TopPanelBackTop), rounding);
     });
     settings.pad_top_left = {LiveSize(imgui, UiSizeId::ModalWindowPadL),
                              LiveSize(imgui, UiSizeId::ModalWindowPadT)};
@@ -256,7 +256,7 @@ static void DoLegacyParamsModal(Gui* g) {
                                      g->engine.processor.main_params.DescribedValue(p.index),
                                      UiSizeId::Top2KnobsGapX);
         } else {
-            auto const font = imgui.graphics->context->CurrentFont();
+            auto const font = imgui.draw_list->renderer->CurrentFont();
             auto const text_width = font->CalcTextSizeA(font->font_size, FLT_MAX, 0.0f, desc.name).x;
             auto const toggle_width = text_width + (LiveSize(imgui, UiSizeId::MenuButtonTextMarginL) * 2);
             auto const btn_h = LiveSize(g->imgui, UiSizeId::ParamPopupButtonHeight);
@@ -300,22 +300,22 @@ static void DoLegacyParamsModal(Gui* g) {
         }
 
         auto const label_r = imgui.GetRegisteredAndConvertedRect(layout::GetRect(g->layout, p.extra_label));
-        imgui.graphics->AddTextJustified(label_r,
-                                         desc.ModuleString(),
-                                         LiveCol(g->imgui, UiColMap::TopPanelTitleText),
-                                         TextJustification::Centred);
+        imgui.draw_list->AddTextJustified(label_r,
+                                          desc.ModuleString(),
+                                          LiveCol(g->imgui, UiColMap::TopPanelTitleText),
+                                          TextJustification::Centred);
     }
 }
 
 static void DoErrorsModal(Gui* g) {
-    g->frame_input.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Body)]);
-    DEFER { g->frame_input.graphics_ctx->PopFont(); };
+    GuiIo().in.renderer->PushFont(g->fonts[ToInt(FontType::Body)]);
+    DEFER { GuiIo().in.renderer->PopFont(); };
     auto& imgui = g->imgui;
 
     auto const r = ModalRect(imgui, UiSizeId::ErrorWindowWidth, UiSizeId::ErrorWindowHeight);
     auto const settings = ModalWindowSettings(g->imgui);
 
-    auto font = imgui.graphics->context->CurrentFont();
+    auto font = imgui.draw_list->renderer->CurrentFont();
 
     if (imgui.BeginWindowPopup(settings, IdForModal(ModalWindowType::LoadError), r, "ErrorModal")) {
         DEFER { imgui.EndWindow(); };
@@ -345,19 +345,19 @@ static void DoErrorsModal(Gui* g) {
                         y_pos += (f32)error_window_gap_after_desc;
                         auto line_r = Rect {.x = 0, .y = y_pos, .w = imgui.Width(), .h = 1};
                         imgui.RegisterAndConvertRect(&line_r);
-                        imgui.graphics->AddLine(line_r.Min(), line_r.Max(), text_style.main_cols.reg);
+                        imgui.draw_list->AddLine(line_r.Min(), line_r.Max(), text_style.main_cols.reg);
                         y_pos += (f32)error_window_divider_spacing_y;
                     }
 
                     // title
                     {
-                        imgui.graphics->context->PushFont(g->fonts[ToInt(FontType::Heading2)]);
+                        imgui.draw_list->renderer->PushFont(g->fonts[ToInt(FontType::Heading2)]);
                         auto const error_window_item_h = LiveSize(imgui, UiSizeId::ErrorWindowItemH);
                         labels::Label(g,
                                       {.xywh {0, y_pos, imgui.Width(), (f32)error_window_item_h}},
                                       e.title,
                                       text_style);
-                        imgui.graphics->context->PopFont();
+                        imgui.draw_list->renderer->PopFont();
 
                         y_pos += (f32)error_window_item_h;
                     }
@@ -375,12 +375,12 @@ static void DoErrorsModal(Gui* g) {
                         auto const size = draw::GetTextSize(font, error_text, max_width);
                         auto desc_r = Rect {.x = 0, .y = y_pos, .w = size.x, .h = size.y};
                         imgui.RegisterAndConvertRect(&desc_r);
-                        imgui.graphics->AddText(font,
-                                                font->font_size,
-                                                desc_r.pos,
-                                                text_style.main_cols.reg,
-                                                error_text,
-                                                max_width);
+                        imgui.draw_list->AddText(font,
+                                                 font->font_size,
+                                                 desc_r.pos,
+                                                 text_style.main_cols.reg,
+                                                 error_text,
+                                                 max_width);
                         y_pos += size.y + (f32)error_window_gap_after_desc;
                     }
 
@@ -396,15 +396,15 @@ static void DoErrorsModal(Gui* g) {
 
         // Add space to the bottom of the scroll window
         imgui.GetRegisteredAndConvertedRect(
-            {.xywh {0, y_pos, 1, imgui.graphics->context->CurrentFontSize()}});
+            {.xywh {0, y_pos, 1, imgui.draw_list->renderer->CurrentFontSize()}});
 
         if (!num_errors) imgui.ClosePopupToLevel(0);
     }
 }
 
 static void DoLoadingOverlay(Gui* g) {
-    g->frame_input.graphics_ctx->PushFont(g->fonts[ToInt(FontType::Body)]);
-    DEFER { g->frame_input.graphics_ctx->PopFont(); };
+    GuiIo().in.renderer->PushFont(g->fonts[ToInt(FontType::Body)]);
+    DEFER { GuiIo().in.renderer->PopFont(); };
     auto& imgui = g->imgui;
 
     auto const r = ModalRect(imgui, UiSizeId::LoadingOverlayBoxWidth, UiSizeId::LoadingOverlayBoxHeight);

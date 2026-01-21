@@ -112,7 +112,7 @@ fn runFormat(context: *Context) !u8 {
     const source_files = try std_extras.findSourceFiles(context.allocator, .{
         .dir_path = "src",
         .extensions = &.{ ".cpp", ".hpp", ".h", ".mm" },
-        .exclude_folders = &.{},
+        .exclude_folders = &.{"shaders"},
     });
 
     var args = std.ArrayList([]const u8).init(context.allocator);

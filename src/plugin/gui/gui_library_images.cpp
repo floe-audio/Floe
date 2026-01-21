@@ -88,22 +88,17 @@ static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
     thread_pool.Async(
         result,
         [lib_id = sample_lib::LibraryId(lib_id_ref),
-         &request_gui_update = imgui.frame_input.request_update,
          &server,
          desired_icon_size = CheckedCast<u16>(Ceil(imgui.VwToPixels(style::k_library_icon_standard_size)) *
                                               2)]() -> Optional<ImageBytes> {
-            DEFER { request_gui_update.Store(true, StoreMemoryOrder::Release); };
+            DEFER { g_request_gui_update.Store(true, StoreMemoryOrder::Release); };
 
             ArenaAllocator scratch_arena {PageAllocator::Instance()};
             auto pixels =
                 ImagePixelsFromLibrary(lib_id, LibraryImageType::Icon, server, scratch_arena, scratch_arena);
             if (!pixels) return k_nullopt;
-            auto const result = ShrinkImageIfNeeded(*pixels,
-                                                    desired_icon_size,
-                                                    desired_icon_size,
-                                                    ImageBytesAllocator(),
-                                                    true);
-            request_gui_update.Store(true, StoreMemoryOrder::Release);
+            auto const result = ResizeImage(*pixels, desired_icon_size, ImageBytesAllocator())
+                                    .ValueOr(pixels->Clone(ImageBytesAllocator()));
             return result;
         },
         []() {
@@ -134,12 +129,10 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryIdRef const& lib_id_ref,
         [lib_id = sample_lib::LibraryId(lib_id_ref),
          reload_background,
          reload_blurred_background,
-         &request_gui_update = imgui.frame_input.request_update,
          blur_options,
          &server,
-         window_width =
-             imgui.frame_input.window_size.width]() -> Optional<LibraryImages::LoadingBackgrounds> {
-            DEFER { request_gui_update.Store(true, StoreMemoryOrder::Release); };
+         window_width = GuiIo().in.window_size.width]() -> Optional<LibraryImages::LoadingBackgrounds> {
+            DEFER { g_request_gui_update.Store(true, StoreMemoryOrder::Release); };
 
             ArenaAllocator scratch_arena {PageAllocator::Instance()};
 
@@ -159,18 +152,17 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryIdRef const& lib_id_ref,
 
             LibraryImages::LoadingBackgrounds result {};
 
-            auto const scaled_width = CheckedCast<u16>(window_width * 1.3f);
-            ASSERT(scaled_width);
-
             // If the image is quite a lot larger than we need, resize it down to avoid storing a huge
             // image on the GPU
-            auto const scaled_background =
-                ShrinkImageIfNeeded(*pixels, scaled_width, window_width, ImageBytesAllocator(), true);
+            auto const background = pixels->size.width > CheckedCast<u16>(window_width * 1.3f)
+                                        ? ResizeImage(*pixels, window_width, ImageBytesAllocator())
+                                              .ValueOr(pixels->Clone(ImageBytesAllocator()))
+                                        : pixels->Clone(ImageBytesAllocator());
 
-            if (reload_background) result.background = scaled_background;
+            if (reload_background) result.background = background;
 
             if (reload_blurred_background)
-                result.blurred_background = CreateBlurredLibraryBackground(scaled_background,
+                result.blurred_background = CreateBlurredLibraryBackground(background,
                                                                            ImageBytesAllocator(),
                                                                            scratch_arena,
                                                                            blur_options);
@@ -239,15 +231,15 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
 
 void InvalidateLibraryImages(LibraryImagesTable& table,
                              sample_lib::LibraryIdRef library_id,
-                             graphics::DrawContext& ctx) {
+                             graphics::Renderer& renderer) {
     ASSERT(g_is_logical_main_thread);
 
     if (auto imgs = table.table.Find(library_id)) {
         imgs->icon_missing = false;
         imgs->background_missing = false;
-        if (imgs->icon) ctx.DestroyImageID(*imgs->icon);
-        if (imgs->background) ctx.DestroyImageID(*imgs->background);
-        if (imgs->blurred_background) ctx.DestroyImageID(*imgs->blurred_background);
+        if (imgs->icon) renderer.DestroyImageID(*imgs->icon);
+        if (imgs->background) renderer.DestroyImageID(*imgs->background);
+        if (imgs->blurred_background) renderer.DestroyImageID(*imgs->blurred_background);
     }
 }
 
@@ -272,7 +264,7 @@ void Shutdown(LibraryImagesTable& table) {
     }
 }
 
-void BeginFrame(LibraryImagesTable& table, imgui::Context& imgui) {
+void BeginFrame(LibraryImagesTable& table) {
     ASSERT(g_is_logical_main_thread);
 
     for (auto [_, imgs, _] : table.table) {
@@ -280,7 +272,7 @@ void BeginFrame(LibraryImagesTable& table, imgui::Context& imgui) {
             if (auto const result = imgs.loading_icon->TryReleaseResult()) {
                 auto const icon_pixels = *result;
                 if (icon_pixels) {
-                    imgs.icon = CreateImageIdChecked(*imgui.frame_input.graphics_ctx, *icon_pixels);
+                    imgs.icon = CreateImageIdChecked(*GuiIo().in.renderer, *icon_pixels);
                     icon_pixels->Free(ImageBytesAllocator());
                 } else
                     imgs.icon_missing = true;
@@ -293,12 +285,12 @@ void BeginFrame(LibraryImagesTable& table, imgui::Context& imgui) {
                 if (backgrounds) {
                     if (backgrounds->background) {
                         imgs.background =
-                            CreateImageIdChecked(*imgui.frame_input.graphics_ctx, *backgrounds->background);
+                            CreateImageIdChecked(*GuiIo().in.renderer, *backgrounds->background);
                         backgrounds->background->Free(ImageBytesAllocator());
                     }
                     if (backgrounds->blurred_background) {
-                        imgs.blurred_background = CreateImageIdChecked(*imgui.frame_input.graphics_ctx,
-                                                                       *backgrounds->blurred_background);
+                        imgs.blurred_background =
+                            CreateImageIdChecked(*GuiIo().in.renderer, *backgrounds->blurred_background);
                         backgrounds->blurred_background->Free(ImageBytesAllocator());
                     }
                 } else {
@@ -311,7 +303,7 @@ void BeginFrame(LibraryImagesTable& table, imgui::Context& imgui) {
         // defer it to the point where we know that the images are actually needed.
         {
             imgs.needs_reload.ClearAll();
-            auto& graphics = *imgui.frame_input.graphics_ctx;
+            auto& graphics = *GuiIo().in.renderer;
 
             if (!graphics.ImageIdIsValid(imgs.icon) && !imgs.icon_missing)
                 imgs.needs_reload.Set(ToInt(LibraryImages::ImageType::Icon));

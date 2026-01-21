@@ -5,7 +5,7 @@
 #include <IconsFontAwesome6.h>
 
 #include "build_resources/embedded_files.h"
-#include "gui_framework/draw_list.hpp"
+#include "gui_framework/graphics.hpp"
 #include "style.hpp"
 
 enum class FontType : u32 {
@@ -20,15 +20,15 @@ enum class FontType : u32 {
 
 using Fonts = Array<graphics::Font*, ToInt(FontType::Count)>;
 
-PUBLIC void LoadFonts(graphics::DrawContext& graphics, Fonts& fonts, f32 pixels_per_point) {
+PUBLIC void LoadFonts(graphics::FontAtlas& atlas, Fonts& fonts, f32 pixels_per_point) {
     auto load_font = [&](BinaryData ttf, f32 size, graphics::GlyphRanges ranges) {
         size *= pixels_per_point;
         graphics::FontConfig config {};
         config.font_data_reference_only = true;
-        return graphics.fonts.AddFontFromMemoryTTF((void*)ttf.data, (int)ttf.size, size, &config, ranges);
+        return atlas.AddFontFromMemoryTTF((void*)ttf.data, (int)ttf.size, size, &config, ranges);
     };
 
-    auto const def_ranges = graphics.fonts.GetGlyphRangesDefaultAudioPlugin();
+    auto const def_ranges = atlas.GetGlyphRangesDefaultAudioPlugin();
     auto const roboto_ttf = EmbeddedRoboto();
     auto const roboto_italic_ttf = EmbeddedRobotoItalic();
 

@@ -341,7 +341,11 @@ pub fn makeRelease(
 
                 step.dependOn(&b.addInstallFile(zip_file, out_filename).step);
             } else {
-                std.log.warn("IMPORTANT: building macOS package installers requires a macOS host, no installer will be created", .{});
+                const warn = std_extras.addWarn(
+                    b,
+                    "building macOS package installers requires a macOS host, no installer will be created",
+                );
+                step.dependOn(&warn.step);
             }
         },
         .linux => {

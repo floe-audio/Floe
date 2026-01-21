@@ -26,7 +26,7 @@
 #include "engine/engine.hpp"
 #include "engine/shared_engine_systems.hpp"
 #include "gui/gui_prefs.hpp"
-#include "gui_framework/gui_platform.hpp"
+#include "gui_framework/app_window.hpp"
 #include "processing_utils/scoped_denormals.hpp"
 #include "processor/processor.hpp"
 
@@ -96,8 +96,8 @@ struct FloePluginInstance : PluginInstanceMessages {
 
     void UpdateGui() override {
         ASSERT(g_is_logical_main_thread);
-        if (gui_platform)
-            gui_platform->last_result.ElevateUpdateRequest(GuiFrameResult::UpdateRequest::Animate);
+        if (app_window)
+            app_window->last_result.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
     }
 
     ArenaAllocator arena {PageAllocator::Instance()};
@@ -106,7 +106,7 @@ struct FloePluginInstance : PluginInstanceMessages {
 
     u64 window_size_listener_id {};
 
-    Optional<GuiPlatform> gui_platform {};
+    Optional<AppWindow> app_window {};
 
     bool gui_opened {false};
 };
@@ -337,11 +337,11 @@ static bool ClapGuiCreate(clap_plugin_t const* plugin, char const* api, bool is_
                         api,
                         is_floating);
 
-        if (floe.gui_platform) return true;
+        if (floe.app_window) return true;
 
-        floe.gui_platform.Emplace(floe.host, g_shared_engine_systems->prefs);
+        floe.app_window.Emplace(floe.host, g_shared_engine_systems->prefs);
         floe.gui_opened = true;
-        return ReportIfError(CreateView(*floe.gui_platform), "CreateView");
+        return ReportIfError(Init(*floe.app_window), "CreateView");
     } catch (PanicException) {
         return false;
     }
@@ -367,10 +367,10 @@ static void ClapGuiDestroy(clap_plugin const* plugin) {
         if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return;
         DEFER { LeaveLogicalMainThread(); };
 
-        if (!floe.gui_platform) return;
+        if (!floe.app_window) return;
 
-        DestroyView(*floe.gui_platform);
-        floe.gui_platform.Clear();
+        Deinit(*floe.app_window);
+        floe.app_window.Clear();
     } catch (PanicException) {
         return;
     }
@@ -412,12 +412,12 @@ static bool ClapGuiGetSize(clap_plugin_t const* plugin, u32* width, u32* height)
             return false;
         if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
         DEFER { LeaveLogicalMainThread(); };
-        if (!Check(floe, floe.gui_platform.HasValue(), k_func, "no gui created")) return false;
+        if (!Check(floe, floe.app_window.HasValue(), k_func, "no gui created")) return false;
 
         LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
-        auto const size = GetSize(*floe.gui_platform);
-        auto const clap_size = PhysicalPixelsToClapPixels(floe.gui_platform->view, size);
+        auto const size = GetSize(*floe.app_window);
+        auto const clap_size = PhysicalPixelsToClapPixels(floe.app_window->view, size);
 
         if (width) *width = clap_size.width;
         if (height) *height = clap_size.height;
@@ -483,8 +483,8 @@ static bool ClapGuiGetResizeHints(clap_plugin_t const* plugin, clap_gui_resize_h
 }
 
 static Optional<UiSize>
-GetUsableSizeWithinClapDimensions(GuiPlatform& gui_platform, u32 clap_width, u32 clap_height) {
-    auto const size = ClapPixelsToPhysicalPixels(gui_platform.view, clap_width, clap_height);
+GetUsableSizeWithinClapDimensions(AppWindow& app_window, u32 clap_width, u32 clap_height) {
+    auto const size = ClapPixelsToPhysicalPixels(app_window.view, clap_width, clap_height);
     if (!size) return k_nullopt;
 
     auto const aspect_ratio_conformed_size = NearestAspectRatioSizeInsideSize(*size, k_gui_aspect_ratio);
@@ -492,7 +492,7 @@ GetUsableSizeWithinClapDimensions(GuiPlatform& gui_platform, u32 clap_width, u32
     if (!aspect_ratio_conformed_size) return k_nullopt;
     if (aspect_ratio_conformed_size->width < k_min_gui_width) return k_nullopt;
 
-    return PhysicalPixelsToClapPixels(gui_platform.view, *aspect_ratio_conformed_size);
+    return PhysicalPixelsToClapPixels(app_window.view, *aspect_ratio_conformed_size);
 }
 
 // If the plugin GUI is resizable, then the plugin will calculate the closest usable size which fits in the
@@ -521,7 +521,7 @@ static bool ClapGuiAdjustSize(clap_plugin_t const* plugin, u32* clap_width, u32*
 
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func, "{} x {}", *clap_width, *clap_height);
 
-        if (!floe.gui_platform || !floe.gui_platform->view) {
+        if (!floe.app_window || !floe.app_window->view) {
             // We've been called before we have the ability to check our scaling factor, we can still give a
             // reasonable result by getting the nearest aspect ratio size.
 
@@ -534,7 +534,7 @@ static bool ClapGuiAdjustSize(clap_plugin_t const* plugin, u32* clap_width, u32*
             *clap_height = aspect_ratio_conformed_size->height;
             return true;
         } else if (auto const size =
-                       GetUsableSizeWithinClapDimensions(*floe.gui_platform, *clap_width, *clap_height)) {
+                       GetUsableSizeWithinClapDimensions(*floe.app_window, *clap_width, *clap_height)) {
             *clap_width = size->width;
             *clap_height = size->height;
             return true;
@@ -563,11 +563,11 @@ static bool ClapGuiSetSize(clap_plugin_t const* plugin, u32 clap_width, u32 clap
         if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
         DEFER { LeaveLogicalMainThread(); };
 
-        if (!Check(floe, floe.gui_platform.HasValue(), k_func, "no gui created")) return false;
+        if (!Check(floe, floe.app_window.HasValue(), k_func, "no gui created")) return false;
 
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func, "{} x {}", clap_width, clap_height);
 
-        auto size = ClapPixelsToPhysicalPixels(floe.gui_platform->view, clap_width, clap_height);
+        auto size = ClapPixelsToPhysicalPixels(floe.app_window->view, clap_width, clap_height);
 
         if (!size || size->width < k_min_gui_width) return false;
 
@@ -580,8 +580,7 @@ static bool ClapGuiSetSize(clap_plugin_t const* plugin, u32 clap_width, u32 clap
             auto const invalid_size = *size;
             size = NearestAspectRatioSizeInsideSize(*size, k_gui_aspect_ratio);
 
-            // Use the default size if the size is still invalid.
-            if (!size) *size = DefaultUiSize(*floe.gui_platform);
+            if (!size) size = SizeWithAspectRatio(600, k_gui_aspect_ratio);
 
             LogWarning(ModuleName::Gui,
                        "invalid size given: {} x {}, we have adjusted to {} x {}",
@@ -591,7 +590,7 @@ static bool ClapGuiSetSize(clap_plugin_t const* plugin, u32 clap_width, u32 clap
                        size->height);
         }
 
-        return SetSize(*floe.gui_platform, *size);
+        return SetSize(*floe.app_window, *size);
     } catch (PanicException) {
         return false;
     }
@@ -616,32 +615,30 @@ static bool ClapGuiShow(clap_plugin_t const* plugin) {
         if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
         DEFER { LeaveLogicalMainThread(); };
 
-        if (!Check(floe, floe.gui_platform.HasValue(), k_func, "no gui created")) return false;
+        if (!Check(floe, floe.app_window.HasValue(), k_func, "no gui created")) return false;
 
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
         // It may be possible that the size is invalid, we check that here to be sure.
-        if (auto const size = GetSize(*floe.gui_platform); size.width < k_min_gui_width) {
-            auto const new_size = DefaultUiSize(*floe.gui_platform);
+        if (auto const size = GetSize(*floe.app_window); size.width < k_min_gui_width) {
+            auto const new_size = DefaultUiSize(*floe.app_window);
             ASSERT(new_size.width >= k_min_gui_width);
-            SetSize(*floe.gui_platform, new_size);
+            SetSize(*floe.app_window, new_size);
 
             // We also try to let the host know about the new size.
             if (auto const host_gui =
                     (clap_host_gui const*)floe.host.get_extension(&floe.host, CLAP_EXT_GUI)) {
-                auto const clap_size = PhysicalPixelsToClapPixels(floe.gui_platform->view, new_size);
+                auto const clap_size = PhysicalPixelsToClapPixels(floe.app_window->view, new_size);
                 host_gui->request_resize(&floe.host, clap_size.width, clap_size.height);
             }
         }
 
-        bool const result = ReportIfError(SetVisible(*floe.gui_platform, true, *floe.engine), "SetVisible");
+        bool const result = ReportIfError(SetVisible(*floe.app_window, true, *floe.engine), "SetVisible");
         if (result) {
             static bool shown_graphics_info = false;
-            if (!shown_graphics_info && floe.gui_platform->graphics_ctx) {
+            if (!shown_graphics_info && floe.app_window->renderer) {
                 shown_graphics_info = true;
-                LogInfo(ModuleName::Gui,
-                        "\n{}",
-                        floe.gui_platform->graphics_ctx->graphics_device_info.Items());
+                LogInfo(ModuleName::Gui, "\n{}", floe.app_window->renderer->graphics_device_info.Items());
             }
         }
         return result;
@@ -669,11 +666,11 @@ static bool ClapGuiSetParent(clap_plugin_t const* plugin, clap_window_t const* w
             return false;
         if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
         DEFER { LeaveLogicalMainThread(); };
-        if (!Check(floe, floe.gui_platform.HasValue(), k_func, "no gui created")) return false;
+        if (!Check(floe, floe.app_window.HasValue(), k_func, "no gui created")) return false;
 
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
-        auto const result = ReportIfError(SetParent(*floe.gui_platform, *window), "SetParent");
+        auto const result = ReportIfError(SetParent(*floe.app_window, *window), "SetParent");
 
         ClapGuiShow(plugin); // Bitwig never calls show() so we do it here.
 
@@ -741,11 +738,11 @@ static bool ClapGuiHide(clap_plugin_t const* plugin) {
             return false;
         if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
         DEFER { LeaveLogicalMainThread(); };
-        if (!Check(floe, floe.gui_platform.HasValue(), k_func, "no gui created")) return false;
+        if (!Check(floe, floe.app_window.HasValue(), k_func, "no gui created")) return false;
 
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
-        return ReportIfError(SetVisible(*floe.gui_platform, false, *floe.engine), "SetVisible");
+        return ReportIfError(SetVisible(*floe.app_window, false, *floe.engine), "SetVisible");
     } catch (PanicException) {
         return false;
     }
@@ -1196,7 +1193,7 @@ static void ClapTimerSupportOnTimer(clap_plugin_t const* plugin, clap_id timer_i
         // We don't care about the timer_id, we just want to poll.
         prefs::PollForExternalChanges(g_shared_engine_systems->prefs);
 
-        if (floe.gui_platform) OnClapTimer(*floe.gui_platform, timer_id);
+        if (floe.app_window) OnClapTimer(*floe.app_window, timer_id);
         if (floe.engine) g_engine_callbacks.on_timer(*floe.engine, timer_id);
     } catch (PanicException) {
     }
@@ -1226,7 +1223,7 @@ static void ClapFdSupportOnFd(clap_plugin_t const* plugin, int fd, clap_posix_fd
 
         LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
-        if (floe.gui_platform) OnPosixFd(*floe.gui_platform, fd);
+        if (floe.app_window) OnPosixFd(*floe.app_window, fd);
     } catch (PanicException) {
     }
 }
@@ -1417,7 +1414,7 @@ static void ClapDestroy(const struct clap_plugin* plugin) {
 
             // These shouldn't be necessary, but we can easily handle them so we do.
             if (floe.active) ClapDeactivate(plugin);
-            if (floe.gui_platform) ClapGuiDestroy(plugin);
+            if (floe.app_window) ClapGuiDestroy(plugin);
 
             // IMPORTANT: engine is cleared after unregistration.
             g_shared_engine_systems->UnregisterFloeInstance(floe.index);
@@ -1685,7 +1682,7 @@ void OnPollThread(FloeInstanceIndex index) {
 
 static void
 HandleSizePreferenceChanged(FloePluginInstance& floe, prefs::Key const& key, prefs::Value const* value) {
-    if (!floe.gui_platform) return;
+    if (!floe.app_window) return;
 
     auto const host_gui = (clap_host_gui const*)floe.host.get_extension(&floe.host, CLAP_EXT_GUI);
     if (!host_gui) return;
@@ -1699,18 +1696,18 @@ HandleSizePreferenceChanged(FloePluginInstance& floe, prefs::Key const& key, pre
             auto const validated = prefs::ValidatedOrDefault(*value, desc);
             if (!validated.is_default) w = (u16)validated.value.Get<s64>();
         }
-        if (!w) w = DefaultUiSize(*floe.gui_platform).width;
+        if (!w) w = DefaultUiSize(*floe.app_window).width;
         w;
     });
 
-    auto const current_width = GetSize(*floe.gui_platform).width;
+    auto const current_width = GetSize(*floe.app_window).width;
 
     if (current_width != new_width) {
         auto const new_size = SizeWithAspectRatio(CheckedCast<u16>(new_width), k_gui_aspect_ratio);
         LogInfo(ModuleName::Gui, "Requesting resize to {}x{}", new_size.width, new_size.height);
 
         {
-            auto const clap_size = PhysicalPixelsToClapPixels(floe.gui_platform->view, new_size);
+            auto const clap_size = PhysicalPixelsToClapPixels(floe.app_window->view, new_size);
             host_gui->request_resize(&floe.host, clap_size.width, clap_size.height);
         }
     }

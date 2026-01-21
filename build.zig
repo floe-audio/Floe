@@ -6,11 +6,17 @@ const builtin = @import("builtin");
 
 const std_extras = @import("src/build/std_extras.zig");
 const constants = @import("src/build/constants.zig");
-
-const ConcatCompileCommandsStep = @import("src/build/ConcatCompileCommandsStep.zig");
+const cdb = @import("src/build/combine_cdb_fragments.zig");
 const check_steps = @import("src/build/check_steps.zig");
 const configure_binaries = @import("src/build/configure_binaries.zig");
 const release_artifacts = @import("src/build/release_artifacts.zig");
+const bgfx_shaderc = @import("src/build/bgfx_shaderc.zig");
+const build_context = @import("src/build/context.zig");
+
+const BuildContext = build_context.BuildContext;
+const Options = build_context.Options;
+const TopLevelSteps = build_context.TopLevelSteps;
+const TargetConfig = build_context.TargetConfig;
 
 comptime {
     const current_zig = builtin.zig_version;
@@ -23,62 +29,36 @@ comptime {
     }
 }
 
-const BuildMode = enum {
-    development,
-    performance_profiling,
-    production, // a.k.a.: release, end-user, for-distribution
-};
-
-const BuildContext = struct {
-    b: *std.Build,
-    floe_version_string: []const u8,
-    floe_version: std.SemanticVersion,
-    floe_version_hash: u32,
-    native_archiver: ?*std.Build.Step.Compile,
-    native_docs_generator: ?*std.Build.Step.Compile,
-    enable_tracy: bool,
-    build_mode: BuildMode,
-    optimise: std.builtin.OptimizeMode,
-    dep_floe_logos: ?*std.Build.Dependency,
-    dep_xxhash: *std.Build.Dependency,
-    dep_stb: *std.Build.Dependency,
-    dep_au_sdk: *std.Build.Dependency,
-    dep_miniaudio: *std.Build.Dependency,
-    dep_clap: *std.Build.Dependency,
-    dep_clap_wrapper: *std.Build.Dependency,
-    dep_dr_libs: *std.Build.Dependency,
-    dep_flac: *std.Build.Dependency,
-    dep_icon_font_cpp_headers: *std.Build.Dependency,
-    dep_miniz: *std.Build.Dependency,
-    dep_lua: *std.Build.Dependency,
-    dep_pugl: *std.Build.Dependency,
-    dep_pffft: *std.Build.Dependency,
-    dep_valgrind_h: *std.Build.Dependency,
-    dep_portmidi: *std.Build.Dependency,
-    dep_tracy: *std.Build.Dependency,
-    dep_vst3_sdk: *std.Build.Dependency,
-};
-
 const FlagsBuilder = struct {
     flags: std.ArrayList([]const u8),
 
     const Options = struct {
+        // Enable undefined behaviour sanitizer.
         ubsan: bool = false,
-        compile_commands: ?*ConcatCompileCommandsStep = null,
-        full_diagnostics: bool = false,
+
+        // Generate JSON fragments for making compile_commands.json.
+        gen_cdb_fragments: bool = false,
+
+        // Reduce size of windows.h to speed up compilation. Although it can sometimes cut too much.
+        minimise_windows: bool = true,
+
+        // Add all reasonable warnings as possible.
+        all_warnings: bool = false,
+
+        // Language modes.
         cpp: bool = false,
         objcpp: bool = false,
     };
 
     pub fn init(
-        context: *BuildContext,
-        target: std.Target,
-        options: Options,
+        ctx: *const BuildContext,
+        cfg: *const TargetConfig,
+        options: FlagsBuilder.Options,
     ) FlagsBuilder {
         var result = FlagsBuilder{
-            .flags = std.ArrayList([]const u8).init(context.b.allocator),
+            .flags = std.ArrayList([]const u8).init(ctx.b.allocator),
         };
-        result.addCoreFlags(context, target, options) catch @panic("OOM");
+        result.addCoreFlags(ctx, cfg, options) catch @panic("OOM");
         return result;
     }
 
@@ -86,13 +66,17 @@ const FlagsBuilder = struct {
         self.flags.append(flag) catch @panic("OOM");
     }
 
+    fn addFlags(self: *FlagsBuilder, flags: []const []const u8) void {
+        for (flags) |flag| self.addFlag(flag);
+    }
+
     fn addCoreFlags(
         self: *FlagsBuilder,
-        context: *BuildContext,
-        target: std.Target,
-        options: Options,
+        ctx: *const BuildContext,
+        cfg: *const TargetConfig,
+        options: FlagsBuilder.Options,
     ) !void {
-        if (options.full_diagnostics) {
+        if (options.all_warnings) {
             try self.flags.appendSlice(&.{
                 "-Werror",
                 "-Wconversion",
@@ -109,13 +93,14 @@ const FlagsBuilder = struct {
                 "-Wdouble-promotion",
                 "-Woverloaded-virtual",
                 "-Wno-missing-field-initializers",
-                "-DFLAC__NO_DLL",
-                "-DPUGL_DISABLE_DEPRECATED",
-                "-DPUGL_STATIC",
+            });
+        }
 
-                // Minimise windows.h size for faster compile times:
-                // "Define one or more of the NOapi symbols to exclude the API. For example, NOCOMM excludes
-                // the serial communication API. For a list of support NOapi symbols, see Windows.h."
+        if (options.minimise_windows and cfg.target.os.tag == .windows) {
+            // Minimise windows.h size for faster compile times:
+            // "Define one or more of the NOapi symbols to exclude the API. For example, NOCOMM excludes
+            // the serial communication API. For a list of support NOapi symbols, see Windows.h."
+            try self.flags.appendSlice(&.{
                 "-DWIN32_LEAN_AND_MEAN",
                 "-DNOKANJI",
                 "-DNOHELP",
@@ -137,50 +122,49 @@ const FlagsBuilder = struct {
         try self.flags.append("-D__USE_FILE_OFFSET64");
         try self.flags.append("-D_FILE_OFFSET_BITS=64");
         try self.flags.append("-ftime-trace"); // ClangBuildAnalyzer
-
-        try self.flags.append("-DMINIZ_USE_UNALIGNED_LOADS_AND_STORES=0");
-        try self.flags.append("-DMINIZ_NO_STDIO");
-        try self.flags.append("-DMINIZ_NO_ZLIB_COMPATIBLE_NAMES");
-        try self.flags.append(context.b.fmt("-DMINIZ_LITTLE_ENDIAN={d}", .{@intFromBool(target.cpu.arch.endian() == .little)}));
-        try self.flags.append("-DMINIZ_HAS_64BIT_REGISTERS=1");
-
-        try self.flags.append("-DSTBI_NO_STDIO");
-        try self.flags.append("-DSTBI_MAX_DIMENSIONS=65535"); // we use u16 for dimensions
-
-        if (target.os.tag == .linux) {
-            // NOTE(Sam, June 2024): workaround for a bug in Zig (most likely) where our shared library always causes a
-            // crash after dlclose(), as described here: https://github.com/ziglang/zig/issues/17908
-            // The workaround involves adding this flag and also adding a custom bit of code using
-            // __attribute__((destructor)) to manually call __cxa_finalize():
-            // https://stackoverflow.com/questions/34308720/where-is-dso-handle-defined/48256026#48256026
-            try self.flags.append("-fno-use-cxa-atexit");
-        }
+        try self.flags.append("-fvisibility=hidden");
 
         // We want __builtin_FILE(), __FILE__ and debug info to be portable because we use this information in
         // stacktraces and logging so we change the absolute paths of all files to be relative to the build root.
         // __FILE__, __builtin_FILE(), and DWARF info should be made relative.
         // -ffile-prefix-map=OLD=NEW is an alias for both -fdebug-prefix-map and -fmacro-prefix-map
-        try self.flags.append(context.b.fmt("-ffile-prefix-map={s}{s}=", .{
-            context.b.pathFromRoot(""),
+        try self.flags.append(ctx.b.fmt("-ffile-prefix-map={s}{s}=", .{
+            ctx.b.pathFromRoot(""),
             std.fs.path.sep_str,
         }));
 
-        try self.flags.append("-fvisibility=hidden");
+        switch (cfg.target.os.tag) {
+            .windows => {
+                // On Windows, fix compile errors related to deprecated usage of string in mingw.
+                try self.flags.append("-DSTRSAFE_NO_DEPRECATE");
+                try self.flags.append("-DUNICODE");
+                try self.flags.append("-D_UNICODE");
+            },
+            .macos => {
+                try self.flags.append("-DGL_SILENCE_DEPRECATION"); // disable opengl warnings on macos
 
-        if (context.build_mode != .production and context.enable_tracy) {
-            try self.flags.append("-DTRACY_ENABLE");
-            try self.flags.append("-DTRACY_MANUAL_LIFETIME");
-            try self.flags.append("-DTRACY_DELAYED_INIT");
-            try self.flags.append("-DTRACY_ONLY_LOCALHOST");
-            if (target.os.tag == .linux) {
-                // Couldn't get these working well so just disabling them
-                try self.flags.append("-DTRACY_NO_CALLSTACK");
-                try self.flags.append("-DTRACY_NO_SYSTEM_TRACING");
-            }
+                // Stop errors when compiling macOS obj-c SDK headers.
+                try self.flags.appendSlice(&.{
+                    "-Wno-elaborated-enum-base",
+                    "-Wno-missing-method-return-type",
+                    "-Wno-deprecated-declarations",
+                    "-Wno-deprecated-anon-enum-enum-conversion",
+                    "-D__kernel_ptr_semantics=",
+                    "-Wno-c99-extensions",
+                });
+            },
+            .linux => {
+                // NOTE(Sam, June 2024): workaround for a bug in Zig (most likely) where our shared library always causes a
+                // crash after dlclose(), as described here: https://github.com/ziglang/zig/issues/17908
+                // The workaround involves adding this flag and also adding a custom bit of code using
+                // __attribute__((destructor)) to manually call __cxa_finalize():
+                // https://stackoverflow.com/questions/34308720/where-is-dso-handle-defined/48256026#48256026
+                try self.flags.append("-fno-use-cxa-atexit");
+            },
+            else => {},
         }
 
         // A bit of information about debug symbols:
-        //
         // DWARF is a debugging information format. It is used widely, particularly on Linux and macOS.
         // Zig/libbacktrace, which we use for getting nice stack traces can read DWARF information from the
         // executable on any OS. All we need to do is make sure that the DWARF info is available for
@@ -208,7 +192,7 @@ const FlagsBuilder = struct {
         try self.flags.append("-gdwarf-4");
 
         if (options.ubsan) {
-            if (context.optimise != .ReleaseFast) {
+            if (ctx.optimise != .ReleaseFast) {
                 // By default, zig enables UBSan (unless ReleaseFast mode) in trap mode. Meaning it will catch
                 // undefined behaviour and trigger a trap which can be caught by signal handlers. UBSan also has a
                 // mode where undefined behaviour will instead call various functions. This is called the UBSan
@@ -229,63 +213,82 @@ const FlagsBuilder = struct {
         if (options.cpp) {
             try self.flags.append("-std=c++2c");
         }
+
         if (options.objcpp) {
             try self.flags.append("-std=c++2b");
             try self.flags.append("-ObjC++");
             try self.flags.append("-fobjc-arc");
         }
 
-        if (options.compile_commands) |ccs| {
-            try ccs.addClangArgument(&self.flags);
-        }
+        if (options.gen_cdb_fragments)
+            try cdb.addGenerateCdbFragmentFlags(&self.flags, cfg.cdb_fragments_dir_real);
 
-        if (target.os.tag == .windows) {
-            // On Windows, fix compile errors related to deprecated usage of string in mingw
-            try self.flags.append("-DSTRSAFE_NO_DEPRECATE");
-            try self.flags.append("-DUNICODE");
-            try self.flags.append("-D_UNICODE");
-        } else if (target.os.tag == .macos) {
-            try self.flags.append("-DGL_SILENCE_DEPRECATION"); // disable opengl warnings on macos
+        //
+        // Library specific flags.
 
-            // don't fail when compiling macOS obj-c SDK headers
-            try self.flags.appendSlice(&.{
-                "-Wno-elaborated-enum-base",
-                "-Wno-missing-method-return-type",
-                "-Wno-deprecated-declarations",
-                "-Wno-deprecated-anon-enum-enum-conversion",
-                "-D__kernel_ptr_semantics=",
-                "-Wno-c99-extensions",
-            });
+        try self.flags.appendSlice(&.{
+            "-DFLAC__NO_DLL",
+        });
+
+        try self.flags.appendSlice(&.{
+            "-DPUGL_DISABLE_DEPRECATED",
+            "-DPUGL_STATIC",
+        });
+
+        try self.flags.append(ctx.b.fmt("-DBX_CONFIG_DEBUG={}", .{@intFromBool(ctx.build_mode == .development)}));
+
+        try self.flags.appendSlice(&.{
+            "-DMINIZ_USE_UNALIGNED_LOADS_AND_STORES=0",
+            "-DMINIZ_NO_STDIO",
+            "-DMINIZ_NO_ZLIB_COMPATIBLE_NAMES",
+            ctx.b.fmt("-DMINIZ_LITTLE_ENDIAN={d}", .{@intFromBool(cfg.target.cpu.arch.endian() == .little)}),
+            "-DMINIZ_HAS_64BIT_REGISTERS=1",
+        });
+
+        try self.flags.appendSlice(&.{
+            "-DSTBI_NO_STDIO",
+            "-DSTBI_MAX_DIMENSIONS=65535", // we use u16 for dimensions
+        });
+
+        if (ctx.build_mode != .production and ctx.enable_tracy) {
+            try self.flags.append("-DTRACY_ENABLE");
+            try self.flags.append("-DTRACY_MANUAL_LIFETIME");
+            try self.flags.append("-DTRACY_DELAYED_INIT");
+            try self.flags.append("-DTRACY_ONLY_LOCALHOST");
+            if (cfg.target.os.tag == .linux) {
+                // Couldn't get these working well so just disabling them
+                try self.flags.append("-DTRACY_NO_CALLSTACK");
+                try self.flags.append("-DTRACY_NO_SYSTEM_TRACING");
+            }
         }
     }
 };
 
 fn applyUniversalSettings(
-    context: *BuildContext,
+    ctx: *const BuildContext,
     step: *std.Build.Step.Compile,
-    compile_commands: *ConcatCompileCommandsStep,
 ) void {
-    var b = context.b;
+    var b = ctx.b;
     // NOTE (May 2025, Zig 0.14): LTO on Windows results in debug_info generation that fails to parse with Zig's
     // Dwarf parser (InvalidDebugInfo). We've previously had issues on macOS too. So we disable it for now.
     step.want_lto = false;
     step.rdynamic = true;
     step.linkLibC();
 
-    step.addIncludePath(context.dep_xxhash.path(""));
-    step.addIncludePath(context.dep_stb.path(""));
-    step.addIncludePath(context.dep_clap.path("include"));
-    step.addIncludePath(context.dep_icon_font_cpp_headers.path(""));
-    step.addIncludePath(context.dep_dr_libs.path(""));
-    step.addIncludePath(context.dep_flac.path("include"));
-    step.addIncludePath(context.dep_lua.path(""));
-    step.addIncludePath(context.dep_pugl.path("include"));
-    step.addIncludePath(context.dep_pugl.path("src"));
-    step.addIncludePath(context.dep_clap_wrapper.path("include"));
-    step.addIncludePath(context.dep_tracy.path("public"));
-    step.addIncludePath(context.dep_valgrind_h.path(""));
-    step.addIncludePath(context.dep_portmidi.path("pm_common"));
-    step.addIncludePath(context.dep_miniz.path(""));
+    step.addIncludePath(ctx.dep_xxhash.path(""));
+    step.addIncludePath(ctx.dep_stb.path(""));
+    step.addIncludePath(ctx.dep_clap.path("include"));
+    step.addIncludePath(ctx.dep_icon_font_cpp_headers.path(""));
+    step.addIncludePath(ctx.dep_dr_libs.path(""));
+    step.addIncludePath(ctx.dep_flac.path("include"));
+    step.addIncludePath(ctx.dep_lua.path(""));
+    step.addIncludePath(ctx.dep_pugl.path("include"));
+    step.addIncludePath(ctx.dep_pugl.path("src"));
+    step.addIncludePath(ctx.dep_clap_wrapper.path("include"));
+    step.addIncludePath(ctx.dep_tracy.path("public"));
+    step.addIncludePath(ctx.dep_valgrind_h.path(""));
+    step.addIncludePath(ctx.dep_portmidi.path("pm_common"));
+    step.addIncludePath(ctx.dep_miniz.path(""));
     step.addIncludePath(b.path("third_party_libs/miniz"));
 
     step.addIncludePath(b.path("."));
@@ -310,11 +313,9 @@ fn applyUniversalSettings(
             step.addLibraryPath(sdk.path("usr/lib"));
             step.addFrameworkPath(sdk.path("System/Library/Frameworks"));
         }
-
-        // b.sysroot = sdk.path("");
     }
 
-    compile_commands.step.dependOn(&step.step);
+    ctx.compile_all.dependOn(&step.step);
 
     if (step.rootModuleTarget().os.tag == .macos and step.kind == .exe) {
         // TODO: is dsymutil step needed
@@ -387,7 +388,7 @@ fn resolveTargets(b: *std.Build, user_given_target_presets: ?[]const u8) !std.Ar
                     cpu_features = x86_cpu;
                 },
                 .x86_64_linux => {
-                    arch_os_abi = "x86_64-linux-gnu.2.29";
+                    arch_os_abi = "x86_64-linux-gnu.2.31";
                     cpu_features = x86_cpu;
                 },
                 .x86_64_macos => {
@@ -418,12 +419,13 @@ pub fn build(b: *std.Build) void {
     std_extras.loadEnvFile(b.build_root.handle, &b.graph.env_map) catch {};
 
     // IMPORTANT: if you add options here, you may need to also update the config_hash computation below.
-    const options = .{
+    const options: Options = .{
         .build_mode = b.option(
-            BuildMode,
+            build_context.BuildMode,
             "build-mode",
             "The preset for building the project, affects optimisation, debug settings, etc.",
         ) orelse .development,
+
         // Installing plugins to global plugin folders requires admin rights but it's often easier to debug
         // things without requiring admin. For production builds it's always enabled.
         .windows_installer_require_admin = b.option(
@@ -445,42 +447,6 @@ pub fn build(b: *std.Build) void {
         .targets = b.option([]const u8, "targets", "Target operating system"),
     };
 
-    // Top-level steps
-    const steps = .{
-        .compile_all_step = b.step("compile", "Compile all"),
-
-        .release = b.step("release", "Create release artifacts"),
-
-        .test_step = b.step("test", "Run unit tests"),
-        .coverage = b.step("test-coverage", "Generate code coverage report of unit tests"),
-
-        .clap_val = b.step("test:clap-val", "Test using clap-validator"),
-        .test_vst3_validator = b.step("test:vst3-val", "Run VST3 Validator on built VST3 plugin"),
-        .pluginval_au = b.step("test:pluginval-au", "Test AU using pluginval"),
-        .auval = b.step("test:auval", "Test AU using auval"),
-        .pluginval = b.step("test:pluginval", "Test using pluginval"),
-        .valgrind = b.step("test:valgrind", "Test using Valgrind"),
-        .test_windows_install = b.step("test:windows-install", "Test installation and uninstallation on Windows"),
-
-        .clang_tidy = b.step("check:clang-tidy", "Run clang-tidy on source files"),
-
-        .format_step = b.step("script:format", "Format code with clang-format"),
-        .gh_release_step = b.step("script:create-gh-release", "Create a GitHub release"),
-        .ci_step = b.step("script:ci", "Run CI checks"),
-        .ci_basic_step = b.step("script:ci-basic", "Run basic CI checks"),
-        .upload_errors_step = b.step("script:upload-errors", "Upload error reports to Sentry"),
-
-        .website_gen_step = b.step("script:website-generate", "Generate the static JSON for the website"),
-        .website_build_step = b.step("script:website-build", "Build the website"),
-        .website_dev_step = b.step("script:website-dev", "Start website dev build locally"),
-        .website_promote_step = b.step("script:website-promote-beta-to-stable", "Promote the 'beta' documentation to be the latest stable version"),
-
-        .install_all_step = b.step("install:all", "Install all; development files as well as plugins"),
-    };
-
-    b.default_step = steps.compile_all_step;
-    steps.install_all_step.dependOn(b.getInstallStep());
-
     const floe_version_string = blk: {
         var ver: []const u8 = b.build_root.handle.readFileAlloc(b.allocator, "version.txt", 256) catch @panic("version.txt error");
         ver = std.mem.trim(u8, ver, " \r\n\t");
@@ -496,7 +462,7 @@ pub fn build(b: *std.Build) void {
     const floe_version = std.SemanticVersion.parse(floe_version_string) catch @panic("invalid version");
     const floe_version_hash = std.hash.Fnv1a_32.hash(floe_version_string);
 
-    var build_context: BuildContext = .{
+    var ctx: BuildContext = .{
         .b = b,
         .floe_version_string = floe_version_string,
         .floe_version = floe_version,
@@ -509,6 +475,8 @@ pub fn build(b: *std.Build) void {
             .development => std.builtin.OptimizeMode.Debug,
             .performance_profiling, .production => std.builtin.OptimizeMode.ReleaseSafe,
         },
+        .windows_installer_require_admin = options.windows_installer_require_admin,
+
         .dep_floe_logos = if (options.fetch_floe_logos)
             b.lazyDependency("floe_logos", .{})
         else
@@ -530,7 +498,44 @@ pub fn build(b: *std.Build) void {
         .dep_portmidi = b.dependency("portmidi", .{}),
         .dep_tracy = b.dependency("tracy", .{}),
         .dep_vst3_sdk = b.dependency("vst3_sdk", .{}),
+        .dep_bx = b.dependency("bx", .{}),
+        .dep_bimg = b.dependency("bimg", .{}),
+        .dep_bgfx = b.dependency("bgfx", .{}),
+
+        // Steps are normally on TopLevelSteps, but compile-all is a special case.
+        .compile_all = b.step("compile", "Compile all"),
     };
+
+    var top_level_steps: TopLevelSteps = .{
+        .build_release = b.step("release", "Create release artifacts (zipped, codesigned, etc.)"),
+        .install_plugins = b.getInstallStep(),
+        .install_all = b.step("install:all", "Install all; development files as well as plugins"),
+
+        .test_step = b.step("test", "Run unit tests"),
+        .coverage = b.step("test-coverage", "Generate code coverage report of unit tests"),
+        .clap_val = b.step("test:clap-val", "Test using clap-validator"),
+        .test_vst3_validator = b.step("test:vst3-val", "Run VST3 Validator on built VST3 plugin"),
+        .pluginval_au = b.step("test:pluginval-au", "Test AU using pluginval"),
+        .auval = b.step("test:auval", "Test AU using auval"),
+        .pluginval = b.step("test:pluginval", "Test using pluginval"),
+        .valgrind = b.step("test:valgrind", "Test using Valgrind"),
+        .test_windows_install = b.step("test:windows-install", "Test installation and uninstallation on Windows"),
+        .ci = b.step("script:ci", "Run CI checks"),
+        .ci_basic = b.step("script:ci-basic", "Run basic CI checks"),
+
+        .clang_tidy = b.step("check:clang-tidy", "Run clang-tidy on source files"),
+        .format_step = b.step("script:format", "Format code with clang-format"),
+        .create_gh_release = b.step("script:create-gh-release", "Create a GitHub release"),
+        .upload_errors = b.step("script:upload-errors", "Upload error reports to Sentry"),
+        .shaderc = b.step("script:shaderc", "Compile shaders in src/shaders into .bin.h"),
+        .website_gen = b.step("script:website-generate", "Generate the static JSON for the website"),
+        .website_build = b.step("script:website-build", "Build the website"),
+        .website_dev = b.step("script:website-dev", "Start website dev build locally"),
+        .website_promote = b.step("script:website-promote-beta-to-stable", "Promote the 'beta' documentation to be the latest stable version"),
+    };
+
+    // The default is to compile everything.
+    b.default_step = ctx.compile_all;
 
     b.build_root.handle.makeDir(constants.floe_cache_relative) catch {};
 
@@ -540,24 +545,42 @@ pub fn build(b: *std.Build) void {
     // final compile_commands.json. We just say the first one.
     const target_for_compile_commands = targets.items[0];
 
+    // We do something a little sneaky. We actual replace all the top-level steps with a hidden
+    // combine-CDB step. The rest of the code can carry on as if it's still the top level step, but
+    // it means that the combining of CDG fragments happens as the last step without the rest of the
+    // code having to worry about it.
+    var cdb_steps = std.ArrayList(*cdb.CombineCdbFragmentsStep).init(b.allocator);
+    cdb.insertHiddenCombineCdbStep(b, &ctx.compile_all, &cdb_steps);
+    inline for (@typeInfo(TopLevelSteps).@"struct".fields) |field| {
+        cdb.insertHiddenCombineCdbStep(b, &@field(&top_level_steps, field.name), &cdb_steps);
+    }
+
     // We'll try installing the desired compile_commands.json version here in case any previous build already
     // created it.
-    ConcatCompileCommandsStep.trySetCdb(b, target_for_compile_commands.result);
-
-    check_steps.addGlobalCheckSteps(b);
+    cdb.trySetCdb(b, target_for_compile_commands.result);
 
     const artifacts_list = b.allocator.alloc(release_artifacts.Artifacts, targets.items.len) catch @panic("OOM");
 
+    // Compile/install steps
     for (targets.items, 0..) |target, i| {
-        const artifacts = doTarget(
-            &build_context,
-            target,
-            target.query.eql(target_for_compile_commands.query),
-            options,
-            steps,
-        );
-        artifacts_list[i] = artifacts;
+        if (target.result.os.tag == .windows and options.sanitize_thread)
+            @panic("thread sanitiser is not supported on Windows targets");
+
+        const cfg = TargetConfig.create(&ctx, target, &options);
+
+        for (cdb_steps.items) |cdb_step| {
+            cdb_step.addTarget(.{
+                .fragments_dir = cfg.cdb_fragments_dir,
+                .target = cfg.target,
+                .set_as_active = target.query.eql(target_for_compile_commands.query),
+            }) catch unreachable;
+        }
+
+        artifacts_list[i] = doTarget(&ctx, &cfg, &top_level_steps, &options);
     }
+
+    // check:* steps.
+    check_steps.addGlobalCheckSteps(b);
 
     // Build scripts CLI program and add script steps
     {
@@ -571,44 +594,76 @@ pub fn build(b: *std.Build) void {
         });
         if (b.graph.host.result.os.tag == .windows) exe.linkLibC(); // GetTempPath2W
 
-        addRunScript(exe, steps.format_step, "format");
-        addRunScript(exe, steps.gh_release_step, "create-gh-release");
-        addRunScript(exe, steps.upload_errors_step, "upload-errors");
-        addRunScript(exe, steps.ci_step, "ci");
-        addRunScript(exe, steps.ci_basic_step, "ci-basic");
-        addRunScript(exe, steps.website_promote_step, "website-promote-beta-to-stable");
+        addRunScript(exe, top_level_steps.format_step, "format");
+        addRunScript(exe, top_level_steps.create_gh_release, "create-gh-release");
+        addRunScript(exe, top_level_steps.upload_errors, "upload-errors");
+        addRunScript(exe, top_level_steps.ci, "ci");
+        addRunScript(exe, top_level_steps.ci_basic, "ci-basic");
+        addRunScript(exe, top_level_steps.website_promote, "website-promote-beta-to-stable");
+    }
+
+    // Shader compiler.
+    {
+        const target = if (builtin.target.os.tag == .linux)
+            // It's only possible to compile DX11 shaders on Windows, so we try to use wine if we can.
+            b.resolveTargetQuery(std.Target.Query.parse(.{
+                .arch_os_abi = "x86_64-windows.win10",
+                .cpu_features = "x86_64",
+            }) catch unreachable)
+        else
+            b.graph.host;
+
+        const cfg = TargetConfig.create(&ctx, target, &options);
+
+        const shaderc = bgfx_shaderc.buildShaderC(&ctx, &cfg, .{
+            .bx = buildBx(&ctx, &cfg),
+        });
+        const run = bgfx_shaderc.shaderCRunSteps(&ctx, target.result, shaderc);
+        top_level_steps.shaderc.dependOn(run);
     }
 
     // Make release artifacts
     {
         const archiver = blk: {
-            if (build_context.native_archiver) |a| break :blk a;
+            if (ctx.native_archiver) |a| break :blk a;
 
-            // We need to add steps for the native target.
-            _ = doTarget(&build_context, b.graph.host, false, options, steps);
-            break :blk build_context.native_archiver.?;
+            const native_target_cfg = TargetConfig.create(&ctx, b.graph.host, &options);
+            break :blk buildArchiver(&ctx, &native_target_cfg, .{
+                .miniz = buildMiniz(&ctx, &native_target_cfg),
+            });
         };
 
         for (artifacts_list, 0..) |artifacts, i| {
             const install_steps = release_artifacts.makeRelease(
                 b,
                 archiver,
-                build_context.floe_version,
+                ctx.floe_version,
                 targets.items[i].result,
                 artifacts,
             );
-            steps.release.dependOn(install_steps);
+            top_level_steps.build_release.dependOn(install_steps);
         }
     }
 
     // Docs generator
     {
         const docs_generator = blk: {
-            if (build_context.native_docs_generator) |d| break :blk d;
+            if (ctx.native_docs_generator) |d| break :blk d;
 
-            // We need to add steps for the native target.
-            _ = doTarget(&build_context, b.graph.host, false, options, steps);
-            break :blk build_context.native_docs_generator.?;
+            const native_target_cfg = TargetConfig.create(&ctx, b.graph.host, &options);
+            break :blk buildDocsGenerator(&ctx, &native_target_cfg, .{
+                .common_infrastructure = buildCommonInfrastructure(&ctx, &native_target_cfg, .{
+                    .dr_wav = buildDrWav(&ctx, &native_target_cfg),
+                    .flac = buildFlac(&ctx, &native_target_cfg),
+                    .xxhash = buildXxhash(&ctx, &native_target_cfg),
+                    .library = buildFloeLibrary(&ctx, &native_target_cfg, .{
+                        .stb_sprintf = buildStbSprintf(&ctx, &native_target_cfg),
+                        .debug_info_lib = buildDebugInfo(&ctx, &native_target_cfg),
+                        .tracy = buildTracy(&ctx, &native_target_cfg),
+                    }),
+                    .miniz = buildMiniz(&ctx, &native_target_cfg),
+                }),
+            });
         };
 
         // Run the docs generator. It takes no args but outputs JSON to stdout.
@@ -618,7 +673,7 @@ pub fn build(b: *std.Build) void {
 
             const copy = b.addUpdateSourceFiles();
             copy.addCopyFileToSource(run.captureStdOut(), "website/static/generated-data.json");
-            steps.website_gen_step.dependOn(&copy.step);
+            top_level_steps.website_gen.dependOn(&copy.step);
         }
 
         // Build the site for production
@@ -632,11 +687,11 @@ pub fn build(b: *std.Build) void {
             const run = std_extras.createCommandWithStdoutToStderr(b, builtin.target, "run docusaurus build");
             run.addArgs(&.{ "npm", "run", "build" });
             run.setCwd(b.path("website"));
-            run.step.dependOn(steps.website_gen_step);
+            run.step.dependOn(top_level_steps.website_gen);
             run.step.dependOn(&npm_install.step);
             run.step.dependOn(&create_api.step);
             run.expectExitCode(0);
-            steps.website_build_step.dependOn(&run.step);
+            top_level_steps.website_build.dependOn(&run.step);
         }
 
         // Start the website locally
@@ -648,965 +703,2068 @@ pub fn build(b: *std.Build) void {
             const run = std_extras.createCommandWithStdoutToStderr(b, builtin.target, "run docusaurus start");
             run.addArgs(&.{ "npm", "run", "start" });
             run.setCwd(b.path("website"));
-            run.step.dependOn(steps.website_gen_step);
+            run.step.dependOn(top_level_steps.website_gen);
             run.step.dependOn(&npm_install.step);
 
-            steps.website_dev_step.dependOn(&run.step);
+            top_level_steps.website_dev.dependOn(&run.step);
         }
     }
 }
 
-fn doTarget(
-    build_context: *BuildContext,
-    resolved_target: std.Build.ResolvedTarget,
-    set_as_cdb: bool,
-    options: anytype,
-    steps: anytype,
-) release_artifacts.Artifacts {
-    const b = build_context.b;
-    const target = resolved_target.result;
+fn buildStbSprintf(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    const obj = ctx.b.addObject(.{
+        .name = "stb_sprintf",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    obj.addCSourceFile(.{
+        .file = ctx.b.path("third_party_libs/stb_sprintf.c"),
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    obj.addIncludePath(ctx.dep_stb.path(""));
+    return obj;
+}
 
-    // Create a unique hash for this configuration. We use when we need to unique generate folders even when
-    // multiple zig builds processes are running simultaneously. Ideally we would use hashUserInputOptionsMap
-    // from std.Build, but it's private and quite complicated to copy here. This manual approach is simple but
-    // not as robust.
-    const config_hash = blk: {
-        var hasher = std.hash.Wyhash.init(0);
-        hasher.update(target.zigTriple(b.allocator) catch "");
-        hasher.update(@tagName(options.build_mode));
-        hasher.update(std.mem.asBytes(&options.enable_tracy));
-        hasher.update(std.mem.asBytes(&options.sanitize_thread));
-        hasher.update(std.mem.asBytes(&options.windows_installer_require_admin));
-        break :blk hasher.final();
-    };
+fn buildXxhash(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    const obj = ctx.b.addObject(.{
+        .name = "xxhash",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    obj.addCSourceFile(.{
+        .file = ctx.dep_xxhash.path("xxhash.c"),
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    obj.linkLibC();
+    return obj;
+}
 
-    var concat_cdb = ConcatCompileCommandsStep.create(b, target, set_as_cdb, config_hash);
-    steps.compile_all_step.dependOn(&concat_cdb.step);
-
-    const use_directx_backend = resolved_target.result.os.tag == .windows;
-
-    const floe_config_h = b.addConfigHeader(.{
-        .style = .blank,
-    }, .{
-        .PRODUCTION_BUILD = build_context.build_mode == .production,
-        .OPTIMISED_BUILD = build_context.optimise != .Debug,
-        .RUNTIME_SAFETY_CHECKS_ON = build_context.optimise == .Debug or build_context.optimise == .ReleaseSafe,
-        .FLOE_VERSION_STRING = build_context.floe_version_string,
-        .FLOE_VERSION_HASH = build_context.floe_version_hash,
-        .FLOE_DESCRIPTION = constants.floe_description,
-        .FLOE_HOMEPAGE_URL = constants.floe_homepage_url,
-        .FLOE_MANUAL_URL = constants.floe_manual_url,
-        .FLOE_DOWNLOAD_URL = constants.floe_download_url,
-        .FLOE_CHANGELOG_URL = constants.floe_changelog_url,
-        .FLOE_SOURCE_CODE_URL = constants.floe_source_code_url,
-        .FLOE_PROJECT_ROOT_PATH = b.build_root.path.?,
-        .FLOE_PROJECT_CACHE_PATH = b.pathJoin(&.{ b.build_root.path.?, constants.floe_cache_relative }),
-        .FLOE_VENDOR = constants.floe_vendor,
-        .FLOE_CLAP_ID = constants.floe_clap_id,
-        .FLOE_USE_DIRECTX_BACKEND = use_directx_backend,
-        .IS_WINDOWS = target.os.tag == .windows,
-        .IS_MACOS = target.os.tag == .macos,
-        .IS_LINUX = target.os.tag == .linux,
-        .OS_DISPLAY_NAME = b.fmt("{s}", .{@tagName(target.os.tag)}),
-        .ARCH_DISPLAY_NAME = b.fmt("{s}", .{@tagName(target.cpu.arch)}),
-        .MIN_WINDOWS_NTDDI_VERSION = @intFromEnum(std.Target.Os.WindowsVersion.parse(constants.min_windows_version) catch @panic("invalid win ver")),
-        .MIN_MACOS_VERSION = constants.min_macos_version,
-        .SENTRY_DSN = b.graph.env_map.get("SENTRY_DSN"),
+fn buildTracy(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    const lib = ctx.b.addStaticLibrary(.{
+        .name = "tracy",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    lib.addCSourceFile(.{
+        .file = ctx.dep_tracy.path("public/TracyClient.cpp"),
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .gen_cdb_fragments = true,
+        }).flags.items,
     });
 
-    if (target.os.tag == .windows and options.sanitize_thread) {
-        std.log.err("thread sanitiser is not supported on Windows targets", .{});
-        @panic("thread sanitiser is not supported on Windows targets");
+    switch (cfg.target.os.tag) {
+        .windows => {
+            lib.linkSystemLibrary("ws2_32");
+        },
+        .macos => {},
+        .linux => {},
+        else => {
+            unreachable;
+        },
+    }
+    lib.linkLibCpp();
+    applyUniversalSettings(ctx, lib);
+
+    return lib;
+}
+
+fn buildVitfx(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    const lib = ctx.b.addStaticLibrary(.{
+        .name = "vitfx",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    const path = "third_party_libs/vitfx";
+    lib.addCSourceFiles(.{
+        .root = ctx.b.path(path),
+        .files = &.{
+            "src/synthesis/effects/reverb.cpp",
+            "src/synthesis/effects/phaser.cpp",
+            "src/synthesis/effects/delay.cpp",
+            "src/synthesis/framework/processor.cpp",
+            "src/synthesis/framework/processor_router.cpp",
+            "src/synthesis/framework/value.cpp",
+            "src/synthesis/framework/feedback.cpp",
+            "src/synthesis/framework/operators.cpp",
+            "src/synthesis/filters/phaser_filter.cpp",
+            "src/synthesis/filters/synth_filter.cpp",
+            "src/synthesis/filters/sallen_key_filter.cpp",
+            "src/synthesis/filters/comb_filter.cpp",
+            "src/synthesis/filters/digital_svf.cpp",
+            "src/synthesis/filters/dirty_filter.cpp",
+            "src/synthesis/filters/ladder_filter.cpp",
+            "src/synthesis/filters/diode_filter.cpp",
+            "src/synthesis/filters/formant_filter.cpp",
+            "src/synthesis/filters/formant_manager.cpp",
+            "wrapper.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    lib.addIncludePath(ctx.b.path(path ++ "/src/synthesis"));
+    lib.addIncludePath(ctx.b.path(path ++ "/src/synthesis/framework"));
+    lib.addIncludePath(ctx.b.path(path ++ "/src/synthesis/filters"));
+    lib.addIncludePath(ctx.b.path(path ++ "/src/synthesis/lookups"));
+    lib.addIncludePath(ctx.b.path(path ++ "/src/common"));
+    lib.linkLibCpp();
+
+    lib.addIncludePath(ctx.dep_tracy.path("public"));
+
+    return lib;
+}
+
+fn buildPugl(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    const lib = ctx.b.addStaticLibrary(.{
+        .name = "pugl",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    const src_path = ctx.dep_pugl.path("src");
+    const pugl_ver_hash = std.hash.Fnv1a_32.hash(ctx.dep_pugl.builder.pkg_hash);
+
+    const pugl_flags = FlagsBuilder.init(ctx, cfg, .{
+        .gen_cdb_fragments = true,
+        .minimise_windows = false,
+    }).flags.items;
+
+    lib.addCSourceFiles(.{
+        .root = src_path,
+        .files = &.{
+            "common.c",
+            "internal.c",
+            "internal.c",
+        },
+        .flags = pugl_flags,
+    });
+
+    switch (cfg.target.os.tag) {
+        .windows => {
+            lib.addCSourceFiles(.{
+                .root = src_path,
+                .files = &.{
+                    "win.c",
+                    "win_stub.c",
+                },
+                .flags = pugl_flags,
+            });
+            lib.linkSystemLibrary("opengl32");
+            lib.linkSystemLibrary("gdi32");
+            lib.linkSystemLibrary("dwmapi");
+        },
+        .macos => {
+            lib.addCSourceFiles(.{
+                .root = src_path,
+                .files = &.{
+                    "mac.m",
+                    "mac_gl.m",
+                    "mac_stub.m",
+                },
+                .flags = pugl_flags,
+            });
+            lib.root_module.addCMacro("PuglWindow", ctx.b.fmt("PuglWindow{d}", .{pugl_ver_hash}));
+            lib.root_module.addCMacro("PuglWindowDelegate", ctx.b.fmt("PuglWindowDelegate{d}", .{pugl_ver_hash}));
+            lib.root_module.addCMacro("PuglWrapperView", ctx.b.fmt("PuglWrapperView{d}", .{pugl_ver_hash}));
+            lib.root_module.addCMacro("PuglOpenGLView", ctx.b.fmt("PuglOpenGLView{d}", .{pugl_ver_hash}));
+
+            lib.linkFramework("OpenGL");
+            lib.linkFramework("CoreVideo");
+        },
+        .linux => {
+            lib.addCSourceFiles(.{
+                .root = src_path,
+                .files = &[_][]const u8{
+                    "x11.c",
+                    "x11_stub.c",
+                    "x11_gl.c",
+                },
+                .flags = pugl_flags,
+            });
+            lib.root_module.addCMacro("USE_XRANDR", "0");
+            lib.root_module.addCMacro("USE_XSYNC", "1");
+            lib.root_module.addCMacro("USE_XCURSOR", "1");
+
+            lib.linkSystemLibrary2("gl", .{ .use_pkg_config = linux_use_pkg_config });
+            lib.linkSystemLibrary2("glx", .{ .use_pkg_config = linux_use_pkg_config });
+            lib.linkSystemLibrary2("x11", .{ .use_pkg_config = linux_use_pkg_config });
+            lib.linkSystemLibrary2("xcursor", .{ .use_pkg_config = linux_use_pkg_config });
+            lib.linkSystemLibrary2("xext", .{ .use_pkg_config = linux_use_pkg_config });
+        },
+        else => {},
     }
 
-    const module_options: std.Build.Module.CreateOptions = .{
-        .target = resolved_target,
-        .optimize = build_context.optimise,
-        .strip = false,
-        .pic = true,
-        .link_libc = true,
-        .omit_frame_pointer = false,
-        .unwind_tables = .sync,
-        .sanitize_thread = options.sanitize_thread,
+    lib.root_module.addCMacro("PUGL_DISABLE_DEPRECATED", "1");
+    lib.root_module.addCMacro("PUGL_STATIC", "1");
+
+    applyUniversalSettings(ctx, lib);
+
+    return lib;
+}
+
+fn buildDebugInfo(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    var opts = cfg.module_options;
+    opts.root_source_file = ctx.b.path("src/utils/debug_info/debug_info.zig");
+    const lib = ctx.b.addObject(.{
+        .name = "debug_info_lib",
+        .root_module = ctx.b.createModule(opts),
+    });
+    lib.linkLibC(); // Means better debug info on Linux
+    lib.addIncludePath(ctx.b.path("src/utils/debug_info"));
+    return lib;
+}
+
+// IMPROVE: does this need to be a library? is foundation/os/plugin all linked together?
+fn buildFloeLibrary(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    stb_sprintf: *std.Build.Step.Compile,
+    debug_info_lib: *std.Build.Step.Compile,
+    tracy: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const lib = ctx.b.addStaticLibrary(.{
+        .name = "library",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+
+    const common_source_files = .{
+        "src/utils/debug/debug.cpp",
+        "src/utils/cli_arg_parse.cpp",
+        "src/utils/leak_detecting_allocator.cpp",
+        "src/utils/no_hash.cpp",
+        "src/tests/framework.cpp",
+        "src/utils/logger/logger.cpp",
+        "src/foundation/utils/string.cpp",
+        "src/os/filesystem.cpp",
+        "src/os/misc.cpp",
+        "src/os/web.cpp",
+        "src/os/threading.cpp",
     };
 
-    const stb_sprintf = blk: {
-        const obj = b.addObject(.{
-            .name = "stb_sprintf",
-            .root_module = b.createModule(module_options),
-        });
-        obj.addCSourceFile(.{
-            .file = b.path("third_party_libs/stb_sprintf.c"),
-            .flags = FlagsBuilder.init(build_context, target, .{
-                .compile_commands = concat_cdb,
-            }).flags.items,
-        });
-        obj.addIncludePath(build_context.dep_stb.path(""));
-        break :blk obj;
+    const unix_source_files = .{
+        "src/os/filesystem_unix.cpp",
+        "src/os/misc_unix.cpp",
+        "src/os/threading_pthread.cpp",
     };
 
-    const xxhash = blk: {
-        const obj = b.addObject(.{
-            .name = "xxhash",
-            .root_module = b.createModule(module_options),
-        });
-        obj.addCSourceFile(.{
-            .file = build_context.dep_xxhash.path("xxhash.c"),
-            .flags = FlagsBuilder.init(build_context, target, .{
-                .compile_commands = concat_cdb,
-            }).flags.items,
-        });
-        obj.linkLibC();
-        break :blk obj;
+    const windows_source_files = .{
+        "src/os/filesystem_windows.cpp",
+        "src/os/misc_windows.cpp",
+        "src/os/threading_windows.cpp",
+        "src/os/web_windows.cpp",
     };
 
-    const tracy = blk: {
-        const lib = b.addStaticLibrary(.{
-            .name = "tracy",
-            .root_module = b.createModule(module_options),
-        });
-        lib.addCSourceFile(.{
-            .file = build_context.dep_tracy.path("public/TracyClient.cpp"),
-            .flags = FlagsBuilder.init(build_context, target, .{
-                .compile_commands = concat_cdb,
-            }).flags.items,
-        });
-
-        switch (target.os.tag) {
-            .windows => {
-                lib.linkSystemLibrary("ws2_32");
-            },
-            .macos => {},
-            .linux => {},
-            else => {
-                unreachable;
-            },
-        }
-        lib.linkLibCpp();
-        applyUniversalSettings(build_context, lib, concat_cdb);
-
-        break :blk lib;
+    const macos_source_files = .{
+        "src/os/filesystem_mac.mm",
+        "src/os/misc_mac.mm",
+        "src/os/threading_mac.cpp",
+        "src/os/web_mac.mm",
     };
 
-    const vitfx = blk: {
-        const lib = b.addStaticLibrary(.{
-            .name = "vitfx",
-            .root_module = b.createModule(module_options),
-        });
-        const path = "third_party_libs/vitfx";
-        lib.addCSourceFiles(.{
-            .root = b.path(path),
-            .files = &.{
-                "src/synthesis/effects/reverb.cpp",
-                "src/synthesis/effects/phaser.cpp",
-                "src/synthesis/effects/delay.cpp",
-                "src/synthesis/framework/processor.cpp",
-                "src/synthesis/framework/processor_router.cpp",
-                "src/synthesis/framework/value.cpp",
-                "src/synthesis/framework/feedback.cpp",
-                "src/synthesis/framework/operators.cpp",
-                "src/synthesis/filters/phaser_filter.cpp",
-                "src/synthesis/filters/synth_filter.cpp",
-                "src/synthesis/filters/sallen_key_filter.cpp",
-                "src/synthesis/filters/comb_filter.cpp",
-                "src/synthesis/filters/digital_svf.cpp",
-                "src/synthesis/filters/dirty_filter.cpp",
-                "src/synthesis/filters/ladder_filter.cpp",
-                "src/synthesis/filters/diode_filter.cpp",
-                "src/synthesis/filters/formant_filter.cpp",
-                "src/synthesis/filters/formant_manager.cpp",
-                "wrapper.cpp",
-            },
-            .flags = FlagsBuilder.init(build_context, target, .{
-                .compile_commands = concat_cdb,
-            }).flags.items,
-        });
-        lib.addIncludePath(b.path(path ++ "/src/synthesis"));
-        lib.addIncludePath(b.path(path ++ "/src/synthesis/framework"));
-        lib.addIncludePath(b.path(path ++ "/src/synthesis/filters"));
-        lib.addIncludePath(b.path(path ++ "/src/synthesis/lookups"));
-        lib.addIncludePath(b.path(path ++ "/src/common"));
-        lib.linkLibCpp();
-
-        lib.addIncludePath(build_context.dep_tracy.path("public"));
-
-        break :blk lib;
+    const linux_source_files = .{
+        "src/os/filesystem_linux.cpp",
+        "src/os/misc_linux.cpp",
+        "src/os/threading_linux.cpp",
+        "src/os/web_linux.cpp",
     };
 
-    const pugl = blk: {
-        const lib = b.addStaticLibrary(.{
-            .name = "pugl",
-            .root_module = b.createModule(module_options),
-        });
-        const src_path = build_context.dep_pugl.path("src");
-        const pugl_ver_hash = std.hash.Fnv1a_32.hash(build_context.dep_pugl.builder.pkg_hash);
+    const library_flags = FlagsBuilder.init(ctx, cfg, .{
+        .all_warnings = true,
+        .ubsan = true,
+        .cpp = true,
+        .gen_cdb_fragments = true,
+    }).flags.items;
 
-        const pugl_flags = FlagsBuilder.init(build_context, target, .{
-            .compile_commands = concat_cdb,
-        }).flags.items;
+    switch (cfg.target.os.tag) {
+        .windows => {
+            lib.addCSourceFiles(.{
+                .files = &windows_source_files,
+                .flags = library_flags,
+            });
+            lib.linkSystemLibrary("dbghelp");
+            lib.linkSystemLibrary("shlwapi");
+            lib.linkSystemLibrary("ole32");
+            lib.linkSystemLibrary("crypt32");
+            lib.linkSystemLibrary("uuid");
+            lib.linkSystemLibrary("winhttp");
 
-        lib.addCSourceFiles(.{
-            .root = src_path,
-            .files = &.{
-                "common.c",
-                "internal.c",
-                "internal.c",
-            },
-            .flags = pugl_flags,
-        });
-
-        switch (target.os.tag) {
-            .windows => {
-                lib.addCSourceFiles(.{
-                    .root = src_path,
-                    .files = &.{
-                        "win.c",
-                        "win_gl.c",
-                        "win_stub.c",
-                    },
-                    .flags = pugl_flags,
-                });
-                lib.linkSystemLibrary("opengl32");
-                lib.linkSystemLibrary("gdi32");
-                lib.linkSystemLibrary("dwmapi");
-            },
-            .macos => {
-                lib.addCSourceFiles(.{
-                    .root = src_path,
-                    .files = &.{
-                        "mac.m",
-                        "mac_gl.m",
-                        "mac_stub.m",
-                    },
-                    .flags = pugl_flags,
-                });
-                lib.root_module.addCMacro("PuglWindow", b.fmt("PuglWindow{d}", .{pugl_ver_hash}));
-                lib.root_module.addCMacro("PuglWindowDelegate", b.fmt("PuglWindowDelegate{d}", .{pugl_ver_hash}));
-                lib.root_module.addCMacro("PuglWrapperView", b.fmt("PuglWrapperView{d}", .{pugl_ver_hash}));
-                lib.root_module.addCMacro("PuglOpenGLView", b.fmt("PuglOpenGLView{d}", .{pugl_ver_hash}));
-
-                lib.linkFramework("OpenGL");
-                lib.linkFramework("CoreVideo");
-            },
-            else => {
-                lib.addCSourceFiles(.{
-                    .root = src_path,
-                    .files = &.{
-                        "x11.c",
-                        "x11_gl.c",
-                        "x11_stub.c",
-                    },
-                    .flags = pugl_flags,
-                });
-                lib.root_module.addCMacro("USE_XRANDR", "0");
-                lib.root_module.addCMacro("USE_XSYNC", "1");
-                lib.root_module.addCMacro("USE_XCURSOR", "1");
-
-                lib.linkSystemLibrary2("gl", .{ .use_pkg_config = linux_use_pkg_config });
-                lib.linkSystemLibrary2("glx", .{ .use_pkg_config = linux_use_pkg_config });
-                lib.linkSystemLibrary2("x11", .{ .use_pkg_config = linux_use_pkg_config });
-                lib.linkSystemLibrary2("xcursor", .{ .use_pkg_config = linux_use_pkg_config });
-                lib.linkSystemLibrary2("xext", .{ .use_pkg_config = linux_use_pkg_config });
-            },
-        }
-
-        lib.root_module.addCMacro("PUGL_DISABLE_DEPRECATED", "1");
-        lib.root_module.addCMacro("PUGL_STATIC", "1");
-
-        applyUniversalSettings(build_context, lib, concat_cdb);
-
-        break :blk lib;
-    };
-
-    const debug_info_lib = blk: {
-        var opts = module_options;
-        opts.root_source_file = b.path("src/utils/debug_info/debug_info.zig");
-        const lib = b.addObject(.{
-            .name = "debug_info_lib",
-            .root_module = b.createModule(opts),
-        });
-        lib.linkLibC(); // Means better debug info on Linux
-        lib.addIncludePath(b.path("src/utils/debug_info"));
-
-        break :blk lib;
-    };
-
-    const library = blk: {
-        // IMPROVE: does this need to be a library? is foundation/os/plugin all linked together?
-        const lib = b.addStaticLibrary(.{
-            .name = "library",
-            .root_module = b.createModule(module_options),
-        });
-
-        const common_source_files = .{
-            "src/utils/debug/debug.cpp",
-            "src/utils/cli_arg_parse.cpp",
-            "src/utils/leak_detecting_allocator.cpp",
-            "src/utils/no_hash.cpp",
-            "src/tests/framework.cpp",
-            "src/utils/logger/logger.cpp",
-            "src/foundation/utils/string.cpp",
-            "src/os/filesystem.cpp",
-            "src/os/misc.cpp",
-            "src/os/web.cpp",
-            "src/os/threading.cpp",
-        };
-
-        const unix_source_files = .{
-            "src/os/filesystem_unix.cpp",
-            "src/os/misc_unix.cpp",
-            "src/os/threading_pthread.cpp",
-        };
-
-        const windows_source_files = .{
-            "src/os/filesystem_windows.cpp",
-            "src/os/misc_windows.cpp",
-            "src/os/threading_windows.cpp",
-            "src/os/web_windows.cpp",
-        };
-
-        const macos_source_files = .{
-            "src/os/filesystem_mac.mm",
-            "src/os/misc_mac.mm",
-            "src/os/threading_mac.cpp",
-            "src/os/web_mac.mm",
-        };
-
-        const linux_source_files = .{
-            "src/os/filesystem_linux.cpp",
-            "src/os/misc_linux.cpp",
-            "src/os/threading_linux.cpp",
-            "src/os/web_linux.cpp",
-        };
-
-        const library_flags = FlagsBuilder.init(build_context, target, .{
-            .full_diagnostics = true,
-            .ubsan = true,
-            .cpp = true,
-            .compile_commands = concat_cdb,
-        }).flags.items;
-
-        switch (target.os.tag) {
-            .windows => {
-                lib.addCSourceFiles(.{
-                    .files = &windows_source_files,
-                    .flags = library_flags,
-                });
-                lib.linkSystemLibrary("dbghelp");
-                lib.linkSystemLibrary("shlwapi");
-                lib.linkSystemLibrary("ole32");
-                lib.linkSystemLibrary("crypt32");
-                lib.linkSystemLibrary("uuid");
-                lib.linkSystemLibrary("winhttp");
-
-                // synchronization.lib (https://github.com/ziglang/zig/issues/14919)
-                lib.linkSystemLibrary("api-ms-win-core-synch-l1-2-0");
-            },
-            .macos => {
-                lib.addCSourceFiles(.{
-                    .files = &unix_source_files,
-                    .flags = library_flags,
-                });
-                lib.addCSourceFiles(.{
-                    .files = &macos_source_files,
-                    .flags = FlagsBuilder.init(build_context, target, .{
-                        .full_diagnostics = true,
-                        .ubsan = true,
-                        .objcpp = true,
-                        .compile_commands = concat_cdb,
-                    }).flags.items,
-                });
-                lib.linkFramework("Cocoa");
-                lib.linkFramework("CoreFoundation");
-                lib.linkFramework("AppKit");
-            },
-            .linux => {
-                lib.addCSourceFiles(.{ .files = &unix_source_files, .flags = library_flags });
-                lib.addCSourceFiles(.{ .files = &linux_source_files, .flags = library_flags });
-                lib.linkSystemLibrary2("libcurl", .{ .use_pkg_config = linux_use_pkg_config });
-            },
-            else => {
-                unreachable;
-            },
-        }
-
-        lib.addCSourceFiles(.{ .files = &common_source_files, .flags = library_flags });
-        lib.addConfigHeader(floe_config_h);
-        lib.linkLibC();
-        lib.linkLibrary(tracy);
-        lib.addObject(debug_info_lib);
-        lib.addObject(stb_sprintf);
-        applyUniversalSettings(build_context, lib, concat_cdb);
-
-        break :blk lib;
-    };
-
-    const stb_image = blk: {
-        const obj = b.addObject(.{
-            .name = "stb_image",
-            .root_module = b.createModule(module_options),
-        });
-        obj.addCSourceFile(.{
-            .file = b.path("third_party_libs/stb_image_impls.c"),
-            .flags = FlagsBuilder.init(build_context, target, .{
-                .compile_commands = concat_cdb,
-            }).flags.items,
-        });
-        obj.addIncludePath(build_context.dep_stb.path(""));
-        obj.linkLibC();
-        break :blk obj;
-    };
-
-    const dr_wav = blk: {
-        const obj = b.addObject(.{
-            .name = "dr_wav",
-            .root_module = b.createModule(module_options),
-        });
-        obj.addCSourceFile(
-            .{
-                .file = b.path("third_party_libs/dr_wav_implementation.c"),
-                .flags = FlagsBuilder.init(build_context, target, .{
-                    .compile_commands = concat_cdb,
+            // synchronization.lib (https://github.com/ziglang/zig/issues/14919)
+            lib.linkSystemLibrary("api-ms-win-core-synch-l1-2-0");
+        },
+        .macos => {
+            lib.addCSourceFiles(.{
+                .files = &unix_source_files,
+                .flags = library_flags,
+            });
+            lib.addCSourceFiles(.{
+                .files = &macos_source_files,
+                .flags = FlagsBuilder.init(ctx, cfg, .{
+                    .all_warnings = true,
+                    .ubsan = true,
+                    .objcpp = true,
+                    .gen_cdb_fragments = true,
                 }).flags.items,
-            },
-        );
-        obj.addIncludePath(build_context.dep_dr_libs.path(""));
-        obj.linkLibC();
-        break :blk obj;
-    };
-
-    const miniz = blk: {
-        const lib = b.addStaticLibrary(.{
-            .name = "miniz",
-            .root_module = b.createModule(module_options),
-        });
-        lib.addCSourceFiles(.{
-            .root = build_context.dep_miniz.path(""),
-            .files = &.{
-                "miniz.c",
-                "miniz_tdef.c",
-                "miniz_tinfl.c",
-                "miniz_zip.c",
-            },
-            .flags = FlagsBuilder.init(build_context, target, .{
-                .compile_commands = concat_cdb,
-            }).flags.items,
-        });
-        lib.addIncludePath(build_context.dep_miniz.path(""));
-        lib.linkLibC();
-        lib.addIncludePath(b.path("third_party_libs/miniz"));
-
-        break :blk lib;
-    };
-
-    if (targetCanRunNatively(target)) {
-        var opts = module_options;
-        opts.root_source_file = b.path("src/build/archiver.zig");
-        const exe = b.addExecutable(.{
-            .name = "archiver",
-            .root_module = b.createModule(opts),
-        });
-        exe.linkLibrary(miniz);
-        exe.linkLibC();
-        applyUniversalSettings(build_context, exe, concat_cdb);
-
-        build_context.native_archiver = exe;
+            });
+            lib.linkFramework("Cocoa");
+            lib.linkFramework("CoreFoundation");
+            lib.linkFramework("AppKit");
+        },
+        .linux => {
+            lib.addCSourceFiles(.{ .files = &unix_source_files, .flags = library_flags });
+            lib.addCSourceFiles(.{ .files = &linux_source_files, .flags = library_flags });
+            lib.linkSystemLibrary2("libcurl", .{ .use_pkg_config = linux_use_pkg_config });
+        },
+        else => {
+            unreachable;
+        },
     }
 
-    const flac = blk: {
-        const lib = b.addStaticLibrary(.{
-            .name = "flac",
-            .root_module = b.createModule(module_options),
-        });
-        const flags = FlagsBuilder.init(build_context, target, .{
-            .compile_commands = concat_cdb,
-        }).flags.items;
+    lib.addCSourceFiles(.{ .files = &common_source_files, .flags = library_flags });
+    lib.addConfigHeader(cfg.floe_config_h);
+    lib.linkLibC();
+    lib.linkLibrary(deps.tracy);
+    lib.addObject(deps.debug_info_lib);
+    lib.addObject(deps.stb_sprintf);
+    applyUniversalSettings(ctx, lib);
 
-        lib.addCSourceFiles(.{
-            .root = build_context.dep_flac.path("src/libFLAC"),
-            .files = &.{
-                "bitmath.c",
-                "bitreader.c",
-                "bitwriter.c",
-                "cpu.c",
-                "crc.c",
-                "fixed.c",
-                "fixed_intrin_sse2.c",
-                "fixed_intrin_ssse3.c",
-                "fixed_intrin_sse42.c",
-                "fixed_intrin_avx2.c",
-                "float.c",
-                "format.c",
-                "lpc.c",
-                "lpc_intrin_neon.c",
-                "lpc_intrin_sse2.c",
-                "lpc_intrin_sse41.c",
-                "lpc_intrin_avx2.c",
-                "lpc_intrin_fma.c",
-                "md5.c",
-                "memory.c",
-                "metadata_iterators.c",
-                "metadata_object.c",
-                "stream_decoder.c",
-                "stream_encoder.c",
-                "stream_encoder_intrin_sse2.c",
-                "stream_encoder_intrin_ssse3.c",
-                "stream_encoder_intrin_avx2.c",
-                "stream_encoder_framing.c",
-                "window.c",
-            },
+    return lib;
+}
+
+fn buildStbImage(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    const obj = ctx.b.addObject(.{
+        .name = "stb_image",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    obj.addCSourceFile(.{
+        .file = ctx.b.path("third_party_libs/stb_image_impls.c"),
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    obj.addIncludePath(ctx.dep_stb.path(""));
+    obj.linkLibC();
+    return obj;
+}
+
+fn buildDrWav(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    const obj = ctx.b.addObject(.{
+        .name = "dr_wav",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    obj.addCSourceFile(
+        .{
+            .file = ctx.b.path("third_party_libs/dr_wav_implementation.c"),
+            .flags = FlagsBuilder.init(ctx, cfg, .{
+                .gen_cdb_fragments = true,
+            }).flags.items,
+        },
+    );
+    obj.addIncludePath(ctx.dep_dr_libs.path(""));
+    obj.linkLibC();
+    return obj;
+}
+
+fn buildMiniz(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    const lib = ctx.b.addStaticLibrary(.{
+        .name = "miniz",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    lib.addCSourceFiles(.{
+        .root = ctx.dep_miniz.path(""),
+        .files = &.{
+            "miniz.c",
+            "miniz_tdef.c",
+            "miniz_tinfl.c",
+            "miniz_zip.c",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    lib.addIncludePath(ctx.dep_miniz.path(""));
+    lib.linkLibC();
+    lib.addIncludePath(ctx.b.path("third_party_libs/miniz"));
+
+    return lib;
+}
+
+fn buildArchiver(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    miniz: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    var opts = cfg.module_options;
+    opts.root_source_file = ctx.b.path("src/build/archiver.zig");
+    const exe = ctx.b.addExecutable(.{
+        .name = "archiver",
+        .root_module = ctx.b.createModule(opts),
+    });
+    exe.linkLibrary(deps.miniz);
+    exe.linkLibC();
+    applyUniversalSettings(ctx, exe);
+
+    return exe;
+}
+
+fn buildFlac(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    const lib = ctx.b.addStaticLibrary(.{
+        .name = "flac",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    const flags = FlagsBuilder.init(ctx, cfg, .{
+        .gen_cdb_fragments = true,
+    }).flags.items;
+
+    lib.addCSourceFiles(.{
+        .root = ctx.dep_flac.path("src/libFLAC"),
+        .files = &.{
+            "bitmath.c",
+            "bitreader.c",
+            "bitwriter.c",
+            "cpu.c",
+            "crc.c",
+            "fixed.c",
+            "fixed_intrin_sse2.c",
+            "fixed_intrin_ssse3.c",
+            "fixed_intrin_sse42.c",
+            "fixed_intrin_avx2.c",
+            "float.c",
+            "format.c",
+            "lpc.c",
+            "lpc_intrin_neon.c",
+            "lpc_intrin_sse2.c",
+            "lpc_intrin_sse41.c",
+            "lpc_intrin_avx2.c",
+            "lpc_intrin_fma.c",
+            "md5.c",
+            "memory.c",
+            "metadata_iterators.c",
+            "metadata_object.c",
+            "stream_decoder.c",
+            "stream_encoder.c",
+            "stream_encoder_intrin_sse2.c",
+            "stream_encoder_intrin_ssse3.c",
+            "stream_encoder_intrin_avx2.c",
+            "stream_encoder_framing.c",
+            "window.c",
+        },
+        .flags = flags,
+    });
+
+    const config_header = ctx.b.addConfigHeader(
+        .{
+            .style = .{ .cmake = ctx.dep_flac.path("config.cmake.h.in") },
+            .include_path = "config.h",
+        },
+        .{
+            .CPU_IS_BIG_ENDIAN = cfg.target.cpu.arch.endian() == .big,
+            .ENABLE_64_BIT_WORDS = cfg.target.ptrBitWidth() == 64,
+            .FLAC__ALIGN_MALLOC_DATA = cfg.target.cpu.arch.isX86(),
+            .FLAC__CPU_ARM64 = cfg.target.cpu.arch.isAARCH64(),
+            .FLAC__SYS_DARWIN = cfg.target.os.tag == .macos,
+            .FLAC__SYS_LINUX = cfg.target.os.tag == .linux,
+            .HAVE_BYTESWAP_H = cfg.target.os.tag == .linux,
+            .HAVE_CPUID_H = cfg.target.cpu.arch.isX86(),
+            .HAVE_FSEEKO = true,
+            .HAVE_ICONV = cfg.target.os.tag != .windows,
+            .HAVE_INTTYPES_H = true,
+            .HAVE_MEMORY_H = true,
+            .HAVE_STDINT_H = true,
+            .HAVE_STRING_H = true,
+            .HAVE_STDLIB_H = true,
+            .HAVE_TYPEOF = true,
+            .HAVE_UNISTD_H = true,
+            .GIT_COMMIT_DATE = "",
+            .GIT_COMMIT_HASH = "",
+            .GIT_COMMIT_TAG = "",
+            .PROJECT_VERSION = "1.0.0",
+        },
+    );
+
+    lib.linkLibC();
+    lib.root_module.addCMacro("HAVE_CONFIG_H", "");
+    lib.addConfigHeader(config_header);
+    lib.addIncludePath(ctx.dep_flac.path("include"));
+    lib.addIncludePath(ctx.dep_flac.path("src/libFLAC/include"));
+    if (cfg.target.os.tag == .windows) {
+        lib.root_module.addCMacro("FLAC__NO_DLL", "");
+        lib.addCSourceFile(.{
+            .file = ctx.dep_flac.path("src/share/win_utf8_io/win_utf8_io.c"),
             .flags = flags,
         });
+    }
 
-        const config_header = b.addConfigHeader(
-            .{
-                .style = .{ .cmake = build_context.dep_flac.path("config.cmake.h.in") },
-                .include_path = "config.h",
-            },
-            .{
-                .CPU_IS_BIG_ENDIAN = target.cpu.arch.endian() == .big,
-                .ENABLE_64_BIT_WORDS = target.ptrBitWidth() == 64,
-                .FLAC__ALIGN_MALLOC_DATA = target.cpu.arch.isX86(),
-                .FLAC__CPU_ARM64 = target.cpu.arch.isAARCH64(),
-                .FLAC__SYS_DARWIN = target.os.tag == .macos,
-                .FLAC__SYS_LINUX = target.os.tag == .linux,
-                .HAVE_BYTESWAP_H = target.os.tag == .linux,
-                .HAVE_CPUID_H = target.cpu.arch.isX86(),
-                .HAVE_FSEEKO = true,
-                .HAVE_ICONV = target.os.tag != .windows,
-                .HAVE_INTTYPES_H = true,
-                .HAVE_MEMORY_H = true,
-                .HAVE_STDINT_H = true,
-                .HAVE_STRING_H = true,
-                .HAVE_STDLIB_H = true,
-                .HAVE_TYPEOF = true,
-                .HAVE_UNISTD_H = true,
-                .GIT_COMMIT_DATE = "",
-                .GIT_COMMIT_HASH = "",
-                .GIT_COMMIT_TAG = "",
-                .PROJECT_VERSION = "1.0.0",
-            },
-        );
+    return lib;
+}
 
+fn bgfxFlags(ctx: *const BuildContext, cfg: *const TargetConfig) []const []const u8 {
+    var flags_builder: FlagsBuilder = FlagsBuilder.init(ctx, cfg, .{
+        .ubsan = false,
+        .gen_cdb_fragments = true,
+    });
+    flags_builder.addFlags(&[_][]const u8{
+        ctx.b.fmt("-DBX_CONFIG_DEBUG={}", .{@intFromBool(ctx.build_mode == .development)}),
+        "-std=c++20",
+        "-fno-sanitize=all",
+        "-Wno-date-time",
+        "-fno-strict-aliasing",
+        "-fno-exceptions",
+        "-fno-rtti",
+        "-Wno-tautological-constant-compare",
+        "-DBGFX_CONFIG_MULTITHREADED=1",
+        switch (cfg.bgfx_api) {
+            .vulkan => "-DBGFX_CONFIG_RENDERER_VULKAN=1",
+            .metal => "-DBGFX_CONFIG_RENDERER_METAL=1",
+            .direct3d11 => "-DBGFX_CONFIG_RENDERER_DIRECT3D11=1",
+        },
+    });
+    return flags_builder.flags.items;
+}
+
+fn buildBx(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    const lib = ctx.b.addStaticLibrary(.{
+        .name = "bx",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    lib.addCSourceFile(.{
+        .file = ctx.dep_bx.path("src/amalgamated.cpp"),
+        .flags = bgfxFlags(ctx, cfg),
+    });
+    lib.addIncludePath(ctx.dep_bx.path("include"));
+    lib.addIncludePath(ctx.dep_bx.path("3rdparty"));
+    switch (cfg.target.os.tag) {
+        .macos => {
+            lib.linkFramework("CoreFoundation");
+            lib.linkFramework("Foundation");
+            lib.addIncludePath(ctx.dep_bx.path("include/compat/osx"));
+        },
+        .windows => {
+            lib.linkSystemLibrary("gdi32");
+            lib.addIncludePath(ctx.dep_bx.path("include/compat/mingw"));
+        },
+        .linux => {
+            lib.addIncludePath(ctx.dep_bx.path("include/compat/linux"));
+        },
+        else => {},
+    }
+    lib.linkLibCpp();
+    applyUniversalSettings(ctx, lib);
+    return lib;
+}
+
+fn buildBimg(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    bx: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const lib = ctx.b.addStaticLibrary(.{
+        .name = "bimg",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+
+    const flags = bgfxFlags(ctx, cfg);
+
+    lib.addCSourceFiles(.{
+        .root = ctx.dep_bimg.path("src"),
+        .files = &.{
+            "image.cpp",
+            "image_gnf.cpp",
+        },
+        .flags = flags,
+    });
+
+    lib.addCSourceFiles(.{
+        .root = ctx.dep_bimg.path("3rdparty/astc-encoder/source"),
+        .files = &.{
+            "astcenc_averages_and_directions.cpp",
+            "astcenc_block_sizes.cpp",
+            "astcenc_color_quantize.cpp",
+            "astcenc_color_unquantize.cpp",
+            "astcenc_compress_symbolic.cpp",
+            "astcenc_compute_variance.cpp",
+            "astcenc_decompress_symbolic.cpp",
+            "astcenc_diagnostic_trace.cpp",
+            "astcenc_entry.cpp",
+            "astcenc_find_best_partitioning.cpp",
+            "astcenc_ideal_endpoints_and_weights.cpp",
+            "astcenc_image.cpp",
+            "astcenc_integer_sequence.cpp",
+            "astcenc_mathlib.cpp",
+            "astcenc_mathlib_softfloat.cpp",
+            "astcenc_partition_tables.cpp",
+            "astcenc_percentile_tables.cpp",
+            "astcenc_pick_best_endpoint_format.cpp",
+            "astcenc_quantization.cpp",
+            "astcenc_symbolic_physical.cpp",
+            "astcenc_weight_align.cpp",
+            "astcenc_weight_quant_xfer_tables.cpp",
+        },
+        .flags = flags,
+    });
+
+    lib.linkLibrary(deps.bx);
+    lib.addIncludePath(ctx.dep_bx.path("include"));
+    lib.addIncludePath(ctx.dep_bx.path("3rdparty"));
+    lib.addIncludePath(ctx.dep_bimg.path("include"));
+    lib.addIncludePath(ctx.dep_bimg.path("3rdparty"));
+    lib.addIncludePath(ctx.dep_bimg.path("3rdparty/astc-encoder/include"));
+    lib.linkLibCpp();
+    applyUniversalSettings(ctx, lib);
+
+    return lib;
+}
+
+fn buildBgfx(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    bx: *std.Build.Step.Compile,
+    bimg: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const flags = bgfxFlags(ctx, cfg);
+
+    const lib = ctx.b.addStaticLibrary(.{
+        .name = "bgfx",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+
+    lib.addCSourceFile(.{
+        .file = ctx.dep_bgfx.path(
+            if (cfg.target.os.tag == .macos) "src/amalgamated.mm" else "src/amalgamated.cpp",
+        ),
+        .flags = flags,
+    });
+
+    switch (cfg.target.os.tag) {
+        .linux => {
+            lib.linkSystemLibrary2("x11", .{ .use_pkg_config = linux_use_pkg_config });
+            lib.linkSystemLibrary2("xcb", .{ .use_pkg_config = linux_use_pkg_config });
+            lib.linkSystemLibrary2("vulkan", .{ .use_pkg_config = linux_use_pkg_config });
+        },
+        .windows => {
+            lib.addIncludePath(ctx.dep_bgfx.path("3rdparty/directx-headers/include/directx"));
+        },
+        .macos => {
+            lib.linkFramework("QuartzCore");
+            lib.linkFramework("IOKit");
+            lib.linkFramework("Metal");
+            lib.linkFramework("OpenGL");
+            lib.linkFramework("Cocoa");
+        },
+        else => {},
+    }
+
+    lib.linkLibrary(deps.bx);
+    lib.linkLibrary(deps.bimg);
+    lib.addIncludePath(ctx.dep_bx.path("include"));
+    lib.addIncludePath(ctx.dep_bimg.path("include"));
+    lib.addIncludePath(ctx.dep_bgfx.path("include"));
+    lib.addIncludePath(ctx.dep_bgfx.path("3rdparty"));
+    lib.addIncludePath(ctx.dep_bgfx.path("3rdparty/khronos"));
+    applyUniversalSettings(ctx, lib);
+    return lib;
+}
+
+fn buildFftConvolver(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    const lib = ctx.b.addStaticLibrary(.{
+        .name = "fftconvolver",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    var flags_builder: FlagsBuilder = FlagsBuilder.init(ctx, cfg, .{
+        .gen_cdb_fragments = true,
+    });
+    if (cfg.target.os.tag == .macos) {
+        lib.linkFramework("Accelerate");
+        flags_builder.addFlag("-DAUDIOFFT_APPLE_ACCELERATE");
+        flags_builder.addFlag("-ObjC++");
+    } else {
+        lib.addCSourceFile(.{
+            .file = ctx.dep_pffft.path("pffft.c"),
+            .flags = FlagsBuilder.init(ctx, cfg, .{
+                .gen_cdb_fragments = true,
+            }).flags.items,
+        });
+        flags_builder.addFlag("-DAUDIOFFT_PFFFT");
+    }
+
+    lib.addCSourceFiles(.{
+        .files = &.{
+            "third_party_libs/FFTConvolver/AudioFFT.cpp",
+            "third_party_libs/FFTConvolver/FFTConvolver.cpp",
+            "third_party_libs/FFTConvolver/TwoStageFFTConvolver.cpp",
+            "third_party_libs/FFTConvolver/Utilities.cpp",
+            "third_party_libs/FFTConvolver/wrapper.cpp",
+        },
+        .flags = flags_builder.flags.items,
+    });
+    lib.linkLibCpp();
+    lib.addIncludePath(ctx.dep_pffft.path(""));
+    applyUniversalSettings(ctx, lib);
+
+    return lib;
+}
+
+fn buildCommonInfrastructure(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    dr_wav: *std.Build.Step.Compile,
+    flac: *std.Build.Step.Compile,
+    xxhash: *std.Build.Step.Compile,
+    library: *std.Build.Step.Compile,
+    miniz: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const lua = blk2: {
+        const lib = ctx.b.addStaticLibrary(.{
+            .name = "lua",
+            .target = cfg.resolved_target,
+            .optimize = ctx.optimise,
+        });
+        const flags = [_][]const u8{
+            switch (cfg.target.os.tag) {
+                .linux => "-DLUA_USE_LINUX",
+                .macos => "-DLUA_USE_MACOSX",
+                .windows => "-DLUA_USE_WINDOWS",
+                else => "-DLUA_USE_POSIX",
+            },
+            if (ctx.optimise == .Debug) "-DLUA_USE_APICHECK" else "",
+        };
+
+        // compile as C++ so it uses exceptions instead of setjmp/longjmp. we use try/catch when handling lua
+        lib.addCSourceFile(.{
+            .file = ctx.b.path("third_party_libs/lua.cpp"),
+            .flags = &flags,
+        });
+        lib.addIncludePath(ctx.dep_lua.path(""));
         lib.linkLibC();
-        lib.root_module.addCMacro("HAVE_CONFIG_H", "");
-        lib.addConfigHeader(config_header);
-        lib.addIncludePath(build_context.dep_flac.path("include"));
-        lib.addIncludePath(build_context.dep_flac.path("src/libFLAC/include"));
-        if (target.os.tag == .windows) {
-            lib.root_module.addCMacro("FLAC__NO_DLL", "");
-            lib.addCSourceFile(.{
-                .file = build_context.dep_flac.path("src/share/win_utf8_io/win_utf8_io.c"),
+
+        break :blk2 lib;
+    };
+
+    const src_root = ctx.b.path("src/common_infrastructure");
+
+    const lib = ctx.b.addStaticLibrary(.{
+        .name = "common_infrastructure",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    lib.addCSourceFiles(.{
+        .root = src_root,
+        .files = &.{
+            "audio_utils.cpp",
+            "autosave.cpp",
+            "checksum_crc32_file.cpp",
+            "common_errors.cpp",
+            "descriptors/param_descriptors.cpp",
+            "error_reporting.cpp",
+            "folder_node.cpp",
+            "global.cpp",
+            "package_format.cpp",
+            "paths.cpp",
+            "persistent_store.cpp",
+            "preferences.cpp",
+            "preset_bank_info.cpp",
+            "sample_library/audio_file.cpp",
+            "sample_library/sample_library.cpp",
+            "sample_library/sample_library_lua.cpp",
+            "sample_library/sample_library_mdata.cpp",
+            "sentry/sentry.cpp",
+            "state/macros.cpp",
+            "state/state_coding.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+
+    lib.linkLibrary(lua);
+    lib.addObject(deps.dr_wav);
+    lib.linkLibrary(deps.flac);
+    lib.addObject(deps.xxhash);
+    lib.addConfigHeader(cfg.floe_config_h);
+    lib.addIncludePath(src_root);
+    lib.linkLibrary(deps.library);
+    lib.linkLibrary(deps.miniz);
+    applyUniversalSettings(ctx, lib);
+
+    return lib;
+}
+
+fn buildEmbeddedFiles(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    var opts = cfg.module_options;
+    const root_path = "build_resources/embedded_files.zig";
+    opts.root_source_file = ctx.b.path(root_path);
+    const obj = ctx.b.addObject(.{
+        .name = "embedded_files",
+        .root_module = ctx.b.createModule(opts),
+    });
+    {
+        var embedded_files_options = ctx.b.addOptions();
+        if (ctx.dep_floe_logos) |logos| {
+            const update = ctx.b.addUpdateSourceFiles();
+
+            // Zig's @embedFile only works with paths lower than the root_source_file, so we have to copy them
+            // into a subfolder and work out the relative paths.
+            const logo_path = "build_resources/external/logo.png";
+            update.addCopyFileToSource(logos.path("rasterized/plugin-gui-logo.png"), logo_path);
+            const icon_path = "build_resources/external/icon.png";
+            update.addCopyFileToSource(logos.path("rasterized/icon-background-256px.png"), icon_path);
+            embedded_files_options.step.dependOn(&update.step);
+
+            const root_dir = std.fs.path.dirname(root_path).?;
+
+            embedded_files_options.addOption(?[]const u8, "logo_file", std.fs.path.relative(ctx.b.allocator, root_dir, logo_path) catch unreachable);
+            embedded_files_options.addOption(?[]const u8, "icon_file", std.fs.path.relative(ctx.b.allocator, root_dir, icon_path) catch unreachable);
+        } else {
+            embedded_files_options.addOption(?[]const u8, "logo_file", null);
+            embedded_files_options.addOption(?[]const u8, "icon_file", null);
+        }
+        obj.root_module.addOptions("build_options", embedded_files_options);
+    }
+    obj.linkLibC();
+    obj.addIncludePath(ctx.b.path("build_resources"));
+    return obj;
+}
+
+fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    common_infrastructure: *std.Build.Step.Compile,
+    library: *std.Build.Step.Compile,
+    fft_convolver: *std.Build.Step.Compile,
+    embedded_files: *std.Build.Step.Compile,
+    tracy: *std.Build.Step.Compile,
+    pugl: *std.Build.Step.Compile,
+    stb_image: *std.Build.Step.Compile,
+    vitfx: *std.Build.Step.Compile,
+    bgfx: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const lib = ctx.b.addStaticLibrary(.{
+        .name = "plugin",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    const src_root = ctx.b.path("src/plugin");
+
+    const flags = FlagsBuilder.init(ctx, cfg, .{
+        .all_warnings = true,
+        .ubsan = true,
+        .cpp = true,
+        .gen_cdb_fragments = true,
+    }).flags.items;
+
+    lib.addCSourceFiles(.{
+        .root = src_root,
+        .files = &(.{
+            "engine/check_for_update.cpp",
+            "engine/engine.cpp",
+            "engine/favourite_items.cpp",
+            "engine/package_installation.cpp",
+            "engine/shared_engine_systems.cpp",
+            "gui/gui.cpp",
+            "gui/gui2_bot_panel.cpp",
+            "gui/gui2_common_browser.cpp",
+            "gui/gui2_inst_browser.cpp",
+            "gui/gui2_ir_browser.cpp",
+            "gui/gui2_library_dev_panel.cpp",
+            "gui/gui2_macros.cpp",
+            "gui/gui2_parameter_component.cpp",
+            "gui/gui2_preset_browser.cpp",
+            "gui/gui2_save_preset_panel.cpp",
+            "gui/gui2_top_panel.cpp",
+            "gui/gui_button_widgets.cpp",
+            "gui/gui_dragger_widgets.cpp",
+            "gui/gui_draw_knob.cpp",
+            "gui/gui_drawing_helpers.cpp",
+            "gui/gui_editor_widgets.cpp",
+            "gui/gui_effects.cpp",
+            "gui/gui_envelope.cpp",
+            "gui/gui_keyboard.cpp",
+            "gui/gui_knob_widgets.cpp",
+            "gui/gui_label_widgets.cpp",
+            "gui/gui_layer.cpp",
+            "gui/gui_library_images.cpp",
+            "gui/gui_mid_panel.cpp",
+            "gui/gui_modal_windows.cpp",
+            "gui/gui_peak_meter_widget.cpp",
+            "gui/gui_prefs.cpp",
+            "gui/gui_waveform.cpp",
+            "gui/gui_waveform_images.cpp",
+            "gui/gui_widget_compounds.cpp",
+            "gui/gui_widget_helpers.cpp",
+            "gui/gui_window.cpp",
+            "gui_framework/app_window.cpp",
+            "gui_framework/graphics.cpp",
+            "gui_framework/gui_box_system.cpp",
+            "gui_framework/gui_frame.cpp",
+            "gui_framework/gui_imgui.cpp",
+            "gui_framework/image.cpp",
+            "gui_framework/layout.cpp",
+            "gui_framework/renderer_bgfx.cpp",
+            "plugin/hosting_tests.cpp",
+            "plugin/plugin.cpp",
+            "preset_server/preset_server.cpp",
+            "processing_utils/midi.cpp",
+            "processing_utils/volume_fade.cpp",
+            "processor/layer_processor.cpp",
+            "processor/processor.cpp",
+            "processor/sample_processing.cpp",
+            "processor/voices.cpp",
+            "sample_lib_server/sample_library_server.cpp",
+        }),
+        .flags = flags,
+    });
+
+    switch (cfg.target.os.tag) {
+        .windows => {
+            lib.addCSourceFiles(.{
+                .root = src_root,
+                .files = &[_][]const u8{
+                    "gui_framework/app_window_windows.cpp",
+                    "gui_framework/renderer_direct3d9.cpp",
+                    "gui_framework/bgfx_init_window_windows.cpp",
+                },
                 .flags = flags,
             });
-        }
-
-        break :blk lib;
-    };
-
-    const fft_convolver = blk: {
-        const lib = b.addStaticLibrary(.{
-            .name = "fftconvolver",
-            .root_module = b.createModule(module_options),
-        });
-        var flags_builder: FlagsBuilder = FlagsBuilder.init(build_context, target, .{
-            .compile_commands = concat_cdb,
-        });
-        if (target.os.tag == .macos) {
-            lib.linkFramework("Accelerate");
-            flags_builder.addFlag("-DAUDIOFFT_APPLE_ACCELERATE");
-            flags_builder.addFlag("-ObjC++");
-        } else {
-            lib.addCSourceFile(.{
-                .file = build_context.dep_pffft.path("pffft.c"),
-                .flags = FlagsBuilder.init(build_context, target, .{
-                    .compile_commands = concat_cdb,
+            lib.linkSystemLibrary("d3d9");
+        },
+        .linux => {
+            lib.addCSourceFiles(.{
+                .root = src_root,
+                .files = &[_][]const u8{
+                    "gui_framework/app_window_linux.cpp",
+                    "gui_framework/renderer_opengl.cpp",
+                    "gui_framework/bgfx_init_window_linux.cpp",
+                },
+                .flags = flags,
+            });
+        },
+        .macos => {
+            lib.addCSourceFiles(.{
+                .root = src_root,
+                .files = &[_][]const u8{
+                    "gui_framework/app_window_mac.mm",
+                    "gui_framework/renderer_opengl.cpp",
+                    "gui_framework/bgfx_init_window_macos.mm",
+                },
+                .flags = FlagsBuilder.init(ctx, cfg, .{
+                    .all_warnings = true,
+                    .ubsan = true,
+                    .objcpp = true,
+                    .gen_cdb_fragments = true,
                 }).flags.items,
             });
-            flags_builder.addFlag("-DAUDIOFFT_PFFFT");
-        }
+        },
+        else => {
+            unreachable;
+        },
+    }
 
-        lib.addCSourceFiles(.{
-            .files = &.{
-                "third_party_libs/FFTConvolver/AudioFFT.cpp",
-                "third_party_libs/FFTConvolver/FFTConvolver.cpp",
-                "third_party_libs/FFTConvolver/TwoStageFFTConvolver.cpp",
-                "third_party_libs/FFTConvolver/Utilities.cpp",
-                "third_party_libs/FFTConvolver/wrapper.cpp",
-            },
-            .flags = flags_builder.flags.items,
-        });
-        lib.linkLibCpp();
-        lib.addIncludePath(build_context.dep_pffft.path(""));
-        applyUniversalSettings(build_context, lib, concat_cdb);
-
-        break :blk lib;
-    };
-
-    const common_infrastructure = blk: {
-        const lua = blk2: {
-            const lib = b.addStaticLibrary(.{
-                .name = "lua",
-                .target = resolved_target,
-                .optimize = build_context.optimise,
-            });
-            const flags = [_][]const u8{
-                switch (target.os.tag) {
-                    .linux => "-DLUA_USE_LINUX",
-                    .macos => "-DLUA_USE_MACOSX",
-                    .windows => "-DLUA_USE_WINDOWS",
-                    else => "-DLUA_USE_POSIX",
-                },
-                if (build_context.optimise == .Debug) "-DLUA_USE_APICHECK" else "",
-            };
-
-            // compile as C++ so it uses exceptions instead of setjmp/longjmp. we use try/catch when handling lua
-            lib.addCSourceFile(.{
-                .file = b.path("third_party_libs/lua.cpp"),
-                .flags = &flags,
-            });
-            lib.addIncludePath(build_context.dep_lua.path(""));
-            lib.linkLibC();
-
-            break :blk2 lib;
+    {
+        const license_files = [_]struct {
+            variable: []const u8,
+            file: []const u8,
+        }{
+            .{ .variable = "gpl_3_0_or_later", .file = "GPL-3.0-or-later.txt" },
+            .{ .variable = "apache_2_0", .file = "Apache-2.0.txt" },
+            .{ .variable = "fftpack", .file = "LicenseRef-FFTPACK.txt" },
+            .{ .variable = "ofl_1_1", .file = "OFL-1.1.txt" },
+            .{ .variable = "bsd_3_clause", .file = "BSD-3-Clause.txt" },
+            .{ .variable = "bsd_2_clause", .file = "BSD-2-Clause.txt" },
+            .{ .variable = "isc", .file = "ISC.txt" },
+            .{ .variable = "mit", .file = "MIT.txt" },
         };
 
-        const src_root = b.path("src/common_infrastructure");
-
-        const lib = b.addStaticLibrary(.{
-            .name = "common_infrastructure",
-            .root_module = b.createModule(module_options),
-        });
-        lib.addCSourceFiles(.{
-            .root = src_root,
-            .files = &.{
-                "audio_utils.cpp",
-                "autosave.cpp",
-                "checksum_crc32_file.cpp",
-                "common_errors.cpp",
-                "descriptors/param_descriptors.cpp",
-                "error_reporting.cpp",
-                "folder_node.cpp",
-                "global.cpp",
-                "package_format.cpp",
-                "paths.cpp",
-                "persistent_store.cpp",
-                "preferences.cpp",
-                "preset_bank_info.cpp",
-                "sample_library/audio_file.cpp",
-                "sample_library/sample_library.cpp",
-                "sample_library/sample_library_lua.cpp",
-                "sample_library/sample_library_mdata.cpp",
-                "sentry/sentry.cpp",
-                "state/macros.cpp",
-                "state/state_coding.cpp",
-            },
-            .flags = FlagsBuilder.init(build_context, target, .{
-                .full_diagnostics = true,
-                .ubsan = true,
-                .cpp = true,
-                .compile_commands = concat_cdb,
-            }).flags.items,
-        });
-
-        lib.linkLibrary(lua);
-        lib.addObject(dr_wav);
-        lib.linkLibrary(flac);
-        lib.addObject(xxhash);
-        lib.addConfigHeader(floe_config_h);
-        lib.addIncludePath(src_root);
-        lib.linkLibrary(library);
-        lib.linkLibrary(miniz);
-        applyUniversalSettings(build_context, lib, concat_cdb);
-
-        break :blk lib;
-    };
-
-    const embedded_files = blk: {
-        var opts = module_options;
-        const root_path = "build_resources/embedded_files.zig";
-        opts.root_source_file = b.path(root_path);
-        const obj = b.addObject(.{
-            .name = "embedded_files",
-            .root_module = b.createModule(opts),
-        });
-        {
-            var embedded_files_options = b.addOptions();
-            if (build_context.dep_floe_logos) |logos| {
-                const update = b.addUpdateSourceFiles();
-
-                // Zig's @embedFile only works with paths lower than the root_source_file, so we have to copy them
-                // into a subfolder and work out the relative paths.
-                const logo_path = "build_resources/external/logo.png";
-                update.addCopyFileToSource(logos.path("rasterized/plugin-gui-logo.png"), logo_path);
-                const icon_path = "build_resources/external/icon.png";
-                update.addCopyFileToSource(logos.path("rasterized/icon-background-256px.png"), icon_path);
-                embedded_files_options.step.dependOn(&update.step);
-
-                const root_dir = std.fs.path.dirname(root_path).?;
-
-                embedded_files_options.addOption(?[]const u8, "logo_file", std.fs.path.relative(b.allocator, root_dir, logo_path) catch unreachable);
-                embedded_files_options.addOption(?[]const u8, "icon_file", std.fs.path.relative(b.allocator, root_dir, icon_path) catch unreachable);
-            } else {
-                embedded_files_options.addOption(?[]const u8, "logo_file", null);
-                embedded_files_options.addOption(?[]const u8, "icon_file", null);
-            }
-            obj.root_module.addOptions("build_options", embedded_files_options);
-        }
-        obj.linkLibC();
-        obj.addIncludePath(b.path("build_resources"));
-
-        break :blk obj;
-    };
-
-    const plugin = blk: {
-        const lib = b.addStaticLibrary(.{
-            .name = "plugin",
-            .root_module = b.createModule(module_options),
-        });
-        const src_root = b.path("src/plugin");
-
-        const flags = FlagsBuilder.init(build_context, target, .{
-            .full_diagnostics = true,
-            .ubsan = true,
-            .cpp = true,
-            .compile_commands = concat_cdb,
-        }).flags.items;
-
-        lib.addCSourceFiles(.{
-            .root = src_root,
-            .files = &(.{
-                "engine/check_for_update.cpp",
-                "engine/engine.cpp",
-                "engine/favourite_items.cpp",
-                "engine/package_installation.cpp",
-                "engine/shared_engine_systems.cpp",
-                "gui/gui.cpp",
-                "gui/gui2_bot_panel.cpp",
-                "gui/gui2_common_browser.cpp",
-                "gui/gui2_inst_browser.cpp",
-                "gui/gui2_ir_browser.cpp",
-                "gui/gui2_library_dev_panel.cpp",
-                "gui/gui2_macros.cpp",
-                "gui/gui2_parameter_component.cpp",
-                "gui/gui2_preset_browser.cpp",
-                "gui/gui2_save_preset_panel.cpp",
-                "gui/gui2_top_panel.cpp",
-                "gui/gui_button_widgets.cpp",
-                "gui/gui_dragger_widgets.cpp",
-                "gui/gui_draw_knob.cpp",
-                "gui/gui_drawing_helpers.cpp",
-                "gui/gui_editor_widgets.cpp",
-                "gui/gui_effects.cpp",
-                "gui/gui_envelope.cpp",
-                "gui/gui_keyboard.cpp",
-                "gui/gui_knob_widgets.cpp",
-                "gui/gui_label_widgets.cpp",
-                "gui/gui_layer.cpp",
-                "gui/gui_library_images.cpp",
-                "gui/gui_waveform_images.cpp",
-                "gui/gui_mid_panel.cpp",
-                "gui/gui_modal_windows.cpp",
-                "gui/gui_peak_meter_widget.cpp",
-                "gui/gui_prefs.cpp",
-                "gui/gui_waveform.cpp",
-                "gui/gui_widget_compounds.cpp",
-                "gui/gui_widget_helpers.cpp",
-                "gui/gui_window.cpp",
-                "gui_framework/draw_list.cpp",
-                "gui_framework/gui_box_system.cpp",
-                "gui_framework/gui_imgui.cpp",
-                "gui_framework/gui_platform.cpp",
-                "gui_framework/layout.cpp",
-                "plugin/hosting_tests.cpp",
-                "plugin/plugin.cpp",
-                "preset_server/preset_server.cpp",
-                "processing_utils/midi.cpp",
-                "processing_utils/volume_fade.cpp",
-                "processor/layer_processor.cpp",
-                "processor/processor.cpp",
-                "processor/sample_processing.cpp",
-                "processor/voices.cpp",
-                "sample_lib_server/sample_library_server.cpp",
-            }),
-            .flags = flags,
-        });
-
-        switch (target.os.tag) {
-            .windows => {
-                var windows_files = std.ArrayList([]const u8).init(b.allocator);
-                windows_files.append("gui_framework/gui_platform_windows.cpp") catch @panic("OOM");
-
-                if (use_directx_backend) {
-                    windows_files.append("gui_framework/draw_list_directx.cpp") catch @panic("OOM");
-                    lib.linkSystemLibrary("d3d9");
-                } else {
-                    windows_files.append("gui_framework/draw_list_opengl.cpp") catch @panic("OOM");
-                }
-
-                lib.addCSourceFiles(.{
-                    .root = src_root,
-                    .files = windows_files.items,
-                    .flags = flags,
-                });
-            },
-            .linux => {
-                lib.addCSourceFiles(.{
-                    .root = src_root,
-                    .files = &.{
-                        "gui_framework/gui_platform_linux.cpp",
-                        "gui_framework/draw_list_opengl.cpp",
-                    },
-                    .flags = flags,
-                });
-            },
-            .macos => {
-                lib.addCSourceFiles(.{
-                    .root = src_root,
-                    .files = &.{
-                        "gui_framework/gui_platform_mac.mm",
-                        "gui_framework/draw_list_opengl.cpp",
-                    },
-                    .flags = FlagsBuilder.init(build_context, target, .{
-                        .full_diagnostics = true,
-                        .ubsan = true,
-                        .objcpp = true,
-                        .compile_commands = concat_cdb,
-                    }).flags.items,
-                });
-            },
-            else => {
-                unreachable;
-            },
-        }
-
-        {
-            const license_files = [_]struct {
-                variable: []const u8,
-                file: []const u8,
-            }{
-                .{ .variable = "gpl_3_0_or_later", .file = "GPL-3.0-or-later.txt" },
-                .{ .variable = "apache_2_0", .file = "Apache-2.0.txt" },
-                .{ .variable = "fftpack", .file = "LicenseRef-FFTPACK.txt" },
-                .{ .variable = "ofl_1_1", .file = "OFL-1.1.txt" },
-                .{ .variable = "bsd_3_clause", .file = "BSD-3-Clause.txt" },
-                .{ .variable = "bsd_2_clause", .file = "BSD-2-Clause.txt" },
-                .{ .variable = "isc", .file = "ISC.txt" },
-                .{ .variable = "mit", .file = "MIT.txt" },
-            };
-
-            lib.addCSourceFile(.{
-                .file = b.addWriteFiles().add("licenses.c", file_content: {
-                    var data = std.ArrayList(u8).init(b.allocator);
-                    const writer = data.writer();
-                    for (license_files) |l| {
-                        std.fmt.format(writer,
-                            \\const char {[vari]s}_license[] = {{
-                            \\#embed "LICENSES/{[file]s}"
-                            \\}};
-                            \\const unsigned {[vari]s}_license_size = sizeof({[vari]s}_license);
-                            \\
-                        , .{ .vari = l.variable, .file = l.file }) catch @panic("OOM");
-                    }
-                    break :file_content data.toOwnedSlice() catch @panic("OOM");
-                }),
-                .flags = &.{"-std=c23"},
-            });
-
-            const generated_include_dir = b.addWriteFiles();
-            _ = generated_include_dir.add("license_texts.h", file_content: {
-                var data = std.ArrayList(u8).init(b.allocator);
+        lib.addCSourceFile(.{
+            .file = ctx.b.addWriteFiles().add("licenses.c", file_content: {
+                var data = std.ArrayList(u8).init(ctx.b.allocator);
                 const writer = data.writer();
                 for (license_files) |l| {
                     std.fmt.format(writer,
-                        \\extern const char {[vari]s}_license[];
-                        \\extern const unsigned {[vari]s}_license_size;
-                    , .{ .vari = l.variable }) catch @panic("OOM");
+                        \\const char {[vari]s}_license[] = {{
+                        \\#embed "LICENSES/{[file]s}"
+                        \\}};
+                        \\const unsigned {[vari]s}_license_size = sizeof({[vari]s}_license);
+                        \\
+                    , .{ .vari = l.variable, .file = l.file }) catch @panic("OOM");
                 }
                 break :file_content data.toOwnedSlice() catch @panic("OOM");
-            });
-            lib.addIncludePath(generated_include_dir.getDirectory());
-        }
+            }),
+            .flags = &.{"-std=c23"},
+        });
 
-        lib.addIncludePath(b.path("src/plugin"));
-        lib.addIncludePath(b.path("src"));
-        lib.addConfigHeader(floe_config_h);
-        lib.linkLibrary(library);
-        lib.linkLibrary(common_infrastructure);
-        lib.linkLibrary(fft_convolver);
-        lib.addObject(embedded_files);
-        lib.linkLibrary(tracy);
-        lib.linkLibrary(pugl);
-        lib.addObject(stb_image);
-        lib.addIncludePath(b.path("src/plugin/gui/live_edit_defs"));
-        lib.linkLibrary(vitfx);
-        lib.linkLibrary(miniz);
-        applyUniversalSettings(build_context, lib, concat_cdb);
+        const generated_include_dir = ctx.b.addWriteFiles();
+        _ = generated_include_dir.add("license_texts.h", file_content: {
+            var data = std.ArrayList(u8).init(ctx.b.allocator);
+            const writer = data.writer();
+            for (license_files) |l| {
+                std.fmt.format(writer,
+                    \\extern const char {[vari]s}_license[];
+                    \\extern const unsigned {[vari]s}_license_size;
+                , .{ .vari = l.variable }) catch @panic("OOM");
+            }
+            break :file_content data.toOwnedSlice() catch @panic("OOM");
+        });
+        lib.addIncludePath(generated_include_dir.getDirectory());
+    }
+
+    lib.addIncludePath(ctx.b.path("src/plugin"));
+    lib.addIncludePath(ctx.b.path("src"));
+    lib.addConfigHeader(cfg.floe_config_h);
+    lib.linkLibrary(deps.library);
+    lib.linkLibrary(deps.common_infrastructure);
+    lib.linkLibrary(deps.fft_convolver);
+    lib.addObject(deps.embedded_files);
+    lib.linkLibrary(deps.tracy);
+    lib.linkLibrary(deps.pugl);
+    lib.linkLibrary(deps.bgfx);
+    lib.addIncludePath(ctx.dep_bx.path("include"));
+    lib.addIncludePath(ctx.dep_bimg.path("include"));
+    lib.addIncludePath(ctx.dep_bgfx.path("include"));
+    lib.addObject(deps.stb_image);
+    lib.addIncludePath(ctx.b.path("src/plugin/gui/live_edit_defs"));
+    lib.linkLibrary(deps.vitfx);
+    applyUniversalSettings(ctx, lib);
+
+    return lib;
+}
+
+fn buildDocsGenerator(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    common_infrastructure: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const exe = ctx.b.addExecutable(.{
+        .name = "docs_generator",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "src/docs_generator/docs_generator.cpp",
+            "src/common_infrastructure/final_binary_type.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "DocsGenerator");
+    exe.linkLibrary(deps.common_infrastructure);
+    exe.addIncludePath(ctx.b.path("src"));
+    exe.addConfigHeader(cfg.floe_config_h);
+    applyUniversalSettings(ctx, exe);
+
+    return exe;
+}
+
+fn buildPackager(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    common_infrastructure: *std.Build.Step.Compile,
+    embedded_files: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    var exe = ctx.b.addExecutable(.{
+        .name = "floe-packager",
+        .root_module = ctx.b.createModule(cfg.module_options),
+        .version = ctx.floe_version,
+    });
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "src/packager_tool/packager.cpp",
+            "src/common_infrastructure/final_binary_type.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "Packager");
+    exe.linkLibrary(deps.common_infrastructure);
+    exe.addIncludePath(ctx.b.path("src"));
+    exe.addConfigHeader(cfg.floe_config_h);
+    exe.addObject(deps.embedded_files);
+
+    applyUniversalSettings(ctx, exe);
+
+    return exe;
+}
+
+fn buildPresetEditor(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    common_infrastructure: *std.Build.Step.Compile,
+    embedded_files: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    var exe = ctx.b.addExecutable(.{
+        .name = "preset-editor",
+        .root_module = ctx.b.createModule(cfg.module_options),
+        .version = ctx.floe_version,
+    });
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "src/preset_editor_tool/preset_editor.cpp",
+            "src/common_infrastructure/final_binary_type.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "PresetEditor");
+    exe.linkLibrary(deps.common_infrastructure);
+    exe.addIncludePath(ctx.b.path("src"));
+    exe.addConfigHeader(cfg.floe_config_h);
+    exe.addObject(deps.embedded_files);
+    applyUniversalSettings(ctx, exe);
+    return exe;
+}
+
+fn buildClap(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    plugin: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const dso = ctx.b.addSharedLibrary(.{
+        .name = "Floe.clap",
+        .root_module = ctx.b.createModule(cfg.module_options),
+        .version = ctx.floe_version,
+    });
+    dso.addCSourceFiles(.{
+        .files = &.{
+            "src/plugin/plugin/plugin_entry.cpp",
+            "src/common_infrastructure/final_binary_type.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    dso.root_module.addCMacro("FINAL_BINARY_TYPE", "Clap");
+    dso.addConfigHeader(cfg.floe_config_h);
+    dso.addIncludePath(ctx.b.path("src"));
+    dso.linkLibrary(deps.plugin);
+
+    applyUniversalSettings(ctx, dso);
+    addWindowsEmbedInfo(dso, .{
+        .name = "Floe CLAP",
+        .description = constants.floe_description,
+        .icon_path = null,
+    }) catch @panic("OOM");
+
+    return dso;
+}
+
+fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    plugin: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const miniaudio = blk: {
+        const lib = ctx.b.addStaticLibrary(.{
+            .name = "miniaudio",
+            .root_module = ctx.b.createModule(cfg.module_options),
+        });
+        lib.addCSourceFile(.{
+            .file = ctx.b.path("third_party_libs/miniaudio.c"),
+            .flags = FlagsBuilder.init(ctx, cfg, .{
+                .gen_cdb_fragments = true,
+            }).flags.items,
+        });
+        // NOTE(Sam): disabling pulse audio because it was causing lots of stutters on my machine.
+        lib.root_module.addCMacro("MA_NO_PULSEAUDIO", "1");
+        lib.linkLibC();
+        lib.addIncludePath(ctx.dep_miniaudio.path(""));
+        switch (cfg.target.os.tag) {
+            .macos => {
+                lib.linkFramework("CoreAudio");
+            },
+            .windows => {
+                lib.linkSystemLibrary("dsound");
+            },
+            .linux => {
+                lib.linkSystemLibrary2("alsa", .{ .use_pkg_config = linux_use_pkg_config });
+            },
+            else => {
+                unreachable;
+            },
+        }
+        applyUniversalSettings(ctx, lib);
 
         break :blk lib;
     };
 
-    if (targetCanRunNatively(target)) {
-        const exe = b.addExecutable(.{
-            .name = "docs_generator",
-            .root_module = b.createModule(module_options),
+    const portmidi = blk: {
+        const lib = ctx.b.addStaticLibrary(.{
+            .name = "portmidi",
+            .root_module = ctx.b.createModule(cfg.module_options),
         });
-        exe.addCSourceFiles(.{
+        const pm_root = ctx.dep_portmidi.path("");
+        const pm_flags = FlagsBuilder.init(ctx, cfg, .{
+            .gen_cdb_fragments = true,
+            .minimise_windows = false,
+        }).flags.items;
+        lib.addCSourceFiles(.{
+            .root = pm_root,
             .files = &.{
-                "src/docs_generator/docs_generator.cpp",
-                "src/common_infrastructure/final_binary_type.cpp",
+                "pm_common/portmidi.c",
+                "pm_common/pmutil.c",
+                "porttime/porttime.c",
             },
-            .flags = FlagsBuilder.init(build_context, target, .{
-                .full_diagnostics = true,
-                .ubsan = true,
+            .flags = pm_flags,
+        });
+        switch (cfg.target.os.tag) {
+            .macos => {
+                lib.addCSourceFiles(.{
+                    .root = pm_root,
+                    .files = &.{
+                        "pm_mac/pmmacosxcm.c",
+                        "pm_mac/pmmac.c",
+                        "porttime/ptmacosx_cf.c",
+                        "porttime/ptmacosx_mach.c",
+                    },
+                    .flags = pm_flags,
+                });
+                lib.linkFramework("CoreAudio");
+                lib.linkFramework("CoreMIDI");
+            },
+            .windows => {
+                lib.addCSourceFiles(.{
+                    .root = pm_root,
+                    .files = &.{
+                        "pm_win/pmwin.c",
+                        "pm_win/pmwinmm.c",
+                        "porttime/ptwinmm.c",
+                    },
+                    .flags = pm_flags,
+                });
+                lib.linkSystemLibrary("winmm");
+            },
+            .linux => {
+                lib.addCSourceFiles(.{
+                    .root = pm_root,
+                    .files = &.{
+                        "pm_linux/pmlinux.c",
+                        "pm_linux/pmlinuxalsa.c",
+                        "porttime/ptlinux.c",
+                    },
+                    .flags = pm_flags,
+                });
+                lib.root_module.addCMacro("PMALSA", "1");
+                lib.linkSystemLibrary2("alsa", .{ .use_pkg_config = linux_use_pkg_config });
+            },
+            else => {
+                unreachable;
+            },
+        }
+
+        lib.linkLibC();
+        lib.addIncludePath(ctx.dep_portmidi.path("porttime"));
+        lib.addIncludePath(ctx.dep_portmidi.path("pm_common"));
+        applyUniversalSettings(ctx, lib);
+
+        break :blk lib;
+    };
+
+    const exe = ctx.b.addExecutable(.{
+        .name = "floe_standalone",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "src/standalone_wrapper/standalone_wrapper.cpp",
+            "src/plugin/plugin/plugin_entry.cpp",
+            "src/common_infrastructure/final_binary_type.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "Standalone");
+    exe.addConfigHeader(cfg.floe_config_h);
+    exe.addIncludePath(ctx.b.path("src"));
+    exe.linkLibrary(portmidi);
+    exe.linkLibrary(miniaudio);
+    exe.addIncludePath(ctx.dep_miniaudio.path(""));
+    exe.linkLibrary(deps.plugin);
+    applyUniversalSettings(ctx, exe);
+
+    return exe;
+}
+
+fn vst3Flags(ctx: *const BuildContext, cfg: *const TargetConfig) [][]const u8 {
+    var flags = FlagsBuilder.init(ctx, cfg, .{
+        .ubsan = false,
+        .gen_cdb_fragments = true,
+        .minimise_windows = false,
+    });
+    if (ctx.optimise == .Debug) {
+        flags.addFlag("-DDEVELOPMENT=1");
+    } else {
+        flags.addFlag("-DRELEASE=1");
+    }
+    // Ignore warning about non-reproducible __DATE__ usage.
+    flags.addFlag("-Wno-date-time");
+
+    return flags.flags.items;
+}
+
+fn buildVst3Sdk(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    const lib = ctx.b.addStaticLibrary(.{
+        .name = "VST3",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    lib.addCSourceFiles(.{
+        .root = ctx.dep_vst3_sdk.path(""),
+        .files = &.{
+            "base/source/baseiids.cpp",
+            "base/source/fbuffer.cpp",
+            "base/source/fdebug.cpp",
+            "base/source/fdynlib.cpp",
+            "base/source/fobject.cpp",
+            "base/source/fstreamer.cpp",
+            "base/source/fstring.cpp",
+            "base/source/timer.cpp",
+            "base/source/updatehandler.cpp",
+
+            "base/thread/source/fcondition.cpp",
+            "base/thread/source/flock.cpp",
+
+            "public.sdk/source/common/commoniids.cpp",
+            "public.sdk/source/common/memorystream.cpp",
+            "public.sdk/source/common/openurl.cpp",
+            "public.sdk/source/common/pluginview.cpp",
+            "public.sdk/source/common/readfile.cpp",
+            "public.sdk/source/common/systemclipboard_linux.cpp",
+            "public.sdk/source/common/systemclipboard_mac.mm",
+            "public.sdk/source/common/systemclipboard_win32.cpp",
+            "public.sdk/source/common/threadchecker_linux.cpp",
+            "public.sdk/source/common/threadchecker_mac.mm",
+            "public.sdk/source/common/threadchecker_win32.cpp",
+
+            "pluginterfaces/base/conststringtable.cpp",
+            "pluginterfaces/base/coreiids.cpp",
+            "pluginterfaces/base/funknown.cpp",
+            "pluginterfaces/base/ustring.cpp",
+
+            "public.sdk/source/main/pluginfactory.cpp",
+            "public.sdk/source/main/moduleinit.cpp",
+            "public.sdk/source/vst/vstinitiids.cpp",
+            "public.sdk/source/vst/vstnoteexpressiontypes.cpp",
+            "public.sdk/source/vst/vstsinglecomponenteffect.cpp",
+            "public.sdk/source/vst/vstaudioeffect.cpp",
+            "public.sdk/source/vst/vstcomponent.cpp",
+            "public.sdk/source/vst/vstsinglecomponenteffect.cpp",
+            "public.sdk/source/vst/vstcomponentbase.cpp",
+            "public.sdk/source/vst/vstbus.cpp",
+            "public.sdk/source/vst/vstparameters.cpp",
+            "public.sdk/source/vst/utility/stringconvert.cpp",
+        },
+        .flags = vst3Flags(ctx, cfg),
+    });
+
+    switch (cfg.target.os.tag) {
+        .windows => {},
+        .linux => {},
+        .macos => {
+            lib.linkFramework("CoreFoundation");
+            lib.linkFramework("Foundation");
+        },
+        else => {},
+    }
+
+    lib.addIncludePath(ctx.dep_vst3_sdk.path(""));
+    lib.linkLibCpp();
+    applyUniversalSettings(ctx, lib);
+
+    return lib;
+}
+
+fn buildVst3Validator(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    library: *std.Build.Step.Compile,
+    vst3_sdk: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const exe = ctx.b.addExecutable(.{
+        .name = "VST3-Validator",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+
+    const flags = vst3Flags(ctx, cfg);
+
+    exe.addCSourceFiles(.{
+        .root = ctx.dep_vst3_sdk.path("public.sdk"),
+        .files = &.{
+            "source/common/memorystream.cpp",
+            "source/main/moduleinit.cpp",
+            "source/vst/moduleinfo/moduleinfoparser.cpp",
+            "source/vst/hosting/test/connectionproxytest.cpp",
+            "source/vst/hosting/test/eventlisttest.cpp",
+            "source/vst/hosting/test/hostclassestest.cpp",
+            "source/vst/hosting/test/parameterchangestest.cpp",
+            "source/vst/hosting/test/pluginterfacesupporttest.cpp",
+            "source/vst/hosting/test/processdatatest.cpp",
+            "source/vst/hosting/plugprovider.cpp",
+            "source/vst/testsuite/bus/busactivation.cpp",
+            "source/vst/testsuite/bus/busconsistency.cpp",
+            "source/vst/testsuite/bus/businvalidindex.cpp",
+            "source/vst/testsuite/bus/checkaudiobusarrangement.cpp",
+            "source/vst/testsuite/bus/scanbusses.cpp",
+            "source/vst/testsuite/bus/sidechainarrangement.cpp",
+            "source/vst/testsuite/general/editorclasses.cpp",
+            "source/vst/testsuite/general/midilearn.cpp",
+            "source/vst/testsuite/general/midimapping.cpp",
+            "source/vst/testsuite/general/plugcompat.cpp",
+            "source/vst/testsuite/general/scanparameters.cpp",
+            "source/vst/testsuite/general/suspendresume.cpp",
+            "source/vst/testsuite/general/terminit.cpp",
+            "source/vst/testsuite/noteexpression/keyswitch.cpp",
+            "source/vst/testsuite/noteexpression/noteexpression.cpp",
+            "source/vst/testsuite/processing/automation.cpp",
+            "source/vst/testsuite/processing/process.cpp",
+            "source/vst/testsuite/processing/processcontextrequirements.cpp",
+            "source/vst/testsuite/processing/processformat.cpp",
+            "source/vst/testsuite/processing/processinputoverwriting.cpp",
+            "source/vst/testsuite/processing/processtail.cpp",
+            "source/vst/testsuite/processing/processthreaded.cpp",
+            "source/vst/testsuite/processing/silenceflags.cpp",
+            "source/vst/testsuite/processing/silenceprocessing.cpp",
+            "source/vst/testsuite/processing/speakerarrangement.cpp",
+            "source/vst/testsuite/processing/variableblocksize.cpp",
+            "source/vst/testsuite/state/bypasspersistence.cpp",
+            "source/vst/testsuite/state/invalidstatetransition.cpp",
+            "source/vst/testsuite/state/repeatidenticalstatetransition.cpp",
+            "source/vst/testsuite/state/validstatetransition.cpp",
+            "source/vst/testsuite/testbase.cpp",
+            "source/vst/testsuite/unit/checkunitstructure.cpp",
+            "source/vst/testsuite/unit/scanprograms.cpp",
+            "source/vst/testsuite/unit/scanunits.cpp",
+            "source/vst/testsuite/vsttestsuite.cpp",
+            "source/vst/utility/testing.cpp",
+
+            "samples/vst-hosting/validator/source/main.cpp",
+            "samples/vst-hosting/validator/source/usediids.cpp",
+            "samples/vst-hosting/validator/source/validator.cpp",
+
+            "source/vst/hosting/connectionproxy.cpp",
+            "source/vst/hosting/eventlist.cpp",
+            "source/vst/hosting/hostclasses.cpp",
+            "source/vst/hosting/module.cpp",
+            "source/vst/hosting/parameterchanges.cpp",
+            "source/vst/hosting/pluginterfacesupport.cpp",
+            "source/vst/hosting/processdata.cpp",
+            "source/vst/vstpresetfile.cpp",
+        },
+        .flags = flags,
+    });
+
+    switch (cfg.target.os.tag) {
+        .windows => {
+            exe.addCSourceFiles(.{
+                .root = ctx.dep_vst3_sdk.path(""),
+                .files = &.{"public.sdk/source/vst/hosting/module_win32.cpp"},
+                .flags = flags,
+            });
+            exe.linkSystemLibrary("ole32");
+        },
+        .linux => {
+            exe.addCSourceFiles(.{
+                .root = ctx.dep_vst3_sdk.path(""),
+                .files = &.{"public.sdk/source/vst/hosting/module_linux.cpp"},
+                .flags = flags,
+            });
+        },
+        .macos => {
+            exe.addCSourceFiles(.{
+                .root = ctx.dep_vst3_sdk.path(""),
+                .files = &.{"public.sdk/source/vst/hosting/module_mac.mm"},
+                .flags = FlagsBuilder.init(ctx, cfg, .{
+                    .objcpp = true,
+                    .gen_cdb_fragments = true,
+                }).flags.items,
+            });
+        },
+        else => {},
+    }
+
+    exe.addIncludePath(ctx.dep_vst3_sdk.path(""));
+    exe.linkLibCpp();
+    exe.linkLibrary(deps.vst3_sdk);
+    exe.linkLibrary(deps.library); // for ubsan runtime
+    applyUniversalSettings(ctx, exe);
+
+    return exe;
+}
+
+fn buildVst3(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    plugin: *std.Build.Step.Compile,
+    vst3_sdk: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const dso = ctx.b.addSharedLibrary(.{
+        .name = "Floe.vst3",
+        .version = ctx.floe_version,
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    switch (cfg.target.os.tag) {
+        .windows => {
+            dso.root_module.addCMacro("WIN", "1");
+        },
+        .linux => {
+            dso.root_module.addCMacro("LIN", "1");
+        },
+        .macos => {
+            dso.root_module.addCMacro("MAC", "1");
+        },
+        else => {},
+    }
+    if (ctx.optimise == .Debug) {
+        dso.root_module.addCMacro("DEVELOPMENT", "1");
+    } else {
+        dso.root_module.addCMacro("RELEASE", "1");
+    }
+    dso.root_module.addCMacro("MACOS_USE_STD_FILESYSTEM", "1");
+    dso.root_module.addCMacro("CLAP_WRAPPER_VERSION", "\"0.11.0\"");
+    dso.root_module.addCMacro("STATICALLY_LINKED_CLAP_ENTRY", "1");
+
+    var flags = FlagsBuilder.init(ctx, cfg, .{
+        .ubsan = false,
+        .gen_cdb_fragments = true,
+    });
+    flags.addFlag("-fno-char8_t");
+
+    dso.addCSourceFiles(.{
+        .files = &.{
+            "src/plugin/plugin/plugin_entry.cpp",
+            "src/common_infrastructure/final_binary_type.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    dso.root_module.addCMacro("FINAL_BINARY_TYPE", "Vst3");
+
+    const wrapper_src_path = ctx.dep_clap_wrapper.path("src");
+    dso.addCSourceFiles(.{
+        .root = wrapper_src_path,
+        .files = &.{
+            "wrapasvst3.cpp",
+            "wrapasvst3_entry.cpp",
+            "wrapasvst3_export_entry.cpp",
+            "detail/vst3/parameter.cpp",
+            "detail/vst3/plugview.cpp",
+            "detail/vst3/process.cpp",
+            "detail/vst3/categories.cpp",
+            "clap_proxy.cpp",
+            "detail/shared/sha1.cpp",
+            "detail/clap/fsutil.cpp",
+        },
+        .flags = flags.flags.items,
+    });
+
+    switch (cfg.target.os.tag) {
+        .windows => {
+            dso.addCSourceFile(.{
+                .file = ctx.dep_clap_wrapper.path("src/detail/os/windows.cpp"),
+                .flags = flags.flags.items,
+            });
+            dso.addCSourceFiles(.{
+                .root = ctx.dep_vst3_sdk.path(""),
+                .files = &.{"public.sdk/source/main/dllmain.cpp"},
+                .flags = flags.flags.items,
+            });
+        },
+        .linux => {
+            dso.addCSourceFile(.{
+                .file = ctx.dep_clap_wrapper.path("src/detail/os/linux.cpp"),
+                .flags = flags.flags.items,
+            });
+            dso.addCSourceFiles(.{
+                .root = ctx.dep_vst3_sdk.path(""),
+                .files = &.{"public.sdk/source/main/linuxmain.cpp"},
+                .flags = flags.flags.items,
+            });
+        },
+        .macos => {
+            dso.addCSourceFiles(.{
+                .root = wrapper_src_path,
+                .files = &.{
+                    "detail/os/macos.mm",
+                    "detail/clap/mac_helpers.mm",
+                },
+                .flags = flags.flags.items,
+            });
+            dso.addCSourceFiles(.{
+                .root = ctx.dep_vst3_sdk.path(""),
+                .files = &.{"public.sdk/source/main/macmain.cpp"},
+                .flags = flags.flags.items,
+            });
+        },
+        else => {},
+    }
+
+    dso.addIncludePath(ctx.dep_clap_wrapper.path("include"));
+    dso.addIncludePath(ctx.dep_clap_wrapper.path("libs/fmt"));
+    dso.addIncludePath(ctx.dep_clap_wrapper.path("libs/psl"));
+    dso.addIncludePath(ctx.dep_clap_wrapper.path("src"));
+    dso.addIncludePath(ctx.dep_vst3_sdk.path(""));
+    dso.linkLibCpp();
+
+    dso.linkLibrary(deps.plugin);
+    dso.linkLibrary(deps.vst3_sdk);
+
+    dso.addConfigHeader(cfg.floe_config_h);
+    dso.addIncludePath(ctx.b.path("src"));
+
+    applyUniversalSettings(ctx, dso);
+    addWindowsEmbedInfo(dso, .{
+        .name = "Floe VST3",
+        .description = constants.floe_description,
+        .icon_path = null,
+    }) catch @panic("OOM");
+
+    return dso;
+}
+
+fn buildAu(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    plugin: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const au_sdk = blk2: {
+        const lib = ctx.b.addStaticLibrary(.{
+            .name = "AU",
+            .root_module = ctx.b.createModule(cfg.module_options),
+        });
+
+        lib.addCSourceFiles(.{
+            .root = ctx.dep_au_sdk.path("src/AudioUnitSDK"),
+            .files = &.{
+                "AUBuffer.cpp",
+                "AUBufferAllocator.cpp",
+                "AUEffectBase.cpp",
+                "AUInputElement.cpp",
+                "AUMIDIBase.cpp",
+                "AUBase.cpp",
+                "AUMIDIEffectBase.cpp",
+                "AUOutputElement.cpp",
+                "AUPlugInDispatch.cpp",
+                "AUScopeElement.cpp",
+                "ComponentBase.cpp",
+                "MusicDeviceBase.cpp",
+            },
+            .flags = FlagsBuilder.init(ctx, cfg, .{
                 .cpp = true,
-                .compile_commands = concat_cdb,
+                .gen_cdb_fragments = true,
             }).flags.items,
         });
-        exe.root_module.addCMacro("FINAL_BINARY_TYPE", "DocsGenerator");
-        exe.linkLibrary(common_infrastructure);
-        exe.addIncludePath(b.path("src"));
-        exe.addConfigHeader(floe_config_h);
-        applyUniversalSettings(build_context, exe, concat_cdb);
-        steps.compile_all_step.dependOn(&exe.step);
+        lib.addIncludePath(ctx.dep_au_sdk.path("include"));
+        lib.linkLibCpp();
+        applyUniversalSettings(ctx, lib);
 
-        build_context.native_docs_generator = exe;
+        break :blk2 lib;
+    };
+
+    const flags = blk2: {
+        var flags = FlagsBuilder.init(ctx, cfg, .{
+            .gen_cdb_fragments = true,
+        });
+        switch (cfg.target.os.tag) {
+            .windows => {
+                flags.addFlag("-DWIN=1");
+            },
+            .linux => {
+                flags.addFlag("-DLIN=1");
+            },
+            .macos => {
+                flags.addFlag("-DMAC=1");
+            },
+            else => {},
+        }
+        if (ctx.optimise == .Debug) {
+            flags.addFlag("-DDEVELOPMENT=1");
+        } else {
+            flags.addFlag("-DRELEASE=1");
+        }
+        flags.addFlag("-fno-char8_t");
+        flags.addFlag("-DMACOS_USE_STD_FILESYSTEM=1");
+        flags.addFlag("-DCLAP_WRAPPER_VERSION=\"0.11.0\"");
+        flags.addFlag("-DSTATICALLY_LINKED_CLAP_ENTRY=1");
+        break :blk2 flags.flags.items;
+    };
+
+    const dso = ctx.b.addSharedLibrary(.{
+        .name = "Floe.component",
+        .root_module = ctx.b.createModule(cfg.module_options),
+        .version = ctx.floe_version,
+    });
+    dso.addCSourceFiles(.{
+        .files = &.{
+            "src/plugin/plugin/plugin_entry.cpp",
+            "src/common_infrastructure/final_binary_type.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .objcpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    dso.root_module.addCMacro("FINAL_BINARY_TYPE", "AuV2");
+
+    const wrapper_src_path = ctx.dep_clap_wrapper.path("src");
+
+    dso.addCSourceFiles(.{
+        .root = wrapper_src_path,
+        .files = &.{
+            "clap_proxy.cpp",
+            "detail/shared/sha1.cpp",
+            "detail/clap/fsutil.cpp",
+            "detail/os/macos.mm",
+            "detail/clap/mac_helpers.mm",
+            "wrapasauv2.cpp",
+            "detail/auv2/process.cpp",
+            "detail/auv2/wrappedview.mm",
+            "detail/auv2/parameter.cpp",
+            "detail/auv2/auv2_shared.mm",
+        },
+        .flags = flags,
+    });
+
+    {
+        const generated_files = ctx.b.addWriteFiles();
+
+        _ = generated_files.add("generated_entrypoints.hxx", ctx.b.fmt(
+            \\ #pragma once
+            \\ #include "detail/auv2/auv2_base_classes.h"
+            \\
+            \\ struct {[factory_function]s} : free_audio::auv2_wrapper::WrapAsAUV2 {{
+            \\     {[factory_function]s}(AudioComponentInstance ci) : 
+            \\         free_audio::auv2_wrapper::WrapAsAUV2(AUV2_Type::aumu_musicdevice, 
+            \\                                              "{[clap_name]s}",
+            \\                                              "{[clap_id]s}",
+            \\                                              0,
+            \\                                              ci) {{
+            \\     }}
+            \\ }};
+            \\ AUSDK_COMPONENT_ENTRY(ausdk::AUMusicDeviceFactory, {[factory_function]s});
+        , .{
+            .factory_function = constants.floe_au_factory_function,
+            .clap_name = "Floe",
+            .clap_id = constants.floe_clap_id,
+        }));
+
+        _ = generated_files.add("generated_cocoaclasses.hxx", ctx.b.fmt(
+            \\ #pragma once
+            \\
+            \\ #define CLAP_WRAPPER_COCOA_CLASS_NSVIEW {[name]s}_nsview
+            \\ #define CLAP_WRAPPER_COCOA_CLASS {[name]s}
+            \\ #define CLAP_WRAPPER_TIMER_CALLBACK timerCallback_{[name]s}
+            \\ #define CLAP_WRAPPER_FILL_AUCV fillAUCV_{[name]s}
+            \\ #define CLAP_WRAPPER_EDITOR_NAME "Floe"
+            \\ #include "detail/auv2/wrappedview.asinclude.mm"
+            \\ #undef CLAP_WRAPPER_COCOA_CLASS_NSVIEW
+            \\ #undef CLAP_WRAPPER_COCOA_CLASS
+            \\ #undef CLAP_WRAPPER_TIMER_CALLBACK
+            \\ #undef CLAP_WRAPPER_FILL_AUCV
+            \\ #undef CLAP_WRAPPER_EDITOR_NAME
+            \\
+            \\ bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo, 
+            \\                             std::shared_ptr<Clap::Plugin> _plugin) {{
+            \\     if (strcmp(_plugin->_plugin->desc->id, "{[clap_id]s}") == 0) {{
+            \\         if (!_plugin->_ext._gui) return false;
+            \\         return fillAUCV_{[name]s}(viewInfo);
+            \\     }}
+            \\ }}
+        , .{
+            .name = ctx.b.fmt("Floe{d}", .{ctx.floe_version_hash}),
+            .clap_id = constants.floe_clap_id,
+        }));
+
+        dso.addIncludePath(generated_files.getDirectory());
+    }
+
+    dso.addIncludePath(ctx.b.path("third_party_libs/clap/include"));
+    dso.addIncludePath(ctx.dep_au_sdk.path("include"));
+    dso.addIncludePath(ctx.dep_clap_wrapper.path("include"));
+    dso.addIncludePath(ctx.dep_clap_wrapper.path("libs/fmt"));
+    dso.addIncludePath(ctx.dep_clap_wrapper.path("src"));
+    dso.linkLibCpp();
+
+    dso.linkLibrary(deps.plugin);
+    dso.linkLibrary(au_sdk);
+    dso.linkFramework("AudioToolbox");
+    dso.linkFramework("CoreMIDI");
+
+    dso.addConfigHeader(cfg.floe_config_h);
+    dso.addIncludePath(ctx.b.path("src"));
+
+    applyUniversalSettings(ctx, dso);
+
+    return dso;
+}
+
+fn buildWindowsUninstaller(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    library: *std.Build.Step.Compile,
+    stb_image: *std.Build.Step.Compile,
+    common_infrastructure: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const exe = ctx.b.addExecutable(.{
+        .name = "Floe-Uninstaller",
+        .root_module = ctx.b.createModule(cfg.module_options),
+        .version = ctx.floe_version,
+        .win32_manifest = ctx.b.addWriteFiles().add("xml.manifest", windowsManifestContent(ctx.b, .{
+            .name = "Uninstaller",
+            .description = "Uninstaller for Floe plugins",
+            .require_admin = if (ctx.build_mode == .production) true else ctx.windows_installer_require_admin,
+        })),
+    });
+    exe.subsystem = .Windows;
+
+    exe.root_module.addCMacro(
+        "UNINSTALLER_BINARY_NAME",
+        ctx.b.fmt("\"{s}\"", .{exe.out_filename}),
+    );
+
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "src/windows_installer/uninstaller.cpp",
+            "src/windows_installer/gui.cpp",
+            "src/common_infrastructure/final_binary_type.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "WindowsUninstaller");
+    exe.linkSystemLibrary("gdi32");
+    exe.linkSystemLibrary("version");
+    exe.linkSystemLibrary("comctl32");
+    exe.addConfigHeader(cfg.floe_config_h);
+    exe.addIncludePath(ctx.b.path("src"));
+    exe.addObject(deps.stb_image);
+    exe.linkLibrary(deps.library);
+    exe.linkLibrary(deps.common_infrastructure);
+    applyUniversalSettings(ctx, exe);
+
+    return exe;
+}
+
+fn buildWindowsInstaller(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    library: *std.Build.Step.Compile,
+    stb_image: *std.Build.Step.Compile,
+    common_infrastructure: *std.Build.Step.Compile,
+    configured_vst3: ?configure_binaries.ConfiguredPlugin,
+    configured_clap: ?configure_binaries.ConfiguredPlugin,
+    uninstaller: *std.Build.Step.Compile,
+    codesigned_uninstaller: std.Build.LazyPath,
+}) *std.Build.Step.Compile {
+    const description = "Installer for Floe plugins";
+
+    const exe = ctx.b.addExecutable(.{
+        .name = ctx.b.fmt("Floe-Installer-v{s}", .{ .version = ctx.floe_version_string }),
+        .root_module = ctx.b.createModule(cfg.module_options),
+        .version = ctx.floe_version,
+        .win32_manifest = ctx.b.addWriteFiles().add("xml.manifest", windowsManifestContent(ctx.b, .{
+            .name = "Installer",
+            .description = description,
+            .require_admin = if (ctx.build_mode == .production) true else ctx.windows_installer_require_admin,
+        })),
+    });
+    exe.subsystem = .Windows;
+
+    // Add resources.
+    {
+        var rc_include_path: std.BoundedArray(std.Build.LazyPath, 5) = .{};
+
+        if (ctx.dep_floe_logos) |logos| {
+            const sidebar_img = "rasterized/win-installer-sidebar.png";
+            const sidebar_img_lazy_path = logos.path(sidebar_img);
+            rc_include_path.append(sidebar_img_lazy_path.dirname()) catch @panic("OOM");
+            exe.root_module.addCMacro(
+                "SIDEBAR_IMAGE_PATH",
+                ctx.b.fmt("\"{s}\"", .{std.fs.path.basename(sidebar_img)}),
+            );
+        }
+
+        if (deps.configured_vst3) |vst3_plugin| {
+            exe.root_module.addCMacro("VST3_PLUGIN_BINARY_NAME", "\"Floe.vst3\"");
+            rc_include_path.append(vst3_plugin.plugin_path.dirname()) catch @panic("OOM");
+        }
+
+        if (deps.configured_clap) |clap_plugin| {
+            exe.root_module.addCMacro("CLAP_PLUGIN_BINARY_NAME", "\"Floe.clap\"");
+            rc_include_path.append(clap_plugin.plugin_path.dirname()) catch @panic("OOM");
+        }
+
+        {
+            exe.root_module.addCMacro(
+                "UNINSTALLER_BINARY_NAME",
+                ctx.b.fmt("\"{s}\"", .{deps.uninstaller.out_filename}),
+            );
+            rc_include_path.append(deps.codesigned_uninstaller.dirname()) catch @panic("OOM");
+        }
+
+        exe.addWin32ResourceFile(.{
+            .file = ctx.b.path("src/windows_installer/resources.rc"),
+            .include_paths = rc_include_path.slice(),
+            .flags = exe.root_module.c_macros.items,
+        });
+    }
+
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "src/windows_installer/installer.cpp",
+            "src/windows_installer/gui.cpp",
+            "src/common_infrastructure/final_binary_type.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "WindowsInstaller");
+    exe.linkSystemLibrary("gdi32");
+    exe.linkSystemLibrary("version");
+    exe.linkSystemLibrary("comctl32");
+
+    addWindowsEmbedInfo(exe, .{
+        .name = "Floe Installer",
+        .description = description,
+        .icon_path = if (ctx.dep_floe_logos) |logos| logos.path("rasterized/icon.ico") else null,
+    }) catch @panic("OOM");
+    exe.addConfigHeader(cfg.floe_config_h);
+    exe.addIncludePath(ctx.b.path("src"));
+    exe.addObject(deps.stb_image);
+    exe.linkLibrary(deps.library);
+    exe.linkLibrary(deps.common_infrastructure);
+    applyUniversalSettings(ctx, exe);
+
+    return exe;
+}
+
+fn buildTests(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    plugin: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const exe = ctx.b.addExecutable(.{
+        .name = "tests",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "src/common_infrastructure/final_binary_type.cpp",
+            "src/foundation/container/bitset.cpp",
+            "src/foundation/container/bounded_list.cpp",
+            "src/foundation/container/circular_buffer.cpp",
+            "src/foundation/container/dynamic_array.cpp",
+            "src/foundation/container/function.cpp",
+            "src/foundation/container/function_queue.cpp",
+            "src/foundation/container/hash_table.cpp",
+            "src/foundation/container/optional.cpp",
+            "src/foundation/container/path_pool.cpp",
+            "src/foundation/container/tagged_union.cpp",
+            "src/foundation/error/assert_f.cpp",
+            "src/foundation/error/error_code.cpp",
+            "src/foundation/memory/allocators.cpp",
+            "src/foundation/utils/algorithm.cpp",
+            "src/foundation/utils/format.cpp",
+            "src/foundation/utils/geometry.cpp",
+            "src/foundation/utils/linked_list.cpp",
+            "src/foundation/utils/maths.cpp",
+            "src/foundation/utils/memory.cpp",
+            "src/foundation/utils/path.cpp",
+            "src/foundation/utils/random.cpp",
+            "src/foundation/utils/version.cpp",
+            "src/foundation/utils/writer.cpp",
+            "src/tests/tests_main.cpp",
+            "src/utils/error_notifications.cpp",
+            "src/utils/json/json_reader.cpp",
+            "src/utils/json/json_writer.cpp",
+            "src/utils/thread_extra/atomic_queue.cpp",
+            "src/utils/thread_extra/atomic_ref_list.cpp",
+            "src/utils/thread_extra/atomic_swap_buffer.cpp",
+            "src/utils/thread_extra/thread_pool.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "Tests");
+    exe.addConfigHeader(cfg.floe_config_h);
+    exe.linkLibrary(deps.plugin);
+    applyUniversalSettings(ctx, exe);
+
+    return exe;
+}
+
+fn doTarget(
+    ctx: *BuildContext,
+    cfg: *const TargetConfig,
+    top_level_steps: *const TopLevelSteps,
+    options: *const Options,
+) release_artifacts.Artifacts {
+    const stb_sprintf = buildStbSprintf(ctx, cfg);
+    const xxhash = buildXxhash(ctx, cfg);
+    const tracy = buildTracy(ctx, cfg);
+    const vitfx = buildVitfx(ctx, cfg);
+    const pugl = buildPugl(ctx, cfg);
+    const debug_info_lib = buildDebugInfo(ctx, cfg);
+    const stb_image = buildStbImage(ctx, cfg);
+    const dr_wav = buildDrWav(ctx, cfg);
+    const miniz = buildMiniz(ctx, cfg);
+    const flac = buildFlac(ctx, cfg);
+    const fft_convolver = buildFftConvolver(ctx, cfg);
+
+    const embedded_files = buildEmbeddedFiles(ctx, cfg);
+
+    const library = buildFloeLibrary(ctx, cfg, .{
+        .stb_sprintf = stb_sprintf,
+        .tracy = tracy,
+        .debug_info_lib = debug_info_lib,
+    });
+
+    if (targetCanRunNatively(cfg.target)) {
+        ctx.native_archiver = buildArchiver(ctx, cfg, .{ .miniz = miniz });
+    }
+
+    const bx = buildBx(ctx, cfg);
+    const bimg = buildBimg(ctx, cfg, .{ .bx = bx });
+    const bgfx = buildBgfx(ctx, cfg, .{ .bx = bx, .bimg = bimg });
+
+    const common_infrastructure = buildCommonInfrastructure(ctx, cfg, .{
+        .dr_wav = dr_wav,
+        .flac = flac,
+        .library = library,
+        .miniz = miniz,
+        .xxhash = xxhash,
+    });
+
+    const plugin = buildPluginLib(ctx, cfg, .{
+        .common_infrastructure = common_infrastructure,
+        .library = library,
+        .fft_convolver = fft_convolver,
+        .embedded_files = embedded_files,
+        .tracy = tracy,
+        .pugl = pugl,
+        .stb_image = stb_image,
+        .vitfx = vitfx,
+        .bgfx = bgfx,
+    });
+
+    if (targetCanRunNatively(cfg.target)) {
+        ctx.native_docs_generator = buildDocsGenerator(ctx, cfg, .{
+            .common_infrastructure = common_infrastructure,
+        });
     }
 
     const configured_packager = blk: {
-        var exe = b.addExecutable(.{
-            .name = "floe-packager",
-            .root_module = b.createModule(module_options),
-            .version = build_context.floe_version,
+        const exe = buildPackager(ctx, cfg, .{
+            .common_infrastructure = common_infrastructure,
+            .embedded_files = embedded_files,
         });
-        exe.addCSourceFiles(.{
-            .files = &.{
-                "src/packager_tool/packager.cpp",
-                "src/common_infrastructure/final_binary_type.cpp",
-            },
-            .flags = FlagsBuilder.init(build_context, target, .{
-                .full_diagnostics = true,
-                .ubsan = true,
-                .cpp = true,
-                .compile_commands = concat_cdb,
-            }).flags.items,
-        });
-        exe.root_module.addCMacro("FINAL_BINARY_TYPE", "Packager");
-        exe.linkLibrary(common_infrastructure);
-        exe.addIncludePath(b.path("src"));
-        exe.addConfigHeader(floe_config_h);
-        exe.linkLibrary(miniz);
-        exe.addObject(embedded_files);
-
-        applyUniversalSettings(build_context, exe, concat_cdb);
 
         const codesigned_exe = configure_binaries.maybeAddWindowsCodesign(
             exe,
             .{ .description = "Floe Packager" },
         );
 
-        const install = b.addInstallBinFile(codesigned_exe, exe.out_filename);
-        steps.install_all_step.dependOn(&install.step);
+        const install = ctx.b.addInstallBinFile(codesigned_exe, exe.out_filename);
+        top_level_steps.install_all.dependOn(&install.step);
 
         break :blk release_artifacts.Artifact{
             .out_filename = exe.out_filename,
@@ -1615,74 +2773,30 @@ fn doTarget(
     };
 
     {
-        var exe = b.addExecutable(.{
-            .name = "preset-editor",
-            .root_module = b.createModule(module_options),
-            .version = build_context.floe_version,
+        const exe = buildPresetEditor(ctx, cfg, .{
+            .common_infrastructure = common_infrastructure,
+            .embedded_files = embedded_files,
         });
-        exe.addCSourceFiles(.{
-            .files = &.{
-                "src/preset_editor_tool/preset_editor.cpp",
-                "src/common_infrastructure/final_binary_type.cpp",
-            },
-            .flags = FlagsBuilder.init(build_context, target, .{
-                .full_diagnostics = true,
-                .ubsan = true,
-                .cpp = true,
-                .compile_commands = concat_cdb,
-            }).flags.items,
-        });
-        exe.root_module.addCMacro("FINAL_BINARY_TYPE", "PresetEditor");
-        exe.linkLibrary(common_infrastructure);
-        exe.addIncludePath(b.path("src"));
-        exe.addConfigHeader(floe_config_h);
-        exe.linkLibrary(miniz);
-        exe.addObject(embedded_files);
-        applyUniversalSettings(build_context, exe, concat_cdb);
 
-        const install = b.addInstallArtifact(exe, .{});
-        steps.install_all_step.dependOn(&install.step);
+        const install = ctx.b.addInstallArtifact(exe, .{});
+        top_level_steps.install_all.dependOn(&install.step);
 
         // IMPROVE: export preset-editor as a production artifact?
     }
 
     const configured_clap: ?configure_binaries.ConfiguredPlugin = blk: {
         if (!options.sanitize_thread) {
-            const dso = b.addSharedLibrary(.{
-                .name = "Floe.clap",
-                .root_module = b.createModule(module_options),
-                .version = build_context.floe_version,
-            });
-            dso.addCSourceFiles(.{
-                .files = &.{
-                    "src/plugin/plugin/plugin_entry.cpp",
-                    "src/common_infrastructure/final_binary_type.cpp",
-                },
-                .flags = FlagsBuilder.init(build_context, target, .{
-                    .full_diagnostics = true,
-                    .ubsan = true,
-                    .cpp = true,
-                    .compile_commands = concat_cdb,
-                }).flags.items,
-            });
-            dso.root_module.addCMacro("FINAL_BINARY_TYPE", "Clap");
-            dso.addConfigHeader(floe_config_h);
-            dso.addIncludePath(b.path("src"));
-            dso.linkLibrary(plugin);
+            const dso = buildClap(ctx, cfg, .{ .plugin = plugin });
 
-            applyUniversalSettings(build_context, dso, concat_cdb);
-            addWindowsEmbedInfo(dso, .{
-                .name = "Floe CLAP",
-                .description = constants.floe_description,
-                .icon_path = null,
-            }) catch @panic("OOM");
-
-            break :blk configure_binaries.addConfiguredPlugin(
-                b,
+            const clap = configure_binaries.addConfiguredPlugin(
+                ctx.b,
                 .clap,
                 dso,
                 configure_binaries.CodesignInfo{ .description = "Floe CLAP Plugin" },
             );
+            top_level_steps.install_plugins.dependOn(clap.install_step);
+            top_level_steps.install_all.dependOn(clap.install_step);
+            break :blk clap;
         } else {
             break :blk null;
         }
@@ -1690,688 +2804,86 @@ fn doTarget(
 
     // Standalone is for development-only at the moment, so we can save a bit of time by not building it
     // in production builds.
-    if (build_context.build_mode != .production) {
-        const miniaudio = blk: {
-            const lib = b.addStaticLibrary(.{
-                .name = "miniaudio",
-                .root_module = b.createModule(module_options),
-            });
-            lib.addCSourceFile(.{
-                .file = b.path("third_party_libs/miniaudio.c"),
-                .flags = FlagsBuilder.init(build_context, target, .{
-                    .compile_commands = concat_cdb,
-                }).flags.items,
-            });
-            // NOTE(Sam): disabling pulse audio because it was causing lots of stutters on my machine.
-            lib.root_module.addCMacro("MA_NO_PULSEAUDIO", "1");
-            lib.linkLibC();
-            lib.addIncludePath(build_context.dep_miniaudio.path(""));
-            switch (target.os.tag) {
-                .macos => {
-                    lib.linkFramework("CoreAudio");
-                },
-                .windows => {
-                    lib.linkSystemLibrary("dsound");
-                },
-                .linux => {
-                    lib.linkSystemLibrary2("alsa", .{ .use_pkg_config = linux_use_pkg_config });
-                },
-                else => {
-                    unreachable;
-                },
-            }
-            applyUniversalSettings(build_context, lib, concat_cdb);
+    if (ctx.build_mode != .production) {
+        const exe = buildStandalone(ctx, cfg, .{ .plugin = plugin });
 
-            break :blk lib;
-        };
-
-        const portmidi = blk: {
-            const lib = b.addStaticLibrary(.{
-                .name = "portmidi",
-                .root_module = b.createModule(module_options),
-            });
-            const pm_root = build_context.dep_portmidi.path("");
-            const pm_flags = FlagsBuilder.init(build_context, target, .{
-                .compile_commands = concat_cdb,
-            }).flags.items;
-            lib.addCSourceFiles(.{
-                .root = pm_root,
-                .files = &.{
-                    "pm_common/portmidi.c",
-                    "pm_common/pmutil.c",
-                    "porttime/porttime.c",
-                },
-                .flags = pm_flags,
-            });
-            switch (target.os.tag) {
-                .macos => {
-                    lib.addCSourceFiles(.{
-                        .root = pm_root,
-                        .files = &.{
-                            "pm_mac/pmmacosxcm.c",
-                            "pm_mac/pmmac.c",
-                            "porttime/ptmacosx_cf.c",
-                            "porttime/ptmacosx_mach.c",
-                        },
-                        .flags = pm_flags,
-                    });
-                    lib.linkFramework("CoreAudio");
-                    lib.linkFramework("CoreMIDI");
-                },
-                .windows => {
-                    lib.addCSourceFiles(.{
-                        .root = pm_root,
-                        .files = &.{
-                            "pm_win/pmwin.c",
-                            "pm_win/pmwinmm.c",
-                            "porttime/ptwinmm.c",
-                        },
-                        .flags = pm_flags,
-                    });
-                    lib.linkSystemLibrary("winmm");
-                },
-                .linux => {
-                    lib.addCSourceFiles(.{
-                        .root = pm_root,
-                        .files = &.{
-                            "pm_linux/pmlinux.c",
-                            "pm_linux/pmlinuxalsa.c",
-                            "porttime/ptlinux.c",
-                        },
-                        .flags = pm_flags,
-                    });
-                    lib.root_module.addCMacro("PMALSA", "1");
-                    lib.linkSystemLibrary2("alsa", .{ .use_pkg_config = linux_use_pkg_config });
-                },
-                else => {
-                    unreachable;
-                },
-            }
-
-            lib.linkLibC();
-            lib.addIncludePath(build_context.dep_portmidi.path("porttime"));
-            lib.addIncludePath(build_context.dep_portmidi.path("pm_common"));
-            applyUniversalSettings(build_context, lib, concat_cdb);
-
-            break :blk lib;
-        };
-
-        const exe = b.addExecutable(.{
-            .name = "floe_standalone",
-            .root_module = b.createModule(module_options),
-        });
-
-        exe.addCSourceFiles(.{
-            .files = &.{
-                "src/standalone_wrapper/standalone_wrapper.cpp",
-                "src/plugin/plugin/plugin_entry.cpp",
-                "src/common_infrastructure/final_binary_type.cpp",
-            },
-            .flags = FlagsBuilder.init(build_context, target, .{
-                .full_diagnostics = true,
-                .ubsan = true,
-                .cpp = true,
-                .compile_commands = concat_cdb,
-            }).flags.items,
-        });
-
-        exe.root_module.addCMacro("FINAL_BINARY_TYPE", "Standalone");
-        exe.addConfigHeader(floe_config_h);
-        exe.addIncludePath(b.path("src"));
-        exe.linkLibrary(portmidi);
-        exe.linkLibrary(miniaudio);
-        exe.addIncludePath(build_context.dep_miniaudio.path(""));
-        exe.linkLibrary(plugin);
-        applyUniversalSettings(build_context, exe, concat_cdb);
-
-        const install = b.addInstallArtifact(exe, .{});
-        steps.install_all_step.dependOn(&install.step);
+        const install = ctx.b.addInstallArtifact(exe, .{});
+        top_level_steps.install_all.dependOn(&install.step);
     }
 
-    const vst3_flags = blk: {
-        var flags = FlagsBuilder.init(build_context, target, .{
-            .ubsan = false,
-            .compile_commands = concat_cdb,
-        });
-        if (build_context.optimise == .Debug) {
-            flags.addFlag("-DDEVELOPMENT=1");
-        } else {
-            flags.addFlag("-DRELEASE=1");
-        }
-        // Ignore warning about non-reproducible __DATE__ usage.
-        flags.addFlag("-Wno-date-time");
-
-        break :blk flags.flags.items;
-    };
-
-    const vst3_sdk = blk: {
-        const lib = b.addStaticLibrary(.{
-            .name = "VST3",
-            .root_module = b.createModule(module_options),
-        });
-        lib.addCSourceFiles(.{
-            .root = build_context.dep_vst3_sdk.path(""),
-            .files = &.{
-                "base/source/baseiids.cpp",
-                "base/source/fbuffer.cpp",
-                "base/source/fdebug.cpp",
-                "base/source/fdynlib.cpp",
-                "base/source/fobject.cpp",
-                "base/source/fstreamer.cpp",
-                "base/source/fstring.cpp",
-                "base/source/timer.cpp",
-                "base/source/updatehandler.cpp",
-
-                "base/thread/source/fcondition.cpp",
-                "base/thread/source/flock.cpp",
-
-                "public.sdk/source/common/commoniids.cpp",
-                "public.sdk/source/common/memorystream.cpp",
-                "public.sdk/source/common/openurl.cpp",
-                "public.sdk/source/common/pluginview.cpp",
-                "public.sdk/source/common/readfile.cpp",
-                "public.sdk/source/common/systemclipboard_linux.cpp",
-                "public.sdk/source/common/systemclipboard_mac.mm",
-                "public.sdk/source/common/systemclipboard_win32.cpp",
-                "public.sdk/source/common/threadchecker_linux.cpp",
-                "public.sdk/source/common/threadchecker_mac.mm",
-                "public.sdk/source/common/threadchecker_win32.cpp",
-
-                "pluginterfaces/base/conststringtable.cpp",
-                "pluginterfaces/base/coreiids.cpp",
-                "pluginterfaces/base/funknown.cpp",
-                "pluginterfaces/base/ustring.cpp",
-
-                "public.sdk/source/main/pluginfactory.cpp",
-                "public.sdk/source/main/moduleinit.cpp",
-                "public.sdk/source/vst/vstinitiids.cpp",
-                "public.sdk/source/vst/vstnoteexpressiontypes.cpp",
-                "public.sdk/source/vst/vstsinglecomponenteffect.cpp",
-                "public.sdk/source/vst/vstaudioeffect.cpp",
-                "public.sdk/source/vst/vstcomponent.cpp",
-                "public.sdk/source/vst/vstsinglecomponenteffect.cpp",
-                "public.sdk/source/vst/vstcomponentbase.cpp",
-                "public.sdk/source/vst/vstbus.cpp",
-                "public.sdk/source/vst/vstparameters.cpp",
-                "public.sdk/source/vst/utility/stringconvert.cpp",
-            },
-            .flags = vst3_flags,
-        });
-
-        switch (target.os.tag) {
-            .windows => {},
-            .linux => {},
-            .macos => {
-                lib.linkFramework("CoreFoundation");
-                lib.linkFramework("Foundation");
-            },
-            else => {},
-        }
-
-        lib.addIncludePath(build_context.dep_vst3_sdk.path(""));
-        lib.linkLibCpp();
-        applyUniversalSettings(build_context, lib, concat_cdb);
-
-        break :blk lib;
-    };
-
-    const vst3_validator = blk: {
-        const vst3_validator = b.addExecutable(.{
-            .name = "VST3-Validator",
-            .root_module = b.createModule(module_options),
-        });
-
-        vst3_validator.addCSourceFiles(.{
-            .root = build_context.dep_vst3_sdk.path("public.sdk"),
-            .files = &.{
-                "source/common/memorystream.cpp",
-                "source/main/moduleinit.cpp",
-                "source/vst/moduleinfo/moduleinfoparser.cpp",
-                "source/vst/hosting/test/connectionproxytest.cpp",
-                "source/vst/hosting/test/eventlisttest.cpp",
-                "source/vst/hosting/test/hostclassestest.cpp",
-                "source/vst/hosting/test/parameterchangestest.cpp",
-                "source/vst/hosting/test/pluginterfacesupporttest.cpp",
-                "source/vst/hosting/test/processdatatest.cpp",
-                "source/vst/hosting/plugprovider.cpp",
-                "source/vst/testsuite/bus/busactivation.cpp",
-                "source/vst/testsuite/bus/busconsistency.cpp",
-                "source/vst/testsuite/bus/businvalidindex.cpp",
-                "source/vst/testsuite/bus/checkaudiobusarrangement.cpp",
-                "source/vst/testsuite/bus/scanbusses.cpp",
-                "source/vst/testsuite/bus/sidechainarrangement.cpp",
-                "source/vst/testsuite/general/editorclasses.cpp",
-                "source/vst/testsuite/general/midilearn.cpp",
-                "source/vst/testsuite/general/midimapping.cpp",
-                "source/vst/testsuite/general/plugcompat.cpp",
-                "source/vst/testsuite/general/scanparameters.cpp",
-                "source/vst/testsuite/general/suspendresume.cpp",
-                "source/vst/testsuite/general/terminit.cpp",
-                "source/vst/testsuite/noteexpression/keyswitch.cpp",
-                "source/vst/testsuite/noteexpression/noteexpression.cpp",
-                "source/vst/testsuite/processing/automation.cpp",
-                "source/vst/testsuite/processing/process.cpp",
-                "source/vst/testsuite/processing/processcontextrequirements.cpp",
-                "source/vst/testsuite/processing/processformat.cpp",
-                "source/vst/testsuite/processing/processinputoverwriting.cpp",
-                "source/vst/testsuite/processing/processtail.cpp",
-                "source/vst/testsuite/processing/processthreaded.cpp",
-                "source/vst/testsuite/processing/silenceflags.cpp",
-                "source/vst/testsuite/processing/silenceprocessing.cpp",
-                "source/vst/testsuite/processing/speakerarrangement.cpp",
-                "source/vst/testsuite/processing/variableblocksize.cpp",
-                "source/vst/testsuite/state/bypasspersistence.cpp",
-                "source/vst/testsuite/state/invalidstatetransition.cpp",
-                "source/vst/testsuite/state/repeatidenticalstatetransition.cpp",
-                "source/vst/testsuite/state/validstatetransition.cpp",
-                "source/vst/testsuite/testbase.cpp",
-                "source/vst/testsuite/unit/checkunitstructure.cpp",
-                "source/vst/testsuite/unit/scanprograms.cpp",
-                "source/vst/testsuite/unit/scanunits.cpp",
-                "source/vst/testsuite/vsttestsuite.cpp",
-                "source/vst/utility/testing.cpp",
-
-                "samples/vst-hosting/validator/source/main.cpp",
-                "samples/vst-hosting/validator/source/usediids.cpp",
-                "samples/vst-hosting/validator/source/validator.cpp",
-
-                "source/vst/hosting/connectionproxy.cpp",
-                "source/vst/hosting/eventlist.cpp",
-                "source/vst/hosting/hostclasses.cpp",
-                "source/vst/hosting/module.cpp",
-                "source/vst/hosting/parameterchanges.cpp",
-                "source/vst/hosting/pluginterfacesupport.cpp",
-                "source/vst/hosting/processdata.cpp",
-                "source/vst/vstpresetfile.cpp",
-            },
-            .flags = vst3_flags,
-        });
-
-        switch (target.os.tag) {
-            .windows => {
-                vst3_validator.addCSourceFiles(.{
-                    .root = build_context.dep_vst3_sdk.path(""),
-                    .files = &.{"public.sdk/source/vst/hosting/module_win32.cpp"},
-                    .flags = vst3_flags,
-                });
-                vst3_validator.linkSystemLibrary("ole32");
-            },
-            .linux => {
-                vst3_validator.addCSourceFiles(.{
-                    .root = build_context.dep_vst3_sdk.path(""),
-                    .files = &.{"public.sdk/source/vst/hosting/module_linux.cpp"},
-                    .flags = vst3_flags,
-                });
-            },
-            .macos => {
-                vst3_validator.addCSourceFiles(.{
-                    .root = build_context.dep_vst3_sdk.path(""),
-                    .files = &.{"public.sdk/source/vst/hosting/module_mac.mm"},
-                    .flags = FlagsBuilder.init(build_context, target, .{
-                        .objcpp = true,
-                        .compile_commands = concat_cdb,
-                    }).flags.items,
-                });
-            },
-            else => {},
-        }
-
-        vst3_validator.addIncludePath(build_context.dep_vst3_sdk.path(""));
-        vst3_validator.linkLibCpp();
-        vst3_validator.linkLibrary(vst3_sdk);
-        vst3_validator.linkLibrary(library); // for ubsan runtime
-        applyUniversalSettings(build_context, vst3_validator, concat_cdb);
-
-        break :blk vst3_validator;
-    };
+    const vst3_sdk = buildVst3Sdk(ctx, cfg);
+    const vst3_validator = buildVst3Validator(ctx, cfg, .{
+        .library = library,
+        .vst3_sdk = vst3_sdk,
+    });
 
     const configured_vst3: ?configure_binaries.ConfiguredPlugin = blk: {
         if (!options.sanitize_thread) {
-            const vst3 = b.addSharedLibrary(.{
-                .name = "Floe.vst3",
-                .version = build_context.floe_version,
-                .root_module = b.createModule(module_options),
-            });
-            switch (target.os.tag) {
-                .windows => {
-                    vst3.root_module.addCMacro("WIN", "1");
-                },
-                .linux => {
-                    vst3.root_module.addCMacro("LIN", "1");
-                },
-                .macos => {
-                    vst3.root_module.addCMacro("MAC", "1");
-                },
-                else => {},
-            }
-            if (build_context.optimise == .Debug) {
-                vst3.root_module.addCMacro("DEVELOPMENT", "1");
-            } else {
-                vst3.root_module.addCMacro("RELEASE", "1");
-            }
-            vst3.root_module.addCMacro("MACOS_USE_STD_FILESYSTEM", "1");
-            vst3.root_module.addCMacro("CLAP_WRAPPER_VERSION", "\"0.11.0\"");
-            vst3.root_module.addCMacro("STATICALLY_LINKED_CLAP_ENTRY", "1");
-
-            var flags = FlagsBuilder.init(build_context, target, .{
-                .ubsan = false,
-                .compile_commands = concat_cdb,
-            });
-            flags.addFlag("-fno-char8_t");
-
-            vst3.addCSourceFiles(.{
-                .files = &.{
-                    "src/plugin/plugin/plugin_entry.cpp",
-                    "src/common_infrastructure/final_binary_type.cpp",
-                },
-                .flags = FlagsBuilder.init(build_context, target, .{
-                    .full_diagnostics = true,
-                    .ubsan = true,
-                    .cpp = true,
-                    .compile_commands = concat_cdb,
-                }).flags.items,
-            });
-            vst3.root_module.addCMacro("FINAL_BINARY_TYPE", "Vst3");
-
-            const wrapper_src_path = build_context.dep_clap_wrapper.path("src");
-            vst3.addCSourceFiles(.{
-                .root = wrapper_src_path,
-                .files = &.{
-                    "wrapasvst3.cpp",
-                    "wrapasvst3_entry.cpp",
-                    "wrapasvst3_export_entry.cpp",
-                    "detail/vst3/parameter.cpp",
-                    "detail/vst3/plugview.cpp",
-                    "detail/vst3/process.cpp",
-                    "detail/vst3/categories.cpp",
-                    "clap_proxy.cpp",
-                    "detail/shared/sha1.cpp",
-                    "detail/clap/fsutil.cpp",
-                },
-                .flags = flags.flags.items,
+            const dso = buildVst3(ctx, cfg, .{
+                .vst3_sdk = vst3_sdk,
+                .plugin = plugin,
             });
 
-            switch (target.os.tag) {
-                .windows => {
-                    vst3.addCSourceFile(.{
-                        .file = build_context.dep_clap_wrapper.path("src/detail/os/windows.cpp"),
-                        .flags = flags.flags.items,
-                    });
-                    vst3.addCSourceFiles(.{
-                        .root = build_context.dep_vst3_sdk.path(""),
-                        .files = &.{"public.sdk/source/main/dllmain.cpp"},
-                        .flags = flags.flags.items,
-                    });
-                },
-                .linux => {
-                    vst3.addCSourceFile(.{
-                        .file = build_context.dep_clap_wrapper.path("src/detail/os/linux.cpp"),
-                        .flags = flags.flags.items,
-                    });
-                    vst3.addCSourceFiles(.{
-                        .root = build_context.dep_vst3_sdk.path(""),
-                        .files = &.{"public.sdk/source/main/linuxmain.cpp"},
-                        .flags = flags.flags.items,
-                    });
-                },
-                .macos => {
-                    vst3.addCSourceFiles(.{
-                        .root = wrapper_src_path,
-                        .files = &.{
-                            "detail/os/macos.mm",
-                            "detail/clap/mac_helpers.mm",
-                        },
-                        .flags = flags.flags.items,
-                    });
-                    vst3.addCSourceFiles(.{
-                        .root = build_context.dep_vst3_sdk.path(""),
-                        .files = &.{"public.sdk/source/main/macmain.cpp"},
-                        .flags = flags.flags.items,
-                    });
-                },
-                else => {},
-            }
-
-            vst3.addIncludePath(build_context.dep_clap_wrapper.path("include"));
-            vst3.addIncludePath(build_context.dep_clap_wrapper.path("libs/fmt"));
-            vst3.addIncludePath(build_context.dep_clap_wrapper.path("libs/psl"));
-            vst3.addIncludePath(build_context.dep_clap_wrapper.path("src"));
-            vst3.addIncludePath(build_context.dep_vst3_sdk.path(""));
-            vst3.linkLibCpp();
-
-            vst3.linkLibrary(plugin);
-            vst3.linkLibrary(vst3_sdk);
-
-            vst3.addConfigHeader(floe_config_h);
-            vst3.addIncludePath(b.path("src"));
-
-            applyUniversalSettings(build_context, vst3, concat_cdb);
-            addWindowsEmbedInfo(vst3, .{
-                .name = "Floe VST3",
-                .description = constants.floe_description,
-                .icon_path = null,
-            }) catch @panic("OOM");
-
-            const configured_vst3 = configure_binaries.addConfiguredPlugin(
-                b,
+            const vst3 = configure_binaries.addConfiguredPlugin(
+                ctx.b,
                 .vst3,
-                vst3,
+                dso,
                 configure_binaries.CodesignInfo{ .description = "Floe VST3 Plugin" },
             );
+            top_level_steps.install_plugins.dependOn(vst3.install_step);
+            top_level_steps.install_all.dependOn(vst3.install_step);
 
             // Test VST3
             {
-                const run_tests = std_extras.createCommandWithStdoutToStderr(b, target, "run VST3-Validator");
+                const run_tests = std_extras.createCommandWithStdoutToStderr(
+                    ctx.b,
+                    cfg.target,
+                    "run VST3-Validator",
+                );
                 run_tests.addFileArg(configure_binaries.nix_helper.maybePatchElfExecutable(vst3_validator));
-                configured_vst3.addToRunStepArgs(run_tests);
+                vst3.addToRunStepArgs(run_tests);
                 run_tests.expectExitCode(0);
 
-                steps.test_vst3_validator.dependOn(&run_tests.step);
+                top_level_steps.test_vst3_validator.dependOn(&run_tests.step);
             }
 
-            break :blk configured_vst3;
+            break :blk vst3;
         } else {
-            steps.test_vst3_validator.dependOn(&b.addFail("VST3 tests not allowed with this configuration").step);
+            top_level_steps.test_vst3_validator.dependOn(&ctx.b.addFail("VST3 tests not allowed with this configuration").step);
             break :blk null;
         }
     };
 
     const configured_au: ?configure_binaries.ConfiguredPlugin = blk: {
-        if (target.os.tag == .macos and !options.sanitize_thread) {
-            const au_sdk = blk2: {
-                const lib = b.addStaticLibrary(.{
-                    .name = "AU",
-                    .root_module = b.createModule(module_options),
-                });
+        if (cfg.target.os.tag == .macos and !options.sanitize_thread) {
+            const dso = buildAu(ctx, cfg, .{ .plugin = plugin });
 
-                lib.addCSourceFiles(.{
-                    .root = build_context.dep_au_sdk.path("src/AudioUnitSDK"),
-                    .files = &.{
-                        "AUBuffer.cpp",
-                        "AUBufferAllocator.cpp",
-                        "AUEffectBase.cpp",
-                        "AUInputElement.cpp",
-                        "AUMIDIBase.cpp",
-                        "AUBase.cpp",
-                        "AUMIDIEffectBase.cpp",
-                        "AUOutputElement.cpp",
-                        "AUPlugInDispatch.cpp",
-                        "AUScopeElement.cpp",
-                        "ComponentBase.cpp",
-                        "MusicDeviceBase.cpp",
-                    },
-                    .flags = FlagsBuilder.init(build_context, target, .{
-                        .cpp = true,
-                        .compile_commands = concat_cdb,
-                    }).flags.items,
-                });
-                lib.addIncludePath(build_context.dep_au_sdk.path("include"));
-                lib.linkLibCpp();
-                applyUniversalSettings(build_context, lib, concat_cdb);
-
-                break :blk2 lib;
-            };
-
-            const flags = blk2: {
-                var flags = FlagsBuilder.init(build_context, target, .{
-                    .compile_commands = concat_cdb,
-                });
-                switch (target.os.tag) {
-                    .windows => {
-                        flags.addFlag("-DWIN=1");
-                    },
-                    .linux => {
-                        flags.addFlag("-DLIN=1");
-                    },
-                    .macos => {
-                        flags.addFlag("-DMAC=1");
-                    },
-                    else => {},
-                }
-                if (build_context.optimise == .Debug) {
-                    flags.addFlag("-DDEVELOPMENT=1");
-                } else {
-                    flags.addFlag("-DRELEASE=1");
-                }
-                flags.addFlag("-fno-char8_t");
-                flags.addFlag("-DMACOS_USE_STD_FILESYSTEM=1");
-                flags.addFlag("-DCLAP_WRAPPER_VERSION=\"0.11.0\"");
-                flags.addFlag("-DSTATICALLY_LINKED_CLAP_ENTRY=1");
-                break :blk2 flags.flags.items;
-            };
-
-            const au = b.addSharedLibrary(.{
-                .name = "Floe.component",
-                .root_module = b.createModule(module_options),
-                .version = build_context.floe_version,
-            });
-            au.addCSourceFiles(.{
-                .files = &.{
-                    "src/plugin/plugin/plugin_entry.cpp",
-                    "src/common_infrastructure/final_binary_type.cpp",
-                },
-                .flags = FlagsBuilder.init(build_context, target, .{
-                    .full_diagnostics = true,
-                    .ubsan = true,
-                    .objcpp = true,
-                    .compile_commands = concat_cdb,
-                }).flags.items,
-            });
-            au.root_module.addCMacro("FINAL_BINARY_TYPE", "AuV2");
-
-            const wrapper_src_path = build_context.dep_clap_wrapper.path("src");
-
-            au.addCSourceFiles(.{
-                .root = wrapper_src_path,
-                .files = &.{
-                    "clap_proxy.cpp",
-                    "detail/shared/sha1.cpp",
-                    "detail/clap/fsutil.cpp",
-                    "detail/os/macos.mm",
-                    "detail/clap/mac_helpers.mm",
-                    "wrapasauv2.cpp",
-                    "detail/auv2/process.cpp",
-                    "detail/auv2/wrappedview.mm",
-                    "detail/auv2/parameter.cpp",
-                    "detail/auv2/auv2_shared.mm",
-                },
-                .flags = flags,
-            });
-
-            {
-                const generated_files = b.addWriteFiles();
-
-                _ = generated_files.add("generated_entrypoints.hxx", b.fmt(
-                    \\ #pragma once
-                    \\ #include "detail/auv2/auv2_base_classes.h"
-                    \\
-                    \\ struct {[factory_function]s} : free_audio::auv2_wrapper::WrapAsAUV2 {{
-                    \\     {[factory_function]s}(AudioComponentInstance ci) : 
-                    \\         free_audio::auv2_wrapper::WrapAsAUV2(AUV2_Type::aumu_musicdevice, 
-                    \\                                              "{[clap_name]s}",
-                    \\                                              "{[clap_id]s}",
-                    \\                                              0,
-                    \\                                              ci) {{
-                    \\     }}
-                    \\ }};
-                    \\ AUSDK_COMPONENT_ENTRY(ausdk::AUMusicDeviceFactory, {[factory_function]s});
-                , .{
-                    .factory_function = constants.floe_au_factory_function,
-                    .clap_name = "Floe",
-                    .clap_id = constants.floe_clap_id,
-                }));
-
-                _ = generated_files.add("generated_cocoaclasses.hxx", b.fmt(
-                    \\ #pragma once
-                    \\
-                    \\ #define CLAP_WRAPPER_COCOA_CLASS_NSVIEW {[name]s}_nsview
-                    \\ #define CLAP_WRAPPER_COCOA_CLASS {[name]s}
-                    \\ #define CLAP_WRAPPER_TIMER_CALLBACK timerCallback_{[name]s}
-                    \\ #define CLAP_WRAPPER_FILL_AUCV fillAUCV_{[name]s}
-                    \\ #define CLAP_WRAPPER_EDITOR_NAME "Floe"
-                    \\ #include "detail/auv2/wrappedview.asinclude.mm"
-                    \\ #undef CLAP_WRAPPER_COCOA_CLASS_NSVIEW
-                    \\ #undef CLAP_WRAPPER_COCOA_CLASS
-                    \\ #undef CLAP_WRAPPER_TIMER_CALLBACK
-                    \\ #undef CLAP_WRAPPER_FILL_AUCV
-                    \\ #undef CLAP_WRAPPER_EDITOR_NAME
-                    \\
-                    \\ bool fillAudioUnitCocoaView(AudioUnitCocoaViewInfo* viewInfo, 
-                    \\                             std::shared_ptr<Clap::Plugin> _plugin) {{
-                    \\     if (strcmp(_plugin->_plugin->desc->id, "{[clap_id]s}") == 0) {{
-                    \\         if (!_plugin->_ext._gui) return false;
-                    \\         return fillAUCV_{[name]s}(viewInfo);
-                    \\     }}
-                    \\ }}
-                , .{
-                    .name = b.fmt("Floe{d}", .{build_context.floe_version_hash}),
-                    .clap_id = constants.floe_clap_id,
-                }));
-
-                au.addIncludePath(generated_files.getDirectory());
-            }
-
-            au.addIncludePath(b.path("third_party_libs/clap/include"));
-            au.addIncludePath(build_context.dep_au_sdk.path("include"));
-            au.addIncludePath(build_context.dep_clap_wrapper.path("include"));
-            au.addIncludePath(build_context.dep_clap_wrapper.path("libs/fmt"));
-            au.addIncludePath(build_context.dep_clap_wrapper.path("src"));
-            au.linkLibCpp();
-
-            au.linkLibrary(plugin);
-            au.linkLibrary(au_sdk);
-            au.linkFramework("AudioToolbox");
-            au.linkFramework("CoreMIDI");
-
-            au.addConfigHeader(floe_config_h);
-            au.addIncludePath(b.path("src"));
-
-            applyUniversalSettings(build_context, au, concat_cdb);
-
-            const configured_au = configure_binaries.addConfiguredPlugin(b, .au, au, null);
+            const au = configure_binaries.addConfiguredPlugin(ctx.b, .au, dso, null);
+            top_level_steps.install_plugins.dependOn(au.install_step);
+            top_level_steps.install_all.dependOn(au.install_step);
 
             if (builtin.os.tag == .macos) {
-                if (std.mem.endsWith(u8, std.mem.trimRight(u8, b.install_path, "/"), "Library/Audio/Plug-Ins")) {
-                    const installed_au_path = b.pathJoin(&.{ b.install_path, "Components/Floe.component" });
+                if (std.mem.endsWith(u8, std.mem.trimRight(u8, ctx.b.install_path, "/"), "Library/Audio/Plug-Ins")) {
+                    const installed_au_path = ctx.b.pathJoin(&.{ ctx.b.install_path, "Components/Floe.component" });
 
                     // Pluginval AU
                     {
                         // Pluginval puts all of it's output in stdout, not stderr.
-                        const run = std_extras.createCommandWithStdoutToStderr(b, target, "run pluginval AU");
+                        const run = std_extras.createCommandWithStdoutToStderr(ctx.b, cfg.target, "run pluginval AU");
 
-                        addPluginvalCommand(run, target);
+                        addPluginvalCommand(run, cfg.target);
 
                         run.addArgs(&.{ "--validate", installed_au_path });
 
-                        run.step.dependOn(configured_au.install_step);
+                        run.step.dependOn(au.install_step);
                         run.expectExitCode(0);
 
-                        steps.pluginval_au.dependOn(&run.step);
+                        top_level_steps.pluginval_au.dependOn(&run.step);
                     }
 
                     // auval
                     {
-                        const run_auval = std_extras.createCommandWithStdoutToStderr(b, target, "run auval");
+                        const run_auval = std_extras.createCommandWithStdoutToStderr(ctx.b, cfg.target, "run auval");
                         run_auval.addArgs(&.{
                             "auval",
                             "-v",
@@ -2379,7 +2891,7 @@ fn doTarget(
                             constants.floe_au_subtype,
                             constants.floe_au_manufacturer_code,
                         });
-                        run_auval.step.dependOn(configured_au.install_step);
+                        run_auval.step.dependOn(au.install_step);
                         run_auval.expectExitCode(0);
 
                         // We need to make sure that the audio component service is aware of the new AU.
@@ -2389,7 +2901,7 @@ fn doTarget(
                         // killall -9 AudioComponentRegistrar. That is, send SIGKILL to the process named
                         // AudioComponentRegistrar.
                         if (!std_extras.pathExists(installed_au_path)) {
-                            const cmd = b.addSystemCommand(&.{ "killall", "-9", "AudioComponentRegistrar" });
+                            const cmd = ctx.b.addSystemCommand(&.{ "killall", "-9", "AudioComponentRegistrar" });
 
                             // We explicitly set the 'check' to an empty array which means that we do not care
                             // about the exit code or output of this command. Sometimes it can fail with: "No
@@ -2398,88 +2910,48 @@ fn doTarget(
                                 .check = std.ArrayListUnmanaged(std.Build.Step.Run.StdIo.Check).empty,
                             };
 
-                            steps.auval.dependOn(&cmd.step);
+                            top_level_steps.auval.dependOn(&cmd.step);
                         }
 
-                        steps.auval.dependOn(&run_auval.step);
+                        top_level_steps.auval.dependOn(&run_auval.step);
                     }
                 } else {
-                    const fail = b.addFail("You must specify a global/user Library/Audio/Plug-Ins " ++
+                    const fail = ctx.b.addFail("You must specify a global/user Library/Audio/Plug-Ins " ++
                         "--prefix to zig build in order to run AU tests");
-                    steps.pluginval_au.dependOn(&fail.step);
-                    steps.auval.dependOn(&fail.step);
+                    top_level_steps.pluginval_au.dependOn(&fail.step);
+                    top_level_steps.auval.dependOn(&fail.step);
                 }
             } else {
-                const fail = b.addFail("AU tests can only be run on macOS hosts");
-                steps.pluginval_au.dependOn(&fail.step);
-                steps.auval.dependOn(&fail.step);
+                const fail = ctx.b.addFail("AU tests can only be run on macOS hosts");
+                top_level_steps.pluginval_au.dependOn(&fail.step);
+                top_level_steps.auval.dependOn(&fail.step);
             }
 
-            break :blk configured_au;
+            break :blk au;
         } else {
-            const fail = b.addFail("AU tests not allowed with this configuration");
-            steps.pluginval_au.dependOn(&fail.step);
-            steps.auval.dependOn(&fail.step);
+            const fail = ctx.b.addFail("AU tests not allowed with this configuration");
+            top_level_steps.pluginval_au.dependOn(&fail.step);
+            top_level_steps.auval.dependOn(&fail.step);
             break :blk null;
         }
     };
 
     const configured_windows_installer: ?release_artifacts.Artifact = blk: {
-        if (target.os.tag == .windows) {
-            const generated_manifests = b.addWriteFiles();
-
-            const flags = FlagsBuilder.init(build_context, target, .{
-                .full_diagnostics = true,
-                .ubsan = true,
-                .cpp = true,
-                .compile_commands = concat_cdb,
-            });
-
+        if (cfg.target.os.tag == .windows) {
             const uninstaller = blk2: {
-                const exe = b.addExecutable(.{
-                    .name = "Floe-Uninstaller",
-                    .root_module = b.createModule(module_options),
-                    .version = build_context.floe_version,
-                    .win32_manifest = generated_manifests.add("xml.manifest", windowsManifestContent(b, .{
-                        .name = "Uninstaller",
-                        .description = "Uninstaller for Floe plugins",
-                        .require_admin = if (options.build_mode == .production) true else options.windows_installer_require_admin,
-                    })),
+                const exe = buildWindowsUninstaller(ctx, cfg, .{
+                    .library = library,
+                    .common_infrastructure = common_infrastructure,
+                    .stb_image = stb_image,
                 });
-                exe.subsystem = .Windows;
-
-                exe.root_module.addCMacro(
-                    "UNINSTALLER_BINARY_NAME",
-                    b.fmt("\"{s}\"", .{exe.out_filename}),
-                );
-
-                exe.addCSourceFiles(.{
-                    .files = &.{
-                        "src/windows_installer/uninstaller.cpp",
-                        "src/windows_installer/gui.cpp",
-                        "src/common_infrastructure/final_binary_type.cpp",
-                    },
-                    .flags = flags.flags.items,
-                });
-                exe.root_module.addCMacro("FINAL_BINARY_TYPE", "WindowsUninstaller");
-                exe.linkSystemLibrary("gdi32");
-                exe.linkSystemLibrary("version");
-                exe.linkSystemLibrary("comctl32");
-                exe.addConfigHeader(floe_config_h);
-                exe.addIncludePath(b.path("src"));
-                exe.addObject(stb_image);
-                exe.linkLibrary(library);
-                exe.linkLibrary(miniz);
-                exe.linkLibrary(common_infrastructure);
-                applyUniversalSettings(build_context, exe, concat_cdb);
 
                 const codesigned_exe = configure_binaries.maybeAddWindowsCodesign(
                     exe,
                     .{ .description = "Floe Uninstaller" },
                 );
 
-                const install = b.addInstallBinFile(codesigned_exe, exe.out_filename);
-                steps.install_all_step.dependOn(&install.step);
+                const install = ctx.b.addInstallBinFile(codesigned_exe, exe.out_filename);
+                top_level_steps.install_all.dependOn(&install.step);
 
                 break :blk2 .{
                     .step = exe,
@@ -2487,182 +2959,68 @@ fn doTarget(
                 };
             };
 
-            const description = "Installer for Floe plugins";
-
-            const exe = b.addExecutable(.{
-                .name = b.fmt("Floe-Installer-v{s}", .{ .version = build_context.floe_version_string }),
-                .root_module = b.createModule(module_options),
-                .version = build_context.floe_version,
-                .win32_manifest = generated_manifests.add("xml.manifest", windowsManifestContent(b, .{
-                    .name = "Installer",
-                    .description = description,
-                    .require_admin = if (options.build_mode == .production) true else options.windows_installer_require_admin,
-                })),
+            const installer = buildWindowsInstaller(ctx, cfg, .{
+                .stb_image = stb_image,
+                .common_infrastructure = common_infrastructure,
+                .library = library,
+                .uninstaller = uninstaller.step,
+                .codesigned_uninstaller = uninstaller.codesigned_path,
+                .configured_clap = configured_clap,
+                .configured_vst3 = configured_vst3,
             });
-            exe.subsystem = .Windows;
-
-            // Add resources.
-            {
-                var rc_include_path: std.BoundedArray(std.Build.LazyPath, 5) = .{};
-
-                if (build_context.dep_floe_logos) |logos| {
-                    const sidebar_img = "rasterized/win-installer-sidebar.png";
-                    const sidebar_img_lazy_path = logos.path(sidebar_img);
-                    rc_include_path.append(sidebar_img_lazy_path.dirname()) catch @panic("OOM");
-                    exe.root_module.addCMacro(
-                        "SIDEBAR_IMAGE_PATH",
-                        b.fmt("\"{s}\"", .{std.fs.path.basename(sidebar_img)}),
-                    );
-                }
-
-                if (configured_vst3) |vst3_plugin| {
-                    exe.root_module.addCMacro("VST3_PLUGIN_BINARY_NAME", "\"Floe.vst3\"");
-                    rc_include_path.append(vst3_plugin.plugin_path.dirname()) catch @panic("OOM");
-                }
-
-                if (configured_clap) |clap_plugin| {
-                    exe.root_module.addCMacro("CLAP_PLUGIN_BINARY_NAME", "\"Floe.clap\"");
-                    rc_include_path.append(clap_plugin.plugin_path.dirname()) catch @panic("OOM");
-                }
-
-                {
-                    exe.root_module.addCMacro(
-                        "UNINSTALLER_BINARY_NAME",
-                        b.fmt("\"{s}\"", .{uninstaller.step.out_filename}),
-                    );
-                    rc_include_path.append(uninstaller.codesigned_path.dirname()) catch @panic("OOM");
-                }
-
-                exe.addWin32ResourceFile(.{
-                    .file = b.path("src/windows_installer/resources.rc"),
-                    .include_paths = rc_include_path.slice(),
-                    .flags = exe.root_module.c_macros.items,
-                });
-            }
-
-            exe.addCSourceFiles(.{
-                .files = &.{
-                    "src/windows_installer/installer.cpp",
-                    "src/windows_installer/gui.cpp",
-                    "src/common_infrastructure/final_binary_type.cpp",
-                },
-                .flags = flags.flags.items,
-            });
-
-            exe.root_module.addCMacro("FINAL_BINARY_TYPE", "WindowsInstaller");
-            exe.linkSystemLibrary("gdi32");
-            exe.linkSystemLibrary("version");
-            exe.linkSystemLibrary("comctl32");
-
-            addWindowsEmbedInfo(exe, .{
-                .name = "Floe Installer",
-                .description = description,
-                .icon_path = if (build_context.dep_floe_logos) |logos| logos.path("rasterized/icon.ico") else null,
-            }) catch @panic("OOM");
-            exe.addConfigHeader(floe_config_h);
-            exe.addIncludePath(b.path("src"));
-            exe.addObject(stb_image);
-            exe.linkLibrary(library);
-            exe.linkLibrary(miniz);
-            exe.linkLibrary(common_infrastructure);
-            applyUniversalSettings(build_context, exe, concat_cdb);
 
             const codesigned_path = configure_binaries.maybeAddWindowsCodesign(
-                exe,
+                installer,
                 .{ .description = "Floe Installer" },
             );
 
             // Installer tests
             {
-                const run_installer = std.Build.Step.Run.create(b, b.fmt("run {s}", .{exe.name}));
+                const run_installer = std.Build.Step.Run.create(ctx.b, ctx.b.fmt("run {s}", .{installer.name}));
                 run_installer.addFileArg(codesigned_path);
                 run_installer.addArg("--autorun");
                 run_installer.expectExitCode(0);
 
                 // IMPROVE actually test for installation
 
-                const run_uninstaller = std.Build.Step.Run.create(b, b.fmt("run {s}", .{uninstaller.step.name}));
+                const run_uninstaller = std.Build.Step.Run.create(
+                    ctx.b,
+                    ctx.b.fmt("run {s}", .{uninstaller.step.name}),
+                );
                 run_uninstaller.addFileArg(uninstaller.codesigned_path);
                 run_uninstaller.addArg("--autorun");
                 run_uninstaller.expectExitCode(0);
                 run_uninstaller.step.dependOn(&run_installer.step);
 
-                steps.test_windows_install.dependOn(&run_uninstaller.step);
+                top_level_steps.test_windows_install.dependOn(&run_uninstaller.step);
             }
 
             // Install
             {
-                const install = b.addInstallBinFile(codesigned_path, exe.out_filename);
-                steps.install_all_step.dependOn(&install.step);
+                const install = ctx.b.addInstallBinFile(codesigned_path, installer.out_filename);
+                top_level_steps.install_all.dependOn(&install.step);
             }
 
             break :blk release_artifacts.Artifact{
-                .out_filename = exe.out_filename,
+                .out_filename = installer.out_filename,
                 .path = codesigned_path,
             };
         } else {
-            steps.test_windows_install.dependOn(&b.addFail("Windows installer tests not allowed with this configuration").step);
+            top_level_steps.test_windows_install.dependOn(
+                &ctx.b.addFail("Windows installer tests not allowed with this configuration").step,
+            );
             break :blk null;
         }
     };
 
     // We don't need tests in production builds so we can save some build time here.
-    if (build_context.build_mode != .production) {
-        const exe = b.addExecutable(.{
-            .name = "tests",
-            .root_module = b.createModule(module_options),
-        });
-        exe.addCSourceFiles(.{
-            .files = &.{
-                "src/common_infrastructure/final_binary_type.cpp",
-                "src/foundation/container/bitset.cpp",
-                "src/foundation/container/bounded_list.cpp",
-                "src/foundation/container/circular_buffer.cpp",
-                "src/foundation/container/dynamic_array.cpp",
-                "src/foundation/container/function.cpp",
-                "src/foundation/container/function_queue.cpp",
-                "src/foundation/container/hash_table.cpp",
-                "src/foundation/container/optional.cpp",
-                "src/foundation/container/path_pool.cpp",
-                "src/foundation/container/tagged_union.cpp",
-                "src/foundation/error/assert_f.cpp",
-                "src/foundation/error/error_code.cpp",
-                "src/foundation/memory/allocators.cpp",
-                "src/foundation/utils/algorithm.cpp",
-                "src/foundation/utils/format.cpp",
-                "src/foundation/utils/geometry.cpp",
-                "src/foundation/utils/linked_list.cpp",
-                "src/foundation/utils/maths.cpp",
-                "src/foundation/utils/memory.cpp",
-                "src/foundation/utils/path.cpp",
-                "src/foundation/utils/random.cpp",
-                "src/foundation/utils/version.cpp",
-                "src/foundation/utils/writer.cpp",
-                "src/tests/tests_main.cpp",
-                "src/utils/error_notifications.cpp",
-                "src/utils/json/json_reader.cpp",
-                "src/utils/json/json_writer.cpp",
-                "src/utils/thread_extra/atomic_queue.cpp",
-                "src/utils/thread_extra/atomic_ref_list.cpp",
-                "src/utils/thread_extra/atomic_swap_buffer.cpp",
-                "src/utils/thread_extra/thread_pool.cpp",
-            },
-            .flags = FlagsBuilder.init(build_context, target, .{
-                .full_diagnostics = true,
-                .ubsan = true,
-                .cpp = true,
-                .compile_commands = concat_cdb,
-            }).flags.items,
-        });
-        exe.root_module.addCMacro("FINAL_BINARY_TYPE", "Tests");
-        exe.addConfigHeader(floe_config_h);
-        exe.linkLibrary(plugin);
-        applyUniversalSettings(build_context, exe, concat_cdb);
+    if (ctx.build_mode != .production) {
+        const exe = buildTests(ctx, cfg, .{ .plugin = plugin });
 
         const test_binary = configure_binaries.nix_helper.maybePatchElfExecutable(exe);
 
-        const install = b.addInstallBinFile(test_binary, exe.out_filename);
-        steps.install_all_step.dependOn(&install.step);
+        const install = ctx.b.addInstallBinFile(test_binary, exe.out_filename);
+        top_level_steps.install_all.dependOn(&install.step);
 
         const add_tests_args = struct {
             pub fn do(run: *std.Build.Step.Run, clap_plugin: ?configure_binaries.ConfiguredPlugin) void {
@@ -2686,39 +3044,39 @@ fn doTarget(
 
         // Run unit tests
         {
-            const run_tests = std.Build.Step.Run.create(b, "run unit tests");
+            const run_tests = std.Build.Step.Run.create(ctx.b, "run unit tests");
             run_tests.addFileArg(test_binary);
             add_tests_args(run_tests, configured_clap);
 
             run_tests.expectExitCode(0);
 
-            steps.test_step.dependOn(&run_tests.step);
+            top_level_steps.test_step.dependOn(&run_tests.step);
         }
 
         // Coverage tests
         if (builtin.os.tag == .linux) {
-            const run_coverage = b.addSystemCommand(&.{
+            const run_coverage = ctx.b.addSystemCommand(&.{
                 "kcov",
-                b.fmt("--include-pattern={s}", .{b.pathFromRoot("src")}),
-                b.fmt("{s}/coverage-out", .{constants.floe_cache_relative}),
+                ctx.b.fmt("--include-pattern={s}", .{ctx.b.pathFromRoot("src")}),
+                ctx.b.fmt("{s}/coverage-out", .{constants.floe_cache_relative}),
             });
             run_coverage.addFileArg(test_binary);
             add_tests_args(run_coverage, configured_clap);
             run_coverage.expectExitCode(0);
-            steps.coverage.dependOn(&run_coverage.step);
+            top_level_steps.coverage.dependOn(&run_coverage.step);
         } else {
-            steps.coverage.dependOn(&b.addFail("coverage not supported on this OS").step);
+            top_level_steps.coverage.dependOn(&ctx.b.addFail("coverage not supported on this OS").step);
         }
 
         // Valgrind test
         if (!options.sanitize_thread) {
-            const run = b.addSystemCommand(&.{
+            const run = ctx.b.addSystemCommand(&.{
                 "valgrind",
                 "--leak-check=full",
                 "--fair-sched=yes",
                 "--num-callers=25",
                 "--gen-suppressions=all",
-                b.fmt("--suppressions={s}", .{b.pathFromRoot("valgrind.supp")}),
+                ctx.b.fmt("--suppressions={s}", .{ctx.b.pathFromRoot("valgrind.supp")}),
                 "--error-exitcode=1",
                 "--exit-on-first-error=no",
             });
@@ -2726,35 +3084,37 @@ fn doTarget(
             add_tests_args(run, configured_clap);
             run.expectExitCode(0);
 
-            steps.valgrind.dependOn(&run.step);
+            top_level_steps.valgrind.dependOn(&run.step);
         } else {
-            steps.valgrind.dependOn(&b.addFail("valgrind not allowed for this build configuration").step);
+            top_level_steps.valgrind.dependOn(
+                &ctx.b.addFail("valgrind not allowed for this build configuration").step,
+            );
         }
     }
 
     // Clap Validator test
     if (configured_clap) |p| {
-        const run = std_extras.createCommandWithStdoutToStderr(b, target, "run clap-validator");
-        if (b.findProgram(
-            &.{if (target.os.tag != .windows) "clap-validator" else "clap-validator.exe"},
+        const run = std_extras.createCommandWithStdoutToStderr(ctx.b, cfg.target, "run clap-validator");
+        if (ctx.b.findProgram(
+            &.{if (cfg.target.os.tag != .windows) "clap-validator" else "clap-validator.exe"},
             &[0][]const u8{},
         ) catch null) |program| {
             run.addArg(program); // Use system-installed clap-validator.
-        } else if (target.os.tag == .windows) {
-            if (b.lazyDependency("clap_validator_windows", .{})) |dep| {
+        } else if (cfg.target.os.tag == .windows) {
+            if (ctx.b.lazyDependency("clap_validator_windows", .{})) |dep| {
                 run.addFileArg(dep.path("clap-validator.exe"));
             }
-        } else if (target.os.tag == .macos) {
-            if (b.lazyDependency("clap_validator_macos", .{})) |dep| {
+        } else if (cfg.target.os.tag == .macos) {
+            if (ctx.b.lazyDependency("clap_validator_macos", .{})) |dep| {
                 const bin_path = dep.path("clap-validator");
                 run.addFileArg(bin_path);
-                run.step.dependOn(&chmodExeStep(b, bin_path).step);
+                run.step.dependOn(&chmodExeStep(ctx.b, bin_path).step);
             }
-        } else if (target.os.tag == .linux) {
-            if (b.lazyDependency("clap_validator_linux", .{})) |dep| {
+        } else if (cfg.target.os.tag == .linux) {
+            if (ctx.b.lazyDependency("clap_validator_linux", .{})) |dep| {
                 const bin_path = dep.path("clap-validator");
                 run.addFileArg(bin_path);
-                run.step.dependOn(&chmodExeStep(b, bin_path).step);
+                run.step.dependOn(&chmodExeStep(ctx.b, bin_path).step);
             }
         } else {
             @panic("Unsupported OS for clap-validator");
@@ -2780,20 +3140,22 @@ fn doTarget(
         p.addToRunStepArgs(run);
         run.expectExitCode(0);
 
-        steps.clap_val.dependOn(&run.step);
+        top_level_steps.clap_val.dependOn(&run.step);
     } else {
-        steps.clap_val.dependOn(&b.addFail("clap-validator not allowed for this build configuration").step);
+        top_level_steps.clap_val.dependOn(
+            &ctx.b.addFail("clap-validator not allowed for this build configuration").step,
+        );
     }
 
     // Pluginval test
     if (configured_vst3) |p| {
         // Pluginval puts all of it's output in stdout, not stderr.
-        const run = std_extras.createCommandWithStdoutToStderr(b, target, "run pluginval");
+        const run = std_extras.createCommandWithStdoutToStderr(ctx.b, cfg.target, "run pluginval");
 
-        addPluginvalCommand(run, target);
+        addPluginvalCommand(run, cfg.target);
 
         // In headless environments such as CI, GUI tests always fail on Linux so we skip them.
-        if (builtin.os.tag == .linux and b.graph.env_map.get("DISPLAY") == null) {
+        if (builtin.os.tag == .linux and ctx.b.graph.env_map.get("DISPLAY") == null) {
             run.addArg("--skip-gui-tests");
         }
 
@@ -2801,16 +3163,18 @@ fn doTarget(
         p.addToRunStepArgs(run);
         run.expectExitCode(0);
 
-        steps.pluginval.dependOn(&run.step);
+        top_level_steps.pluginval.dependOn(&run.step);
     } else {
-        steps.pluginval.dependOn(&b.addFail("pluginval not allowed for this build configuration").step);
+        top_level_steps.pluginval.dependOn(
+            &ctx.b.addFail("pluginval not allowed for this build configuration").step,
+        );
     }
 
     // clang-tidy
     {
-        const clang_tidy_step = check_steps.ClangTidyStep.create(b, target);
-        clang_tidy_step.step.dependOn(&concat_cdb.step);
-        steps.clang_tidy.dependOn(&clang_tidy_step.step);
+        const clang_tidy_step = check_steps.ClangTidyStep.create(ctx.b, cfg.target);
+        clang_tidy_step.step.dependOn(ctx.compile_all);
+        top_level_steps.clang_tidy.dependOn(&clang_tidy_step.step);
     }
 
     return .{

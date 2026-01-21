@@ -45,6 +45,7 @@ Async
 Atan
 Audioata
 Bitwig
+C2
 C3
 CC
 CC0
@@ -61,11 +62,13 @@ CrashingWaves
 Crossfades
 Ctrl
 Cubase
+D2
 DAW
 DAWs
 Dbuild
 DecentSampler
 Detune
+DirectX
 Docusaurus
 Dsanitize
 Dtargets
@@ -133,6 +136,7 @@ Reso
 Retrig
 Retrigger
 Roadmap
+SCC
 SDK
 SFZ
 SPDX
@@ -146,6 +150,7 @@ Stivell
 Synthwave
 TODO
 TXT
+Taiko
 Telenn
 TestName
 TextEdit
@@ -160,6 +165,7 @@ VST3Validator
 VSTPlugins
 Velo
 Versilian
+Vulkan
 WAV
 WIP
 Windell
@@ -346,6 +352,7 @@ subfolders
 synthesiser
 synthesized
 synthwave
+taiko
 tbody
 td
 th

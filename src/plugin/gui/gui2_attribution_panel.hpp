@@ -65,7 +65,7 @@ static void AttributionPanel(GuiBoxSystem& box_system, AttributionPanelContext& 
                                         });
 
     if (TextButton(box_system, button_container, {.text = "Copy to clipboard"}))
-        dyn::Assign(box_system.imgui.clipboard_for_os, context.attribution_text);
+        dyn::Assign(GuiIo().out.set_clipboard_text, context.attribution_text);
 
     DoBox(box_system,
           {
@@ -82,21 +82,21 @@ PUBLIC void DoAttributionPanel(GuiBoxSystem& box_system, AttributionPanelContext
         return;
     }
     if (open) {
-        RunPanel(box_system,
-                 Panel {
-                     .run = [&context, &open](GuiBoxSystem& b) { AttributionPanel(b, context, open); },
-                     .data =
-                         ModalPanel {
-                             .r = CentredRect(
-                                 {.pos = 0, .size = box_system.imgui.frame_input.window_size.ToFloat2()},
-                                 f32x2 {box_system.imgui.VwToPixels(style::k_info_dialog_width),
-                                        box_system.imgui.VwToPixels(style::k_info_dialog_height)}),
-                             .imgui_id = box_system.imgui.GetID("new info"),
-                             .on_close = [&open]() { open = false; },
-                             .close_on_click_outside = true,
-                             .darken_background = true,
-                             .disable_other_interaction = true,
-                         },
-                 });
+        RunOrEnqueuePanel(
+            box_system,
+            Panel {
+                .run = [&context, &open](GuiBoxSystem& b) { AttributionPanel(b, context, open); },
+                .data =
+                    ModalPanel {
+                        .r = CentredRect({.pos = 0, .size = GuiIo().in.window_size.ToFloat2()},
+                                         f32x2 {box_system.imgui.VwToPixels(style::k_info_dialog_width),
+                                                box_system.imgui.VwToPixels(style::k_info_dialog_height)}),
+                        .imgui_id = box_system.imgui.GetID("new info"),
+                        .on_close = [&open]() { open = false; },
+                        .close_on_click_outside = true,
+                        .darken_background = true,
+                        .disable_other_interaction = true,
+                    },
+            });
     }
 }

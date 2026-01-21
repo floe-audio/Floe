@@ -57,8 +57,8 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
                                sample_lib_server::Server& server,
                                LibraryImagesTypes needed_types = LibraryImagesTypes::All);
 
-void BeginFrame(LibraryImagesTable& table, imgui::Context& imgui);
+void BeginFrame(LibraryImagesTable& table);
 void Shutdown(LibraryImagesTable& table);
 void InvalidateLibraryImages(LibraryImagesTable& table,
                              sample_lib::LibraryIdRef library_id,
-                             graphics::DrawContext& ctx);
+                             graphics::Renderer& renderer);

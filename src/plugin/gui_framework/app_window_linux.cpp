@@ -2,40 +2,42 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <errno.h>
+#include <pugl/gl.h>
 #include <stdio.h>
 
-#include "gui_platform.hpp"
+#include "app_window.hpp"
 
 //
 #define KeyCode XKeyCode
 #include <X11/Xlib.h>
 
-void detail::CloseNativeFilePicker(GuiPlatform&) {}
-bool detail::NativeFilePickerOnClientMessage(GuiPlatform&, uintptr, uintptr) { return false; }
+namespace native {
 
-f64 detail::DoubleClickTimeMs(GuiPlatform const&) {
+void CloseNativeFilePicker(AppWindow&) {}
+bool NativeFilePickerOnClientMessage(AppWindow&, uintptr, uintptr) { return false; }
+
+f64 DoubleClickTimeMs(AppWindow const&) {
     // IMPROVE: get this somehow from the machine
     return 300.0;
 }
 
-UiSize detail::DefaultUiSizeFromDpi(GuiPlatform const&) {
-    // On Linux, use a reasonable hardcoded size: 10 inches * 96 DPI = 960 pixels
-    auto target_width = (u16)(k_default_gui_width_inches * 96);
-    return SizeWithAspectRatio(target_width, k_gui_aspect_ratio);
+UiSize DefaultUiSizeFromDpi(void*) {
+    return SizeWithAspectRatio(CheckedCast<u16>(k_default_gui_width_inches * k_default_dpi),
+                               k_gui_aspect_ratio);
 }
 
-ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePickerDialogOptions const& args) {
+ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOptions const& args) {
     ASSERT(g_is_logical_main_thread);
-    if (platform.native_file_picker) return k_success;
+    if (window.native_file_picker) return k_success;
 
     if (args.default_folder) ASSERT(path::IsAbsolute(*args.default_folder));
 
-    // This implmentation is blocking, so we only need to check for recursion.
-    platform.native_file_picker.Emplace();
-    DEFER { platform.native_file_picker.Clear(); };
+    // This implementation is blocking, so we only need to check for recursion.
+    window.native_file_picker.Emplace();
+    DEFER { window.native_file_picker.Clear(); };
 
-    platform.frame_state.file_picker_results.Clear();
-    platform.file_picker_result_arena.ResetCursorAndConsolidateRegions();
+    window.frame_state.file_picker_results.Clear();
+    window.file_picker_result_arena.ResetCursorAndConsolidateRegions();
 
     // IMPROVE: use Gtk Dialog directly instead of zenity so that we can associate the dialog with the window
     // so that there is better UX for the dialog appearing on top of the window.
@@ -85,18 +87,18 @@ ErrorCodeOr<void> detail::OpenNativeFilePicker(GuiPlatform& platform, FilePicker
 
     for (auto part : SplitIterator {output, '|'})
         if (path::IsAbsolute(part))
-            platform.frame_state.file_picker_results.Append(platform.file_picker_result_arena.Clone(part),
-                                                            platform.file_picker_result_arena);
+            window.frame_state.file_picker_results.Append(window.file_picker_result_arena.Clone(part),
+                                                          window.file_picker_result_arena);
     return k_success;
 }
 
-int detail::FdFromPuglWorld(PuglWorld* world) {
+int FdFromPuglWorld(PuglWorld* world) {
     auto display = (Display*)puglGetNativeWorld(world);
     return ConnectionNumber(display);
 }
 
 // The CLAP API says that we need to use XEMBED protocol. Pugl doesn't do that so we need to do it ourselves.
-void detail::X11SetParent(PuglView* view, uintptr parent) {
+void X11SetParent(PuglView* view, uintptr parent) {
     auto display = (Display*)puglGetNativeWorld(puglGetWorld(view));
     auto window = (Window)puglGetNativeView(view);
     ASSERT(window);
@@ -117,3 +119,5 @@ void detail::X11SetParent(PuglView* view, uintptr parent) {
                     (u8*)embed_info_data,
                     ArraySize(embed_info_data));
 }
+
+} // namespace native
