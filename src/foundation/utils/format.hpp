@@ -377,6 +377,17 @@ PUBLIC ErrorCodeOr<void> ValueToString(Writer writer, T const& value, FormatOpti
         return k_success;
     }
 
+    else if constexpr (Same<Type, UiSize>) {
+        // IMPROVE: support width option
+        ASSERT(options.required_width == 0);
+        TRY(writer.WriteChar('('));
+        TRY(ValueToString(writer, value.width, options));
+        TRY(writer.WriteChars(", "_s));
+        TRY(ValueToString(writer, value.height, options));
+        TRY(writer.WriteChar(')'));
+        return k_success;
+    }
+
     else if constexpr (Vector<Type>) {
         ASSERT(options.required_width == 0); // IMPROVE: support width option
         constexpr auto k_num_elements = NumVectorElements<Type>();
