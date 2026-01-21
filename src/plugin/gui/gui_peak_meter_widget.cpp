@@ -19,6 +19,7 @@ static void DrawPeakMeters(imgui::Context const& imgui, Rect r, f32x2 v, bool di
 
     constexpr f32 k_max_db = 10;
     constexpr f32 k_min_db = -60;
+    constexpr f32 k_min_amp = constexpr_math::Powf(10, k_min_db / 20);
 
     auto const rounding = LiveSize(imgui, UiSizeId::CornerRounding);
 
@@ -55,7 +56,7 @@ static void DrawPeakMeters(imgui::Context const& imgui, Rect r, f32x2 v, bool di
         draw_marker(-48, false);
     }
 
-    auto const clamped_v = Max(v, f32x2(0));
+    auto const clamped_v = Max(v, f32x2(k_min_amp)); // Ensure we don't Log10 zero.
     auto const v_db = 20 * Log10(clamped_v);
     auto const v_percieved = Clamp<f32x2>(MapTo01Unchecked<f32x2>(v_db, k_min_db, k_max_db), 0, 1);
     auto const pixels = v_percieved * padded_r.h;
