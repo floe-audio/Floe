@@ -110,16 +110,16 @@ struct DpiAwareness {
 UiSize DefaultUiSizeFromDpi(void* native_window) {
     DpiAwareness dpi_awareness {};
 
-    auto const dpi =
-        (native_window ? dpi_awareness.Dpi((HWND)native_window) : dpi_awareness.Dpi()).ValueOr(k_default_dpi);
+    auto const hwnd = native_window ? (HWND)native_window : GetForegroundWindow();
 
+    auto const dpi = (hwnd ? dpi_awareness.Dpi(hwnd) : dpi_awareness.Dpi()).ValueOr(k_default_dpi);
     auto const backing_scale = dpi / 96.0f;
 
     auto const screen_size = ({
         UiSize sz {};
 
-        if (native_window) {
-            auto const monitor = MonitorFromWindow((HWND)native_window, MONITOR_DEFAULTTONEAREST);
+        if (hwnd) {
+            auto const monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
             MONITORINFO info {};
             info.cbSize = sizeof(MONITORINFO);
             if (GetMonitorInfoA(monitor, &info)) {
