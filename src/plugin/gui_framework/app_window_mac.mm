@@ -216,31 +216,31 @@ f64 DoubleClickTimeMs(AppWindow const&) {
     return result;
 }
 
-UiSize DefaultUiSizeFromDpi(AppWindow const& window) {
-    auto const main_screen = ({
+UiSize DefaultUiSizeFromDpi(void* native_window) {
+    auto const screen = ({
         NSScreen* s = nil;
 
-        if (window.view) {
-            auto const parent = puglGetParent(window.view);
-            if (parent) {
-                auto parent_view = (__bridge NSView*)(void*)parent;
-                auto parent_window = [parent_view window];
-                if (parent_window) s = [parent_window screen];
-            }
+        if (native_window) {
+            auto const view = (__bridge NSView*)native_window;
+            auto const window = [view window];
+            if (window) s = [window screen];
         }
 
         if (!s) s = [NSScreen mainScreen];
-        if (!s) s = [NSScreen screens][0];
+        if (!s) {
+            auto const screens = [NSScreen screens];
+            if (screens && screens.count) s = screens[0];
+        }
 
-        if (!s) return SizeWithAspectRatio(960, k_gui_aspect_ratio);
+        if (!s) return SizeWithAspectRatio(600, k_gui_aspect_ratio);
         s;
     });
 
-    auto const backing_scale = [main_screen backingScaleFactor];
+    auto const backing_scale = [screen backingScaleFactor];
 
-    auto const dpi_x = ({
-        CGFloat dpi = 0.0;
-        auto const description = [main_screen deviceDescription];
+    auto const dpi = ({
+        CGFloat v = 0.0;
+        auto const description = [screen deviceDescription];
         NSNumber* const screen_number = description[@"NSScreenNumber"];
 
         if (screen_number) {
@@ -254,52 +254,24 @@ UiSize DefaultUiSizeFromDpi(AppWindow const& window) {
                     // Convert mm to inches: divide by 25.4
                     // Calculate logical pixels per inch, then multiply by backing scale for physical pixels
                     // per inch
-                    dpi = (logical_pixel_size.width / (physical_size_mm.width / 25.4)) * backing_scale;
-
-                    if (dpi < 50.0 || dpi > 500.0) dpi = 0.0; // Force fallback
+                    v = (logical_pixel_size.width / (physical_size_mm.width / 25.4)) * backing_scale;
                 }
             }
         }
 
-        if (dpi <= 0) dpi = 72.0 * backing_scale;
-        dpi;
+        if (v <= 0) v = 72.0 * backing_scale;
+        v;
     });
 
-    auto target_width = (CGFloat)k_default_gui_width_inches * dpi_x;
-    CGFloat max_height {};
+    auto const screen_size = ({
+        auto const s = [screen frame].size;
+        UiSize {
+            CheckedCast<u16>(s.width * backing_scale),
+            CheckedCast<u16>(s.height * backing_scale),
+        };
+    });
 
-    // Ensure width is within our max screen percentage bounds.
-    {
-        auto const screen_frame = [main_screen frame];
-        auto const screen_width = screen_frame.size.width * backing_scale;
-        auto const screen_height = screen_frame.size.height * backing_scale;
-
-        auto const max_width = screen_width * (CGFloat)k_screen_fit_percentage;
-        max_height = screen_height * (CGFloat)k_screen_fit_percentage;
-
-        if (target_width > max_width) target_width = max_width;
-    }
-
-    auto result = SizeWithAspectRatio((u16)Min((CGFloat)LargestRepresentableValue<u16>(), target_width),
-                                      k_gui_aspect_ratio);
-
-    // Ensure height is within max bounds.
-    if (result.height > max_height) {
-        auto const width_from_height = max_height * k_gui_aspect_ratio.width / k_gui_aspect_ratio.height;
-        auto const width_from_height_u16 =
-            (u16)Min((CGFloat)LargestRepresentableValue<u16>(), width_from_height);
-        result = SizeWithAspectRatio(width_from_height_u16, k_gui_aspect_ratio);
-    }
-
-    // Ensure we stay within the min/max bounds
-    if (result.width < k_min_gui_width)
-        result = SizeWithAspectRatio(k_min_gui_width, k_gui_aspect_ratio);
-    else if (result.width > k_max_gui_width)
-        result = SizeWithAspectRatio(k_max_gui_width, k_gui_aspect_ratio);
-
-    ASSERT(NearestAspectRatioSizeInsideSize(result, k_gui_aspect_ratio) == result);
-
-    return result;
+    return DefaultUiSizeInternal(screen_size, (f32)dpi);
 }
 
 } // namespace native

@@ -21,10 +21,9 @@ f64 DoubleClickTimeMs(AppWindow const&) {
     return 300.0;
 }
 
-UiSize DefaultUiSizeFromDpi(AppWindow const&) {
-    // On Linux, use a reasonable hardcoded size: 10 inches * 96 DPI = 960 pixels
-    auto target_width = (u16)(k_default_gui_width_inches * 96);
-    return SizeWithAspectRatio(target_width, k_gui_aspect_ratio);
+UiSize DefaultUiSizeFromDpi(void*) {
+    return SizeWithAspectRatio(CheckedCast<u16>(k_default_gui_width_inches * k_default_dpi),
+                               k_gui_aspect_ratio);
 }
 
 ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOptions const& args) {
@@ -33,7 +32,7 @@ ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOption
 
     if (args.default_folder) ASSERT(path::IsAbsolute(*args.default_folder));
 
-    // This implmentation is blocking, so we only need to check for recursion.
+    // This implementation is blocking, so we only need to check for recursion.
     window.native_file_picker.Emplace();
     DEFER { window.native_file_picker.Clear(); };
 

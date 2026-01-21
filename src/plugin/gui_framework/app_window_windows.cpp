@@ -45,44 +45,102 @@ f64 DoubleClickTimeMs(AppWindow const&) {
     return result;
 }
 
-UiSize DefaultUiSizeFromDpi(AppWindow const&) {
-    HDC hdc = GetDC(nullptr);
-    DEFER { ReleaseDC(nullptr, hdc); };
+// This struct is based on the Visage DpiAwareness.
+// Copyright Vital Audio, LLC
+// SPDX-License-Identifier: MIT
+struct DpiAwareness {
+    using GetWindowDpiAwarenessContextFunc = DPI_AWARENESS_CONTEXT(WINAPI*)(HWND);
+    using GetThreadDpiAwarenessContextFunc = DPI_AWARENESS_CONTEXT(WINAPI*)();
+    using SetThreadDpiAwarenessContextFunc = DPI_AWARENESS_CONTEXT(WINAPI*)(DPI_AWARENESS_CONTEXT);
+    using GetDpiForWindowFunc = UINT(WINAPI*)(HWND);
+    using GetDpiForSystemFunc = UINT(WINAPI*)();
+    using GetSystemMetricsForDpiFunc = INT(WINAPI*)(INT, UINT);
 
-    auto dpi_x = GetDeviceCaps(hdc, LOGPIXELSX);
-    if (dpi_x <= 0) dpi_x = 96;
+    DpiAwareness() {
+        HMODULE user32 = LoadLibraryA("user32.dll");
+        if (!user32) return;
 
-    // Convert inches to pixels using detected DPI
-    auto target_width = (u16)(k_default_gui_width_inches * (f32)dpi_x);
+        thread_dpi_awareness_context =
+            Procedure<GetThreadDpiAwarenessContextFunc>(user32, "GetThreadDpiAwarenessContext");
+        set_thread_dpi_awareness_context =
+            Procedure<SetThreadDpiAwarenessContextFunc>(user32, "SetThreadDpiAwarenessContext");
+        dpi_for_window = Procedure<GetDpiForWindowFunc>(user32, "GetDpiForWindow");
+        dpi_for_system = Procedure<GetDpiForSystemFunc>(user32, "GetDpiForSystem");
+        if (!thread_dpi_awareness_context || !set_thread_dpi_awareness_context || !dpi_for_window ||
+            !dpi_for_system) {
+            LogDebug(ModuleName::Gui, "no DPI functions in user32");
+            return;
+        }
 
-    // Get screen dimensions to ensure we fit within 90% of screen size
-    auto const screen_width = GetSystemMetrics(SM_CXSCREEN);
-    auto const screen_height = GetSystemMetrics(SM_CYSCREEN);
-
-    auto const max_width = (u16)((f32)screen_width * k_screen_fit_percentage);
-    auto const max_height = (u16)((f32)screen_height * k_screen_fit_percentage);
-
-    // Ensure we don't exceed screen limits
-    if (target_width > max_width) target_width = max_width;
-
-    // Apply aspect ratio and ensure it fits within screen bounds
-    auto result = SizeWithAspectRatio(target_width, k_gui_aspect_ratio);
-
-    // Double-check height constraint
-    if (result.height > max_height) {
-        // If height is too large, calculate width from height constraint
-        auto target_height = max_height;
-        auto width_from_height = (u16)(target_height * k_gui_aspect_ratio.width / k_gui_aspect_ratio.height);
-        result = SizeWithAspectRatio(width_from_height, k_gui_aspect_ratio);
+        previous_dpi_awareness = thread_dpi_awareness_context();
+        dpi_awareness = DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
+        if (!set_thread_dpi_awareness_context(dpi_awareness)) {
+            dpi_awareness = DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE;
+            set_thread_dpi_awareness_context(dpi_awareness);
+        }
     }
 
-    // Ensure we stay within the min/max bounds
-    if (result.width < k_min_gui_width)
-        result = SizeWithAspectRatio(k_min_gui_width, k_gui_aspect_ratio);
-    else if (result.width > k_max_gui_width)
-        result = SizeWithAspectRatio(k_max_gui_width, k_gui_aspect_ratio);
+    ~DpiAwareness() {
+        if (set_thread_dpi_awareness_context) set_thread_dpi_awareness_context(previous_dpi_awareness);
+    }
 
-    return result;
+    Optional<float> Dpi() const {
+        if (!dpi_awareness) return k_nullopt;
+        return (f32)dpi_for_system();
+    }
+
+    Optional<float> Dpi(HWND hwnd) const {
+        if (!dpi_awareness) return k_nullopt;
+        return (f32)dpi_for_window(hwnd);
+    }
+
+    template <typename T>
+    static T Procedure(HMODULE module, LPCSTR proc_name) {
+        return (T)(void*)(GetProcAddress(module, proc_name));
+    }
+
+    DPI_AWARENESS_CONTEXT dpi_awareness {};
+    DPI_AWARENESS_CONTEXT previous_dpi_awareness {};
+    GetThreadDpiAwarenessContextFunc thread_dpi_awareness_context {};
+    SetThreadDpiAwarenessContextFunc set_thread_dpi_awareness_context {};
+    GetDpiForWindowFunc dpi_for_window {};
+    GetDpiForSystemFunc dpi_for_system {};
+};
+
+UiSize DefaultUiSizeFromDpi(void* native_window) {
+    DpiAwareness dpi_awareness {};
+
+    auto const dpi =
+        (native_window ? dpi_awareness.Dpi((HWND)native_window) : dpi_awareness.Dpi()).ValueOr(k_default_dpi);
+
+    auto const backing_scale = dpi / 96.0f;
+
+    auto const screen_size = ({
+        UiSize sz {};
+
+        if (native_window) {
+            auto const monitor = MonitorFromWindow((HWND)native_window, MONITOR_DEFAULTTONEAREST);
+            MONITORINFO info {};
+            info.cbSize = sizeof(MONITORINFO);
+            if (GetMonitorInfoA(monitor, &info)) {
+                auto const r = info.rcMonitor;
+                sz = {
+                    CheckedCast<u16>((f32)(r.right - r.left) * backing_scale),
+                    CheckedCast<u16>((f32)(r.bottom - r.top) * backing_scale),
+                };
+            }
+        }
+
+        // Fallback to default screen size.
+        if (!sz.width) {
+            sz = {CheckedCast<u16>((f32)GetSystemMetrics(SM_CXSCREEN) * backing_scale),
+                  CheckedCast<u16>((f32)GetSystemMetrics(SM_CYSCREEN) * backing_scale)};
+        }
+
+        sz;
+    });
+
+    return DefaultUiSizeInternal(screen_size, dpi);
 }
 
 void CloseNativeFilePicker(AppWindow& window) {

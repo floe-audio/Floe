@@ -580,8 +580,7 @@ static bool ClapGuiSetSize(clap_plugin_t const* plugin, u32 clap_width, u32 clap
             auto const invalid_size = *size;
             size = NearestAspectRatioSizeInsideSize(*size, k_gui_aspect_ratio);
 
-            // Use the default size if the size is still invalid.
-            if (!size) *size = DefaultUiSize(*floe.app_window);
+            if (!size) size = SizeWithAspectRatio(600, k_gui_aspect_ratio);
 
             LogWarning(ModuleName::Gui,
                        "invalid size given: {} x {}, we have adjusted to {} x {}",

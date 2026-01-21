@@ -23,8 +23,9 @@ constexpr u32 k_max_gui_width =
     SizeWithAspectRatio(LargestRepresentableValue<u16>() - k_gui_aspect_ratio.width, k_gui_aspect_ratio)
         .width;
 
-constexpr f32 k_default_gui_width_inches = 9.0f;
-constexpr f32 k_screen_fit_percentage = 0.7f;
+constexpr f32 k_default_dpi = 96.0f;
+constexpr f32 k_default_gui_width_inches = 10.0f;
+constexpr f32 k_max_gui_size_screen_fraction = 0.6f;
 
 struct AppWindow {
     static constexpr uintptr k_pugl_timer_id = 200;
@@ -99,7 +100,7 @@ void CloseNativeFilePicker(AppWindow& window);
 bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr data2);
 
 f64 DoubleClickTimeMs(AppWindow const& window);
-UiSize DefaultUiSizeFromDpi(AppWindow const& window);
+UiSize DefaultUiSizeFromDpi(void* native_window);
 
 // Linux only
 int FdFromPuglWorld(PuglWorld* world);
@@ -110,3 +111,6 @@ void AddWindowsKeyboardHook(AppWindow& window);
 void RemoveWindowsKeyboardHook(AppWindow& window);
 
 } // namespace native
+
+// Internal.
+UiSize DefaultUiSizeInternal(UiSize screen_size, f32 dpi);

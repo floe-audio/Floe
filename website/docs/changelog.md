@@ -15,6 +15,7 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 1.1.2-beta.2
+- GUI: improve default size of Floe UI, it now considers the real DPI of the monitor if possible
 - GUI: only show full paths for preset banks if there's ambiguity
 - Fix error related to trying to install invalid ZIP files
 - Windows: fix error related to graphics change in 1.1.2-beta.1

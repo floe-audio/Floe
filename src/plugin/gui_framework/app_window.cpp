@@ -58,9 +58,37 @@ static ErrorCodeOr<void> Required(PuglStatus status) {
     return k_success;
 }
 
+UiSize DefaultUiSizeInternal(UiSize screen_size, f32 dpi) {
+    ASSERT(dpi > 2 && dpi < 2000);
+    UiSize const max_size {
+        CheckedCast<u16>(screen_size.width * k_max_gui_size_screen_fraction),
+        CheckedCast<u16>(screen_size.height * k_max_gui_size_screen_fraction),
+    };
+
+    auto result = SizeWithAspectRatio(CheckedCast<u16>(k_default_gui_width_inches * dpi), k_gui_aspect_ratio);
+
+    LogDebug(ModuleName::Gui,
+             "dpi {}, screen size {}, max size {}, proposed size {}",
+             dpi,
+             screen_size,
+             max_size,
+             result);
+
+    if (result.width > max_size.width || result.height > max_size.height) {
+        auto const constrained = NearestAspectRatioSizeInsideSize(max_size, k_gui_aspect_ratio);
+        LogDebug(ModuleName::Gui, "constrained to max size: {}", constrained);
+        if (constrained) result = *constrained;
+    }
+
+    if (result.width < k_min_gui_width) result = SizeWithAspectRatio(k_min_gui_width, k_gui_aspect_ratio);
+
+    return result;
+}
+
 extern "C" PuglBackend const* puglGlBackend(); // NOLINT
 
 enum class SetTimerType : u8 { Start, Stop };
+
 static void SetTimers(AppWindow& window, SetTimerType type) {
     switch (type) {
         case SetTimerType::Start: {
@@ -768,7 +796,11 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
     }
 }
 
-UiSize DefaultUiSize(AppWindow& window) { return native::DefaultUiSizeFromDpi(window); }
+UiSize DefaultUiSize(AppWindow& window) {
+    return native::DefaultUiSizeFromDpi((void*)puglGetNativeView(window.view));
+}
+
+static constexpr u16 k_invalid_size = 12345;
 
 ErrorCodeOr<void> Init(AppWindow& window) {
     Trace(ModuleName::Gui);
@@ -797,10 +829,9 @@ ErrorCodeOr<void> Init(AppWindow& window) {
     puglSetViewHint(window.view, PUGL_RESIZABLE, true);
     puglSetPositionHint(window.view, PUGL_DEFAULT_POSITION, 0, 0);
 
-    auto window_size = DesiredWindowSize(window.prefs);
-    if (!window_size) window_size = DefaultUiSize(window);
-    puglSetSizeHint(window.view, PUGL_DEFAULT_SIZE, window_size->width, window_size->height);
-    puglSetSizeHint(window.view, PUGL_CURRENT_SIZE, window_size->width, window_size->height);
+    auto const window_size = DefaultUiSize(window);
+    puglSetSizeHint(window.view, PUGL_DEFAULT_SIZE, window_size.width, window_size.height);
+    puglSetSizeHint(window.view, PUGL_CURRENT_SIZE, k_invalid_size, k_invalid_size);
 
     auto const min_size = SizeWithAspectRatio(k_min_gui_width, k_gui_aspect_ratio);
     ASSERT(min_size.width >= k_min_gui_width);
@@ -924,16 +955,23 @@ ErrorCodeOr<void> SetParent(AppWindow& window, clap_window_t const& new_parent) 
     if (new_parent.ptr == (void*)parent) return k_success;
 
     if (parent && new_parent.ptr != (void*)parent) {
-        // Pluginval tries to re-parent us. I'm not sure if this is a quirk of pluginval or if it's more
+        // Pluginval tries to re-parent us. I'm not sure if this is a quirk of Pluginval or if it's more
         // common than that. Either way, we try to support it.
-
         Deinit(window);
         TRY(Init(window));
+    }
+
+    if (puglGetSizeHint(window.view, PUGL_CURRENT_SIZE).width == k_invalid_size) {
+        auto const window_size =
+            DesiredWindowSize(window.prefs).ValueOr(native::DefaultUiSizeFromDpi(new_parent.ptr));
+        puglSetSizeHint(window.view, PUGL_DEFAULT_SIZE, window_size.width, window_size.height);
+        puglSetSizeHint(window.view, PUGL_CURRENT_SIZE, window_size.width, window_size.height);
     }
 
     ASSERT(!puglGetNativeView(window.view), "SetParent called after window realised");
     // NOTE: "This must be called before puglRealize(), re-parenting is not supported"
     TRY(Required(puglSetParent(window.view, (uintptr)new_parent.ptr)));
+
     return k_success;
 }
 
@@ -943,6 +981,7 @@ bool SetSize(AppWindow& window, UiSize new_size) {
 
 UiSize GetSize(AppWindow& window) {
     auto const size = puglGetSizeHint(window.view, PUGL_CURRENT_SIZE);
+    if (size.width == k_invalid_size) return DesiredWindowSize(window.prefs).ValueOr(DefaultUiSize(window));
     return {size.width, size.height};
 }
 
