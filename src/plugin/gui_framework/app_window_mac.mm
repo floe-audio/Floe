@@ -226,6 +226,10 @@ UiSize DefaultUiSizeFromDpi(void* native_window) {
             if (window) s = [window screen];
         }
 
+        if (!s && NSApp) {
+            auto const key_window = [NSApp keyWindow];
+            if (key_window) s = [key_window screen];
+        }
         if (!s) s = [NSScreen mainScreen];
         if (!s) {
             auto const screens = [NSScreen screens];
