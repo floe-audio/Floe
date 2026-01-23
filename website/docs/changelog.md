@@ -16,6 +16,7 @@ For instance: 0.0.1. Don't change the headings.
 # Changelog
 ## 1.1.2
 - Fix Windows text input - no more duplicate letters, proper focusing and passing keyboard shortcuts back to DAW
+- Fix some rare edge-case crashes
 
 ## 1.1.2-beta.2
 - GUI: improve default size of Floe UI, it now considers the real DPI of the monitor if possible
