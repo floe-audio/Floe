@@ -504,10 +504,7 @@ static bool InputTextFilterCharacter(unsigned int* p_char, TextInputFlags flags)
 
     if (flags.multiline && c == '\n') return true;
 
-    if (c < 128 && c != ' ' && !IsPrintableAscii((char)(c & 0xFF))) {
-        bool const pass = false;
-        if (!pass) return false;
-    }
+    if (c < 128 && c != ' ' && !IsPrintableAscii((char)(c & 0xFF))) return false;
 
     if (c >= 0xE000 &&
         c <= 0xF8FF) // Filter private Unicode range. I don't imagine anybody would want to input them. GLFW
