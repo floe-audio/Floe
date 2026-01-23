@@ -640,7 +640,7 @@ struct Future {
     };
 
     // The cancel bit is set/cleared by the consumer thread. The producer never changes it. The producer
-    // thread can check for the presense of this bit and cancel work if needed.
+    // thread can check for the presence of this bit and cancel work if needed.
     static constexpr u32 k_cancel_bit = 1u << 31;
 
     // The working bit is set/cleared by the producer thread. The presence of this bit signifies that the
