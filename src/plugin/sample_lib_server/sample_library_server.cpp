@@ -1498,7 +1498,7 @@ static void ServerThreadProc(Server& server) {
 
         while (true) {
             // We have a timeout because we want to check for directory watching events.
-            server.work_signaller.TimedWait(250 * 100);
+            server.work_signaller.TimedWait(250 * 1000);
 
             if (!PRODUCTION_BUILD &&
                 server.request_debug_dump_current_state.Exchange(false, RmwMemoryOrder::Relaxed)) {
