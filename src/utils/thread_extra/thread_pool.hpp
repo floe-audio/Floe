@@ -6,6 +6,7 @@
 #include "os/misc.hpp"
 #include "os/threading.hpp"
 #include "utils/debug/tracy_wrapped.hpp"
+#include "utils/logger/logger.hpp"
 
 enum class JobPriority : u8 { High = 0, Normal = 1, Low = 2 };
 
@@ -26,6 +27,8 @@ struct ThreadPool {
             ASSERT(t < 9000);
             num_threads = (u32)t;
         }
+
+        LogInfo(ModuleName::Main, "Starting thread pool with {} threads", num_threads);
 
         dyn::Resize(m_workers, *num_threads);
         for (auto [i, w] : Enumerate(m_workers)) {
