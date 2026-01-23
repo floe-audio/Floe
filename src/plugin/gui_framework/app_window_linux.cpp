@@ -11,6 +11,10 @@
 #define KeyCode XKeyCode
 #include <X11/Xlib.h>
 
+struct NativeAppWindowState {
+    bool picker;
+};
+
 namespace native {
 
 void CloseNativeFilePicker(AppWindow&) {}
@@ -28,13 +32,15 @@ UiSize DefaultUiSizeFromDpi(void*) {
 
 ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOptions const& args) {
     ASSERT(g_is_logical_main_thread);
-    if (window.native_file_picker) return k_success;
+    auto& native = *window.native_state;
+
+    if (native.picker) return k_success;
 
     if (args.default_folder) ASSERT(path::IsAbsolute(*args.default_folder));
 
     // This implementation is blocking, so we only need to check for recursion.
-    window.native_file_picker.Emplace();
-    DEFER { window.native_file_picker.Clear(); };
+    native.picker = true;
+    DEFER { native.picker = false; };
 
     window.frame_state.file_picker_results.Clear();
     window.file_picker_result_arena.ResetCursorAndConsolidateRegions();
@@ -119,5 +125,9 @@ void X11SetParent(PuglView* view, uintptr parent) {
                     (u8*)embed_info_data,
                     ArraySize(embed_info_data));
 }
+
+void InitNativeState(AppWindow& window) { window.native_state = new NativeAppWindowState {}; }
+
+void DeinitNativeState(AppWindow& window) { delete window.native_state; }
 
 } // namespace native
