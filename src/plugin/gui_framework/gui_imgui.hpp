@@ -712,12 +712,6 @@ struct Context {
     Window* focused_popup_window = nullptr;
     Window* window_just_created = nullptr;
 
-    // next window
-    WindowSettings next_window_style =
-        {}; // will be set back to default_window_style every BeginWindow() call
-    u32 next_window_user_flags = 0; // SetNextWindowUserFlags()
-    f32x2 next_window_contents_size = {}; // SetNextWindowContentSize()
-
     // popups
     // If there are multiple popups open they are in a single stack, with each having at most one child and
     // one parent.
