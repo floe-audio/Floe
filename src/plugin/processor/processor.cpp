@@ -802,7 +802,8 @@ void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const&
         }
     }
 
-    processor.events_for_audio_thread.Push(LayerInstrumentChanged {.layer_index = layer_index});
+    processor.layer_instrument_changed_bitset.FetchOr(CheckedCast<u8>(1 << layer_index),
+                                                      RmwMemoryOrder::AcquireRelease);
     processor.host.request_process(&processor.host);
 }
 
@@ -1454,13 +1455,12 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                                changes_for_main_thread);
 
     Optional<AudioProcessor::FadeType> new_fade_type {};
+
+    if (auto const bits = processor.layer_instrument_changed_bitset.Exchange(0, RmwMemoryOrder::Acquire))
+        layers_changed |= bits;
+
     for (auto const& e : internal_events) {
         switch (e.tag) {
-            case EventForAudioThreadType::LayerInstrumentChanged: {
-                auto const& layer_changed = e.Get<LayerInstrumentChanged>();
-                layers_changed.Set(layer_changed.layer_index);
-                break;
-            }
             case EventForAudioThreadType::FxOrderChanged: {
                 if (!new_fade_type) new_fade_type = AudioProcessor::FadeType::OutAndIn;
                 break;
@@ -1515,8 +1515,6 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                 break;
             }
             case EventForAudioThreadType::ResetAudioProcessing: AudioThreadReset(processor); break;
-            case EventForAudioThreadType::StartNote: break;
-            case EventForAudioThreadType::EndNote: break;
         }
     }
 

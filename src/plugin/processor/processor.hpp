@@ -92,9 +92,6 @@ enum class EventForAudioThreadType : u8 {
     FxOrderChanged,
     ReloadAllAudioState,
     ConvolutionIRChanged,
-    LayerInstrumentChanged,
-    StartNote,
-    EndNote,
     AppendMacroDestination,
     RemoveMacroDestination,
     MacroDestinationValueChanged,
@@ -106,15 +103,6 @@ struct GuiNoteClicked {
     f32 velocity {};
     u7 key {};
     bool is_held;
-};
-
-struct RemoveMidiLearn {
-    ParamIndex param;
-    u7 midi_cc;
-};
-
-struct LayerInstrumentChanged {
-    u32 layer_index;
 };
 
 struct AppendMacroDestination {
@@ -136,7 +124,6 @@ struct MacroDestinationValueChanged {
 
 using EventForAudioThread = TaggedUnion<
     EventForAudioThreadType,
-    TypeAndTag<LayerInstrumentChanged, EventForAudioThreadType::LayerInstrumentChanged>,
     TypeAndTag<AppendMacroDestination, EventForAudioThreadType::AppendMacroDestination>,
     TypeAndTag<RemoveMacroDestination, EventForAudioThreadType::RemoveMacroDestination>,
     TypeAndTag<MacroDestinationValueChanged, EventForAudioThreadType::MacroDestinationValueChanged>>;
@@ -287,6 +274,9 @@ struct AudioProcessor {
 
     AtomicBitset<128> notes_currently_held;
 
+    // Each set bit represents that the layer's instrument has changed.
+    Atomic<u8> layer_instrument_changed_bitset {};
+
     clap_process_status previous_process_status {-1};
 
     VoicePool voice_pool {};
@@ -298,6 +288,7 @@ struct AudioProcessor {
 
     // Main-thread. Macro configurations can only be modified from the main thread.
     MacroDestinations main_macro_destinations {};
+
     MacroDestinations audio_macro_destinations {};
 
     struct ChangedParam {
