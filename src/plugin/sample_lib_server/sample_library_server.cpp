@@ -142,6 +142,7 @@ static void DoScanFolderJob(PendingLibraryJobs::Job::ScanFolder& job,
     ZoneText(path.data, path.size);
 
     auto const try_job = [&]() -> ErrorCodeOr<void> {
+        u32 num_scanned_entries = 0;
         auto it = TRY(dir_iterator::RecursiveCreate(scratch_arena,
                                                     path,
                                                     {
@@ -150,6 +151,10 @@ static void DoScanFolderJob(PendingLibraryJobs::Job::ScanFolder& job,
                                                     }));
         DEFER { dir_iterator::Destroy(it); };
         while (auto const entry = TRY(dir_iterator::Next(it, scratch_arena))) {
+            if (num_scanned_entries++ == 99999) {
+                LogError(ModuleName::SampleLibraryServer, "Scan folder has too many files in it");
+                return ErrorCode {FilesystemError::FolderContainsTooManyFiles};
+            }
             if (ContainsSpan(entry->subpath, k_temporary_directory_prefix)) continue;
             if (entry->type == FileType::Directory) continue;
             auto const full_path = dir_iterator::FullPath(it, *entry, scratch_arena);
