@@ -113,7 +113,11 @@ static void DoReadLibraryJob(PendingLibraryJobs::Job::ReadLibrary& job, ArenaAll
         PathOrMemory path_or_memory = args.path;
         if (format == sample_lib::FileFormat::Lua) {
             // it will be more efficient to just load the whole Lua into memory
-            path_or_memory = TRY_H(ReadEntireFile(args.path, scratch_arena)).ToConstByteSpan();
+            auto const data = TRY_H(ReadEntireFile(args.path, scratch_arena)).ToConstByteSpan();
+            path_or_memory = data;
+            LogInfo(ModuleName::SampleLibraryServer, "reading Lua library ({} Kb)", data.size / 1024);
+        } else {
+            LogInfo(ModuleName::SampleLibraryServer, "reading MDATA library");
         }
 
         auto reader = TRY_H(Reader::FromPathOrMemory(path_or_memory));
