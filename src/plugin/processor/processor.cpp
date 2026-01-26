@@ -812,7 +812,7 @@ void SetConvolutionIrAudioData(AudioProcessor& processor,
                                sample_lib::ImpulseResponse::AudioProperties const& audio_props) {
     ASSERT(g_is_logical_main_thread);
     processor.convo.ConvolutionIrDataLoaded(audio_data, audio_props);
-    processor.events_for_audio_thread.Push(EventForAudioThreadType::ConvolutionIRChanged);
+    processor.messages.FetchOr(audio_thread_messages::ConvolutionIRChanged, RmwMemoryOrder::Release);
     processor.host.request_process(&processor.host);
 }
 
@@ -873,7 +873,7 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
         }
     }
 
-    dyn::Emplace(events_for_audio_thread, EventForAudioThreadType::ReloadAllAudioState);
+    processor.messages.FetchOr(audio_thread_messages::ReloadAllAudioState, RmwMemoryOrder::Release);
 
     if (!processor.events_for_audio_thread.Push(events_for_audio_thread)) {
         ReportError(ErrorLevel::Warning,
@@ -951,6 +951,8 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
     processor.audio_processing_context.midi_note_state = {};
 
     processor.gui_note_held = k_nullopt;
+    processor.messages.Store(0, StoreMemoryOrder::Relaxed);
+    processor.layer_instrument_changed_bitset.Store(0, StoreMemoryOrder::Relaxed);
 
     processor.audio_processing_context.one_pole_smoothing_cutoff_0_2ms =
         OnePoleLowPassFilter<f32>::MsToCutoff(0.2f, (f32)args.sample_rate);
@@ -1459,22 +1461,21 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     if (auto const bits = processor.layer_instrument_changed_bitset.Exchange(0, RmwMemoryOrder::Acquire))
         layers_changed |= bits;
 
+    if (auto const messages = processor.messages.Exchange(0, RmwMemoryOrder::Acquire)) {
+        if (messages & audio_thread_messages::FxOrderChanged) {
+            if (!new_fade_type) new_fade_type = AudioProcessor::FadeType::OutAndIn;
+        }
+        if (messages & audio_thread_messages::ReloadAllAudioState) {
+            changes.changed_params.changed.SetAll();
+            new_fade_type = AudioProcessor::FadeType::OutAndRestartVoices;
+            layers_changed.SetAll();
+        }
+        if (messages & audio_thread_messages::ConvolutionIRChanged) mark_convolution_for_fade_out = true;
+        if (messages & audio_thread_messages::ResetAudioProcessing) AudioThreadReset(processor);
+    }
+
     for (auto const& e : internal_events) {
         switch (e.tag) {
-            case EventForAudioThreadType::FxOrderChanged: {
-                if (!new_fade_type) new_fade_type = AudioProcessor::FadeType::OutAndIn;
-                break;
-            }
-            case EventForAudioThreadType::ReloadAllAudioState: {
-                changes.changed_params.changed.SetAll();
-                new_fade_type = AudioProcessor::FadeType::OutAndRestartVoices;
-                layers_changed.SetAll();
-                break;
-            }
-            case EventForAudioThreadType::ConvolutionIRChanged: {
-                mark_convolution_for_fade_out = true;
-                break;
-            }
             case EventForAudioThreadType::AppendMacroDestination: {
                 auto const& add_dest = e.Get<struct AppendMacroDestination>();
                 dyn::Append(processor.audio_macro_destinations[add_dest.macro_index],
@@ -1514,7 +1515,6 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                 processor.audio_macro_destinations = {};
                 break;
             }
-            case EventForAudioThreadType::ResetAudioProcessing: AudioThreadReset(processor); break;
         }
     }
 
@@ -1808,8 +1808,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 
 void ResetAudioProcessing(AudioProcessor& processor) {
     ASSERT(g_is_logical_main_thread);
-    processor.events_for_audio_thread.Push(
-        EventForAudioThread {EventForAudioThreadType::ResetAudioProcessing});
+    processor.messages.FetchOr(audio_thread_messages::ResetAudioProcessing, RmwMemoryOrder::Release);
     processor.host.request_process(&processor.host);
 }
 

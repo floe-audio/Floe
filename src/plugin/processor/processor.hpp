@@ -89,15 +89,21 @@ struct ParamEventForAudioThread {
 };
 
 enum class EventForAudioThreadType : u8 {
-    FxOrderChanged,
-    ReloadAllAudioState,
-    ConvolutionIRChanged,
     AppendMacroDestination,
     RemoveMacroDestination,
     MacroDestinationValueChanged,
     RemoveAllMacroDestinations,
-    ResetAudioProcessing,
 };
+
+namespace audio_thread_messages {
+using Bits = u32;
+enum : u32 {
+    FxOrderChanged = 1 << 0,
+    ReloadAllAudioState = 1 << 1,
+    ConvolutionIRChanged = 1 << 2,
+    ResetAudioProcessing = 1 << 3,
+};
+} // namespace audio_thread_messages
 
 struct GuiNoteClicked {
     f32 velocity {};
@@ -276,6 +282,8 @@ struct AudioProcessor {
 
     // Each set bit represents that the layer's instrument has changed.
     Atomic<u8> layer_instrument_changed_bitset {};
+
+    Atomic<audio_thread_messages::Bits> messages {}; // From main-thread to audio.
 
     clap_process_status previous_process_status {-1};
 
