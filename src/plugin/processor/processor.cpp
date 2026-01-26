@@ -949,6 +949,8 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
     processor.audio_processing_context.pitchwheel_position = {};
     processor.audio_processing_context.midi_note_state = {};
 
+    processor.gui_note_held = k_nullopt;
+
     processor.audio_processing_context.one_pole_smoothing_cutoff_0_2ms =
         OnePoleLowPassFilter<f32>::MsToCutoff(0.2f, (f32)args.sample_rate);
     processor.audio_processing_context.one_pole_smoothing_cutoff_1ms =
@@ -1576,51 +1578,47 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                                   changes_for_main_thread);
         }
 
-        for (auto const& e : internal_events) {
-            switch (e.tag) {
-                case EventForAudioThreadType::StartNote: {
-                    auto const start = e.Get<GuiNoteClicked>();
-                    clap_event_note const note {
-                        .header {
-                            .size = sizeof(clap_event_note),
-                            .time = frame_index,
-                            .type = CLAP_EVENT_NOTE_ON,
-                        },
-                        .note_id = -1,
-                        .key = start.key,
-                        .velocity = (f64)start.velocity,
-                    };
-                    ProcessClapNoteOrMidi(processor,
-                                          note.header,
-                                          *process.out_events,
-                                          frame_index,
-                                          change_flags,
-                                          changes,
-                                          changes_for_main_thread);
-                    break;
-                }
-                case EventForAudioThreadType::EndNote: {
-                    auto const end = e.Get<GuiNoteClickReleased>();
-                    clap_event_note const note {
-                        .header {
-                            .size = sizeof(clap_event_note),
-                            .time = frame_index,
-                            .type = CLAP_EVENT_NOTE_OFF,
-                        },
-                        .note_id = -1,
-                        .key = end.key,
-                        .velocity = 0.0,
-                    };
-                    ProcessClapNoteOrMidi(processor,
-                                          note.header,
-                                          *process.out_events,
-                                          frame_index,
-                                          change_flags,
-                                          changes,
-                                          changes_for_main_thread);
-                    break;
-                }
-                default: break;
+        {
+            auto const gui_note = processor.main_thread_gui_note_clicked.Load(LoadMemoryOrder::Acquire);
+
+            if (gui_note.is_held && !processor.gui_note_held) {
+                clap_event_note const note {
+                    .header {
+                        .size = sizeof(clap_event_note),
+                        .time = frame_index,
+                        .type = CLAP_EVENT_NOTE_ON,
+                    },
+                    .note_id = -1,
+                    .key = gui_note.key,
+                    .velocity = (f64)gui_note.velocity,
+                };
+                ProcessClapNoteOrMidi(processor,
+                                      note.header,
+                                      *process.out_events,
+                                      frame_index,
+                                      change_flags,
+                                      changes,
+                                      changes_for_main_thread);
+                processor.gui_note_held = gui_note.key;
+            } else if (!gui_note.is_held && processor.gui_note_held) {
+                clap_event_note const note {
+                    .header {
+                        .size = sizeof(clap_event_note),
+                        .time = frame_index,
+                        .type = CLAP_EVENT_NOTE_OFF,
+                    },
+                    .note_id = -1,
+                    .key = *processor.gui_note_held,
+                    .velocity = 0.0,
+                };
+                ProcessClapNoteOrMidi(processor,
+                                      note.header,
+                                      *process.out_events,
+                                      frame_index,
+                                      change_flags,
+                                      changes,
+                                      changes_for_main_thread);
+                processor.gui_note_held = k_nullopt;
             }
         }
     }

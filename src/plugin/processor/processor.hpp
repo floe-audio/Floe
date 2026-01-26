@@ -103,12 +103,9 @@ enum class EventForAudioThreadType : u8 {
 };
 
 struct GuiNoteClicked {
-    u7 key;
-    f32 velocity;
-};
-
-struct GuiNoteClickReleased {
-    u7 key;
+    f32 velocity {};
+    u7 key {};
+    bool is_held;
 };
 
 struct RemoveMidiLearn {
@@ -139,8 +136,6 @@ struct MacroDestinationValueChanged {
 
 using EventForAudioThread = TaggedUnion<
     EventForAudioThreadType,
-    TypeAndTag<GuiNoteClicked, EventForAudioThreadType::StartNote>,
-    TypeAndTag<GuiNoteClickReleased, EventForAudioThreadType::EndNote>,
     TypeAndTag<LayerInstrumentChanged, EventForAudioThreadType::LayerInstrumentChanged>,
     TypeAndTag<AppendMacroDestination, EventForAudioThreadType::AppendMacroDestination>,
     TypeAndTag<RemoveMacroDestination, EventForAudioThreadType::RemoveMacroDestination>,
@@ -284,6 +279,9 @@ struct AudioProcessor {
 
     AtomicQueue<EventForAudioThread, 128> events_for_audio_thread;
     Array<ParamEventForAudioThread, k_num_parameters> param_events_for_audio_thread;
+
+    Atomic<GuiNoteClicked> main_thread_gui_note_clicked {}; // Written by main-thread, read by audio.
+    Optional<u7> gui_note_held {}; // Audio-thread
 
     Bitset<k_num_parameters> pending_param_changes;
 

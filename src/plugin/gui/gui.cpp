@@ -123,9 +123,8 @@ Gui::~Gui() {
     sample_lib_server::CloseAsyncCommsChannel(engine.shared_engine_systems.sample_library_server,
                                               sample_lib_server_async_channel);
     Trace(ModuleName::Gui);
-    if (midi_keyboard_note_held_with_mouse) {
-        engine.processor.events_for_audio_thread.Push(
-            GuiNoteClickReleased {.key = midi_keyboard_note_held_with_mouse.Value()});
+    if (engine.processor.main_thread_gui_note_clicked.Load(LoadMemoryOrder::Relaxed).is_held) {
+        engine.processor.main_thread_gui_note_clicked.Store({.is_held = false}, StoreMemoryOrder::Release);
         engine.host.request_process(&engine.host);
     }
 }
@@ -166,35 +165,6 @@ static void DoStandaloneErrorGUI(Gui* g) {
         }
         if (imgui.Button(imgui::DefButton(), {.xywh {0, y_pos, 100, 20}}, imgui.GetID("closeErr"), "Close"))
             error_window_open = false;
-    }
-    if (floe_ext->standalone_midi_device_error) {
-        GuiIo().out.wants.text_input = true;
-        if (frame_input.modifiers.Get(ModifierKey::Shift)) {
-            auto gen_midi_message = [&](bool on, u7 key) {
-                if (on)
-                    engine.processor.events_for_audio_thread.Push(
-                        GuiNoteClicked({.key = key, .velocity = 0.7f}));
-                else
-                    engine.processor.events_for_audio_thread.Push(GuiNoteClickReleased({.key = key}));
-                engine.host.request_process(&engine.host);
-            };
-
-            struct Key {
-                KeyCode key;
-                u7 midi_key;
-            };
-            static Key const keys[] = {
-                {KeyCode::LeftArrow, 60},
-                {KeyCode::RightArrow, 63},
-                {KeyCode::UpArrow, 80},
-                {KeyCode::DownArrow, 45},
-            };
-
-            for (auto& i : keys) {
-                if (frame_input.Key(i.key).presses.size) gen_midi_message(true, i.midi_key);
-                if (frame_input.Key(i.key).releases.size) gen_midi_message(false, i.midi_key);
-            }
-        }
     }
 }
 

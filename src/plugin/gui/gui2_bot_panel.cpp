@@ -239,12 +239,13 @@ static void DoBotPanel(Gui* g) {
                                             });
                 if (auto const r = BoxRect(box_system, keyboard)) {
                     if (auto key = KeyboardGui(g, *r, (int)keyboard_octave)) {
-                        if (key->is_down)
-                            g->engine.processor.events_for_audio_thread.Push(
-                                GuiNoteClicked {.key = key->note, .velocity = key->velocity});
-                        else
-                            g->engine.processor.events_for_audio_thread.Push(
-                                GuiNoteClickReleased {.key = key->note});
+                        g->engine.processor.main_thread_gui_note_clicked.Store(
+                            {
+                                .velocity = key->velocity,
+                                .key = key->note,
+                                .is_held = key->is_down,
+                            },
+                            StoreMemoryOrder::Release);
                         g->engine.host.request_process(&g->engine.host);
                     }
                 }
