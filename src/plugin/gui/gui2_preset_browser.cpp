@@ -293,9 +293,11 @@ void LoadRandomPreset(PresetBrowserContext const& context, PresetBrowserState& s
 }
 
 void PresetRightClickMenu(GuiBoxSystem& box_system,
-                          PresetBrowserContext& context,
-                          PresetBrowserState&,
-                          RightClickMenuState const& menu_state) {
+                          BrowserPopupContext& common_context,
+                          BrowserPopupOptions const& options) {
+    auto& context = *(PresetBrowserContext*)options.right_click_menu_user_data;
+    auto const& menu_state = common_context.state.right_click_menu_state;
+
     auto const root = DoBox(box_system,
                             {
                                 .layout {
@@ -359,9 +361,11 @@ void PresetRightClickMenu(GuiBoxSystem& box_system,
 }
 
 void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
-                                PresetBrowserContext& context,
-                                PresetBrowserState& state,
-                                RightClickMenuState const& menu_state) {
+                                BrowserPopupContext& common_context,
+                                BrowserPopupOptions const& options) {
+    auto& context = *(PresetBrowserContext*)options.right_click_menu_user_data;
+    auto const& menu_state = common_context.state.right_click_menu_state;
+
     auto const root = DoBox(box_system,
                             {
                                 .layout {
@@ -446,7 +450,7 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
             };
 
             context.confirmation_dialog_state.open = true;
-            state.common_state.open = false;
+            common_context.state.open = false;
         }
     }
 }
@@ -476,10 +480,7 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
                 .parent = root,
                 .folder = &preset_folder->node,
                 .skip_root_folder = true,
-                .right_click_menu =
-                    [&context, &state](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
-                        PresetFolderRightClickMenu(box_system, context, state, menu_state);
-                    },
+                .right_click_menu = PresetFolderRightClickMenu,
             };
         }
 
@@ -585,9 +586,7 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
                                    state.common_state,
                                    item.box,
                                    preset.full_path_hash,
-                                   [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
-                                       PresetRightClickMenu(box_system, context, state, menu_state);
-                                   });
+                                   PresetRightClickMenu);
 
             if (is_current &&
                 box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
@@ -861,10 +860,7 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                                 ? Optional<String> {"FOLDER"_s}
                                 : k_nullopt,
                         .multiline_contents = false,
-                        .right_click_menu =
-                            [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
-                                PresetFolderRightClickMenu(box_system, context, state, menu_state);
-                            },
+                        .right_click_menu = PresetFolderRightClickMenu,
                     };
 
                     auto const do_card = [&](FolderNode const* folder, FilterItemInfo const& info) {
@@ -903,10 +899,7 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                                 }),
                                 .folder_infos = folders,
                                 .folder = folder,
-                                .right_click_menu =
-                                    [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
-                                        PresetFolderRightClickMenu(box_system, context, state, menu_state);
-                                    },
+                                .right_click_menu = PresetFolderRightClickMenu,
                             });
                     };
 
@@ -928,5 +921,6 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                 },
             .has_extra_filters = state.selected_author_hashes.HasSelected() != 0,
             .favourites_filter_info = favourites_info,
+            .right_click_menu_user_data = &context,
         });
 }
