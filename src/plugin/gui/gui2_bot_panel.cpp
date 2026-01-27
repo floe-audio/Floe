@@ -240,7 +240,7 @@ static void DoBotPanel(Gui* g) {
                                             });
                 if (auto const r = BoxRect(box_system, keyboard)) {
                     if (auto key = KeyboardGui(g, *r, (int)keyboard_octave)) {
-                        g->engine.processor.main_thread_gui_note_clicked.Store(
+                        g->engine.processor.gui_note_click_state.Store(
                             {
                                 .velocity = key->velocity,
                                 .key = key->note,

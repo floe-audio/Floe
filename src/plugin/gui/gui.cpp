@@ -123,8 +123,8 @@ Gui::~Gui() {
     sample_lib_server::CloseAsyncCommsChannel(engine.shared_engine_systems.sample_library_server,
                                               sample_lib_server_async_channel);
     Trace(ModuleName::Gui);
-    if (engine.processor.main_thread_gui_note_clicked.Load(LoadMemoryOrder::Relaxed).is_held) {
-        engine.processor.main_thread_gui_note_clicked.Store({.is_held = false}, StoreMemoryOrder::Release);
+    if (engine.processor.gui_note_click_state.Load(LoadMemoryOrder::Relaxed).is_held) {
+        engine.processor.gui_note_click_state.Store({.is_held = false}, StoreMemoryOrder::Release);
         engine.host.request_process(&engine.host);
     }
 }

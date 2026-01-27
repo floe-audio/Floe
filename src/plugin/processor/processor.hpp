@@ -31,7 +31,13 @@
 #include "processing_utils/volume_fade.hpp"
 #include "voices.hpp"
 
-struct ParamEventForAudioThread {
+// NOTE: in the audio processor, we use the term 'inbox' to mean a message that the audio thread should
+// consume. For example, we put parameter value updates in an atomic 'inbox' that the audio thread consumes
+// when it can.
+
+namespace audio_thread_inbox {
+
+struct ParamChange {
     struct Payload {
         f32 value {};
         u32 active : 1 = false;
@@ -88,7 +94,7 @@ struct ParamEventForAudioThread {
     Atomic<Payload> payload {};
 };
 
-struct MacroDestinationUpdateForAudioThread {
+struct MacroDestinationUpdate {
     struct Payload {
         f32 value {}; // ONLY valid if active and value_changed.
         ParamIndex param_index {}; // ONLY valid if active and param_index_changed.
@@ -134,24 +140,22 @@ struct MacroDestinationUpdateForAudioThread {
     Atomic<Payload> payload {};
 };
 
-enum class EventForAudioThreadType : u8 {
-    AppendMacroDestination,
-    RemoveMacroDestination,
-    MacroDestinationValueChanged,
-    RemoveAllMacroDestinations,
-};
+using Flags = u32;
 
-namespace audio_thread_messages {
-using Bits = u32;
 enum : u32 {
-    FxOrderChanged = 1 << 0,
-    ReloadAllAudioState = 1 << 1,
-    ConvolutionIRChanged = 1 << 2,
-    ResetAudioProcessing = 1 << 3,
-};
-} // namespace audio_thread_messages
+    // IMPORTANT: this is actually multiple bits - one for each layer index. Set using
+    // LayerInstrumentChanged << layer_index.
+    LayerInstrumentChanged = 1 << 0,
 
-struct GuiNoteClicked {
+    FxOrderChanged = 1 << (k_num_layers + 0),
+    ReloadAllAudioState = 1 << (k_num_layers + 1),
+    ConvolutionIRChanged = 1 << (k_num_layers + 2),
+    ResetAudioProcessing = 1 << (k_num_layers + 3),
+};
+
+} // namespace audio_thread_inbox
+
+struct GuiNoteClickState {
     f32 velocity {};
     u7 key {};
     bool is_held;
@@ -293,19 +297,16 @@ struct AudioProcessor {
     Bitset<k_num_layers> solo {};
     Bitset<k_num_layers> mute {};
 
-    Array<ParamEventForAudioThread, k_num_parameters> param_events_for_audio_thread;
+    Array<audio_thread_inbox::ParamChange, k_num_parameters> param_change_inbox;
 
-    Atomic<GuiNoteClicked> main_thread_gui_note_clicked {}; // Written by main-thread, read by audio.
-    Optional<u7> gui_note_held {}; // Audio-thread
+    Atomic<GuiNoteClickState> gui_note_click_state {}; // Written by main-thread, read by audio.
+    Optional<u7> gui_note_currently_held {}; // Audio-thread
 
     Bitset<k_num_parameters> pending_param_changes;
 
     AtomicBitset<128> notes_currently_held;
 
-    // Each set bit represents that the layer's instrument has changed.
-    Atomic<u8> layer_instrument_changed_bitset {};
-
-    Atomic<audio_thread_messages::Bits> messages {}; // From main-thread to audio.
+    Atomic<audio_thread_inbox::Flags> inbox_flags {}; // From main-thread to audio.
 
     clap_process_status previous_process_status {-1};
 
@@ -323,8 +324,8 @@ struct AudioProcessor {
     MacroDestinations audio_macro_destinations {};
 
     // Atomic communication for macro dests. Set by main-thread, consumed by audio.
-    Array<Array<MacroDestinationUpdateForAudioThread, k_max_macro_destinations>, k_num_macros>
-        macro_dest_communication {};
+    Array<Array<audio_thread_inbox::MacroDestinationUpdate, k_max_macro_destinations>, k_num_macros>
+        macro_dest_inbox {};
 
     struct ChangedParam {
         f32 value;
