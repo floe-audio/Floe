@@ -14,6 +14,31 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 1.1.2
+Bug-fixes and robustness. Includes all changes from 1.1.2-beta.1 and 1.1.2.beta.2, plus:
+- Fix Windows text input - no more duplicate letters, proper focusing and passing keyboard shortcuts back to DAW
+- Fix some rare edge-case crashes
+- Fix some rare cases where macro destination changes weren't being applied
+
+## 1.1.2-beta.2
+- GUI: improve default size of Floe UI, it now considers the real DPI of the monitor if possible
+- GUI: only show full paths for preset banks if there's ambiguity
+- Fix error related to trying to install invalid ZIP files
+- Windows: fix error related to graphics change in 1.1.2-beta.1
+- Linux: changed required glibc from 2.29 to 2.31
+- Improve GUI performance slightly (batched draw-calls and smaller memory usage)
+- Update FLAC library and protect against edge cases
+- Linux: fix error related to filesystem watching
+- macOS: fix error related to opening a file dialog
+- Handle edge cases related to loading images for sample libraries
+
+## 1.1.2-beta.1
+- Improve graphics reliability on Windows (use DirectX instead of OpenGL)
+- GUI: fix the UI keyboard octave offset defaulting to 2 rather then 0 when first loading Floe
+- Fix possible memory leaks related to graphics (OpenGL texture destroying) and improve error checking
+- Improve automatic error reporting
+- Add 'drone' tag
+
 ## 1.1.1
 - New monophonic mode: latch. The monophonic switch parameter is replaced by a menu with this new option.
 In latch mode, the note only ends when all notes are released; new key-presses are ignored and the original note continues playing unchanged.
