@@ -25,7 +25,7 @@ struct AtomicSwapBuffer {
     void Publish() {
         // place the back buffer index in the middle buffer state along with the dirty bit
         auto const old_middle_state =
-            middle_buffer_state.Exchange(back_buffer_index | k_dirty_bit, RmwMemoryOrder::AcquireRelease);
+            middle_buffer_state.Exchange(back_buffer_index | k_dirty_bit, RmwMemoryOrder::Release);
 
         // the old middle state is what we will use for writing next
         back_buffer_index = old_middle_state & k_dirty_mask;
@@ -43,16 +43,25 @@ struct AtomicSwapBuffer {
     };
 
     // consumer thread
-    // we could return a bool to indicate if the buffer was dirty, but we don't need it for now
     ConsumeResult Consume() {
         // if it's not dirty, we don't swap anything, just return the front
         if (!(middle_buffer_state.Load(LoadMemoryOrder::Acquire) & k_dirty_bit))
             return {buffers[front_buffer_index].data, false};
 
         // if it's dirty, we swap the middle with the front (with no dirty bit)
-        auto const prev = middle_buffer_state.Exchange(front_buffer_index, RmwMemoryOrder::AcquireRelease);
+        auto const prev = middle_buffer_state.Exchange(front_buffer_index, RmwMemoryOrder::Acquire);
         front_buffer_index = prev & k_dirty_mask;
         return {buffers[front_buffer_index].data, true};
+    }
+
+    // Call this only when consumer thread is not running
+    void SyncAllBuffersToProducer() {
+        auto const& latest = buffers[back_buffer_index].data;
+        for (auto const i : Range(3))
+            if (i != back_buffer_index) buffers[i].data = latest;
+        back_buffer_index = 0;
+        middle_buffer_state.Store(1, StoreMemoryOrder::Relaxed);
+        front_buffer_index = 2;
     }
 
     static constexpr u32 k_dirty_bit = 1u << 31;
