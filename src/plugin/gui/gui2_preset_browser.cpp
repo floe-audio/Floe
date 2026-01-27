@@ -372,6 +372,7 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
                             });
 
     auto const folder = FindFolderByHash(context, menu_state.item_hash);
+    if (!folder) return;
 
     if (MenuItem(box_system,
                  root,
