@@ -55,22 +55,29 @@
 }
 @end
 
-namespace native {
-
 struct NativeFilePicker {
     NSSavePanel* panel = nullptr;
-    Mutex mutex;
+    Mutex mutex {};
     DIALOG_DELEGATE_CLASS* delegate = nullptr;
 };
+
+struct NativeAppWindowState {
+    Optional<NativeFilePicker> picker {};
+};
+
+namespace native {
 
 constexpr uintptr k_file_picker_completed = 0xD1A106;
 
 bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr data2) {
     ASSERT(g_is_logical_main_thread);
-    if (!window.native_file_picker) return false;
+
+    auto& native = *window.native_state;
+
+    if (!native.picker) return false;
     if (data1 != k_file_picker_completed) return false;
 
-    auto& native_file_picker = window.native_file_picker->As<NativeFilePicker>();
+    auto& native_file_picker = *native.picker;
     if (!native_file_picker.panel) return false;
 
     ASSERT([NSThread isMainThread]);
@@ -106,7 +113,7 @@ bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr d
 
     native_file_picker.panel = nullptr; // release
     native_file_picker.delegate = nullptr; // release
-    window.native_file_picker.Clear();
+    native.picker.Clear();
 
     return update_gui;
 }
@@ -114,9 +121,11 @@ bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr d
 ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOptions const& options) {
     ASSERT(window.view);
     ASSERT(g_is_logical_main_thread);
-    if (window.native_file_picker) return k_success;
-    window.native_file_picker.Emplace();
-    auto& native_file_picker = window.native_file_picker->As<NativeFilePicker>();
+    auto& native = *window.native_state;
+
+    if (native.picker) return k_success;
+    native.picker.Emplace();
+    auto& native_file_picker = *native.picker;
 
     @try {
         ASSERT([NSThread isMainThread]);
@@ -189,8 +198,10 @@ void CloseNativeFilePicker(AppWindow& window) {
     // thread.
     ASSERT(g_is_logical_main_thread);
 
-    if (!window.native_file_picker) return;
-    auto& native_file_picker = window.native_file_picker->As<NativeFilePicker>();
+    auto& native = *window.native_state;
+
+    if (!native.picker) return;
+    auto& native_file_picker = *native.picker;
     if (!native_file_picker.panel) return;
     {
         native_file_picker.mutex.Lock();
@@ -207,7 +218,7 @@ void CloseNativeFilePicker(AppWindow& window) {
         native_file_picker.panel = nullptr; // release
         native_file_picker.delegate = nullptr; // release
     }
-    window.native_file_picker.Clear();
+    native.picker.Clear();
 }
 
 f64 DoubleClickTimeMs(AppWindow const&) {
@@ -277,5 +288,9 @@ UiSize DefaultUiSizeFromDpi(void* native_window) {
 
     return DefaultUiSizeInternal(screen_size, (f32)dpi);
 }
+
+void InitNativeState(AppWindow& window) { window.native_state = new NativeAppWindowState {}; }
+
+void DeinitNativeState(AppWindow& window) { delete window.native_state; }
 
 } // namespace native

@@ -199,7 +199,6 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
         auto const id = imgui.GetID((u32)i);
         if (!keyboard.Get((usize)this_abs_key)) {
             if (imgui.ButtonBehavior(key_r, id, {.left_mouse = true, .triggers_on_mouse_down = true})) {
-                g->midi_keyboard_note_held_with_mouse = CheckedCast<u7>(this_abs_key);
                 f32 const rel_yclick_pos = GuiIo().in.cursor_pos.y - key_r.y;
                 result = KeyboardGuiKeyPressed {.is_down = true,
                                                 .note = CheckedCast<u7>(this_abs_key),
@@ -208,6 +207,8 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
         } else {
             imgui.SetHot(key_r, id);
         }
+        if (imgui.WasJustDeactivated(id))
+            result = KeyboardGuiKeyPressed {.is_down = false, .note = CheckedCast<u7>(this_abs_key)};
 
         u32 col = col_white_key;
         if (imgui.IsActive(id) || keyboard.Get((usize)this_abs_key)) col = col_white_key_down;
@@ -250,7 +251,6 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
         auto const id = imgui.GetID((u32)i);
         if (!keyboard.Get((usize)this_abs_key)) {
             if (imgui.ButtonBehavior(key_r, id, {.left_mouse = true, .triggers_on_mouse_down = true})) {
-                g->midi_keyboard_note_held_with_mouse = CheckedCast<u7>(this_abs_key);
                 f32 const rel_yclick_pos = GuiIo().in.cursor_pos.y - key_r.y;
                 result = KeyboardGuiKeyPressed {.is_down = true,
                                                 .note = CheckedCast<u7>(this_abs_key),
@@ -259,6 +259,8 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
         } else {
             imgui.SetHot(key_r, id);
         }
+        if (imgui.WasJustDeactivated(id))
+            result = KeyboardGuiKeyPressed {.is_down = false, .note = CheckedCast<u7>(this_abs_key)};
 
         u32 col = col_black_key;
         if (imgui.IsActive(id) || keyboard.Get((usize)this_abs_key)) col = col_black_key_down;
@@ -275,11 +277,6 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
     }
     imgui.PopID();
 
-    if (!GuiIo().in.mouse_buttons[0].is_down && g->midi_keyboard_note_held_with_mouse) {
-        result =
-            KeyboardGuiKeyPressed {.is_down = false, .note = g->midi_keyboard_note_held_with_mouse.Value()};
-        g->midi_keyboard_note_held_with_mouse = {};
-    }
     return result;
 }
 

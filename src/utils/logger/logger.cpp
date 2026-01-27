@@ -316,10 +316,10 @@ void Log(ModuleName module_name, LogLevel level, FunctionRef<ErrorCodeOr<void>(W
                     ArenaAllocatorWithInlineStorage<500> arena {PageAllocator::Instance()};
 
                     auto const log_folder = *LogFolder();
-                    ASSERT(IsValidUtf8(log_folder));
+                    if constexpr (!IS_LINUX) ASSERT(IsValidUtf8(log_folder));
 
                     auto const standard_path = path::Join(arena, Array {log_folder, k_latest_log_filename});
-                    ASSERT(IsValidUtf8(standard_path));
+                    if constexpr (!IS_LINUX) ASSERT(IsValidUtf8(standard_path));
 
                     // We have a few requirements here:
                     // - If possible, we want a log file with a fixed name so that it's easier to find and

@@ -29,8 +29,12 @@ enum class FilterMode : u8 {
     Count,
 };
 
+struct BrowserPopupContext;
+struct BrowserPopupOptions;
+
 struct RightClickMenuState {
-    using Function = TrivialFixedSizeFunction<32, void(GuiBoxSystem&, RightClickMenuState const&)>;
+    // Use context.state and options.right_click_menu_user_data to get your own data.
+    using Function = void (*)(GuiBoxSystem&, BrowserPopupContext&, BrowserPopupOptions const&);
     Function do_menu {};
     Rect absolute_creator_rect {}; // Absolute rectangle of the item that opened the menu.
     u64 item_hash {}; // The hash of the item that opened the menu.
@@ -319,6 +323,8 @@ struct BrowserPopupOptions {
     TrivialFunctionRef<void(GuiBoxSystem&, Box const& parent, u8& num_sections)> do_extra_filters_bottom {};
     bool has_extra_filters {};
     FilterItemInfo const& favourites_filter_info;
+
+    void* right_click_menu_user_data {};
 };
 
 Box DoBrowserItemsRoot(GuiBoxSystem& box_system);

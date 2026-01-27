@@ -11,6 +11,7 @@
 #include <pugl/pugl.h>
 
 extern "C" {
+#include <types.h> // For PuglView struct definition
 #include <win.h>
 }
 
@@ -21,8 +22,6 @@ extern "C" {
 
 #include "app_window.hpp"
 
-namespace native {
-
 struct NativeFilePicker {
     bool running {};
     HANDLE thread {};
@@ -31,6 +30,16 @@ struct NativeFilePicker {
     ArenaAllocator thread_arena {Malloc::Instance(), 256};
     Span<MutableString> result {};
 };
+
+struct NativeAppWindowState {
+    Optional<NativeFilePicker> picker {};
+
+    // Keyboard focus.
+    HWND last_focus {};
+    HHOOK keyboard_hook {};
+};
+
+namespace native {
 
 constexpr uintptr k_file_picker_message_data = 0xD1A106;
 
@@ -110,16 +119,16 @@ struct DpiAwareness {
 UiSize DefaultUiSizeFromDpi(void* native_window) {
     DpiAwareness dpi_awareness {};
 
-    auto const dpi =
-        (native_window ? dpi_awareness.Dpi((HWND)native_window) : dpi_awareness.Dpi()).ValueOr(k_default_dpi);
+    auto const hwnd = native_window ? (HWND)native_window : GetForegroundWindow();
 
+    auto const dpi = (hwnd ? dpi_awareness.Dpi(hwnd) : dpi_awareness.Dpi()).ValueOr(k_default_dpi);
     auto const backing_scale = dpi / 96.0f;
 
     auto const screen_size = ({
         UiSize sz {};
 
-        if (native_window) {
-            auto const monitor = MonitorFromWindow((HWND)native_window, MONITOR_DEFAULTTONEAREST);
+        if (hwnd) {
+            auto const monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
             MONITORINFO info {};
             info.cbSize = sizeof(MONITORINFO);
             if (GetMonitorInfoA(monitor, &info)) {
@@ -144,17 +153,17 @@ UiSize DefaultUiSizeFromDpi(void* native_window) {
 }
 
 void CloseNativeFilePicker(AppWindow& window) {
-    if (!window.native_file_picker) return;
-    auto& native = window.native_file_picker->As<NativeFilePicker>();
-    if (native.thread) {
-        PostThreadMessageW(GetThreadId(native.thread), WM_CLOSE, 0, 0);
+    auto& native = *window.native_state;
+
+    if (!native.picker) return;
+    if (native.picker->thread) {
+        PostThreadMessageW(GetThreadId(native.picker->thread), WM_CLOSE, 0, 0);
         // Blocking wait for the thread to finish.
-        auto const wait_result = WaitForSingleObject(native.thread, INFINITE);
+        auto const wait_result = WaitForSingleObject(native.picker->thread, INFINITE);
         ASSERT_NEQ(wait_result, WAIT_FAILED);
-        CloseHandle(native.thread);
+        CloseHandle(native.picker->thread);
     }
-    native.~NativeFilePicker();
-    window.native_file_picker.Clear();
+    native.picker.Clear();
 }
 
 ErrorCodeOr<Span<MutableString>>
@@ -304,25 +313,24 @@ RunFilePicker(FilePickerDialogOptions const& args, ArenaAllocator& arena, HWND p
 
 bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr data2) {
     ASSERT(g_is_logical_main_thread);
+    auto& native = *window.native_state;
 
     if (data1 != k_file_picker_message_data) return false;
     if (data2 != k_file_picker_message_data) return false;
-    if (!window.native_file_picker) return false;
-
-    auto& native_file_picker = window.native_file_picker->As<NativeFilePicker>();
+    if (!native.picker) return false;
 
     // The thread should have exited by now so this should be immediate.
-    auto const wait_result = WaitForSingleObject(native_file_picker.thread, INFINITE);
+    auto const wait_result = WaitForSingleObject(native.picker->thread, INFINITE);
     ASSERT_NEQ(wait_result, WAIT_FAILED);
-    CloseHandle(native_file_picker.thread);
-    native_file_picker.thread = nullptr;
+    CloseHandle(native.picker->thread);
+    native.picker->thread = nullptr;
 
     window.frame_state.file_picker_results.Clear();
     window.file_picker_result_arena.ResetCursorAndConsolidateRegions();
-    for (auto const path : native_file_picker.result)
+    for (auto const path : native.picker->result)
         window.frame_state.file_picker_results.Append(path.Clone(window.file_picker_result_arena),
                                                       window.file_picker_result_arena);
-    native_file_picker.running = false;
+    native.picker->running = false;
 
     return false;
 }
@@ -356,39 +364,35 @@ bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr d
 // - IFileDialog::Show() will block until the dialog is closed.
 // - IFileDialog::Show() will pump it's own messages, but first it _requires_ you to pump messages for the
 //   parent HWND that you pass in. You will be sent WM_SHOWWINDOW for example. You must consume this event
-//   otherwise IFileDialog::Show() will block forever, and never show it's own dialog.
+//   otherwise IFileDialog::Show() will block forever, and never show its own dialog.
 
 ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOptions const& args) {
     ASSERT(g_is_logical_main_thread);
 
-    NativeFilePicker* native_file_picker = nullptr;
+    auto& native = *window.native_state;
 
-    if (!window.native_file_picker) {
-        window.native_file_picker.Emplace(); // Create the OpaqueHandle
-        native_file_picker = &window.native_file_picker->As<NativeFilePicker>();
-        PLACEMENT_NEW(native_file_picker)
-        NativeFilePicker {}; // Initialise the NativeFilePicker in the OpaqueHandle
-    } else {
-        native_file_picker = &window.native_file_picker->As<NativeFilePicker>();
-    }
+    if (!native.picker) native.picker.Emplace();
 
-    if (native_file_picker->running) {
+    NativeFilePicker& native_file_picker = *native.picker;
+
+    if (native_file_picker.running) {
         // Already open. We only allow one at a time.
         return k_success;
     }
 
-    ASSERT(!native_file_picker->thread);
-    native_file_picker->running = true;
-    native_file_picker->thread_arena.ResetCursorAndConsolidateRegions();
-    native_file_picker->args = args.Clone(native_file_picker->thread_arena, CloneType::Deep);
-    native_file_picker->parent = (HWND)puglGetNativeView(window.view);
-    native_file_picker->thread = CreateThread(
+    ASSERT(!native_file_picker.thread);
+    native_file_picker.running = true;
+    native_file_picker.thread_arena.ResetCursorAndConsolidateRegions();
+    native_file_picker.args = args.Clone(native_file_picker.thread_arena, CloneType::Deep);
+    native_file_picker.parent = (HWND)puglGetNativeView(window.view);
+    native_file_picker.thread = CreateThread(
         nullptr,
         0,
         [](void* p) -> DWORD {
             try {
                 auto& window = *(AppWindow*)p;
-                auto& native_file_picker = window.native_file_picker->As<NativeFilePicker>();
+                auto& native = *window.native_state;
+                NativeFilePicker& native_file_picker = *native.picker;
 
                 auto const hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
                 ASSERT(SUCCEEDED(hr), "new thread couldn't initialise COM");
@@ -427,207 +431,17 @@ ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOption
         &window,
         0,
         nullptr);
-    ASSERT(native_file_picker->thread);
+    ASSERT(native_file_picker.thread);
 
     return k_success;
 }
 
-static Optional<KeyCode> WindowsVkToKeyCode(WPARAM vk) {
-    switch (vk) {
-        case VK_TAB: return KeyCode::Tab;
-        case VK_LEFT: return KeyCode::LeftArrow;
-        case VK_RIGHT: return KeyCode::RightArrow;
-        case VK_UP: return KeyCode::UpArrow;
-        case VK_DOWN: return KeyCode::DownArrow;
-        case VK_PRIOR: return KeyCode::PageUp; // Page Up
-        case VK_NEXT: return KeyCode::PageDown; // Page Down
-        case VK_HOME: return KeyCode::Home;
-        case VK_END: return KeyCode::End;
-        case VK_DELETE: return KeyCode::Delete;
-        case VK_BACK: return KeyCode::Backspace;
-        case VK_RETURN: return KeyCode::Enter;
-        case VK_ESCAPE: return KeyCode::Escape;
-        case VK_F1: return KeyCode::F1;
-        case VK_F2: return KeyCode::F2;
-        case VK_F3: return KeyCode::F3;
-        case VK_LSHIFT: return KeyCode::ShiftL;
-        case VK_RSHIFT: return KeyCode::ShiftR;
-        case 'A': return KeyCode::A;
-        case 'C': return KeyCode::C;
-        case 'V': return KeyCode::V;
-        case 'X': return KeyCode::X;
-        case 'Y': return KeyCode::Y;
-        case 'Z': return KeyCode::Z;
-        case 'F': return KeyCode::F;
-    }
-    return k_nullopt;
-}
+void InitNativeState(AppWindow& window) { window.native_state = new NativeAppWindowState {}; }
 
-static bool HandleMessage(MSG const& msg, int code, WPARAM w_param) {
-    if (PanicOccurred()) return false;
+void DeinitNativeState(AppWindow& window) {
+    CloseNativeFilePicker(window);
 
-    if (!EnterLogicalMainThread()) return false;
-    DEFER { LeaveLogicalMainThread(); };
-
-    try {
-        // "If code is HC_ACTION, the hook procedure must process the message"
-        if (code != HC_ACTION) return false;
-
-        // "The message has been removed from the queue." We only want to process messages that aren't
-        // otherwise going to be processed.
-        if (w_param != PM_REMOVE) return false;
-
-        if (!msg.hwnd) return false;
-
-        // We only care about keyboard messages.
-        {
-            constexpr auto k_accepted_messages =
-                Array {(UINT)WM_KEYDOWN, WM_SYSKEYDOWN, WM_KEYUP, WM_SYSKEYUP, WM_CHAR, WM_SYSCHAR};
-            if (!Contains(k_accepted_messages, msg.message)) return false;
-        }
-
-        // We only care about messages to our window.
-        {
-            constexpr auto k_floe_class_name_len = NullTerminatedSize(AppWindow::k_window_class_name);
-            char class_name[k_floe_class_name_len + 1];
-            auto const class_name_len = GetClassNameA(msg.hwnd, class_name, sizeof(class_name));
-            if (class_name_len == 0) {
-                ReportError(ErrorLevel::Warning,
-                            SourceLocationHash(),
-                            "failed to get class name for hwnd, {}",
-                            Win32ErrorCode(GetLastError()));
-                return false;
-            }
-
-            if (class_name_len != k_floe_class_name_len) return false; // Not our window.
-            if (!MemoryIsEqual(class_name, AppWindow::k_window_class_name, k_floe_class_name_len))
-                return false; // Not our window.
-        }
-
-        ASSERT(g_is_logical_main_thread);
-
-        // WARNING: doing this is not part of Pugl's public API - it might break.
-        auto view = (PuglView*)GetWindowLongPtrW(msg.hwnd, GWLP_USERDATA);
-        ASSERT(view);
-        auto& window = *(AppWindow*)puglGetHandle(view);
-
-        // Determine if we want to consume the original message
-        bool const consume_original_message = ({
-            bool wants = false;
-            switch (msg.message) {
-                case WM_CHAR:
-                case WM_SYSCHAR: {
-                    // Character messages - only consume if we want text input
-                    wants = window.last_result.wants.text_input;
-                    break;
-                }
-                case WM_KEYDOWN:
-                case WM_SYSKEYDOWN:
-                case WM_KEYUP:
-                case WM_SYSKEYUP: {
-                    // Key up/down messages - only consume if we want this specific key
-                    if (auto const key_code = WindowsVkToKeyCode(msg.wParam))
-                        wants = window.last_result.wants.keyboard_keys.Get(ToInt(*key_code));
-                    break;
-                }
-            }
-            wants;
-        });
-
-        bool consume_char_message = false;
-        MSG peeked {};
-
-        // "If the message is translated (that is, a character message is posted to the thread's message
-        // queue), the return value is nonzero. If the message is WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, or
-        // WM_SYSKEYUP, the return value is nonzero, regardless of the translation."
-        if (TranslateMessage(&msg)) {
-            // Check if we want the character message that was generated. If we don't want it, leave it in the
-            // queue for the host.
-            if (window.last_result.wants.text_input) {
-                // We check it and, if needed, remove it from queue using PM_REMOVE so host doesn't get it.
-                if (PeekMessageW(&peeked, msg.hwnd, WM_CHAR, WM_DEADCHAR, PM_REMOVE) ||
-                    PeekMessageW(&peeked, msg.hwnd, WM_SYSCHAR, WM_SYSDEADCHAR, PM_REMOVE)) {
-                    consume_char_message = true;
-                }
-            }
-        }
-
-        // Send the messages we want to consume
-        if (consume_original_message) SendMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
-        if (consume_char_message) SendMessageW(msg.hwnd, peeked.message, peeked.wParam, peeked.lParam);
-
-        // Return true only if we consumed the original message (which will cause MessageHook to scrub it)
-        // Character message consumption is handled separately via PeekMessage removal
-        return consume_original_message;
-    } catch (PanicException) {
-        return false;
-    }
-}
-
-// GetMsgProc
-// https://learn.microsoft.com/en-us/windows/win32/winmsg/getmsgproc
-static LRESULT CALLBACK MessageHook(int code, WPARAM w_param, LPARAM l_param) {
-    auto& msg = *(MSG*)l_param;
-    if (HandleMessage(msg, code, w_param)) {
-        // "The GetMsgProc hook procedure can examine or modify the message."
-        msg = {}; // We scrub it so that no one else gets it.
-        return 0;
-    }
-
-    return CallNextHookEx(nullptr, code, w_param, l_param);
-}
-
-static HHOOK g_keyboard_hook {};
-static u32 g_keyboard_hook_ref_count {};
-
-void AddWindowsKeyboardHook(AppWindow& window) {
-    ASSERT(g_is_logical_main_thread);
-
-    if (g_keyboard_hook_ref_count++ > 0) return;
-
-    ASSERT(!g_keyboard_hook);
-
-    auto hwnd = (HWND)puglGetNativeView(window.view);
-    ASSERT(hwnd);
-
-    HMODULE instance = nullptr;
-    bool got_module_handle_from_address = false;
-    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                            (LPCTSTR)AddWindowsKeyboardHook,
-                            &instance)) {
-        instance = GetModuleHandleW(nullptr);
-    } else {
-        got_module_handle_from_address = true;
-    }
-    ASSERT(instance);
-
-    g_keyboard_hook = SetWindowsHookExW(WH_GETMESSAGE, MessageHook, instance, GetCurrentThreadId());
-
-    if (!g_keyboard_hook) {
-        ReportError(ErrorLevel::Warning,
-                    SourceLocationHash(),
-                    "failed to install keyboard hook (got module handle from address: {}), {}",
-                    got_module_handle_from_address,
-                    Win32ErrorCode(GetLastError()));
-    }
-}
-
-void RemoveWindowsKeyboardHook(AppWindow&) {
-    ASSERT(g_is_logical_main_thread);
-
-    if (--g_keyboard_hook_ref_count > 0) return;
-
-    // It can be null if it failed.
-    if (!g_keyboard_hook) return;
-
-    if (!UnhookWindowsHookEx(g_keyboard_hook)) {
-        ReportError(ErrorLevel::Warning,
-                    SourceLocationHash(),
-                    "failed to remove keyboard hook, {}",
-                    Win32ErrorCode(GetLastError()));
-    }
-    g_keyboard_hook = nullptr;
+    delete window.native_state;
 }
 
 } // namespace native

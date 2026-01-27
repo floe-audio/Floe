@@ -19,7 +19,7 @@ env:
   SENTRY_DSN: ${{ secrets.SENTRY_DSN_DEVELOPMENT }}
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   # Specify a relative path for reproducible builds (no absolute paths in binaries).
-  ZIG_GLOBAL_CACHE_DIR: .zig-cache-global 
+  ZIG_GLOBAL_CACHE_DIR: .zig-cache-global
 
 jobs:
   mac:
@@ -35,19 +35,18 @@ jobs:
 
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
-      - uses: nicknovitski/nix-develop@v1.1.0
 
-      - run: zig build script:ci
+      - run: nix develop --command zig build script:ci
 
       - name: Upload logs
-        if: '!cancelled()'
+        if: "!cancelled()"
         uses: actions/upload-artifact@v4
         with:
           name: logs-macos
           if-no-files-found: ignore
           path: ~/Library/Logs/Floe/*
 
-      - if: '!cancelled()'
+      - if: "!cancelled()"
         name: Upload test results
         uses: codecov/codecov-action@v5
         with:
@@ -70,11 +69,10 @@ jobs:
 
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
-      - uses: nicknovitski/nix-develop@v1.1.0
 
-      - run: zig build script:ci
+      - run: nix develop --command zig build script:ci
 
-      - if: '!cancelled()'
+      - if: "!cancelled()"
         name: Upload coverage reports
         uses: codecov/codecov-action@v5
         with:
@@ -84,9 +82,9 @@ jobs:
           fail_ci_if_error: true
           report_type: coverage
 
-      # "Codecov automatically scans for files matching the *junit.xml pattern". We are expecting files 
+      # "Codecov automatically scans for files matching the *junit.xml pattern". We are expecting files
       # like these in the floe-cache directory.
-      - if: '!cancelled()'
+      - if: "!cancelled()"
         name: Upload test results
         uses: codecov/codecov-action@v5
         with:
@@ -97,7 +95,7 @@ jobs:
           report_type: test_results
 
       - name: Upload logs
-        if: '!cancelled()'
+        if: "!cancelled()"
         uses: actions/upload-artifact@v4
         with:
           name: logs-linux
@@ -106,7 +104,7 @@ jobs:
 
   windows:
     runs-on: windows-latest
-    if: '!cancelled()'
+    if: "!cancelled()"
     permissions:
       id-token: write
       contents: read
@@ -127,7 +125,7 @@ jobs:
 
       - run: zig build script:ci
 
-      - if: '!cancelled()'
+      - if: "!cancelled()"
         name: Upload test results
         uses: codecov/codecov-action@v5
         with:
@@ -138,14 +136,13 @@ jobs:
           report_type: test_results
 
       - name: Upload logs
-        if: '!cancelled()'
+        if: "!cancelled()"
         uses: actions/upload-artifact@v4
         with:
           name: logs-windows
           if-no-files-found: ignore
           path: ~/AppData/Local/Floe/Logs/*
 
-  
   notify:
     # We run this for main/develop, and also for PRs that are not from forks; in other words, PRs originating from Floe devs.
     if: ${{ ((github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && !cancelled() }}

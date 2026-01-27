@@ -248,13 +248,13 @@ void Shutdown(LibraryImagesTable& table) {
 
     for (auto [_, imgs, _] : table.table) {
         if (imgs.loading_icon) {
-            if (auto const bytes_opt_ptr = imgs.loading_icon->ShutdownAndRelease(10000u)) {
+            if (auto const bytes_opt_ptr = imgs.loading_icon->ShutdownAndRelease(60000u)) {
                 if (auto const bytes_optional = *bytes_opt_ptr) bytes_optional->Free(ImageBytesAllocator());
             }
         }
 
         if (imgs.loading_backgrounds) {
-            if (auto const bgs_ptr = imgs.loading_backgrounds->ShutdownAndRelease(10000u)) {
+            if (auto const bgs_ptr = imgs.loading_backgrounds->ShutdownAndRelease(60000u)) {
                 if (auto const bgs = *bgs_ptr) {
                     if (bgs->background) bgs->background->Free(ImageBytesAllocator());
                     if (bgs->blurred_background) bgs->blurred_background->Free(ImageBytesAllocator());

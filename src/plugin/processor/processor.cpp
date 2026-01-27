@@ -170,32 +170,54 @@ Bitset<128> PersistentCcsForParam(prefs::PreferencesTable const& prefs, u32 para
     return result;
 }
 
-void AppendMacroDestination(AudioProcessor& processor, struct AppendMacroDestination config) {
+void AppendMacroDestination(AudioProcessor& processor, AppendMacroDestinationConfig config) {
     ASSERT(g_is_logical_main_thread);
 
-    dyn::Append(processor.main_macro_destinations[config.macro_index],
-                MacroDestination {
-                    .param_index = config.param,
-                    .value = config.value,
-                });
+    auto const i = processor.main_macro_destinations[config.macro_index].Append({
+        .param_index = config.param,
+        .value = 0.0f,
+    });
 
-    processor.events_for_audio_thread.Push(config);
+    processor.macro_dest_inbox[config.macro_index][*i].Produce({
+        .new_value = 0.0f,
+        .new_param_index = config.param,
+    });
+
     processor.host.request_process(&processor.host);
 }
 
-void RemoveMacroDestination(AudioProcessor& processor, struct RemoveMacroDestination config) {
+void RemoveMacroDestination(AudioProcessor& processor, RemoveMacroDestinationConfig config) {
     ASSERT(g_is_logical_main_thread);
 
-    dyn::Remove(processor.main_macro_destinations[config.macro_index], config.destination_index);
+    auto& macro_dests = processor.main_macro_destinations[config.macro_index];
 
-    processor.events_for_audio_thread.Push(config);
+    macro_dests.RemoveAt(config.destination_index);
+
+    // Update atomics for all shifted destinations.
+    for (usize i = config.destination_index; i < k_max_macro_destinations; i++) {
+        auto const& dest = macro_dests.items[i];
+        processor.macro_dest_inbox[config.macro_index][i].Produce(
+            !dest.param_index ? audio_thread_inbox::MacroDestinationUpdate::ProduceOptions {.clear = true}
+                              : audio_thread_inbox::MacroDestinationUpdate::ProduceOptions {
+                                    .new_value = dest.value,
+                                    .new_param_index = dest.param_index,
+                                });
+        if (!dest.param_index) break;
+    }
+
     processor.host.request_process(&processor.host);
 }
 
-void MacroDestinationValueChanged(AudioProcessor& processor, struct MacroDestinationValueChanged config) {
+void MacroDestinationValueChanged(AudioProcessor& processor, MacroDestinationValueChangedConfig config) {
     ASSERT(g_is_logical_main_thread);
 
-    processor.events_for_audio_thread.Push(config);
+    auto const val =
+        processor.main_macro_destinations[config.macro_index].items[config.destination_index].value;
+
+    processor.macro_dest_inbox[config.macro_index][config.destination_index].Produce({
+        .new_value = val,
+    });
+
     processor.host.request_process(&processor.host);
 }
 
@@ -550,9 +572,11 @@ static ChangedParams UpdateMacroAdjustedValues(Parameters& macro_adjusted_params
         auto const macro_param_index = k_macro_params[macro_index];
         bool const macro_changed = params.Changed(macro_param_index);
 
-        for (auto const& dest : macro)
-            if (params.Changed(dest.param_index) || macro_changed)
-                needs_adjustment.Set(ToInt(dest.param_index));
+        for (auto const& dest : macro.items) {
+            if (!dest.param_index) continue;
+            if (params.Changed(*dest.param_index) || macro_changed)
+                needs_adjustment.Set(ToInt(*dest.param_index));
+        }
     }
 
     for (auto const param_index : Range(k_num_parameters)) {
@@ -629,8 +653,8 @@ static void ProcessorHandleChanges(AudioProcessor& processor, ProcessBlockChange
 void ParameterJustStartedMoving(AudioProcessor& processor, ParamIndex index) {
     ASSERT(g_is_logical_main_thread);
 
-    processor.param_events_for_audio_thread[ToInt(index)].AddGuiGesture(
-        ParamEventForAudioThread::GuiGestureType::Begin);
+    processor.param_change_inbox[ToInt(index)].AddGuiGesture(
+        audio_thread_inbox::ParamChange::GuiGestureType::Begin);
 
     if (auto host_params = HostsParamsExtension(processor)) host_params->request_flush(&processor.host);
 }
@@ -638,8 +662,8 @@ void ParameterJustStartedMoving(AudioProcessor& processor, ParamIndex index) {
 void ParameterJustStoppedMoving(AudioProcessor& processor, ParamIndex index) {
     ASSERT(g_is_logical_main_thread);
 
-    processor.param_events_for_audio_thread[ToInt(index)].AddGuiGesture(
-        ParamEventForAudioThread::GuiGestureType::End);
+    processor.param_change_inbox[ToInt(index)].AddGuiGesture(
+        audio_thread_inbox::ParamChange::GuiGestureType::End);
 
     if (auto host_params = HostsParamsExtension(processor)) host_params->request_flush(&processor.host);
 }
@@ -650,7 +674,7 @@ bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, P
     bool const changed = processor.main_params.values[ToInt(index)] != value;
     processor.main_params.SetLinearValue(index, value);
 
-    processor.param_events_for_audio_thread[ToInt(index)].AddValueChanged(
+    processor.param_change_inbox[ToInt(index)].AddValueChanged(
         value,
         {
             .send_to_host = true,
@@ -738,7 +762,7 @@ f32 AdjustedLinearValue(Parameters const& params,
     auto const& descriptor = k_param_descriptors[ToInt(param_index)];
 
     for (auto const [macro_index, dests] : Enumerate(macros)) {
-        for (auto const& dest : dests)
+        for (auto const& dest : dests.items)
             if (dest.param_index == param_index) {
                 auto const& macro_param = params.LinearValue(k_macro_params[macro_index]);
                 linear_value += descriptor.linear_range.Delta() * (dest.ProjectedValue() * macro_param);
@@ -751,17 +775,20 @@ f32 AdjustedLinearValue(Parameters const& params,
     return linear_value;
 }
 
-static void FlushEventsForAudioThread(AudioProcessor& processor) {
-    auto _ = processor.events_for_audio_thread.PopAll();
-    for (auto& p : processor.param_events_for_audio_thread)
+static void ClearInbox(AudioProcessor& processor) {
+    for (auto& dests : processor.macro_dest_inbox)
+        for (auto& v : dests)
+            v.Clear();
+    for (auto& p : processor.param_change_inbox)
         p.Clear();
+    processor.inbox_flags.Store(0, StoreMemoryOrder::Release);
 }
 
 static void Deactivate(AudioProcessor& processor) {
     ASSERT(g_is_logical_main_thread);
 
     if (processor.activated) {
-        FlushEventsForAudioThread(processor);
+        ClearInbox(processor);
         processor.voice_pool.EndAllVoicesInstantly();
         processor.activated = false;
     }
@@ -769,6 +796,7 @@ static void Deactivate(AudioProcessor& processor) {
 
 void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const& instrument) {
     ASSERT(g_is_logical_main_thread);
+    ASSERT(layer_index < k_num_layers);
 
     // If we currently have a sampler instrument, we keep it alive by storing it and releasing at a later
     // time.
@@ -802,7 +830,8 @@ void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const&
         }
     }
 
-    processor.events_for_audio_thread.Push(LayerInstrumentChanged {.layer_index = layer_index});
+    processor.inbox_flags.FetchOr(CheckedCast<u8>(audio_thread_inbox::LayerInstrumentChanged << layer_index),
+                                  RmwMemoryOrder::Release);
     processor.host.request_process(&processor.host);
 }
 
@@ -811,7 +840,7 @@ void SetConvolutionIrAudioData(AudioProcessor& processor,
                                sample_lib::ImpulseResponse::AudioProperties const& audio_props) {
     ASSERT(g_is_logical_main_thread);
     processor.convo.ConvolutionIrDataLoaded(audio_data, audio_props);
-    processor.events_for_audio_thread.Push(EventForAudioThreadType::ConvolutionIRChanged);
+    processor.inbox_flags.FetchOr(audio_thread_inbox::ConvolutionIRChanged, RmwMemoryOrder::Release);
     processor.host.request_process(&processor.host);
 }
 
@@ -832,27 +861,20 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
             state.velocity_curve_points[layer_index]);
     }
 
-    DynamicArrayBounded<EventForAudioThread, (k_num_macros * k_max_macro_destinations) + 4>
-        events_for_audio_thread;
-
     // Macro destinations.
     {
         processor.main_macro_destinations = state.macro_destinations;
 
-        // We need to tell the audio thread about the changes.
-        //
-        // Start with removing all macro destinations.
-        dyn::Emplace(events_for_audio_thread, EventForAudioThreadType::RemoveAllMacroDestinations);
-
-        // Then add all the new ones.
-        for (auto const [macro_index, macro] : Enumerate<u8>(state.macro_destinations)) {
-            for (auto const& dest : macro) {
-                struct AppendMacroDestination const event = {
-                    .value = dest.value,
-                    .param = dest.param_index,
-                    .macro_index = macro_index,
-                };
-                dyn::Emplace(events_for_audio_thread, event);
+        for (auto const macro_index : Range(k_num_macros)) {
+            for (auto const dest_index : Range(k_max_macro_destinations)) {
+                auto const& new_dest = state.macro_destinations[macro_index].items[dest_index];
+                auto& event = processor.macro_dest_inbox[macro_index][dest_index];
+                event.Produce(!new_dest.param_index
+                                  ? audio_thread_inbox::MacroDestinationUpdate::ProduceOptions {.clear = true}
+                                  : audio_thread_inbox::MacroDestinationUpdate::ProduceOptions {
+                                        .new_value = new_dest.value,
+                                        .new_param_index = new_dest.param_index,
+                                    });
             }
         }
     }
@@ -862,7 +884,7 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
         if (auto host_params = HostsParamsExtension(processor))
             host_params->rescan(&processor.host, CLAP_PARAM_RESCAN_VALUES);
 
-        for (auto [param_index, p] : Enumerate(processor.param_events_for_audio_thread)) {
+        for (auto [param_index, p] : Enumerate(processor.param_change_inbox)) {
             p.AddValueChanged(
                 state.param_values[param_index],
                 {
@@ -872,13 +894,7 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
         }
     }
 
-    dyn::Emplace(events_for_audio_thread, EventForAudioThreadType::ReloadAllAudioState);
-
-    if (!processor.events_for_audio_thread.Push(events_for_audio_thread)) {
-        ReportError(ErrorLevel::Warning,
-                    SourceLocationHash(),
-                    "ApplyNewState: failed to push all non-param events to audio thread");
-    }
+    processor.inbox_flags.FetchOr(audio_thread_inbox::ReloadAllAudioState, RmwMemoryOrder::Release);
 
     processor.host.request_process(&processor.host);
 }
@@ -949,6 +965,9 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
     processor.audio_processing_context.pitchwheel_position = {};
     processor.audio_processing_context.midi_note_state = {};
 
+    processor.gui_note_currently_held = k_nullopt;
+    processor.inbox_flags.Store(0, StoreMemoryOrder::Relaxed);
+
     processor.audio_processing_context.one_pole_smoothing_cutoff_0_2ms =
         OnePoleLowPassFilter<f32>::MsToCutoff(0.2f, (f32)args.sample_rate);
     processor.audio_processing_context.one_pole_smoothing_cutoff_1ms =
@@ -972,7 +991,7 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
 
     // Update the audio-thread representations of the parameters.
     {
-        FlushEventsForAudioThread(processor);
+        ClearInbox(processor);
         processor.audio_params = processor.main_params;
         processor.audio_macro_destinations = processor.main_macro_destinations;
         ProcessBlockChanges changes {
@@ -1273,7 +1292,7 @@ static void ConsumeParamEventsFromMainThread(AudioProcessor& processor,
                                              u32 frame_index,
                                              ProcessBlockChanges& changes) {
     ZoneScoped;
-    for (auto [param_index, e] : Enumerate(processor.param_events_for_audio_thread)) {
+    for (auto [param_index, e] : Enumerate(processor.param_change_inbox)) {
         auto const maybe_p = e.Consume();
         if (!maybe_p) continue;
         auto const& p = *maybe_p;
@@ -1379,7 +1398,7 @@ FlushParameterEvents(AudioProcessor& processor, clap_input_events const& in, cla
 
 // Audio-thread
 static void AudioThreadReset(AudioProcessor& processor) {
-    FlushEventsForAudioThread(processor);
+    ClearInbox(processor);
     processor.voice_pool.EndAllVoicesInstantly();
     processor.audio_processing_context.pitchwheel_position = {};
     ProcessBlockChanges changes {
@@ -1439,7 +1458,6 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     constexpr f32 k_fade_out_ms = 30;
     constexpr f32 k_fade_in_ms = 10;
 
-    auto const internal_events = processor.events_for_audio_thread.PopAll();
     Bitset<k_num_layers> layers_changed {};
     bool mark_convolution_for_fade_out = false;
 
@@ -1452,69 +1470,47 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                                changes_for_main_thread);
 
     Optional<AudioProcessor::FadeType> new_fade_type {};
-    for (auto const& e : internal_events) {
-        switch (e.tag) {
-            case EventForAudioThreadType::LayerInstrumentChanged: {
-                auto const& layer_changed = e.Get<LayerInstrumentChanged>();
-                layers_changed.Set(layer_changed.layer_index);
-                break;
+
+    if (auto const flags = processor.inbox_flags.Exchange(0, RmwMemoryOrder::Acquire)) {
+        if (flags & audio_thread_inbox::FxOrderChanged) {
+            if (!new_fade_type) new_fade_type = AudioProcessor::FadeType::OutAndIn;
+        }
+
+        if (flags & audio_thread_inbox::ReloadAllAudioState) {
+            changes.changed_params.changed.SetAll();
+            new_fade_type = AudioProcessor::FadeType::OutAndRestartVoices;
+            layers_changed.SetAll();
+        }
+
+        if (flags & audio_thread_inbox::ConvolutionIRChanged) mark_convolution_for_fade_out = true;
+
+        if (flags & audio_thread_inbox::ResetAudioProcessing) AudioThreadReset(processor);
+
+        for (auto const layer_index : Range(k_num_layers))
+            if (flags & (audio_thread_inbox::LayerInstrumentChanged << layer_index))
+                layers_changed.Set(layer_index);
+    }
+
+    for (auto [macro_index, inbox_dests] : Enumerate(processor.macro_dest_inbox)) {
+        for (auto [dest_index, inbox_dest] : Enumerate(inbox_dests)) {
+            auto const maybe_item = inbox_dest.Consume();
+            if (!maybe_item) continue;
+            auto const& item = *maybe_item;
+
+            auto& d = processor.audio_macro_destinations[macro_index].items[dest_index];
+            if (item.value_changed) {
+                d.value = item.value;
+                if (d.param_index) changes.changed_params.changed.Set(ToInt(*d.param_index));
             }
-            case EventForAudioThreadType::FxOrderChanged: {
-                if (!new_fade_type) new_fade_type = AudioProcessor::FadeType::OutAndIn;
-                break;
+            if (item.param_index_changed) {
+                if (d.param_index) changes.changed_params.changed.Set(ToInt(*d.param_index));
+                changes.changed_params.changed.Set(ToInt(item.param_index));
+                d.param_index = item.param_index;
             }
-            case EventForAudioThreadType::ReloadAllAudioState: {
-                changes.changed_params.changed.SetAll();
-                new_fade_type = AudioProcessor::FadeType::OutAndRestartVoices;
-                layers_changed.SetAll();
-                break;
+            if (item.clear) {
+                if (d.param_index) changes.changed_params.changed.Set(ToInt(*d.param_index));
+                d = {};
             }
-            case EventForAudioThreadType::ConvolutionIRChanged: {
-                mark_convolution_for_fade_out = true;
-                break;
-            }
-            case EventForAudioThreadType::AppendMacroDestination: {
-                auto const& add_dest = e.Get<struct AppendMacroDestination>();
-                dyn::Append(processor.audio_macro_destinations[add_dest.macro_index],
-                            {
-                                .param_index = add_dest.param,
-                                .value = add_dest.value,
-                            });
-                changes.changed_params.changed.Set(ToInt(add_dest.param));
-                break;
-            }
-            case EventForAudioThreadType::RemoveMacroDestination: {
-                auto const& remove_dest = e.Get<struct RemoveMacroDestination>();
-                auto const dest_param =
-                    processor.audio_macro_destinations[remove_dest.macro_index][remove_dest.destination_index]
-                        .param_index;
-                dyn::Remove(processor.audio_macro_destinations[remove_dest.macro_index],
-                            remove_dest.destination_index);
-                changes.changed_params.changed.Set(ToInt(dest_param));
-                break;
-            }
-            case EventForAudioThreadType::MacroDestinationValueChanged: {
-                auto const& change_dest = e.Get<struct MacroDestinationValueChanged>();
-                auto const dest_param =
-                    processor.audio_macro_destinations[change_dest.macro_index][change_dest.destination_index]
-                        .param_index;
-                auto& dest =
-                    processor
-                        .audio_macro_destinations[change_dest.macro_index][change_dest.destination_index];
-                dest.value = change_dest.value;
-                changes.changed_params.changed.Set(ToInt(dest_param));
-                break;
-            }
-            case EventForAudioThreadType::RemoveAllMacroDestinations: {
-                for (auto const& macro : processor.audio_macro_destinations)
-                    for (auto const& dest : macro)
-                        changes.changed_params.changed.Set(ToInt(dest.param_index));
-                processor.audio_macro_destinations = {};
-                break;
-            }
-            case EventForAudioThreadType::ResetAudioProcessing: AudioThreadReset(processor); break;
-            case EventForAudioThreadType::StartNote: break;
-            case EventForAudioThreadType::EndNote: break;
         }
     }
 
@@ -1576,51 +1572,47 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                                   changes_for_main_thread);
         }
 
-        for (auto const& e : internal_events) {
-            switch (e.tag) {
-                case EventForAudioThreadType::StartNote: {
-                    auto const start = e.Get<GuiNoteClicked>();
-                    clap_event_note const note {
-                        .header {
-                            .size = sizeof(clap_event_note),
-                            .time = frame_index,
-                            .type = CLAP_EVENT_NOTE_ON,
-                        },
-                        .note_id = -1,
-                        .key = start.key,
-                        .velocity = (f64)start.velocity,
-                    };
-                    ProcessClapNoteOrMidi(processor,
-                                          note.header,
-                                          *process.out_events,
-                                          frame_index,
-                                          change_flags,
-                                          changes,
-                                          changes_for_main_thread);
-                    break;
-                }
-                case EventForAudioThreadType::EndNote: {
-                    auto const end = e.Get<GuiNoteClickReleased>();
-                    clap_event_note const note {
-                        .header {
-                            .size = sizeof(clap_event_note),
-                            .time = frame_index,
-                            .type = CLAP_EVENT_NOTE_OFF,
-                        },
-                        .note_id = -1,
-                        .key = end.key,
-                        .velocity = 0.0,
-                    };
-                    ProcessClapNoteOrMidi(processor,
-                                          note.header,
-                                          *process.out_events,
-                                          frame_index,
-                                          change_flags,
-                                          changes,
-                                          changes_for_main_thread);
-                    break;
-                }
-                default: break;
+        {
+            auto const gui_note = processor.gui_note_click_state.Load(LoadMemoryOrder::Acquire);
+
+            if (gui_note.is_held && !processor.gui_note_currently_held) {
+                clap_event_note const note {
+                    .header {
+                        .size = sizeof(clap_event_note),
+                        .time = frame_index,
+                        .type = CLAP_EVENT_NOTE_ON,
+                    },
+                    .note_id = -1,
+                    .key = gui_note.key,
+                    .velocity = (f64)gui_note.velocity,
+                };
+                ProcessClapNoteOrMidi(processor,
+                                      note.header,
+                                      *process.out_events,
+                                      frame_index,
+                                      change_flags,
+                                      changes,
+                                      changes_for_main_thread);
+                processor.gui_note_currently_held = gui_note.key;
+            } else if (!gui_note.is_held && processor.gui_note_currently_held) {
+                clap_event_note const note {
+                    .header {
+                        .size = sizeof(clap_event_note),
+                        .time = frame_index,
+                        .type = CLAP_EVENT_NOTE_OFF,
+                    },
+                    .note_id = -1,
+                    .key = *processor.gui_note_currently_held,
+                    .velocity = 0.0,
+                };
+                ProcessClapNoteOrMidi(processor,
+                                      note.header,
+                                      *process.out_events,
+                                      frame_index,
+                                      change_flags,
+                                      changes,
+                                      changes_for_main_thread);
+                processor.gui_note_currently_held = k_nullopt;
             }
         }
     }
@@ -1812,8 +1804,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 
 void ResetAudioProcessing(AudioProcessor& processor) {
     ASSERT(g_is_logical_main_thread);
-    processor.events_for_audio_thread.Push(
-        EventForAudioThread {EventForAudioThreadType::ResetAudioProcessing});
+    processor.inbox_flags.FetchOr(audio_thread_inbox::ResetAudioProcessing, RmwMemoryOrder::Release);
     processor.host.request_process(&processor.host);
 }
 

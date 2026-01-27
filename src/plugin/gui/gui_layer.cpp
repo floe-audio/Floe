@@ -1511,7 +1511,7 @@ void Draw(Gui* g,
 
     if (g->macros_gui_state.active_destination_knob) {
         auto const param =
-            LayerParamIndexAndLayerFor(g->macros_gui_state.active_destination_knob->dest.param_index);
+            LayerParamIndexAndLayerFor(*g->macros_gui_state.active_destination_knob->dest.param_index);
         if (param && param->layer_num == layer->index) {
             auto const new_page = [&]() -> Optional<PageType> {
                 switch (param->param) {

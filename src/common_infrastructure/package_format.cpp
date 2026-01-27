@@ -489,6 +489,14 @@ IteratePackageComponents(PackageReader& package, PackageComponentIndex& file_ind
             auto const is_mdata_library =
                 folder == k_libraries_subdir && path::Equal(path::Extension(path), ".mdata");
 
+            sample_lib::Library* library = nullptr;
+            if (folder == k_libraries_subdir) {
+                library = TRY_OR(!is_mdata_library ? ReaderReadLibraryLua(package, path, arena)
+                                                   : ReaderReadLibraryMdata(package, file_index, path, arena),
+                                 return {PackageError::InvalidLibrary});
+                if (!library) continue;
+            }
+
             return Optional<Component> {Component {
                 .path = path.Clone(arena),
                 .type = ({
@@ -506,12 +514,7 @@ IteratePackageComponents(PackageReader& package, PackageComponentIndex& file_ind
                                                 return ZipReadError(package);)
                                        : HashTable<String, ChecksumValues> {},
                 .mdata_checksum = is_mdata_library ? Optional<u32> {(u32)file_stat.m_crc32} : k_nullopt,
-                .library =
-                    (folder == k_libraries_subdir)
-                        ? TRY_OR(!is_mdata_library ? ReaderReadLibraryLua(package, path, arena)
-                                                   : ReaderReadLibraryMdata(package, file_index, path, arena),
-                                 return {PackageError::InvalidLibrary})
-                        : nullptr,
+                .library = library,
                 .preset_bank = (folder == k_presets_subdir)
                                    ? TRY_OR(ReaderReadPresetBank(package, path, arena),
                                             return {PackageError::InvalidPresetBank})

@@ -88,7 +88,7 @@ MutableString KnownDirectoryWithSubdirectories(Allocator& a,
     usize pos = path.size;
     for (auto const& sub : subdirectories) {
         ASSERT(sub.size);
-        ASSERT(IsValidUtf8(sub));
+        if constexpr (!IS_LINUX) ASSERT(IsValidUtf8(sub));
 
         WriteAndIncrement(pos, full_path, path::k_dir_separator);
         WriteAndIncrement(pos, full_path, sub);
@@ -115,7 +115,7 @@ MutableString KnownDirectoryWithSubdirectories(Allocator& a,
     }
 
     ASSERT(path::IsAbsolute(full_path));
-    ASSERT(IsValidUtf8(full_path));
+    if constexpr (!IS_LINUX) ASSERT(IsValidUtf8(full_path));
     return full_path;
 }
 
@@ -194,7 +194,7 @@ void InitLogFolderIfNeeded() {
 Optional<String> LogFolder() {
     if (!g_log_folder_flag.Called()) return k_nullopt;
     ASSERT(g_log_folder_path.size);
-    ASSERT(IsValidUtf8(g_log_folder_path));
+    if constexpr (!IS_LINUX) ASSERT(IsValidUtf8(g_log_folder_path));
     return g_log_folder_path;
 }
 

@@ -1399,14 +1399,19 @@ static void DoBrowserLibraryFilters(GuiBoxSystem& box_system,
             }
 
             if (lib_hash != Hash(sample_lib::k_builtin_library_id))
-                DoRightClickMenuForBox(
-                    box_system,
-                    context.state,
-                    button,
-                    lib_hash,
-                    [&](GuiBoxSystem& box_system, RightClickMenuState const& menu_state) {
-                        DoLibraryRightClickMenu(box_system, context, menu_state, library_filters);
-                    });
+                DoRightClickMenuForBox(box_system,
+                                       context.state,
+                                       button,
+                                       lib_hash,
+                                       [](GuiBoxSystem& box_system,
+                                          BrowserPopupContext& context,
+                                          BrowserPopupOptions const& options) {
+                                           if (options.library_filters)
+                                               DoLibraryRightClickMenu(box_system,
+                                                                       context,
+                                                                       context.state.right_click_menu_state,
+                                                                       *options.library_filters);
+                                       });
         }
 
         if (library_filters.additional_pseudo_card) {
@@ -2354,13 +2359,13 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
             });
     }
 
+    // If the popup is not open, it just early-returns.
     RunOrEnqueuePanel(
         box_system,
         Panel {
             .run =
                 [&](GuiBoxSystem& box_system) {
-                    context.state.right_click_menu_state.do_menu(box_system,
-                                                                 context.state.right_click_menu_state);
+                    context.state.right_click_menu_state.do_menu(box_system, context, options);
                 },
             .data =
                 PopupPanel {

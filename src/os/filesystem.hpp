@@ -462,7 +462,7 @@ struct Entry {
 struct Iterator {
     // private
     static ErrorCodeOr<Iterator> InternalCreate(ArenaAllocator& arena, String path, Options options) {
-        ASSERT(IsValidUtf8(path));
+        if constexpr (!IS_LINUX) ASSERT(IsValidUtf8(path));
         ASSERT(path::IsAbsolute(path));
         ASSERT(options.wildcard.size);
         ASSERT(IsValidUtf8(options.wildcard));
@@ -642,7 +642,7 @@ struct DirectoryWatcher {
 
         // private
         void Add(Change change, ArenaAllocator& a) {
-            ASSERT(IsValidUtf8(change.subpath));
+            if constexpr (!IS_LINUX) ASSERT(IsValidUtf8(change.subpath));
             // try finding the subpath+file_type and add the change to it
             for (auto& subpath_changeset : subpath_changesets)
                 // We check both subpath and file_type because a file can be deleted and then created as a

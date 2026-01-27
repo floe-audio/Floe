@@ -95,8 +95,6 @@ struct Gui {
 
     Optional<ParamIndex> param_text_editor_to_open {};
 
-    Optional<u7> midi_keyboard_note_held_with_mouse = {};
-
     TimePoint redraw_counter = {};
 
     bool timbre_slider_is_held {};

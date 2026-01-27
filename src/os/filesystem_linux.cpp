@@ -689,12 +689,15 @@ PollDirectoryChanges(DirectoryWatcher& watcher, PollDirectoryChangesArgs args) {
     while (true) {
         ZoneNamedN(read_trace, "inotify read", true);
         auto const bytes_read = read(watcher.native_data.int_id, buf, sizeof(buf));
-        if (bytes_read == -1 && errno != EAGAIN) return FilesystemErrnoErrorCode(errno);
 
+        if (bytes_read == -1 && errno != EAGAIN) return FilesystemErrnoErrorCode(errno);
         if (bytes_read <= 0) break;
+        if (bytes_read > (ssize_t)sizeof(buf)) break; // Shouldn't happen, broken read().
+
+        auto const end = buf + bytes_read;
 
         const struct inotify_event* event_ptr;
-        for (char* ptr = buf; ptr < buf + bytes_read; ptr += sizeof(struct inotify_event) + event_ptr->len) {
+        for (char* ptr = buf; ptr < end; ptr += sizeof(struct inotify_event) + event_ptr->len) {
             event_ptr = CheckedPointerCast<const struct inotify_event*>(ptr);
             auto const& event = *event_ptr;
 

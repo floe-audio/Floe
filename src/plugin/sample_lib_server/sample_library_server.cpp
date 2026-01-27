@@ -113,7 +113,11 @@ static void DoReadLibraryJob(PendingLibraryJobs::Job::ReadLibrary& job, ArenaAll
         PathOrMemory path_or_memory = args.path;
         if (format == sample_lib::FileFormat::Lua) {
             // it will be more efficient to just load the whole Lua into memory
-            path_or_memory = TRY_H(ReadEntireFile(args.path, scratch_arena)).ToConstByteSpan();
+            auto const data = TRY_H(ReadEntireFile(args.path, scratch_arena)).ToConstByteSpan();
+            path_or_memory = data;
+            LogInfo(ModuleName::SampleLibraryServer, "reading Lua library ({} Kb)", data.size / 1024);
+        } else {
+            LogInfo(ModuleName::SampleLibraryServer, "reading MDATA library");
         }
 
         auto reader = TRY_H(Reader::FromPathOrMemory(path_or_memory));
@@ -142,6 +146,7 @@ static void DoScanFolderJob(PendingLibraryJobs::Job::ScanFolder& job,
     ZoneText(path.data, path.size);
 
     auto const try_job = [&]() -> ErrorCodeOr<void> {
+        u32 num_scanned_entries = 0;
         auto it = TRY(dir_iterator::RecursiveCreate(scratch_arena,
                                                     path,
                                                     {
@@ -150,6 +155,10 @@ static void DoScanFolderJob(PendingLibraryJobs::Job::ScanFolder& job,
                                                     }));
         DEFER { dir_iterator::Destroy(it); };
         while (auto const entry = TRY(dir_iterator::Next(it, scratch_arena))) {
+            if (num_scanned_entries++ == 99999) {
+                LogError(ModuleName::SampleLibraryServer, "Scan folder has too many files in it");
+                return ErrorCode {FilesystemError::FolderContainsTooManyFiles};
+            }
             if (ContainsSpan(entry->subpath, k_temporary_directory_prefix)) continue;
             if (entry->type == FileType::Directory) continue;
             auto const full_path = dir_iterator::FullPath(it, *entry, scratch_arena);
@@ -213,23 +222,24 @@ static void AddAsyncJob(PendingLibraryJobs& pending_library_jobs,
 // thread-safe
 static void
 ReadLibraryAsync(PendingLibraryJobs& pending_library_jobs, LibrariesAtomicList& lib_list, String path) {
-    auto read_job = ({
-        pending_library_jobs.job_mutex.Lock();
-        DEFER { pending_library_jobs.job_mutex.Unlock(); };
-        auto j = pending_library_jobs.job_arena.NewUninitialised<PendingLibraryJobs::Job::ReadLibrary>();
-        PLACEMENT_NEW(j)
-        PendingLibraryJobs::Job::ReadLibrary {
-            .args =
-                {
-                    .path = pending_library_jobs.job_arena.Clone(path),
-                    .libraries = lib_list,
-                },
-            .result = {},
-        };
-        j;
-    });
-
-    AddAsyncJob(pending_library_jobs, lib_list, read_job);
+    AddAsyncJob(
+        pending_library_jobs,
+        lib_list,
+        ({
+            pending_library_jobs.job_mutex.Lock();
+            DEFER { pending_library_jobs.job_mutex.Unlock(); };
+            auto j = pending_library_jobs.job_arena.NewUninitialised<PendingLibraryJobs::Job::ReadLibrary>();
+            PLACEMENT_NEW(j)
+            PendingLibraryJobs::Job::ReadLibrary {
+                .args =
+                    {
+                        .path = pending_library_jobs.job_arena.Clone(path),
+                        .libraries = lib_list,
+                    },
+                .result = {},
+            };
+            j;
+        }));
 }
 
 static bool MarkNotScannedFoldersRescanRequested(ScanFolders& scan_folders) {
@@ -261,7 +271,7 @@ static bool UpdateLibraryJobs(Server& server,
     ASSERT_EQ(CurrentThreadId(), pending_library_jobs.server_thread_id);
     ZoneNamed(outer, true);
 
-    // Trigger folder scanning they're marked as 'rescan-requested'.
+    // Trigger folder scanning if they're marked as 'rescan requested'.
     for (auto& protected_f : pending_library_jobs.folders) {
         PendingLibraryJobs::Job::ScanFolder* scan_job = nullptr;
 
@@ -1496,9 +1506,11 @@ static void ServerThreadProc(Server& server) {
             .folders = server.scan_folders,
         };
 
+        // The inner processing loop that spins while there is work to do.
         while (true) {
-            // We have a timeout because we want to check for directory watching events.
-            server.work_signaller.TimedWait(250 * 100);
+            // We have a timeout (and therefore a polling like behaviour) because we want to periodically
+            // check for directory watching events.
+            server.work_signaller.TimedWait(250 * 1000);
 
             if (!PRODUCTION_BUILD &&
                 server.request_debug_dump_current_state.Exchange(false, RmwMemoryOrder::Relaxed)) {
@@ -1530,7 +1542,7 @@ static void ServerThreadProc(Server& server) {
             }
 
             // There's 2 separate systems here. The library loading, and then the audio loading (which
-            // includes Instruments and IRs). Before we can fulfill a request for an instrument or IR, we need
+            // includes Instruments and IRs). Before we can fulfil a request for an instrument or IR, we need
             // to have a loaded library. The library contains the information needed to locate the audio.
 
             auto const libraries_are_still_loading =
@@ -1742,7 +1754,7 @@ bool WaitIfLibrariesAreLoading(Server& server, Optional<u32> timeout) {
         if (timeout && *timeout != 0 && elapsed >= *timeout) return false;
 
         // Wait if there are any libraries loading.
-        if (auto const loading = server.libraries_loading.Load(LoadMemoryOrder::Acquire); loading != 0) {
+        if (auto const loading = server.libraries_loading.Load(LoadMemoryOrder::Acquire)) {
             if (timeout && *timeout == 0) return false;
             WaitIfValueIsExpected(server.libraries_loading,
                                   loading,

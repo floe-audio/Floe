@@ -11,6 +11,7 @@ const sidebars = {
             label: 'Getting Started',
             items: [
                 'getting-started/quick-start-guide',
+                'getting-started/faq',
             ],
         },
         {

@@ -159,7 +159,7 @@ static ErrorCodeOr<void> ConsumeAndSubmitFiles(Sentry& sentry,
     if constexpr (!k_online_reporting) return k_success;
     if (sentry.online_reporting_disabled.Load(LoadMemoryOrder::Relaxed)) return k_success;
     ASSERT(path::IsAbsolute(folder));
-    ASSERT(IsValidUtf8(folder));
+    if constexpr (!IS_LINUX) ASSERT(IsValidUtf8(folder));
 
     auto const entries = TRY(FindEntriesInFolder(scratch_arena,
                                                  folder,

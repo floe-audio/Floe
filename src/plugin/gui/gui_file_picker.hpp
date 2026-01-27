@@ -168,7 +168,7 @@ PUBLIC void CheckForFilePickerResults(GuiFrameInput const& frame_input,
         case FilePickerStateType::AddScanFolder: {
             auto const data = state.data.Get<AddScanFolderFilePickerState>();
             for (auto const p : frame_input.file_picker_results) {
-                ASSERT(IsValidUtf8(p));
+                if constexpr (!IS_LINUX) ASSERT(IsValidUtf8(p));
                 prefs::AddValue(context.prefs,
                                 ExtraScanFolderDescriptor(context.paths, data.type),
                                 (String)p);

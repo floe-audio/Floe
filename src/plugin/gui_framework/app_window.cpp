@@ -401,6 +401,7 @@ static bool EventKey(AppWindow& window, PuglKeyEvent const& key_event, bool is_d
 }
 
 static bool EventText(AppWindow& window, PuglTextEvent const& text_event) {
+    LogDebug(ModuleName::Gui, "char event: {}", text_event.character);
     window.frame_state.modifiers = CreateModifierFlags(text_event.state);
     dyn::Append(window.frame_state.input_utf32_chars, text_event.character);
     if (window.last_result.wants.text_input) return true;
@@ -515,6 +516,31 @@ static void ClearImpermanentState(GuiFrameOutput& frame_output) {
     dyn::Clear(frame_output.draw_lists);
 }
 
+static bool WantsKeyboardFocus(GuiFrameOutput& frame_output) {
+    return frame_output.wants.text_input || frame_output.wants.keyboard_keys.AnyValuesSet();
+}
+
+static void RequestAllKeyboardEvents(AppWindow& window, bool wants_focus) {
+    puglSetWantsAllKeyboardEvents(
+        window.view,
+        wants_focus,
+        [](PuglView* view, PuglEvent const* event) -> bool {
+            auto& window = *(AppWindow*)puglGetHandle(view);
+            switch (event->type) {
+                case PUGL_TEXT: return window.last_result.wants.text_input;
+                case PUGL_KEY_PRESS:
+                case PUGL_KEY_RELEASE:
+                    if (window.last_result.wants.text_input) return true;
+                    if (auto const key_code = RemapKeyCode(event->key.key);
+                        key_code && window.last_result.wants.keyboard_keys.Get(ToInt(*key_code)))
+                        return true;
+                    return false;
+                default:
+            }
+            return false;
+        });
+}
+
 static void HandlePostUpdateRequests(AppWindow& window) {
     if (window.last_result.wants.cursor_type != window.current_cursor) {
         window.current_cursor = window.last_result.wants.cursor_type;
@@ -536,20 +562,9 @@ static void HandlePostUpdateRequests(AppWindow& window) {
                       }));
     }
 
-    if (window.last_result.wants.text_input || window.last_result.wants.keyboard_keys.AnyValuesSet()) {
-        if (!puglHasFocus(window.view)) {
-            // TODO: we should capture what the last focused window was, and restore it when we no longer need
-            // focus. For instance in a DAW we would pass focus back to the DAW to deal with.
-            auto const result = puglGrabFocus(window.view);
-            if (result != PUGL_SUCCESS) LogWarning(ModuleName::Gui, "failed to grab focus: {}", result);
-        }
-        if constexpr (IS_WINDOWS) {
-            if (!window.windows_keyboard_hook_added) {
-                native::AddWindowsKeyboardHook(window);
-                window.windows_keyboard_hook_added = true;
-            }
-        }
-    }
+    auto const wants_focus = WantsKeyboardFocus(window.last_result);
+    if (wants_focus != window.wanted_focus_last_update) RequestAllKeyboardEvents(window, wants_focus);
+    window.wanted_focus_last_update = wants_focus;
 
     if (window.last_result.wants.clipboard_text_paste) {
         LogDebug(ModuleName::Gui, "requesting OS to give us clipboard");
@@ -745,6 +760,7 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
 
             case PUGL_BUTTON_PRESS:
             case PUGL_BUTTON_RELEASE: {
+                if (WantsKeyboardFocus(window.last_result)) RequestAllKeyboardEvents(window, true);
                 post_redisplay = EventMouseButton(window, event->button, event->type == PUGL_BUTTON_PRESS);
                 break;
             }
@@ -895,17 +911,15 @@ ErrorCodeOr<void> Init(AppWindow& window) {
         case graphics::RendererBackend::Count: PanicIfReached();
     }
 
+    native::InitNativeState(window);
+
     return k_success;
 }
 
 void Deinit(AppWindow& window) {
     Trace(ModuleName::Gui);
 
-    if constexpr (IS_WINDOWS) {
-        if (window.windows_keyboard_hook_added) native::RemoveWindowsKeyboardHook(window);
-    }
-
-    native::CloseNativeFilePicker(window);
+    native::DeinitNativeState(window);
 
     if (window.gui) {
         window.gui.Clear();
@@ -925,6 +939,7 @@ void Deinit(AppWindow& window) {
     }
 
     window.first_update_made = false;
+    window.wanted_focus_last_update = false;
 
     if (!CustomFloeHost(window.host)) {
         LogInfo(ModuleName::Gui, "freeing world");

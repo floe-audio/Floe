@@ -31,7 +31,13 @@
 #include "processing_utils/volume_fade.hpp"
 #include "voices.hpp"
 
-struct ParamEventForAudioThread {
+// NOTE: in the audio processor, we use the term 'inbox' to mean a message that the audio thread should
+// consume. For example, we put parameter value updates in an atomic 'inbox' that the audio thread consumes
+// when it can.
+
+namespace audio_thread_inbox {
+
+struct ParamChange {
     struct Payload {
         f32 value {};
         u32 active : 1 = false;
@@ -88,63 +94,72 @@ struct ParamEventForAudioThread {
     Atomic<Payload> payload {};
 };
 
-enum class EventForAudioThreadType : u8 {
-    FxOrderChanged,
-    ReloadAllAudioState,
-    ConvolutionIRChanged,
-    LayerInstrumentChanged,
-    StartNote,
-    EndNote,
-    AppendMacroDestination,
-    RemoveMacroDestination,
-    MacroDestinationValueChanged,
-    RemoveAllMacroDestinations,
-    ResetAudioProcessing,
+struct MacroDestinationUpdate {
+    struct Payload {
+        f32 value {}; // ONLY valid if active and value_changed.
+        ParamIndex param_index {}; // ONLY valid if active and param_index_changed.
+        u8 active : 1 = false;
+        u8 param_index_changed : 1 = false;
+        u8 value_changed : 1 = false;
+        u8 clear : 1 = false;
+    };
+
+    // Audio thread.
+    Optional<Payload> Consume() {
+        auto const p = payload.Load(LoadMemoryOrder::Relaxed);
+        if (!(p.active)) return k_nullopt;
+
+        return payload.Exchange({}, RmwMemoryOrder::Acquire);
+    }
+
+    // Audio thread.
+    void Clear() { payload.Store({}, StoreMemoryOrder::Relaxed); }
+
+    struct ProduceOptions {
+        Optional<f32> new_value;
+        Optional<ParamIndex> new_param_index;
+        bool clear;
+    };
+
+    // Main thread.
+    void Produce(ProduceOptions const& options) {
+        auto p = payload.Load(LoadMemoryOrder::Relaxed);
+        p.active = true;
+        if (options.new_value) {
+            p.value = *options.new_value;
+            p.value_changed = true;
+        }
+        if (options.new_param_index) {
+            p.param_index = *options.new_param_index;
+            p.param_index_changed = true;
+        }
+        p.clear = options.clear;
+        payload.Store(p, StoreMemoryOrder::Release);
+    }
+
+    Atomic<Payload> payload {};
 };
 
-struct GuiNoteClicked {
-    u7 key;
-    f32 velocity;
+using Flags = u32;
+
+enum : u32 {
+    // IMPORTANT: this is actually multiple bits - one for each layer index. Set using
+    // LayerInstrumentChanged << layer_index.
+    LayerInstrumentChanged = 1 << 0,
+
+    FxOrderChanged = 1 << (k_num_layers + 0),
+    ReloadAllAudioState = 1 << (k_num_layers + 1),
+    ConvolutionIRChanged = 1 << (k_num_layers + 2),
+    ResetAudioProcessing = 1 << (k_num_layers + 3),
 };
 
-struct GuiNoteClickReleased {
-    u7 key;
-};
+} // namespace audio_thread_inbox
 
-struct RemoveMidiLearn {
-    ParamIndex param;
-    u7 midi_cc;
+struct GuiNoteClickState {
+    f32 velocity {};
+    u7 key {};
+    bool is_held;
 };
-
-struct LayerInstrumentChanged {
-    u32 layer_index;
-};
-
-struct AppendMacroDestination {
-    f32 value {};
-    ParamIndex param;
-    u8 macro_index;
-};
-
-struct RemoveMacroDestination {
-    u8 macro_index;
-    u8 destination_index;
-};
-
-struct MacroDestinationValueChanged {
-    f32 value;
-    u8 macro_index;
-    u8 destination_index;
-};
-
-using EventForAudioThread = TaggedUnion<
-    EventForAudioThreadType,
-    TypeAndTag<GuiNoteClicked, EventForAudioThreadType::StartNote>,
-    TypeAndTag<GuiNoteClickReleased, EventForAudioThreadType::EndNote>,
-    TypeAndTag<LayerInstrumentChanged, EventForAudioThreadType::LayerInstrumentChanged>,
-    TypeAndTag<AppendMacroDestination, EventForAudioThreadType::AppendMacroDestination>,
-    TypeAndTag<RemoveMacroDestination, EventForAudioThreadType::RemoveMacroDestination>,
-    TypeAndTag<MacroDestinationValueChanged, EventForAudioThreadType::MacroDestinationValueChanged>>;
 
 using EffectsArray = Array<Effect*, k_num_effect_types>;
 
@@ -282,12 +297,16 @@ struct AudioProcessor {
     Bitset<k_num_layers> solo {};
     Bitset<k_num_layers> mute {};
 
-    AtomicQueue<EventForAudioThread, 128> events_for_audio_thread;
-    Array<ParamEventForAudioThread, k_num_parameters> param_events_for_audio_thread;
+    Array<audio_thread_inbox::ParamChange, k_num_parameters> param_change_inbox;
+
+    Atomic<GuiNoteClickState> gui_note_click_state {}; // Written by main-thread, read by audio.
+    Optional<u7> gui_note_currently_held {}; // Audio-thread
 
     Bitset<k_num_parameters> pending_param_changes;
 
     AtomicBitset<128> notes_currently_held;
+
+    Atomic<audio_thread_inbox::Flags> inbox_flags {}; // From main-thread to audio.
 
     clap_process_status previous_process_status {-1};
 
@@ -300,7 +319,13 @@ struct AudioProcessor {
 
     // Main-thread. Macro configurations can only be modified from the main thread.
     MacroDestinations main_macro_destinations {};
+
+    // Audio-thread representation of macro dests.
     MacroDestinations audio_macro_destinations {};
+
+    // Atomic communication for macro dests. Set by main-thread, consumed by audio.
+    Array<Array<audio_thread_inbox::MacroDestinationUpdate, k_max_macro_destinations>, k_num_macros>
+        macro_dest_inbox {};
 
     struct ChangedParam {
         f32 value;
@@ -383,8 +408,23 @@ void AddPersistentCcToParamMapping(prefs::Preferences& preferences, u8 cc_num, u
 void RemovePersistentCcToParamMapping(prefs::Preferences& preferences, u8 cc_num, u32 param_id);
 Bitset<128> PersistentCcsForParam(prefs::PreferencesTable const& preferences, u32 param_id);
 
-void AppendMacroDestination(AudioProcessor& processor, AppendMacroDestination config);
-void RemoveMacroDestination(AudioProcessor& processor, RemoveMacroDestination config);
+struct AppendMacroDestinationConfig {
+    ParamIndex param;
+    u8 macro_index;
+};
+void AppendMacroDestination(AudioProcessor& processor, AppendMacroDestinationConfig config);
+
+struct RemoveMacroDestinationConfig {
+    u8 macro_index;
+    u8 destination_index;
+};
+void RemoveMacroDestination(AudioProcessor& processor, RemoveMacroDestinationConfig config);
+
+struct MacroDestinationValueChangedConfig {
+    f32 value;
+    u8 macro_index;
+    u8 destination_index;
+};
 
 // Doesn't actually change the value, just sends the event to the audio thread.
-void MacroDestinationValueChanged(AudioProcessor& processor, MacroDestinationValueChanged config);
+void MacroDestinationValueChanged(AudioProcessor& processor, MacroDestinationValueChangedConfig config);

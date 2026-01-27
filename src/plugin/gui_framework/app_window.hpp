@@ -27,6 +27,8 @@ constexpr f32 k_default_dpi = 96.0f;
 constexpr f32 k_default_gui_width_inches = 10.0f;
 constexpr f32 k_max_gui_size_screen_fraction = 0.6f;
 
+struct NativeAppWindowState;
+
 struct AppWindow {
     static constexpr uintptr k_pugl_timer_id = 200;
     static constexpr char const* k_window_class_name = "FloeSampler";
@@ -48,9 +50,9 @@ struct AppWindow {
     bool pugl_timer_running {};
     bool inside_update {};
     bool first_update_made {};
+    bool wanted_focus_last_update {};
     ArenaAllocator file_picker_result_arena {Malloc::Instance()};
-    Optional<OpaqueHandle<IS_WINDOWS ? 184 : IS_MACOS ? 80 : 16>> native_file_picker {};
-    bool windows_keyboard_hook_added {};
+    NativeAppWindowState* native_state;
 };
 
 enum class AppWindowErrorCode {
@@ -89,6 +91,9 @@ ErrorCodeOr<void> SetVisible(AppWindow& window, bool visible, Engine& engine);
 // particulars. Internal only.
 namespace native {
 
+void InitNativeState(AppWindow&);
+void DeinitNativeState(AppWindow&);
+
 // Due to the way Windows, Linux and macOS handle file browsers, we have this design:
 // - This function may or may not block, depending on the platform.
 // - Either way, it will at some point fill GuiFrameInput::file_picker_results with the selected file paths
@@ -105,10 +110,6 @@ UiSize DefaultUiSizeFromDpi(void* native_window);
 // Linux only
 int FdFromPuglWorld(PuglWorld* world);
 void X11SetParent(PuglView* view, uintptr parent);
-
-// Windows only
-void AddWindowsKeyboardHook(AppWindow& window);
-void RemoveWindowsKeyboardHook(AppWindow& window);
 
 } // namespace native
 

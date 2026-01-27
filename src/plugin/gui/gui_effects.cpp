@@ -1277,7 +1277,7 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
     if (effects_order_changed) {
         engine.processor.desired_effects_order.Store(EncodeEffectsArray(ordered_effects),
                                                      StoreMemoryOrder::Release);
-        engine.processor.events_for_audio_thread.Push(EventForAudioThreadType::FxOrderChanged);
+        engine.processor.inbox_flags.FetchOr(audio_thread_inbox::FxOrderChanged, RmwMemoryOrder::Release);
         engine.processor.host.request_process(&engine.processor.host);
     }
 }
