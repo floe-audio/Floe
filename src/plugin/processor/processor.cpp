@@ -170,32 +170,54 @@ Bitset<128> PersistentCcsForParam(prefs::PreferencesTable const& prefs, u32 para
     return result;
 }
 
-void AppendMacroDestination(AudioProcessor& processor, struct AppendMacroDestination config) {
+void AppendMacroDestination(AudioProcessor& processor, AppendMacroDestinationConfig config) {
     ASSERT(g_is_logical_main_thread);
 
-    dyn::Append(processor.main_macro_destinations[config.macro_index],
-                MacroDestination {
-                    .param_index = config.param,
-                    .value = config.value,
-                });
+    auto const i = processor.main_macro_destinations[config.macro_index].Append({
+        .param_index = config.param,
+        .value = 0.0f,
+    });
 
-    processor.events_for_audio_thread.Push(config);
+    processor.macro_dest_communication[config.macro_index][*i].Produce({
+        .new_value = 0.0f,
+        .new_param_index = config.param,
+    });
+
     processor.host.request_process(&processor.host);
 }
 
-void RemoveMacroDestination(AudioProcessor& processor, struct RemoveMacroDestination config) {
+void RemoveMacroDestination(AudioProcessor& processor, RemoveMacroDestinationConfig config) {
     ASSERT(g_is_logical_main_thread);
 
-    dyn::Remove(processor.main_macro_destinations[config.macro_index], config.destination_index);
+    auto& macro_dests = processor.main_macro_destinations[config.macro_index];
 
-    processor.events_for_audio_thread.Push(config);
+    macro_dests.RemoveAt(config.destination_index);
+
+    // Update atomics for all shifted destinations.
+    for (usize i = config.destination_index; i < k_max_macro_destinations; i++) {
+        auto const& dest = macro_dests.items[i];
+        processor.macro_dest_communication[config.macro_index][i].Produce(
+            !dest.param_index ? MacroDestinationUpdateForAudioThread::ProduceOptions {.clear = true}
+                              : MacroDestinationUpdateForAudioThread::ProduceOptions {
+                                    .new_value = dest.value,
+                                    .new_param_index = dest.param_index,
+                                });
+        if (!dest.param_index) break;
+    }
+
     processor.host.request_process(&processor.host);
 }
 
-void MacroDestinationValueChanged(AudioProcessor& processor, struct MacroDestinationValueChanged config) {
+void MacroDestinationValueChanged(AudioProcessor& processor, MacroDestinationValueChangedConfig config) {
     ASSERT(g_is_logical_main_thread);
 
-    processor.events_for_audio_thread.Push(config);
+    auto const val =
+        processor.main_macro_destinations[config.macro_index].items[config.destination_index].value;
+
+    processor.macro_dest_communication[config.macro_index][config.destination_index].Produce({
+        .new_value = val,
+    });
+
     processor.host.request_process(&processor.host);
 }
 
@@ -550,9 +572,11 @@ static ChangedParams UpdateMacroAdjustedValues(Parameters& macro_adjusted_params
         auto const macro_param_index = k_macro_params[macro_index];
         bool const macro_changed = params.Changed(macro_param_index);
 
-        for (auto const& dest : macro)
-            if (params.Changed(dest.param_index) || macro_changed)
-                needs_adjustment.Set(ToInt(dest.param_index));
+        for (auto const& dest : macro.items) {
+            if (!dest.param_index) continue;
+            if (params.Changed(*dest.param_index) || macro_changed)
+                needs_adjustment.Set(ToInt(*dest.param_index));
+        }
     }
 
     for (auto const param_index : Range(k_num_parameters)) {
@@ -738,7 +762,7 @@ f32 AdjustedLinearValue(Parameters const& params,
     auto const& descriptor = k_param_descriptors[ToInt(param_index)];
 
     for (auto const [macro_index, dests] : Enumerate(macros)) {
-        for (auto const& dest : dests)
+        for (auto const& dest : dests.items)
             if (dest.param_index == param_index) {
                 auto const& macro_param = params.LinearValue(k_macro_params[macro_index]);
                 linear_value += descriptor.linear_range.Delta() * (dest.ProjectedValue() * macro_param);
@@ -752,7 +776,9 @@ f32 AdjustedLinearValue(Parameters const& params,
 }
 
 static void FlushEventsForAudioThread(AudioProcessor& processor) {
-    auto _ = processor.events_for_audio_thread.PopAll();
+    for (auto& dests : processor.macro_dest_communication)
+        for (auto& v : dests)
+            v.Clear();
     for (auto& p : processor.param_events_for_audio_thread)
         p.Clear();
 }
@@ -833,27 +859,20 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
             state.velocity_curve_points[layer_index]);
     }
 
-    DynamicArrayBounded<EventForAudioThread, (k_num_macros * k_max_macro_destinations) + 4>
-        events_for_audio_thread;
-
     // Macro destinations.
     {
         processor.main_macro_destinations = state.macro_destinations;
 
-        // We need to tell the audio thread about the changes.
-        //
-        // Start with removing all macro destinations.
-        dyn::Emplace(events_for_audio_thread, EventForAudioThreadType::RemoveAllMacroDestinations);
-
-        // Then add all the new ones.
-        for (auto const [macro_index, macro] : Enumerate<u8>(state.macro_destinations)) {
-            for (auto const& dest : macro) {
-                struct AppendMacroDestination const event = {
-                    .value = dest.value,
-                    .param = dest.param_index,
-                    .macro_index = macro_index,
-                };
-                dyn::Emplace(events_for_audio_thread, event);
+        for (auto const macro_index : Range(k_num_macros)) {
+            for (auto const dest_index : Range(k_max_macro_destinations)) {
+                auto const& new_dest = state.macro_destinations[macro_index].items[dest_index];
+                auto& event = processor.macro_dest_communication[macro_index][dest_index];
+                event.Produce(!new_dest.param_index
+                                  ? MacroDestinationUpdateForAudioThread::ProduceOptions {.clear = true}
+                                  : MacroDestinationUpdateForAudioThread::ProduceOptions {
+                                        .new_value = new_dest.value,
+                                        .new_param_index = new_dest.param_index,
+                                    });
             }
         }
     }
@@ -874,12 +893,6 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
     }
 
     processor.messages.FetchOr(audio_thread_messages::ReloadAllAudioState, RmwMemoryOrder::Release);
-
-    if (!processor.events_for_audio_thread.Push(events_for_audio_thread)) {
-        ReportError(ErrorLevel::Warning,
-                    SourceLocationHash(),
-                    "ApplyNewState: failed to push all non-param events to audio thread");
-    }
 
     processor.host.request_process(&processor.host);
 }
@@ -1444,7 +1457,6 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     constexpr f32 k_fade_out_ms = 30;
     constexpr f32 k_fade_in_ms = 10;
 
-    auto const internal_events = processor.events_for_audio_thread.PopAll();
     Bitset<k_num_layers> layers_changed {};
     bool mark_convolution_for_fade_out = false;
 
@@ -1474,46 +1486,25 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
         if (messages & audio_thread_messages::ResetAudioProcessing) AudioThreadReset(processor);
     }
 
-    for (auto const& e : internal_events) {
-        switch (e.tag) {
-            case EventForAudioThreadType::AppendMacroDestination: {
-                auto const& add_dest = e.Get<struct AppendMacroDestination>();
-                dyn::Append(processor.audio_macro_destinations[add_dest.macro_index],
-                            {
-                                .param_index = add_dest.param,
-                                .value = add_dest.value,
-                            });
-                changes.changed_params.changed.Set(ToInt(add_dest.param));
-                break;
+    for (auto [macro_index, dests] : Enumerate(processor.macro_dest_communication)) {
+        for (auto [dest_index, e] : Enumerate(dests)) {
+            auto const maybe_p = e.Consume();
+            if (!maybe_p) continue;
+            auto const& p = *maybe_p;
+
+            auto& d = processor.audio_macro_destinations[macro_index].items[dest_index];
+            if (p.value_changed) {
+                d.value = p.value;
+                if (d.param_index) changes.changed_params.changed.Set(ToInt(*d.param_index));
             }
-            case EventForAudioThreadType::RemoveMacroDestination: {
-                auto const& remove_dest = e.Get<struct RemoveMacroDestination>();
-                auto const dest_param =
-                    processor.audio_macro_destinations[remove_dest.macro_index][remove_dest.destination_index]
-                        .param_index;
-                dyn::Remove(processor.audio_macro_destinations[remove_dest.macro_index],
-                            remove_dest.destination_index);
-                changes.changed_params.changed.Set(ToInt(dest_param));
-                break;
+            if (p.param_index_changed) {
+                if (d.param_index) changes.changed_params.changed.Set(ToInt(*d.param_index));
+                changes.changed_params.changed.Set(ToInt(p.param_index));
+                d.param_index = p.param_index;
             }
-            case EventForAudioThreadType::MacroDestinationValueChanged: {
-                auto const& change_dest = e.Get<struct MacroDestinationValueChanged>();
-                auto const dest_param =
-                    processor.audio_macro_destinations[change_dest.macro_index][change_dest.destination_index]
-                        .param_index;
-                auto& dest =
-                    processor
-                        .audio_macro_destinations[change_dest.macro_index][change_dest.destination_index];
-                dest.value = change_dest.value;
-                changes.changed_params.changed.Set(ToInt(dest_param));
-                break;
-            }
-            case EventForAudioThreadType::RemoveAllMacroDestinations: {
-                for (auto const& macro : processor.audio_macro_destinations)
-                    for (auto const& dest : macro)
-                        changes.changed_params.changed.Set(ToInt(dest.param_index));
-                processor.audio_macro_destinations = {};
-                break;
+            if (p.clear) {
+                if (d.param_index) changes.changed_params.changed.Set(ToInt(*d.param_index));
+                d = {};
             }
         }
     }

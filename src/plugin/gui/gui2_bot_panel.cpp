@@ -217,7 +217,8 @@ static void DoBotPanel(Gui* g) {
                         macro_box,
                         g->engine.processor.main_params.DescribedValue(param_index),
                         {
-                            .greyed_out = g->engine.processor.main_macro_destinations[macro_index].size == 0,
+                            .greyed_out =
+                                g->engine.processor.main_macro_destinations[macro_index].Size() == 0,
                             .override_label = g->engine.macro_names[macro_index],
                         });
             }

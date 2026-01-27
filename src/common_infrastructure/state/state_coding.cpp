@@ -1430,18 +1430,15 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
             auto& dests = state.macro_destinations[macro_index];
             u8 num_macro_destinations {};
-            if (coder.IsWriting()) num_macro_destinations = CheckedCast<u8>(dests.size);
+            if (coder.IsWriting()) num_macro_destinations = CheckedCast<u8>(dests.Size());
             TRY(coder.CodeNumber(num_macro_destinations, k_added));
-            if (coder.IsReading()) {
-                if (!dyn::Resize(dests, num_macro_destinations))
-                    return ErrorCode(CommonError::InvalidFileFormat);
-            }
+            if (coder.IsReading()) dests = {};
 
             for (auto const dest_index : Range(num_macro_destinations)) {
-                auto& dest = dests[dest_index];
+                auto& dest = dests.items[dest_index];
 
                 u32 param_id {};
-                if (coder.IsWriting()) param_id = ParamIndexToId(dest.param_index);
+                if (coder.IsWriting()) param_id = ParamIndexToId(*dest.param_index);
                 TRY(coder.CodeNumber(param_id, k_added));
                 if (coder.IsReading()) {
                     auto const param_index = ParamIdToIndex(param_id);
@@ -1890,25 +1887,20 @@ TEST_CASE(TestNewSerialisation) {
             dyn::Assign(state.macro_names[0], "First Macro"_s);
             dyn::Assign(state.macro_names[1], "Second"_s);
 
-            dyn::Assign(state.macro_destinations[0],
-                        Array {
-                            MacroDestination {
-                                .param_index = ParamIndex::ChorusDepth,
-                                .value = 0.4f,
-                            },
-                            MacroDestination {
-                                .param_index = ParamIndex::ReverbSize,
-                                .value = -1.0f,
-                            },
-                        });
+            state.macro_destinations = {};
+            state.macro_destinations[0].items[0] = {
+                .param_index = ParamIndex::ChorusDepth,
+                .value = 0.4f,
+            };
+            state.macro_destinations[0].items[1] = {
+                .param_index = ParamIndex::ReverbSize,
+                .value = -1.0f,
+            };
 
-            dyn::Assign(state.macro_destinations[3],
-                        Array {
-                            MacroDestination {
-                                .param_index = ParamIndexFromLayerParamIndex(0, LayerParamIndex::EqFreq1),
-                                .value = 0.5f,
-                            },
-                        });
+            state.macro_destinations[3].items[0] = {
+                .param_index = ParamIndexFromLayerParamIndex(0, LayerParamIndex::EqFreq1),
+                .value = 0.5f,
+            };
         }
 
         if (source == StateSource::Daw) {

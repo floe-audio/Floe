@@ -301,7 +301,8 @@ ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset
             if (lua_isinteger(lua, -2) && lua_istable(lua, -1)) {
                 auto macro_index = (u32)lua_tointeger(lua, -2) - 1; // Convert from 1-indexed
                 if (macro_index < k_num_macros) {
-                    dyn::Clear(preset_state.macro_destinations[macro_index]);
+                    preset_state.macro_destinations = {};
+                    usize dest_index = 0;
                     lua_pushnil(lua);
                     while (lua_next(lua, -2) != 0) {
                         if (lua_istable(lua, -1)) {
@@ -316,10 +317,8 @@ ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset
                             lua_getfield(lua, -1, "value");
                             if (lua_isnumber(lua, -1)) dest.value = (f32)lua_tonumber(lua, -1);
                             lua_pop(lua, 1);
-                            if (preset_state.macro_destinations[macro_index].size <
-                                preset_state.macro_destinations[macro_index].Capacity()) {
-                                dyn::AppendAssumeCapacity(preset_state.macro_destinations[macro_index], dest);
-                            }
+                            if (dest_index < k_max_macro_destinations)
+                                preset_state.macro_destinations[macro_index].items[dest_index] = dest;
                         }
                         lua_pop(lua, 1);
                     }
@@ -459,16 +458,17 @@ static void BuildPresetLuaTable(lua_State* lua, StateSnapshot const& preset_stat
     }
     lua_setfield(lua, -2, "macro_names");
 
-    // macro_destinations - array of arrays of destination objects
+    // macro_destinations
     lua_newtable(lua);
     for (u16 i = 0u; i < k_num_macros; ++i) {
         lua_pushinteger(lua, i + 1); // Lua is 1-indexed
         lua_newtable(lua);
-        for (u16 j = 0u; j < preset_state.macro_destinations[i].size; ++j) {
+        // Array is null-terminated and packed.
+        for (u16 j = 0u; j < preset_state.macro_destinations[i].Size(); ++j) {
+            auto const& dest = preset_state.macro_destinations[i].items[j];
             lua_pushinteger(lua, j + 1); // Lua is 1-indexed
             lua_newtable(lua);
-            auto const& dest = preset_state.macro_destinations[i][j];
-            lua_pushinteger(lua, ParamIndexToId(dest.param_index));
+            lua_pushinteger(lua, ParamIndexToId(*dest.param_index));
             lua_setfield(lua, -2, "param_index");
             lua_pushnumber(lua, (f64)dest.value);
             lua_setfield(lua, -2, "value");

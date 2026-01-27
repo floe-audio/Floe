@@ -163,8 +163,8 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
             auto const r = box_system.imgui.GetRegisteredAndConvertedRect(*rel_r);
             box_system.imgui.RegisterRegionForMouseTracking(r, false);
 
-            for (auto const dest_knob_index : Range((u8)dests.size)) {
-                auto& dest = dests[dest_knob_index];
+            for (auto const dest_knob_index : Range(CheckedCast<u8>(dests.Size()))) {
+                auto& dest = dests.items[dest_knob_index];
 
                 auto const knob_r = Rect {
                     .x = r.x + (dest_knob_index * (dest_knob_size_px + dest_knob_gap_x_px)),
@@ -230,7 +230,7 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
 
                 if (box_system.imgui.IsHotOrActive(imgui_id)) {
                     dyn::Append(g->macros_gui_state.draw_overlays, [&dest, r = knob_r](Gui* g) {
-                        auto const& descriptor = k_param_descriptors[ToInt(dest.param_index)];
+                        auto const& descriptor = k_param_descriptors[ToInt(*dest.param_index)];
                         auto const str = fmt::Format(g->box_system.arena,
                                                      "{}\n{}\n{.0}%",
                                                      descriptor.gui_label,
@@ -301,11 +301,11 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                 }
             }
 
-            if (!knob.is_active && dests.size < k_max_macro_destinations) {
-                auto const dest_knob_index = dests.size;
+            if (!knob.is_active && dests.Size() < k_max_macro_destinations) {
+                auto const visual_position = dests.Size();
 
                 auto const knob_r = Rect {
-                    .x = r.x + (dest_knob_index * (dest_knob_size_px + dest_knob_gap_x_px)),
+                    .x = r.x + (visual_position * (dest_knob_size_px + dest_knob_gap_x_px)),
                     .y = r.y,
                     .w = dest_knob_size_px,
                     .h = dest_knob_size_px,
