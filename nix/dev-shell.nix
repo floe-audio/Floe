@@ -24,14 +24,11 @@ pkgs.mkShell rec {
         pkgs.cmake
       ];
     })
-    pkgs.zip
-    pkgs.unzip
     pkgs.rcodesign
     pkgs.llvmPackages_19.bintools-unwrapped # llvm-lipo, llvm-addr2line, dsymutil
     pkgs.llvmPackages_19.clang-unwrapped # clangd, clang-tidy, clang-format
     pkgs.cppcheck
     pkgs.codespell
-    pkgs.parallel
     pkgs.gnused
     pkgs.coreutils
     pkgs.jq
