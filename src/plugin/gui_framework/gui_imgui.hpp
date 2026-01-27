@@ -45,7 +45,6 @@ constexpr Id k_imgui_app_window_id = 4; // id of the full size window created wi
     X(NoScrollbarX, 1, 7)                                                                                    \
     X(NoScrollbarY, 1, 8)                                                                                    \
     X(DrawOnTop, 1, 9)                                                                                       \
-    X(DrawingOnly, 1, 10)                                                                                    \
     X(NestedInsidePopup, 1, 11)                                                                              \
     X(Popup, 1, 12)                                                                                          \
     X(ChildPopup, 1, 13)                                                                                     \
@@ -603,8 +602,6 @@ struct Context {
                                                        f32 default_value);
 
     void Text(TextSettings settings, Rect r, String str);
-    void Textf(TextSettings settings, Rect r, char const* text, ...);
-    void Textf(TextSettings settings, Rect r, char const* text, va_list args);
 
     //
 
@@ -657,28 +654,14 @@ struct Context {
     //
     //
     static constexpr f64 k_text_cursor_blink_rate {0.5};
-    f64 hover_popup_delay {0.10}; // delay before popups close
-    f64 button_repeat_rate {0.1}; // rate at which button hold to repeat triggers
+    static constexpr f64 k_button_repeat_rate {0.1}; // rate at which button hold to repeat triggers
+
     WindowSettings default_window_style = {};
     f32 pixels_per_vw = 1.0f;
 
     graphics::DrawList* draw_list = nullptr; // Shortcut to the current window's draw list
 
-    u32 frame_counter = 0;
-
     graphics::DrawList* overlay_draw_list = {};
-
-    // we need a way for drawing functions that only have access to imgui::Context to get images from
-    // your external object
-    graphics::ImageID (*get_image_callback)(void*, int) = nullptr;
-    void* user_callback_data = nullptr;
-
-    char temp_buffer[1024];
-    Char32 w_temp_buffer[1024];
-
-    f32x2 cached_pos = {}; // misc cached variable
-
-    Window* debug_window_to_inspect = nullptr;
 
     // input text
 

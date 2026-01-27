@@ -103,7 +103,6 @@ Gui::Gui(Engine& engine)
     Trace(ModuleName::Gui);
 
     editor.imgui = &imgui;
-    imgui.user_callback_data = this;
 
     ASSERT(!engine.stated_changed_callback);
     engine.stated_changed_callback = [this]() { OnEngineStateChange(save_preset_panel_state, this->engine); };

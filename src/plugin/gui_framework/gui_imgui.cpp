@@ -366,6 +366,7 @@ Context::ScrollbarResult Context::Scrollbar(Window* window,
         ButtonFlags const button_flags {.left_mouse = true,
                                         .triggers_on_mouse_down = true,
                                         .is_non_window_content = true};
+        static f32x2 cached_pos {};
         if (ButtonBehavior(scroll_r, id, button_flags)) cached_pos.y = cursor_y - *scroll_y;
 
         if (IsActive(id)) {
@@ -536,53 +537,36 @@ static bool InputTextFilterCharacter(unsigned int* p_char, TextInputFlags flags)
     return true;
 }
 
-// Hash function from IMGUI
-// Pass data_size==0 for zero-terminated strings
-static u32 ImguiHash(void const* data, int data_size, u32 seed = 0) {
-    static u32 crc32_lut[256] = {0};
-    if (!crc32_lut[1]) {
-        u32 const polynomial = 0xEDB88320;
-        for (u32 i = 0; i < 256; i++) {
-            u32 crc = i;
-            for (u32 j = 0; j < 8; j++)
-                crc = (crc >> 1) ^ (u32(-int(crc & 1)) & polynomial);
-            crc32_lut[i] = crc;
-        }
-    }
-
-    seed = ~seed;
-    u32 crc = seed;
-    auto* current = (unsigned char const*)data;
-
-    if (data_size > 0) {
-        // Known size
-        while (data_size--)
-            crc = (crc >> 8) ^ crc32_lut[(crc & 0xFF) ^ *current++];
-    } else {
-        // Zero-terminated string
-        while (unsigned char const c = *current++)
-            crc = (crc >> 8) ^ crc32_lut[(crc & 0xFF) ^ c];
-    }
-    return ~crc;
-}
-
 void Context::PushID(String str) { dyn::Append(id_stack, GetID(str)); }
 
 void Context::PushID(uintptr num) { dyn::Append(id_stack, GetID(num)); }
 
 void Context::PopID() { dyn::Pop(id_stack); }
 
+// Simple seeded FNV-1a.
+static u32 Hash(Span<u8 const> data, u32 seed) {
+    u32 hash = 0x811c9dc5;
+    Span<u8 const> const seed_bytes = {(u8 const*)&seed, sizeof(seed)};
+    for (auto const d : Array {seed_bytes, data}) {
+        for (auto const byte : d) {
+            hash ^= byte;
+            hash *= 0x01000193;
+        }
+    }
+    return hash;
+}
+
 Id Context::GetID(String str) {
     auto const seed = Last(id_stack);
-    auto const result = ImguiHash(str.data, (int)str.size, seed);
-    ASSERT(result != 0 && result != k_imgui_misc_id); // by chance we have landed on one of the reserved ids
+    auto const result = Hash(str.ToConstByteSpan(), seed);
+    ASSERT(result != 0 && result != k_imgui_misc_id);
     return result;
 }
 
 Id Context::GetID(uintptr i) {
     auto const seed = Last(id_stack);
-    auto const result = ImguiHash(&i, (int)sizeof(i), seed);
-    ASSERT(result != 0 && result != k_imgui_misc_id); // by chance we have landed on one of the reserved ids
+    auto const result = Hash(AsBytes(i), seed);
+    ASSERT(result != 0 && result != k_imgui_misc_id);
     return result;
 }
 
@@ -627,7 +611,6 @@ void Context::Begin(WindowSettings settings) {
     ASSERT_EQ(current_popup_stack.size, 0u);
 
     tab_just_used_to_focus = false;
-    frame_counter++;
     window_just_created = nullptr;
     curr_window = nullptr;
     hovered_window_last_frame = hovered_window;
@@ -639,7 +622,6 @@ void Context::Begin(WindowSettings settings) {
     for (usize i = sorted_windows.size; i-- > 0;) {
         auto window = sorted_windows[i];
         if (window->visible_bounds.Contains(frame_input.cursor_pos)) {
-            if (window->flags & WindowFlags_DrawingOnly) continue;
             if (window->clipping_rect.Contains(frame_input.cursor_pos)) hovered_window_content = window;
             hovered_window = window;
             break;
@@ -667,14 +649,6 @@ void Context::Begin(WindowSettings settings) {
             final_window->scroll_offset.y = Round(Clamp(new_scroll, 0.0f, final_window->scroll_max.y));
         }
     }
-
-    //
-    //
-    //
-
-    // Debug
-    debug_window_to_inspect = nullptr;
-    if (frame_input.Key(KeyCode::A).presses.size) debug_window_to_inspect = hovered_window;
 
     //
     // Reset stuff
@@ -1668,7 +1642,7 @@ bool Context::ButtonBehavior(Rect r, Id id, ButtonFlags flags) {
     if (flags.disabled) return false;
 
     if (flags.hold_to_repeat && IsActive(id)) {
-        if (GuiIo().WakeupAtTimedInterval(button_repeat_counter, button_repeat_rate)) result = true;
+        if (GuiIo().WakeupAtTimedInterval(button_repeat_counter, k_button_repeat_rate)) result = true;
     }
 
     if (SetHot(r, id, flags.is_non_window_content)) {
@@ -1677,7 +1651,7 @@ bool Context::ButtonBehavior(Rect r, Id id, ButtonFlags flags) {
 
             button_repeat_counter = {};
             if (flags.hold_to_repeat)
-                GuiIo().WakeupAtTimedInterval(button_repeat_counter, button_repeat_rate);
+                GuiIo().WakeupAtTimedInterval(button_repeat_counter, k_button_repeat_rate);
             if (!(flags.triggers_on_mouse_up)) result = true;
         }
     }
@@ -2602,19 +2576,6 @@ bool Context::TextInputDraggerFloat(TextInputDraggerSettings settings,
 void Context::Text(TextSettings settings, Rect r, String str) {
     RegisterAndConvertRect(&r);
     settings.draw(*this, r, settings.col, str);
-}
-
-void Context::Textf(TextSettings settings, Rect r, char const* text, ...) {
-    va_list args;
-    va_start(args, text);
-    Textf(settings, r, text, args);
-    va_end(args);
-}
-
-void Context::Textf(TextSettings settings, Rect r, char const* text, va_list args) {
-    static char buffer[512];
-    stbsp_vsnprintf(buffer, ::ArraySize(buffer), text, args);
-    Text(settings, r, buffer);
 }
 
 //
