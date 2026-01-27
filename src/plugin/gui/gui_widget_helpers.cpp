@@ -188,8 +188,7 @@ void MidiLearnMenu(Gui* g, Span<ParamIndex> params, Rect r) {
     Rect const popup_r {.pos = popup_pos};
 
     auto settings = PopupWindowSettings(imgui);
-    settings.flags =
-        imgui::WindowFlags_AutoWidth | imgui::WindowFlags_AutoHeight | imgui::WindowFlags_AutoPosition;
+    settings.flags = {.auto_width = true, .auto_height = true, .auto_position = true};
     if (imgui.BeginWindowPopup(settings, popup_id, popup_r)) {
         StartFloeMenu(g);
         DEFER { EndFloeMenu(g); };

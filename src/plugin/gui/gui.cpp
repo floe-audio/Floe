@@ -150,7 +150,8 @@ static void DoStandaloneErrorGUI(Gui* g) {
         floe_ext->standalone_midi_device_error || floe_ext->standalone_audio_device_error;
     if (error_window_open && there_is_an_error) {
         auto settings = imgui::DefWindow();
-        settings.flags |= imgui::WindowFlags_AutoHeight | imgui::WindowFlags_AutoWidth;
+        settings.flags.auto_height = true;
+        settings.flags.auto_width = true;
         imgui.BeginWindow(settings, {.xywh {0, 0, 200, 0}}, "StandaloneErrors");
         DEFER { imgui.EndWindow(); };
         f32 y_pos = 0;
@@ -341,7 +342,7 @@ void GuiUpdate(Gui* g) {
         mid_settings.pad_top_left = {};
         mid_settings.pad_bottom_right = {};
         mid_settings.draw_routine_window_background = draw_mid_window;
-        mid_settings.flags = 0;
+        mid_settings.flags = {};
 
         auto mid_panel_r = Rect {.x = 0, .y = top_h, .w = imgui.Width(), .h = mid_h};
         imgui.BeginWindow(mid_settings, mid_panel_r, "MidPanel");

@@ -402,8 +402,7 @@ Context::ScrollbarResult Context::Scrollbar(Window* window,
 void Context::HandleHoverPopupOpeningAndClosing(Id id) {
     ASSERT(focused_popup_window != nullptr);
     auto window = curr_window;
-    auto this_window_is_apopup =
-        (window->flags & WindowFlags_Popup) | (window->flags & WindowFlags_NestedInsidePopup);
+    auto this_window_is_apopup = window->flags.popup || window->flags.nested_inside_popup;
 
     if (IsHot(id) && this_window_is_apopup && focused_popup_window != hovered_window &&
         current_popup_stack.size < persistent_popup_stack.size) {
@@ -721,7 +720,7 @@ void Context::End(ArenaAllocator& scratch_arena) {
 
     ASSERT(GuiIo().out.draw_lists.size == 0);
 
-    auto confirm_window = [&](Window* window, DynamicArray<Window*>& sorted_buf) {
+    auto const confirm_window = [&](Window* window, DynamicArray<Window*>& sorted_buf) {
         if (!window->has_been_sorted) {
             window->has_been_sorted = true;
             dyn::Append(sorted_buf, window);
@@ -729,21 +728,23 @@ void Context::End(ArenaAllocator& scratch_arena) {
         }
     };
 
+    DynamicArray<Window*> active_windows {scratch_arena};
+    active_windows.Reserve(windows.size);
+
     // first we get together all windows that are active
-    dyn::Clear(active_windows);
     for (auto& window : windows) {
         window->has_been_sorted = false;
         if (window->is_open) dyn::Append(active_windows, window);
     }
 
     // then we group all windows that are root windows
-    DynamicArray<Window*> nesting_roots {scratch_arena}; // internal
+    DynamicArray<Window*> nesting_roots {scratch_arena};
     for (auto& window : active_windows)
         if (window->root_window == window && !window->skip_drawing_this_frame)
             dyn::Append(nesting_roots, window);
 
     // for each of the root windows, we find all the windows that are children of them
-    DynamicArray<DynamicArray<Window*>> nested_sorting_bins {scratch_arena}; // internal
+    DynamicArray<DynamicArray<Window*>> nested_sorting_bins {scratch_arena};
     dyn::AssignRepeated(nested_sorting_bins, nesting_roots.size, scratch_arena);
     for (auto const root : Range(nesting_roots.size)) {
         for (auto& window : active_windows)
@@ -766,7 +767,7 @@ void Context::End(ArenaAllocator& scratch_arena) {
         }
 
         // if its a popup then we dont want to flush yet
-        if (nesting_roots[i]->flags & WindowFlags_Popup) continue;
+        if (nesting_roots[i]->flags.popup) continue;
         confirm_window(nesting_roots[i], sorted_windows);
         for (auto& window : bin)
             confirm_window(window, sorted_windows);
@@ -789,14 +790,13 @@ void Context::End(ArenaAllocator& scratch_arena) {
             }
         }
     }
-    dyn::Clear(active_windows);
 
     dyn::Append(GuiIo().out.draw_lists, overlay_draw_list);
 
     if (GuiIo().in.Mouse(MouseButton::Left).presses.size && temp_active_item.id == 0 && temp_hot_item == 0) {
         if (hovered_window != nullptr) {
             Window* window = hovered_window;
-            bool const closes_popups = (window->flags & WindowFlags_NeverClosesPopup) == 0;
+            bool const closes_popups = !window->flags.never_closes_popup;
             SetActiveID(k_imgui_misc_id,
                         closes_popups,
                         {.left_mouse = true, .triggers_on_mouse_down = true},
@@ -814,14 +814,14 @@ void Context::End(ArenaAllocator& scratch_arena) {
         if (active_item.just_activated && persistent_popup_stack.size != 0 && popup_menu_just_created == 0 &&
             active_item.closes_popups) {
             Window* focused_wnd = focused_popup_window;
-            if (!(focused_wnd->flags & WindowFlags_DontCloseWithExternalClick)) {
+            if (!focused_wnd->flags.dont_close_with_external_click) {
                 Window* popup_clicked = nullptr;
                 if (hovered_window != nullptr) {
                     Window* wnd = hovered_window;
 
-                    if (wnd->flags & WindowFlags_Popup)
+                    if (wnd->flags.popup)
                         popup_clicked = hovered_window;
-                    else if (wnd->flags & WindowFlags_NestedInsidePopup)
+                    else if (wnd->flags.nested_inside_popup)
                         popup_clicked = wnd->root_window;
                 }
 
@@ -1035,10 +1035,8 @@ void Context::RegisterToWindow(Rect r) {
     Window* window = curr_window;
     if (window == nullptr) return;
 
-    f32 const comparison_size_x =
-        (window->flags & WindowFlags_AutoWidth) ? window->prev_content_size.x : window->bounds.w;
-    f32 const comparison_size_y =
-        (window->flags & WindowFlags_AutoHeight) ? window->prev_content_size.y : window->bounds.h;
+    f32 const comparison_size_x = window->flags.auto_width ? window->prev_content_size.x : window->bounds.w;
+    f32 const comparison_size_y = window->flags.auto_height ? window->prev_content_size.y : window->bounds.h;
     window->prev_content_size.x =
         reg(r.x, r.w, comparison_size_x, window->prev_content_size.x, window->x_contents_was_auto);
     window->prev_content_size.y =
@@ -1054,8 +1052,7 @@ void Context::RegisterAndConvertRect(Rect* r) {
 }
 
 bool Context::RegisterRegionForMouseTracking(Rect r, bool check_intersection) {
-    auto this_window_is_apopup =
-        (curr_window->flags & WindowFlags_Popup) | (curr_window->flags & WindowFlags_NestedInsidePopup);
+    auto this_window_is_apopup = curr_window->flags.popup || curr_window->flags.nested_inside_popup;
     if (focused_popup_window != nullptr && !this_window_is_apopup) return false;
     if (check_intersection && !Rect::DoRectsIntersect(r, GetCurrentClipRect())) return false;
 
@@ -1092,18 +1089,15 @@ bool Context::SetHot(Rect r, Id id, bool32 is_not_window_content) {
     // early as the popup has focus. (We also check that this current window is not
     // nested inside a popup - in that case we proceed as normal).
     if (focused_popup_window != nullptr && focused_popup_window != curr_window) {
-        auto const this_window_is_inside_apopup = curr_window->flags & WindowFlags_NestedInsidePopup;
+        auto const this_window_is_inside_apopup = curr_window->flags.nested_inside_popup;
         auto const this_windows_root_is_the_focused_popup = curr_window->root_window == focused_popup_window;
-        auto const this_window_is_apopup =
-            (curr_window->flags & WindowFlags_Popup) | (curr_window->flags & WindowFlags_NestedInsidePopup);
+        auto const this_window_is_apopup = curr_window->flags.popup || curr_window->flags.nested_inside_popup;
 
         HandleHoverPopupOpeningAndClosing(id);
 
-        if (focused_popup_window->flags & WindowFlags_ChildPopup &&
-            !(focused_popup_window->flags & WindowFlags_NestedInsidePopup) &&
-            (curr_window->flags & WindowFlags_ModalPopup ||
-             (curr_window->flags & WindowFlags_NestedInsidePopup &&
-              curr_window->root_window->flags & WindowFlags_ModalPopup)))
+        if (focused_popup_window->flags.child_popup && !focused_popup_window->flags.nested_inside_popup &&
+            (curr_window->flags.modal_popup ||
+             (curr_window->flags.nested_inside_popup && curr_window->root_window->flags.modal_popup)))
             return false;
 
         if (!this_window_is_apopup) {
@@ -1716,20 +1710,19 @@ void Context::BeginWindow(WindowSettings settings, Id id, Rect r, String str) {
 
 void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, String str) {
     auto flags = settings.flags;
-    auto const no_padding = (flags & WindowFlags_NoPadding);
-    auto const is_apopup = (flags & WindowFlags_Popup);
-    auto const auto_width = (flags & WindowFlags_AutoWidth);
-    auto auto_height = (flags & WindowFlags_AutoHeight);
-    auto const auto_pos = (flags & WindowFlags_AutoPosition);
-    auto const no_scroll_x = (flags & WindowFlags_NoScrollbarX);
-    auto const no_scroll_y = (flags & WindowFlags_NoScrollbarY);
-    auto const draw_on_top = (flags & WindowFlags_DrawOnTop);
-    auto const scrollbar_inside_padding = (flags & WindowFlags_ScrollbarInsidePadding);
+    auto const no_padding = flags.no_padding;
+    auto const is_apopup = flags.popup;
+    auto const auto_width = flags.auto_width;
+    auto auto_height = flags.auto_height;
+    auto const auto_pos = flags.auto_position;
+    auto const no_scroll_x = flags.no_scrollbar_x;
+    auto const no_scroll_y = flags.no_scrollbar_y;
+    auto const draw_on_top = flags.draw_on_top;
+    auto const scrollbar_inside_padding = flags.scrollbar_inside_padding;
 
     ASSERT(r.x >= 0);
     ASSERT(r.y >= 0);
 
-    dyn::Append(active_windows, window);
     dyn::Assign(window->name, str);
     window->flags = flags;
     window->is_open = true;
@@ -1779,11 +1772,11 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
                 if (needs_xscroll) size.y += scrollbar_size;
             }
 
-            bool const has_parent_popup = curr_window && curr_window->flags & WindowFlags_Popup &&
-                                          !(curr_window->flags & WindowFlags_ModalPopup);
+            bool const has_parent_popup =
+                curr_window && curr_window->flags.popup && !curr_window->flags.modal_popup;
 
             auto base_r = Rect {.pos = r.pos, .size = size};
-            if (has_parent_popup && !(flags & WindowFlags_PositionOnTopOfParentPopup)) {
+            if (has_parent_popup && !flags.position_on_top_of_parent_popup) {
                 rect_to_avoid = curr_window->bounds;
                 rect_to_avoid.y = 0;
                 rect_to_avoid.h = FLT_MAX;
@@ -1835,9 +1828,8 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     window->root_window = window;
     if (window->parent_window != nullptr) {
         if (!is_apopup && !draw_on_top) {
-            if (window->parent_window->root_window->flags & WindowFlags_Popup)
-                window->flags |= WindowFlags_NestedInsidePopup;
-            window->flags |= WindowFlags_Nested;
+            if (window->parent_window->root_window->flags.popup) window->flags.nested_inside_popup = true;
+            window->flags.nested = true;
 
             Rect& vb = window->visible_bounds;
             Rect const& parent_clipping_r = window->parent_window->clipping_rect;
@@ -1849,7 +1841,7 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
                 window->visible_bounds.h = bottom_of_parent - window->visible_bounds.y;
         }
 
-        if (window->flags & (WindowFlags_Nested | WindowFlags_ChildPopup))
+        if (window->flags.nested || window->flags.child_popup)
             window->root_window = window->parent_window->root_window;
 
         if (is_apopup || draw_on_top) {
@@ -1908,11 +1900,11 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
         window->prev_content_size.y > (bounds_for_scrollbar.h + epsilon) && !window->y_contents_was_auto;
     window->has_xscrollbar =
         window->prev_content_size.x > (bounds_for_scrollbar.w + epsilon) && !window->x_contents_was_auto;
-    if (flags & WindowFlags_AlwaysDrawScrollX) {
+    if (flags.always_draw_scroll_x) {
         if (!window->has_xscrollbar) window->scroll_offset.x = 0;
         window->has_xscrollbar = true;
     }
-    if (flags & WindowFlags_AlwaysDrawScrollY) {
+    if (flags.always_draw_scroll_y) {
         if (!window->has_yscrollbar) window->scroll_offset.y = 0;
         window->has_yscrollbar = true;
     }
@@ -2037,10 +2029,10 @@ void Context::EndWindow() {
 
     PopRectFromCurrentScissorStack();
     PopID();
-    if (Last(window_stack)->flags & WindowFlags_Popup) {
+    if (Last(window_stack)->flags.popup) {
         PopScissorStack();
         dyn::Pop(current_popup_stack);
-    } else if (Last(window_stack)->flags & WindowFlags_DrawOnTop) {
+    } else if (Last(window_stack)->flags.draw_on_top) {
         PopScissorStack();
     }
     if (window->draw_list == window->owned_draw_list) window->draw_list->EndDraw();
@@ -2199,15 +2191,14 @@ bool Context::BeginWindowPopup(WindowSettings settings, Id id, Rect r, String na
     if (!IsPopupOpen(id)) return false;
 
     Window* popup = GetPopupFromID(id);
-    settings.flags |= WindowFlags_Popup;
+    settings.flags.popup = true;
 
     auto curr_wnd = curr_window;
     auto is_first_of_wnd_stack = false;
-    is_first_of_wnd_stack =
-        !((curr_wnd->flags & WindowFlags_Popup) || (curr_wnd->flags & WindowFlags_NestedInsidePopup));
+    is_first_of_wnd_stack = !(curr_wnd->flags.popup || curr_wnd->flags.nested_inside_popup);
 
     if (!is_first_of_wnd_stack) {
-        settings.flags |= WindowFlags_ChildPopup;
+        settings.flags.child_popup = true;
         popup->parent_popup = curr_wnd;
     }
 
@@ -2246,7 +2237,7 @@ void Context::CloseCurrentPopup() {
         return;
     }
     while (popup_index > 0 && persistent_popup_stack[(usize)popup_index] &&
-           (persistent_popup_stack[(usize)popup_index]->flags & WindowFlags_ChildPopup)) {
+           persistent_popup_stack[(usize)popup_index]->flags.child_popup) {
         popup_index--;
     }
     ClosePopupToLevel(popup_index);
@@ -2314,7 +2305,7 @@ bool Context::DebugButton(char const* text) {
 
 void Context::DebugWindow(Rect r) {
     auto sets = DefWindow();
-    sets.flags = 0;
+    sets.flags = {};
     BeginWindow(sets, r, "TextWindow");
 
     GuiIo().out.wants.text_input = true;
@@ -2361,12 +2352,14 @@ void Context::DebugWindow(Rect r) {
         DynamicArray<char> buffer {allocator};
         if (HoveredWindow()) {
             auto wnd = HoveredWindow();
-            for (int i = 1; i < (int)::ArraySize(k_imgui_window_flag_text); ++i) {
-                if (wnd->flags & k_imgui_window_flag_vals[i]) {
-                    dyn::AppendSpan(buffer, k_imgui_window_flag_text[i]);
-                    dyn::AppendSpan(buffer, " "_s);
-                }
-            }
+            auto const& f = wnd->flags;
+#define X(name)                                                                                              \
+    if (f.name) {                                                                                            \
+        dyn::AppendSpan(buffer, #name##_s);                                                                  \
+        dyn::AppendSpan(buffer, " "_s);                                                                      \
+    }
+            IMGUI_WINDOW_FLAGS
+#undef X
         }
         DebugTextItem("Hovered CreatorID",
                       "%u",

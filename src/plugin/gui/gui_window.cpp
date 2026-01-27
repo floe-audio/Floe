@@ -35,7 +35,7 @@ imgui::WindowSettings PopupWindowSettings(imgui::Context const& imgui) {
 imgui::WindowSettings ModalWindowSettings(imgui::Context const& imgui) {
     auto res = PopupWindowSettings(imgui);
     res.draw_routine_window_background = res.draw_routine_popup_background;
-    res.flags = 0;
+    res.flags = {};
     res.pad_top_left = {LiveSize(imgui, UiSizeId::ModalWindowPadL),
                         LiveSize(imgui, UiSizeId::ModalWindowPadT)};
     res.pad_bottom_right = {LiveSize(imgui, UiSizeId::ModalWindowPadR),
@@ -50,7 +50,7 @@ FloeWindowSettings(imgui::Context const& imgui,
     wnd_settings.draw_routine_window_background = draw;
     wnd_settings.pad_top_left = {0, 0};
     wnd_settings.pad_bottom_right = {0, 0};
-    wnd_settings.flags = imgui::WindowFlags_NoScrollbarX;
+    wnd_settings.flags = {.no_scrollbar_x = true};
     wnd_settings.scrollbar_width = LiveSize(imgui, UiSizeId::ScrollbarWidth);
     wnd_settings.draw_routine_scrollbar = [](IMGUI_DRAW_WINDOW_SCROLLBAR_ARGS) {
         auto const rounding = LiveSize(imgui, UiSizeId::CornerRounding);

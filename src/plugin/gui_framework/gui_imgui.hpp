@@ -17,7 +17,6 @@ struct TextInputResult;
 
 using Id = u32;
 using Char32 = u32;
-using WindowFlags = u32;
 
 #undef STB_TEXTEDIT_STRING
 #undef STB_TEXTEDIT_CHARTYPE
@@ -33,44 +32,38 @@ namespace stb {
 constexpr Id k_imgui_misc_id = 1; // something we dont care about was clicked (eg. background)
 constexpr Id k_imgui_app_window_id = 4; // id of the full size window created with Begin()
 
-// TODO: refactor into a bitfield probably
 #define IMGUI_WINDOW_FLAGS                                                                                   \
-    X(None, 0, 0)                                                                                            \
-    X(NoPadding, 1, 1)                                                                                       \
-    X(NeverClosesPopup, 1, 2)                                                                                \
-    X(AutoWidth, 1, 3)                                                                                       \
-    X(AutoHeight, 1, 4)                                                                                      \
-    X(AutoPosition, 1, 5)                                                                                    \
-    X(DontCloseWithExternalClick, 1, 6)                                                                      \
-    X(NoScrollbarX, 1, 7)                                                                                    \
-    X(NoScrollbarY, 1, 8)                                                                                    \
-    X(DrawOnTop, 1, 9)                                                                                       \
-    X(NestedInsidePopup, 1, 11)                                                                              \
-    X(Popup, 1, 12)                                                                                          \
-    X(ChildPopup, 1, 13)                                                                                     \
-    X(Nested, 1, 14)                                                                                         \
-    X(AlwaysDrawScrollX, 1, 15)                                                                              \
-    X(AlwaysDrawScrollY, 1, 16)                                                                              \
-    X(PositionOnTopOfParentPopup, 1, 17)                                                                     \
-    X(ModalPopup, 1, 18)                                                                                     \
-    X(ScrollbarInsidePadding, 1, 19)
+    X(no_padding)                                                                                            \
+    X(never_closes_popup)                                                                                    \
+    X(auto_width)                                                                                            \
+    X(auto_height)                                                                                           \
+    X(auto_position)                                                                                         \
+    X(dont_close_with_external_click)                                                                        \
+    X(no_scrollbar_x)                                                                                        \
+    X(no_scrollbar_y)                                                                                        \
+    X(draw_on_top)                                                                                           \
+    X(nested_inside_popup)                                                                                   \
+    X(popup)                                                                                                 \
+    X(child_popup)                                                                                           \
+    X(nested)                                                                                                \
+    X(always_draw_scroll_x)                                                                                  \
+    X(always_draw_scroll_y)                                                                                  \
+    X(position_on_top_of_parent_popup)                                                                       \
+    X(modal_popup)                                                                                           \
+    X(scrollbar_inside_padding)
 
-enum WindowFlagsEnum : u32 {
-#define X(name, val, num) WindowFlags_##name = val << num,
-    IMGUI_WINDOW_FLAGS
+union WindowFlags {
+    struct {
+#define X(name) bool32 name : 1;
+        IMGUI_WINDOW_FLAGS
 #undef X
-};
+    };
+    u32 bits = 0;
 
-constexpr u32 k_imgui_window_flag_vals[] = {
-#define X(name, val, num) val << num,
-    IMGUI_WINDOW_FLAGS
-#undef X
-};
-
-constexpr String k_imgui_window_flag_text[] = {
-#define X(name, val, num) #name,
-    IMGUI_WINDOW_FLAGS
-#undef X
+    WindowFlags& operator|=(WindowFlags const& other) {
+        bits |= other.bits;
+        return *this;
+    }
 };
 
 struct ButtonFlags {
@@ -89,9 +82,7 @@ struct ButtonFlags {
     bool32 is_non_window_content : 1; // is something that does not live inside a window (e.g. scrollbar)
     bool32 hold_to_repeat : 1;
     bool32 dont_check_for_release : 1;
-    bool32 padding : 17 = 0; // We want to cast this to bool32 so we need to ensure padding is 0.
 };
-static_assert(sizeof(ButtonFlags) == 4, "Adjust padding");
 
 bool ClickCheck(ButtonFlags flags, GuiFrameInput const& io, Rect const* rect = nullptr);
 
@@ -232,7 +223,7 @@ struct Window {
     int nested_level = 0;
     int child_nesting_counter = 0;
 
-    WindowFlags flags = 0;
+    WindowFlags flags = {};
     u32 user_flags = 0; // optional user storage
 
     WindowSettings style = {};
@@ -656,7 +647,6 @@ struct Context {
     static constexpr f64 k_text_cursor_blink_rate {0.5};
     static constexpr f64 k_button_repeat_rate {0.1}; // rate at which button hold to repeat triggers
 
-    WindowSettings default_window_style = {};
     f32 pixels_per_vw = 1.0f;
 
     graphics::DrawList* draw_list = nullptr; // Shortcut to the current window's draw list
@@ -676,9 +666,7 @@ struct Context {
     int textedit_len = 0;
     bool active_text_input_shown = false; // Unfocus active input if it's not shown in the frame
 
-    // window
-    DynamicArray<Window*> sorted_windows {Malloc::Instance()}; // internal
-    DynamicArray<Window*> active_windows {Malloc::Instance()}; // internal
+    DynamicArray<Window*> sorted_windows {Malloc::Instance()};
 
     // storage of windows, grows whenever a different BeginWindow is called for the first time
     // this array actually owns each window pointer, and will delete them when finished
@@ -832,7 +820,7 @@ PUBLIC void DefaultDrawTextInput(Context const& s, Rect r, Id id, String text, T
 
 PUBLIC WindowSettings DefMainWindow() {
     WindowSettings s = {};
-    s.flags = WindowFlags_NoPadding | WindowFlags_NoScrollbarX | WindowFlags_NoScrollbarY;
+    s.flags = {.no_padding = true, .no_scrollbar_x = true, .no_scrollbar_y = true};
     s.pad_top_left = {4, 4};
     s.pad_bottom_right = {4, 4};
     s.draw_routine_window_background = [](IMGUI_DRAW_WINDOW_BG_ARGS) {
@@ -844,7 +832,7 @@ PUBLIC WindowSettings DefMainWindow() {
 
 PUBLIC WindowSettings DefWindow() {
     WindowSettings s = {};
-    s.flags = WindowFlags_NoScrollbarX | WindowFlags_NoScrollbarY;
+    s.flags = {.no_scrollbar_x = true, .no_scrollbar_y = true};
     s.pad_top_left = {4, 4};
     s.pad_bottom_right = {4, 4};
     s.scrollbar_padding = 4;
@@ -857,7 +845,7 @@ PUBLIC WindowSettings DefWindow() {
 
 PUBLIC WindowSettings DefPopup() {
     WindowSettings s = {};
-    s.flags = WindowFlags_AutoWidth | WindowFlags_AutoHeight | WindowFlags_AutoPosition;
+    s.flags = {.auto_width = true, .auto_height = true, .auto_position = true};
     s.pad_top_left = {4, 4};
     s.pad_bottom_right = {4, 4};
     s.scrollbar_padding = 4;

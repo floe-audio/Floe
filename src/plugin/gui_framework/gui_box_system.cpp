@@ -35,7 +35,7 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
             {
                 u32 handle_col = style::Col(style::Colour::Surface1);
                 if (hot_or_active) handle_col = style::Col(style::Colour::Overlay0);
-                if (imgui.CurrentWindow()->style.flags & imgui::WindowFlags_ScrollbarInsidePadding) {
+                if (imgui.CurrentWindow()->style.flags.scrollbar_inside_padding) {
                     auto const pad_l = imgui.VwToPixels(hot_or_active ? 1 : 3.0f);
                     auto const pad_r = 0;
                     auto const total_pad = pad_l + pad_r;
@@ -63,13 +63,16 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
     };
 
     imgui::WindowSettings const popup_settings {
-        .flags = imgui::WindowFlags_AutoWidth | imgui::WindowFlags_AutoHeight |
-                 imgui::WindowFlags_AutoPosition | ({
-                     u32 additional_flags = 0;
-                     if (auto const popup_data = panel->data.TryGet<PopupPanel>())
-                         additional_flags |= popup_data->additional_imgui_window_flags;
-                     additional_flags;
-                 }),
+        .flags = ({
+            imgui::WindowFlags flags {
+                .auto_width = true,
+                .auto_height = true,
+                .auto_position = true,
+            };
+            if (auto const popup_data = panel->data.TryGet<PopupPanel>())
+                flags |= popup_data->additional_imgui_window_flags;
+            flags;
+        }),
         .pad_top_left = {1, builder.imgui.VwToPixels(style::k_panel_rounding)},
         .pad_bottom_right = {1, builder.imgui.VwToPixels(style::k_panel_rounding)},
         .scrollbar_padding = scrollbar_padding,
@@ -80,7 +83,7 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
     };
 
     imgui::WindowSettings const modal_window_settings {
-        .flags = imgui::WindowFlags_NoScrollbarX,
+        .flags = {.no_scrollbar_x = true},
         .scrollbar_padding = scrollbar_padding,
         .scrollbar_width = scrollbar_width,
         .draw_routine_scrollbar = draw_scrollbar,
@@ -130,9 +133,9 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
             }
 
             auto settings = modal_window_settings;
-            if (modal.auto_height) settings.flags |= imgui::WindowFlags_AutoHeight;
-            if (modal.auto_width) settings.flags |= imgui::WindowFlags_AutoWidth;
-            if (modal.auto_position) settings.flags |= imgui::WindowFlags_AutoPosition;
+            if (modal.auto_height) settings.flags.auto_height = true;
+            if (modal.auto_width) settings.flags.auto_width = true;
+            if (modal.auto_position) settings.flags.auto_position = true;
             if (modal.transparent_panel) settings.draw_routine_window_background = {};
 
             builder.imgui.BeginWindow(settings, modal.imgui_id, modal.r);

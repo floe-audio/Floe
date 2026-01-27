@@ -82,7 +82,7 @@ struct PopupPanel {
     layout::Id creator_layout_id;
     Optional<Rect> creator_absolute_rect; // instead of creator_layout_id
     imgui::Id popup_imgui_id;
-    u32 additional_imgui_window_flags {};
+    imgui::WindowFlags additional_imgui_window_flags {};
 };
 
 using PanelUnion = TaggedUnion<PanelType,

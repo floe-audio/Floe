@@ -18,7 +18,7 @@ static void DoProfileGUI(Gui* g, Rect r) {
     auto& imgui = g->imgui;
     auto& engine = g->engine;
     auto sets = imgui::DefWindow();
-    sets.flags = 0;
+    sets.flags = {};
     imgui.BeginWindow(sets, r, "AudioDebug");
 
     EditorReset(&g->editor);
@@ -39,7 +39,7 @@ static void DoAudioDebugPanel(Gui* g, Rect r) {
     auto& imgui = g->imgui;
     auto& engine = g->engine;
     auto sets = imgui::DefWindow();
-    sets.flags = 0;
+    sets.flags = {};
     imgui.BeginWindow(sets, r, "AudioDebug");
 
     EditorReset(&g->editor);
@@ -60,7 +60,7 @@ static void DoAudioDebugPanel(Gui* g, Rect r) {
 static void DoGUIColourEditor(Gui* g, Rect r) {
     auto& imgui = g->imgui;
     auto sets = imgui::DefWindow();
-    sets.flags = 0;
+    sets.flags = {};
     imgui.BeginWindow(sets, r, "GUI Colours");
     EditorReset(&g->editor);
 
@@ -74,7 +74,7 @@ static void DoGUIColourEditor(Gui* g, Rect r) {
 static void DoGUIColourMapEditor(Gui* g, Rect r) {
     auto& imgui = g->imgui;
     auto sets = imgui::DefWindow();
-    sets.flags = 0;
+    sets.flags = {};
     imgui.BeginWindow(sets, r, "GUI Colours");
     EditorReset(&g->editor);
 
@@ -97,7 +97,7 @@ static void DoGUIColourMapEditor(Gui* g, Rect r) {
 static void DoGUISizeEditor(Gui* g, Rect r) {
     auto& imgui = g->imgui;
     auto sets = imgui::DefWindow();
-    sets.flags = 0;
+    sets.flags = {};
     imgui.BeginWindow(sets, r, "GUI Sizes");
     EditorReset(&g->editor);
 
@@ -114,7 +114,7 @@ static bool g_show_editor_on_left = true;
 static void DoCommandPanel(Gui* g, Rect r) {
     auto& imgui = g->imgui;
     auto sets = imgui::DefWindow();
-    sets.flags = 0;
+    sets.flags = {};
     imgui.BeginWindow(sets, r, "Commands");
     EditorReset(&g->editor);
 

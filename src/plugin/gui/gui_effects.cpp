@@ -127,8 +127,7 @@ static void DoIrSelectorRightClickMenu(Gui* g, Rect r) {
         PopupMenuItems menu(g, items);
 
         auto settings = PopupWindowSettings(imgui);
-        settings.flags =
-            imgui::WindowFlags_AutoWidth | imgui::WindowFlags_AutoHeight | imgui::WindowFlags_AutoPosition;
+        settings.flags = {.auto_width = true, .auto_height = true, .auto_position = true};
         if (imgui.BeginWindowPopup(settings, popup_id, r)) {
             DEFER { imgui.EndWindow(); };
 
@@ -274,7 +273,7 @@ void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r) {
     auto const corner_rounding = LiveSize(imgui, CornerRounding);
 
     auto settings = FloeWindowSettings(imgui, [](IMGUI_DRAW_WINDOW_BG_ARGS) {});
-    settings.flags |= imgui::WindowFlags_AlwaysDrawScrollY;
+    settings.flags.always_draw_scroll_y = true;
     settings.pad_top_left = {LiveSize(imgui, FXWindowPadL), LiveSize(imgui, FXWindowPadT)};
     settings.pad_bottom_right = {LiveSize(imgui, FXWindowPadR), LiveSize(imgui, FXWindowPadB)};
     imgui.BeginWindow(settings, r, "Effects");

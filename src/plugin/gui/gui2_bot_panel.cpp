@@ -297,7 +297,7 @@ void BotPanel(Gui* g, Rect const r) {
                               Subpanel {
                                   .rect = r,
                                   .imgui_id = g->imgui.GetID("BotPanel"),
-                                  .flags = imgui::WindowFlags_NoScrollbarX | imgui::WindowFlags_NoScrollbarY,
+                                  .flags = {.no_scrollbar_x = true, .no_scrollbar_y = true},
                               },
                       });
 }

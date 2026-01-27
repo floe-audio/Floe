@@ -1824,8 +1824,7 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
                                 .debug_name = "moreoptions",
                                 .creator_layout_id = btn.layout_id,
                                 .popup_imgui_id = popup_id,
-                                .additional_imgui_window_flags =
-                                    imgui::WindowFlags_PositionOnTopOfParentPopup,
+                                .additional_imgui_window_flags = {.position_on_top_of_parent_popup = true},
                             },
                     });
             }
@@ -1993,61 +1992,60 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
             }
         }
 
-        RunOrEnqueuePanel(
-            box_system,
-            {
-                .run =
-                    [&](GuiBoxSystem& box_system) {
-                        if (!options.library_filters && !options.tags_filters) return;
+        RunOrEnqueuePanel(box_system,
+                          {
+                              .run =
+                                  [&](GuiBoxSystem& box_system) {
+                                      if (!options.library_filters && !options.tags_filters) return;
 
-                        auto const root = DoBrowserItemsRoot(box_system);
+                                      auto const root = DoBrowserItemsRoot(box_system);
 
-                        u8 num_lhs_sections = 0;
+                                      u8 num_lhs_sections = 0;
 
-                        if (options.do_extra_filters_top)
-                            options.do_extra_filters_top(box_system, root, num_lhs_sections);
+                                      if (options.do_extra_filters_top)
+                                          options.do_extra_filters_top(box_system, root, num_lhs_sections);
 
-                        if (options.library_filters)
-                            DoBrowserLibraryFilters(box_system,
-                                                    context,
-                                                    root,
-                                                    *options.library_filters,
-                                                    num_lhs_sections);
+                                      if (options.library_filters)
+                                          DoBrowserLibraryFilters(box_system,
+                                                                  context,
+                                                                  root,
+                                                                  *options.library_filters,
+                                                                  num_lhs_sections);
 
-                        if (options.tags_filters)
-                            DoBrowserTagsFilters(box_system,
-                                                 context,
-                                                 root,
-                                                 *options.tags_filters,
-                                                 num_lhs_sections);
+                                      if (options.tags_filters)
+                                          DoBrowserTagsFilters(box_system,
+                                                               context,
+                                                               root,
+                                                               *options.tags_filters,
+                                                               num_lhs_sections);
 
-                        if (options.library_filters)
-                            DoBrowserLibraryAuthorFilters(box_system,
-                                                          context,
-                                                          root,
-                                                          *options.library_filters,
-                                                          num_lhs_sections);
+                                      if (options.library_filters)
+                                          DoBrowserLibraryAuthorFilters(box_system,
+                                                                        context,
+                                                                        root,
+                                                                        *options.library_filters,
+                                                                        num_lhs_sections);
 
-                        if (options.do_extra_filters_bottom)
-                            options.do_extra_filters_bottom(box_system, root, num_lhs_sections);
-                    },
-                .data =
-                    Subpanel {
-                        .id = DoBox(box_system,
-                                    {
-                                        .parent = lhs,
-                                        .layout {
-                                            .size = layout::k_fill_parent,
-                                        },
-                                    })
-                                  .layout_id,
-                        .imgui_id = box_system.imgui.GetID("filters"),
-                        .flags = imgui::WindowFlags_ScrollbarInsidePadding | imgui::WindowFlags_NoScrollbarX,
-                        .padding = {.lr = k_browser_spacing},
-                        .line_height_for_scroll_wheel = k_browser_item_height,
-                        .debug_name = "filters",
-                    },
-            });
+                                      if (options.do_extra_filters_bottom)
+                                          options.do_extra_filters_bottom(box_system, root, num_lhs_sections);
+                                  },
+                              .data =
+                                  Subpanel {
+                                      .id = DoBox(box_system,
+                                                  {
+                                                      .parent = lhs,
+                                                      .layout {
+                                                          .size = layout::k_fill_parent,
+                                                      },
+                                                  })
+                                                .layout_id,
+                                      .imgui_id = box_system.imgui.GetID("filters"),
+                                      .flags = {.scrollbar_inside_padding = true, .no_scrollbar_x = true},
+                                      .padding = {.lr = k_browser_spacing},
+                                      .line_height_for_scroll_wheel = k_browser_item_height,
+                                      .debug_name = "filters",
+                                  },
+                          });
     }
 
     DoModalDivider(box_system, main_section, {.vertical = true});
@@ -2336,27 +2334,26 @@ static void DoBrowserPopupInternal(GuiBoxSystem& box_system,
             }
         }
 
-        RunOrEnqueuePanel(
-            box_system,
-            {
-                .run = [&](GuiBoxSystem& box_system) { options.rhs_do_items(box_system); },
-                .data =
-                    Subpanel {
-                        .id = DoBox(box_system,
-                                    {
-                                        .parent = rhs,
-                                        .layout {
-                                            .size = layout::k_fill_parent,
-                                        },
-                                    })
-                                  .layout_id,
-                        .imgui_id = box_system.imgui.GetID("rhs"),
-                        .flags = imgui::WindowFlags_ScrollbarInsidePadding | imgui::WindowFlags_NoScrollbarX,
-                        .padding = {.lr = k_browser_spacing},
-                        .line_height_for_scroll_wheel = k_browser_item_height,
-                        .debug_name = "rhs",
-                    },
-            });
+        RunOrEnqueuePanel(box_system,
+                          {
+                              .run = [&](GuiBoxSystem& box_system) { options.rhs_do_items(box_system); },
+                              .data =
+                                  Subpanel {
+                                      .id = DoBox(box_system,
+                                                  {
+                                                      .parent = rhs,
+                                                      .layout {
+                                                          .size = layout::k_fill_parent,
+                                                      },
+                                                  })
+                                                .layout_id,
+                                      .imgui_id = box_system.imgui.GetID("rhs"),
+                                      .flags = {.scrollbar_inside_padding = true, .no_scrollbar_x = true},
+                                      .padding = {.lr = k_browser_spacing},
+                                      .line_height_for_scroll_wheel = k_browser_item_height,
+                                      .debug_name = "rhs",
+                                  },
+                          });
     }
 
     // If the popup is not open, it just early-returns.

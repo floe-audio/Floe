@@ -520,7 +520,7 @@ void TopPanel(Gui* g, f32 height, GuiFrameContext const& frame_context) {
                               Subpanel {
                                   .rect = Rect {.xywh {0, 0, g->imgui.Width(), height}},
                                   .imgui_id = g->imgui.GetID("TopPanel"),
-                                  .flags = imgui::WindowFlags_NoScrollbarX | imgui::WindowFlags_NoScrollbarY,
+                                  .flags = {.no_scrollbar_x = true, .no_scrollbar_y = true},
                               },
                       });
 }

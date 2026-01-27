@@ -45,8 +45,7 @@ static void DoInstSelectorRightClickMenu(Gui* g, Rect r, u32 layer) {
         PopupMenuItems menu(g, items);
 
         auto settings = PopupWindowSettings(imgui);
-        settings.flags =
-            imgui::WindowFlags_AutoWidth | imgui::WindowFlags_AutoHeight | imgui::WindowFlags_AutoPosition;
+        settings.flags = {.auto_width = true, .auto_height = true, .auto_position = true};
         if (imgui.BeginWindowPopup(settings, popup_id, r)) {
             DEFER { imgui.EndWindow(); };
 
@@ -964,7 +963,7 @@ void Draw(Gui* g,
     auto& params = g->engine.processor.main_params;
 
     auto settings = FloeWindowSettings(g->imgui, [&](IMGUI_DRAW_WINDOW_BG_ARGS) {});
-    settings.flags |= imgui::WindowFlags_NoScrollbarY;
+    settings.flags.no_scrollbar_y = true;
     g->imgui.BeginWindow(settings, g->imgui.GetID((uintptr)layer), r);
     DEFER { g->imgui.EndWindow(); };
 

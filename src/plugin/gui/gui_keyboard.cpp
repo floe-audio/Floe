@@ -673,8 +673,7 @@ static void TopDisplay(Gui* g, Rect r, s32 starting_octave, Rect keyboard_rect) 
     keyboard_rect = imgui.GetRegisteredAndConvertedRect(keyboard_rect);
     if (imgui.BeginWindowPopup(
             {
-                .flags = imgui::WindowFlags_AutoHeight | imgui::WindowFlags_AutoWidth |
-                         imgui::WindowFlags_AutoPosition,
+                .flags = {.auto_height = true, .auto_width = true, .auto_position = true},
                 .pad_top_left = {0, enlarged_window_padding},
                 .pad_bottom_right = {0, enlarged_window_padding},
                 .draw_routine_popup_background =
