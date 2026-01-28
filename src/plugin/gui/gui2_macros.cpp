@@ -259,7 +259,7 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                         if (hovering_remove_button) {
                             // We are using overlay graphics; we need to make sure any item underneath this
                             // button is not turned hot.
-                            box_system.imgui.active_item.id = imgui::k_imgui_misc_id;
+                            box_system.imgui.active_item.id = imgui::k_imgui_noop_id;
                         } else {
                             g->macros_gui_state.open_remove_destination_button_id = 0;
                         }

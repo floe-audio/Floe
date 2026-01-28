@@ -334,11 +334,11 @@ Context::ScrollbarResult Context::Scrollbar(Window* window,
     if (scrollbar_range == 0) scrollbar_rel_y = 0;
 
     Rect scroll_r;
-    scroll_r.x = window_right + window->style.scrollbar_padding;
+    scroll_r.x = window_right + window->settings.scrollbar_padding;
     scroll_r.y = window_y + scrollbar_rel_y;
-    scroll_r.w = window->style.scrollbar_width;
+    scroll_r.w = window->settings.scrollbar_width;
     scroll_r.h = scrollbar_h;
-    auto scrollbar_bb = Rect {.xywh = {scroll_r.x, window_y, window->style.scrollbar_width, window_h}};
+    auto scrollbar_bb = Rect {.xywh = {scroll_r.x, window_y, window->settings.scrollbar_width, window_h}};
     f32* scroll_y = &scroll_r.y;
 
     if (!is_vertical) {
@@ -379,7 +379,7 @@ Context::ScrollbarResult Context::Scrollbar(Window* window,
         }
     }
 
-    if (window->style.draw_routine_scrollbar) {
+    if (window->settings.draw_routine_scrollbar) {
         // Cuts all dimensions to integer bounds, but always shrinks the rectangle, never expands it.
         auto const integer_bounds = [](Rect r) {
             auto min = Ceil(r.pos);
@@ -387,10 +387,10 @@ Context::ScrollbarResult Context::Scrollbar(Window* window,
             return Rect::FromMinMax(min, max);
         };
 
-        window->style.draw_routine_scrollbar(*this,
-                                             integer_bounds(scrollbar_bb),
-                                             integer_bounds(scroll_r),
-                                             id);
+        window->settings.draw_routine_scrollbar(*this,
+                                                integer_bounds(scrollbar_bb),
+                                                integer_bounds(scroll_r),
+                                                id);
     }
 
     return {
@@ -558,14 +558,14 @@ static u32 Hash(Span<u8 const> data, u32 seed) {
 Id Context::GetID(String str) {
     auto const seed = Last(id_stack);
     auto const result = Hash(str.ToConstByteSpan(), seed);
-    ASSERT(result != 0 && result != k_imgui_misc_id);
+    ASSERT(result != 0 && result != k_imgui_noop_id);
     return result;
 }
 
 Id Context::GetID(uintptr i) {
     auto const seed = Last(id_stack);
     auto const result = Hash(AsBytes(i), seed);
-    ASSERT(result != 0 && result != k_imgui_misc_id);
+    ASSERT(result != 0 && result != k_imgui_noop_id);
     return result;
 }
 
@@ -640,8 +640,8 @@ void Context::Begin(WindowSettings settings) {
             window = window->parent_window;
         }
         if (final_window) {
-            f32 const pixels_per_line = final_window->style.pixels_per_line > 0
-                                            ? final_window->style.pixels_per_line
+            f32 const pixels_per_line = final_window->settings.pixels_per_line > 0
+                                            ? final_window->settings.pixels_per_line
                                             : VwToPixels(20);
             f32 const lines = -frame_input.mouse_scroll_delta_in_lines;
             f32 const new_scroll = (lines * pixels_per_line) + final_window->scroll_offset.y;
@@ -654,10 +654,7 @@ void Context::Begin(WindowSettings settings) {
     //
 
     for (auto& w : windows) {
-        w->has_been_sorted = false;
         w->is_open = false;
-        w->skip_drawing_this_frame = false;
-        dyn::Clear(w->children);
         w->parent_popup = nullptr;
     }
 
@@ -692,7 +689,7 @@ void Context::Begin(WindowSettings settings) {
     overlay_draw_list->BeginDraw();
 
     BeginWindow(settings,
-                k_imgui_app_window_id,
+                k_imgui_root_window_id,
                 Rect {.size = frame_input.window_size.ToFloat2()},
                 "ApplicationWindow");
 }
@@ -720,11 +717,14 @@ void Context::End(ArenaAllocator& scratch_arena) {
 
     ASSERT(GuiIo().out.draw_lists.size == 0);
 
+    auto has_been_sorted = Set<Window*>::Create(scratch_arena, windows.size);
+
     auto const confirm_window = [&](Window* window, DynamicArray<Window*>& sorted_buf) {
-        if (!window->has_been_sorted) {
-            window->has_been_sorted = true;
+        auto const window_ptr_hash = has_been_sorted.Hash(window);
+        if (!has_been_sorted.Contains(window, window_ptr_hash)) {
             dyn::Append(sorted_buf, window);
             dyn::AppendIfNotAlreadyThere(GuiIo().out.draw_lists, window->draw_list);
+            has_been_sorted.InsertWithoutGrowing(window, window_ptr_hash);
         }
     };
 
@@ -732,16 +732,13 @@ void Context::End(ArenaAllocator& scratch_arena) {
     active_windows.Reserve(windows.size);
 
     // first we get together all windows that are active
-    for (auto& window : windows) {
-        window->has_been_sorted = false;
+    for (auto& window : windows)
         if (window->is_open) dyn::Append(active_windows, window);
-    }
 
     // then we group all windows that are root windows
     DynamicArray<Window*> nesting_roots {scratch_arena};
     for (auto& window : active_windows)
-        if (window->root_window == window && !window->skip_drawing_this_frame)
-            dyn::Append(nesting_roots, window);
+        if (window->root_window == window) dyn::Append(nesting_roots, window);
 
     // for each of the root windows, we find all the windows that are children of them
     DynamicArray<DynamicArray<Window*>> nested_sorting_bins {scratch_arena};
@@ -758,13 +755,6 @@ void Context::End(ArenaAllocator& scratch_arena) {
         auto& bin = nested_sorting_bins[i];
         if (!bin.size) continue;
         Sort(bin, [](Window const* a, Window const* b) -> bool { return a->nested_level < b->nested_level; });
-
-        for (auto [index, window] : Enumerate(bin)) {
-            if (window->skip_drawing_this_frame) {
-                dyn::Resize(bin, index);
-                break;
-            }
-        }
 
         // if its a popup then we dont want to flush yet
         if (nesting_roots[i]->flags.popup) continue;
@@ -797,13 +787,13 @@ void Context::End(ArenaAllocator& scratch_arena) {
         if (hovered_window != nullptr) {
             Window* window = hovered_window;
             bool const closes_popups = !window->flags.never_closes_popup;
-            SetActiveID(k_imgui_misc_id,
+            SetActiveID(k_imgui_noop_id,
                         closes_popups,
                         {.left_mouse = true, .triggers_on_mouse_down = true},
                         true); // indicate when the mouse is pressed down, but not over anything important
             focused_popup_window = hovered_window;
         } else {
-            SetActiveID(k_imgui_misc_id,
+            SetActiveID(k_imgui_noop_id,
                         false,
                         {.left_mouse = true, .triggers_on_mouse_down = true},
                         true); // indicate when the mouse is pressed down, but not over anything important
@@ -1723,10 +1713,10 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     ASSERT(r.x >= 0);
     ASSERT(r.y >= 0);
 
-    dyn::Assign(window->name, str);
+    dyn::Assign(window->debug_name, str);
     window->flags = flags;
     window->is_open = true;
-    window->style = settings;
+    window->settings = settings;
 
     window->prevprev_content_size = window->prev_content_size;
 
@@ -1738,24 +1728,24 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
         if (auto_width) {
             r.w = window->prev_content_size.x;
             if (r.w != 0) {
-                if (!no_padding) r.w += window->style.TotalWidthPad();
+                if (!no_padding) r.w += window->settings.TotalWidthPad();
                 if (!auto_height) {
                     bool const needs_yscroll =
-                        window->prev_content_size.y > (r.h - window->style.TotalHeightPad());
+                        window->prev_content_size.y > (r.h - window->settings.TotalHeightPad());
                     if (needs_yscroll && !scrollbar_inside_padding)
-                        r.w += window->style.scrollbar_padding + window->style.scrollbar_width;
+                        r.w += window->settings.scrollbar_padding + window->settings.scrollbar_width;
                 }
             }
         }
         if (auto_height) {
             r.h = window->prev_content_size.y;
             if (r.h != 0) {
-                if (!no_padding) r.h += window->style.TotalHeightPad();
+                if (!no_padding) r.h += window->settings.TotalHeightPad();
                 if (!auto_width) {
                     bool const needs_xscroll =
-                        window->prev_content_size.x > (r.w - window->style.TotalWidthPad());
+                        window->prev_content_size.x > (r.w - window->settings.TotalWidthPad());
                     if (needs_xscroll && !scrollbar_inside_padding)
-                        r.h += window->style.scrollbar_padding + window->style.scrollbar_width;
+                        r.h += window->settings.scrollbar_padding + window->settings.scrollbar_width;
                 }
             }
         }
@@ -1763,7 +1753,8 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
             f32x2 size = r.size;
 
             if (!scrollbar_inside_padding) {
-                auto const scrollbar_size = window->style.scrollbar_width + window->style.scrollbar_padding;
+                auto const scrollbar_size =
+                    window->settings.scrollbar_width + window->settings.scrollbar_padding;
 
                 bool const needs_xscroll = window->prev_content_size.x > r.w;
                 bool const needs_yscroll = window->prev_content_size.y > r.h;
@@ -1783,7 +1774,7 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
                 rect_to_avoid.x += 5; // we want the menus to overlap a little to show the layering
                 rect_to_avoid.w -= 10;
 
-                base_r.y -= window->style.pad_top_left.y;
+                base_r.y -= window->settings.pad_top_left.y;
             }
 
             auto avoid_r = rect_to_avoid;
@@ -1804,7 +1795,7 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     if (r.Bottom() > (f32)GuiIo().in.window_size.height && is_apopup) {
         r.SetBottomByResizing((f32)GuiIo().in.window_size.height - 1);
         if (!scrollbar_inside_padding) {
-            f32 const scrollbar_size = window->style.scrollbar_width + window->style.scrollbar_padding;
+            f32 const scrollbar_size = window->settings.scrollbar_width + window->settings.scrollbar_padding;
             r.w += scrollbar_size;
         }
         // IMPROVE: test properly sort what happens when a window is bigger than the screen
@@ -1814,8 +1805,8 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     window->visible_bounds = r;
     window->bounds = r;
     if (!no_padding && !has_no_width_or_height) {
-        window->bounds.pos += window->style.pad_top_left;
-        window->bounds.size -= window->style.TotalPadSize();
+        window->bounds.pos += window->settings.pad_top_left;
+        window->bounds.size -= window->settings.TotalPadSize();
     }
     auto constexpr k_clipping_expansion = 1.0f;
     window->clipping_rect = window->bounds.Expanded(k_clipping_expansion);
@@ -1849,7 +1840,6 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
             window->root_window = window;
         }
     }
-    if (window->parent_window) dyn::Append(window->parent_window->children, window);
 
     if (window->root_window == window || is_apopup || draw_on_top) {
         window->child_nesting_counter = 0;
@@ -1857,7 +1847,12 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
         if (!window->owned_draw_list) window->owned_draw_list = GuiIo().out.draw_list_allocator.Allocate();
         window->draw_list = window->owned_draw_list;
     } else {
-        window->root_window->child_nesting_counter++;
+        window->root_window->child_nesting_counter = ({
+            u16 v;
+            if (__builtin_add_overflow(window->root_window->child_nesting_counter, 1, &v)) [[unlikely]]
+                Panic("window nesting too deep");
+            v;
+        });
         window->nested_level = window->root_window->child_nesting_counter;
         window->draw_list = window->root_window->owned_draw_list;
         ASSERT(window->draw_list);
@@ -1879,13 +1874,13 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
         k_clipping_expansion)); // Temporarily while we doing drawing in this function
     PushID(window->id);
 
-    if ((window->style.draw_routine_window_background ||
-         (window->style.draw_routine_popup_background && is_apopup)) &&
+    if ((window->settings.draw_routine_window_background ||
+         (window->settings.draw_routine_popup_background && is_apopup)) &&
         !DidPopupMenuJustOpen(window->id)) {
-        if (is_apopup && window->style.draw_routine_popup_background)
-            window->style.draw_routine_popup_background(*this, window);
+        if (is_apopup && window->settings.draw_routine_popup_background)
+            window->settings.draw_routine_popup_background(*this, window);
         else
-            window->style.draw_routine_window_background(*this, window);
+            window->settings.draw_routine_window_background(*this, window);
     }
 
     //
@@ -1893,7 +1888,7 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     //
 
     f32 const scrollbar_size =
-        !scrollbar_inside_padding ? window->style.scrollbar_width + window->style.scrollbar_padding : 0;
+        !scrollbar_inside_padding ? window->settings.scrollbar_width + window->settings.scrollbar_padding : 0;
     Rect bounds_for_scrollbar = window->bounds;
     f32 const epsilon = 0.01f;
     window->has_yscrollbar =
@@ -1936,8 +1931,8 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
 
     if (window->has_yscrollbar && !auto_height && !no_scroll_y) {
         if (scrollbar_inside_padding) {
-            window->style.scrollbar_width = window->style.pad_bottom_right.x;
-            window->style.scrollbar_padding = 0;
+            window->settings.scrollbar_width = window->settings.pad_bottom_right.x;
+            window->settings.scrollbar_padding = 0;
         }
         auto const result = Scrollbar(window,
                                       true,
@@ -1959,8 +1954,8 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
 
     if (window->has_xscrollbar && !auto_width && !no_scroll_x) {
         if (scrollbar_inside_padding) {
-            window->style.scrollbar_width = window->style.pad_bottom_right.y;
-            window->style.scrollbar_padding = 0;
+            window->settings.scrollbar_width = window->settings.pad_bottom_right.y;
+            window->settings.scrollbar_padding = 0;
         }
         auto const result = Scrollbar(window,
                                       false,
@@ -2346,7 +2341,7 @@ void Context::DebugWindow(Rect r) {
         DebugTextItem("Hovered ID", "%u", HoveredWindow() ? HoveredWindow()->id : 0);
         DebugTextItem("Hovered Name",
                       "%s",
-                      HoveredWindow() ? dyn::NullTerminated(HoveredWindow()->name) : "");
+                      HoveredWindow() ? dyn::NullTerminated(HoveredWindow()->debug_name) : "");
         DebugTextItem("Hovered Root", "%u", HoveredWindow() ? HoveredWindow()->root_window->id : 0);
         ArenaAllocatorWithInlineStorage<2000> allocator {Malloc::Instance()};
         DynamicArray<char> buffer {allocator};

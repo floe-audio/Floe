@@ -29,8 +29,8 @@ namespace stb {
 #include <stb_textedit.h>
 }
 
-constexpr Id k_imgui_misc_id = 1; // something we dont care about was clicked (eg. background)
-constexpr Id k_imgui_app_window_id = 4; // id of the full size window created with Begin()
+constexpr Id k_imgui_noop_id = 1; // Used when something we don't care about was clicked (e.g. background).
+constexpr Id k_imgui_root_window_id = 4; // Window ID of the full size window created inside Begin().
 
 #define IMGUI_WINDOW_FLAGS                                                                                   \
     X(no_padding)                                                                                            \
@@ -79,7 +79,7 @@ struct ButtonFlags {
     bool32 requires_shift : 1;
     bool32 requires_alt : 1;
     bool32 disabled : 1;
-    bool32 is_non_window_content : 1; // is something that does not live inside a window (e.g. scrollbar)
+    bool32 is_non_window_content : 1; // something that does not live inside a window (e.g. scrollbar)
     bool32 hold_to_repeat : 1;
     bool32 dont_check_for_release : 1;
 };
@@ -199,34 +199,29 @@ struct TextInputDraggerSettings {
 //
 
 struct Window {
-    DynamicArrayBounded<char, 128> name;
+    DynamicArrayBounded<char, 128> debug_name;
     bool is_open = false;
-    bool skip_drawing_this_frame = false;
 
     // The active draw list for this Window, it might be the same as owned_draw_list or it might be another
     // Window's draw list in the case that it's more efficient to share a draw list. Shouldn't be null. Use
     // this to do all your drawing for this window.
     graphics::DrawList* draw_list = nullptr;
 
-    // The draw list that is actually allocated and owned by this window.
+    // The draw list that is actually allocated and owned by this window - might be null.
     graphics::DrawList* owned_draw_list = nullptr;
-
-    bool has_been_sorted = false; // internal
 
     Window* root_window = nullptr;
     Window* parent_window = nullptr;
-    DynamicArray<Window*> children {Malloc::Instance()};
 
     Window* parent_popup = nullptr;
     Id creator_of_this_popup = 0;
 
-    int nested_level = 0;
-    int child_nesting_counter = 0;
+    u16 nested_level = 0;
+    u16 child_nesting_counter = 0;
 
     WindowFlags flags = {};
-    u32 user_flags = 0; // optional user storage
 
-    WindowSettings style = {};
+    WindowSettings settings = {};
 
     // all bounds are in absolute coordinates - never relative to parent windows
     Rect bounds = {}; // the windows region minus padding, this is probably the one you want to use for
@@ -254,7 +249,6 @@ struct Window {
 
 struct ActiveItem {
     Id id = 0;
-    // ActiveItemType type = ActiveItem_None;
     bool closes_popups = true;
     bool just_activated = false;
     Window* window = nullptr;
@@ -672,8 +666,9 @@ struct Context {
     // this array actually owns each window pointer, and will delete them when finished
     DynamicArray<Window*> windows {Malloc::Instance()};
 
-    DynamicArray<Window*> window_stack {Malloc::Instance()}; // grows to show the layering of the windows,
-                                                             // should always start and end frames empty
+    // Grows to show the layering of the windows, should always start and end frames empty.
+    DynamicArray<Window*> window_stack {Malloc::Instance()};
+
     Window* curr_window = nullptr; // pushed/popped to represent what window is currently active
     Window* hovered_window = nullptr; // at the beginning of the frame find which layer the mouse is over
                                       // using the rects from last frame

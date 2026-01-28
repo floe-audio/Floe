@@ -35,7 +35,7 @@ static void Run(GuiBoxSystem& builder, Panel* panel) {
             {
                 u32 handle_col = style::Col(style::Colour::Surface1);
                 if (hot_or_active) handle_col = style::Col(style::Colour::Overlay0);
-                if (imgui.CurrentWindow()->style.flags.scrollbar_inside_padding) {
+                if (imgui.CurrentWindow()->settings.flags.scrollbar_inside_padding) {
                     auto const pad_l = imgui.VwToPixels(hot_or_active ? 1 : 3.0f);
                     auto const pad_r = 0;
                     auto const total_pad = pad_l + pad_r;
