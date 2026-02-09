@@ -1339,6 +1339,8 @@ static bool ClapActivate(const struct clap_plugin* plugin,
 
         if (floe.active) return true;
 
+        ScopedNoDenormals const no_denormals;
+
         // The CLAP spec says neither min nor max can be 0. But we found this can be the case. It's easy
         // enough for us to handle this case so we do.
 
