@@ -244,13 +244,7 @@ WaitResult WaitIfValueIsExpected(Atomic<u32>& value, u32 expected, Optional<u32>
 void WakeWaitingThreads(Atomic<u32>& value, NumWaitingThreads num_waiters);
 
 // Same as WaitIfValueIsExpected, but without spurious returns. Returns false if timed out.
-inline bool
-WaitIfValueIsExpectedStrong(Atomic<u32>& value, u32 expected, Optional<u32> timeout_milliseconds = {}) {
-    while (value.Load(LoadMemoryOrder::Acquire) == expected)
-        if (WaitIfValueIsExpected(value, expected, timeout_milliseconds) == WaitResult::TimedOut)
-            return false;
-    return true;
-}
+bool WaitIfValueIsExpectedStrong(Atomic<u32>& value, u32 expected, Optional<u32> timeout_milliseconds = {});
 
 // llvm-project/libc/src/__support/threads/sleep.h
 inline static void SpinLoopPause() {

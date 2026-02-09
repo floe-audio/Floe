@@ -84,6 +84,24 @@ Optional<String> GetThreadLocalThreadName() {
 
 } // namespace detail
 
+bool WaitIfValueIsExpectedStrong(Atomic<u32>& value, u32 expected, Optional<u32> timeout_milliseconds) {
+    Optional<Stopwatch> timer = {};
+    if (timeout_milliseconds) timer.Emplace();
+
+    while (value.Load(LoadMemoryOrder::Acquire) == expected) {
+        Optional<u32> remaining_timeout = {};
+        if (timeout_milliseconds) {
+            auto const elapsed_ms = timer->MillisecondsElapsed();
+            if (elapsed_ms >= *timeout_milliseconds) return false; // Already timed out.
+            remaining_timeout = CheckedCast<u32>(*timeout_milliseconds - elapsed_ms);
+        }
+
+        if (WaitIfValueIsExpected(value, expected, remaining_timeout) == WaitResult::TimedOut) return false;
+    }
+
+    return true;
+}
+
 TEST_CASE(TestFuture) {
     SUBCASE("future lifecycle states") {
         Future<int> future;
