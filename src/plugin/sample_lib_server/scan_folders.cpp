@@ -14,6 +14,8 @@ DoLibraryReading(String path,
     ArenaAllocatorWithInlineStorage<4000> scratch_arena {PageAllocator::Instance()};
     using H = sample_lib::TryHelpersOutcomeToError;
 
+    LogDebug(ModuleName::SampleLibraryServer, "Reading library {}", path);
+
     auto const format = TRY_OPT_OR(sample_lib::DetermineFileFormat(path), return k_nullopt);
 
     PathOrMemory path_or_memory = path;
@@ -38,6 +40,8 @@ DoLibraryReading(String path,
 
 static ErrorCodeOr<void> DoFolderScanning(ScanFolders& sf, String path) {
     ArenaAllocatorWithInlineStorage<4000> scratch_arena {PageAllocator::Instance()};
+
+    LogDebug(ModuleName::SampleLibraryServer, "Scanning folder {}", path);
 
     u32 num_scanned_entries = 0;
 
@@ -283,8 +287,9 @@ TEST_CASE(TestScanFoldersSetAndGet) {
     }
 
     {
-        auto const initial =
-            Array {FAKE_ABSOLUTE_PATH_PREFIX "a"_s, FAKE_ABSOLUTE_PATH_PREFIX "b"_s, FAKE_ABSOLUTE_PATH_PREFIX "c"_s};
+        auto const initial = Array {FAKE_ABSOLUTE_PATH_PREFIX "a"_s,
+                                    FAKE_ABSOLUTE_PATH_PREFIX "b"_s,
+                                    FAKE_ABSOLUTE_PATH_PREFIX "c"_s};
         SetFolders(sf, initial);
 
         auto const updated = Array {FAKE_ABSOLUTE_PATH_PREFIX "b"_s, FAKE_ABSOLUTE_PATH_PREFIX "d"_s};

@@ -749,8 +749,6 @@ PUBLIC ErrorCodeOr<fmt::UuidArray> SubmitEnvelope(Sentry& sentry,
     ErrorCodeOr<void> result = k_success;
 
     if (!sentry.online_reporting_disabled.Load(LoadMemoryOrder::Relaxed) && k_online_reporting) {
-        LogDebug(ModuleName::ErrorReporting, "Posting to Sentry: {}", envelope_buffer);
-
         auto const envelope_url = fmt::Format(scratch_arena,
                                               "https://{}:443/api/{}/envelope/",
                                               sentry.dsn.host,
