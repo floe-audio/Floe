@@ -180,6 +180,42 @@ TEST_CASE(TestFuture) {
         CHECK_EQ(future.Result(), 100);
     }
 
+    SUBCASE("non-trivially-copyable type") {
+        static int g_dtor_count;
+        struct Tracked {
+            Tracked(int v) : value(v) {}
+            Tracked(Tracked const& other) : value(other.value) {}
+            Tracked(Tracked&& other) : value(other.value) { other.value = -1; }
+            ~Tracked() { g_dtor_count++; }
+            Tracked& operator=(Tracked const&) = delete;
+            Tracked& operator=(Tracked&&) = delete;
+            int value;
+        };
+
+        g_dtor_count = 0;
+        {
+            Future<Tracked> future;
+            future.SetPending();
+            CHECK(future.TrySetRunning());
+            future.SetResult(Tracked {42});
+            CHECK_EQ(future.Result().value, 42);
+
+            auto result = future.ReleaseResult();
+            CHECK_EQ(result.value, 42);
+            CHECK(future.IsInactive());
+        }
+        CHECK(g_dtor_count > 0);
+
+        g_dtor_count = 0;
+        {
+            Future<Tracked> future;
+            future.SetPending();
+            CHECK(future.TrySetRunning());
+            future.SetResult(Tracked {99});
+        }
+        CHECK(g_dtor_count > 0);
+    }
+
     SUBCASE("stress test") {
         Future<u32> future;
         Thread producer;

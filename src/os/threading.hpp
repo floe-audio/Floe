@@ -628,7 +628,7 @@ class ScopedSpinLock {
 //     future.Shutdown(); // Ensure no worker is using `future`.
 // }
 //
-template <TriviallyCopyable Type>
+template <typename Type>
 struct Future {
     using ValueType = Type;
 
@@ -668,7 +668,7 @@ struct Future {
     // Consumer thread. Extracts the result if finished, resets the Future to Inactive.
     Optional<Type> TryReleaseResult() {
         if (IsFinished()) {
-            Type v = RawResult();
+            Type v = Move(RawResult());
             Reset();
             return v;
         } else
@@ -684,7 +684,7 @@ struct Future {
     // Consumer thread
     Type ReleaseResult() {
         ASSERT(IsFinished());
-        Type v = RawResult();
+        Type v = Move(RawResult());
         Reset();
         return v;
     }
@@ -692,6 +692,9 @@ struct Future {
     // Consumer thread
     void Reset() {
         ASSERT(!IsInProgress());
+        if constexpr (!TriviallyCopyable<Type>) {
+            if (IsFinished()) RawResult().~Type();
+        }
         status.Store((u32)Status::Inactive, StoreMemoryOrder::Release);
     }
 
@@ -729,27 +732,23 @@ struct Future {
     // Cancels, waits for finishing if needed and resets the status. Returns the value if there is one. Once
     // this function returns, the producer thread is done with this Future (so long as it honours the Future
     // API).
-    [[nodiscard]] Type* ShutdownAndRelease(Optional<u32> timeout_milliseconds = {}) {
+    [[nodiscard]] Optional<Type> ShutdownAndRelease(Optional<u32> timeout_milliseconds = {}) {
         auto const s = status.Load(LoadMemoryOrder::Acquire);
         switch ((Status)(s & k_status_mask)) {
             case Status::Finished:
                 if (s & k_working_bit) BusyWaitForWorkingBitClear();
-                status.Store((u32)Status::Inactive, StoreMemoryOrder::Release);
-                return &RawResult();
+                return ReleaseResult();
 
             case Status::Inactive:
                 if (s & k_working_bit) BusyWaitForWorkingBitClear();
-                return nullptr;
+                return {};
 
             case Status::Pending:
             case Status::Running: {
                 if (!(s & k_cancel_bit)) status.FetchOr(k_cancel_bit, RmwMemoryOrder::AcquireRelease);
                 if (!WaitUntilFinished(timeout_milliseconds)) Panic("Future::Shutdown timed out");
-                if (IsFinished()) {
-                    status.Store((u32)Status::Inactive, StoreMemoryOrder::Release);
-                    return &RawResult();
-                }
-                return nullptr;
+                if (IsFinished()) return ReleaseResult();
+                return {};
             }
         }
     }
@@ -798,8 +797,29 @@ struct Future {
 
     // Producer thread. After this returns, you must not touch this object again.
     void SetResult(Type const& v) {
-        RawResult() = v;
+        PLACEMENT_NEW(&result_storage) Type(v);
+        FinaliseSetResult();
+    }
 
+    // Producer thread. After this returns, you must not touch this object again.
+    void SetResult(Type&& v) {
+        PLACEMENT_NEW(&result_storage) Type(Move(v));
+        FinaliseSetResult();
+    }
+
+    // Consumer thread. Private.
+    void BusyWaitForWorkingBitClear() {
+        while (status.Load(LoadMemoryOrder::Acquire) & k_working_bit) {
+            // Busy spin - this should be very brief.
+            SpinLoopPause();
+        }
+    }
+
+    // Private.
+    Type& RawResult() { return *(Type*)result_storage.data; }
+
+    // Private.
+    void FinaliseSetResult() {
         while (true) {
             auto current = status.Load(LoadMemoryOrder::Acquire);
 
@@ -824,18 +844,13 @@ struct Future {
         status.FetchAnd(~k_working_bit, RmwMemoryOrder::Release);
     }
 
-    // Consumer thread. Private.
-    void BusyWaitForWorkingBitClear() {
-        while (status.Load(LoadMemoryOrder::Acquire) & k_working_bit) {
-            // Busy spin - this should be very brief.
-            SpinLoopPause();
+    ~Future() {
+        auto const s = status.Load(LoadMemoryOrder::Relaxed);
+        ASSERT(!IsInProgress(s));
+        if constexpr (!TriviallyCopyable<Type>) {
+            if (IsFinished(s)) RawResult().~Type();
         }
     }
-
-    // Private.
-    Type& RawResult() { return *(Type*)result_storage.data; }
-
-    ~Future() { ASSERT(!IsInProgress()); }
 
     alignas(Type) Array<u8, sizeof(Type)> result_storage {};
     Atomic<u32> status {(u32)Status::Inactive};
