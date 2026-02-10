@@ -60,7 +60,8 @@ struct ThreadPool {
 
     // The caller owns the future and is responsible for ensuring it outlives the async task.
     // The cleanup function is always called, regardless of whether the task completed successfully or was
-    // cancelled.
+    // cancelled - this is useful if the function is a lambda that captures some resources that should be
+    // released when the lambda is destroyed.
     void Async(auto& future, auto&& function, auto&& cleanup, JobPriority priority = JobPriority::Normal) {
         ZoneScoped;
         ASSERT(m_workers.size > 0);

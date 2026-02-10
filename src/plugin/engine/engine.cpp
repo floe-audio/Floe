@@ -474,7 +474,7 @@ static void OnMainThread(Engine& engine) {
     if (HasLegacyFavourites(engine.shared_engine_systems.prefs)) {
         auto& server = engine.shared_engine_systems.sample_library_server;
         sample_lib_server::RequestScanningOfUnscannedFolders(server);
-        if (!sample_lib_server::AreLibrariesLoading(server))
+        if (!sample_lib_server::AreLibrariesScanning(server))
             MigrateLegacyFavourites(engine.shared_engine_systems.prefs, server);
         else
             // Let's try again in a bit.

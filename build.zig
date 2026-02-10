@@ -1596,6 +1596,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "processor/sample_processing.cpp",
             "processor/voices.cpp",
             "sample_lib_server/sample_library_server.cpp",
+            "sample_lib_server/scan_folders.cpp",
         }),
         .flags = flags,
     });

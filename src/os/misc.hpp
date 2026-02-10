@@ -70,7 +70,7 @@ struct Memory {
 struct AllocOptions {
     usize size;
     usize align = k_max_alignment;
-    bool zero;
+    bool zero = false;
 };
 Memory GlobalAlloc(AllocOptions options);
 struct ReallocOptions {

@@ -24,237 +24,6 @@ using namespace detail;
 constexpr String k_trace_category = "SLS";
 constexpr u32 k_trace_colour = 0xfcba03;
 
-// ==========================================================================================================
-// Library loading
-
-struct PendingLibraryJobs {
-    struct Job {
-        enum class Type { ReadLibrary, ScanFolder };
-
-        struct ReadLibrary {
-            struct Args {
-                String path;
-                LibrariesAtomicList& libraries;
-            };
-            struct Result {
-                ArenaAllocator arena {PageAllocator::Instance()};
-                Optional<sample_lib::LibraryPtrOrError> result {};
-            };
-
-            Args args;
-            Result result {};
-        };
-
-        struct ScanFolder {
-            struct Args {
-                String path;
-                sample_lib_server::ScanFolder::Source source;
-                LibrariesAtomicList& libraries;
-            };
-            struct Result {
-                ErrorCodeOr<void> outcome {};
-            };
-
-            Args args;
-            Result result {};
-        };
-
-        using DataUnion = TaggedUnion<Type,
-                                      TypeAndTag<ReadLibrary*, Type::ReadLibrary>,
-                                      TypeAndTag<ScanFolder*, Type::ScanFolder>>;
-
-        DataUnion data;
-        Job* next {nullptr};
-        Atomic<bool> completed {false};
-        bool result_handled {};
-    };
-
-    u64 server_thread_id;
-    ThreadPool& thread_pool;
-    Semaphore& work_signaller;
-    Atomic<u32> num_uncompleted_jobs {0};
-    ScanFolders& folders;
-
-    Mutex job_mutex;
-    ArenaAllocator job_arena {PageAllocator::Instance()};
-    Atomic<Job*> jobs {};
-};
-
-static void DoCallbackForMatchingScanFolder(Span<MutexProtected<ScanFolder>> folders,
-                                            String path,
-                                            FunctionRef<void(ScanFolder&)> callback) {
-    for (auto& protected_f : folders) {
-        bool found = false;
-        protected_f.Use([&](ScanFolder& f) {
-            if (f.state.Load(LoadMemoryOrder::Relaxed) != ScanFolder::State::Inactive &&
-                path::Equal(f.path, path)) {
-                callback(f);
-                found = true;
-            }
-        });
-        if (found) return;
-    }
-}
-
-static void
-ReadLibraryAsync(PendingLibraryJobs& pending_library_jobs, LibrariesAtomicList& lib_list, String path);
-
-static void DoReadLibraryJob(PendingLibraryJobs::Job::ReadLibrary& job, ArenaAllocator& scratch_arena) {
-    ZoneScopedN("read library");
-
-    auto const& args = job.args;
-    ZoneText(path.data, path.size);
-
-    auto const try_read = [&]() -> Optional<sample_lib::LibraryPtrOrError> {
-        using H = sample_lib::TryHelpersOutcomeToError;
-
-        auto const format = TRY_OPT_OR(sample_lib::DetermineFileFormat(args.path), return k_nullopt);
-
-        PathOrMemory path_or_memory = args.path;
-        if (format == sample_lib::FileFormat::Lua) {
-            // it will be more efficient to just load the whole Lua into memory
-            auto const data = TRY_H(ReadEntireFile(args.path, scratch_arena)).ToConstByteSpan();
-            path_or_memory = data;
-            LogInfo(ModuleName::SampleLibraryServer, "reading Lua library ({} Kb)", data.size / 1024);
-        } else {
-            LogInfo(ModuleName::SampleLibraryServer, "reading MDATA library");
-        }
-
-        auto reader = TRY_H(Reader::FromPathOrMemory(path_or_memory));
-        auto const file_hash = TRY_H(sample_lib::Hash(args.path, reader, format));
-
-        for (auto& node : args.libraries) {
-            if (auto l = node.TryScoped()) {
-                if (l->lib->file_hash == file_hash && l->lib->path == args.path) return k_nullopt;
-            }
-        }
-
-        auto lib = TRY(sample_lib::Read(reader, format, args.path, job.result.arena, scratch_arena));
-        lib->file_hash = file_hash;
-        return lib;
-    };
-
-    job.result.result = try_read();
-}
-
-static void DoScanFolderJob(PendingLibraryJobs::Job::ScanFolder& job,
-                            ArenaAllocator& scratch_arena,
-                            PendingLibraryJobs& pending_library_jobs,
-                            LibrariesAtomicList& lib_list) {
-    auto const path = job.args.path;
-    ZoneScoped;
-    ZoneText(path.data, path.size);
-
-    auto const try_job = [&]() -> ErrorCodeOr<void> {
-        u32 num_scanned_entries = 0;
-        auto it = TRY(dir_iterator::RecursiveCreate(scratch_arena,
-                                                    path,
-                                                    {
-                                                        .wildcard = "*",
-                                                        .get_file_size = false,
-                                                    }));
-        DEFER { dir_iterator::Destroy(it); };
-        while (auto const entry = TRY(dir_iterator::Next(it, scratch_arena))) {
-            if (num_scanned_entries++ == 99999) {
-                LogError(ModuleName::SampleLibraryServer, "Scan folder has too many files in it");
-                return ErrorCode {FilesystemError::FolderContainsTooManyFiles};
-            }
-            if (ContainsSpan(entry->subpath, k_temporary_directory_prefix)) continue;
-            if (entry->type == FileType::Directory) continue;
-            auto const full_path = dir_iterator::FullPath(it, *entry, scratch_arena);
-            if (sample_lib::DetermineFileFormat(full_path))
-                ReadLibraryAsync(pending_library_jobs, lib_list, full_path);
-        }
-        return k_success;
-    };
-
-    job.result.outcome = try_job();
-}
-
-// thread-safe
-static void AddAsyncJob(PendingLibraryJobs& pending_library_jobs,
-                        LibrariesAtomicList& lib_list,
-                        PendingLibraryJobs::Job::DataUnion data) {
-    ZoneNamed(add_job, true);
-    PendingLibraryJobs::Job* job;
-    {
-        pending_library_jobs.job_mutex.Lock();
-        DEFER { pending_library_jobs.job_mutex.Unlock(); };
-
-        job = pending_library_jobs.job_arena.NewUninitialised<PendingLibraryJobs::Job>();
-        PLACEMENT_NEW(job)
-        PendingLibraryJobs::Job {
-            .data = data,
-            .next = pending_library_jobs.jobs.Load(LoadMemoryOrder::Relaxed),
-            .result_handled = false,
-        };
-        pending_library_jobs.jobs.Store(job, StoreMemoryOrder::Release);
-    }
-
-    pending_library_jobs.num_uncompleted_jobs.FetchAdd(1, RmwMemoryOrder::AcquireRelease);
-
-    pending_library_jobs.thread_pool.AddJob([&pending_library_jobs, &job = *job, &lib_list]() {
-        try {
-            ZoneNamed(do_job, true);
-            ArenaAllocator scratch_arena {PageAllocator::Instance()};
-            switch (job.data.tag) {
-                case PendingLibraryJobs::Job::Type::ReadLibrary: {
-                    DoReadLibraryJob(*job.data.Get<PendingLibraryJobs::Job::ReadLibrary*>(), scratch_arena);
-                    break;
-                }
-                case PendingLibraryJobs::Job::Type::ScanFolder: {
-                    DoScanFolderJob(*job.data.Get<PendingLibraryJobs::Job::ScanFolder*>(),
-                                    scratch_arena,
-                                    pending_library_jobs,
-                                    lib_list);
-                    break;
-                }
-            }
-
-            job.completed.Store(true, StoreMemoryOrder::Release);
-            pending_library_jobs.work_signaller.Signal();
-        } catch (PanicException) {
-            // pass
-        }
-    });
-}
-
-// thread-safe
-static void
-ReadLibraryAsync(PendingLibraryJobs& pending_library_jobs, LibrariesAtomicList& lib_list, String path) {
-    AddAsyncJob(
-        pending_library_jobs,
-        lib_list,
-        ({
-            pending_library_jobs.job_mutex.Lock();
-            DEFER { pending_library_jobs.job_mutex.Unlock(); };
-            auto j = pending_library_jobs.job_arena.NewUninitialised<PendingLibraryJobs::Job::ReadLibrary>();
-            PLACEMENT_NEW(j)
-            PendingLibraryJobs::Job::ReadLibrary {
-                .args =
-                    {
-                        .path = pending_library_jobs.job_arena.Clone(path),
-                        .libraries = lib_list,
-                    },
-                .result = {},
-            };
-            j;
-        }));
-}
-
-static bool MarkNotScannedFoldersRescanRequested(ScanFolders& scan_folders) {
-    bool any_rescan_requested = false;
-    for (auto& protected_f : scan_folders) {
-        protected_f.Use([&](ScanFolder& f) {
-            if (f.state.Load(LoadMemoryOrder::Relaxed) == ScanFolder::State::NotScanned) {
-                f.state.Store(ScanFolder::State::RescanRequested, StoreMemoryOrder::Relaxed);
-                any_rescan_requested = true;
-            }
-        });
-    }
-    return any_rescan_requested;
-}
-
 // server-thread
 static void NotifyAllChannelsOfLibraryChange(Server& server, sample_lib::LibraryIdRef library_id) {
     server.channels.Use([&](ArenaList<AsyncCommsChannel>& channels) {
@@ -263,198 +32,96 @@ static void NotifyAllChannelsOfLibraryChange(Server& server, sample_lib::Library
     });
 }
 
-// server-thread
-static bool UpdateLibraryJobs(Server& server,
-                              PendingLibraryJobs& pending_library_jobs,
-                              ArenaAllocator& scratch_arena,
-                              Optional<DirectoryWatcher>& watcher) {
-    ASSERT_EQ(CurrentThreadId(), pending_library_jobs.server_thread_id);
+// server-thread. Returns true if libraries are still scanning.
+static bool
+UpdateLibraryJobs(Server& server, ArenaAllocator& scratch_arena, Optional<DirectoryWatcher>& watcher) {
+    ASSERT_EQ(CurrentThreadId(), server.server_thread_id);
     ZoneNamed(outer, true);
 
-    // Trigger folder scanning if they're marked as 'rescan requested'.
-    for (auto& protected_f : pending_library_jobs.folders) {
-        PendingLibraryJobs::Job::ScanFolder* scan_job = nullptr;
+    while (auto const r = PopCompletedScanFolderResult(server.scan_folders)) {
+        auto const error_id = HashMultiple(Array {"sls-scan-folder"_s, r->path});
 
-        protected_f.Use([&](ScanFolder& f) {
-            if (f.state.Load(LoadMemoryOrder::Relaxed) != ScanFolder::State::RescanRequested) return;
-
-            f.state.Store(ScanFolder::State::Scanning, StoreMemoryOrder::Relaxed);
-
-            ASSERT(path::IsAbsolute(f.path));
-
-            {
-                pending_library_jobs.job_mutex.Lock();
-                DEFER { pending_library_jobs.job_mutex.Unlock(); };
-                scan_job =
-                    pending_library_jobs.job_arena.NewUninitialised<PendingLibraryJobs::Job::ScanFolder>();
-                PLACEMENT_NEW(scan_job)
-                PendingLibraryJobs::Job::ScanFolder {
-                    .args =
-                        {
-                            .path = pending_library_jobs.job_arena.Clone(f.path),
-                            .source = f.source,
-                            .libraries = server.libraries,
-                        },
-                    .result = {},
-                };
+        if (!r->outcome.HasError()) {
+            server.error_notifications.RemoveError(error_id);
+        } else {
+            auto const is_always_scanned_folder = IsAlwaysScannedFolder(server.scan_folders, r->path);
+            if (!(is_always_scanned_folder && r->outcome.Error() == FilesystemError::PathDoesNotExist)) {
+                if (auto err = server.error_notifications.BeginWriteError(error_id)) {
+                    DEFER { server.error_notifications.EndWriteError(*err); };
+                    dyn::AssignFitInCapacity(err->title, "Failed to scan library folder"_s);
+                    dyn::AssignFitInCapacity(err->message, r->path);
+                    err->error_code = r->outcome.Error();
+                }
             }
-        });
-
-        if (scan_job) AddAsyncJob(pending_library_jobs, server.libraries, scan_job);
+        }
     }
 
-    // Update the libraries_loading flag - used to indicate to other threads that libraries are being loaded.
-    // We use the DEFER to ensure that the flag is cleared only after all library-related processing has
-    // completed, including populating libraries_by_id.
-    if (pending_library_jobs.num_uncompleted_jobs.Load(LoadMemoryOrder::Acquire) != 0)
-        server.libraries_loading.Store(true, StoreMemoryOrder::Release);
-    DEFER {
-        if (pending_library_jobs.num_uncompleted_jobs.Load(LoadMemoryOrder::Acquire) == 0) {
-            server.libraries_loading.Store(false, StoreMemoryOrder::Release);
-            WakeWaitingThreads(server.libraries_loading, NumWaitingThreads::All);
-        }
-    };
+    while (auto r = PopCompletedLibraryReadResult(server.scan_folders)) {
+        if (!r->library) continue; // The library was a duplicate.
 
-    // Handle async jobs that have completed.
-    for (auto node = pending_library_jobs.jobs.Load(LoadMemoryOrder::Acquire); node != nullptr;
-         node = node->next) {
-        if (node->result_handled) continue;
-        if (!node->completed.Load(LoadMemoryOrder::Acquire)) continue;
+        auto const& outcome = *r->library;
 
-        DEFER {
-            node->result_handled = true;
-            pending_library_jobs.num_uncompleted_jobs.FetchSub(1, RmwMemoryOrder::AcquireRelease);
-        };
-        auto const& job = *node;
-        switch (job.data.tag) {
-            case PendingLibraryJobs::Job::Type::ReadLibrary: {
-                auto& j = *job.data.Get<PendingLibraryJobs::Job::ReadLibrary*>();
-                DEFER { j.PendingLibraryJobs::Job::ReadLibrary::~ReadLibrary(); };
-                auto const& args = j.args;
-                ZoneScopedN("job completed: library read");
-                ZoneText(path.data, path.size);
-                if (!j.result.result) {
-                    TracyMessageEx({k_trace_category, k_trace_colour, {}},
-                                   "skipping {}, it already exists",
-                                   path::Filename(args.path));
-                    continue;
-                }
-                auto const& outcome = *j.result.result;
+        auto const error_id = HashMultiple(Array {"sls-read-lib"_s, r->path});
 
-                auto const error_id = HashMultiple(Array {"sls-read-lib"_s, args.path});
+        switch (outcome.tag) {
+            case ResultType::Value: {
+                auto lib = outcome.GetFromTag<ResultType::Value>();
+                TracyMessageEx({k_trace_category, k_trace_colour, {}},
+                               "adding new library {}",
+                               path::Filename(r->path));
 
-                switch (outcome.tag) {
-                    case ResultType::Value: {
-                        auto lib = outcome.GetFromTag<ResultType::Value>();
-                        TracyMessageEx({k_trace_category, k_trace_colour, {}},
-                                       "adding new library {}",
-                                       path::Filename(args.path));
+                bool not_wanted = false;
 
-                        bool not_wanted = false;
-
-                        // Check if we actually want this library.
-                        for (auto it = server.libraries.begin(); it != server.libraries.end();)
-                            if (path::Equal(it->value.lib->path, lib->path)) {
-                                it = server.libraries.Remove(it);
-                                NotifyAllChannelsOfLibraryChange(server, lib->id);
-                            } else if (it->value.lib->id == lib->id) {
-                                if (it->value.lib->minor_version > lib->minor_version) {
-                                    not_wanted = true; // The existing library is newer.
-                                    ++it;
-                                } else {
-                                    it = server.libraries.Remove(it);
-                                    NotifyAllChannelsOfLibraryChange(server, lib->id);
-                                }
-                            } else {
-                                ++it;
-                            }
-
-                        if (!not_wanted) {
-                            auto new_node = server.libraries.AllocateUninitialised();
-                            PLACEMENT_NEW(&new_node->value)
-                            ListedLibrary {
-                                .arena = Move(j.result.arena),
-                                .lib = lib,
-                                .scan_timepoint = TimePoint::Now(),
-                            };
-                            server.libraries.Insert(new_node);
+                // Check if we actually want this library.
+                for (auto it = server.libraries.begin(); it != server.libraries.end();)
+                    if (path::Equal(it->value.lib->path, lib->path)) {
+                        it = server.libraries.Remove(it);
+                        NotifyAllChannelsOfLibraryChange(server, lib->id);
+                    } else if (it->value.lib->id == lib->id) {
+                        if (it->value.lib->minor_version > lib->minor_version) {
+                            not_wanted = true; // The existing library is newer.
+                            ++it;
+                        } else {
+                            it = server.libraries.Remove(it);
+                            NotifyAllChannelsOfLibraryChange(server, lib->id);
                         }
-
-                        server.error_notifications.RemoveError(error_id);
-                        break;
+                    } else {
+                        ++it;
                     }
-                    case ResultType::Error: {
-                        auto const error = outcome.GetFromTag<ResultType::Error>();
-                        if (error.code == FilesystemError::PathDoesNotExist) {
-                            for (auto it = server.libraries.begin(); it != server.libraries.end();)
-                                if (it->value.lib->path == args.path)
-                                    it = server.libraries.Remove(it);
-                                else
-                                    ++it;
-                            continue;
-                        }
 
-                        if (auto err = server.error_notifications.BeginWriteError(error_id)) {
-                            DEFER { server.error_notifications.EndWriteError(*err); };
-                            dyn::AssignFitInCapacity(err->title, "Failed to read library"_s);
-                            dyn::AssignFitInCapacity(err->message, args.path);
-                            if (error.message.size) fmt::Append(err->message, "\n{}\n", error.message);
-                            err->error_code = error.code;
-                        }
-                        break;
-                    }
+                if (!not_wanted) {
+                    auto new_node = server.libraries.AllocateUninitialised();
+                    PLACEMENT_NEW(&new_node->value)
+                    ListedLibrary {
+                        .arena = Move(r->arena),
+                        .lib = lib,
+                        .scan_timepoint = TimePoint::Now(),
+                    };
+                    server.libraries.Insert(new_node);
                 }
 
+                server.error_notifications.RemoveError(error_id);
                 break;
             }
-            case PendingLibraryJobs::Job::Type::ScanFolder: {
-                auto const& j = *job.data.Get<PendingLibraryJobs::Job::ScanFolder*>();
-                DEFER { j.PendingLibraryJobs::Job::ScanFolder::~ScanFolder(); };
-                auto const& path = j.args.path;
-                ZoneScopedN("job completed: folder scanned");
-                ZoneText(path.data, path.size);
 
-                auto const error_id = HashMultiple(Array {"sls-scan-folder"_s, path});
-
-                ScanFolder::State new_state {};
-
-                if (!j.result.outcome.HasError()) {
-                    server.error_notifications.RemoveError(error_id);
-                    new_state = ScanFolder::State::ScannedSuccessfully;
-                } else {
-                    auto const is_always_scanned_folder =
-                        j.args.source == ScanFolder::Source::AlwaysScannedFolder;
-                    if (!(is_always_scanned_folder &&
-                          j.result.outcome.Error() == FilesystemError::PathDoesNotExist)) {
-
-                        if (auto err = server.error_notifications.BeginWriteError(error_id)) {
-                            DEFER { server.error_notifications.EndWriteError(*err); };
-                            dyn::AssignFitInCapacity(err->title, "Failed to scan library folder"_s);
-                            dyn::AssignFitInCapacity(err->message, path);
-                            err->error_code = j.result.outcome.Error();
-                        }
-                    }
-                    new_state = ScanFolder::State::ScanFailed;
+            case ResultType::Error: {
+                auto const error = outcome.GetFromTag<ResultType::Error>();
+                if (error.code == FilesystemError::PathDoesNotExist) {
+                    for (auto it = server.libraries.begin(); it != server.libraries.end();)
+                        if (it->value.lib->path == r->path)
+                            it = server.libraries.Remove(it);
+                        else
+                            ++it;
+                    continue;
                 }
 
-                // This scan folder might have been given another request for a rescan while it was
-                // mid-scan. We want to honour that request still, so we use a CAS to ensure that we only
-                // mark this as completed if no rescan request was given.
-
-                // The server thread will trigger a new scanning job if the state is RescanRequested
-                // (simultaneously turning the state to Scanning). There could already be a scanning job
-                // running though. The first scanning job should not overwrite the state if it is
-                // RescanRequested because the server thread needs to see RescanRequested in order to trigger
-                // a new scanning job.
-                DoCallbackForMatchingScanFolder(pending_library_jobs.folders, path, [&](ScanFolder& f) {
-                    if (f.state.Load(LoadMemoryOrder::Relaxed) == ScanFolder::State::RescanRequested) {
-                        // Don't overwrite RescanRequested - we'll handle it again.
-                        return;
-                    }
-                    f.state.Store(new_state, StoreMemoryOrder::Release);
-                    WakeWaitingThreads(f.state, NumWaitingThreads::All);
-                });
-
+                if (auto err = server.error_notifications.BeginWriteError(error_id)) {
+                    DEFER { server.error_notifications.EndWriteError(*err); };
+                    dyn::AssignFitInCapacity(err->title, "Failed to read library"_s);
+                    dyn::AssignFitInCapacity(err->message, r->path);
+                    if (error.message.size) fmt::Append(err->message, "\n{}\n", error.message);
+                    err->error_code = error.code;
+                }
                 break;
             }
         }
@@ -465,20 +132,16 @@ static bool UpdateLibraryJobs(Server& server,
         ZoneNamedN(fs_watch, "fs watch", true);
 
         auto const dirs_to_watch = ({
-            DynamicArray<DirectoryToWatch> dirs {scratch_arena};
-            for (auto& protected_f : pending_library_jobs.folders) {
-                protected_f.Use([&](ScanFolder& f) {
-                    if (f.state.Load(LoadMemoryOrder::Relaxed) != ScanFolder::State::ScannedSuccessfully)
-                        return;
-                    dyn::Append(dirs,
-                                {
-                                    .path = scratch_arena.Clone(f.path),
-                                    .recursive = true,
-                                    .user_data = nullptr,
-                                });
-                });
+            auto const scan_folders = GetFolders(server.scan_folders, scratch_arena);
+            auto dirs = scratch_arena.AllocateExactSizeUninitialised<DirectoryToWatch>(scan_folders.size);
+            for (auto const [i, path] : Enumerate(scan_folders)) {
+                dirs[i] = {
+                    .path = path, // Already in the scratch arena.
+                    .recursive = true,
+                    .user_data = nullptr,
+                };
             }
-            dirs.ToOwnedSpan();
+            dirs;
         });
 
         // We buffer these up so we don't spam the channels with notifications.
@@ -497,9 +160,11 @@ static bool UpdateLibraryJobs(Server& server,
                      "Reading directory changes failed: {}",
                      outcome.Error());
         } else if (!server.disable_file_watching.Load(LoadMemoryOrder::Relaxed)) {
-            auto const dir_changes_span = outcome.Value();
-            for (auto const& dir_changes : dir_changes_span) {
+            // Buffer up the rescans to avoid wasted scans.
+            DynamicArray<String> libraries_to_read {scratch_arena};
+            DynamicArray<String> folders_to_scan {scratch_arena};
 
+            for (auto const& dir_changes : outcome.Value()) {
                 if (dir_changes.error) {
                     // IMPROVE: handle this
                     LogDebug(ModuleName::SampleLibraryServer,
@@ -510,60 +175,37 @@ static bool UpdateLibraryJobs(Server& server,
 
                 for (auto const& subpath_changeset : dir_changes.subpath_changesets) {
                     if (subpath_changeset.changes & DirectoryWatcher::ChangeType::ManualRescanNeeded) {
-                        DoCallbackForMatchingScanFolder(pending_library_jobs.folders,
-                                                        dir_changes.linked_dir_to_watch->path,
-                                                        [&](ScanFolder& f) {
-                                                            f.state.Store(ScanFolder::State::RescanRequested,
-                                                                          StoreMemoryOrder::Relaxed);
-                                                        });
+                        dyn::AppendIfNotAlreadyThere(folders_to_scan, dir_changes.linked_dir_to_watch->path);
                         continue;
                     }
 
                     // Changes to the watched directory itself.
                     if (subpath_changeset.subpath.size == 0) continue;
 
-                    String full_path = {};
-
-                    DoCallbackForMatchingScanFolder(
-                        pending_library_jobs.folders,
-                        dir_changes.linked_dir_to_watch->path,
-                        [&](ScanFolder& scan_folder) {
-                            full_path =
-                                path::Join(scratch_arena,
-                                           Array {String(scan_folder.path), subpath_changeset.subpath});
-                        });
-
-                    if (full_path.size == 0) continue;
+                    auto const full_path =
+                        path::Join(scratch_arena,
+                                   Array {dir_changes.linked_dir_to_watch->path, subpath_changeset.subpath});
 
                     // If a directory has been renamed, it might have moved from somewhere else and it
                     // might contain libraries. We need to rescan because we likely won't get 'created'
                     // notifications for the files inside it.
-                    if (subpath_changeset.changes & (DirectoryWatcher::ChangeType::RenamedNewName |
-                                                     DirectoryWatcher::ChangeType::RenamedOldOrNewName)) {
-                        auto const file_type = ({
+                    if ((subpath_changeset.changes & (DirectoryWatcher::ChangeType::RenamedNewName |
+                                                      DirectoryWatcher::ChangeType::RenamedOldOrNewName)) &&
+                        ({
                             Optional<FileType> t {};
                             if (subpath_changeset.file_type)
                                 t = subpath_changeset.file_type;
                             else if (auto const o = GetFileType(full_path); o.HasValue())
                                 t = o.Value();
                             t;
-                        });
-
-                        if (file_type == FileType::Directory) {
-                            DoCallbackForMatchingScanFolder(pending_library_jobs.folders,
-                                                            dir_changes.linked_dir_to_watch->path,
-                                                            [&](ScanFolder& f) {
-                                                                f.state.Store(
-                                                                    ScanFolder::State::RescanRequested,
-                                                                    StoreMemoryOrder::Relaxed);
-                                                            });
-                            continue;
-                        }
+                        }) == FileType::Directory) {
+                        dyn::AppendIfNotAlreadyThere(folders_to_scan, dir_changes.linked_dir_to_watch->path);
+                        continue;
                     }
 
                     if (auto const lib_format = sample_lib::DetermineFileFormat(full_path)) {
                         // We queue-up a scan of the file. It will handle new/deleted/modified.
-                        ReadLibraryAsync(pending_library_jobs, server.libraries, full_path);
+                        dyn::AppendIfNotAlreadyThere(libraries_to_read, full_path);
                     } else {
                         for (auto& node : server.libraries) {
                             auto const& lib = *node.value.lib;
@@ -573,14 +215,14 @@ static bool UpdateLibraryJobs(Server& server,
                             if (path::Equal(full_path, lib_dir)) {
                                 // The library folder itself has changed. We queue-up a scan of the library.
                                 // It will handle new/deleted/modified.
-                                ReadLibraryAsync(pending_library_jobs, server.libraries, lib.path);
+                                dyn::AppendIfNotAlreadyThere(libraries_to_read, lib.path);
                             } else if (path::IsWithinDirectory(full_path, lib_dir)) {
                                 if (path::Equal(path::Extension(full_path), ".lua")) {
                                     // If the file is a Lua file, it's probably a file used by the main Lua
                                     // file. We need to rescan the library.
-                                    ReadLibraryAsync(pending_library_jobs, server.libraries, lib.path);
+                                    dyn::AppendIfNotAlreadyThere(libraries_to_read, lib.path);
                                 } else {
-                                    // Something within the library folder has changed
+                                    // Something within the library folder has changed such as an audio file.
                                     dyn::AppendIfNotAlreadyThere(libraries_that_changed, &node);
 
                                     for (auto& d : node.value.audio_datas) {
@@ -593,6 +235,13 @@ static bool UpdateLibraryJobs(Server& server,
                         }
                     }
                 }
+            }
+
+            if (libraries_to_read.size || folders_to_scan.size) {
+                for (auto const path : libraries_to_read)
+                    AsyncReadLibrary(server.scan_folders, path, true);
+                for (auto const path : folders_to_scan)
+                    AsyncScanFolder(server.scan_folders, path, true);
             }
         }
 
@@ -608,12 +257,8 @@ static bool UpdateLibraryJobs(Server& server,
         if (lib.id == sample_lib::k_builtin_library_id)
             within_any_folder = true;
         else
-            for (auto& protected_f : pending_library_jobs.folders) {
-                protected_f.Use([&](ScanFolder& f) {
-                    if (f.state.Load(LoadMemoryOrder::Relaxed) == ScanFolder::State::Inactive) return;
-                    if (path::IsWithinDirectory(lib.path, f.path)) within_any_folder = true;
-                });
-            }
+            for (auto const f : GetFolders(server.scan_folders, scratch_arena))
+                if (path::IsWithinDirectory(lib.path, f)) within_any_folder = true;
 
         if (!within_any_folder)
             it = server.libraries.Remove(it);
@@ -663,9 +308,7 @@ static bool UpdateLibraryJobs(Server& server,
         }
     }
 
-    auto const library_work_still_pending =
-        pending_library_jobs.num_uncompleted_jobs.Load(LoadMemoryOrder::Acquire) != 0;
-    return library_work_still_pending;
+    return !TryMarkScanningComplete(server.scan_folders);
 }
 
 static Optional<DirectoryWatcher> CreateDirectoryWatcher(ThreadsafeErrorNotifications& error_notifications) {
@@ -1499,12 +1142,6 @@ static void ServerThreadProc(Server& server) {
         PendingResources pending_resources {
             .server_thread_id = server.server_thread_id,
         };
-        PendingLibraryJobs pending_library_jobs {
-            .server_thread_id = server.server_thread_id,
-            .thread_pool = server.thread_pool,
-            .work_signaller = server.work_signaller,
-            .folders = server.scan_folders,
-        };
 
         // The inner processing loop that spins while there is work to do.
         while (true) {
@@ -1516,9 +1153,6 @@ static void ServerThreadProc(Server& server) {
                 server.request_debug_dump_current_state.Exchange(false, RmwMemoryOrder::Relaxed)) {
                 ZoneNamedN(dump, "dump", true);
                 LogDebug(ModuleName::SampleLibraryServer, "Dumping current state of loading thread");
-                LogDebug(ModuleName::SampleLibraryServer,
-                         "Libraries currently loading: {}",
-                         pending_library_jobs.num_uncompleted_jobs.Load(LoadMemoryOrder::Acquire));
                 DumpPendingResourcesDebugInfo(pending_resources);
                 LogDebug(ModuleName::SampleLibraryServer, "\nAvailable Libraries:");
                 for (auto& lib : server.libraries) {
@@ -1538,15 +1172,14 @@ static void ServerThreadProc(Server& server) {
 
             if (ConsumeResourceRequests(pending_resources, scratch_arena, server.request_queue)) {
                 // For quick initialisation, we load libraries only when there's been a request.
-                MarkNotScannedFoldersRescanRequested(server.scan_folders);
+                ScanUnscannedFolders(server.scan_folders);
             }
 
             // There's 2 separate systems here. The library loading, and then the audio loading (which
             // includes Instruments and IRs). Before we can fulfil a request for an instrument or IR, we need
             // to have a loaded library. The library contains the information needed to locate the audio.
 
-            auto const libraries_are_still_loading =
-                UpdateLibraryJobs(server, pending_library_jobs, scratch_arena, watcher);
+            auto const libraries_are_still_loading = UpdateLibraryJobs(server, scratch_arena, watcher);
 
             auto const resources_are_still_loading =
                 UpdatePendingResources(pending_resources, server, libraries_are_still_loading);
@@ -1678,17 +1311,24 @@ static sample_lib::Library* BuiltinLibrary() {
 }
 
 Server::Server(ThreadPool& pool,
-               String always_scanned_folder,
+               Optional<String> always_scanned_folder,
                ThreadsafeErrorNotifications& error_notifications)
     : error_notifications(error_notifications)
-    , thread_pool(pool) {
-    if (always_scanned_folder.size) {
-        auto& folder = scan_folders[0].GetWithoutMutexProtection();
-        dyn::Assign(folder.path, always_scanned_folder);
-        folder.source = ScanFolder::Source::AlwaysScannedFolder;
-        folder.state.Store(ScanFolder::State::NotScanned, StoreMemoryOrder::Release);
-    }
-
+    , thread_pool(pool)
+    , scan_folders {
+          .should_read_library =
+              [this](u64 lib_hash, String lib_path) {
+                  for (auto& node : libraries) {
+                      if (auto const l = node.TryScoped()) {
+                          if (l->lib->file_hash == lib_hash && l->lib->path == lib_path) return false;
+                      }
+                  }
+                  return true;
+              },
+          .thread_pool = pool,
+          .work_signaller = work_signaller,
+      } {
+    SetAlwaysScannedFolder(scan_folders, always_scanned_folder);
     {
         auto node = libraries.AllocateUninitialised();
         PLACEMENT_NEW(&node->value)
@@ -1744,84 +1384,24 @@ RequestId SendAsyncLoadRequest(Server& server, AsyncCommsChannel& channel, LoadR
     return queued_request.id;
 }
 
-bool AreLibrariesLoading(Server& server) { return !WaitIfLibrariesAreLoading(server, 0u); }
+bool AreLibrariesScanning(Server& server) { return IsScanning(server.scan_folders); }
 
-bool WaitIfLibrariesAreLoading(Server& server, Optional<u32> timeout) {
-    Stopwatch stopwatch;
-
-    while (true) {
-        auto const elapsed = stopwatch.MillisecondsElapsed();
-        if (timeout && *timeout != 0 && elapsed >= *timeout) return false;
-
-        // Wait if there are any libraries loading.
-        if (auto const loading = server.libraries_loading.Load(LoadMemoryOrder::Acquire)) {
-            if (timeout && *timeout == 0) return false;
-            WaitIfValueIsExpected(server.libraries_loading,
-                                  loading,
-                                  timeout ? CheckedCast<u32>(*timeout - elapsed) : k_nullopt);
-            continue; // Re-check all conditions.
-        }
-
-        // Wait if any scan folders are scanning or pending scan.
-        {
-            bool any_scanning = false;
-            for (auto& protected_f : server.scan_folders) {
-                auto& atomic_state = protected_f.GetWithoutMutexProtection().state;
-                auto const state = atomic_state.Load(LoadMemoryOrder::Acquire);
-                if (state == ScanFolder::State::RescanRequested || state == ScanFolder::State::Scanning) {
-                    if (timeout && *timeout == 0) return false;
-                    WaitIfValueIsExpected(atomic_state,
-                                          state,
-                                          timeout ? CheckedCast<u32>(*timeout - elapsed) : k_nullopt);
-                    any_scanning = true;
-                    break;
-                }
-            }
-            if (any_scanning) continue; // Re-check all conditions.
-        }
-
-        // All conditions clear.
-        break;
-    }
-
-    return true;
+bool WaitIfLibrariesAreScanning(Server& server, Optional<u32> timeout_ms) {
+    return WaitIfLibrariesAreScanning(server.scan_folders, timeout_ms);
 }
 
-void RequestScanningOfUnscannedFolders(Server& server) {
-    if (MarkNotScannedFoldersRescanRequested(server.scan_folders)) server.work_signaller.Signal();
-}
+void RequestScanningOfUnscannedFolders(Server& server) { ScanUnscannedFolders(server.scan_folders); }
 
 void RescanFolder(Server& server, String path) {
-    bool found = false;
-    for (auto& protected_f : server.scan_folders) {
-        protected_f.Use([&](ScanFolder& f) {
-            if (f.state.Load(LoadMemoryOrder::Relaxed) != ScanFolder::State::Inactive &&
-                (path::Equal(f.path, path) || path::IsWithinDirectory(path, f.path))) {
-                f.state.Store(ScanFolder::State::RescanRequested, StoreMemoryOrder::Relaxed);
-                found = true;
-            }
-        });
-    }
-    if (found) server.work_signaller.Signal();
+    ArenaAllocatorWithInlineStorage<4000> scratch_arena {PageAllocator::Instance()};
+    for (auto const f : GetFolders(server.scan_folders, scratch_arena))
+        if (path::Equal(f, path) || path::IsWithinDirectory(path, f))
+            AsyncScanFolder(server.scan_folders, f, true);
 }
 
 void SetExtraScanFolders(Server& server, Span<String const> extra_folders) {
     ASSERT(extra_folders.size <= k_max_extra_scan_folders);
-    for (auto [index, protected_f] : Enumerate(
-             Span<MutexProtected<ScanFolder>> {server.scan_folders}.SubSpan(1))) { // Skip always-scanned
-        protected_f.Use([&](ScanFolder& f) {
-            if (index < extra_folders.size) {
-                dyn::Assign(f.path, extra_folders[index]);
-                f.source = ScanFolder::Source::ExtraFolder;
-                f.state.Store(ScanFolder::State::NotScanned, StoreMemoryOrder::Release);
-            } else {
-                f.state.Store(ScanFolder::State::Inactive, StoreMemoryOrder::Release);
-            }
-            WakeWaitingThreads(f.state, NumWaitingThreads::All);
-        });
-    }
-
-    server.work_signaller.Signal();
+    SetFolders(server.scan_folders, extra_folders);
 }
 
 detail::LibrariesAtomicList& LibrariesList(Server& server) { return server.libraries; }
