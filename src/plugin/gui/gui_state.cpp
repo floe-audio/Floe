@@ -29,12 +29,12 @@
 #include "gui/gui_frame_context.hpp"
 #include "gui/gui_library_images.hpp"
 #include "gui/gui_mid_panel.hpp"
+#include "gui2_legacy_params_panel.hpp"
 #include "gui_developer_panel.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_framework/image.hpp"
 #include "gui_framework/renderer.hpp"
-#include "gui_modal_viewports.hpp"
 #include "gui_prefs.hpp"
 #include "old/gui_widget_helpers.hpp"
 #include "plugin/plugin.hpp"
@@ -374,7 +374,7 @@ void GuiUpdate(GuiState& g) {
     if (!PRODUCTION_BUILD && NullTermStringsEqual(g.engine.host.name, k_floe_standalone_host_name))
         DoStandaloneErrorGUI(g);
 
-    DoModalViewports(g);
+    DoLegacyParamsPanel(g.builder, g);
 
     // GUI2 panels. This is the future.
     {

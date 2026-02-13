@@ -20,7 +20,6 @@
 #include "gui/gui2_preset_browser.hpp"
 #include "gui/gui2_save_preset_panel.hpp"
 #include "gui/gui_library_images.hpp"
-#include "gui/gui_modal_viewports.hpp"
 #include "gui_developer_panel.hpp"
 #include "gui_envelope.hpp"
 #include "gui_file_picker.hpp"

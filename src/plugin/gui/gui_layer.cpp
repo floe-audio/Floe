@@ -13,7 +13,6 @@
 #include "gui_envelope.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_library_images.hpp"
-#include "gui_modal_viewports.hpp"
 #include "gui_state.hpp"
 #include "gui_viewport_utils.hpp"
 #include "gui_waveform.hpp"
