@@ -40,7 +40,7 @@ pkgs.mkShell rec {
     pkgs.hunspellDicts.en_GB-ise
     pkgs.lychee # link checker
     zigpkgs."0.14.0"
-    pkgs.zls
+    pkgs.zls_0_14
     pkgs.sentry-cli
     pkgs.nodejs_24 # For Docusaurus website development
 
@@ -60,15 +60,16 @@ pkgs.mkShell rec {
     [ ]
     ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
       pkgs.alsa-lib
-      pkgs.xorg.libX11
-      pkgs.xorg.libXext
-      pkgs.xorg.libXcursor
-      pkgs.libGL
       pkgs.curl
-      pkgs.libGLU
       pkgs.glibc
+      pkgs.libGL
+      pkgs.libGLU
+      pkgs.libxcb
       pkgs.vulkan-headers
       pkgs.vulkan-loader
+      pkgs.xorg.libX11
+      pkgs.xorg.libXcursor
+      pkgs.xorg.libXext
     ];
 
   shellHook = ''
