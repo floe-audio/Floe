@@ -1854,8 +1854,8 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
                 .gen_cdb_fragments = true,
             }).flags.items,
         });
-        // NOTE(Sam): disabling pulse audio because it was causing lots of stutters on my machine.
-        lib.root_module.addCMacro("MA_NO_PULSEAUDIO", "1");
+        // NOTE(Sam): disabling alsa because it was causing a deadlock on my machine.
+        lib.root_module.addCMacro("MA_NO_ALSA", "1");
         lib.linkLibC();
         lib.addIncludePath(ctx.dep_miniaudio.path(""));
         switch (cfg.target.os.tag) {
