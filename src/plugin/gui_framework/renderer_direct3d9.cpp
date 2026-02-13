@@ -18,6 +18,7 @@
 #include "utils/logger/logger.hpp"
 
 #include "draw_list.hpp"
+#include "fonts.hpp"
 #include "renderer.hpp"
 
 struct CUSTOMVERTEX {
