@@ -1,3 +1,6 @@
+// Copyright 2026 Sam Windell
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
 
 #include "foundation/foundation.hpp"
@@ -6,6 +9,10 @@
 // A quick and simple growable array that uses the 'global allocator' (malloc).
 // Ideally this would somehow be just part of DynamicArray, but currently DynamicArray does not depend any
 // 'malloc' includes, and it requires using the Allocator interface.
+//
+// Based on code from dear imgui:
+// Copyright (c) 2014-2024 Omar Cornut
+// SPDX-License-Identifier: MIT
 
 template <TriviallyCopyable T>
 struct BasicDynamicArray {

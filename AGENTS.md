@@ -34,8 +34,8 @@ Here are some notable subdirectories, though there are plenty more.
 Floe uses a few third-party libraries. These are typically managed by the Zig package manager. See `build.zig.zon` for the full list. Once the project has been built once, you can get the source code for these libraries by searching the `.zig-cache-global/` directory using `fd` or `find`. This is the directory we've configured Zig to put downloaded packages.
 
 # Workflow
-- **NEVER ask permission before compiling**. Just run the compile command automatically when needed to verify changes. Do not use AskUserQuestion or any prompting mechanism before compilation.
-- Run the compile command. Don't try filtering it's output with grep. Just read all of it. It will contain errors with file names and line numbers - understand the error and fix it if necessary.
+- **NEVER ask permission before compiling**. Just run the compile command automatically when needed to verify changes.
+- Run the compile command. Don't try filtering its output with grep, tail or head. Just read all of it. It will contain errors with file names and line numbers - understand the error and fix it if necessary.
 - Where possible, add tests. We have our own test framework that is similar to Catch2: src/tests/framework.hpp. We tend to put tests in the same cpp file as the implementation. Write a test case with TEST_CASE(TestName). Then use TEST_REGISTRATION(RegisterMyTests) to create a registration function, inside that use REGISTER_TEST(TestName) to register the test, finally add this registration function to src/tests/tests_main.cpp. If you want an example of a test, look at src/common_infrastructure/autosave.cpp. The API for the test framework is in src/tests/framework.hpp.
 
 # Style
