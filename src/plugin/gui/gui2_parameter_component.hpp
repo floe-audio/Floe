@@ -26,3 +26,15 @@ Box DoKnobParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,
                     ParameterComponentOptions const& options = {});
+
+struct MenuParameterComponentOptions {
+    bool greyed_out = false;
+    bool label = true;
+    String override_tooltip {};
+    String override_label {};
+};
+
+Box DoMenuParameter(GuiState& g,
+                    Box parent,
+                    DescribedParamValue const& param,
+                    MenuParameterComponentOptions const& options = {});

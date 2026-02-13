@@ -3,11 +3,15 @@
 
 #include "gui2_parameter_component.hpp"
 
+#include "common_infrastructure/descriptors/param_descriptors.hpp"
+
 #include "gui/gui_drawing_helpers.hpp"
 #include "gui2_common_modal_panel.hpp"
+#include "gui2_macros.hpp"
 #include "gui_state.hpp"
 #include "old/gui_widget_helpers.hpp"
 #include "processor/param.hpp"
+#include "processor/processor.hpp"
 
 static void DoMidiLearnMenu(GuiState& g, ParamIndex param_index) {
     auto const root = DoBox(g.builder,
@@ -141,60 +145,203 @@ static String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator&
     return buf.ToOwnedSpan();
 }
 
-#if 0
+static void DoMenuParameterMenu(GuiState& g, ParamIndex param_index) {
+    auto const menu_root = DoBox(g.builder,
+                                 {
+                                     .layout {
+                                         .size = layout::k_hug_contents,
+                                         .contents_direction = layout::Direction::Column,
+                                         .contents_align = layout::Alignment::Start,
+                                     },
+                                 });
+    auto const current = g.engine.processor.main_params.IntValue<int>(param_index);
 
-Box DoIntParameter(GuiState& g, Box parent, DescribedParamValue const& param) {
-    auto& builder = g.builder;
-
-    ASSERT(param.info.value_type == ParamValueType::Float);
-
-    auto const type = param.info.IsLayerParam()
-                          ? LayoutType::Layer
-                          : (param.info.IsEffectParam() ? LayoutType::Effect : LayoutType::Generic);
-
-    Margins margins {.b = LiveWw(UiSizeId::ParamComponentLabelGapY)};
-
-    auto width = LiveWw(UiSizeId::FXDraggerWidth);
-    auto height = LiveWw(UiSizeId::FXDraggerHeight);
-    margins.t += LiveWw(UiSizeId::FXDraggerMarginT);
-    margins.b += LiveWw(UiSizeId::FXDraggerMarginB);
-
-    // TODO: modern GuiBuilder version of:
-    // bool Dragger(GuiState& g, DescribedParamValue const& param, Rect r, Style const& style)
+    for (auto const [index, item] : Enumerate(ParameterMenuItems(param_index))) {
+        g.builder.imgui.PushId(index);
+        DEFER { g.builder.imgui.PopId(); };
+        if (MenuItem(g.builder,
+                     menu_root,
+                     {
+                         .text = item,
+                         .is_selected = (int)index == current,
+                     })
+                .button_fired) {
+            SetParameterValue(g.engine.processor, param_index, (f32)index, {});
+        }
+    }
 }
 
-Box DoMenuParameter(GuiState& g, Box parent, DescribedParamValue const& param) {
-    auto& builder = g.builder;
-
+// TODO: this needs a lot of work still
+Box DoMenuParameter(GuiState& g,
+                    Box parent,
+                    DescribedParamValue const& param,
+                    MenuParameterComponentOptions const& options) {
     ASSERT(param.info.value_type == ParamValueType::Menu);
 
-    auto const type = param.info.IsLayerParam()
-                          ? LayoutType::Layer
-                          : (param.info.IsEffectParam() ? LayoutType::Effect : LayoutType::Generic);
-
-    auto width = type == LayoutType::Layer
-                     ? LiveWw(UiSizeId::ParamComponentLargeWidth)
-                     : (type == LayoutType::Effect ? LiveWw(UiSizeId::ParamComponentSmallWidth)
-                                                   : LiveWw(UiSizeId::ParamComponentExtraSmallWidth));
-
-    Margins const margins {.b = LiveWw(UiSizeId::ParamComponentLabelGapY)};
-
-    auto const menu_items = ParameterMenuItems(param.info.index);
-    auto strings_width = MaxStringLength(g, menu_items) + (LiveWw(UiSizeId::MenuButtonTextMarginL) * 2);
     auto const btn_w = LiveWw(UiSizeId::NextPrevButtonSize);
     auto const margin_r = LiveWw(UiSizeId::ParamIntButtonMarginR);
-    auto const param_popup_button_height = LiveWw(UiSizeId::ParamPopupButtonHeight);
-    strings_width += btn_w * 2 + margin_r;
-    width = strings_width;
-    auto height = param_popup_button_height;
+    auto const menu_text_margin = LiveWw(UiSizeId::MenuButtonTextMarginL);
+    auto const strings_width =
+        g.imgui.draw_list->fonts.Current()->LargestStringWidth(0, ParameterMenuItems(param.info.index)) +
+        (menu_text_margin * 2);
+    auto const width = strings_width + (btn_w * 2) + margin_r;
+    auto const height = LiveWw(UiSizeId::ParamPopupButtonHeight);
 
-    // TODO: modern GuiBuilder version of:
-    // ButtonReturnObject PopupWithItems(GuiState& g, DescribedParamValue const& param, Rect r, Style const&
-    // style)
-    // Specifically: container with menu + tooltip (ParamTooltip), left/right buttons
+    auto const container = DoBox(g.builder,
+                                 {
+                                     .parent = parent,
+                                     .id_extra = (u64)param.info.id,
+                                     .layout {
+                                         .size = layout::k_hug_contents,
+                                         .contents_gap = LiveWw(UiSizeId::ParamComponentLabelGapY),
+                                         .contents_direction = layout::Direction::Column,
+                                         .contents_align = layout::Alignment::Start,
+                                     },
+                                 });
+
+    // Row containing left button, menu text, right button.
+    auto const row = DoBox(g.builder,
+                           {
+                               .parent = container,
+                               .layout {
+                                   .size = {width, height},
+                                   .contents_direction = layout::Direction::Row,
+                                   .contents_align = layout::Alignment::Middle,
+                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                               },
+                           });
+
+    Optional<f32> new_val {};
+
+    // Menu text button that opens a popup.
+    auto const popup_id = (imgui::Id)(SourceLocationHash() ^ param.info.id);
+    auto const menu_btn =
+        DoBox(g.builder,
+              {
+                  .parent = row,
+                  .text = ParamMenuText(param.info.index, param.LinearValue()),
+                  .text_colours = Splat(options.greyed_out ? style::Colour::Overlay0 | style::Colour::DarkMode
+                                                           : style::Colour::Text | style::Colour::DarkMode),
+                  .background_fill_auto_hot_active_overlay = true,
+                  .layout {
+                      .size = {layout::k_fill_parent, height},
+                  },
+                  .tooltip = FunctionRef<String()> {[&]() -> String {
+                      if (options.override_tooltip.size) return options.override_tooltip;
+                      return ParamTooltipText(param, g.builder.arena);
+                  }},
+                  .button_behaviour = imgui::ButtonConfig {},
+              });
+    if (menu_btn.button_fired) g.builder.imgui.OpenPopupMenu(popup_id, menu_btn.imgui_id);
+
+    // Popup menu with items.
+    if (g.builder.imgui.IsPopupMenuOpen(popup_id))
+        DoBoxViewport(g.builder,
+                      {
+                          .run = [param_index = param.info.index,
+                                  &g](GuiBuilder&) { DoMenuParameterMenu(g, param_index); },
+                          .bounds = row,
+                          .imgui_id = popup_id,
+                          .viewport_config = k_default_popup_menu_viewport,
+                      });
+
+    // Left arrow button.
+    {
+        auto const left_btn = DoBox(g.builder,
+                                    {
+                                        .parent = row,
+                                        .text = ICON_FA_CARET_LEFT,
+                                        .font = FontType::Icons,
+                                        .text_colours = Splat(style::Colour::Subtext0),
+                                        .background_fill_auto_hot_active_overlay = true,
+                                        .layout {
+                                            .size = {btn_w, height},
+                                            .contents_align = layout::Alignment::Middle,
+                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                        },
+                                        .tooltip = "Previous"_s,
+                                        .button_behaviour = imgui::ButtonConfig {},
+                                    });
+        if (left_btn.button_fired) {
+            auto val = (f32)param.IntValue<int>() - 1;
+            if (val < param.info.linear_range.min) val = param.info.linear_range.max;
+            new_val = val;
+        }
+    }
+
+    // Right arrow button.
+    {
+        auto const right_btn = DoBox(g.builder,
+                                     {
+                                         .parent = row,
+                                         .text = ICON_FA_CARET_RIGHT,
+                                         .font = FontType::Icons,
+                                         .text_colours = Splat(style::Colour::Subtext0),
+                                         .background_fill_auto_hot_active_overlay = true,
+                                         .layout {
+                                             .size = {btn_w, height},
+                                             .contents_align = layout::Alignment::Middle,
+                                             .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                         },
+                                         .tooltip = "Next"_s,
+                                         .button_behaviour = imgui::ButtonConfig {},
+                                     });
+        if (right_btn.button_fired) {
+            auto val = (f32)param.IntValue<int>() + 1;
+            if (val > param.info.linear_range.max) val = param.info.linear_range.min;
+            new_val = val;
+        }
+    }
+
+    // Slider behaviour
+    if (auto const viewport_r = BoxRect(g.builder, menu_btn)) {
+        auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
+
+        auto current = param.LinearValue();
+        if (g.builder.imgui.SliderBehaviourRange({
+                .rect_in_window_coords = window_r,
+                .id = menu_btn.imgui_id,
+                .min = param.info.linear_range.min,
+                .max = param.info.linear_range.max,
+                .value = current,
+                .default_value = param.info.default_linear_value,
+                .cfg = {.sensitivity = 20},
+            })) {
+            new_val = current;
+        }
+
+        if (g.imgui.WasJustActivated(menu_btn.imgui_id))
+            ParameterJustStartedMoving(g.engine.processor, param.info.index);
+
+        if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+
+        if (g.imgui.WasJustDeactivated(menu_btn.imgui_id))
+            ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+
+        ParameterValuePopup(g, param, menu_btn.imgui_id, window_r);
+
+        MacroAddDestinationRegion(g, window_r, param.info.index);
+    }
+
+    // Right-click menu.
+    AddMidiLearnRightClickBehaviour(g, menu_btn, param);
+
+    // Label.
+    if (options.label)
+        DoBox(g.builder,
+              {
+                  .parent = container,
+                  .text = options.override_label.size ? options.override_label : param.info.gui_label,
+                  .text_colours = {options.greyed_out ? style::Colour::Overlay0 | style::Colour::DarkMode
+                                                      : style::Colour::Text | style::Colour::DarkMode},
+                  .text_justification = TextJustification::Centred,
+                  .layout {
+                      .size = {width, style::k_font_body_size},
+                  },
+              });
+
+    return container;
 }
-
-#endif
 
 Box DoKnobParameter(GuiState& g,
                     Box parent,
@@ -356,3 +503,27 @@ Box DoKnobParameter(GuiState& g,
 
     return container;
 }
+
+#if 0
+
+Box DoIntParameter(GuiState& g, Box parent, DescribedParamValue const& param) {
+    auto& builder = g.builder;
+
+    ASSERT(param.info.value_type == ParamValueType::Float);
+
+    auto const type = param.info.IsLayerParam()
+                          ? LayoutType::Layer
+                          : (param.info.IsEffectParam() ? LayoutType::Effect : LayoutType::Generic);
+
+    Margins margins {.b = LiveWw(UiSizeId::ParamComponentLabelGapY)};
+
+    auto width = LiveWw(UiSizeId::FXDraggerWidth);
+    auto height = LiveWw(UiSizeId::FXDraggerHeight);
+    margins.t += LiveWw(UiSizeId::FXDraggerMarginT);
+    margins.b += LiveWw(UiSizeId::FXDraggerMarginB);
+
+    // TODO: modern GuiBuilder version of:
+    // bool Dragger(GuiState& g, DescribedParamValue const& param, Rect r, Style const& style)
+}
+
+#endif

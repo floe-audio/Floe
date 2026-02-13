@@ -133,7 +133,9 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
                 break;
             }
             case ParamValueType::Menu: {
-                // TODO: add menu parameter component
+                DoMenuParameter(g,
+                                container,
+                                g.engine.processor.main_params.DescribedValue(desc.index));
                 break;
             }
             case ParamValueType::Bool: {
