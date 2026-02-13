@@ -15,8 +15,8 @@
 
 #include "aspect_ratio.hpp"
 #include "engine/engine.hpp"
-#include "gui/gui.hpp"
 #include "gui/gui_prefs.hpp"
+#include "gui/gui_state.hpp"
 #include "gui_frame.hpp"
 
 ErrorCodeCategory const app_window_error_code {
@@ -322,24 +322,7 @@ static bool EventMouseButton(AppWindow& window, PuglButtonEvent const& button_ev
         btn.releases.Append(e, window.frame_state.event_arena);
     }
 
-    bool result = false;
-    if (window.last_result.mouse_tracked_rects.size == 0 || window.last_result.wants.mouse_capture ||
-        (window.last_result.wants.all_left_clicks && button == MouseButton::Left) ||
-        (window.last_result.wants.all_right_clicks && button == MouseButton::Right) ||
-        (window.last_result.wants.all_middle_clicks && button == MouseButton::Middle)) {
-        result = true;
-    } else {
-        for (auto const i : Range(window.last_result.mouse_tracked_rects.size)) {
-            auto& item = window.last_result.mouse_tracked_rects[i];
-            bool const mouse_over = item.rect.Contains(window.frame_state.cursor_pos);
-            if (mouse_over) {
-                result = true;
-                break;
-            }
-        }
-    }
-
-    return result;
+    return true;
 }
 
 static bool EventKeyRegular(AppWindow& window, KeyCode key_code, bool is_down, ModifierFlags modifiers) {
@@ -410,7 +393,7 @@ static bool EventText(AppWindow& window, PuglTextEvent const& text_event) {
 
 static void CreateRenderer(AppWindow& window) {
     ZoneScoped;
-    auto renderer = graphics::CreateNewRenderer(window.renderer_backend);
+    auto renderer = CreateNewRenderer(window.renderer_backend);
 
     if (auto const outcome = renderer->Init(GetSize(window),
                                             (void*)puglGetNativeView(window.view),
@@ -625,6 +608,9 @@ static void UpdateAndRender(AppWindow& window) {
     window.frame_state.window_size = window_size;
     window.frame_state.pugl_view = window.view;
 
+    constexpr auto k_points_in_width = 1000.0f; // 1000 just because it's easy to work with
+    window.frame_state.pixels_per_ww = (f32)window.frame_state.window_size.width / k_points_in_width;
+
     u32 num_repeats = 0;
     do {
         // Mostly we'd only expect 1 or 2 updates but we set a hard limit of 4 as a fallback.
@@ -643,14 +629,14 @@ static void UpdateAndRender(AppWindow& window) {
             SetGuiIo(&window.frame_state, &window.last_result);
             DEFER { SetGuiIo(nullptr, nullptr); };
 
-            GuiUpdate(&*window.gui);
+            GuiUpdate(*window.gui);
         }
 
-        // clear the state ready for new events, and to ensure they're only processed once
+        // Clear the state ready for new events, and to ensure they're only processed once.
         ClearImpermanentState(window.frame_state);
 
-        // it's important to do this after clearing the impermanent state because this might add new events to
-        // the frame
+        // It's important to do this after clearing the impermanent state because this might add new events to
+        // the frame.
         HandlePostUpdateRequests(window);
     } while (window.last_result.wants.update_interval == GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 
@@ -704,7 +690,7 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
                 // The prefs descriptor will constrain the width to a valid number, we can just pass it
                 // anything.
                 prefs::SetValue(window.prefs,
-                                SettingDescriptor(GuiSetting::WindowWidth),
+                                SettingDescriptor(GuiPreference::WindowWidth),
                                 (s64)configure.width,
                                 {.dont_send_on_change_event = true});
 
@@ -862,12 +848,12 @@ ErrorCodeOr<void> Init(AppWindow& window) {
     TRY(Required(puglSetEventFunc(window.view, EventHandler)));
 
     window.renderer_backend = ({
-        graphics::RendererBackend b {};
+        RendererBackend b {};
 
         constexpr bool k_use_experimental_bgfx = false;
         if constexpr (k_use_experimental_bgfx) {
-            if constexpr (IS_WINDOWS) b = graphics::RendererBackend::Bgfx;
-            if constexpr (IS_LINUX) b = graphics::RendererBackend::Bgfx;
+            if constexpr (IS_WINDOWS) b = RendererBackend::Bgfx;
+            if constexpr (IS_LINUX) b = RendererBackend::Bgfx;
             if constexpr (IS_MACOS) {
                 // bgfx only supports macOS 13 (Darwin version 22) and above. We use our old OpenGL backend
                 // for older systems. We've only ever seen kernel_version in the format x.x.x, so we can
@@ -875,14 +861,14 @@ ErrorCodeOr<void> Init(AppWindow& window) {
                 // newer.
                 auto const darwin_version = ParseInt(GetOsInfo().kernel_version, ParseIntBase::Decimal);
                 if (!darwin_version || darwin_version.Value() >= 22)
-                    b = graphics::RendererBackend::Bgfx;
+                    b = RendererBackend::Bgfx;
                 else
-                    b = graphics::RendererBackend::OpenGl;
+                    b = RendererBackend::OpenGl;
             }
         } else {
-            if constexpr (IS_WINDOWS) b = graphics::RendererBackend::Direct3D9;
-            if constexpr (IS_MACOS) b = graphics::RendererBackend::OpenGl;
-            if constexpr (IS_LINUX) b = graphics::RendererBackend::OpenGl;
+            if constexpr (IS_WINDOWS) b = RendererBackend::Direct3D9;
+            if constexpr (IS_MACOS) b = RendererBackend::OpenGl;
+            if constexpr (IS_LINUX) b = RendererBackend::OpenGl;
         }
         b;
     });
@@ -890,7 +876,7 @@ ErrorCodeOr<void> Init(AppWindow& window) {
     LogInfo(ModuleName::Gui, "Selected backend {}", EnumToString(window.renderer_backend));
 
     switch (window.renderer_backend) {
-        case graphics::RendererBackend::OpenGl: {
+        case RendererBackend::OpenGl: {
             if constexpr (!IS_WINDOWS) {
                 TRY(Required(puglSetBackend(window.view, puglGlBackend())));
                 TRY(Required(puglSetViewHint(window.view, PUGL_CONTEXT_VERSION_MAJOR, 3)));
@@ -903,12 +889,12 @@ ErrorCodeOr<void> Init(AppWindow& window) {
             }
             break;
         }
-        case graphics::RendererBackend::Bgfx:
-        case graphics::RendererBackend::Direct3D9: {
+        case RendererBackend::Bgfx:
+        case RendererBackend::Direct3D9: {
             TRY(Required(puglSetBackend(window.view, puglStubBackend())));
             break;
         }
-        case graphics::RendererBackend::Count: PanicIfReached();
+        case RendererBackend::Count: PanicIfReached();
     }
 
     native::InitNativeState(window);

@@ -3,11 +3,13 @@
 
 #include "gui_keyboard.hpp"
 
-#include "gui.hpp"
-#include "gui/gui_widget_helpers.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
+#include "gui_state.hpp"
+#include "old/gui_widget_helpers.hpp"
 #include "processing_utils/key_range.hpp"
+
+// TODO: find a way to remove usage of old/* include.
 
 enum class NoteEdge { Left, Right };
 
@@ -45,9 +47,7 @@ struct KeyboardLayout {
         constexpr auto k_white_key_width_factor = 1.0f / (k_num_octaves_shown * 7.0f);
         layout.white_key_width = keyboard_w * k_white_key_width_factor;
         layout.black_key_width =
-            (layout.white_key_width *
-             (0.5f * imgui::g_live_edit_values.ui_sizes[ToInt(UiSizeId::MidiKeyboardBlackNoteWidth)] /
-              100.0f));
+            (layout.white_key_width * (0.5f * LiveRaw(UiSizeId::MidiKeyboardBlackNoteWidth) / 100.0f));
 
         auto const d1 = ((layout.white_key_width * 3) - (layout.black_key_width * 2)) / 3;
         auto const d2 = ((layout.white_key_width * 4) - (layout.black_key_width * 3)) / 4;
@@ -149,11 +149,11 @@ struct KeyboardLayout {
     }
 };
 
-static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 starting_octave) {
-    auto& imgui = g->imgui;
+static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave) {
+    auto& imgui = g.imgui;
 
-    auto const keyboard = g->engine.processor.notes_currently_held.GetBlockwise();
-    auto const& voices_per_midi_key = g->engine.processor.voice_pool.voices_per_midi_note_for_gui;
+    auto const keyboard = g.engine.processor.notes_currently_held.GetBlockwise();
+    auto const& voices_per_midi_key = g.engine.processor.voice_pool.voices_per_midi_note_for_gui;
 
     auto const col_black_key = style::Col(style::Colour::Background0 | style::Colour::DarkMode);
     auto const col_black_key_outline = style::Col(style::Colour::Background0 | style::Colour::DarkMode);
@@ -167,24 +167,23 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
 
     f32 const white_height = r.h;
     auto const black_height = (f32)RoundPositiveFloat(r.h * 0.65f);
-    f32 const active_voice_marker_h =
-        r.h * (imgui::g_live_edit_values.ui_sizes[ToInt(UiSizeId::MidiKeyboardActiveMarkerH)] / 100.0f);
+    f32 const active_voice_marker_h = r.h * (LiveRaw(UiSizeId::MidiKeyboardActiveMarkerH) / 100.0f);
 
     Optional<KeyboardGuiKeyPressed> result {};
 
     auto const overlay_key = [&](s32 key, Rect key_rect, UiColMap col_index) {
         auto const num_active_voices = voices_per_midi_key[(usize)key].Load(LoadMemoryOrder::Relaxed);
         if (num_active_voices != 0) {
-            auto overlay = colours::FromU32(LiveCol(imgui, col_index));
+            auto overlay = colour::FromU32(LiveCol(col_index));
             overlay.a = (u8)Min(255, overlay.a + (40 * num_active_voices));
-            auto overlay_u32 = colours::ToU32(overlay);
+            auto overlay_u32 = colour::ToU32(overlay);
             imgui.draw_list->AddRectFilled(key_rect.Min(),
                                            f32x2 {key_rect.Right(), key_rect.y + active_voice_marker_h},
                                            overlay_u32);
         }
     };
 
-    imgui.PushID("white");
+    imgui.PushId("white");
     for (auto const i : Range(k_num_octaves_shown * 7)) {
         s32 const this_white_key = i % 7;
         s32 const this_octave = i / 7;
@@ -195,10 +194,12 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
 
         auto key_r = layout.WhiteKeyRect(i, r.y, white_height);
 
-        imgui.RegisterAndConvertRect(&key_r);
-        auto const id = imgui.GetID((u32)i);
+        key_r = imgui.RegisterAndConvertRect(key_r);
+        auto const id = imgui.MakeId((u32)i);
         if (!keyboard.Get((usize)this_abs_key)) {
-            if (imgui.ButtonBehavior(key_r, id, {.left_mouse = true, .triggers_on_mouse_down = true})) {
+            if (imgui.ButtonBehaviour(key_r,
+                                      id,
+                                      {.mouse_button = MouseButton::Left, .event = MouseButtonEvent::Down})) {
                 f32 const rel_yclick_pos = GuiIo().in.cursor_pos.y - key_r.y;
                 result = KeyboardGuiKeyPressed {.is_down = true,
                                                 .note = CheckedCast<u7>(this_abs_key),
@@ -218,25 +219,26 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
 
         // Show the octave number if it's middle-C.
         if (this_abs_key == 60) {
-            auto const font = g->fonts[ToInt(FontType::Body)];
+            auto const font = g.fonts.atlas[ToInt(FontType::Body)];
 
             auto const text_height = font->font_size;
             // Bottom rectangle of the key.
             auto text_r = key_r;
             text_r.y += key_r.h - text_height;
             text_r.h = text_height;
-            g->imgui.draw_list->AddTextJustified(
-                text_r,
-                "C3",
-                style::Col(style::Colour::Background2 | style::Colour::DarkMode),
-                TextJustification::Centred,
-                TextOverflowType::AllowOverflow,
-                0.8f);
+            g.imgui.draw_list->AddTextInRect(text_r,
+                                             style::Col(style::Colour::Background2 | style::Colour::DarkMode),
+                                             "C3",
+                                             {
+                                                 .justification = TextJustification::Centred,
+                                                 .overflow_type = TextOverflowType::AllowOverflow,
+                                                 .font_scaling = 0.8f,
+                                             });
         }
     }
-    imgui.PopID();
+    imgui.PopId();
 
-    imgui.PushID("black");
+    imgui.PushId("black");
     for (auto const i : Range(k_num_octaves_shown * 5)) {
         s32 const this_black_key = i % 5;
         s32 const this_octave = i / 5;
@@ -247,10 +249,12 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
 
         auto key_r = layout.BlackKeyRect(this_black_key, this_octave, r.y, black_height);
 
-        imgui.RegisterAndConvertRect(&key_r);
-        auto const id = imgui.GetID((u32)i);
+        key_r = imgui.RegisterAndConvertRect(key_r);
+        auto const id = imgui.MakeId((u32)i);
         if (!keyboard.Get((usize)this_abs_key)) {
-            if (imgui.ButtonBehavior(key_r, id, {.left_mouse = true, .triggers_on_mouse_down = true})) {
+            if (imgui.ButtonBehaviour(key_r,
+                                      id,
+                                      {.mouse_button = MouseButton::Left, .event = MouseButtonEvent::Down})) {
                 f32 const rel_yclick_pos = GuiIo().in.cursor_pos.y - key_r.y;
                 result = KeyboardGuiKeyPressed {.is_down = true,
                                                 .note = CheckedCast<u7>(this_abs_key),
@@ -275,25 +279,25 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(Gui* g, Rect r, s32 s
         imgui.draw_list->AddRectFilled(key_r, col);
         overlay_key(this_abs_key, key_r, UiColMap::KeyboardBlackVoiceOverlay);
     }
-    imgui.PopID();
+    imgui.PopId();
 
     return result;
 }
 
-static Span<sample_lib::NamedKeyRange> NamedKeyRanges(Gui* g, u8 layer_index) {
-    auto& layer = g->engine.Layer(layer_index);
+static Span<sample_lib::NamedKeyRange> NamedKeyRanges(GuiState& g, u8 layer_index) {
+    auto& layer = g.engine.Layer(layer_index);
     auto const sampled_inst = layer.instrument.TryGetFromTag<InstrumentType::Sampler>();
     if (!sampled_inst) return {};
     return (*sampled_inst)->instrument.named_key_ranges;
 }
 
-static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
-    auto& imgui = g->imgui;
+static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& options) {
+    auto& imgui = g.imgui;
 
-    imgui.PushID("keyboard-strips");
-    DEFER { imgui.PopID(); };
+    imgui.PushId("keyboard-strips");
+    DEFER { imgui.PopId(); };
 
-    auto const layout = KeyboardLayout::Create(imgui.WindowPosToScreenPos(options.start_pos.x).x,
+    auto const layout = KeyboardLayout::Create(imgui.ViewportPosToWindowPos(options.start_pos.x).x,
                                                options.width,
                                                options.starting_octave);
     auto const highest_key_shown =
@@ -302,45 +306,43 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
     constexpr auto k_line_width = 2.0f;
     constexpr auto k_stopper_width = k_line_width;
 
-    auto const strip_h = imgui.VwToPixels(options.strip_height);
-    auto const k_strip_gap = imgui.VwToPixels(options.strip_gap);
-    auto const text_gap = imgui.VwToPixels(options.text_gap);
+    auto const strip_h = GuiIo().WwToPixels(options.strip_height);
+    auto const k_strip_gap = GuiIo().WwToPixels(options.strip_gap);
+    auto const text_gap = GuiIo().WwToPixels(options.text_gap);
 
     auto const capsule_cols = Array {
-        colours::ToU32(colours::Rgba(80, 90, 105, 1)), // Layer 1 - Cool blue-grey
-        colours::ToU32(colours::Rgba(105, 90, 80, 1)), // Layer 2 - Warm orange-grey
-        colours::ToU32(colours::Rgba(100, 85, 100, 1)), // Layer 3 - Purple-grey
+        colour::Rgba(80, 90, 105, 1.0f), // Layer 1 - Cool blue-grey
+        colour::Rgba(105, 90, 80, 1.0f), // Layer 2 - Warm orange-grey
+        colour::Rgba(100, 85, 100, 1.0f), // Layer 3 - Purple-grey
     };
     auto const line_cols = capsule_cols;
 
     auto y_pos = options.start_pos.y;
 
-    auto const text_pad_x = imgui.VwToPixels(6);
+    auto const text_pad_x = GuiIo().WwToPixels(6.0f);
 
     if (options.display_type == DisplayType::Full) {
         // Title
-        auto const font = g->fonts[ToInt(FontType::Heading2)];
-        imgui.draw_list->AddText(font,
-                                 font->font_size,
-                                 imgui.WindowPosToScreenPos({options.start_pos.x + text_pad_x, y_pos}),
+        g.fonts.Push(ToInt(FontType::Heading2));
+        DEFER { g.fonts.Pop(); };
+        imgui.draw_list->AddText(imgui.ViewportPosToWindowPos({options.start_pos.x + text_pad_x, y_pos}),
                                  style::Col(style::Colour::Text | style::Colour::DarkMode),
-                                 "Key Ranges",
-                                 0.0f);
-        y_pos += font->font_size + text_gap;
+                                 "Key Ranges");
+        y_pos += g.fonts.Current()->font_size + text_gap;
     }
 
     for (auto const layer_idx : Range<u8>(k_num_layers)) {
-        if (g->engine.Layer(layer_idx).instrument_id.tag == InstrumentType::None) continue;
+        if (g.engine.Layer(layer_idx).instrument_id.tag == InstrumentType::None) continue;
 
         auto const range_start =
-            g->engine.processor.main_params.IntValue<u7>(layer_idx, LayerParamIndex::KeyRangeLow);
+            g.engine.processor.main_params.IntValue<u7>(layer_idx, LayerParamIndex::KeyRangeLow);
         auto const range_finish =
-            Max(g->engine.processor.main_params.IntValue<u7>(layer_idx, LayerParamIndex::KeyRangeHigh),
+            Max(g.engine.processor.main_params.IntValue<u7>(layer_idx, LayerParamIndex::KeyRangeHigh),
                 range_start); // Inclusive.
         auto const range_end = (u8)((int)range_finish + 1); // Exclusive.
 
         if (options.display_type == DisplayType::Full) {
-            auto const font = g->fonts[ToInt(FontType::Body)];
+            auto const font = g.fonts.atlas[ToInt(FontType::Body)];
             auto const text_height = font->font_size;
 
             f32 x_pos = options.start_pos.x + text_pad_x;
@@ -350,27 +352,27 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
                 auto const circle_x = x_pos + circle_radius;
                 auto const circle_y = y_pos + (text_height * 0.5f);
 
-                imgui.draw_list->AddCircleFilled(imgui.WindowPosToScreenPos({circle_x, circle_y}),
+                imgui.draw_list->AddCircleFilled(imgui.ViewportPosToWindowPos({circle_x, circle_y}),
                                                  circle_radius,
                                                  capsule_cols[layer_idx]);
-                x_pos += circle_radius * 2 + imgui.VwToPixels(6);
+                x_pos += circle_radius * 2 + GuiIo().WwToPixels(6.0f);
             }
 
             {
                 auto text_r = Rect {.x = x_pos, .y = y_pos, .w = options.width - x_pos, .h = text_height};
-                imgui.RegisterAndConvertRect(&text_r);
+                text_r = imgui.RegisterAndConvertRect(text_r);
 
-                auto layer_text = fmt::Format(g->scratch_arena,
+                auto layer_text = fmt::Format(g.scratch_arena,
                                               "Layer {}  |  {}",
                                               layer_idx + 1,
-                                              g->engine.Layer(layer_idx).InstName());
-                imgui.draw_list->AddTextJustified(
-                    text_r,
-                    layer_text,
-                    style::Col(style::Colour::Subtext1 | style::Colour::DarkMode),
-                    TextJustification::Left,
-                    TextOverflowType::AllowOverflow,
-                    1.0f);
+                                              g.engine.Layer(layer_idx).InstName());
+                imgui.draw_list->AddTextInRect(text_r,
+                                               style::Col(style::Colour::Subtext1 | style::Colour::DarkMode),
+                                               layer_text,
+                                               {
+                                                   .justification = TextJustification::Left,
+                                                   .overflow_type = TextOverflowType::AllowOverflow,
+                                               });
             }
 
             y_pos += text_height + text_gap;
@@ -381,23 +383,22 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
         y_pos += strip_h;
         y_pos += k_strip_gap;
 
-        imgui.RegisterAndConvertRect(&strip_r);
+        strip_r = imgui.RegisterAndConvertRect(strip_r);
 
         if (options.display_type == DisplayType::Full) {
-            auto const strip_id = imgui.GetID(layer_idx);
-            imgui.RegisterRegionForMouseTracking(strip_r, false);
+            auto const strip_id = imgui.MakeId(layer_idx);
+            imgui.RegisterRectForMouseTracking(strip_r, false);
             imgui.SetHot(strip_r, strip_id);
 
             Tooltip(g,
                     strip_id,
                     strip_r,
-                    fmt::Format(g->scratch_arena,
+                    fmt::Format(g.scratch_arena,
                                 "Layer {}'s playable range: {} to {}",
                                 layer_idx + 1,
                                 NoteName(range_start),
                                 NoteName(range_finish)),
-                    true,
-                    true);
+                    {.ignore_show_tooltips_preference = true});
         }
 
         auto const container_left = strip_r.x;
@@ -415,16 +416,16 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
         auto const line_y_rounded = (f32)RoundPositiveFloat(line_y);
 
         auto const midi_transpose =
-            g->engine.processor.main_params.IntValue<s8>(layer_idx, LayerParamIndex::MidiTranspose);
+            g.engine.processor.main_params.IntValue<s8>(layer_idx, LayerParamIndex::MidiTranspose);
 
         auto const capsule_height = (f32)RoundPositiveFloat(strip_h);
         auto const capsule_y = (f32)RoundPositiveFloat(strip_y);
         auto const capsule_radius = capsule_height * 0.5f;
 
         auto const fade_in =
-            g->engine.processor.main_params.IntValue<u8>(layer_idx, LayerParamIndex::KeyRangeLowFade);
+            g.engine.processor.main_params.IntValue<u8>(layer_idx, LayerParamIndex::KeyRangeLowFade);
         auto const fade_out =
-            g->engine.processor.main_params.IntValue<u8>(layer_idx, LayerParamIndex::KeyRangeHighFade);
+            g.engine.processor.main_params.IntValue<u8>(layer_idx, LayerParamIndex::KeyRangeHighFade);
 
         if (line_draw_end > line_draw_start) {
             auto const key_at_left_edge = Max(range_start, layout.lowest_key_shown);
@@ -442,7 +443,7 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
 
                     f32 y_start = line_y_rounded;
                     f32 y_end = line_y_rounded + k_line_width;
-                    s32 corner_flags = 0;
+                    u4 corner_flags = 0;
                     f32 rounding = 0;
 
                     f32 extra_offset = 0;
@@ -481,9 +482,9 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
                     imgui.draw_list->AddRectFilled(
                         f32x2 {x_pos, y_start},
                         f32x2 {next_x_pos - extra_offset, y_end},
-                        colours::WithAlpha(line_cols[layer_idx],
-                                           (u8)(KeyRangeFadeIn(key, range_start, fade_in) *
-                                                KeyRangeFadeOut(key, range_finish, fade_out) * 255.0f)),
+                        colour::WithAlphaU8(line_cols[layer_idx],
+                                            (u8)(KeyRangeFadeIn(key, range_start, fade_in) *
+                                                 KeyRangeFadeOut(key, range_finish, fade_out) * 255.0f)),
                         rounding,
                         corner_flags);
                     x_pos = next_x_pos;
@@ -536,8 +537,7 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
                 auto const clipped_end_x = (f32)RoundPositiveFloat(Min(capsule_end_x, container_right));
 
                 if (clipped_end_x > clipped_start_x) {
-
-                    s32 corner_flags = 0;
+                    u4 corner_flags = 0;
                     if (range_start_x >= container_left) corner_flags |= 0b1001;
                     if (range_end_x <= container_right) corner_flags |= 0b0110;
 
@@ -554,22 +554,21 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
                         HashUpdate(hash, layer_idx);
                         HashUpdate(hash, named_range_index);
 
-                        auto const capsule_id = imgui.GetID(hash);
-                        imgui.RegisterRegionForMouseTracking(capsule_rect, false);
+                        auto const capsule_id = imgui.MakeId(hash);
+                        imgui.RegisterRectForMouseTracking(capsule_rect, false);
                         imgui.SetHot(capsule_rect, capsule_id);
 
                         Tooltip(g,
                                 capsule_id,
                                 capsule_rect,
-                                fmt::Format(g->scratch_arena,
+                                fmt::Format(g.scratch_arena,
                                             "{}: {} to {}. From {} on Layer {}.",
                                             named_range.name,
                                             NoteName(CheckedCast<u7>(named_range.key_range.start)),
                                             NoteName(CheckedCast<u7>(named_range.key_range.end - 1)),
-                                            g->engine.Layer(layer_idx).InstName(),
+                                            g.engine.Layer(layer_idx).InstName(),
                                             layer_idx + 1),
-                                true,
-                                true);
+                                {.ignore_show_tooltips_preference = true});
                     }
 
                     if (!fade_in && !fade_out) {
@@ -585,13 +584,14 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
                                            .w = clipped_end_x - clipped_start_x,
                                            .h = capsule_height};
 
-                        imgui.draw_list->AddTextJustified(
+                        imgui.draw_list->AddTextInRect(
                             range_text_r,
-                            named_range.name,
                             style::Col(style::Colour::Text | style::Colour::DarkMode),
-                            TextJustification::Centred,
-                            TextOverflowType::ShowDotsOnRight,
-                            1.0f);
+                            named_range.name,
+                            {
+                                .justification = TextJustification::Centred,
+                                .overflow_type = TextOverflowType::ShowDotsOnRight,
+                            });
                     }
                 }
             }
@@ -600,7 +600,7 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
         {
             auto const stopper_top = (f32)RoundPositiveFloat(strip_y);
             auto const stopper_bottom = (f32)RoundPositiveFloat(strip_y + strip_h);
-            auto const chevron_x_delta = g->imgui.VwToPixels(5);
+            auto const chevron_x_delta = GuiIo().WwToPixels(5.0f);
 
             if (layer_start_x >= container_left) {
                 auto const stopper_x = (f32)RoundPositiveFloat(layer_start_x);
@@ -645,17 +645,17 @@ static void RenderTopDisplayContent(Gui* g, TopDisplayOptions const& options) {
     }
 }
 
-constexpr auto k_minimal_strip_height_vw = 6.0f; // Vw units
+constexpr auto k_minimal_strip_height_ww = 6.0f; // Ww units
 constexpr auto k_minimal_strip_gap_px = 1.0f; // pixels
 
-static void TopDisplay(Gui* g, Rect r, s32 starting_octave, Rect keyboard_rect) {
-    auto& imgui = g->imgui;
+static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_rect) {
+    auto& imgui = g.imgui;
 
-    auto const abs_r = imgui.GetRegisteredAndConvertedRect(r);
+    auto const abs_r = imgui.RegisterAndConvertRect(r);
 
-    auto const id = imgui.GetID("keyboard-top-display"_s);
-    auto const popup_id = imgui.GetID("keyboard-top-display-popup"_s);
-    imgui.RegisterRegionForMouseTracking(abs_r, false);
+    auto const id = imgui.MakeId("keyboard-top-display"_s);
+    auto const popup_id = imgui.MakeId("keyboard-top-display-popup"_s);
+    imgui.RegisterRectForMouseTracking(abs_r, false);
     imgui.SetHot(abs_r, id);
 
     constexpr auto k_seconds_delay_before_enlarge = 0.1;
@@ -664,43 +664,45 @@ static void TopDisplay(Gui* g, Rect r, s32 starting_octave, Rect keyboard_rect) 
         GuiIo().out.AddTimedWakeup(TimePoint::Now() + k_seconds_delay_before_enlarge,
                                    "enlarged-keyboard-display");
 
-    if (imgui.IsHot(id) && !imgui.IsPopupOpen(popup_id) &&
+    if (imgui.IsHot(id) && !imgui.IsPopupMenuOpen(popup_id) &&
         imgui.SecondsSpentHot() > k_seconds_delay_before_enlarge)
-        imgui.OpenPopup(popup_id, id);
+        imgui.OpenPopupMenu(popup_id, id);
 
-    auto const enlarged_window_padding = imgui.VwToPixels(4);
+    auto const enlarged_viewport_padding = GuiIo().WwToPixels(4.0f);
 
-    keyboard_rect = imgui.GetRegisteredAndConvertedRect(keyboard_rect);
-    if (imgui.BeginWindowPopup(
+    keyboard_rect = imgui.RegisterAndConvertRect(keyboard_rect);
+    if (imgui.IsPopupMenuOpen(popup_id)) {
+        imgui.BeginViewport(
             {
-                .flags = {.auto_height = true, .auto_width = true, .auto_position = true},
-                .pad_top_left = {0, enlarged_window_padding},
-                .pad_bottom_right = {0, enlarged_window_padding},
-                .draw_routine_popup_background =
-                    [](IMGUI_DRAW_WINDOW_BG_ARGS) {
+                .mode = imgui::ViewportMode::PopupMenu,
+                .positioning = imgui::ViewportPositioning::AutoPosition,
+                .draw_background =
+                    [](imgui::Context const& imgui) {
                         imgui.draw_list->AddRectFilled(
-                            window->unpadded_bounds.Min(),
-                            window->unpadded_bounds.Max(),
+                            imgui.curr_viewport->unpadded_bounds,
                             style::Col(style::Colour::Background1 | style::Colour::DarkMode),
-                            LiveSize(imgui, UiSizeId::CornerRounding));
+                            LiveSize(UiSizeId::CornerRounding));
                     },
+                .padding = {.lr = 0, .tb = enlarged_viewport_padding},
+                .auto_size = true,
+                .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
             },
             popup_id,
             keyboard_rect,
-            "Enlarged keyboard display")) {
-        DEFER { imgui.EndWindow(); };
+            "Enlarged keyboard display");
+        DEFER { imgui.EndViewport(); };
         RenderTopDisplayContent(g,
                                 {
                                     .start_pos = 0,
                                     .width = keyboard_rect.w,
                                     .starting_octave = starting_octave,
                                     .display_type = DisplayType::Full,
-                                    .strip_height = 18, // Vw units
-                                    .strip_gap = 8, // Vw units
-                                    .text_gap = 4, // Vw units
+                                    .strip_height = 18, // Ww units
+                                    .strip_gap = 8, // Ww units
+                                    .text_gap = 4, // Ww units
                                 });
 
-        if (auto const bounds = g->imgui.CurrentWindow()->unpadded_bounds;
+        if (auto const bounds = g.imgui.curr_viewport->unpadded_bounds;
             All(bounds.size > 0.0f) && !bounds.Contains(GuiIo().in.cursor_pos)) {
             imgui.ClosePopupToLevel(0);
             GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
@@ -712,17 +714,17 @@ static void TopDisplay(Gui* g, Rect r, s32 starting_octave, Rect keyboard_rect) 
                                     .width = r.w,
                                     .starting_octave = starting_octave,
                                     .display_type = DisplayType::Minimal,
-                                    .strip_height = k_minimal_strip_height_vw,
-                                    .strip_gap = g->imgui.PixelsToVw(k_minimal_strip_gap_px),
+                                    .strip_height = k_minimal_strip_height_ww,
+                                    .strip_gap = GuiIo().PixelsToWw(k_minimal_strip_gap_px),
                                     .text_gap = 0,
                                 });
     }
 }
 
-Optional<KeyboardGuiKeyPressed> KeyboardGui(Gui* g, Rect r, s32 starting_octave) {
+Optional<KeyboardGuiKeyPressed> KeyboardGui(GuiState& g, Rect r, s32 starting_octave) {
     if (auto const num_active_layers = ({
             u8 n = 0;
-            for (auto const& layer : g->engine.processor.layer_processors)
+            for (auto const& layer : g.engine.processor.layer_processors)
                 if (layer.instrument_id.tag != InstrumentType::None) n++;
             n;
         })) {
@@ -731,8 +733,8 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(Gui* g, Rect r, s32 starting_octave)
                 for (auto const layer_idx : Range<u8>(k_num_layers)) {
                     auto const& named_ranges = NamedKeyRanges(g, layer_idx);
                     auto const range_start =
-                        g->engine.processor.main_params.IntValue<u7>(layer_idx, LayerParamIndex::KeyRangeLow);
-                    auto const range_finish = g->engine.processor.main_params.IntValue<u7>(
+                        g.engine.processor.main_params.IntValue<u7>(layer_idx, LayerParamIndex::KeyRangeLow);
+                    auto const range_finish = g.engine.processor.main_params.IntValue<u7>(
                         layer_idx,
                         LayerParamIndex::KeyRangeHigh); // Inclusive.
                     if (range_start != 0 || range_finish != 127) {
@@ -749,14 +751,14 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(Gui* g, Rect r, s32 starting_octave)
             !all_default) {
             auto const top_display_r =
                 rect_cut::CutTop(r,
-                                 g->imgui.VwToPixels(num_active_layers * k_minimal_strip_height_vw) +
+                                 GuiIo().WwToPixels(num_active_layers * k_minimal_strip_height_ww) +
                                      ((num_active_layers - 1) * k_minimal_strip_gap_px));
 
             TopDisplay(g, top_display_r, starting_octave, r);
         }
     }
 
-    rect_cut::CutTop(r, g->imgui.VwToPixels(4));
+    rect_cut::CutTop(r, GuiIo().WwToPixels(4.0f));
 
     return InternalKeyboardGui(g, r, starting_octave);
 }

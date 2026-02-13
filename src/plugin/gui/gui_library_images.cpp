@@ -5,6 +5,7 @@
 
 #include "build_resources/embedded_files.h"
 #include "engine/engine.hpp"
+#include "gui_framework/gui_live_edit.hpp"
 #include "gui_framework/image.hpp"
 #include "gui_framework/style.hpp"
 
@@ -81,7 +82,7 @@ static Optional<ImageBytes> ImagePixelsFromLibrary(sample_lib::LibraryIdRef cons
 inline Allocator& ImageBytesAllocator() { return PageAllocator::Instance(); }
 
 static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
-                          imgui::Context const& imgui,
+                          imgui::Context const&,
                           Future<Optional<ImageBytes>>& result,
                           sample_lib_server::Server& server,
                           ThreadPool& thread_pool) {
@@ -89,7 +90,7 @@ static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
         result,
         [lib_id = sample_lib::LibraryId(lib_id_ref),
          &server,
-         desired_icon_size = CheckedCast<u16>(Ceil(imgui.VwToPixels(style::k_library_icon_standard_size)) *
+         desired_icon_size = CheckedCast<u16>(Ceil(GuiIo().WwToPixels(style::k_library_icon_standard_size)) *
                                               2)]() -> Optional<ImageBytes> {
             DEFER { g_request_gui_update.Store(true, StoreMemoryOrder::Release); };
 
@@ -107,21 +108,20 @@ static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
 }
 
 static void AsyncLoadBackgrounds(sample_lib::LibraryIdRef const& lib_id_ref,
-                                 imgui::Context const& imgui,
+                                 imgui::Context const&,
                                  Future<Optional<LibraryImages::LoadingBackgrounds>>& result,
                                  bool reload_background,
                                  bool reload_blurred_background,
                                  sample_lib_server::Server& server,
                                  ThreadPool& thread_pool) {
     BlurredImageBackgroundOptions const blur_options {
-        .downscale_factor = Clamp01(LiveSize(imgui, UiSizeId::BackgroundBlurringDownscaleFactor) / 100.0f),
-        .brightness_scaling_exponent =
-            LiveSize(imgui, UiSizeId::BackgroundBlurringBrightnessExponent) / 100.0f,
-        .overlay_value = Clamp01(LiveSize(imgui, UiSizeId::BackgroundBlurringOverlayColour) / 100.0f),
-        .overlay_alpha = Clamp01(LiveSize(imgui, UiSizeId::BackgroundBlurringOverlayIntensity) / 100.0f),
-        .blur1_radius_percent = LiveSize(imgui, UiSizeId::BackgroundBlurringBlur1Radius) / 100,
-        .blur2_radius_percent = LiveSize(imgui, UiSizeId::BackgroundBlurringBlur2Radius) / 100,
-        .blur2_alpha = Clamp01(LiveSize(imgui, UiSizeId::BackgroundBlurringBlur2Alpha) / 100.0f),
+        .downscale_factor = Clamp01(LiveRaw(UiSizeId::BackgroundBlurringDownscaleFactor1) / 100.0f),
+        .brightness_scaling_exponent = LiveRaw(UiSizeId::BackgroundBlurringBrightnessExponent1) / 100.0f,
+        .overlay_value = Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOverlayColour1) / 100.0f),
+        .overlay_alpha = Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOverlayIntensity1) / 100.0f),
+        .blur1_radius_percent = LiveRaw(UiSizeId::BackgroundBlurringBlur1Radius1) / 100,
+        .blur2_radius_percent = LiveRaw(UiSizeId::BackgroundBlurringBlur2Radius1) / 100,
+        .blur2_alpha = Clamp01(LiveRaw(UiSizeId::BackgroundBlurringBlur2Alpha1) / 100.0f),
     };
 
     thread_pool.Async(
@@ -231,7 +231,7 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
 
 void InvalidateLibraryImages(LibraryImagesTable& table,
                              sample_lib::LibraryIdRef library_id,
-                             graphics::Renderer& renderer) {
+                             Renderer& renderer) {
     ASSERT(g_is_logical_main_thread);
 
     if (auto imgs = table.table.Find(library_id)) {

@@ -8,6 +8,8 @@
 #include "foundation/foundation.hpp"
 #include "utils/logger/logger.hpp"
 
+#include "gui_framework/fonts.hpp"
+
 #define GL_GLEXT_PROTOTYPES // Fix missing prototypes for Tracy.
 
 #if __APPLE__
@@ -20,12 +22,11 @@
 
 #include "utils/debug/tracy_wrapped.hpp"
 
-#include "graphics.hpp"
+#include "draw_list.hpp"
+#include "renderer.hpp"
 #include "tracy/TracyOpenGL.hpp"
 
 static_assert(!IS_WINDOWS);
-
-namespace graphics {
 
 static constexpr ErrorCodeCategory k_gl_error_category {
     .category_id = "GL",
@@ -98,33 +99,31 @@ struct OpenGLRenderer : public Renderer {
 
     void OnResize(UiSize, void*) override {}
 
-    ErrorCodeOr<void> CreateFontTexture() override {
+    ErrorCodeOr<void> CreateFontTexture(FontAtlas& atlas) override {
         ZoneScoped;
         TracyGpuZone("CreateFontTexture");
-        ASSERT(font_texture == 0);
-        ASSERT(fonts.fonts.size > 0);
+        ASSERT(font_texture == invalid_texture);
+        ASSERT(atlas.fonts.size > 0);
         Trace(ModuleName::Gui);
         bool success = false;
 
         unsigned char* pixels;
         int width;
         int height;
-        fonts.GetTexDataAsRGBA32(&pixels, &width, &height);
+        atlas.GetTexDataAsRGBA32(&pixels, &width, &height);
 
         if (width > max_texture_size || height > max_texture_size)
             return ErrorCode(k_gl_error_category, GL_INVALID_VALUE);
 
         GLint last_texture;
+        GLuint tex {};
         CHECKED_GL(glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture));
-        CHECKED_GL(glGenTextures(1, &font_texture));
+        CHECKED_GL(glGenTextures(1, &tex));
         DEFER {
-            if (!success) {
-                glDeleteTextures(1, &font_texture);
-                font_texture = 0;
-            }
+            if (!success) glDeleteTextures(1, &tex);
         };
 
-        CHECKED_GL(glBindTexture(GL_TEXTURE_2D, font_texture));
+        CHECKED_GL(glBindTexture(GL_TEXTURE_2D, tex));
         DEFER {
             // Restore previous
             glBindTexture(GL_TEXTURE_2D, (GLuint)last_texture);
@@ -136,10 +135,9 @@ struct OpenGLRenderer : public Renderer {
         CHECKED_GL(
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels));
 
-        // Store our identifier
-        fonts.tex_id = (TextureHandle)font_texture;
+        font_texture = (TextureHandle)tex;
 
-        fonts.ClearTexData();
+        atlas.ClearTexData();
 
         success = true;
         return k_success;
@@ -149,10 +147,10 @@ struct OpenGLRenderer : public Renderer {
         ZoneScoped;
         TracyGpuZone("DestroyFontTexture");
         Trace(ModuleName::Gui);
-        if (font_texture) {
-            glDeleteTextures(1, &font_texture);
-            fonts.tex_id = invalid_texture;
-            font_texture = 0;
+        if (font_texture != invalid_texture) {
+            auto tex = (GLuint)font_texture;
+            glDeleteTextures(1, &tex);
+            font_texture = invalid_texture;
 
             for (auto const _ : Range(20)) {
                 auto const gl_err = glGetError();
@@ -160,7 +158,6 @@ struct OpenGLRenderer : public Renderer {
                 LogWarning(ModuleName::Gui, "GL Error: DestroyFontTexture: {}", gl_err);
             }
         }
-        fonts.Clear();
     }
 
     ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size, void*) override {
@@ -201,8 +198,8 @@ struct OpenGLRenderer : public Renderer {
 
         for (auto const& draw_list : draw_lists) {
             if (draw_list->idx_buffer.size == 0 || draw_list->idx_buffer.size == 0) continue;
-            DrawVert const* vtx_buffer = draw_list->vtx_buffer.data;
-            DrawIdx const* idx_buffer = draw_list->idx_buffer.data;
+            auto const* vtx_buffer = draw_list->vtx_buffer.data;
+            auto const* idx_buffer = draw_list->idx_buffer.data;
             glVertexPointer(2,
                             GL_FLOAT,
                             sizeof(DrawVert),
@@ -216,7 +213,7 @@ struct OpenGLRenderer : public Renderer {
                            sizeof(DrawVert),
                            (void*)((char*)vtx_buffer + offsetof(DrawVert, col)));
 
-            for (int cmd_i = 0; cmd_i < draw_list->cmd_buffer.size; cmd_i++) {
+            for (u32 cmd_i = 0; cmd_i < draw_list->cmd_buffer.size; cmd_i++) {
                 DrawCmd const* pcmd = &draw_list->cmd_buffer[cmd_i];
                 glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)pcmd->texture_id);
                 glScissor((int)pcmd->clip_rect.x,
@@ -316,12 +313,9 @@ struct OpenGLRenderer : public Renderer {
     }
 
     GLint max_texture_size = 0;
-    GLuint font_texture = 0;
 };
 
 Renderer* CreateNewRendererOpenGl() {
     TracyGpuContext;
     return new OpenGLRenderer();
 }
-
-} // namespace graphics

@@ -60,7 +60,7 @@ CheckOptions:
   - { key: readability-identifier-naming.EnumConstantCase,           value: CamelCase }
   - { key: readability-identifier-naming.TypeAliasCase,              value: CamelCase }
   - { key: readability-identifier-naming.ConceptCase,                value: CamelCase }
-  - { key: readability-identifier-naming.TypeAliasIgnoredRegexp,     value: '^[a-z][0-9]+.*$|^[a-z]size$|^uintptr$|^bool32$|^bool8$' }
+  - { key: readability-identifier-naming.TypeAliasIgnoredRegexp,     value: '^[a-z][0-9]+.*$|^[a-z]size$|^uintptr$|^bool32$|^bool8$|^boolx2$' }
   - { key: readability-identifier-naming.GlobalConstantCase,         value: lower_case }
   - { key: readability-identifier-naming.GlobalConstantPrefix,       value: '' }
   - { key: readability-identifier-naming.GlobalVariableCase,         value: lower_case }

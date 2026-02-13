@@ -1689,7 +1689,7 @@ HandleSizePreferenceChanged(FloePluginInstance& floe, prefs::Key const& key, pre
     auto const host_gui = (clap_host_gui const*)floe.host.get_extension(&floe.host, CLAP_EXT_GUI);
     if (!host_gui) return;
 
-    auto const& desc = SettingDescriptor(GuiSetting::WindowWidth);
+    auto const& desc = SettingDescriptor(GuiPreference::WindowWidth);
     if (key != desc.key) return;
 
     auto const new_width = ({

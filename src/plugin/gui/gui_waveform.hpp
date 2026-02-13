@@ -6,4 +6,4 @@
 #include "gui_fwd.hpp"
 #include "gui_layer.hpp"
 
-void GUIDoSampleWaveform(Gui* g, LayerProcessor* layer, Rect r);
+void DoWaveformElement(GuiState& g, LayerProcessor& layer, Rect viewport_r);

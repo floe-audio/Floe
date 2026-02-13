@@ -11,7 +11,8 @@
 #include "gui/gui2_confirmation_dialog_state.hpp"
 #include "gui/gui2_notifications.hpp"
 
-PUBLIC void UninstallSampleLibrary(sample_lib::Library const& lib,
+PUBLIC void UninstallSampleLibrary(imgui::Context& imgui,
+                                   sample_lib::Library const& lib,
                                    ConfirmationDialogState& confirmation_dialog_state,
                                    ThreadsafeErrorNotifications& error_notifications,
                                    Notifications& notifications) {
@@ -61,6 +62,6 @@ PUBLIC void UninstallSampleLibrary(sample_lib::Library const& lib,
             }
         };
 
-        confirmation_dialog_state.open = true;
+        imgui.OpenModalViewport(confirmation_dialog_state.k_id);
     }
 }

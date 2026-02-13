@@ -4,28 +4,31 @@
 #include <IconsFontAwesome6.h>
 
 #include "engine/engine.hpp"
-#include "gui.hpp"
 #include "gui/gui2_parameter_component.hpp"
+#include "gui/gui_drawing_helpers.hpp"
 #include "gui_keyboard.hpp"
-#include "gui_widget_helpers.hpp"
+#include "gui_state.hpp"
+#include "old/gui_widget_helpers.hpp"
 
-static bool IconButton(GuiBoxSystem& box_system,
+static bool IconButton(GuiBuilder& builder,
                        Box const parent,
                        String icon,
                        TooltipString tooltip,
-                       f32 font_scale = 1.0f) {
-    auto const button = DoBox(box_system,
+                       f32 font_scale = 1.0f,
+                       u64 id_extra = SourceLocationHash()) {
+    auto const button = DoBox(builder,
                               {
                                   .parent = parent,
+                                  .id_extra = id_extra,
                                   .layout {
                                       .size = layout::k_hug_contents,
                                       .contents_padding = {.lr = 3, .tb = 2},
                                   },
                                   .tooltip = tooltip,
-                                  .behaviour = Behaviour::Button,
+                                  .button_behaviour = imgui::ButtonConfig {},
                               });
 
-    DoBox(box_system,
+    DoBox(builder,
           {
               .parent = button,
               .text = icon,
@@ -42,54 +45,83 @@ static bool IconButton(GuiBoxSystem& box_system,
     return button.button_fired;
 }
 
-static Optional<s64> OctaveDragger(GuiBoxSystem& box_system, Box const parent, s64 value) {
+static Optional<s64>
+OctaveDragger(GuiBuilder& builder, Box const parent, s64 value, u64 id_extra = SourceLocationHash()) {
     auto percent = MapTo01((f32)value, k_octave_lowest, k_octave_highest);
-    auto const box = DoBox(box_system,
+    auto const box = DoBox(builder,
                            {
                                .parent = parent,
-                               .text = fmt::Format(box_system.arena, "{+}", value),
-                               .text_align_x = TextAlignX::Centre,
-                               .text_align_y = TextAlignY::Centre,
+                               .id_extra = id_extra,
                                .layout {
                                    .size = {28, style::k_font_body_size},
                                    .contents_direction = layout::Direction::Row,
                                    .contents_align = layout::Alignment::Middle,
                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                },
-                               .behaviour = Behaviour::TextInput | Behaviour::Knob,
-                               .activate_on_click_button = MouseButton::Left,
-                               .activate_on_double_click = true,
-                               .activation_click_event = ActivationClickEvent::Down,
-                               .knob_percent = percent,
-                               .knob_sensitivity = 20,
+                               .tooltip = "Keyboard octave offset"_s,
                            });
 
     Optional<s64> new_value {};
 
-    if (box.text_input_result &&
-        (box.text_input_result->buffer_changed || box.text_input_result->enter_pressed)) {
-        new_value = ParseInt(box.text_input_result->text, ParseIntBase::Decimal);
+    if (auto const viewport_r = BoxRect(builder, box)) {
+        auto constexpr k_fmt_string = "{+}"_s;
+        imgui::TextInputConfig constexpr k_input_config = {
+            .chars_decimal = true,
+            .centre_align = true,
+            .escape_unfocuses = true,
+            .select_all_when_opening = true,
+        };
+        DrawTextInputConfig constexpr k_draw_config = {
+            .text_col = style::Colour::Text | style::Colour::DarkMode,
+            .cursor_col = style::Colour::Text | style::Colour::DarkMode,
+            .selection_col = style::Colour::Highlight | style::Colour::Alpha50,
+        };
+
+        auto const window_r = builder.imgui.RegisterAndConvertRect(*viewport_r);
+        auto const text = fmt::Format(builder.arena, k_fmt_string, value);
+        auto const dragger_result = builder.imgui.DraggerBehaviour({
+            .rect_in_window_coords = window_r,
+            .id = box.imgui_id,
+            .text = text,
+            .min = 0,
+            .max = 1,
+            .value = percent,
+            .default_value = 0,
+            .text_input_button_cfg {
+                .mouse_button = MouseButton::Left,
+                .event = MouseButtonEvent::DoubleClick,
+            },
+            .text_input_cfg = k_input_config,
+            .slider_cfg {
+                .sensitivity = 200,
+                .slower_with_shift = true,
+                .default_on_modifer = true,
+            },
+        });
+
+        if (dragger_result.new_string_value)
+            new_value = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal);
+
+        if (dragger_result.value_changed)
+            new_value = (s64)MapFrom01(percent, k_octave_lowest, k_octave_highest);
+
+        if (dragger_result.text_input_result)
+            DrawTextInput(builder.imgui, *dragger_result.text_input_result, k_draw_config);
+        else {
+            auto const draw_text = new_value ? fmt::Format(builder.arena, k_fmt_string, *new_value) : text;
+            auto const pos = imgui::TextInputTextPos(draw_text, window_r, k_input_config, builder.fonts);
+            builder.imgui.draw_list->AddText(pos, style::Col(k_draw_config.text_col), draw_text, {});
+        }
     }
-
-    if (!__builtin_isnan(box.knob_percent))
-        new_value = (s64)MapFrom01(box.knob_percent, k_octave_lowest, k_octave_highest);
-
-    DrawTextInput(box_system,
-                  box,
-                  {
-                      .text_col = style::Colour::Text | style::Colour::DarkMode,
-                      .cursor_col = style::Colour::Text | style::Colour::DarkMode,
-                      .selection_col = style::Colour::Highlight | style::Colour::Alpha50,
-                  });
 
     return new_value;
 }
 
-static void DoBotPanel(Gui* g) {
-    auto& box_system = g->box_system;
+static void DoBotPanel(GuiState& g) {
+    auto& builder = g.builder;
 
     auto const root =
-        DoBox(box_system,
+        DoBox(builder,
               {
                   .background_fill_colours = {style::Colour::Background0 | style::Colour::DarkMode},
                   .layout {
@@ -106,7 +138,7 @@ static void DoBotPanel(Gui* g) {
         constexpr auto k_top_bot_margin = 2.0f;
 
         auto const tabs =
-            DoBox(box_system,
+            DoBox(builder,
                   {
                       .parent = root,
                       .background_fill_colours = {style::Colour::Background1 | style::Colour::DarkMode},
@@ -118,63 +150,65 @@ static void DoBotPanel(Gui* g) {
                       },
                   });
 
-        if (auto const rel_r = BoxRect(box_system, tabs)) {
-            auto const r = box_system.imgui.GetRegisteredAndConvertedRect(*rel_r);
+        if (auto const rel_r = BoxRect(builder, tabs)) {
+            auto const r = builder.imgui.RegisterAndConvertRect(*rel_r);
             // Draw a divider line on the inside right side of the tab box. We do this here because it creates
             // a nice consistent line - active tabs will draw over it to connect with the main content.
-            box_system.imgui.draw_list->AddRectFilled(Rect {.xywh {r.x + r.w - 1, r.y, 1, r.h}},
-                                                      style::Col(k_border_col));
+            builder.imgui.draw_list->AddRectFilled(Rect {.xywh {r.x + r.w - 1, r.y, 1, r.h}},
+                                                   style::Col(k_border_col));
         }
 
-        auto const tab_button = [&](BottomPanelType type, TooltipString tooltip) {
-            auto const btn =
-                DoBox(box_system,
-                      {
-                          .parent = tabs,
-                          .background_fill_colours =
-                              Splat(type == g->bottom_panel_state.type
-                                        ? style::Colour::Background0 | style::Colour::DarkMode
-                                        : style::Colour::None),
-                          .border_colours = Splat(k_border_col),
-                          .border_edges = type == g->bottom_panel_state.type ? (u32)0b0101 : 0b0000,
-                          .layout {
-                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                              .margins = {.t = ToInt(type) == 0 ? k_top_bot_margin : 0.0f,
-                                          .b = BottomPanelType(ToInt(type) + 1) == BottomPanelType::Count
-                                                   ? k_top_bot_margin
-                                                   : 0.0f},
-                              .contents_padding = {.lr = 5, .tb = 4},
-                              .contents_direction = layout::Direction::Row,
-                              .contents_align = layout::Alignment::Start,
-                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                          },
-                          .tooltip = tooltip,
-                          .behaviour = Behaviour::Button,
-                      });
+        auto const tab_button =
+            [&](BottomPanelType type, TooltipString tooltip, u64 id_extra = SourceLocationHash()) {
+                auto const btn =
+                    DoBox(builder,
+                          {
+                              .parent = tabs,
+                              .id_extra = id_extra,
+                              .background_fill_colours =
+                                  Splat(type == g.bottom_panel_state.type
+                                            ? style::Colour::Background0 | style::Colour::DarkMode
+                                            : style::Colour::None),
+                              .border_colours = Splat(k_border_col),
+                              .border_edges = type == g.bottom_panel_state.type ? (u4)0b0101 : (u4)0b0000,
+                              .layout {
+                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                  .margins = {.t = ToInt(type) == 0 ? k_top_bot_margin : 0.0f,
+                                              .b = BottomPanelType(ToInt(type) + 1) == BottomPanelType::Count
+                                                       ? k_top_bot_margin
+                                                       : 0.0f},
+                                  .contents_padding = {.lr = 5, .tb = 4},
+                                  .contents_direction = layout::Direction::Row,
+                                  .contents_align = layout::Alignment::Start,
+                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                              },
+                              .tooltip = tooltip,
+                              .button_behaviour = imgui::ButtonConfig {},
+                          });
 
-            DoBox(box_system,
-                  {
-                      .parent = btn,
-                      .text =
-                          [type]() {
-                              switch (type) {
-                                  case BottomPanelType::Play: return "Play"_s;
-                                  case BottomPanelType::EditMacros: return "Macros"_s;
-                                  case BottomPanelType::Count: PanicIfReached();
-                              }
-                          }(),
-                      .size_from_text = true,
-                      .text_colours {
-                          .base = type == g->bottom_panel_state.type
-                                      ? style::Colour::Highlight
-                                      : style::Colour::Text | style::Colour::DarkMode,
-                          .hot = style::Colour::Highlight,
-                          .active = style::Colour::Highlight,
-                      },
-                      .parent_dictates_hot_and_active = true,
-                  });
-            return btn;
-        };
+                DoBox(builder,
+                      {
+                          .parent = btn,
+                          .text =
+                              [type]() {
+                                  switch (type) {
+                                      case BottomPanelType::Play: return "Play"_s;
+                                      case BottomPanelType::EditMacros: return "Macros"_s;
+                                      case BottomPanelType::Count: PanicIfReached();
+                                  }
+                              }(),
+                          .size_from_text = true,
+                          .text_colours {
+                              .base = type == g.bottom_panel_state.type
+                                          ? style::Colour::Highlight
+                                          : style::Colour::Text | style::Colour::DarkMode,
+                              .hot = style::Colour::Highlight,
+                              .active = style::Colour::Highlight,
+                          },
+                          .parent_dictates_hot_and_active = true,
+                      });
+                return btn;
+            };
 
         Optional<BottomPanelType> new_panel {};
 
@@ -185,17 +219,15 @@ static void DoBotPanel(Gui* g) {
                 .button_fired)
             new_panel = BottomPanelType::EditMacros;
 
-        if (new_panel)
-            dyn::Append(box_system.state->deferred_actions,
-                        [t = *new_panel, &state = g->bottom_panel_state]() { state.type = t; });
+        if (new_panel) g.bottom_panel_state.type = *new_panel;
     }
 
-    switch (g->bottom_panel_state.type) {
+    switch (g.bottom_panel_state.type) {
         case BottomPanelType::Play: {
             // Macro knobs.
             {
                 auto const macro_box =
-                    DoBox(box_system,
+                    DoBox(builder,
                           {
                               .parent = root,
                               .background_fill_colours = {style::Colour::None},
@@ -212,25 +244,25 @@ static void DoBotPanel(Gui* g) {
                           });
 
                 for (auto const [macro_index, param_index] : Enumerate(k_macro_params))
-                    DoParameterComponent(
+                    DoKnobParameter(
                         g,
                         macro_box,
-                        g->engine.processor.main_params.DescribedValue(param_index),
+                        g.engine.processor.main_params.DescribedValue(param_index),
                         {
-                            .greyed_out =
-                                g->engine.processor.main_macro_destinations[macro_index].Size() == 0,
-                            .override_label = g->engine.macro_names[macro_index],
+                            .size = ParameterComponentOptions::Size::Small,
+                            .greyed_out = g.engine.processor.main_macro_destinations[macro_index].Size() == 0,
+                            .override_label = g.engine.macro_names[macro_index],
                         });
             }
 
-            auto& preferences = g->prefs;
+            auto& preferences = g.prefs;
             auto const keyboard_octave =
                 Clamp<s64>(prefs::LookupInt(preferences, prefs::key::k_gui_keyboard_octave).ValueOr(0),
                            k_octave_lowest,
                            k_octave_highest);
 
             {
-                auto const keyboard = DoBox(box_system,
+                auto const keyboard = DoBox(builder,
                                             {
                                                 .parent = root,
                                                 .layout {
@@ -238,23 +270,23 @@ static void DoBotPanel(Gui* g) {
                                                     .margins = {.l = 0, .r = 3, .tb = 3},
                                                 },
                                             });
-                if (auto const r = BoxRect(box_system, keyboard)) {
+                if (auto const r = BoxRect(builder, keyboard)) {
                     if (auto key = KeyboardGui(g, *r, (int)keyboard_octave)) {
-                        g->engine.processor.gui_note_click_state.Store(
+                        g.engine.processor.gui_note_click_state.Store(
                             {
                                 .velocity = key->velocity,
                                 .key = key->note,
                                 .is_held = key->is_down,
                             },
                             StoreMemoryOrder::Release);
-                        g->engine.host.request_process(&g->engine.host);
+                        g.engine.host.request_process(&g.engine.host);
                     }
                 }
             }
 
             {
                 auto const octave_box =
-                    DoBox(box_system,
+                    DoBox(builder,
                           {
                               .parent = root,
                               .layout {
@@ -267,12 +299,12 @@ static void DoBotPanel(Gui* g) {
 
                 Optional<s64> new_octave {};
 
-                if (IconButton(box_system, octave_box, ICON_FA_CARET_UP, "GUI Keyboard Octave Up"_s))
+                if (IconButton(builder, octave_box, ICON_FA_CARET_UP, "GUI Keyboard Octave Up"_s))
                     new_octave = Min<s64>(keyboard_octave + 1, k_octave_highest);
 
-                if (auto const v = OctaveDragger(box_system, octave_box, keyboard_octave)) new_octave = *v;
+                if (auto const v = OctaveDragger(builder, octave_box, keyboard_octave)) new_octave = *v;
 
-                if (IconButton(box_system, octave_box, ICON_FA_CARET_DOWN, "GUI Keyboard Octave Down"_s))
+                if (IconButton(builder, octave_box, ICON_FA_CARET_DOWN, "GUI Keyboard Octave Down"_s))
                     new_octave = Max<s64>(keyboard_octave - 1, k_octave_lowest);
 
                 if (new_octave) prefs::SetValue(preferences, prefs::key::k_gui_keyboard_octave, *new_octave);
@@ -289,15 +321,16 @@ static void DoBotPanel(Gui* g) {
     }
 }
 
-void BotPanel(Gui* g, Rect const r) {
-    RunOrEnqueuePanel(g->box_system,
-                      {
-                          .run = [g](GuiBoxSystem&) { DoBotPanel(g); },
-                          .data =
-                              Subpanel {
-                                  .rect = r,
-                                  .imgui_id = g->imgui.GetID("BotPanel"),
-                                  .flags = {.no_scrollbar_x = true, .no_scrollbar_y = true},
-                              },
-                      });
+void BotPanel(GuiState& g, Rect const r) {
+    DoBoxViewport(g.builder,
+                  {
+                      .run = [&g](GuiBuilder&) { DoBotPanel(g); },
+                      .bounds = r,
+                      .imgui_id = g.imgui.MakeId("BotPanel"),
+                      .viewport_config = ({
+                          auto cfg = k_default_modal_subviewport;
+                          cfg.scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never;
+                          cfg;
+                      }),
+                  });
 }

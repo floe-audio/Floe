@@ -12,13 +12,12 @@
 #include "gui/gui2_save_preset_panel.hpp"
 #include "gui2_common_modal_panel.hpp"
 #include "gui2_notifications.hpp"
-#include "gui_framework/gui_box_system.hpp"
+#include "gui_framework/gui_builder.hpp"
 
 #define GENERATED_TAGS_FILENAME "Lua/instrument_tags.lua"
 
-static void
-DoUtilitiesPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, LibraryDevPanelState&) {
-    auto const root = DoBox(box_system,
+static void DoUtilitiesPanel(GuiBuilder& builder, LibraryDevPanelContext& context, LibraryDevPanelState&) {
+    auto const root = DoBox(builder,
                             {
                                 .layout {
                                     .size = layout::k_fill_parent,
@@ -31,14 +30,14 @@ DoUtilitiesPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Libr
                             });
 
     if (TextButton(
-            box_system,
+            builder,
             root,
             {
                 .text = "Install Lua definitions",
                 .tooltip =
                     "Generate Lua LSP definitions for Floe's API - used for autocompletion and diagnostics when editing floe.lua files"_s,
             })) {
-        auto const path = sample_lib::LuaDefinitionsFilepath(box_system.arena);
+        auto const path = sample_lib::LuaDefinitionsFilepath(builder.arena);
 
         auto const try_install = [&]() -> ErrorCodeOr<void> {
             auto file = TRY(OpenFile(path, FileMode::Write()));
@@ -77,11 +76,11 @@ DoUtilitiesPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Libr
         }
     }
 
-    if (TextButton(box_system,
+    if (TextButton(builder,
                    root,
                    {.text = "Copy Lua definitions path",
                     .tooltip = "Copy the path to the Lua definitions file to the clipboard"_s})) {
-        auto const path = sample_lib::LuaDefinitionsFilepath(box_system.arena);
+        auto const path = sample_lib::LuaDefinitionsFilepath(builder.arena);
         dyn::Assign(GuiIo().out.set_clipboard_text, path);
         auto const notification_id = SourceLocationHash();
         *context.notifications.FindOrAppendUninitalisedOverwrite(notification_id) = {
@@ -269,9 +268,8 @@ WriteTagsFile(TagsByInstrument const& tags, sample_lib::Library const& library, 
     return k_success;
 }
 
-static void
-DoTagBuilderPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, LibraryDevPanelState&) {
-    auto const root = DoBox(box_system,
+static void DoTagBuilderPanel(GuiBuilder& builder, LibraryDevPanelContext& context, LibraryDevPanelState&) {
+    auto const root = DoBox(builder,
                             {
                                 .layout {
                                     .size = layout::k_fill_parent,
@@ -284,7 +282,7 @@ DoTagBuilderPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Lib
                             });
 
     DoBox(
-        box_system,
+        builder,
         {
             .parent = root,
             .text =
@@ -301,7 +299,7 @@ DoTagBuilderPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Lib
     if (inst.instrument.library.file_format_specifics.tag != sample_lib::FileFormat::Lua) return;
 
     String error_message;
-    auto tags_result = LoadExistingTagsFile(inst.instrument, box_system.arena, error_message);
+    auto tags_result = LoadExistingTagsFile(inst.instrument, builder.arena, error_message);
     if (tags_result.HasError()) {
         *context.notifications.AppendUninitalisedOverwrite() = {
             .get_diplay_info =
@@ -330,16 +328,16 @@ DoTagBuilderPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Lib
         }
     }
 
-    if (DoTagsGui(box_system, this_inst_tags, root)) {
+    if (DoTagsGui(builder, this_inst_tags, root)) {
         // Update the tags for the changed instrument.
-        auto& result = tags.FindOrInsertGrowIfNeeded(box_system.arena, inst.instrument.name, {}).element.data;
+        auto& result = tags.FindOrInsertGrowIfNeeded(builder.arena, inst.instrument.name, {}).element.data;
         result.DeleteAll();
         for (auto const& tag : this_inst_tags) {
             if (tag.size == 0) continue;
-            result.InsertGrowIfNeeded(box_system.arena, tag);
+            result.InsertGrowIfNeeded(builder.arena, tag);
         }
 
-        if (auto const o = WriteTagsFile(tags, inst.instrument.library, box_system.arena); o.HasError()) {
+        if (auto const o = WriteTagsFile(tags, inst.instrument.library, builder.arena); o.HasError()) {
             *context.notifications.AppendUninitalisedOverwrite() = {
                 .get_diplay_info =
                     [error = o.Error()](ArenaAllocator& arena) {
@@ -356,7 +354,7 @@ DoTagBuilderPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, Lib
     }
 }
 
-static void DoPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, LibraryDevPanelState& state) {
+static void DoPanel(GuiBuilder& builder, LibraryDevPanelContext& context, LibraryDevPanelState& state) {
     constexpr auto k_tab_config = []() {
         Array<ModalTabConfig, ToInt(LibraryDevPanelState::Tab::Count)> tabs {};
         for (auto const tab : EnumIterator<LibraryDevPanelState::Tab>()) {
@@ -375,73 +373,66 @@ static void DoPanel(GuiBoxSystem& box_system, LibraryDevPanelContext& context, L
         return tabs;
     }();
 
-    auto const root = DoModal(box_system,
+    auto const root = DoModal(builder,
                               {
                                   .title = "Library Developer Panel"_s,
-                                  .on_close = [&state] { state.open = false; },
                                   .modeless = &state.modeless,
                                   .tabs = k_tab_config,
                                   .current_tab_index = ToIntRef(state.tab),
                               });
 
-    using TabPanelFunction = void (*)(GuiBoxSystem&, LibraryDevPanelContext&, LibraryDevPanelState&);
-    RunOrEnqueuePanel(box_system,
-                      Panel {
-                          .run = ({
-                              TabPanelFunction f {};
-                              switch (state.tab) {
-                                  case LibraryDevPanelState::Tab::TagBuilder: f = DoTagBuilderPanel; break;
-                                  case LibraryDevPanelState::Tab::Utilities: f = DoUtilitiesPanel; break;
-                                  case LibraryDevPanelState::Tab::Count: PanicIfReached();
-                              }
-                              [f, &context, &state](GuiBoxSystem& box_system) {
-                                  f(box_system, context, state);
-                              };
-                          }),
-                          .data =
-                              Subpanel {
-                                  .id = DoBox(box_system,
-                                              {
-                                                  .parent = root,
-                                                  .layout {
-                                                      .size = {layout::k_fill_parent, layout::k_fill_parent},
-                                                  },
-                                              })
-                                            .layout_id,
-                                  .imgui_id = box_system.imgui.GetID((u64)state.tab + 999999),
-                              },
-                      });
+    using TabPanelFunction = void (*)(GuiBuilder&, LibraryDevPanelContext&, LibraryDevPanelState&);
+    DoBoxViewport(builder,
+                  {
+                      .run = ({
+                          TabPanelFunction f {};
+                          switch (state.tab) {
+                              case LibraryDevPanelState::Tab::TagBuilder: f = DoTagBuilderPanel; break;
+                              case LibraryDevPanelState::Tab::Utilities: f = DoUtilitiesPanel; break;
+                              case LibraryDevPanelState::Tab::Count: PanicIfReached();
+                          }
+                          [f, &context, &state](GuiBuilder& builder) { f(builder, context, state); };
+                      }),
+                      .bounds = DoBox(builder,
+                                      {
+                                          .parent = root,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                          },
+                                      }),
+                      .imgui_id = builder.imgui.MakeId((u64)state.tab + 999999),
+                      .viewport_config = k_default_modal_subviewport,
+                  });
 }
 
-void DoLibraryDevPanel(GuiBoxSystem& box_system,
-                       LibraryDevPanelContext& context,
-                       LibraryDevPanelState& state) {
+void DoLibraryDevPanel(GuiBuilder& builder, LibraryDevPanelContext& context, LibraryDevPanelState& state) {
+    auto const is_open = builder.imgui.IsModalOpen(state.k_panel_id);
     // While the tag builder panel is open we want to disable file watching so that the instrument doesn't
     // reload with every change of tags.
     context.engine.shared_engine_systems.sample_library_server.disable_file_watching.Store(
-        state.open && state.tab == LibraryDevPanelState::Tab::TagBuilder,
+        is_open && state.tab == LibraryDevPanelState::Tab::TagBuilder,
         StoreMemoryOrder::Relaxed);
 
-    if (!state.open) return;
+    if (!is_open) return;
 
-    f32x2 const size = {box_system.imgui.VwToPixels(350), box_system.imgui.VwToPixels(570)};
+    f32x2 const size = {GuiIo().WwToPixels(350.0f), GuiIo().WwToPixels(570.0f)};
     auto const window_size = GuiIo().in.window_size.ToFloat2();
     f32x2 pos = 0;
     pos.x += window_size.x - size.x;
     pos.y += (window_size.y - size.y) / 2;
 
-    RunOrEnqueuePanel(
-        box_system,
-        Panel {
-            .run = [&context, &state](GuiBoxSystem& box_system) { DoPanel(box_system, context, state); },
-            .data =
-                ModalPanel {
-                    .r = {.pos = pos, .size = size},
-                    .imgui_id = box_system.imgui.GetID("libdev-panel"),
-                    .on_close = [&state]() { state.open = false; },
-                    .close_on_click_outside = !state.modeless,
-                    .darken_background = !state.modeless,
-                    .disable_other_interaction = !state.modeless,
-                },
-        });
+    DoBoxViewport(builder,
+                  {
+                      .run = [&context, &state](GuiBuilder& builder) { DoPanel(builder, context, state); },
+                      .bounds = Rect {.pos = pos, .size = size},
+                      .imgui_id = state.k_panel_id,
+                      .viewport_config = ({
+                          auto cfg = k_default_modal_viewport;
+                          if (state.modeless) cfg.draw_background = DrawOverlayViewportBackground;
+                          cfg.exclusive_focus = !state.modeless;
+                          cfg.close_on_click_outside = !state.modeless;
+                          cfg.close_on_escape = !state.modeless;
+                          cfg;
+                      }),
+                  });
 }

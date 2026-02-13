@@ -31,7 +31,7 @@ static prefs::Descriptor RememberedAuthorPrefsDescriptor() {
     return desc;
 }
 
-bool DoTagsGui(GuiBoxSystem& box_system,
+bool DoTagsGui(GuiBuilder& builder,
                DynamicArrayBounded<DynamicArrayBounded<char, k_max_tag_size>, k_max_num_tags>& tags,
                Box const& root) {
     Bitset<ToInt(TagType::Count)> selected_tags = {};
@@ -53,9 +53,10 @@ bool DoTagsGui(GuiBoxSystem& box_system,
     for (auto const category : EnumIterator<TagCategory>()) {
         if (category == TagCategory::ReverbType) continue;
 
-        auto const category_box = DoBox(box_system,
+        auto const category_box = DoBox(builder,
                                         {
                                             .parent = root,
+                                            .id_extra = (u64)category,
                                             .layout {
                                                 .size = {layout::k_fill_parent, layout::k_hug_contents},
                                                 .contents_gap = style::k_spacing / 3,
@@ -70,7 +71,7 @@ bool DoTagsGui(GuiBoxSystem& box_system,
         {
 
             auto const heading_box =
-                DoBox(box_system,
+                DoBox(builder,
                       {
                           .parent = category_box,
                           .layout {
@@ -81,7 +82,7 @@ bool DoTagsGui(GuiBoxSystem& box_system,
                               .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                           },
                       });
-            DoBox(box_system,
+            DoBox(builder,
                   {
                       .parent = heading_box,
                       .text = info.font_awesome_icon,
@@ -89,7 +90,7 @@ bool DoTagsGui(GuiBoxSystem& box_system,
                       .font = FontType::Icons,
                   });
 
-            DoBox(box_system,
+            DoBox(builder,
                   {
                       .parent = heading_box,
                       .text = fmt::FormatInline<k_max_tag_size + 3>("{}:", info.name),
@@ -101,7 +102,7 @@ bool DoTagsGui(GuiBoxSystem& box_system,
                   });
         }
 
-        auto const tags_list = DoBox(box_system,
+        auto const tags_list = DoBox(builder,
                                      {
                                          .parent = category_box,
                                          .layout {
@@ -124,9 +125,10 @@ bool DoTagsGui(GuiBoxSystem& box_system,
             if (is_selected) grey_out = false;
 
             auto const button = DoBox(
-                box_system,
+                builder,
                 BoxConfig {
                     .parent = tags_list,
+                    .id_extra = (u64)tag,
                     .text = tag_info.name,
                     .size_from_text = true,
                     .font = FontType::Body,
@@ -136,7 +138,7 @@ bool DoTagsGui(GuiBoxSystem& box_system,
                     .background_fill_auto_hot_active_overlay = true,
                     .round_background_corners = 0b1100,
                     .tooltip = tag_info.description.size ? TooltipString(tag_info.description) : k_nullopt,
-                    .behaviour = Behaviour::Button,
+                    .button_behaviour = imgui::ButtonConfig {},
                 });
 
             if (button.button_fired) {
@@ -153,11 +155,11 @@ bool DoTagsGui(GuiBoxSystem& box_system,
 }
 
 static void
-SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SavePresetPanelState& state) {
-    auto const root = DoBox(box_system,
+SavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePresetPanelState& state) {
+    auto const root = DoBox(builder,
                             {
                                 .layout {
-                                    .size = box_system.imgui.PixelsToVw(box_system.imgui.Size()),
+                                    .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
                                     .contents_padding = {.lrtb = style::k_spacing},
                                     .contents_gap = style::k_spacing,
                                     .contents_direction = layout::Direction::Column,
@@ -167,7 +169,7 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
                             });
 
     DoBox(
-        box_system,
+        builder,
         {
             .parent = root,
             .text =
@@ -178,7 +180,7 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
         });
 
     {
-        auto const author_box = DoBox(box_system,
+        auto const author_box = DoBox(builder,
                                       {
                                           .parent = root,
                                           .layout {
@@ -189,7 +191,7 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
                                               .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                           },
                                       });
-        DoBox(box_system,
+        DoBox(builder,
               {
                   .parent = author_box,
                   .text = "Author:"_s,
@@ -197,38 +199,34 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
                   .font = FontType::Body,
               });
 
-        if (auto const input = TextInput(box_system,
+        if (auto const input = TextInput(builder,
                                          author_box,
                                          {
                                              .text = state.metadata.author,
                                              .tooltip = "Creator of this preset"_s,
                                              .size = f32x2 {200, style::k_font_body_size * 1.3f},
                                          });
-            input.text_input_result && input.text_input_result->buffer_changed) {
-            ASSERT(input.text_input_result->text.size < 10000);
-            dyn::AssignFitInCapacity(state.metadata.author, input.text_input_result->text);
+            input.result && input.result->buffer_changed) {
+            ASSERT(input.result->text.size < 10000);
+            dyn::AssignFitInCapacity(state.metadata.author, input.result->text);
         }
 
-        if (IconButton(box_system,
+        if (IconButton(builder,
                        author_box,
                        ICON_FA_FLOPPY_DISK,
                        "Remember this author"_s,
                        style::k_font_body_size,
                        style::k_font_body_size)
                 .button_fired) {
-            dyn::Append(box_system.state->deferred_actions, [&context, &state]() {
-                prefs::SetValue(context.prefs,
-                                RememberedAuthorPrefsDescriptor(),
-                                (String)state.metadata.author);
-            });
+            prefs::SetValue(context.prefs, RememberedAuthorPrefsDescriptor(), (String)state.metadata.author);
         }
 
         if (auto const remembered_name = prefs::GetValue(context.prefs, RememberedAuthorPrefsDescriptor());
             !remembered_name.is_default) {
-            if (IconButton(box_system,
+            if (IconButton(builder,
                            author_box,
                            ICON_FA_FILE_IMPORT,
-                           fmt::Format(box_system.arena, "Use saved author: {}"_s, remembered_name.value),
+                           fmt::Format(builder.arena, "Use saved author: {}"_s, remembered_name.value),
                            style::k_font_body_size,
                            style::k_font_body_size)
                     .button_fired) {
@@ -238,7 +236,7 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
     }
 
     {
-        auto const container = DoBox(box_system,
+        auto const container = DoBox(builder,
                                      {
                                          .parent = root,
                                          .layout {
@@ -249,7 +247,7 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
                                              .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                          },
                                      });
-        DoBox(box_system,
+        DoBox(builder,
               {
                   .parent = container,
                   .text = "Description:"_s,
@@ -257,18 +255,18 @@ SavePresetPanel(GuiBoxSystem& box_system, SavePresetPanelContext& context, SaveP
                   .font = FontType::Body,
               });
 
-        if (auto const description_field = TextInput(box_system,
+        if (auto const description_field = TextInput(builder,
                                                      container,
                                                      {
                                                          .text = state.metadata.description,
                                                          .size = f32x2 {layout::k_fill_parent, 60},
                                                          .multiline = true,
                                                      });
-            description_field.text_input_result && description_field.text_input_result->buffer_changed)
-            dyn::AssignFitInCapacity(state.metadata.description, description_field.text_input_result->text);
+            description_field.result && description_field.result->buffer_changed)
+            dyn::AssignFitInCapacity(state.metadata.description, description_field.result->text);
     }
 
-    DoTagsGui(box_system, state.metadata.tags, root);
+    DoTagsGui(builder, state.metadata.tags, root);
 }
 
 constexpr u32 k_save_panel_contents_imgui_id = (u32)SourceLocationHash();
@@ -277,61 +275,50 @@ static void CommitMetadataToEngine(Engine& engine, SavePresetPanelState const& s
     engine.state_metadata = state.metadata;
 }
 
-void DoSavePresetPanel(GuiBoxSystem& box_system,
-                       SavePresetPanelContext& context,
-                       SavePresetPanelState& state) {
-    if (!state.open) return;
+void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePresetPanelState& state) {
+    if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
 
     if (Exchange(state.scroll_to_start, false)) {
-        if (auto w = box_system.imgui.FindWindow(k_save_panel_contents_imgui_id))
-            box_system.imgui.SetYScroll(w, 0.0f);
+        if (auto w = builder.imgui.FindViewport(k_save_panel_contents_imgui_id))
+            builder.imgui.SetYScroll(w, 0.0f);
     }
 
-    RunOrEnqueuePanel(
-        box_system,
-        Panel {
+    DoBoxViewport(
+        builder,
+        {
             .run =
-                [&context, &state](GuiBoxSystem& box_system) {
-                    auto const root = DoModalRootBox(box_system);
+                [&context, &state](GuiBuilder& builder) {
+                    auto const root = DoModalRootBox(builder);
 
-                    DoModalHeader(box_system,
+                    DoModalHeader(builder,
                                   {
                                       .parent = root,
                                       .title = "Save Preset",
-                                      .on_close = [&state]() { state.open = false; },
                                       .modeless = &state.modeless,
                                   });
 
-                    DoModalDivider(box_system, root, {.horizontal = true});
+                    DoModalDivider(builder, root, {.horizontal = true});
 
-                    RunOrEnqueuePanel(
-                        box_system,
-                        Panel {
-                            .run =
-                                [&](GuiBoxSystem& box_system) {
-                                    SavePresetPanel(box_system, context, state);
-                                },
-                            .data =
-                                Subpanel {
-                                    .id =
-                                        DoBox(box_system,
-                                              {
-                                                  .parent = root,
-                                                  .layout {
-                                                      .size = {layout::k_fill_parent, layout::k_fill_parent},
-                                                  },
-                                              })
-                                            .layout_id,
-                                    .imgui_id = k_save_panel_contents_imgui_id,
-                                },
-
+                    DoBoxViewport(
+                        builder,
+                        {
+                            .run = [&](GuiBuilder& builder) { SavePresetPanel(builder, context, state); },
+                            .bounds = DoBox(builder,
+                                            {
+                                                .parent = root,
+                                                .layout {
+                                                    .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                                },
+                                            }),
+                            .imgui_id = k_save_panel_contents_imgui_id,
+                            .viewport_config = k_default_modal_subviewport,
                         });
 
-                    DoModalDivider(box_system, root, {.horizontal = true});
+                    DoModalDivider(builder, root, {.horizontal = true});
 
                     // bottom buttons
                     auto const button_container =
-                        DoBox(box_system,
+                        DoBox(builder,
                               {
                                   .parent = root,
                                   .layout {
@@ -343,47 +330,47 @@ void DoSavePresetPanel(GuiBoxSystem& box_system,
                                   },
                               });
 
-                    if (TextButton(box_system,
+                    if (TextButton(builder,
                                    button_container,
                                    {.text = "Cancel"_s, .tooltip = "Cancel and close"_s}))
-                        state.open = false;
+                        builder.imgui.CloseTopModal();
 
                     if (auto const existing_path = context.engine.last_snapshot.name_or_path.Path()) {
                         if (TextButton(
-                                box_system,
+                                builder,
                                 button_container,
                                 {.text = "Overwrite"_s, .tooltip = "Overwrite the existing preset"_s})) {
                             CommitMetadataToEngine(context.engine, state);
                             SaveCurrentStateToFile(context.engine, *existing_path);
-                            if (!state.modeless) state.open = false;
+                            if (!state.modeless) builder.imgui.CloseTopModal();
                         }
 
                         if (TextButton(
-                                box_system,
+                                builder,
                                 button_container,
                                 {.text = "Save As New"_s, .tooltip = "Save the preset as a new file"_s})) {
                             CommitMetadataToEngine(context.engine, state);
                             OpenFilePickerSavePreset(context.file_picker_state, context.paths);
-                            if (!state.modeless) state.open = false;
+                            if (!state.modeless) builder.imgui.CloseTopModal();
                         }
-                    } else if (TextButton(box_system,
+                    } else if (TextButton(builder,
                                           button_container,
                                           {.text = "Save"_s, .tooltip = "Save the preset to a new file"_s})) {
                         CommitMetadataToEngine(context.engine, state);
                         OpenFilePickerSavePreset(context.file_picker_state, context.paths);
-                        if (!state.modeless) state.open = false;
+                        if (!state.modeless) builder.imgui.CloseTopModal();
                     }
                 },
-            .data =
-                ModalPanel {
-                    .r = CentredRect(
-                        {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()},
-                        f32x2 {box_system.imgui.VwToPixels(640), box_system.imgui.VwToPixels(600)}),
-                    .imgui_id = box_system.imgui.GetID("save-preset"),
-                    .on_close = [&state]() { state.open = false; },
-                    .close_on_click_outside = !state.modeless,
-                    .darken_background = !state.modeless,
-                    .disable_other_interaction = !state.modeless,
-                },
+            .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
+                GuiIo().WwToPixels(f32x2 {640, 600})),
+            .imgui_id = state.k_panel_id,
+            .viewport_config = ({
+                auto cfg = k_default_modal_viewport;
+                if (state.modeless) cfg.draw_background = DrawOverlayViewportBackground;
+                cfg.exclusive_focus = !state.modeless;
+                cfg.close_on_click_outside = !state.modeless;
+                cfg.close_on_escape = !state.modeless;
+                cfg;
+            }),
         });
 }

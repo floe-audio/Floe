@@ -212,10 +212,10 @@ void LoadRandomIr(IrBrowserContext const& context, IrBrowserState& state) {
     LoadIr(context, state, cursor);
 }
 
-void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrowserState& state) {
-    auto const root = DoBrowserItemsRoot(box_system);
+void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserState& state) {
+    auto const root = DoBrowserItemsRoot(builder);
 
-    Optional<FolderNode*> previous_folder {};
+    Optional<u64> previous_folder_hash {};
     Optional<BrowserSection> folder_section {};
 
     auto const first =
@@ -229,13 +229,14 @@ void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrows
         auto const& lib = *context.frame_context.libraries[cursor.lib_index];
         auto const& ir = *lib.sorted_irs[cursor.ir_index];
         auto const& folder = ir.folder;
-        auto const new_folder = folder != previous_folder;
+        auto const folder_hash = folder->Hash();
+        auto const new_folder = folder_hash != previous_folder_hash;
 
         if (new_folder) {
-            previous_folder = folder;
+            previous_folder_hash = folder_hash;
             folder_section = BrowserSection {
                 .state = state.common_state,
-                .id = folder->Hash(),
+                .id = folder_hash,
                 .parent = root,
                 .folder = folder,
             };
@@ -246,14 +247,15 @@ void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrows
         auto const is_current = context.engine.processor.convo.ir_id == ir_id;
         auto const is_favourite = IsFavourite(context.prefs, k_favourite_ir_key, ir_hash);
 
-        if (folder_section->Do(box_system).tag != BrowserSection::State::Collapsed) {
-            auto const item = DoBrowserItem(box_system,
+        if (folder_section->Do(builder).tag != BrowserSection::State::Collapsed) {
+            auto const item = DoBrowserItem(builder,
                                             state.common_state,
                                             {
-                                                .parent = folder_section->Do(box_system).Get<Box>(),
+                                                .parent = folder_section->Do(builder).Get<Box>(),
+                                                .id_extra = ir_hash,
                                                 .text = ir.name,
                                                 .tooltip = FunctionRef<String()>([&]() -> String {
-                                                    DynamicArray<char> buffer {box_system.arena};
+                                                    DynamicArray<char> buffer {builder.arena};
 
                                                     fmt::Append(buffer, "{}. Tags: ", ir.name);
                                                     if (ir.tags.size) {
@@ -275,7 +277,7 @@ void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrows
                                                         previous_library = &lib;
                                                         auto const imgs =
                                                             GetLibraryImages(context.library_images,
-                                                                             box_system.imgui,
+                                                                             builder.imgui,
                                                                              lib.id,
                                                                              context.sample_library_server,
                                                                              LibraryImagesTypes::Icon);
@@ -292,11 +294,11 @@ void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrows
                                                 .store = context.persistent_store,
                                             });
 
-            if (is_current &&
-                box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
-                Exchange(state.scroll_to_show_selected, false)) {
-                box_system.imgui.ScrollWindowToShowRectangle(
-                    layout::GetRect(box_system.layout, item.box.layout_id));
+            if (is_current) {
+                if (auto const r = BoxRect(builder, item.box)) {
+                    if (Exchange(state.scroll_to_show_selected, false))
+                        builder.imgui.ScrollViewportToShowRectangle(*r);
+                }
             }
 
             if (item.fired) {
@@ -306,12 +308,8 @@ void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrows
                     LoadConvolutionIr(context.engine, ir_id);
             }
 
-            if (item.favourite_toggled) {
-                dyn::Append(box_system.state->deferred_actions,
-                            [&prefs = context.prefs, hash = ir_hash, is_favourite]() {
-                                ToggleFavourite(prefs, k_favourite_ir_key, hash, is_favourite);
-                            });
-            }
+            if (item.favourite_toggled)
+                ToggleFavourite(context.prefs, k_favourite_ir_key, ir_hash, is_favourite);
         }
 
         if (auto next = IterateIr(context, state, cursor, SearchDirection::Forward, false)) {
@@ -323,8 +321,8 @@ void IrBrowserItems(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrows
     }
 }
 
-void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrowserState& state) {
-    if (!state.common_state.open) return;
+void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserState& state) {
+    if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
 
     auto const& libs = context.frame_context.libraries;
     auto& ir_id = context.engine.processor.convo.ir_id;
@@ -334,15 +332,15 @@ void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBro
         auto const& lib = *l_ptr;
         for (auto const& ir : lib.sorted_irs)
             for (auto const& [tag, tag_hash] : ir->tags)
-                tags.InsertGrowIfNeeded(box_system.arena, tag, {.num_used_in_items_lists = 0}, tag_hash);
+                tags.InsertGrowIfNeeded(builder.arena, tag, {.num_used_in_items_lists = 0}, tag_hash);
     }
 
     auto libraries =
-        OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(box_system.arena, libs.size);
-    auto library_authors = OrderedHashTable<String, FilterItemInfo>::Create(box_system.arena, libs.size);
+        OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(builder.arena, libs.size);
+    auto library_authors = OrderedHashTable<String, FilterItemInfo>::Create(builder.arena, libs.size);
 
-    auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(box_system.arena, 16);
-    auto root_folder = FolderRootSet::Create(box_system.arena, 8);
+    auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(builder.arena, 16);
+    auto root_folder = FolderRootSet::Create(builder.arena, 8);
 
     FilterItemInfo favourites_info {};
 
@@ -352,7 +350,7 @@ void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBro
         auto& author_found = library_authors.FindOrInsertWithoutGrowing(l->author, {}).element.data;
 
         if (auto& f = l->root_folders[ToInt(sample_lib::ResourceType::Ir)]; f.first_child)
-            root_folder.InsertGrowIfNeeded(box_system.arena, &f);
+            root_folder.InsertGrowIfNeeded(builder.arena, &f);
 
         for (auto const& ir : l->sorted_irs) {
             auto const skip = ShouldSkipIr(context, state, *ir);
@@ -369,29 +367,30 @@ void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBro
             if (!skip) ++author_found.num_used_in_items_lists;
 
             for (auto f = ir->folder; f; f = f->parent) {
-                auto& i = folders.FindOrInsertGrowIfNeeded(box_system.arena, f, {}).element.data;
+                auto& i = folders.FindOrInsertGrowIfNeeded(builder.arena, f, {}).element.data;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
             }
 
             for (auto const& [tag, tag_hash] : ir->tags) {
                 auto& tag_found =
-                    tags.FindOrInsertGrowIfNeeded(box_system.arena, tag, {}, tag_hash).element.data;
+                    tags.FindOrInsertGrowIfNeeded(builder.arena, tag, {}, tag_hash).element.data;
                 ++tag_found.total_available;
                 if (!skip) ++tag_found.num_used_in_items_lists;
             }
             if (!ir->tags.size) {
                 auto& tag_found =
-                    tags.FindOrInsertGrowIfNeeded(box_system.arena, k_untagged_tag_name, {}).element.data;
+                    tags.FindOrInsertGrowIfNeeded(builder.arena, k_untagged_tag_name, {}).element.data;
                 ++tag_found.total_available;
                 if (!skip) ++tag_found.num_used_in_items_lists;
             }
         }
     }
 
-    DoBrowserPopup(
-        box_system,
+    DoBrowserModal(
+        builder,
         {
+            .browser_id = state.k_panel_id,
             .sample_library_server = context.sample_library_server,
             .preferences = context.prefs,
             .store = context.persistent_store,
@@ -405,14 +404,14 @@ void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBro
             .item_type_name = "impulse response",
             .rhs_top_button =
                 BrowserPopupOptions::Button {
-                    .text = fmt::Format(box_system.arena,
+                    .text = fmt::Format(builder.arena,
                                         "Unload {}",
                                         ir_id ? ({
                                             auto n = IrName(context.engine);
                                             usize constexpr k_max_len = 10;
                                             if (n.size > k_max_len)
                                                 n = fmt::Format(
-                                                    box_system.arena,
+                                                    builder.arena,
                                                     "{}…",
                                                     n.SubSpan(0, FindUtf8TruncationPoint(n, k_max_len)));
                                             n;
@@ -422,10 +421,10 @@ void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBro
                     .disabled = !ir_id,
                     .on_fired = TrivialFunctionRef<void()>([&]() {
                                     LoadConvolutionIr(context.engine, k_nullopt);
-                                    state.common_state.open = false;
-                                }).CloneObject(box_system.arena),
+                                    builder.imgui.CloseModal(state.k_panel_id);
+                                }).CloneObject(builder.arena),
                 },
-            .rhs_do_items = [&](GuiBoxSystem& box_system) { IrBrowserItems(box_system, context, state); },
+            .rhs_do_items = [&](GuiBuilder& builder) { IrBrowserItems(builder, context, state); },
             .filter_search_placeholder_text = "Search libraries/tags",
             .item_search_placeholder_text = "Search IRs",
             .on_load_previous = [&]() { LoadAdjacentIr(context, state, SearchDirection::Backward); },

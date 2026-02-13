@@ -20,4 +20,4 @@ struct KeyboardGuiKeyPressed {
     f32 velocity;
 };
 
-Optional<KeyboardGuiKeyPressed> KeyboardGui(Gui* g, Rect r, int starting_octave);
+Optional<KeyboardGuiKeyPressed> KeyboardGui(GuiState& g, Rect r, int starting_octave);

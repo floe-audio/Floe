@@ -11,6 +11,94 @@
 
 namespace layout {
 
+struct Item {
+    u32 flags;
+    Id first_child;
+    Id next_sibling;
+    f32x4 margins_ltrb;
+    f32x2 size;
+    f32x2 contents_gap; // gap between children
+    f32x4 container_padding_ltrb; // padding around all children
+};
+
+Item* GetItem(Context const& ctx, Id id) {
+    ASSERT(id != k_invalid_id && ToInt(id) < ctx.num_items);
+    return ctx.items + ToInt(id);
+}
+
+Id FirstChild(Context const& ctx, Id id) {
+    Item const* item = GetItem(ctx, id);
+    return item->first_child;
+}
+
+Id NextSibling(Context const& ctx, Id id) {
+    Item const* item = GetItem(ctx, id);
+    return item->next_sibling;
+}
+
+Rect GetRect(Context const& ctx, Id id) {
+    ASSERT(id != k_invalid_id && ToInt(id) < ctx.num_items);
+    auto const xywh = ctx.rects[ToInt(id)];
+    return {.xywh = xywh};
+}
+
+f32x2 GetSize(Context& ctx, Id item) { return GetItem(ctx, item)->size; }
+
+static void SetItemSize(Item& item, f32x2 size) {
+    item.size = size;
+
+    auto const w = size[0];
+    if (w == k_hug_contents)
+        item.flags &= ~flags::HorizontalSizeFixed;
+    else if (w == k_fill_parent) {
+        item.size[0] = 0;
+        item.flags &= ~flags::HorizontalSizeFixed;
+        item.flags |= flags::AnchorLeftAndRight;
+    } else {
+        ASSERT(w > 0);
+        item.flags |= flags::HorizontalSizeFixed;
+    }
+
+    auto const h = size[1];
+    if (h == k_hug_contents)
+        item.flags &= ~flags::VerticalSizeFixed;
+    else if (h == k_fill_parent) {
+        item.size[1] = 0;
+        item.flags &= ~flags::VerticalSizeFixed;
+        item.flags |= flags::AnchorTopAndBottom;
+    } else {
+        ASSERT(h > 0);
+        item.flags |= flags::VerticalSizeFixed;
+    }
+}
+
+void SetSize(Context& ctx, Id id, f32x2 size) { SetItemSize(*GetItem(ctx, id), size); }
+
+static void SetBehave(Item& item, u32 flags) {
+    ASSERT_EQ(flags & flags::ChildBehaviourMask, flags);
+    item.flags = (item.flags & ~flags::ChildBehaviourMask) | flags;
+}
+void SetBehave(Context& ctx, Id id, u32 flags) { SetBehave(*GetItem(ctx, id), flags); }
+
+static void SetContain(Item& item, u32 flags) {
+    ASSERT_EQ(flags & flags::ContainerMask, flags);
+    item.flags = (item.flags & ~flags::ContainerMask) | flags;
+}
+void SetContain(Context& ctx, Id id, u32 flags) { SetContain(*GetItem(ctx, id), flags); }
+
+static void SetMargins(Item& item, Margins m) {
+    ASSERT(All(m.lrtb >= 0));
+    ASSERT(All(m.lrtb < 65536)); // just some large value for sanity
+    auto const ltrb = __builtin_shufflevector(m.lrtb, m.lrtb, 0, 2, 1, 3);
+    item.margins_ltrb = ltrb;
+}
+void SetMargins(Context& ctx, Id id, Margins m) { SetMargins(*GetItem(ctx, id), m); }
+
+Margins GetMargins(Context& ctx, Id id) {
+    auto const ltrb = GetItem(ctx, id)->margins_ltrb;
+    return {.lrtb = __builtin_shufflevector(ltrb, ltrb, 0, 2, 1, 3)};
+}
+
 constexpr usize k_total_item_size = sizeof(Item) + sizeof(f32x4);
 
 static Span<u8> Allocation(Context& ctx) { return {(u8*)ctx.items, ctx.capacity * k_total_item_size}; }
@@ -570,6 +658,45 @@ static void Arrange(Context& ctx, Id id, u32 dim) {
     }
 }
 
+Id CreateItem(Context& ctx, Allocator& a, ItemOptions const& options) {
+    auto const id = CreateItem(ctx, a);
+
+    if (ToInt(id) == 0) {
+        ASSERT(All(options.size != k_fill_parent));
+        ASSERT(All(options.size >= 0));
+        ASSERT(!options.parent);
+        ASSERT(options.anchor == Anchor::None);
+        ASSERT(!options.set_item_height_after_width_calculated);
+    }
+
+    if (auto const width = options.size.x; width > 0)
+        ASSERT(options.contents_padding.l + options.contents_padding.r < width);
+    if (auto const height = options.size.y; height > 0)
+        ASSERT(options.contents_padding.t + options.contents_padding.b < height);
+
+    auto& item = *GetItem(ctx, id);
+    item.container_padding_ltrb =
+        __builtin_shufflevector(options.contents_padding.lrtb, options.contents_padding.lrtb, 0, 2, 1, 3);
+    SetItemSize(item, options.size);
+    SetMargins(item, options.margins);
+    item.contents_gap = options.contents_gap;
+    item.flags |= ToInt(options.anchor) | (options.line_break ? flags::LineBreak : 0) |
+                  ToInt(options.contents_direction) | ToInt(options.contents_cross_axis_align) |
+                  ToInt(options.contents_align) | (options.contents_multiline ? flags::Wrap : flags::NoWrap) |
+                  (options.set_item_height_after_width_calculated ? flags::SetItemHeightAfterWidth : 0);
+    if (options.parent) {
+        Insert(ctx, *options.parent, id);
+        auto& parent = *GetItem(ctx, *options.parent);
+        // there's no harm in setting both Top | Left, even though only one will be valid depending on if the
+        // parent is a row or column.
+        if (parent.flags & flags::CrossAxisStart)
+            item.flags |= flags::AnchorTop | flags::AnchorLeft;
+        else if (parent.flags & flags::CrossAxisEnd)
+            item.flags |= flags::AnchorBottom | flags::AnchorRight;
+    }
+    return id;
+}
+
 } // namespace layout
 
 enum Colours : u32 {
@@ -614,6 +741,7 @@ static ErrorCodeOr<String> GenerateSvgContainerHugChildFill(ArenaAllocator& aren
                                          arena,
                                          {
                                              .size = layout::k_hug_contents,
+                                             .contents_gap = 3.0f,
                                              .contents_direction = layout::Direction::Column,
                                          });
 

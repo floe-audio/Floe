@@ -11,7 +11,7 @@
 #include "gui2_common_modal_panel.hpp"
 #include "gui2_confirmation_dialog_state.hpp"
 #include "gui2_info_panel_state.hpp"
-#include "gui_framework/gui_box_system.hpp"
+#include "gui_framework/gui_builder.hpp"
 #include "license_texts.h"
 #include "processor/voices.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
@@ -28,13 +28,13 @@ struct InfoPanelContext {
     ConfirmationDialogState& confirmation_dialog_state;
 };
 
-static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoPanelState& state) {
+static void LibrariesInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState&) {
     DynamicArrayBounded<char, 500> buffer {};
 
     // sort libraries by name
     Sort(context.libraries, [](auto a, auto b) { return a->name < b->name; });
 
-    auto const root = DoBox(box_system,
+    auto const root = DoBox(builder,
                             {
                                 .layout {
                                     .size = layout::k_fill_parent,
@@ -47,7 +47,7 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
                             });
 
     // heading
-    DoBox(box_system,
+    DoBox(builder,
           {
               .parent = root,
               .text = fmt::Assign(buffer, "Installed Libraries ({})", context.libraries.size - 1),
@@ -59,9 +59,10 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
         if (lib->id == sample_lib::k_builtin_library_id) continue;
 
         // create a 'card' container object
-        auto const card = DoBox(box_system,
+        auto const card = DoBox(builder,
                                 {
                                     .parent = root,
+                                    .id_extra = Hash(lib->id),
                                     .border_colours = {style::Colour::Background2},
                                     .round_background_corners = 0b1111,
                                     .layout {
@@ -73,14 +74,14 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
                                         .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                     },
                                 });
-        DoBox(box_system,
+        DoBox(builder,
               {
                   .parent = card,
                   .text = fmt::JoinInline<128>(Array {lib->name, lib->author}, " - "),
                   .size_from_text = true,
                   .font = FontType::Heading2,
               });
-        DoBox(box_system,
+        DoBox(builder,
               {
                   .parent = card,
                   .text = lib->tagline,
@@ -88,7 +89,7 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
                   .font = FontType::Body,
               });
         if (lib->description) {
-            DoBox(box_system,
+            DoBox(builder,
                   {
                       .parent = card,
                       .text = *lib->description,
@@ -97,10 +98,11 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
                   });
         }
 
-        auto do_text_line = [&](String text) {
-            DoBox(box_system,
+        auto do_text_line = [&](String text, u64 id_extra = SourceLocationHash()) {
+            DoBox(builder,
                   {
                       .parent = card,
+                      .id_extra = id_extra,
                       .text = text,
                       .size_from_text = true,
                   });
@@ -123,7 +125,7 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
                                      s;
                                  })));
 
-        auto const button_row = DoBox(box_system,
+        auto const button_row = DoBox(builder,
                                       {
                                           .parent = card,
                                           .layout {
@@ -135,16 +137,16 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
                                           },
                                       });
         if (lib->library_url)
-            if (TextButton(box_system, button_row, {.text = "Library Website", .tooltip = *lib->library_url}))
+            if (TextButton(builder, button_row, {.text = "Library Website", .tooltip = *lib->library_url}))
                 OpenUrlInBrowser(*lib->library_url);
 
         if (lib->author_url)
-            if (TextButton(box_system, button_row, {.text = "Author Website", .tooltip = *lib->author_url}))
+            if (TextButton(builder, button_row, {.text = "Author Website", .tooltip = *lib->author_url}))
                 OpenUrlInBrowser(*lib->author_url);
 
         if (auto const dir = path::Directory(lib->path))
             if (TextButton(
-                    box_system,
+                    builder,
                     button_row,
                     {
                         .text = "Open Folder",
@@ -154,22 +156,22 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
                 OpenFolderInFileBrowser(*dir);
 
         if (TextButton(
-                box_system,
+                builder,
                 button_row,
                 {
                     .text = "Uninstall",
                     .tooltip = (String)fmt::Assign(buffer, "Send library '{}' to {}", lib->name, TRASH_NAME),
                 })) {
-            UninstallSampleLibrary(*lib,
+            UninstallSampleLibrary(builder.imgui,
+                                   *lib,
                                    context.confirmation_dialog_state,
                                    context.error_notifications,
                                    context.notifications);
-            state.open = false;
         }
     }
 
     // Make sure there's a gap at the end of the scroll region.
-    DoBox(box_system,
+    DoBox(builder,
           {
               .parent = root,
               .layout {
@@ -178,8 +180,8 @@ static void LibrariesInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& conte
           });
 }
 
-static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoPanelState&) {
-    auto const root = DoBox(box_system,
+static void AboutInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState&) {
+    auto const root = DoBox(builder,
                             {
                                 .layout {
                                     .size = layout::k_fill_parent,
@@ -191,7 +193,7 @@ static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, 
                                 },
                             });
     DoBox(
-        box_system,
+        builder,
         {
             .parent = root,
             .text =
@@ -202,7 +204,7 @@ static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, 
         });
 
     {
-        auto const button_box = DoBox(box_system,
+        auto const button_box = DoBox(builder,
                                       {
                                           .parent = root,
                                           .layout {
@@ -213,21 +215,19 @@ static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, 
                                           },
                                       });
 
-        if (TextButton(box_system,
+        if (TextButton(builder,
                        button_box,
                        {.text = "Website & Documentation", .tooltip = (String)FLOE_HOMEPAGE_URL}))
             OpenUrlInBrowser(FLOE_HOMEPAGE_URL);
 
-        if (TextButton(box_system,
-                       button_box,
-                       {.text = "Source code", .tooltip = (String)FLOE_SOURCE_CODE_URL}))
+        if (TextButton(builder, button_box, {.text = "Source code", .tooltip = (String)FLOE_SOURCE_CODE_URL}))
             OpenUrlInBrowser(FLOE_SOURCE_CODE_URL);
     }
 
     if (auto const new_version =
             check_for_update::NewerVersionAvailable(context.check_for_update_state, context.prefs)) {
         {
-            auto const text_row = DoBox(box_system,
+            auto const text_row = DoBox(builder,
                                         {
                                             .parent = root,
                                             .layout {
@@ -238,7 +238,7 @@ static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, 
                                             },
                                         });
             if (!new_version->is_ignored) {
-                DoBox(box_system,
+                DoBox(builder,
                       {
                           .parent = text_row,
                           .background_fill_colours = {style::Colour::Red},
@@ -248,16 +248,15 @@ static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, 
                           },
                       });
             }
-            DoBox(
-                box_system,
-                {
-                    .parent = text_row,
-                    .text = fmt::Format(box_system.arena, "New version available: v{}", new_version->version),
-                    .size_from_text = true,
-                });
+            DoBox(builder,
+                  {
+                      .parent = text_row,
+                      .text = fmt::Format(builder.arena, "New version available: v{}", new_version->version),
+                      .size_from_text = true,
+                  });
         }
         {
-            auto const button_box = DoBox(box_system,
+            auto const button_box = DoBox(builder,
                                           {
                                               .parent = root,
                                               .layout {
@@ -270,27 +269,25 @@ static void AboutInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, 
 
             if (!new_version->is_ignored) {
                 if (TextButton(
-                        box_system,
+                        builder,
                         button_box,
                         {.text = "Ignore", .tooltip = "Hide the red indicator dots for this version"_s}))
                     check_for_update::IgnoreUpdatesUntilAfter(context.prefs, new_version->version);
             }
 
-            if (TextButton(box_system,
+            if (TextButton(builder,
                            button_box,
                            {.text = "Download page", .tooltip = (String)FLOE_DOWNLOAD_URL}))
                 OpenUrlInBrowser(FLOE_DOWNLOAD_URL);
 
-            if (TextButton(box_system,
-                           button_box,
-                           {.text = "Changelog", .tooltip = (String)FLOE_CHANGELOG_URL}))
+            if (TextButton(builder, button_box, {.text = "Changelog", .tooltip = (String)FLOE_CHANGELOG_URL}))
                 OpenUrlInBrowser(FLOE_CHANGELOG_URL);
         }
     }
 }
 
-static void MetricsInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoPanelState&) {
-    auto const root = DoBox(box_system,
+static void MetricsInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState&) {
+    auto const root = DoBox(builder,
                             {
                                 .layout {
                                     .size = layout::k_fill_parent,
@@ -304,10 +301,11 @@ static void MetricsInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context
 
     DynamicArrayBounded<char, 200> buffer {};
 
-    auto do_line = [&](String text) {
-        DoBox(box_system,
+    auto do_line = [&](String text, u64 id_extra = SourceLocationHash()) {
+        DoBox(builder,
               {
                   .parent = root,
+                  .id_extra = id_extra,
                   .text = text,
                   .layout =
                       {
@@ -332,7 +330,7 @@ static void MetricsInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context
                         context.server.num_samples_loaded.Load(LoadMemoryOrder::Relaxed)));
 }
 
-static void LegalInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&, InfoPanelState&) {
+static void LegalInfoPanel(GuiBuilder& builder, InfoPanelContext&, InfoPanelState&) {
     struct ThirdPartyLicence {
         String name;
         String copyright;
@@ -491,7 +489,7 @@ static void LegalInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&, InfoPane
 
     static bool open[ArraySize(k_third_party_licence_texts)];
 
-    auto const root = DoBox(box_system,
+    auto const root = DoBox(builder,
                             {
                                 .layout {
                                     .size = layout::k_fill_parent,
@@ -504,7 +502,7 @@ static void LegalInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&, InfoPane
                             });
 
     DoBox(
-        box_system,
+        builder,
         {
             .parent = root,
             .text =
@@ -514,7 +512,10 @@ static void LegalInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&, InfoPane
         });
 
     for (auto [i, txt] : Enumerate(k_third_party_licence_texts)) {
-        auto const button = DoBox(box_system,
+        builder.imgui.PushId(i);
+        DEFER { builder.imgui.PopId(); };
+
+        auto const button = DoBox(builder,
                                   {
                                       .parent = root,
                                       .layout {
@@ -523,9 +524,9 @@ static void LegalInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&, InfoPane
                                           .contents_direction = layout::Direction::Row,
                                           .contents_align = layout::Alignment::Start,
                                       },
-                                      .behaviour = Behaviour::Button,
+                                      .button_behaviour = imgui::ButtonConfig {},
                                   });
-        DoBox(box_system,
+        DoBox(builder,
               {
                   .parent = button,
                   .text = open[i] ? ICON_FA_CARET_DOWN : ICON_FA_CARET_RIGHT,
@@ -538,7 +539,7 @@ static void LegalInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&, InfoPane
                   },
                   .parent_dictates_hot_and_active = true,
               });
-        DoBox(box_system,
+        DoBox(builder,
               {
                   .parent = button,
                   .text = txt.name,
@@ -546,14 +547,14 @@ static void LegalInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&, InfoPane
               });
 
         if (open[i]) {
-            DoBox(box_system,
+            DoBox(builder,
                   {
                       .parent = root,
                       .text = txt.copyright,
                       .wrap_width = k_wrap_to_parent,
                       .size_from_text = true,
                   });
-            DoBox(box_system,
+            DoBox(builder,
                   {
                       .parent = root,
                       .text = txt.licence,
@@ -563,17 +564,15 @@ static void LegalInfoPanel(GuiBoxSystem& box_system, InfoPanelContext&, InfoPane
         }
 
         if (button.button_fired) {
-            dyn::Append(box_system.state->deferred_actions, [i]() {
-                auto new_state = !open[i];
-                for (auto& o : open)
-                    o = false;
-                open[i] = new_state;
-            });
+            auto new_state = !open[i];
+            for (auto& o : open)
+                o = false;
+            open[i] = new_state;
         }
     }
 }
 
-static void InfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoPanelState& state) {
+static void InfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState& state) {
     constexpr auto k_tab_config = []() {
         Array<ModalTabConfig, ToInt(InfoPanelState::Tab::Count)> tabs {};
         for (auto const tab : EnumIterator<InfoPanelState::Tab>()) {
@@ -598,67 +597,52 @@ static void InfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoP
         return tabs;
     }();
 
-    auto const root = DoModal(box_system,
+    auto const root = DoModal(builder,
                               {
                                   .title = "Info"_s,
-                                  .on_close = [&state] { state.open = false; },
                                   .tabs = k_tab_config,
                                   .current_tab_index = ToIntRef(state.tab),
                               });
 
-    using TabPanelFunction = void (*)(GuiBoxSystem&, InfoPanelContext&, InfoPanelState&);
-    RunOrEnqueuePanel(box_system,
-                      Panel {
-                          .run = ({
-                              TabPanelFunction f {};
-                              switch (state.tab) {
-                                  case InfoPanelState::Tab::Libraries: f = LibrariesInfoPanel; break;
-                                  case InfoPanelState::Tab::About: f = AboutInfoPanel; break;
-                                  case InfoPanelState::Tab::Metrics: f = MetricsInfoPanel; break;
-                                  case InfoPanelState::Tab::Legal: f = LegalInfoPanel; break;
-                                  case InfoPanelState::Tab::Count: PanicIfReached();
-                              }
-                              [f, &context, &state](GuiBoxSystem& box_system) {
-                                  f(box_system, context, state);
-                              };
-                          }),
-                          .data =
-                              Subpanel {
-                                  .id = DoBox(box_system,
-                                              {
-                                                  .parent = root,
-                                                  .layout {
-                                                      .size = {layout::k_fill_parent, layout::k_fill_parent},
-                                                  },
-                                              })
-                                            .layout_id,
-                                  .imgui_id = box_system.imgui.GetID((u64)state.tab + 999999),
-                              },
-                      });
+    using TabPanelFunction = void (*)(GuiBuilder&, InfoPanelContext&, InfoPanelState&);
+    DoBoxViewport(builder,
+                  {
+                      .run = ({
+                          TabPanelFunction f {};
+                          switch (state.tab) {
+                              case InfoPanelState::Tab::Libraries: f = LibrariesInfoPanel; break;
+                              case InfoPanelState::Tab::About: f = AboutInfoPanel; break;
+                              case InfoPanelState::Tab::Metrics: f = MetricsInfoPanel; break;
+                              case InfoPanelState::Tab::Legal: f = LegalInfoPanel; break;
+                              case InfoPanelState::Tab::Count: PanicIfReached();
+                          }
+                          [f, &context, &state](GuiBuilder& builder) { f(builder, context, state); };
+                      }),
+                      .bounds = DoBox(builder,
+                                      {
+                                          .parent = root,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                          },
+                                      }),
+                      .imgui_id = builder.imgui.MakeId((u64)state.tab + 999999),
+                      .viewport_config = k_default_modal_subviewport,
+                  });
 }
 
-PUBLIC void DoInfoPanel(GuiBoxSystem& box_system, InfoPanelContext& context, InfoPanelState& state) {
-    if (state.open) {
-        if (!state.opened_before) {
-            state.opened_before = true;
-            if (check_for_update::ShowNewVersionIndicator(context.check_for_update_state, context.prefs))
-                state.tab = InfoPanelState::Tab::About;
-        }
-        RunOrEnqueuePanel(
-            box_system,
-            Panel {
-                .run = [&context, &state](GuiBoxSystem& b) { InfoPanel(b, context, state); },
-                .data =
-                    ModalPanel {
-                        .r = CentredRect({.pos = 0, .size = GuiIo().in.window_size.ToFloat2()},
-                                         f32x2 {box_system.imgui.VwToPixels(style::k_info_dialog_width),
-                                                box_system.imgui.VwToPixels(style::k_info_dialog_height)}),
-                        .imgui_id = box_system.imgui.GetID("new info"),
-                        .on_close = [&state]() { state.open = false; },
-                        .close_on_click_outside = true,
-                        .darken_background = true,
-                        .disable_other_interaction = true,
-                    },
-            });
+PUBLIC void DoInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState& state) {
+    if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
+    if (!state.opened_before) {
+        state.opened_before = true;
+        if (check_for_update::ShowNewVersionIndicator(context.check_for_update_state, context.prefs))
+            state.tab = InfoPanelState::Tab::About;
     }
+    DoBoxViewport(builder,
+                  {
+                      .run = [&context, &state](GuiBuilder& b) { InfoPanel(b, context, state); },
+                      .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
+                          GuiIo().WwToPixels(f32x2 {625, 443})),
+                      .imgui_id = state.k_panel_id,
+                      .viewport_config = k_default_modal_viewport,
+                  });
 }

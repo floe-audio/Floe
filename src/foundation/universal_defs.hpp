@@ -71,10 +71,12 @@ using s4 = signed _BitInt(4);
 //   bool from the vector.
 
 using f32x2 = __attribute__((ext_vector_type(2))) f32;
+using f32x3 = __attribute__((ext_vector_type(3))) f32;
 using f32x4 = __attribute__((ext_vector_type(4))) f32;
 using u32x4 = __attribute__((ext_vector_type(4))) u32;
 using s32x2 = __attribute__((ext_vector_type(2))) s32;
 using u8x4 = __attribute__((ext_vector_type(4))) u8;
+using b8x2 = __attribute__((ext_vector_type(2))) u8;
 
 // ==========================================================================================================
 enum class Arch {

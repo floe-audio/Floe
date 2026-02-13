@@ -5,7 +5,7 @@
 #include "foundation/foundation.hpp"
 
 struct FeedbackPanelState {
-    bool open {};
+    static constexpr u64 k_panel_id = HashFnv1a("feedback-panel");
     DynamicArrayBounded<char, Kb(4)> description {};
     DynamicArrayBounded<char, 64> email {};
     bool send_diagnostic_data {true};

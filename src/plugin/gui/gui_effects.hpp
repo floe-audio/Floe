@@ -8,4 +8,4 @@
 #include "gui/gui_frame_context.hpp"
 #include "gui_fwd.hpp"
 
-void DoEffectsWindow(Gui* g, GuiFrameContext const& frame_context, Rect r);
+void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r);

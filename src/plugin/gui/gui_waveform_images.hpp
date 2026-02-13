@@ -3,13 +3,13 @@
 
 #pragma once
 
-#include "gui_framework/graphics.hpp"
 #include "gui_framework/image.hpp"
+#include "gui_framework/renderer.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 
 struct WaveformImage {
     using FuturePixels = Future<ImageBytes>;
-    Optional<graphics::ImageID> image_id {};
+    Optional<ImageID> image_id {};
     bool used {};
     FuturePixels* loading_pixels {};
 };
@@ -20,12 +20,12 @@ struct WaveformImagesTable {
     HashTable<u64, WaveformImage> table;
 };
 
-Optional<graphics::ImageID> GetWaveformImage(WaveformImagesTable& table,
-                                             Instrument const& inst,
-                                             graphics::Renderer& renderer,
-                                             ThreadPool& thread_pool,
-                                             f32x2 size);
+Optional<ImageID> GetWaveformImage(WaveformImagesTable& table,
+                                   Instrument const& inst,
+                                   Renderer& renderer,
+                                   ThreadPool& thread_pool,
+                                   f32x2 size);
 
-void StartFrame(WaveformImagesTable& table, graphics::Renderer& renderer);
-void EndFrame(WaveformImagesTable& table, graphics::Renderer& renderer);
+void StartFrame(WaveformImagesTable& table, Renderer& renderer);
+void EndFrame(WaveformImagesTable& table, Renderer& renderer);
 void Shutdown(WaveformImagesTable& table);

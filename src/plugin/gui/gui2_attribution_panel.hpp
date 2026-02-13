@@ -3,24 +3,24 @@
 
 #pragma once
 #include "gui2_common_modal_panel.hpp"
-#include "gui_framework/gui_box_system.hpp"
+#include "gui_framework/gui_builder.hpp"
 
 struct AttributionPanelContext {
+    static constexpr u64 k_panel_id = HashFnv1a("attribution-panel");
     String attribution_text;
 };
 
-static void AttributionPanel(GuiBoxSystem& box_system, AttributionPanelContext& context, bool& open) {
-    auto const root = DoModalRootBox(box_system);
+static void AttributionPanel(GuiBuilder& builder, AttributionPanelContext& context) {
+    auto const root = DoModalRootBox(builder);
 
-    DoModalHeader(box_system,
+    DoModalHeader(builder,
                   {
                       .parent = root,
                       .title = "Attribution requirements",
-                      .on_close = [&open]() { open = false; },
                   });
-    DoModalDivider(box_system, root, {.horizontal = true});
+    DoModalDivider(builder, root, {.horizontal = true});
 
-    auto const main_container = DoBox(box_system,
+    auto const main_container = DoBox(builder,
                                       {
                                           .parent = root,
                                           .layout {
@@ -34,7 +34,7 @@ static void AttributionPanel(GuiBoxSystem& box_system, AttributionPanelContext& 
                                       });
 
     DoBox(
-        box_system,
+        builder,
         {
             .parent = main_container,
             .text =
@@ -44,7 +44,7 @@ static void AttributionPanel(GuiBoxSystem& box_system, AttributionPanelContext& 
         });
 
     DoBox(
-        box_system,
+        builder,
         {
             .parent = main_container,
             .text =
@@ -53,7 +53,7 @@ static void AttributionPanel(GuiBoxSystem& box_system, AttributionPanelContext& 
             .size_from_text = true,
         });
 
-    auto const button_container = DoBox(box_system,
+    auto const button_container = DoBox(builder,
                                         {
                                             .parent = main_container,
                                             .layout {
@@ -64,10 +64,10 @@ static void AttributionPanel(GuiBoxSystem& box_system, AttributionPanelContext& 
                                             },
                                         });
 
-    if (TextButton(box_system, button_container, {.text = "Copy to clipboard"}))
+    if (TextButton(builder, button_container, {.text = "Copy to clipboard"}))
         dyn::Assign(GuiIo().out.set_clipboard_text, context.attribution_text);
 
-    DoBox(box_system,
+    DoBox(builder,
           {
               .parent = main_container,
               .text = context.attribution_text,
@@ -76,27 +76,18 @@ static void AttributionPanel(GuiBoxSystem& box_system, AttributionPanelContext& 
           });
 }
 
-PUBLIC void DoAttributionPanel(GuiBoxSystem& box_system, AttributionPanelContext& context, bool& open) {
+PUBLIC void DoAttributionPanel(GuiBuilder& builder, AttributionPanelContext& context) {
+    if (!builder.imgui.IsModalOpen(context.k_panel_id)) return;
     if (context.attribution_text.size == 0) {
-        open = false;
+        builder.imgui.CloseModal(context.k_panel_id);
         return;
     }
-    if (open) {
-        RunOrEnqueuePanel(
-            box_system,
-            Panel {
-                .run = [&context, &open](GuiBoxSystem& b) { AttributionPanel(b, context, open); },
-                .data =
-                    ModalPanel {
-                        .r = CentredRect({.pos = 0, .size = GuiIo().in.window_size.ToFloat2()},
-                                         f32x2 {box_system.imgui.VwToPixels(style::k_info_dialog_width),
-                                                box_system.imgui.VwToPixels(style::k_info_dialog_height)}),
-                        .imgui_id = box_system.imgui.GetID("new info"),
-                        .on_close = [&open]() { open = false; },
-                        .close_on_click_outside = true,
-                        .darken_background = true,
-                        .disable_other_interaction = true,
-                    },
-            });
-    }
+    DoBoxViewport(builder,
+                  {
+                      .run = [&context](GuiBuilder& b) { AttributionPanel(b, context); },
+                      .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
+                          GuiIo().WwToPixels(f32x2 {625, 443})),
+                      .imgui_id = context.k_panel_id,
+                      .viewport_config = k_default_modal_viewport,
+                  });
 }

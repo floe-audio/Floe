@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui_imgui.hpp"
@@ -7,13 +7,39 @@
 
 #include "foundation/foundation.hpp"
 #include "os/misc.hpp"
-#include "utils/logger/logger.hpp"
 
 #include "gui_frame.hpp"
+#include "gui_framework/fonts.hpp"
 
 namespace imgui {
 
+// No-op. Used when something we don't care about was clicked (e.g. background).
+constexpr Id k_no_op_id = 1;
+
+// Viewport ID of the full size root viewport created when the IMGUI system begins.
+constexpr Id k_root_viewport_id = 4;
+
 constexpr f64 k_popup_open_and_close_delay_sec {0.2};
+static constexpr f64 k_text_cursor_blink_rate {0.5};
+static constexpr f64 k_button_repeat_rate {0.5};
+
+static bool WantsExclusiveFocus(ViewportConfig const& cfg) {
+    switch (cfg.mode) {
+        case ViewportMode::PopupMenu: return true;
+        case ViewportMode::Floating:
+        case ViewportMode::Modal: return cfg.exclusive_focus;
+        case ViewportMode::Contained: return false;
+    }
+}
+
+static bool WantsCloseOnEscape(ViewportConfig const& cfg) {
+    switch (cfg.mode) {
+        case ViewportMode::PopupMenu: return true;
+        case ViewportMode::Floating:
+        case ViewportMode::Modal: return cfg.close_on_escape;
+        case ViewportMode::Contained: return false;
+    }
+}
 
 // namespace imstring is based on dear imgui code
 // Copyright (c) 2014-2024 Omar Cornut
@@ -67,7 +93,7 @@ static inline int NarrowCharacter(char* buf, int buf_size, unsigned int c) {
         buf[3] = (char)(0x80 + ((c) & 0x3f));
         return 4;
     }
-    // Invalid code point, the max unicode is 0x10FFFF
+    // Invalid code point, the max Unicode is 0x10FFFF
     return 0;
 }
 
@@ -102,15 +128,15 @@ static int STB_TEXTEDIT_STRINGLEN(const STB_TEXTEDIT_STRING* imgui) { return img
 static Char32 STB_TEXTEDIT_GETCHAR(STB_TEXTEDIT_STRING* imgui, int idx) {
     return imgui->textedit_text[(usize)idx];
 }
-// returns the pixel delta from the xpos of the i'th character to the xpos of the i+1'th char for a line of
-// characters starting at character #n (i.e. accounts for kerning with previous char)
+// Returns the pixel delta from the x-position of the i'th character to the x-position of the i+1'th char for
+// a line of characters starting at character #n (i.e. accounts for kerning with previous char)
 // NOLINTNEXTLINE(readability-identifier-naming)
 static f32 STB_TEXTEDIT_GETWIDTH(STB_TEXTEDIT_STRING* imgui, int i, int n) {
     (void)i;
     auto c = imgui->textedit_text[(usize)n];
     if (c == '\n') return STB_TEXTEDIT_GETWIDTH_NEWLINE;
-    auto font = imgui->draw_list->renderer->CurrentFont();
-    return font->GetCharAdvance((graphics::Char16)c);
+    auto font = imgui->draw_list->fonts.Current();
+    return font->GetCharAdvance((Char16)c);
 }
 
 // NOLINTNEXTLINE(readability-identifier-naming)
@@ -125,8 +151,8 @@ static f32x2 InputTextCalcTextSizeW(Context* imgui,
                                     Char32 const** remaining,
                                     f32x2* out_offset,
                                     bool stop_on_new_line) {
-    auto font = imgui->draw_list->renderer->CurrentFont();
-    auto line_height = imgui->draw_list->renderer->CurrentFontSize();
+    auto font = imgui->draw_list->fonts.Current();
+    auto line_height = font->font_size;
 
     auto text_size = f32x2 {0, 0};
     f32 line_width = 0.0f;
@@ -150,11 +176,10 @@ static f32x2 InputTextCalcTextSizeW(Context* imgui,
     if (text_size.x < line_width) text_size.x = line_width;
 
     if (out_offset)
-        *out_offset = f32x2 {
-            line_width,
-            text_size.y + line_height}; // offset allow for the possibility of sitting after a trailing \n
+        // Offset to allow for the possibility of sitting after a trailing newline.
+        *out_offset = f32x2 {line_width, text_size.y + line_height};
 
-    if (line_width > 0 || text_size.y == 0.0f) // whereas size.y will ignore the trailing \n
+    if (line_width > 0 || text_size.y == 0.0f) // Whereas size.y will ignore the trailing newline.
         text_size.y += line_height;
 
     if (remaining) *remaining = s;
@@ -240,105 +265,42 @@ static bool STB_TEXTEDIT_INSERTCHARS(STB_TEXTEDIT_STRING* imgui, //
 
 } // namespace stb
 
-void Context::SetHotRaw(Id id) { temp_hot_item = id; }
+struct ScrollbarResult {
+    f32 new_scroll_value;
+    f32 new_scroll_max;
+    ViewportScrollbar bar;
+};
 
-bool ClickCheck(ButtonFlags flags, GuiFrameInput const& io, Rect const* rect) {
-    if (!flags.triggers_on_mouse_down && !flags.triggers_on_mouse_up) return false;
+static ScrollbarResult Scrollbar(Context& im,
+                                 Viewport* viewport,
+                                 bool is_vertical,
+                                 f32 viewport_y,
+                                 f32 viewport_h,
+                                 f32 viewport_right,
+                                 f32 content_size_y,
+                                 f32 y_scroll_value,
+                                 f32 y_scroll_max,
+                                 f32 cursor_y) {
+    auto id = im.MakeId(is_vertical ? "Vert" : "Horz");
 
-    DynamicArrayBounded<MouseButton, ToInt(MouseButton::Count)> buttons;
-    if (flags.left_mouse) dyn::Append(buttons, MouseButton::Left);
-    if (flags.right_mouse) dyn::Append(buttons, MouseButton::Right);
-    if (flags.middle_mouse) dyn::Append(buttons, MouseButton::Middle);
+    y_scroll_max = ::Max(0.0f, content_size_y - viewport_h);
 
-    Optional<ModifierFlags> required_modifiers {};
-    if (flags.requires_modifer || flags.requires_shift || flags.requires_alt) {
-        required_modifiers = ModifierFlags {};
-        if (flags.requires_modifer) required_modifiers->Set(ModifierKey::Modifier);
-        if (flags.requires_shift) required_modifiers->Set(ModifierKey::Shift);
-        if (flags.requires_alt) required_modifiers->Set(ModifierKey::Alt);
-    }
+    if (content_size_y > viewport_h && ((y_scroll_value + viewport_h) > content_size_y))
+        y_scroll_value = (f32)(int)(content_size_y - viewport_h);
 
-    for (auto const button : buttons) {
-        auto const& mouse_state = io.Mouse(button);
-        auto const& events = flags.triggers_on_mouse_down ? mouse_state.presses : mouse_state.releases;
-        for (auto const& e : events) {
-            if (rect) {
-                if (!rect->Contains(e.point)) continue;
-                // For a release, the down point must also be inside the rectangle.
-                if (flags.triggers_on_mouse_up && !rect->Contains(mouse_state.last_press.point)) continue;
-            }
-            if (flags.double_click && !e.is_double_click) continue;
-            if (!flags.ignore_double_click && !flags.double_click && e.is_double_click) continue;
-            if (required_modifiers && *required_modifiers != e.modifiers) continue;
-            return true;
-        }
-    }
-
-    return false;
-}
-
-static bool CheckForValidMouseDown(ButtonFlags flags, GuiFrameInput const& io) {
-    if (!flags.triggers_on_mouse_down && !flags.triggers_on_mouse_up) return false;
-
-    DynamicArrayBounded<MouseButton, ToInt(MouseButton::Count)> buttons;
-    if (flags.left_mouse) dyn::Append(buttons, MouseButton::Left);
-    if (flags.right_mouse) dyn::Append(buttons, MouseButton::Right);
-    if (flags.middle_mouse) dyn::Append(buttons, MouseButton::Middle);
-
-    Optional<ModifierFlags> required_modifiers {};
-    if (flags.requires_modifer || flags.requires_shift || flags.requires_alt) {
-        required_modifiers = ModifierFlags {};
-        if (flags.requires_modifer) required_modifiers->Set(ModifierKey::Modifier);
-        if (flags.requires_shift) required_modifiers->Set(ModifierKey::Shift);
-        if (flags.requires_alt) required_modifiers->Set(ModifierKey::Alt);
-    }
-
-    for (auto const button : buttons) {
-        auto const& mouse_state = io.Mouse(button);
-        if (mouse_state.is_down) {
-            if (flags.double_click && !mouse_state.is_down->is_double_click) continue;
-            if (flags.ignore_double_click && !flags.double_click && mouse_state.is_down->is_double_click)
-                continue;
-            if (required_modifiers) {
-                if (mouse_state.is_down->modifiers == *required_modifiers) return true;
-            } else {
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-Context::ScrollbarResult Context::Scrollbar(Window* window,
-                                            bool is_vertical,
-                                            f32 window_y,
-                                            f32 window_h,
-                                            f32 window_right,
-                                            f32 content_size_y,
-                                            f32 y_scroll_value,
-                                            f32 y_scroll_max,
-                                            f32 cursor_y) {
-    auto id = GetID(is_vertical ? "Vert" : "Horz");
-
-    y_scroll_max = ::Max(0.0f, content_size_y - window_h);
-
-    if (content_size_y > window_h && ((y_scroll_value + window_h) > content_size_y))
-        y_scroll_value = (f32)(int)(content_size_y - window_h);
-
-    auto height_ratio = window_h / content_size_y;
+    auto height_ratio = viewport_h / content_size_y;
     if (height_ratio > 1) height_ratio = 1;
-    auto const scrollbar_h = window_h * height_ratio;
-    f32 const scrollbar_range = window_h - scrollbar_h;
+    auto const scrollbar_h = viewport_h * height_ratio;
+    f32 const scrollbar_range = viewport_h - scrollbar_h;
     f32 scrollbar_rel_y = (y_scroll_value / y_scroll_max) * scrollbar_range;
     if (scrollbar_range == 0) scrollbar_rel_y = 0;
 
     Rect scroll_r;
-    scroll_r.x = window_right + window->settings.scrollbar_padding;
-    scroll_r.y = window_y + scrollbar_rel_y;
-    scroll_r.w = window->settings.scrollbar_width;
+    scroll_r.x = viewport_right + viewport->cfg.scrollbar_padding;
+    scroll_r.y = viewport_y + scrollbar_rel_y;
+    scroll_r.w = viewport->cfg.scrollbar_width;
     scroll_r.h = scrollbar_h;
-    auto scrollbar_bb = Rect {.xywh = {scroll_r.x, window_y, window->settings.scrollbar_width, window_h}};
+    auto scrollbar_bb = Rect {.xywh = {scroll_r.x, viewport_y, viewport->cfg.scrollbar_width, viewport_h}};
     f32* scroll_y = &scroll_r.y;
 
     if (!is_vertical) {
@@ -363,60 +325,39 @@ Context::ScrollbarResult Context::Scrollbar(Window* window,
     }
 
     if (scrollbar_range != 0) {
-        ButtonFlags const button_flags {.left_mouse = true,
-                                        .triggers_on_mouse_down = true,
-                                        .is_non_window_content = true};
+        ButtonConfig const button_cfg {.mouse_button = MouseButton::Left,
+                                       .event = MouseButtonEvent::Down,
+                                       .is_non_viewport_content = true};
         static f32x2 cached_pos {};
-        if (ButtonBehavior(scroll_r, id, button_flags)) cached_pos.y = cursor_y - *scroll_y;
+        if (im.ButtonBehaviour(scroll_r, id, button_cfg)) cached_pos.y = cursor_y - *scroll_y;
 
-        if (IsActive(id)) {
-            auto const new_ypos = (cursor_y - cached_pos.y) - window_y;
-            scrollbar_rel_y = Clamp(new_ypos, 0.0f, window_h - scrollbar_h);
-            *scroll_y = window_y + scrollbar_rel_y;
+        if (im.IsActive(id)) {
+            auto const new_ypos = (cursor_y - cached_pos.y) - viewport_y;
+            scrollbar_rel_y = Clamp(new_ypos, 0.0f, viewport_h - scrollbar_h);
+            *scroll_y = viewport_y + scrollbar_rel_y;
 
             f32 const y_scroll_percent = Map(scrollbar_rel_y, 0, scrollbar_range, 0, 1);
             y_scroll_value = (f32)(int)(y_scroll_percent * y_scroll_max);
         }
     }
 
-    if (window->settings.draw_routine_scrollbar) {
-        // Cuts all dimensions to integer bounds, but always shrinks the rectangle, never expands it.
-        auto const integer_bounds = [](Rect r) {
-            auto min = Ceil(r.pos);
-            auto max = Floor(r.Max());
-            return Rect::FromMinMax(min, max);
-        };
-
-        window->settings.draw_routine_scrollbar(*this,
-                                                integer_bounds(scrollbar_bb),
-                                                integer_bounds(scroll_r),
-                                                id);
-    }
+    // Cuts all dimensions to integer bounds, but always shrinks the rectangle, never expands it.
+    auto const integer_bounds = [](Rect r) {
+        auto min = Ceil(r.pos);
+        auto max = Floor(r.Max());
+        return Rect::FromMinMax(min, max);
+    };
 
     return {
         .new_scroll_value = y_scroll_value,
         .new_scroll_max = y_scroll_max,
+        .bar =
+            {
+                .strip = integer_bounds(scrollbar_bb),
+                .handle = integer_bounds(scroll_r),
+                .id = id,
+            },
     };
-}
-
-void Context::HandleHoverPopupOpeningAndClosing(Id id) {
-    ASSERT(focused_popup_window != nullptr);
-    auto window = curr_window;
-    auto this_window_is_apopup = window->flags.popup || window->flags.nested_inside_popup;
-
-    if (IsHot(id) && this_window_is_apopup && focused_popup_window != hovered_window &&
-        current_popup_stack.size < persistent_popup_stack.size) {
-        auto next_window = persistent_popup_stack[current_popup_stack.size];
-        Id const creator_of_next = next_window->creator_of_this_popup;
-
-        if (id != creator_of_next) {
-            if (WasJustMadeHot(id))
-                GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_popup_open_and_close_delay_sec,
-                                           "Popup close");
-            if (SecondsSpentHot() >= k_popup_open_and_close_delay_sec)
-                ClosePopupToLevel((int)current_popup_stack.size);
-        }
-    }
 }
 
 static Rect CalculateScissorStack(DynamicArray<Rect>& s) {
@@ -433,13 +374,13 @@ void Context::OnScissorChanged() const {
         draw_list->SetClipRectFullscreen();
 }
 
-f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 window_size, bool find_left_or_right) {
+f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 viewport_size, bool find_left_or_right) {
     auto ensure_bottom_fits = [&](f32x2 pos) {
         auto bottom = pos.y + base_r.h;
-        if (bottom < window_size.y) {
+        if (bottom < viewport_size.y) {
             return pos;
         } else {
-            auto d = window_size.y - bottom;
+            auto d = viewport_size.y - bottom;
             pos.y += d;
             if (pos.y < 0) pos.y = 0;
             return pos;
@@ -448,8 +389,8 @@ f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 window_size, bool find_left_
 
     auto ensure_right_fits = [&](f32x2 pos) {
         auto right = pos.x + base_r.w;
-        if (right > window_size.x) {
-            auto d = right - window_size.x;
+        if (right > viewport_size.x) {
+            auto d = right - viewport_size.x;
             pos.x -= d;
         }
         return pos;
@@ -467,7 +408,7 @@ f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 window_size, bool find_left_
 
     if (find_left_or_right) {
         auto right_outer_most = avoid_r.Right() + base_r.w;
-        if (right_outer_most < window_size.x) {
+        if (right_outer_most < viewport_size.x) {
             auto pos = f32x2 {avoid_r.Right(), base_r.y};
             return ensure_bottom_fits(ensure_top_fits(pos));
         }
@@ -480,7 +421,7 @@ f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 window_size, bool find_left_
 
     } else {
         auto below_outer_most = avoid_r.Bottom() + base_r.h;
-        if (below_outer_most < window_size.y) {
+        if (below_outer_most < viewport_size.y) {
             auto pos = f32x2 {base_r.x, avoid_r.Bottom()};
             return ensure_right_fits(ensure_left_fits(pos));
         }
@@ -491,43 +432,41 @@ f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 window_size, bool find_left_
             return ensure_right_fits(ensure_left_fits(pos));
         }
 
-        return BestPopupPos(base_r, avoid_r, window_size, true);
+        return BestPopupPos(base_r, avoid_r, viewport_size, true);
     }
 
     return {-1, -1};
 }
 
-// from dear-imgui
+// From dear-imgui.
 // Return false to discard a character.
-static bool InputTextFilterCharacter(unsigned int* p_char, TextInputFlags flags) {
+static bool InputTextFilterCharacter(unsigned int* p_char, TextInputConfig cfg) {
     unsigned int c = *p_char;
 
-    if (flags.multiline && c == '\n') return true;
+    if (cfg.multiline && c == '\n') return true;
 
     if (c < 128 && c != ' ' && !IsPrintableAscii((char)(c & 0xFF))) return false;
 
-    if (c >= 0xE000 &&
-        c <= 0xF8FF) // Filter private Unicode range. I don't imagine anybody would want to input them. GLFW
-                     // on OSX seems to send private characters for special keys like arrow keys.
+    if (c >= 0xE000 && c <= 0xF8FF) // Filter private Unicode range.
         return false;
 
-    if (flags.chars_decimal || flags.chars_hexadecimal || flags.chars_uppercase || flags.chars_no_blank ||
-        flags.chars_note_names) {
-        if (flags.chars_decimal)
+    if (cfg.chars_decimal || cfg.chars_hexadecimal || cfg.chars_uppercase || cfg.chars_no_blank ||
+        cfg.chars_note_names) {
+        if (cfg.chars_decimal)
             if (!(c >= '0' && c <= '9') && (c != '.') && (c != '-') && (c != '+') && (c != '*') && (c != '/'))
                 return false;
 
-        if (flags.chars_hexadecimal)
+        if (cfg.chars_hexadecimal)
             if (!(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') && !(c >= 'A' && c <= 'F')) return false;
 
-        if (flags.chars_uppercase)
+        if (cfg.chars_uppercase)
             if (c >= 'a' && c <= 'z') *p_char = (c += (unsigned int)('A' - 'a'));
 
-        if (flags.chars_no_blank)
+        if (cfg.chars_no_blank)
             if (IsSpacing((char)c)) return false;
 
-        // Allow 0123456789+-#abcdefgABCDEFG
-        if (flags.chars_note_names)
+        // Allow 0123456789+-#abcdefgABCDEFG.
+        if (cfg.chars_note_names)
             if (!(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'g') && !(c >= 'A' && c <= 'G') && (c != '-') &&
                 (c != '+') && (c != '#'))
                 return false;
@@ -536,116 +475,110 @@ static bool InputTextFilterCharacter(unsigned int* p_char, TextInputFlags flags)
     return true;
 }
 
-void Context::PushID(String str) { dyn::Append(id_stack, GetID(str)); }
+void Context::PushId(String str) { dyn::Append(id_stack, MakeId(str)); }
 
-void Context::PushID(uintptr num) { dyn::Append(id_stack, GetID(num)); }
+void Context::PushId(uintptr num) { dyn::Append(id_stack, MakeId(num)); }
 
-void Context::PopID() { dyn::Pop(id_stack); }
+void Context::PopId() { dyn::Pop(id_stack); }
 
 // Simple seeded FNV-1a.
-static u32 Hash(Span<u8 const> data, u32 seed) {
-    u32 hash = 0x811c9dc5;
-    Span<u8 const> const seed_bytes = {(u8 const*)&seed, sizeof(seed)};
-    for (auto const d : Array {seed_bytes, data}) {
-        for (auto const byte : d) {
-            hash ^= byte;
-            hash *= 0x01000193;
-        }
-    }
+static u64 SeededHash(Span<u8 const> data, u64 seed) {
+    auto hash = HashInit();
+    for (auto const d : Array {AsBytes(seed), data})
+        HashUpdate(hash, d);
     return hash;
 }
 
-Id Context::GetID(String str) {
+Id Context::MakeId(String str) const {
     auto const seed = Last(id_stack);
-    auto const result = Hash(str.ToConstByteSpan(), seed);
-    ASSERT(result != 0 && result != k_imgui_noop_id);
+    auto const result = SeededHash(str.ToConstByteSpan(), seed);
+    ASSERT(result != k_null_id && result != k_no_op_id);
     return result;
 }
 
-Id Context::GetID(uintptr i) {
+Id Context::MakeId(uintptr i) const {
     auto const seed = Last(id_stack);
-    auto const result = Hash(AsBytes(i), seed);
-    ASSERT(result != 0 && result != k_imgui_noop_id);
+    auto const result = SeededHash(AsBytes(i), seed);
+    ASSERT(result != k_null_id && result != k_no_op_id);
     return result;
 }
 
-Context::Context() {
+Context::Context(ArenaAllocator& scratch) : scratch_arena(scratch) {
     dyn::Append(id_stack, 0u);
     PushScissorStack();
-    windows.Reserve(64);
+    viewports.Reserve(64);
     stb_textedit_initialize_state(&stb_state, true);
     dyn::Resize(textedit_text, Kb(4));
     textedit_text_utf8.Reserve(Kb(4));
 }
 
-Context::~Context() {
-    for (auto& w : windows)
-        delete w;
-}
-
-bool Context::IsRectVisible(Rect r) {
+bool Context::IsRectVisible(Rect r) const {
     Rect const& c = current_scissor_rect;
     return Rect::DoRectsIntersect(r, c);
 }
 
 // Hot
 bool Context::IsHot(Id id) const { return hot_item == id; }
-bool Context::WasJustMadeHot(Id id) { return IsHot(id) && hot_item_last_frame != hot_item; }
-bool Context::WasJustMadeUnhot(Id id) { return !IsHot(id) && hot_item_last_frame == id; }
-bool Context::AnItemIsHot() { return hot_item != 0; }
+bool Context::WasJustMadeHot(Id id) const { return IsHot(id) && hot_item_last_frame != hot_item; }
+bool Context::WasJustMadeUnhot(Id id) const { return !IsHot(id) && hot_item_last_frame == id; }
+bool Context::AnItemIsHot() const { return hot_item != k_null_id; }
 
 // Active
 bool Context::IsActive(Id id) const { return active_item.id == id; }
-bool Context::WasJustActivated(Id id) { return IsActive(id) && active_item_last_frame != id; }
-bool Context::WasJustDeactivated(Id id) { return !IsActive(id) && active_item_last_frame == id; }
-bool Context::AnItemIsActive() { return active_item.id != 0; }
+bool Context::WasJustActivated(Id id) const { return IsActive(id) && active_item_last_frame != id; }
+bool Context::WasJustDeactivated(Id id) const { return !IsActive(id) && active_item_last_frame == id; }
+bool Context::AnItemIsActive() const { return active_item.id != k_null_id; }
 
 // Hovered
-bool Context::IsHovered(Id id) { return hovered_item == id; }
-bool Context::WasJustHovered(Id id) { return IsHovered(id) && hovered_item_last_frame != hovered_item; }
-bool Context::WasJustUnhovered(Id id) { return !IsHovered(id) && hovered_item_last_frame == hovered_item; }
+bool Context::IsHovered(Id id) const { return hovered_item == id; }
+bool Context::WasJustHovered(Id id) const { return IsHovered(id) && hovered_item_last_frame != hovered_item; }
+bool Context::WasJustUnhovered(Id id) const {
+    return !IsHovered(id) && hovered_item_last_frame == hovered_item;
+}
 
-void Context::Begin(WindowSettings settings) {
-    ASSERT_EQ(window_stack.size, 0u);
+void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
+    ASSERT_EQ(viewport_stack.size, 0u);
     ASSERT_EQ(current_popup_stack.size, 0u);
 
     tab_just_used_to_focus = false;
-    window_just_created = nullptr;
-    curr_window = nullptr;
-    hovered_window_last_frame = hovered_window;
-    hovered_window = nullptr;
-    hovered_window_content = nullptr;
+    viewport_just_created = nullptr;
+    curr_viewport = nullptr;
+    hovered_viewport_last_frame = hovered_viewport;
+    hovered_viewport = nullptr;
+    hovered_viewport_content = nullptr;
+    floating_exclusive_viewport_last_frame = floating_exclusive_viewport;
+    floating_exclusive_viewport = nullptr;
 
     auto const& frame_input = GuiIo().in;
 
-    for (usize i = sorted_windows.size; i-- > 0;) {
-        auto window = sorted_windows[i];
-        if (window->visible_bounds.Contains(frame_input.cursor_pos)) {
-            if (window->clipping_rect.Contains(frame_input.cursor_pos)) hovered_window_content = window;
-            hovered_window = window;
+    for (usize i = sorted_viewports.size; i-- > 0;) {
+        auto viewport = sorted_viewports[i];
+        if (viewport->visible_bounds.Contains(frame_input.cursor_pos)) {
+            if (viewport->clipping_rect.Contains(frame_input.cursor_pos)) hovered_viewport_content = viewport;
+            hovered_viewport = viewport;
             break;
         }
     }
-    dyn::Clear(sorted_windows);
+    dyn::Clear(sorted_viewports);
 
-    if (frame_input.mouse_scroll_delta_in_lines != 0 && hovered_window) {
-        Window* window = hovered_window;
-        Window* final_window = nullptr;
+    if (frame_input.mouse_scroll_delta_in_lines != 0 && hovered_viewport) {
+        Viewport* viewport = hovered_viewport;
+        Viewport* final_viewport = nullptr;
         while (true) {
-            if (window->has_yscrollbar) {
-                final_window = window;
+            if (viewport->has_scrollbar[1]) {
+                final_viewport = viewport;
                 break;
             }
-            if (window == window->root_window) break;
-            window = window->parent_window;
+            if (viewport == viewport->root_viewport) break;
+            viewport = viewport->parent_viewport;
         }
-        if (final_window) {
-            f32 const pixels_per_line = final_window->settings.pixels_per_line > 0
-                                            ? final_window->settings.pixels_per_line
-                                            : VwToPixels(20);
+        if (final_viewport) {
+            f32 const pixels_per_line = final_viewport->cfg.scroll_line_size > 0
+                                            ? final_viewport->cfg.scroll_line_size
+                                            : GuiIo().WwToPixels(20.0f);
             f32 const lines = -frame_input.mouse_scroll_delta_in_lines;
-            f32 const new_scroll = (lines * pixels_per_line) + final_window->scroll_offset.y;
-            final_window->scroll_offset.y = Round(Clamp(new_scroll, 0.0f, final_window->scroll_max.y));
+            f32 const new_scroll = (lines * pixels_per_line) + final_viewport->scroll_offset.y;
+            final_viewport->scroll_offset.y = Round(Clamp(new_scroll, 0.0f, final_viewport->scroll_max.y));
         }
     }
 
@@ -653,59 +586,71 @@ void Context::Begin(WindowSettings settings) {
     // Reset stuff
     //
 
-    for (auto& w : windows) {
-        w->is_open = false;
-        w->parent_popup = nullptr;
+    for (auto& v : viewports) {
+        if (!v->active) v->prev_content_size = {};
+        v->active = false;
     }
 
-    focused_popup_window = nullptr;
-    if (persistent_popup_stack.size != 0) focused_popup_window = Last(persistent_popup_stack);
+    UpdateExclusiveFocusViewport();
 
-    // copy over the temp id to the actual id
+    // Copy over the temp IDs to the actual IDs.
     active_item = temp_active_item;
     hot_item = temp_hot_item;
     hovered_item = temp_hovered_item;
-    if (hot_item != 0) {
+    if (hot_item != k_null_id) {
         if (WasJustMadeHot(hot_item)) time_when_turned_hot = frame_input.current_time;
     } else {
         time_when_turned_hot = TimePoint {};
     }
     keyboard_focus_item = temp_keyboard_focus_item;
-    temp_keyboard_focus_item = 0;
+    temp_keyboard_focus_item = k_null_id;
     temp_keyboard_focus_item_is_popup = false;
 
     temp_active_item.just_activated = false;
-    SetHotRaw(0);
-    temp_hovered_item = 0;
+    temp_hot_item = k_null_id;
+    temp_hovered_item = k_null_id;
 
-    if (GetActive() && active_item.check_for_release &&
-        !CheckForValidMouseDown(active_item.button_flags, frame_input))
-        SetActiveIDZero();
+    if (AnItemIsActive() && !GuiIo().in.Mouse(active_item.button_cfg.mouse_button).is_down) ClearActive();
 
     active_text_input_shown = false;
 
-    if (!overlay_draw_list) overlay_draw_list = GuiIo().out.draw_list_allocator.Allocate();
-    overlay_draw_list->renderer = frame_input.renderer;
+    if (exclusive_focus_viewport && !active_text_input && WantsCloseOnEscape(exclusive_focus_viewport->cfg)) {
+        GuiIo().out.wants.keyboard_keys.Set(ToInt(KeyCode::Escape));
+        temp_keyboard_focus_item = exclusive_focus_viewport->id;
+        temp_keyboard_focus_item_is_popup = true;
+        if (GuiIo().in.Key(KeyCode::Escape).presses.size) {
+            switch (exclusive_focus_viewport->cfg.mode) {
+                case ViewportMode::Modal: CloseModal(exclusive_focus_viewport->id); break;
+                case ViewportMode::PopupMenu: CloseTopPopupOnly(); break;
+                case ViewportMode::Contained: PanicIfReached(); break;
+                case ViewportMode::Floating: break; // No close lifecycle for floating viewports.
+            }
+        }
+    }
+
+    if (!overlay_draw_list)
+        overlay_draw_list = GuiIo().out.draw_list_allocator.Allocate(*frame_input.renderer, fonts);
     overlay_draw_list->BeginDraw();
 
-    BeginWindow(settings,
-                k_imgui_root_window_id,
-                Rect {.size = frame_input.window_size.ToFloat2()},
-                "ApplicationWindow");
+    BeginViewport(cfg,
+                  k_root_viewport_id,
+                  Rect {.pos = 0, .size = frame_input.window_size.ToFloat2()},
+                  "ApplicationViewport");
 }
 
-void Context::End(ArenaAllocator& scratch_arena) {
-    EndWindow(); // application window
-    ASSERT_EQ(window_stack.size, 0u); // all BeginWindow calls must have an EndWindow
+void Context::EndFrame() {
+    EndViewport(); // k_root_viewport_id
+
+    ASSERT_EQ(viewport_stack.size, 0u); // All BeginViewport calls must have an EndViewport.
     ASSERT_EQ(current_popup_stack.size, 0u);
 
-    if (!active_text_input_shown) SetTextInputFocus(0, {}, false);
+    if (!active_text_input_shown) SetTextInputFocus(k_null_id, {}, false);
 
     if (debug_show_register_widget_overlay) {
         for (auto& w : GuiIo().out.mouse_tracked_rects) {
             auto col = 0xffff00ff;
             if (w.mouse_over) col = 0xff00ffff;
-            overlay_draw_list->AddRect(w.rect.Min(), w.rect.Max(), col);
+            overlay_draw_list->AddRect(w.rect, col);
         }
     }
 
@@ -717,130 +662,142 @@ void Context::End(ArenaAllocator& scratch_arena) {
 
     ASSERT(GuiIo().out.draw_lists.size == 0);
 
-    auto has_been_sorted = Set<Window*>::Create(scratch_arena, windows.size);
+    auto has_been_sorted = Set<Viewport*>::Create(scratch_arena, viewports.size);
 
-    auto const confirm_window = [&](Window* window, DynamicArray<Window*>& sorted_buf) {
-        auto const window_ptr_hash = has_been_sorted.Hash(window);
-        if (!has_been_sorted.Contains(window, window_ptr_hash)) {
-            dyn::Append(sorted_buf, window);
-            dyn::AppendIfNotAlreadyThere(GuiIo().out.draw_lists, window->draw_list);
-            has_been_sorted.InsertWithoutGrowing(window, window_ptr_hash);
+    auto const confirm_viewport = [&](Viewport* viewport) {
+        auto const viewport_ptr_hash = has_been_sorted.Hash(viewport);
+        if (!has_been_sorted.Contains(viewport, viewport_ptr_hash)) {
+            dyn::Append(sorted_viewports, viewport);
+            dyn::AppendIfNotAlreadyThere(GuiIo().out.draw_lists, viewport->draw_list);
+            has_been_sorted.InsertWithoutGrowing(viewport, viewport_ptr_hash);
         }
     };
 
-    DynamicArray<Window*> active_windows {scratch_arena};
-    active_windows.Reserve(windows.size);
+    // We group all viewports that are root viewports.
+    DynamicArray<Viewport*> nesting_roots {scratch_arena};
+    for (auto& viewport : viewports)
+        if (viewport->active && viewport->root_viewport == viewport) dyn::Append(nesting_roots, viewport);
 
-    // first we get together all windows that are active
-    for (auto& window : windows)
-        if (window->is_open) dyn::Append(active_windows, window);
-
-    // then we group all windows that are root windows
-    DynamicArray<Window*> nesting_roots {scratch_arena};
-    for (auto& window : active_windows)
-        if (window->root_window == window) dyn::Append(nesting_roots, window);
-
-    // for each of the root windows, we find all the windows that are children of them
-    DynamicArray<DynamicArray<Window*>> nested_sorting_bins {scratch_arena};
+    // For each of the root viewports, we find all the viewports that are children of them.
+    DynamicArray<DynamicArray<Viewport*>> nested_sorting_bins {scratch_arena};
     dyn::AssignRepeated(nested_sorting_bins, nesting_roots.size, scratch_arena);
     for (auto const root : Range(nesting_roots.size)) {
-        for (auto& window : active_windows)
-            if (window->root_window == nesting_roots[root] && window->root_window != window)
-                dyn::Append(nested_sorting_bins[root], window);
+        for (auto& viewport : viewports)
+            if (viewport->active && viewport->root_viewport == nesting_roots[root] &&
+                viewport->root_viewport != viewport)
+                dyn::Append(nested_sorting_bins[root], viewport);
     }
 
-    // for each bin that contains a whole load of unsorted windows with the same root, we
-    // sort them into the correct order
+    // For each bin that contains a whole load of unsorted viewports with the same root, we
+    // sort them into the correct order.
     for (auto const i : Range(nested_sorting_bins.size)) {
         auto& bin = nested_sorting_bins[i];
         if (!bin.size) continue;
-        Sort(bin, [](Window const* a, Window const* b) -> bool { return a->nested_level < b->nested_level; });
+        Sort(bin,
+             [](Viewport const* a, Viewport const* b) -> bool { return a->nested_level < b->nested_level; });
 
-        // if its a popup then we dont want to flush yet
-        if (nesting_roots[i]->flags.popup) continue;
-        confirm_window(nesting_roots[i], sorted_windows);
-        for (auto& window : bin)
-            confirm_window(window, sorted_windows);
+        // If it's a floating/modal/popup viewport then we don't want to flush yet in the contained pass.
+        if (nesting_roots[i]->cfg.mode != ViewportMode::Contained) continue;
+        confirm_viewport(nesting_roots[i]);
+        for (auto& viewport : bin)
+            confirm_viewport(viewport);
     }
 
-    // finally do the popups
-    for (auto& popup : persistent_popup_stack) {
+    DynamicArray<Viewport*> floating {scratch_arena};
+
+    for (auto const i : Range(nested_sorting_bins.size)) {
+        if (nesting_roots[i]->cfg.mode == ViewportMode::Contained) continue;
+        if (Contains(open_modals, nesting_roots[i])) continue;
+        if (Contains(open_popups, nesting_roots[i])) continue;
+        dyn::AppendIfNotAlreadyThere(floating, nesting_roots[i]);
+    }
+
+    for (auto& modal : open_modals) {
+        if (modal_just_opened == modal->id) continue;
+
+        for (auto const j : Range(nesting_roots.size)) {
+            if (modal == nesting_roots[j]) {
+                dyn::AppendIfNotAlreadyThere(floating, nesting_roots[j]);
+                break;
+            }
+        }
+    }
+
+    Sort(floating, [](Viewport* a, Viewport* b) { return a->cfg.z_order < b->cfg.z_order; });
+
+    for (auto vp : floating) {
+        for (auto const j : Range(nesting_roots.size)) {
+            if (vp == nesting_roots[j]) {
+                confirm_viewport(nesting_roots[j]);
+                for (auto& viewport : nested_sorting_bins[j])
+                    confirm_viewport(viewport);
+                break;
+            }
+        }
+    }
+
+    // Finally, do the popup viewports in open_popups order.
+    for (auto& popup : open_popups) {
         if (DidPopupMenuJustOpen(popup->id)) continue;
 
-        {
-            for (auto const j : Range(nesting_roots.size)) {
-                Window* root_window = nesting_roots[j];
-                if (popup == root_window) {
-                    auto& bin = nested_sorting_bins[j];
-                    confirm_window(root_window, sorted_windows);
-                    for (auto& window : bin)
-                        confirm_window(window, sorted_windows);
-                    break;
-                }
+        for (auto const j : Range(nesting_roots.size)) {
+            if (popup == nesting_roots[j]) {
+                confirm_viewport(nesting_roots[j]);
+                for (auto& viewport : nested_sorting_bins[j])
+                    confirm_viewport(viewport);
+                break;
             }
         }
     }
 
     dyn::Append(GuiIo().out.draw_lists, overlay_draw_list);
 
-    if (GuiIo().in.Mouse(MouseButton::Left).presses.size && temp_active_item.id == 0 && temp_hot_item == 0) {
-        if (hovered_window != nullptr) {
-            Window* window = hovered_window;
-            bool const closes_popups = !window->flags.never_closes_popup;
-            SetActiveID(k_imgui_noop_id,
-                        closes_popups,
-                        {.left_mouse = true, .triggers_on_mouse_down = true},
-                        true); // indicate when the mouse is pressed down, but not over anything important
-            focused_popup_window = hovered_window;
-        } else {
-            SetActiveID(k_imgui_noop_id,
-                        false,
-                        {.left_mouse = true, .triggers_on_mouse_down = true},
-                        true); // indicate when the mouse is pressed down, but not over anything important
-        }
+    if (GuiIo().in.Mouse(MouseButton::Left).presses.size && temp_active_item.id == k_null_id &&
+        temp_hot_item == k_null_id) {
+        // Indicate when the mouse is pressed down, but not over anything important.
+        ButtonConfig const no_op_config {
+            .mouse_button = MouseButton::Left,
+            .event = MouseButtonEvent::Down,
+            .closes_popup_or_modal = true,
+        };
+        SetActive(k_no_op_id, no_op_config);
     }
 
-    { // close popups if clicked
-        if (active_item.just_activated && persistent_popup_stack.size != 0 && popup_menu_just_created == 0 &&
-            active_item.closes_popups) {
-            Window* focused_wnd = focused_popup_window;
-            if (!focused_wnd->flags.dont_close_with_external_click) {
-                Window* popup_clicked = nullptr;
-                if (hovered_window != nullptr) {
-                    Window* wnd = hovered_window;
+    // Close popups/modals if clicked outside.
+    if (active_item.just_activated && active_item.button_cfg.closes_popup_or_modal) {
+        if (open_popups.size && popup_menu_just_opened == k_null_id) {
+            auto const popup_clicked =
+                (hovered_viewport && hovered_viewport->root_viewport->cfg.mode == ViewportMode::PopupMenu)
+                    ? hovered_viewport->root_viewport
+                    : nullptr;
 
-                    if (wnd->flags.popup)
-                        popup_clicked = hovered_window;
-                    else if (wnd->flags.nested_inside_popup)
-                        popup_clicked = wnd->root_window;
-                }
-
-                if (popup_clicked != nullptr) {
-                    for (auto const i : Range(persistent_popup_stack.size)) {
-                        if (popup_clicked == persistent_popup_stack[i]) {
-                            if (i != persistent_popup_stack.size - 1)
-                                ClosePopupToLevel((int)i + 1); // close children popups
-                            break;
-                        }
+            if (popup_clicked != nullptr) {
+                for (auto const i : Range(open_popups.size)) {
+                    if (popup_clicked == open_popups[i]) {
+                        if (i != open_popups.size - 1) ClosePopupToLevel(i + 1);
+                        break;
                     }
-                } else {
-                    dyn::Clear(persistent_popup_stack); // something unrelated was clicked, close all popups
                 }
+            } else {
+                ClosePopupToLevel(0);
+            }
+        } else if (open_modals.size && modal_just_opened == k_null_id) {
+            if (exclusive_focus_viewport && exclusive_focus_viewport->cfg.mode == ViewportMode::Modal &&
+                exclusive_focus_viewport->cfg.close_on_click_outside &&
+                (!hovered_viewport || exclusive_focus_viewport != hovered_viewport->root_viewport)) {
+                CloseTopModal();
             }
         }
     }
-    prevprev_popup_menu_just_created = prev_popup_menu_just_created;
-    prev_popup_menu_just_created = popup_menu_just_created;
-    popup_menu_just_created = 0;
+
+    popup_menu_just_opened = k_null_id;
+    modal_just_opened = k_null_id;
 
     auto& frame_output = GuiIo().out;
 
-    frame_output.wants.text_input = active_text_input != 0;
+    frame_output.wants.text_input = active_text_input != k_null_id;
     frame_output.wants.mouse_capture = AnItemIsActive();
     frame_output.wants.mouse_scroll = true;
-    frame_output.wants.all_left_clicks = focused_popup_window != nullptr || GetTextInput();
-    frame_output.wants.all_right_clicks = false;
-    frame_output.wants.all_middle_clicks = false;
 
     active_item_last_frame = active_item.id;
     hot_item_last_frame = hot_item;
@@ -850,7 +807,7 @@ void Context::End(ArenaAllocator& scratch_arena) {
     if (temp_hot_item != hot_item)
         frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     if (temp_active_item.just_activated) {
-        temp_hot_item = 0;
+        temp_hot_item = k_null_id;
         frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
     if (tab_to_focus_next_input)
@@ -867,101 +824,53 @@ bool Context::TextInputJustUnfocused(Id id) const {
     return !TextInputHasFocus(id) && prev_active_text_input == id;
 }
 
-bool Context::SliderRangeBehavior(Rect r, Id id, f32 min, f32 max, f32& value, SliderFlags flags) {
-    f32 const default_value = min;
-    return SliderRangeBehavior(r, id, min, max, value, default_value, flags);
-}
-bool Context::SliderRangeBehavior(Rect r,
-                                  Id id,
-                                  f32 min,
-                                  f32 max,
-                                  f32& value,
-                                  f32 default_value,
-                                  SliderFlags flags) {
-    return SliderRangeBehavior(r, id, min, max, value, default_value, 400, flags);
-}
+bool Context::SliderBehaviourRange(SliderBehaviourRangeArgs const& args) {
+    f32 fraction = MapTo01(args.value, args.min, args.max);
+    f32 const default_fraction = MapTo01(args.default_value, args.min, args.max);
 
-bool Context::SliderRangeBehavior(Rect r,
-                                  Id id,
-                                  f32 min,
-                                  f32 max,
-                                  f32& value,
-                                  f32 default_value,
-                                  f32 sensitivity,
-                                  SliderFlags flags) {
+    bool const slider_changed = SliderBehaviourFraction({
+        .rect_in_window_coords = args.rect_in_window_coords,
+        .id = args.id,
+        .fraction = fraction,
+        .default_fraction = default_fraction,
+        .cfg = ({
+            auto f = args.cfg;
+            // We are now working in the fraction space, so we need to scale the sensitivity too so that
+            // it still relates to pixels per step of 1.0.
+            f.sensitivity *= Abs(args.max - args.min);
+            f;
+        }),
+    });
 
-    f32 percent = Map(value, min, max, 0.0f, 1.0f);
-    f32 const default_percent = Map(default_value, min, max, 0.0f, 1.0f);
-
-    // We are now working in the percent space, so we need to scale the sensitivity too so that it still
-    // relates to pixels per step of 1.0.
-    sensitivity *= Abs(max - min);
-
-    bool const slider_changed = SliderBehavior(r, id, percent, default_percent, sensitivity, flags);
-
-    if (slider_changed) value = Map(percent, 0.0f, 1.0f, min, max);
+    if (slider_changed) args.value = MapFrom01(fraction, args.min, args.max);
     return slider_changed;
 }
 
-bool Context::SliderBehavior(Rect r, Id id, f32& percent, SliderFlags flags) {
-    f32 const default_percent = 0;
-    return SliderBehavior(r, id, percent, default_percent, flags);
-}
+bool Context::SliderBehaviourFraction(SliderBehaviourFractionArgs const& args) {
+    ASSERT(args.fraction >= 0 && args.fraction <= 1);
+    ASSERT(args.default_fraction >= 0 && args.default_fraction <= 1);
+    f32 const start = args.fraction;
 
-bool Context::SliderBehavior(Rect r, Id id, f32& percent, f32 default_percent, SliderFlags flags) {
-    return SliderBehavior(r, id, percent, default_percent, 400, flags);
-}
-
-bool Context::SliderRangeBehavior(Rect r,
-                                  Id id,
-                                  int min,
-                                  int max,
-                                  int& value,
-                                  int default_value,
-                                  f32 sensitivity,
-                                  SliderFlags flags) {
-
-    bool slider_changed;
-    static f32 cache = 0;
-    if (!IsActive(id)) {
-        auto val = (f32)value;
-        slider_changed =
-            SliderRangeBehavior(r, id, (f32)min, (f32)max, val, (f32)default_value, sensitivity, flags);
-    } else {
-        if (WasJustActivated(id)) cache = (f32)value;
-        slider_changed =
-            SliderRangeBehavior(r, id, (f32)min, (f32)max, cache, (f32)default_value, sensitivity, flags);
-        value = (int)cache;
-    }
-
-    return slider_changed;
-}
-
-bool Context::SliderUnboundedBehavior(Rect r,
-                                      Id id,
-                                      f32& val,
-                                      f32 default_val,
-                                      f32 sensitivity,
-                                      SliderFlags flags) {
     static f32 val_at_click = 0;
     static f32x2 start_location = {};
-    f32 const starting_val = val;
 
     auto const& frame_input = GuiIo().in;
 
-    // NOTE: this slider always responds both vertically and horizontally.
-
-    if (ButtonBehavior(r, id, {.left_mouse = true, .triggers_on_mouse_down = true})) {
-        if ((flags.default_on_modifer) && frame_input.modifiers.Get(ModifierKey::Modifier)) val = default_val;
-        val_at_click = val;
+    if (ButtonBehaviour(args.rect_in_window_coords,
+                        args.id,
+                        {.mouse_button = MouseButton::Left, .event = MouseButtonEvent::Down})) {
+        if ((args.cfg.default_on_modifer) && frame_input.modifiers.Get(ModifierKey::Modifier))
+            args.fraction = args.default_fraction;
+        val_at_click = args.fraction;
         start_location = frame_input.cursor_pos;
     }
 
-    if (IsActive(id)) {
-        if (flags.slower_with_shift) {
+    if (IsActive(args.id)) {
+        f32 sensitivity = args.cfg.sensitivity;
+        if (args.cfg.slower_with_shift) {
             if (frame_input.Key(KeyCode::ShiftL).presses.size ||
                 frame_input.Key(KeyCode::ShiftR).presses.size) {
-                val_at_click = val;
+                val_at_click = args.fraction;
                 start_location = frame_input.cursor_pos;
             }
             if (frame_input.modifiers.Get(ModifierKey::Shift)) sensitivity *= 4;
@@ -969,139 +878,135 @@ bool Context::SliderUnboundedBehavior(Rect r,
         if (All(frame_input.cursor_pos != -1)) {
             auto d = frame_input.cursor_pos - start_location;
             d.x = -d.x;
+            // Change value regardless of if dragged horizontally or vertically.
             auto distance_from_drag_start = d.x + d.y;
             if (d.x > 0 && d.y > 0) distance_from_drag_start = Sqrt(Pow(d.x, 2.0f) + Pow(d.y, 2.0f));
             if (d.x < 0 && d.y < 0) distance_from_drag_start = -Sqrt(Pow(-d.x, 2.0f) + Pow(-d.y, 2.0f));
-            val = val_at_click - distance_from_drag_start / sensitivity;
+            args.fraction = val_at_click - distance_from_drag_start / sensitivity;
         }
     }
 
-    return val != starting_val;
+    args.fraction = Clamp(args.fraction, 0.0f, 1.0f);
+    return start != args.fraction;
 }
 
-bool Context::SliderBehavior(Rect r,
-                             Id id,
-                             f32& percent,
-                             f32 default_percent,
-                             f32 sensitivity,
-                             SliderFlags flags) {
-    f32 const start = percent;
-    SliderUnboundedBehavior(r, id, percent, default_percent, sensitivity, flags);
-    percent = Clamp(percent, 0.0f, 1.0f);
-    return start != percent;
+void Context::SetViewportMinimumAutoSize(f32x2 size) { auto _ = RegisterAndConvertRect({.size = size}); }
+
+f32x2 Context::ViewportPosToWindowPos(f32x2 rel_pos) const {
+    return rel_pos + curr_viewport->bounds.pos - curr_viewport->scroll_offset;
 }
 
-void Context::SetMinimumPopupSize(f32 width, f32 height) {
-    auto r = Rect {.w = width, .h = height};
-    RegisterAndConvertRect(&r);
+f32x2 Context::WindowPosToViewportPos(f32x2 window_pos) const {
+    return window_pos - curr_viewport->bounds.pos + curr_viewport->scroll_offset;
 }
 
-f32x2 Context::WindowPosToScreenPos(f32x2 rel_pos) {
-    Window* window = curr_window;
-    return rel_pos + window->bounds.pos - window->scroll_offset;
-}
+Rect Context::RegisterAndConvertRect(Rect r) {
+    if (curr_viewport == nullptr) return r;
 
-f32x2 Context::ScreenPosToWindowPos(f32x2 screen_pos) {
-    Window* window = curr_window;
-    return screen_pos - window->bounds.pos + window->scroll_offset;
-}
+    auto const reg =
+        [](f32 start, f32 size, f32 comparison_size, f32 content_size, b8x2& is_auto, usize dim) {
+            f32 const end = start + size;
+            f32 const epsilon = 0.1f;
+            if (end > content_size) {
+                if (end > comparison_size + epsilon) is_auto[dim] = false;
+                return end;
+            }
+            return content_size;
+        };
 
-Rect Context::GetRegisteredAndConvertedRect(Rect r) {
-    RegisterAndConvertRect(&r);
+    f32 const comparison_size_x =
+        curr_viewport->cfg.auto_size.x ? curr_viewport->prev_content_size.x : curr_viewport->bounds.w;
+    curr_viewport->prev_content_size.x = reg(r.x,
+                                             r.w,
+                                             comparison_size_x,
+                                             curr_viewport->prev_content_size.x,
+                                             curr_viewport->contents_was_auto,
+                                             0);
+    f32 const comparison_size_y =
+        curr_viewport->cfg.auto_size.y ? curr_viewport->prev_content_size.y : curr_viewport->bounds.h;
+    curr_viewport->prev_content_size.y = reg(r.y,
+                                             r.h,
+                                             comparison_size_y,
+                                             curr_viewport->prev_content_size.y,
+                                             curr_viewport->contents_was_auto,
+                                             1);
+
+    r.pos = ViewportPosToWindowPos(r.pos);
+
+    // Debug: show boxes around registered rectangles.
+    // `overlay_draw_list.AddRect(r, 0xff0000ff);`
+
     return r;
 }
 
-void Context::RegisterToWindow(Rect r) {
-    auto reg = [](f32 start, f32 size, f32 comparison_size, f32 content_size, bool& is_auto) {
-        f32 const end = start + size;
-        f32 const epsilon = 0.1f;
-        if (end > content_size) {
-            if (end > comparison_size + epsilon) is_auto = false;
-            return end;
-        }
-        return content_size;
-    };
+bool Context::RegisterRectForMouseTracking(Rect r_in_window_coords, bool check_intersection) {
+    auto const this_viewport_has_exclusive_focus = WantsExclusiveFocus(curr_viewport->root_viewport->cfg);
+    if (exclusive_focus_viewport != nullptr && !this_viewport_has_exclusive_focus) return false;
+    if (check_intersection && !Rect::DoRectsIntersect(r_in_window_coords, GetCurrentClipRect())) return false;
 
-    Window* window = curr_window;
-    if (window == nullptr) return;
-
-    f32 const comparison_size_x = window->flags.auto_width ? window->prev_content_size.x : window->bounds.w;
-    f32 const comparison_size_y = window->flags.auto_height ? window->prev_content_size.y : window->bounds.h;
-    window->prev_content_size.x =
-        reg(r.x, r.w, comparison_size_x, window->prev_content_size.x, window->x_contents_was_auto);
-    window->prev_content_size.y =
-        reg(r.y, r.h, comparison_size_y, window->prev_content_size.y, window->y_contents_was_auto);
-}
-
-void Context::RegisterAndConvertRect(Rect* r) {
-    RegisterToWindow(*r);
-    r->pos = WindowPosToScreenPos(r->pos);
-
-    // Debug: show boxes around registered rectangles.
-    // overlay_draw_list.AddRect(r->Min(), r->Max(), 0xff0000ff);
-}
-
-bool Context::RegisterRegionForMouseTracking(Rect r, bool check_intersection) {
-    auto this_window_is_apopup = curr_window->flags.popup || curr_window->flags.nested_inside_popup;
-    if (focused_popup_window != nullptr && !this_window_is_apopup) return false;
-    if (check_intersection && !Rect::DoRectsIntersect(r, GetCurrentClipRect())) return false;
-
-    MouseTrackedRect widget = {};
-    widget.rect = r;
-    widget.mouse_over = r.Contains(GuiIo().in.cursor_pos);
-    dyn::Append(GuiIo().out.mouse_tracked_rects, widget);
+    dyn::Append(GuiIo().out.mouse_tracked_rects,
+                {
+                    .rect = r_in_window_coords,
+                    .mouse_over = r_in_window_coords.Contains(GuiIo().in.cursor_pos),
+                });
     return true;
 }
 
-Window* Context::GetPopupFromID(Id id) {
-    for (auto const i : Range(persistent_popup_stack.size))
-        if (id == persistent_popup_stack[i]->id) return persistent_popup_stack[i];
-    return nullptr;
-}
-
 bool Context::RequestKeyboardFocus(Id id) {
-    auto const inside_focused_popup =
-        curr_window == focused_popup_window || curr_window->root_window == focused_popup_window;
+    auto const inside_exclusive_focus_viewport = curr_viewport->root_viewport == exclusive_focus_viewport;
 
-    if (!inside_focused_popup && temp_keyboard_focus_item_is_popup) {
+    if (!inside_exclusive_focus_viewport && temp_keyboard_focus_item_is_popup) {
         // We can never have focus because there's a popup open and that always has priority.
         return false;
     }
 
     temp_keyboard_focus_item = id;
-    temp_keyboard_focus_item_is_popup = inside_focused_popup;
+    temp_keyboard_focus_item_is_popup = inside_exclusive_focus_viewport;
 
     return IsKeyboardFocus(id);
 }
 
-bool Context::SetHot(Rect r, Id id, bool32 is_not_window_content) {
-    // If there is a popup window focused and it is not this window we can leave
-    // early as the popup has focus. (We also check that this current window is not
-    // nested inside a popup - in that case we proceed as normal).
-    if (focused_popup_window != nullptr && focused_popup_window != curr_window) {
-        auto const this_window_is_inside_apopup = curr_window->flags.nested_inside_popup;
-        auto const this_windows_root_is_the_focused_popup = curr_window->root_window == focused_popup_window;
-        auto const this_window_is_apopup = curr_window->flags.popup || curr_window->flags.nested_inside_popup;
+// When we're in a popup viewport, we want to close children viewports when we hover for a while on an
+// item in a parent viewport. This is common GUI behaviour for something like a menu with sub-menus.
+static void HandleHoverPopupMenuClosing(Context& imgui, Id id) {
+    ASSERT(imgui.exclusive_focus_viewport != nullptr);
+    auto const curr = imgui.curr_viewport;
+    auto const curr_is_popup = curr->root_viewport->cfg.mode == ViewportMode::PopupMenu;
 
-        HandleHoverPopupOpeningAndClosing(id);
+    if (imgui.IsHot(id) && curr_is_popup && imgui.exclusive_focus_viewport != imgui.hovered_viewport &&
+        imgui.current_popup_stack.size < imgui.open_popups.size) {
+        auto const next_viewport = imgui.open_popups[imgui.current_popup_stack.size];
+        auto const creator_of_next = next_viewport->creator_of_this_popup_menu;
 
-        if (focused_popup_window->flags.child_popup && !focused_popup_window->flags.nested_inside_popup &&
-            (curr_window->flags.modal_popup ||
-             (curr_window->flags.nested_inside_popup && curr_window->root_window->flags.modal_popup)))
-            return false;
-
-        if (!this_window_is_apopup) {
-            if (!(this_window_is_inside_apopup && this_windows_root_is_the_focused_popup)) return false;
+        if (id != creator_of_next) {
+            if (imgui.WasJustMadeHot(id))
+                GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_popup_open_and_close_delay_sec,
+                                           "popup close");
+            if (imgui.SecondsSpentHot() >= k_popup_open_and_close_delay_sec)
+                imgui.ClosePopupToLevel(imgui.current_popup_stack.size);
         }
     }
+}
 
-    // Only bother to check if the cursor is in the same window.
-    if ((curr_window == hovered_window_content || (is_not_window_content && curr_window == hovered_window)) &&
+bool Context::SetHot(Rect r, Id id, bool32 is_not_viewport_content) {
+    // If there is a popup viewport focused and it is not this viewport we can leave
+    // early as the popup has focus. (We also check that this current viewport is not
+    // nested inside a popup - in that case we proceed as normal).
+    if (exclusive_focus_viewport != nullptr && exclusive_focus_viewport != curr_viewport) {
+        if (exclusive_focus_viewport->cfg.mode == ViewportMode::PopupMenu)
+            HandleHoverPopupMenuClosing(*this, id);
+
+        if (curr_viewport->root_viewport != exclusive_focus_viewport) return false;
+    }
+
+    // Valid if the current viewport is hovered and the cursor is in the rect.
+    if (curr_viewport == (is_not_viewport_content ? hovered_viewport : hovered_viewport_content) &&
         r.Contains(GuiIo().in.cursor_pos)) {
         temp_hovered_item = id;
-        // Only allow it if there is not an active item (for example a disallow when a slider is held down).
-        if (GetActive() == 0) {
-            SetHotRaw(id);
+        // Only allow it if there is not an active item (for example a disallow when a slider is held
+        // down).
+        if (!AnItemIsActive()) {
+            temp_hot_item = id;
             return true;
         }
     }
@@ -1109,15 +1014,16 @@ bool Context::SetHot(Rect r, Id id, bool32 is_not_window_content) {
     return false;
 }
 
-TextInputResult Context::TextInput(Rect r,
-                                   Id id,
-                                   String text_unfocused,
-                                   String placeholder_text,
-                                   TextInputFlags flags,
-                                   ButtonFlags button_flags,
-                                   bool select_all_on_first_open) {
-    ASSERT(!(flags.multiline && flags.centre_align), "not supported");
-    if (flags.multiline_wordwrap_hack) ASSERT(flags.multiline);
+TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) {
+    auto const& r = args.rect_in_window_coords;
+    auto const& id = args.id;
+    auto const& text_unfocused = args.text;
+    auto const& placeholder_text = args.placeholder_text;
+    auto const& cfg = args.input_cfg;
+    auto const& button_cfg = args.button_cfg;
+
+    ASSERT(!(cfg.multiline && cfg.centre_align), "not supported");
+    if (cfg.multiline_wordwrap_hack) ASSERT(cfg.multiline);
 
     TextInputResult result {};
 
@@ -1130,14 +1036,6 @@ TextInputResult Context::TextInput(Rect r,
         return relative_click;
     };
 
-    auto get_text_pos = [&](Rect r, f32 offset) {
-        auto font_size = draw_list->renderer->CurrentFontSize();
-        auto pos = r.pos;
-        pos.x += offset;
-        if (!flags.multiline) pos.y += (r.h - font_size) / 2; // centre Y
-        return pos;
-    };
-
     bool set_focus = false;
     if (tab_to_focus_next_input) {
         tab_to_focus_next_input = false;
@@ -1145,23 +1043,13 @@ TextInputResult Context::TextInput(Rect r,
     }
 
     if (!TextInputHasFocus(id)) {
-        if (ButtonBehavior(r, id, button_flags)) set_focus = true;
+        if (ButtonBehaviour(r, id, button_cfg)) set_focus = true;
     }
 
     if (set_focus) {
-        SetTextInputFocus(id, text_unfocused, flags.multiline);
+        SetTextInputFocus(id, text_unfocused, cfg.multiline);
         reset_cursor = true;
     }
-
-    auto get_offset = [&](String text) {
-        auto x_offset = flags.x_padding;
-        if (flags.centre_align) {
-            auto font = draw_list->renderer->CurrentFont();
-            auto size = font->CalcTextSizeA(font->font_size, FLT_MAX, 0.0f, text).x;
-            x_offset = ((r.w / 2) - (size / 2));
-        }
-        return x_offset;
-    };
 
     auto copy_selection_to_clipboard = [&]() {
         auto const start = (usize)::Min(stb_state.select_start, stb_state.select_end);
@@ -1187,21 +1075,21 @@ TextInputResult Context::TextInput(Rect r,
 
     if (TextInputHasFocus(id)) {
         RequestKeyboardFocus(id);
-        if (IsKeyboardFocus(id) && frame_input.Key(KeyCode::Tab).presses.size &&
-            flags.tab_focuses_next_input && !tab_just_used_to_focus) {
+        if (IsKeyboardFocus(id) && frame_input.Key(KeyCode::Tab).presses.size && cfg.tab_focuses_next_input &&
+            !tab_just_used_to_focus) {
             tab_to_focus_next_input = true;
             tab_just_used_to_focus = true;
-            SetTextInputFocus(0, {}, false);
+            SetTextInputFocus(k_null_id, {}, false);
         }
 
         if ((active_item.id && active_item.id != id) || (temp_active_item.id && temp_active_item.id != id))
-            SetTextInputFocus(0, {}, false);
+            SetTextInputFocus(k_null_id, {}, false);
 
-        if (IsKeyboardFocus(id) && !flags.multiline &&
+        if (IsKeyboardFocus(id) && !cfg.multiline &&
             (frame_input.Key(KeyCode::Enter).presses.size ||
-             (flags.escape_unfocuses && frame_input.Key(KeyCode::Escape).presses.size))) {
+             (cfg.escape_unfocuses && frame_input.Key(KeyCode::Escape).presses.size))) {
             result.enter_pressed = true;
-            SetTextInputFocus(0, {}, false);
+            SetTextInputFocus(k_null_id, {}, false);
         }
     }
 
@@ -1214,26 +1102,25 @@ TextInputResult Context::TextInput(Rect r,
             result.text = placeholder_text;
             result.is_placeholder = true;
         }
-        auto x_offset = get_offset(result.text);
-        result.text_pos = get_text_pos(r, x_offset);
+        result.text_pos = TextInputTextPos(result.text, r, cfg, draw_list->fonts);
         return result;
     }
 
     active_text_input_shown = true;
 
     auto const initial_textedit_len = textedit_len;
-    auto const x_offset = get_offset(textedit_text_utf8);
+    auto const x_offset = TextInputTextPos(textedit_text_utf8, r, cfg, draw_list->fonts).x - r.pos.x;
 
-    if (ButtonBehavior(r, id, {.left_mouse = true, .triggers_on_mouse_down = true})) {
+    if (ButtonBehaviour(r, id, {.mouse_button = MouseButton::Left, .event = MouseButtonEvent::Down})) {
         auto rel_pos = get_rel_click_point(r.pos, x_offset);
         stb_textedit_click(this, &stb_state, rel_pos.x, rel_pos.y);
         reset_cursor = true;
     }
     if (IsActive(id)) {
         if (!frame_input.mouse_buttons[0].is_down) {
-            SetActiveIDZero();
+            ClearActive();
         } else if (!WasJustActivated(id)) {
-            if (active_item.button_flags.triggers_on_mouse_down) {
+            if (active_item.button_cfg.event == MouseButtonEvent::Down) {
                 if (frame_input.Mouse(MouseButton::Left).dragging_started) {
                     auto rel_pos = get_rel_click_point(r.pos, x_offset);
                     stb_textedit_click(this, &stb_state, rel_pos.x, rel_pos.y);
@@ -1249,24 +1136,26 @@ TextInputResult Context::TextInput(Rect r,
     if (IsHotOrActive(id)) frame_output.wants.cursor_type = CursorType::IBeam;
 
     // Select word
-    for (auto const press : frame_input.Mouse(MouseButton::Left).presses) {
-        if (!press.is_double_click) continue;
+    if (!(cfg.select_all_when_opening && TextInputJustFocused(id))) {
+        for (auto const press : frame_input.Mouse(MouseButton::Left).presses) {
+            if (!press.is_double_click) continue;
 
-        int start = stb_state.cursor;
-        for (; start-- > 0;) {
-            auto const c = textedit_text.data[start];
-            if (c == ' ' || c == '\n' || c == '\r' || c == '\t') break;
-        }
-        ASSERT(start >= -1);
-        stb_state.select_start = start + 1;
+            int start = stb_state.cursor;
+            for (; start-- > 0;) {
+                auto const c = textedit_text.data[start];
+                if (c == ' ' || c == '\n' || c == '\r' || c == '\t') break;
+            }
+            ASSERT(start >= -1);
+            stb_state.select_start = start + 1;
 
-        int end = stb_state.cursor;
-        for (; end < textedit_len; end++) {
-            auto const c = textedit_text.data[end];
-            if (c == ' ' || c == '\n' || c == '\r' || c == '\t') break;
+            int end = stb_state.cursor;
+            for (; end < textedit_len; end++) {
+                auto const c = textedit_text.data[end];
+                if (c == ' ' || c == '\n' || c == '\r' || c == '\t') break;
+            }
+            stb_state.select_end = end;
+            break;
         }
-        stb_state.select_end = end;
-        break;
     }
 
     if (IsKeyboardFocus(id)) {
@@ -1368,7 +1257,7 @@ TextInputResult Context::TextInput(Rect r,
                 }
         }
         if (auto const enters = frame_input.Key(KeyCode::Enter).presses_or_repeats; enters.size) {
-            if (flags.multiline) {
+            if (cfg.multiline) {
                 for (auto event : enters) {
                     if (event.modifiers.flags) continue;
                     result.enter_pressed = true;
@@ -1397,7 +1286,7 @@ TextInputResult Context::TextInput(Rect r,
 
         if (frame_input.input_utf32_chars.size && !frame_input.modifiers.Get(ModifierKey::Modifier)) {
             for (auto c : frame_input.input_utf32_chars) {
-                if (InputTextFilterCharacter(&c, flags)) {
+                if (InputTextFilterCharacter(&c, cfg)) {
                     stb_textedit_key(this, &stb_state, (int)c);
                     result.buffer_changed = true;
                     reset_cursor = true;
@@ -1406,24 +1295,25 @@ TextInputResult Context::TextInput(Rect r,
         }
     }
 
-    auto const font_size = draw_list->renderer->CurrentFontSize();
-    auto font = draw_list->renderer->CurrentFont();
+    auto font = draw_list->fonts.Current();
+    auto const font_size = font->font_size;
 
     if (result.buffer_changed) {
         for (u8 iteration = 0; iteration < 2; ++iteration) {
-            dyn::Resize(textedit_text_utf8, (usize)textedit_len * 4); // 1 utf32 could at most be 4 utf8 bytes
+            dyn::Resize(textedit_text_utf8,
+                        (usize)textedit_len * 4); // 1 utf32 could at most be 4 utf8 bytes
             dyn::Resize(textedit_text_utf8,
                         (usize)imstring::Narrow(textedit_text_utf8.data,
                                                 (int)textedit_text_utf8.size,
                                                 textedit_text.data,
                                                 textedit_text.data + textedit_len));
 
-            // Word-wrap for when we add 1 character and it goes over the edge. The string will end up with
-            // newlines in it. IMPROVE: this is an absolute hack to just cover the most common case.
-            if (flags.multiline_wordwrap_hack && stb_state.cursor == textedit_len &&
+            // Word-wrap for when we add 1 character and it goes over the edge. The string will end up
+            // with newlines in it. IMPROVE: this is an absolute hack to just cover the most common case.
+            if (cfg.multiline_wordwrap_hack && stb_state.cursor == textedit_len &&
                 textedit_len == (initial_textedit_len + 1)) {
 
-                auto const max_width = r.w - (flags.x_padding * 4);
+                auto const max_width = r.w - (cfg.x_padding * 4);
                 if (max_width <= 0) break;
 
                 auto const* line_end = textedit_text_utf8.data + textedit_text_utf8.size - 1;
@@ -1434,11 +1324,9 @@ TextInputResult Context::TextInput(Rect r,
 
                 if (line_end <= line_start) break;
 
-                auto const line_width = font->CalcTextSizeA(draw_list->renderer->CurrentFontSize(),
-                                                            FLT_MAX,
-                                                            0,
-                                                            {line_start, (usize)(line_end - line_start)})
-                                            .x;
+                auto const line_width =
+                    font->CalcTextSize({line_start, (usize)(line_end - line_start)}, {.font_size = font_size})
+                        .x;
 
                 if (line_width < max_width) break;
 
@@ -1465,12 +1353,17 @@ TextInputResult Context::TextInput(Rect r,
     result.selection_start = ::Min(stb_state.select_start, stb_state.select_end);
     result.selection_end = ::Max(stb_state.select_start, stb_state.select_end);
     result.text = textedit_text_utf8.Items();
-    result.text_pos = get_text_pos(r, get_offset(result.text));
+    result.text_pos = TextInputTextPos(result.text, r, cfg, draw_list->fonts);
 
-    f32 const y_pad = 2;
+    if (!result.HasSelection()) {
+        if (starting_cursor != stb_state.cursor || reset_cursor)
+            ResetTextInputCursorAnim();
+        else if (GuiIo().WakeupAtTimedInterval(cursor_blink_counter, k_text_cursor_blink_rate))
+            text_cursor_is_shown = !text_cursor_is_shown;
+    }
 
-    {
-        f32 const cursor_width = 2; // IMPROVE: scaling
+    if (text_cursor_is_shown && !result.HasSelection()) {
+        constexpr u8 k_cursor_width = 1;
         u32 line_index = 0;
         auto cursor_ptr = result.text.data;
         auto line_start = result.text.data;
@@ -1484,28 +1377,19 @@ TextInputResult Context::TextInput(Rect r,
         ASSERT(cursor_ptr >= line_start);
         auto const text_up_to_cursor = String {line_start, (usize)(cursor_ptr - line_start)};
         ASSERT(!Contains(text_up_to_cursor, '\n'));
-        f32 const cursor_start = font->CalcTextSizeA(font_size, FLT_MAX, 0, text_up_to_cursor).x;
+        f32 const cursor_start = font->CalcTextSize(text_up_to_cursor, {.font_size = font_size}).x;
 
-        auto cursor_r = Rect {.x = result.text_pos.x + cursor_start,
-                              .y = result.text_pos.y - y_pad + (line_index * font_size),
-                              .w = cursor_width,
-                              .h = font_size + (y_pad * 2)};
+        auto const cursor_r = Rect {.x = Round(result.text_pos.x + cursor_start) - k_cursor_width,
+                                    .y = result.text_pos.y + (line_index * font_size),
+                                    .w = k_cursor_width,
+                                    .h = font_size};
 
         result.cursor_rect = cursor_r;
     }
 
-    if (!result.HasSelection()) {
-        if (starting_cursor != stb_state.cursor || reset_cursor)
-            ResetTextInputCursorAnim();
-        else if (GuiIo().WakeupAtTimedInterval(cursor_blink_counter, k_text_cursor_blink_rate))
-            text_cursor_is_shown = !text_cursor_is_shown;
-    }
-
-    result.show_cursor = text_cursor_is_shown && !result.HasSelection();
-
-    // We do this at the end because we might have run stb_click code, and we want to override the value set
-    // there with the whole selection
-    if (TextInputJustFocused(id) && select_all_on_first_open) TextInputSelectAll();
+    // We do this at the end because we might have run stb_click code; we want to override the value set
+    // with the whole selection.
+    if (TextInputJustFocused(id) && cfg.select_all_when_opening) TextInputSelectAll();
 
     return result;
 }
@@ -1513,6 +1397,8 @@ TextInputResult Context::TextInput(Rect r,
 Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIterator& it) const {
     ASSERT(HasSelection());
     if (it.reached_end) return {};
+
+    auto const& font = *it.imgui.draw_list->fonts.Current();
 
     if (!it.pos) {
         // First call.
@@ -1551,18 +1437,14 @@ Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIter
 
         char const* end_pos = it.pos;
 
-        auto font = it.renderer.CurrentFont();
-        auto font_size = it.renderer.CurrentFontSize();
-
         Rect const result = {
-            .x = text_pos.x + font->CalcTextSizeA(font_size,
-                                                  FLT_MAX,
-                                                  0,
-                                                  {start_line_start, (usize)(start_pos - start_line_start)})
+            .x = text_pos.x + font.CalcTextSize({start_line_start, (usize)(start_pos - start_line_start)},
+                                                {.font_size = font.font_size})
                                   .x,
-            .y = text_pos.y - 2 + (start_line_index * font_size),
-            .w = font->CalcTextSizeA(font_size, FLT_MAX, 0, {start_pos, (usize)(end_pos - start_pos)}).x,
-            .h = font_size + 4};
+            .y = text_pos.y - 2 + (start_line_index * font.font_size),
+            .w =
+                font.CalcTextSize({start_pos, (usize)(end_pos - start_pos)}, {.font_size = font.font_size}).x,
+            .h = font.font_size + 4};
 
         return result;
     }
@@ -1586,139 +1468,164 @@ Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIter
 
     auto const end_pos = it.pos;
 
-    auto font = it.renderer.CurrentFont();
-    auto font_size = it.renderer.CurrentFontSize();
-
-    return Rect {.x = text_pos.x,
-                 .y = text_pos.y - 2 + (start_line_index * font_size),
-                 .w = font->CalcTextSizeA(font_size, FLT_MAX, 0, {start_pos, (usize)(end_pos - start_pos)}).x,
-                 .h = font_size + 4};
+    return Rect {
+        .x = text_pos.x,
+        .y = text_pos.y - 2 + (start_line_index * font.font_size),
+        .w = font.CalcTextSize({start_pos, (usize)(end_pos - start_pos)}, {.font_size = font.font_size}).x,
+        .h = font.font_size + 4};
 }
 
-bool Context::PopupButtonBehavior(Rect r, Id button_id, Id popup_id, ButtonFlags flags) {
-    bool just_clicked = false;
+Context::PopupMenuButtonBehaviourResult
+Context::PopupMenuButtonBehaviour(Rect r, Id button_id, Id popup_id, ButtonConfig cfg) {
+    auto const button_fired = ButtonBehaviour(r, button_id, cfg);
 
     if (!current_popup_stack.size) {
-        if (ButtonBehavior(r, button_id, flags)) {
-            OpenPopup(popup_id, button_id);
-            just_clicked = true;
-        }
+        if (button_fired) OpenPopupMenu(popup_id, button_id);
     } else {
-        if (ButtonBehavior(r, button_id, flags)) just_clicked = true;
+        // We're already in a popup viewport. We support auto-opening child popups when hovering. This is
+        // common behaviour for quickly navigating through nested menus.
         if (WasJustMadeHot(button_id))
             GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_popup_open_and_close_delay_sec,
                                        "Popup open");
-        if ((just_clicked || (IsHot(button_id) && SecondsSpentHot() >= k_popup_open_and_close_delay_sec)) &&
-            !IsPopupOpen(popup_id)) {
-            ClosePopupToLevel((int)current_popup_stack.size);
-            OpenPopup(popup_id, button_id);
+        if ((button_fired || (IsHot(button_id) && SecondsSpentHot() >= k_popup_open_and_close_delay_sec)) &&
+            !IsPopupMenuOpen(popup_id)) {
+            ClosePopupToLevel(current_popup_stack.size);
+            OpenPopupMenu(popup_id, button_id);
         }
     }
 
-    return just_clicked;
+    return {
+        .clicked = button_fired,
+        .show_as_active = IsPopupMenuOpen(popup_id) && hovered_viewport != curr_viewport,
+    };
 }
 
-bool Context::ButtonBehavior(Rect r, Id id, ButtonFlags flags) {
-    bool result = false;
+bool Context::ButtonBehaviour(Rect r, Id id, ButtonConfig cfg) {
+    ASSERT(id != k_null_id);
+    if constexpr (RUNTIME_SAFETY_CHECKS_ON) ASSERT(All(r.size > 0.0f));
+    ASSERT(!(cfg.event == MouseButtonEvent::Up && !cfg.required_modifiers.IsNone()),
+           "modifiers for up events are currently not supported");
 
-    RegisterRegionForMouseTracking(r);
+    bool button_fired = false;
 
-    if (flags.disabled) return false;
+    if (SetHot(r, id, cfg.is_non_viewport_content)) {
+        if (auto const& mouse_btn = GuiIo().in.Mouse(cfg.mouse_button).is_down; mouse_btn) {
+            SetActive(id, cfg);
 
-    if (flags.hold_to_repeat && IsActive(id)) {
-        if (GuiIo().WakeupAtTimedInterval(button_repeat_counter, k_button_repeat_rate)) result = true;
-    }
+            bool const matches_modifiers =
+                cfg.required_modifiers.IsNone() || cfg.required_modifiers == mouse_btn->modifiers;
 
-    if (SetHot(r, id, flags.is_non_window_content)) {
-        if (CheckForValidMouseDown(flags, GuiIo().in)) {
-            SetActiveID(id, flags.closes_popups, flags, !(flags.dont_check_for_release));
+            switch (cfg.event) {
+                case MouseButtonEvent::Down: {
+                    if (cfg.dont_fire_on_double_click && mouse_btn->is_double_click) break;
+                    if (matches_modifiers) button_fired = true;
+                    break;
+                }
 
-            button_repeat_counter = {};
-            if (flags.hold_to_repeat)
-                GuiIo().WakeupAtTimedInterval(button_repeat_counter, k_button_repeat_rate);
-            if (!(flags.triggers_on_mouse_up)) result = true;
+                case MouseButtonEvent::DoubleClick: {
+                    if (mouse_btn->is_double_click && matches_modifiers) button_fired = true;
+                    break;
+                }
+
+                case MouseButtonEvent::Up: break; // Handled later.
+
+                case MouseButtonEvent::Count: PanicIfReached();
+            }
         }
+
+        if (WasJustDeactivated(id) && GuiIo().in.Mouse(cfg.mouse_button).releases.size &&
+            cfg.event == MouseButtonEvent::Up)
+            button_fired = true;
     }
-    if ((flags.triggers_on_mouse_up) && r.Contains(GuiIo().in.cursor_pos) && WasJustDeactivated(id)) {
-        // the cursor is still over the rectangle and and mouse has just been released
-        result = true;
+
+    if (cfg.hold_to_repeat) {
+        if (WasJustActivated(id))
+            button_repeat_counter = GuiIo().in.current_time + k_button_repeat_rate;
+        else if (IsActive(id)) {
+            if (GuiIo().WakeupAtTimedInterval(button_repeat_counter, k_button_repeat_rate))
+                button_fired = true;
+        }
     }
 
     if (IsHotOrActive(id)) GuiIo().out.wants.cursor_type = CursorType::Hand;
 
-    if (result && (flags.closes_popups)) CloseCurrentPopup();
+    // If we haven't run ButtonBehaviour on this ID before, track the rectangle.
+    if (temp_hot_item != id) RegisterRectForMouseTracking(r);
 
-    return result;
+    if (button_fired && cfg.closes_popup_or_modal) {
+        switch (curr_viewport->root_viewport->cfg.mode) {
+            case ViewportMode::PopupMenu: CloseAllPopups(); break;
+            case ViewportMode::Modal: CloseTopModal(); break;
+            case ViewportMode::Contained:
+            case ViewportMode::Floating: break;
+        }
+    }
+
+    return button_fired;
 }
 
-bool Context::WasWindowJustCreated(Window* window) {
-    return window != nullptr && window_just_created == window;
-}
-bool Context::WasWindowJustCreated(Id id) {
-    return id != 0 && window_just_created && window_just_created->id == id;
+bool Context::WasViewportJustCreated(Id id) const {
+    return id != k_null_id && viewport_just_created && viewport_just_created->id == id;
 }
 
-Window* Context::AddWindowIfNotAlreadyThere(Id id) {
-    for (auto const i : Range(windows.size))
-        if (id == windows[i]->id) return windows[i];
+Viewport* Context::FindOrCreateViewport(Id id) {
+    for (auto const i : Range(viewports.size))
+        if (id == viewports[i]->id) return viewports[i];
 
-    auto* w = new Window();
-    window_just_created = w;
+    auto* w = viewport_arena.New<Viewport>();
+    viewport_just_created = w;
     w->id = id;
-    dyn::Append(windows, w);
-    return Last(windows);
+    dyn::Append(viewports, w);
+    return Last(viewports);
 }
 
-bool Context::WasWindowJustHovered(Window* window) { return WasWindowJustHovered(window->id); }
-
-bool Context::WasWindowJustHovered(Id id) {
-    return IsWindowHovered(id) && (hovered_window_last_frame == nullptr ||
-                                   (hovered_window_last_frame && hovered_window_last_frame->id != id));
+bool Context::WasViewportJustHovered(Id id) const {
+    return IsViewportHovered(id) && (hovered_viewport_last_frame == nullptr ||
+                                     (hovered_viewport_last_frame && hovered_viewport_last_frame->id != id));
 }
 
-bool Context::WasWindowJustUnhovered(Window* window) { return WasWindowJustUnhovered(window->id); }
-bool Context::WasWindowJustUnhovered(Id id) {
-    return !IsWindowHovered(id) && hovered_window_last_frame != nullptr &&
-           hovered_window_last_frame->id == id;
+bool Context::WasViewportJustUnhovered(Id id) const {
+    return !IsViewportHovered(id) && hovered_viewport_last_frame != nullptr &&
+           hovered_viewport_last_frame->id == id;
 }
-bool Context::IsWindowHovered(Window* window) const { return IsWindowHovered(window->id); }
-bool Context::IsWindowHovered(Id id) const { return hovered_window != nullptr && hovered_window->id == id; }
-
-void Context::BeginWindow(WindowSettings settings, Window* window, Rect r) {
-    BeginWindow(settings, window, r, "");
-}
-void Context::BeginWindow(WindowSettings settings, Id id, Rect r) { BeginWindow(settings, id, r, ""); }
-
-void Context::BeginWindow(WindowSettings settings, Rect r, String str) {
-    BeginWindow(settings, GetID(str), r, str);
+bool Context::IsViewportHovered(Viewport* viewport) const { return IsViewportHovered(viewport->id); }
+bool Context::IsViewportHovered(Id id) const {
+    return hovered_viewport != nullptr && hovered_viewport->id == id;
 }
 
-void Context::BeginWindow(WindowSettings settings, Id id, Rect r, String str) {
-    Window* window = AddWindowIfNotAlreadyThere(id);
-    BeginWindow(settings, window, r, str);
+void Context::BeginViewport(ViewportConfig const& cfg, Rect r, String unqiue_name) {
+    BeginViewport(cfg, MakeId(unqiue_name), r, unqiue_name);
 }
 
-void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, String str) {
-    auto flags = settings.flags;
-    auto const no_padding = flags.no_padding;
-    auto const is_apopup = flags.popup;
-    auto const auto_width = flags.auto_width;
-    auto auto_height = flags.auto_height;
-    auto const auto_pos = flags.auto_position;
-    auto const no_scroll_x = flags.no_scrollbar_x;
-    auto const no_scroll_y = flags.no_scrollbar_y;
-    auto const draw_on_top = flags.draw_on_top;
-    auto const scrollbar_inside_padding = flags.scrollbar_inside_padding;
+void Context::BeginViewport(ViewportConfig const& cfg, Id id, Rect r, String debug_name) {
+    auto viewport = FindOrCreateViewport(id);
+    BeginViewport(cfg, viewport, r, debug_name);
+}
+
+void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect r, String debug_name) {
+    auto const is_floating = cfg.mode != ViewportMode::Contained;
+    auto const auto_width = cfg.auto_size.x;
+    auto auto_height = cfg.auto_size.y;
+    auto const auto_pos = cfg.positioning == ViewportPositioning::AutoPosition;
+    auto const no_scroll_x = cfg.scrollbar_visibility.x == ViewportScrollbarVisibility::Never;
+    auto const no_scroll_y = cfg.scrollbar_visibility.y == ViewportScrollbarVisibility::Never;
+    auto const scrollbar_inside_padding = cfg.scrollbar_inside_padding;
+
+    // For Floating+ParentRelative, convert from viewport-relative to window-relative.
+    if (is_floating && cfg.positioning == ViewportPositioning::ParentRelative && curr_viewport)
+        r.pos = ViewportPosToWindowPos(r.pos);
+    // After this point and the auto-pos/auto-size calculations, all floating viewports
+    // have window-relative coords. Contained+ParentRelative remains viewport-relative.
+    auto const is_window_coordinates = is_floating || cfg.positioning != ViewportPositioning::ParentRelative;
 
     ASSERT(r.x >= 0);
     ASSERT(r.y >= 0);
 
-    dyn::Assign(window->debug_name, str);
-    window->flags = flags;
-    window->is_open = true;
-    window->settings = settings;
+    dyn::Assign(viewport->debug_name, debug_name);
+    viewport->active = true;
+    viewport->cfg = cfg;
 
-    window->prevprev_content_size = window->prev_content_size;
+    viewport->prevprev_content_size = viewport->prev_content_size;
 
     //
     // Auto pos and sizing
@@ -1726,26 +1633,26 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     {
         Rect rect_to_avoid = r;
         if (auto_width) {
-            r.w = window->prev_content_size.x;
+            r.w = viewport->prev_content_size.x;
             if (r.w != 0) {
-                if (!no_padding) r.w += window->settings.TotalWidthPad();
+                r.w += viewport->cfg.TotalWidthPad();
                 if (!auto_height) {
                     bool const needs_yscroll =
-                        window->prev_content_size.y > (r.h - window->settings.TotalHeightPad());
+                        viewport->prev_content_size.y > (r.h - viewport->cfg.TotalHeightPad());
                     if (needs_yscroll && !scrollbar_inside_padding)
-                        r.w += window->settings.scrollbar_padding + window->settings.scrollbar_width;
+                        r.w += viewport->cfg.scrollbar_padding + viewport->cfg.scrollbar_width;
                 }
             }
         }
         if (auto_height) {
-            r.h = window->prev_content_size.y;
+            r.h = viewport->prev_content_size.y;
             if (r.h != 0) {
-                if (!no_padding) r.h += window->settings.TotalHeightPad();
+                r.h += viewport->cfg.TotalHeightPad();
                 if (!auto_width) {
                     bool const needs_xscroll =
-                        window->prev_content_size.x > (r.w - window->settings.TotalWidthPad());
+                        viewport->prev_content_size.x > (r.w - viewport->cfg.TotalWidthPad());
                     if (needs_xscroll && !scrollbar_inside_padding)
-                        r.h += window->settings.scrollbar_padding + window->settings.scrollbar_width;
+                        r.h += viewport->cfg.scrollbar_padding + viewport->cfg.scrollbar_width;
                 }
             }
         }
@@ -1753,28 +1660,29 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
             f32x2 size = r.size;
 
             if (!scrollbar_inside_padding) {
-                auto const scrollbar_size =
-                    window->settings.scrollbar_width + window->settings.scrollbar_padding;
+                auto const scrollbar_size = viewport->cfg.scrollbar_width + viewport->cfg.scrollbar_padding;
 
-                bool const needs_xscroll = window->prev_content_size.x > r.w;
-                bool const needs_yscroll = window->prev_content_size.y > r.h;
+                bool const needs_xscroll = viewport->prev_content_size.x > r.w;
+                bool const needs_yscroll = viewport->prev_content_size.y > r.h;
 
                 if (needs_yscroll) size.x += scrollbar_size;
                 if (needs_xscroll) size.y += scrollbar_size;
             }
 
-            bool const has_parent_popup =
-                curr_window && curr_window->flags.popup && !curr_window->flags.modal_popup;
+            bool const has_parent_popup = curr_viewport && curr_viewport->cfg.mode == ViewportMode::PopupMenu;
 
             auto base_r = Rect {.pos = r.pos, .size = size};
-            if (has_parent_popup && !flags.position_on_top_of_parent_popup) {
-                rect_to_avoid = curr_window->bounds;
+
+            // We want to position next to the parent popup_menu with a little overlap to visually show
+            // the z-order layering.
+            if (has_parent_popup) {
+                rect_to_avoid = curr_viewport->bounds;
                 rect_to_avoid.y = 0;
                 rect_to_avoid.h = FLT_MAX;
-                rect_to_avoid.x += 5; // we want the menus to overlap a little to show the layering
+                rect_to_avoid.x += 5;
                 rect_to_avoid.w -= 10;
 
-                base_r.y -= window->settings.pad_top_left.y;
+                base_r.y -= viewport->cfg.padding.t;
             }
 
             auto avoid_r = rect_to_avoid;
@@ -1791,260 +1699,250 @@ void Context::BeginWindow(WindowSettings settings, Window* window, Rect r, Strin
     // Init bounds
     //
 
-    if (!(is_apopup || draw_on_top) && curr_window) RegisterAndConvertRect(&r);
-    if (r.Bottom() > (f32)GuiIo().in.window_size.height && is_apopup) {
+    if (!is_window_coordinates && curr_viewport) r = RegisterAndConvertRect(r);
+    if (is_window_coordinates && r.Bottom() > (f32)GuiIo().in.window_size.height) {
         r.SetBottomByResizing((f32)GuiIo().in.window_size.height - 1);
         if (!scrollbar_inside_padding) {
-            f32 const scrollbar_size = window->settings.scrollbar_width + window->settings.scrollbar_padding;
+            f32 const scrollbar_size = viewport->cfg.scrollbar_width + viewport->cfg.scrollbar_padding;
             r.w += scrollbar_size;
         }
-        // IMPROVE: test properly sort what happens when a window is bigger than the screen
+        // IMPROVE: test properly sort what happens when a viewport is bigger than the screen
         auto_height = 0;
     }
-    window->unpadded_bounds = r;
-    window->visible_bounds = r;
-    window->bounds = r;
-    if (!no_padding && !has_no_width_or_height) {
-        window->bounds.pos += window->settings.pad_top_left;
-        window->bounds.size -= window->settings.TotalPadSize();
+    viewport->unpadded_bounds = r;
+    viewport->visible_bounds = r;
+    viewport->bounds = r;
+    if (!has_no_width_or_height) {
+        viewport->bounds.pos += f32x2 {viewport->cfg.padding.l, viewport->cfg.padding.t};
+        viewport->bounds.size -= viewport->cfg.TotalPadSize();
     }
     auto constexpr k_clipping_expansion = 1.0f;
-    window->clipping_rect = window->bounds.Expanded(k_clipping_expansion);
+    viewport->clipping_rect = viewport->bounds.Expanded(k_clipping_expansion);
 
     //
     // Handle parent
     //
 
-    window->parent_window = curr_window;
-    window->root_window = window;
-    if (window->parent_window != nullptr) {
-        if (!is_apopup && !draw_on_top) {
-            if (window->parent_window->root_window->flags.popup) window->flags.nested_inside_popup = true;
-            window->flags.nested = true;
+    viewport->parent_viewport = is_floating ? nullptr : curr_viewport;
+    viewport->root_viewport = is_floating || !curr_viewport ? viewport : curr_viewport->root_viewport;
 
-            Rect& vb = window->visible_bounds;
-            Rect const& parent_clipping_r = window->parent_window->clipping_rect;
-            vb.w = ::Min(parent_clipping_r.Right(), vb.Right()) - vb.x;
+    if (viewport->parent_viewport) {
+        Rect& vb = viewport->visible_bounds;
+        Rect const& parent_clipping_r = viewport->parent_viewport->clipping_rect;
+        vb.w = ::Min(parent_clipping_r.Right(), vb.Right()) - vb.x;
 
-            f32 const bottom_of_parent = window->parent_window->clipping_rect.Bottom();
-            f32 const bottom_of_this = window->visible_bounds.Bottom();
-            if (bottom_of_parent < bottom_of_this)
-                window->visible_bounds.h = bottom_of_parent - window->visible_bounds.y;
-        }
+        f32 const bottom_of_parent = viewport->parent_viewport->clipping_rect.Bottom();
+        f32 const bottom_of_this = viewport->visible_bounds.Bottom();
+        if (bottom_of_parent < bottom_of_this)
+            viewport->visible_bounds.h = bottom_of_parent - viewport->visible_bounds.y;
 
-        if (window->flags.nested || window->flags.child_popup)
-            window->root_window = window->parent_window->root_window;
-
-        if (is_apopup || draw_on_top) {
-            window->parent_window = nullptr;
-            window->root_window = window;
-        }
-    }
-
-    if (window->root_window == window || is_apopup || draw_on_top) {
-        window->child_nesting_counter = 0;
-        window->nested_level = 0;
-        if (!window->owned_draw_list) window->owned_draw_list = GuiIo().out.draw_list_allocator.Allocate();
-        window->draw_list = window->owned_draw_list;
-    } else {
-        window->root_window->child_nesting_counter = ({
+        viewport->root_viewport->child_nesting_counter = ({
             u16 v;
-            if (__builtin_add_overflow(window->root_window->child_nesting_counter, 1, &v)) [[unlikely]]
-                Panic("window nesting too deep");
+            if (__builtin_add_overflow(viewport->root_viewport->child_nesting_counter, 1, &v)) [[unlikely]]
+                Panic("viewport nesting too deep");
             v;
         });
-        window->nested_level = window->root_window->child_nesting_counter;
-        window->draw_list = window->root_window->owned_draw_list;
-        ASSERT(window->draw_list);
+        viewport->nested_level = viewport->root_viewport->child_nesting_counter;
+
+        viewport->draw_list = viewport->root_viewport->owned_draw_list;
+        ASSERT(viewport->draw_list);
+    } else {
+        viewport->child_nesting_counter = 0;
+        viewport->nested_level = 0;
+
+        if (!viewport->owned_draw_list)
+            viewport->owned_draw_list = GuiIo().out.draw_list_allocator.Allocate(overlay_draw_list->renderer,
+                                                                                 overlay_draw_list->fonts);
+        viewport->draw_list = viewport->owned_draw_list;
     }
 
-    window->draw_list->renderer = GuiIo().in.renderer;
-    if (window->draw_list == window->owned_draw_list) window->draw_list->BeginDraw();
-    draw_list = window->draw_list;
+    if (viewport->draw_list == viewport->owned_draw_list) viewport->draw_list->BeginDraw();
+    draw_list = viewport->draw_list;
 
-    curr_window = window;
-    dyn::Append(window_stack, window);
-
-    //
-    // Start drawing
-    //
-
-    if (is_apopup || draw_on_top) PushScissorStack();
-    PushRectToCurrentScissorStack(window->visible_bounds.Expanded(
-        k_clipping_expansion)); // Temporarily while we doing drawing in this function
-    PushID(window->id);
-
-    if ((window->settings.draw_routine_window_background ||
-         (window->settings.draw_routine_popup_background && is_apopup)) &&
-        !DidPopupMenuJustOpen(window->id)) {
-        if (is_apopup && window->settings.draw_routine_popup_background)
-            window->settings.draw_routine_popup_background(*this, window);
-        else
-            window->settings.draw_routine_window_background(*this, window);
+    curr_viewport = viewport;
+    if (cfg.mode == ViewportMode::Floating && cfg.exclusive_focus) {
+        if (!floating_exclusive_viewport)
+            floating_exclusive_viewport = viewport;
+        else if (cfg.z_order >= floating_exclusive_viewport->cfg.z_order)
+            floating_exclusive_viewport = viewport;
     }
+    dyn::Append(viewport_stack, viewport);
 
     //
-    // > Scrollbars
+    // > Scrollbars and background
     //
+    PushId(viewport->id);
+    {
+        if (viewport->root_viewport == viewport) PushScissorStack();
+        DEFER {
+            if (viewport->root_viewport == viewport) PopScissorStack();
+        };
 
-    f32 const scrollbar_size =
-        !scrollbar_inside_padding ? window->settings.scrollbar_width + window->settings.scrollbar_padding : 0;
-    Rect bounds_for_scrollbar = window->bounds;
-    f32 const epsilon = 0.01f;
-    window->has_yscrollbar =
-        window->prev_content_size.y > (bounds_for_scrollbar.h + epsilon) && !window->y_contents_was_auto;
-    window->has_xscrollbar =
-        window->prev_content_size.x > (bounds_for_scrollbar.w + epsilon) && !window->x_contents_was_auto;
-    if (flags.always_draw_scroll_x) {
-        if (!window->has_xscrollbar) window->scroll_offset.x = 0;
-        window->has_xscrollbar = true;
-    }
-    if (flags.always_draw_scroll_y) {
-        if (!window->has_yscrollbar) window->scroll_offset.y = 0;
-        window->has_yscrollbar = true;
-    }
+        PushRectToCurrentScissorStack(viewport->visible_bounds.Expanded(k_clipping_expansion));
+        DEFER { PopRectFromCurrentScissorStack(); };
 
-    if (window->has_yscrollbar) window->clipping_rect.h -= 2;
+        ViewportScrollbars scrollbar_bounds {};
 
-    if (window->has_yscrollbar && !window->has_xscrollbar) {
-        bounds_for_scrollbar.w -= scrollbar_size;
+        f32 const scrollbar_size =
+            !scrollbar_inside_padding ? viewport->cfg.scrollbar_width + viewport->cfg.scrollbar_padding : 0;
+        Rect bounds_for_scrollbar = viewport->bounds;
+        f32 const epsilon = 0.01f;
 
-        if (window->prev_content_size.x > bounds_for_scrollbar.w && !no_scroll_x) {
-            if (!window->x_contents_was_auto) {
-                window->has_xscrollbar = true;
-                bounds_for_scrollbar.h -= scrollbar_size;
+        for (auto const i : Range(2uz)) {
+            viewport->has_scrollbar[i] =
+                viewport->prev_content_size[i] > (bounds_for_scrollbar.size[i] + epsilon) &&
+                !viewport->contents_was_auto[i];
+
+            if (cfg.scrollbar_visibility[i] == ViewportScrollbarVisibility::Always) {
+                if (!viewport->has_scrollbar[i]) viewport->scroll_offset[i] = 0;
+                viewport->has_scrollbar[i] = true;
             }
         }
-    } else if (window->has_xscrollbar && !window->has_yscrollbar) {
-        bounds_for_scrollbar.h -= scrollbar_size;
 
-        if (window->prev_content_size.y > bounds_for_scrollbar.h) {
-            if (!window->y_contents_was_auto) {
-                window->has_yscrollbar = true;
-                bounds_for_scrollbar.w -= scrollbar_size;
+        if (viewport->has_scrollbar.y) viewport->clipping_rect.h -= 2;
+
+        if (viewport->has_scrollbar.y && !viewport->has_scrollbar.x) {
+            bounds_for_scrollbar.w -= scrollbar_size;
+
+            if (viewport->prev_content_size.x > bounds_for_scrollbar.w && !no_scroll_x) {
+                if (!viewport->contents_was_auto.x) {
+                    viewport->has_scrollbar.x = true;
+                    bounds_for_scrollbar.h -= scrollbar_size;
+                }
             }
+        } else if (viewport->has_scrollbar.x && !viewport->has_scrollbar.y) {
+            bounds_for_scrollbar.h -= scrollbar_size;
+
+            if (viewport->prev_content_size.y > bounds_for_scrollbar.h) {
+                if (!viewport->contents_was_auto.y) {
+                    viewport->has_scrollbar.y = true;
+                    bounds_for_scrollbar.w -= scrollbar_size;
+                }
+            }
+        } else if (viewport->has_scrollbar.x && viewport->has_scrollbar.y) {
+            bounds_for_scrollbar.w -= scrollbar_size;
+            bounds_for_scrollbar.h -= scrollbar_size;
         }
-    } else if (window->has_xscrollbar && window->has_yscrollbar) {
-        bounds_for_scrollbar.w -= scrollbar_size;
-        bounds_for_scrollbar.h -= scrollbar_size;
+
+        if (viewport->has_scrollbar.y && !auto_height && !no_scroll_y) {
+            if (scrollbar_inside_padding) {
+                viewport->cfg.scrollbar_width = viewport->cfg.padding.r;
+                viewport->cfg.scrollbar_padding = 0;
+            }
+            auto const result = Scrollbar(*this,
+                                          viewport,
+                                          true,
+                                          bounds_for_scrollbar.y,
+                                          bounds_for_scrollbar.h,
+                                          bounds_for_scrollbar.Right(),
+                                          viewport->prev_content_size.y,
+                                          viewport->scroll_offset.y,
+                                          viewport->scroll_max.y,
+                                          GuiIo().in.cursor_pos.y);
+            scrollbar_bounds[1] = result.bar;
+            viewport->scroll_offset.y = result.new_scroll_value;
+            viewport->scroll_max.y = result.new_scroll_max;
+
+            viewport->clipping_rect.w -= scrollbar_size;
+            viewport->bounds.w -= scrollbar_size;
+        } else {
+            viewport->scroll_offset.y = 0;
+        }
+
+        if (viewport->has_scrollbar.x && !auto_width && !no_scroll_x) {
+            if (scrollbar_inside_padding) {
+                viewport->cfg.scrollbar_width = viewport->cfg.padding.b;
+                viewport->cfg.scrollbar_padding = 0;
+            }
+            auto const result = Scrollbar(*this,
+                                          viewport,
+                                          false,
+                                          bounds_for_scrollbar.x,
+                                          bounds_for_scrollbar.w,
+                                          bounds_for_scrollbar.Bottom(),
+                                          viewport->prev_content_size.x,
+                                          viewport->scroll_offset.x,
+                                          viewport->scroll_max.x,
+                                          GuiIo().in.cursor_pos.x);
+            scrollbar_bounds[0] = result.bar;
+            viewport->scroll_offset.x = result.new_scroll_value;
+            viewport->scroll_max.x = result.new_scroll_max;
+
+            viewport->clipping_rect.h -= scrollbar_size;
+            viewport->bounds.h -= scrollbar_size;
+        } else {
+            viewport->scroll_offset.x = 0;
+        }
+
+        if (!PRODUCTION_BUILD &&
+            (viewport->cfg.scrollbar_visibility.x != ViewportScrollbarVisibility::Never ||
+             viewport->cfg.scrollbar_visibility.y != ViewportScrollbarVisibility::Never))
+            ASSERT(cfg.draw_scrollbars,
+                   "the viewport may have scrollbars, but no function is set to draw them");
+        if (cfg.draw_background) cfg.draw_background(*this);
+        if (cfg.draw_scrollbars) cfg.draw_scrollbars(*this, scrollbar_bounds);
     }
 
-    if (window->has_yscrollbar && !auto_height && !no_scroll_y) {
-        if (scrollbar_inside_padding) {
-            window->settings.scrollbar_width = window->settings.pad_bottom_right.x;
-            window->settings.scrollbar_padding = 0;
-        }
-        auto const result = Scrollbar(window,
-                                      true,
-                                      bounds_for_scrollbar.y + settings.scrollbar_padding_top,
-                                      bounds_for_scrollbar.h - (settings.scrollbar_padding_top * 2),
-                                      bounds_for_scrollbar.Right(),
-                                      window->prev_content_size.y,
-                                      window->scroll_offset.y,
-                                      window->scroll_max.y,
-                                      GuiIo().in.cursor_pos.y);
-        window->scroll_offset.y = result.new_scroll_value;
-        window->scroll_max.y = result.new_scroll_max;
+    //
+    //
+    //
 
-        window->clipping_rect.w -= scrollbar_size;
-        window->bounds.w -= scrollbar_size;
+    if (viewport->parent_viewport) {
+        // Calculate the clipping rect - we do this at the end because it might be effected by the
+        // scrollbars.
+        viewport->clipping_rect.w =
+            ::Min(viewport->parent_viewport->clipping_rect.Right(), viewport->clipping_rect.Right()) -
+            viewport->clipping_rect.x;
+        viewport->clipping_rect.h =
+            ::Min(viewport->parent_viewport->clipping_rect.Bottom(), viewport->clipping_rect.Bottom()) -
+            viewport->clipping_rect.y;
     } else {
-        window->scroll_offset.y = 0;
-    }
-
-    if (window->has_xscrollbar && !auto_width && !no_scroll_x) {
-        if (scrollbar_inside_padding) {
-            window->settings.scrollbar_width = window->settings.pad_bottom_right.y;
-            window->settings.scrollbar_padding = 0;
-        }
-        auto const result = Scrollbar(window,
-                                      false,
-                                      bounds_for_scrollbar.x + settings.scrollbar_padding_top,
-                                      bounds_for_scrollbar.w - (settings.scrollbar_padding_top * 2),
-                                      bounds_for_scrollbar.Bottom(),
-                                      window->prev_content_size.x,
-                                      window->scroll_offset.x,
-                                      window->scroll_max.x,
-                                      GuiIo().in.cursor_pos.x);
-        window->scroll_offset.x = result.new_scroll_value;
-        window->scroll_max.x = result.new_scroll_max;
-
-        window->clipping_rect.h -= scrollbar_size;
-        window->bounds.h -= scrollbar_size;
-    } else {
-        window->scroll_offset.x = 0;
-    }
-
-    //
-    //
-    //
-
-    PopRectFromCurrentScissorStack();
-    if (is_apopup || draw_on_top) PopScissorStack();
-
-    if (!is_apopup && !draw_on_top) {
-        // calculate the clipping region - we do this at the end because it might be effected by the
-        // scrollbars
-        if (window->parent_window) {
-            window->clipping_rect.w =
-                ::Min(window->parent_window->clipping_rect.Right(), window->clipping_rect.Right()) -
-                window->clipping_rect.x;
-            window->clipping_rect.h =
-                ::Min(window->parent_window->clipping_rect.Bottom(), window->clipping_rect.Bottom()) -
-                window->clipping_rect.y;
-        }
-    } else if (is_apopup) {
-        dyn::Append(current_popup_stack, window);
-        PushScissorStack();
-    } else if (draw_on_top) {
         PushScissorStack();
     }
-    PushRectToCurrentScissorStack(window->clipping_rect);
-    window->prev_content_size = f32x2 {0, 0};
-    window->x_contents_was_auto = true;
-    window->y_contents_was_auto = true;
-    if (auto_width) window->x_contents_was_auto = false;
-    if (auto_height) window->y_contents_was_auto = false;
+    if (cfg.mode == ViewportMode::PopupMenu) dyn::Append(current_popup_stack, viewport);
+    PushRectToCurrentScissorStack(viewport->clipping_rect);
 
-    RegisterRegionForMouseTracking(window->unpadded_bounds, false);
+    viewport->prev_content_size = f32x2 {0, 0};
+    viewport->contents_was_auto[0] = !auto_width;
+    viewport->contents_was_auto[1] = !auto_height;
+
+    RegisterRectForMouseTracking(viewport->unpadded_bounds, false);
 }
 
-Window* Context::FindWindow(Id id) {
-    for (auto const i : Range(windows.size))
-        if (windows[i]->id == id) return windows[i];
+Viewport* Context::FindViewport(Id id) const {
+    for (auto const i : Range(viewports.size))
+        if (viewports[i]->id == id) return viewports[i];
     return nullptr;
 }
 
-void Context::EndWindow() {
-    Window* window = Last(window_stack);
-    if (window->prev_content_size.x != window->prevprev_content_size.x ||
-        window->prev_content_size.y != window->prevprev_content_size.y) {
+void Context::EndViewport() {
+    auto const viewport = Last(viewport_stack);
+    if (viewport->prev_content_size.x != viewport->prevprev_content_size.x ||
+        viewport->prev_content_size.y != viewport->prevprev_content_size.y) {
         GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
 
     PopRectFromCurrentScissorStack();
-    PopID();
-    if (Last(window_stack)->flags.popup) {
-        PopScissorStack();
-        dyn::Pop(current_popup_stack);
-    } else if (Last(window_stack)->flags.draw_on_top) {
-        PopScissorStack();
-    }
-    if (window->draw_list == window->owned_draw_list) window->draw_list->EndDraw();
-    dyn::Pop(window_stack);
-    if (window_stack.size != 0) {
-        curr_window = Last(window_stack);
-        draw_list = curr_window->draw_list;
+    PopId();
+    if (!viewport->parent_viewport) PopScissorStack();
+    if (viewport->cfg.mode == ViewportMode::PopupMenu) dyn::Pop(current_popup_stack);
+    if (viewport->draw_list == viewport->owned_draw_list) viewport->draw_list->EndDraw();
+    dyn::Pop(viewport_stack);
+    if (viewport_stack.size) {
+        curr_viewport = Last(viewport_stack);
+        draw_list = curr_viewport->draw_list;
     } else {
-        // should only happen in the End() function when the base window is ended
-        curr_window = nullptr;
+        // This should only happen in the End() function when the root viewport is ended.
+        curr_viewport = nullptr;
+        draw_list = nullptr;
     }
 }
 
-bool Context::ScrollWindowToShowRectangle(Rect r) {
-    if (!Rect::DoRectsIntersect(GetRegisteredAndConvertedRect(r),
-                                CurrentWindow()->clipping_rect.ReducedVertically(r.h))) {
-        SetYScroll(CurrentWindow(), Clamp(r.CentreY() - (Height() / 2), 0.0f, CurrentWindow()->scroll_max.y));
+bool Context::ScrollViewportToShowRectangle(Rect r) {
+    if (!Rect::DoRectsIntersect(RegisterAndConvertRect(r),
+                                curr_viewport->clipping_rect.ReducedVertically(r.h))) {
+        SetYScroll(curr_viewport,
+                   Clamp(r.CentreY() - (CurrentVpHeight() / 2), 0.0f, curr_viewport->scroll_max.y));
         return true;
     }
     return false;
@@ -2088,15 +1986,6 @@ void Context::PopRectFromCurrentScissorStack() {
     }
 }
 
-void Context::DisableScissor() {
-    scissor_rect_is_active = false;
-    OnScissorChanged();
-}
-void Context::EnableScissor() {
-    scissor_rect_is_active = true;
-    OnScissorChanged();
-}
-
 void Context::SetImguiTextEditState(String new_text, bool multiline) {
     stb_textedit_initialize_state(&stb_state, !multiline);
     ZeroMemory(textedit_text.data, sizeof(*textedit_text.data) * textedit_text.size);
@@ -2114,8 +2003,8 @@ void Context::SetImguiTextEditState(String new_text, bool multiline) {
 void Context::SetTextInputFocus(Id id, String new_text, bool multiline) {
     bool update_needed = false;
 
-    if (id == 0) {
-        update_needed = active_text_input != 0;
+    if (id == k_null_id) {
+        update_needed = active_text_input != k_null_id;
         active_text_input = id;
         stb_textedit_initialize_state(&stb_state, !multiline);
         ZeroMemory(textedit_text.data, sizeof(*textedit_text.data) * textedit_text.size);
@@ -2135,6 +2024,24 @@ void Context::ResetTextInputCursorAnim() {
     cursor_blink_counter = GuiIo().in.current_time + k_text_cursor_blink_rate;
 }
 
+f32x2 TextInputTextPos(String text, Rect r, TextInputConfig cfg, Fonts const& fonts) {
+    auto const& font = *fonts.Current();
+
+    auto const x_offset = ({
+        auto x = cfg.x_padding;
+        if (cfg.centre_align) {
+            auto const text_width = font.CalcTextSize(text, {.font_size = font.font_size}).x;
+            x = ((r.w / 2) - (text_width / 2));
+        }
+        x;
+    });
+
+    auto pos = r.pos;
+    pos.x += x_offset;
+    if (!cfg.multiline) pos.y += (r.h - font.font_size) / 2; // centre Y
+    return pos;
+}
+
 void Context::TextInputSelectAll() {
     stb_state.cursor = 0;
     stb_state.select_start = 0;
@@ -2142,489 +2049,162 @@ void Context::TextInputSelectAll() {
     GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
 
-void Context::SetActiveIDZero() { SetActiveID(0, false, {}, false); }
+void Context::ClearActive() { SetActive(k_null_id, {}); }
 
-void Context::SetActiveID(Id id, bool closes_popups, ButtonFlags button_flags, bool check_for_release) {
-    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+void Context::SetActive(Id id, ButtonConfig button_cfg) {
     temp_active_item.id = id;
-    temp_active_item.closes_popups = closes_popups;
-    temp_active_item.just_activated = (id != 0);
-    temp_active_item.window = curr_window;
-    temp_active_item.button_flags = button_flags;
-    temp_active_item.check_for_release = check_for_release;
+    temp_active_item.just_activated = (id != k_null_id);
+    temp_active_item.viewport = curr_viewport;
+    temp_active_item.button_cfg = button_cfg;
 
-    if (id != 0) {
-        // an id has been set so we no longer want to have a hot item
-        SetHotRaw(0);
+    if (id != k_null_id) {
+        // An id has been set so we no longer want to have a hot item.
+        temp_hot_item = k_null_id;
     } else {
-        // unlike when activating an item - where we need a frame of lag, when
-        // unactivating, we can immediately apply the changes
+        // Unlike when activating an item - where we need a frame of lag, when deactivating, we can
+        // immediately apply the changes.
         active_item = {};
     }
-}
 
-// IMPROVE: calling OpenPopup without ever calling BeginWindowPopup causes weird behaviour
-Window* Context::OpenPopup(Id id, Id creator_of_this_popup) {
-    bool const is_first_popup = persistent_popup_stack.size == 0;
-    auto popup = AddWindowIfNotAlreadyThere(id);
-    popup->prev_content_size = f32x2 {0, 0};
-    popup->creator_of_this_popup = is_first_popup ? 0 : creator_of_this_popup;
-
-    popup_menu_just_created = id;
-    dyn::Append(persistent_popup_stack, popup);
-    focused_popup_window = popup;
     GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
-
-    return popup;
 }
 
-bool Context::BeginWindowPopup(WindowSettings settings, Id id, Rect r) {
-    return BeginWindowPopup(settings, id, r, "");
+void Context::OpenPopupMenu(Id id, Id creator_of_this_popup) {
+    if (IsPopupMenuOpen(id)) return;
+
+    bool const is_first_popup = open_popups.size == 0;
+    auto popup = FindOrCreateViewport(id);
+    popup->cfg.mode = ViewportMode::PopupMenu;
+    popup->prev_content_size = f32x2 {0, 0};
+    popup->creator_of_this_popup_menu = is_first_popup ? k_null_id : creator_of_this_popup;
+
+    popup_menu_just_opened = id;
+    dyn::Append(open_popups, popup);
+    UpdateExclusiveFocusViewport();
+    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
 
-bool Context::BeginWindowPopup(WindowSettings settings, Id id, Rect r, String name) {
-    if (!IsPopupOpen(id)) return false;
+bool Context::DidPopupMenuJustOpen(Id id) { return popup_menu_just_opened == id; }
 
-    Window* popup = GetPopupFromID(id);
-    settings.flags.popup = true;
-
-    auto curr_wnd = curr_window;
-    auto is_first_of_wnd_stack = false;
-    is_first_of_wnd_stack = !(curr_wnd->flags.popup || curr_wnd->flags.nested_inside_popup);
-
-    if (!is_first_of_wnd_stack) {
-        settings.flags.child_popup = true;
-        popup->parent_popup = curr_wnd;
-    }
-
-    BeginWindow(settings, popup, r, name);
-    return true;
+bool Context::IsPopupMenuOpen(Id id) {
+    return open_popups.size > current_popup_stack.size && open_popups[current_popup_stack.size]->id == id;
 }
 
-bool Context::DidPopupMenuJustOpen(Id id) { return popup_menu_just_created == id; }
+bool Context::IsAnyPopupMenuOpen() { return open_popups.size; }
 
-bool Context::IsPopupOpen(Id id) {
-    bool const result = persistent_popup_stack.size > current_popup_stack.size &&
-                        persistent_popup_stack[current_popup_stack.size]->id == id;
-    return result;
-}
-
-void Context::ClosePopupToLevel(int remaining) {
-    if (remaining > 0)
-        focused_popup_window = persistent_popup_stack[(usize)remaining - 1];
-    else if (persistent_popup_stack.size)
-        focused_popup_window = persistent_popup_stack[0]->parent_window;
-
-    ASSERT(remaining <= (int)persistent_popup_stack.size);
-    dyn::Resize(persistent_popup_stack, (usize)remaining);
+void Context::ClosePopupToLevel(usize level) {
+    ASSERT(level <= open_popups.size);
+    dyn::Resize(open_popups, level);
+    UpdateExclusiveFocusViewport();
 }
 
 void Context::CloseTopPopupOnly() {
-    ASSERT(persistent_popup_stack.size != 0);
-    ClosePopupToLevel((int)persistent_popup_stack.size - 1);
+    ASSERT(open_popups.size != 0);
+    ClosePopupToLevel(open_popups.size - 1);
 }
 
 // Close the popup we have begin-ed into.
-void Context::CloseCurrentPopup() {
-    int popup_index = (int)current_popup_stack.size - 1;
-    if (popup_index < 0 || popup_index > (int)persistent_popup_stack.size ||
-        current_popup_stack[(usize)popup_index]->id != persistent_popup_stack[(usize)popup_index]->id) {
-        return;
-    }
-    while (popup_index > 0 && persistent_popup_stack[(usize)popup_index] &&
-           persistent_popup_stack[(usize)popup_index]->flags.child_popup) {
-        popup_index--;
-    }
-    ClosePopupToLevel(popup_index);
+void Context::CloseAllPopups() {
+    // int popup_index = (int)current_popup_stack.size - 1;
+    // if (popup_index < 0 || popup_index > (int)open_popups.size ||
+    //     current_popup_stack[(usize)popup_index]->id != open_popups[(usize)popup_index]->id) {
+    //     return;
+    // }
+    // while (popup_index > 0 && open_popups[(usize)popup_index] &&
+    //        open_popups[(usize)popup_index]->cfg.child_popup) {
+    //     popup_index--;
+    // }
+    ClosePopupToLevel(0);
 }
 
-//
-//
-//
-//
-//
-
-void Context::DebugTextItem(char const* label, char const* text, ...) {
-    static char buffer[512];
-    va_list args;
-    va_start(args, text);
-    stbsp_vsnprintf(buffer, ::ArraySize(buffer), text, args);
-    va_end(args);
-
-    f32 const label_width = 150;
-    f32 const x_pad = 10;
-    auto const height = draw_list->renderer->CurrentFontSize();
-
-    Rect r = {.xywh {0, debug_y_pos, Width(), height}};
-    RegisterAndConvertRect(&r);
-
-    draw_list->AddText(draw_list->renderer->CurrentFont(),
-                       draw_list->renderer->CurrentFontSize(),
-                       WindowPosToScreenPos({x_pad, debug_y_pos}),
-                       0xffffffff,
-                       FromNullTerminated(label),
-                       label_width - 4);
-
-    draw_list->AddText(draw_list->renderer->CurrentFont(),
-                       draw_list->renderer->CurrentFontSize(),
-                       WindowPosToScreenPos({x_pad + label_width, debug_y_pos}),
-                       0xffffffff,
-                       FromNullTerminated(buffer),
-                       Width() - (label_width + x_pad));
-    debug_y_pos += height;
+void Context::OpenModalViewport(Id id) {
+    if (IsModalOpen(id)) return;
+    auto viewport = FindOrCreateViewport(id);
+    viewport->cfg.mode = ViewportMode::Modal;
+    viewport->prev_content_size = f32x2 {0, 0};
+    modal_just_opened = id;
+    dyn::Append(open_modals, viewport);
+    UpdateExclusiveFocusViewport();
+    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
 
-bool Context::DebugTextHeading(bool& state, char const* text) {
-    f32 const height = draw_list->renderer->CurrentFontSize() + 4;
-
-    bool const clicked = Button(DefButton(),
-                                {.xywh {0, debug_y_pos, Width(), height}},
-                                GetID(FromNullTerminated(text)),
-                                FromNullTerminated(text));
-    debug_y_pos += height;
-    if (clicked) state = !state;
-    return state;
+bool Context::IsModalOpen(Id id) {
+    for (auto& m : open_modals)
+        if (m->id == id) return true;
+    return false;
 }
 
-bool Context::DebugButton(char const* text) {
-    f32 const height = draw_list->renderer->CurrentFontSize() + 4;
+bool Context::IsAnyModalOpen() { return open_modals.size; }
 
-    bool const clicked = ToggleButton(DefToggleButton(),
-                                      {.xywh {0, debug_y_pos, Width(), height}},
-                                      GetID(FromNullTerminated(text)),
-                                      debug_show_register_widget_overlay,
-                                      FromNullTerminated(text));
-    debug_y_pos += height;
-    return clicked;
-}
-
-void Context::DebugWindow(Rect r) {
-    auto sets = DefWindow();
-    sets.flags = {};
-    BeginWindow(sets, r, "TextWindow");
-
-    GuiIo().out.wants.text_input = true;
-
-    debug_y_pos = 0;
-
-    DebugButton("Toggle Registered Widget Overlay");
-
-    if (DebugTextHeading(debug_general, "General")) {
-        auto const& in = GuiIo().in;
-        DebugTextItem("Update", "%llu", in.update_count);
-        DebugTextItem("Key shift", "%d", (int)in.modifiers.Get(ModifierKey::Shift));
-        DebugTextItem("Key ctrl", "%d", (int)in.modifiers.Get(ModifierKey::Ctrl));
-        DebugTextItem("Key modifer", "%d", (int)in.modifiers.Get(ModifierKey::Modifier));
-        DebugTextItem("Key alt", "%d", (int)in.modifiers.Get(ModifierKey::Alt));
-        DebugTextItem("Time", "%lld", in.current_time);
-        DebugTextItem("WindowSize", "%hu, %hu", in.window_size.width, in.window_size.height);
-        DebugTextItem("Widgets", "%d", (int)GuiIo().out.mouse_tracked_rects.size);
-
-        debug_y_pos += draw_list->renderer->CurrentFontSize() * 2;
-
-        DebugTextItem("Timers:", "");
-        for (auto& t : GuiIo().out.timed_wakeups)
-            DebugTextItem("Time:", "%lld", t);
-    }
-
-    if (DebugTextHeading(debug_ids, "IDs")) {
-        DebugTextItem("Active ID", "%u", GetActive());
-        DebugTextItem("Hot ID", "%u", GetHot());
-        DebugTextItem("Hovered ID", "%u", GetHovered());
-        DebugTextItem("TextInput ID", "%u", GetTextInput());
-    }
-
-    if (DebugTextHeading(debug_popup, "Popups"))
-        DebugTextItem("Persistent popups", "%d", (int)persistent_popup_stack.size);
-
-    if (DebugTextHeading(debug_windows, "Windows")) {
-        DebugTextItem("Hovered ID", "%u", HoveredWindow() ? HoveredWindow()->id : 0);
-        DebugTextItem("Hovered Name",
-                      "%s",
-                      HoveredWindow() ? dyn::NullTerminated(HoveredWindow()->debug_name) : "");
-        DebugTextItem("Hovered Root", "%u", HoveredWindow() ? HoveredWindow()->root_window->id : 0);
-        ArenaAllocatorWithInlineStorage<2000> allocator {Malloc::Instance()};
-        DynamicArray<char> buffer {allocator};
-        if (HoveredWindow()) {
-            auto wnd = HoveredWindow();
-            auto const& f = wnd->flags;
-#define X(name)                                                                                              \
-    if (f.name) {                                                                                            \
-        dyn::AppendSpan(buffer, #name##_s);                                                                  \
-        dyn::AppendSpan(buffer, " "_s);                                                                      \
-    }
-            IMGUI_WINDOW_FLAGS
-#undef X
+void Context::CloseModal(Id id) {
+    for (auto const i : Range(open_modals.size)) {
+        if (open_modals[i]->id == id) {
+            ClosePopupToLevel(0);
+            dyn::Resize(open_modals, i);
+            UpdateExclusiveFocusViewport();
+            return;
         }
-        DebugTextItem("Hovered CreatorID",
-                      "%u",
-                      HoveredWindow() ? HoveredWindow()->creator_of_this_popup : 0);
-        if (HoveredWindow())
-            DebugTextItem("Hovered Size",
-                          "%.1f %.1f %.1f %.1f",
-                          (f64)HoveredWindow()->unpadded_bounds.x,
-                          (f64)HoveredWindow()->unpadded_bounds.y,
-                          (f64)HoveredWindow()->unpadded_bounds.w,
-                          (f64)HoveredWindow()->unpadded_bounds.h);
-        else
-            DebugTextItem("Hovered Size", "0 0 0 0");
-        DebugTextItem("Hovered Flags", "%s", dyn::NullTerminated(buffer));
-        debug_y_pos += draw_list->renderer->CurrentFontSize() * 3;
     }
-
-    EndWindow();
 }
 
-//
-//
-//
-//
-//
-
-bool Context::Button(ButtonSettings settings, Rect r, Id id, String str) {
-    RegisterAndConvertRect(&r);
-    bool const clicked = ButtonBehavior(r, id, settings.flags);
-    settings.draw(*this, r, id, str, false);
-
-    return clicked;
+void Context::CloseTopModal() {
+    ASSERT(open_modals.size != 0);
+    ClosePopupToLevel(0);
+    dyn::Pop(open_modals);
+    UpdateExclusiveFocusViewport();
 }
 
-bool Context::Button(ButtonSettings settings, Rect r, String str) {
-    return Button(settings, r, GetID(str), str);
+void Context::CloseAllModals() {
+    ClosePopupToLevel(0);
+    dyn::Clear(open_modals);
+    UpdateExclusiveFocusViewport();
 }
 
-//
-//
-bool Context::ToggleButton(ButtonSettings settings, Rect r, Id id, bool& state, String str) {
-    RegisterAndConvertRect(&r);
-    bool const clicked = ButtonBehavior(r, id, settings.flags);
-    if (clicked) state = !state;
-    settings.draw(*this, r, id, str, state);
-
-    return clicked;
+void Context::UpdateExclusiveFocusViewport() {
+    if (open_popups.size) {
+        // Popups always have exclusive focus.
+        exclusive_focus_viewport = Last(open_popups);
+    } else {
+        exclusive_focus_viewport = floating_exclusive_viewport_last_frame;
+        for (auto m : open_modals) {
+            if (m->cfg.exclusive_focus) {
+                if (!exclusive_focus_viewport || m->cfg.z_order >= exclusive_focus_viewport->cfg.z_order)
+                    exclusive_focus_viewport = m;
+            }
+        }
+    }
 }
 
-//
-//
-bool Context::Slider(SliderSettings settings, Rect r, Id id, f32& percent, f32 def) {
-    RegisterAndConvertRect(&r);
-    bool const changed = SliderBehavior(r, id, percent, def, settings.sensitivity, settings.flags);
-    settings.draw(*this, r, id, percent, &settings);
-
-    return changed;
-}
-
-bool Context::SliderRange(SliderSettings settings, Rect r, Id id, f32 min, f32 max, f32& val, f32 def) {
-    RegisterAndConvertRect(&r);
-    bool const changed = SliderRangeBehavior(r, id, min, max, val, def, settings.sensitivity, settings.flags);
-    auto percent = Map(val, min, max, 0, 1);
-    settings.draw(*this, r, id, percent, &settings);
-
-    return changed;
-}
-
-//
-//
-bool Context::PopupButton(ButtonFlags flags,
-                          WindowSettings window_settings,
-                          Rect r,
-                          Id button_id,
-                          Id popup_id) {
-    RegisterAndConvertRect(&r);
-    PopupButtonBehavior(r, button_id, popup_id, flags);
-    return BeginWindowPopup(window_settings, popup_id, r, "popup button window");
-}
-bool Context::PopupButton(ButtonSettings settings, Rect r, Id button_id, Id popup_id, String str) {
-    RegisterAndConvertRect(&r);
-    PopupButtonBehavior(r, button_id, popup_id, settings.flags);
-
-    settings.draw(*this, r, button_id, str, IsPopupOpen(popup_id) && hovered_window != curr_window);
-    return BeginWindowPopup(settings.window, popup_id, r, str);
-}
-
-bool Context::PopupButton(ButtonSettings settings, Rect r, Id popup_id, String str) {
-    return PopupButton(settings, r, GetID(str), popup_id, str);
-}
-
-//
-//
-
-TextInputResult Context::TextInput(TextInputSettings settings, Rect r, Id id, String str) {
-    RegisterAndConvertRect(&r);
-    auto edit = TextInput(r,
-                          id,
-                          str,
-                          ""_s,
-                          settings.text_flags,
-                          settings.button_flags,
-                          settings.select_all_on_first_open);
-
-    settings.draw(*this, r, id, edit.text, &edit);
-    return edit;
-}
-
-Context::DraggerResult Context::TextInputDraggerCustom(TextInputDraggerSettings settings,
-                                                       Rect r,
-                                                       Id id,
-                                                       String display_string,
-                                                       f32 min,
-                                                       f32 max,
-                                                       f32& value,
-                                                       f32 default_value) {
+Context::DraggerResult Context::DraggerBehaviour(DraggerBehaviourArgs const& args) {
     DraggerResult result {};
 
-    RegisterAndConvertRect(&r);
+    auto const input = TextInputBehaviour({
+        .rect_in_window_coords = args.rect_in_window_coords,
+        .id = args.id,
+        .text = args.text,
+        .placeholder_text = ""_s,
+        .input_cfg = args.text_input_cfg,
+        .button_cfg = args.text_input_button_cfg,
+    });
 
-    auto text_edit_result = TextInput(r,
-                                      id,
-                                      display_string,
-                                      ""_s,
-                                      settings.text_input_settings.text_flags,
-                                      settings.text_input_settings.button_flags,
-                                      settings.text_input_settings.select_all_on_first_open);
+    if (input.enter_pressed) result.new_string_value = input.text;
 
-    if (text_edit_result.enter_pressed) result.new_string_value = text_edit_result.text;
-
-    if (!TextInputHasFocus(id)) {
-        if (SliderRangeBehavior(r,
-                                id,
-                                min,
-                                max,
-                                value,
-                                default_value,
-                                settings.slider_settings.sensitivity,
-                                settings.slider_settings.flags))
+    if (!TextInputHasFocus(args.id)) {
+        if (SliderBehaviourRange({
+                .rect_in_window_coords = args.rect_in_window_coords,
+                .id = args.id,
+                .min = args.min,
+                .max = args.max,
+                .value = args.value,
+                .default_value = args.default_value,
+                .cfg = args.slider_cfg,
+            }))
             result.value_changed = true;
+    } else {
+        result.text_input_result = input;
     }
-
-    settings.slider_settings.draw(*this, r, id, Map(value, min, max, 0, 1), &settings.slider_settings);
-    settings.text_input_settings.draw(*this, r, id, text_edit_result.text, &text_edit_result);
 
     return result;
 }
 
-bool Context::TextInputDraggerInt(TextInputDraggerSettings settings,
-                                  Rect r,
-                                  Id id,
-                                  int min,
-                                  int max,
-                                  int& value,
-                                  int default_value) {
-    auto val = (f32)value;
-    ArenaAllocatorWithInlineStorage<100> allocator {Malloc::Instance()};
-    auto result = TextInputDraggerCustom(settings,
-                                         r,
-                                         id,
-                                         fmt::Format(allocator, settings.format, value),
-                                         (f32)min,
-                                         (f32)max,
-                                         val,
-                                         (f32)default_value);
-    if (result.new_string_value) {
-        auto o = ParseInt(*result.new_string_value, ParseIntBase::Decimal);
-        if (o.HasValue()) {
-            value = Clamp((int)o.Value(), min, max);
-            return true;
-        }
-    }
-
-    if (result.value_changed) value = (int)val;
-    return result.value_changed;
-}
-
-bool Context::TextInputDraggerFloat(TextInputDraggerSettings settings,
-                                    Rect r,
-                                    Id id,
-                                    f32 min,
-                                    f32 max,
-                                    f32& value,
-                                    f32 default_value) {
-    ArenaAllocatorWithInlineStorage<100> allocator {Malloc::Instance()};
-    auto result = TextInputDraggerCustom(settings,
-                                         r,
-                                         id,
-                                         fmt::Format(allocator, settings.format, value),
-                                         min,
-                                         max,
-                                         value,
-                                         default_value);
-    if (result.new_string_value) {
-        auto o = ParseInt(*result.new_string_value, ParseIntBase::Decimal);
-        if (o.HasValue()) {
-            value = Clamp((f32)o.Value(), min, max);
-            return true;
-        }
-    }
-
-    return result.value_changed;
-}
-
-//
-//
-void Context::Text(TextSettings settings, Rect r, String str) {
-    RegisterAndConvertRect(&r);
-    settings.draw(*this, r, settings.col, str);
-}
-
-//
-//
-f32 Context::LargestStringWidth(f32 pad, void* items, int num, String (*GetStr)(void* items, int index)) {
-    auto font = draw_list->renderer->CurrentFont();
-    f32 result = 0;
-    for (auto const i : Range(num)) {
-        auto str = GetStr(items, i);
-        auto len = font->CalcTextSizeA(font->font_size, FLT_MAX, 0.0f, str).x;
-        if (len > result) result = len;
-    }
-    return (f32)(int)(result + (pad * 2));
-}
-
-f32 Context::LargestStringWidth(f32 pad, Span<String const> strs) {
-    auto str_get = [](void* items, int index) -> String {
-        auto strs = (String const*)items;
-        return strs[index];
-    };
-
-    return LargestStringWidth(pad, (void*)strs.data, (int)strs.size, str_get);
-}
-
-LiveEditGui g_live_edit_values {
-    .ui_sizes =
-        {
-#define GUI_SIZE(cat, n, v, unit) v,
-#include SIZES_DEF_FILENAME
-#undef GUI_SIZE
-        },
-    .ui_sizes_units =
-        {
-#define GUI_SIZE(cat, n, v, unit) UiSizeUnit::unit,
-#include SIZES_DEF_FILENAME
-#undef GUI_SIZE
-        },
-    .ui_sizes_names =
-        {
-#define GUI_SIZE(cat, n, v, unit) #n,
-#include SIZES_DEF_FILENAME
-#undef GUI_SIZE
-        },
-    .ui_cols =
-        {
-#define GUI_COL(name, val, based_on, bright, alpha) {String(name), val, String(based_on), bright, alpha},
-#include COLOURS_DEF_FILENAME
-#undef GUI_COL
-        },
-    .ui_col_map =
-        {
-#define GUI_COL_MAP(cat, n, col, high_contrast_col) {String(col), String(high_contrast_col)},
-#include COLOUR_MAP_DEF_FILENAME
-#undef GUI_COL_MAP
-        },
-};
-
 } // namespace imgui
-
-namespace live_edit {
-
-bool g_high_contrast_gui = false;
-
-} // namespace live_edit

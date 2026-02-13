@@ -19,9 +19,9 @@ struct LibraryImages {
 
     enum class ImageType : u8 { Icon, Background, BlurredBackground, Count };
 
-    Optional<graphics::ImageID> icon {};
-    Optional<graphics::ImageID> background {};
-    Optional<graphics::ImageID> blurred_background {};
+    Optional<ImageID> icon {};
+    Optional<ImageID> background {};
+    Optional<ImageID> blurred_background {};
     bool icon_missing {};
     bool background_missing {};
 
@@ -61,4 +61,4 @@ void BeginFrame(LibraryImagesTable& table);
 void Shutdown(LibraryImagesTable& table);
 void InvalidateLibraryImages(LibraryImagesTable& table,
                              sample_lib::LibraryIdRef library_id,
-                             graphics::Renderer& renderer);
+                             Renderer& renderer);

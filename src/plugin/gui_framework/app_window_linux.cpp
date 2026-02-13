@@ -9,7 +9,10 @@
 
 //
 #define KeyCode XKeyCode
+#define Font    XFont
 #include <X11/Xlib.h>
+#undef KeyCode
+#undef Font
 
 struct NativeAppWindowState {
     bool picker;

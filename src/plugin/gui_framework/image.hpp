@@ -7,7 +7,7 @@
 
 #include "foundation/foundation.hpp"
 
-#include "gui_framework/graphics.hpp"
+#include "gui_framework/renderer.hpp"
 
 constexpr u16 k_rgba_channels = 4;
 
@@ -57,6 +57,6 @@ ImageBytes CreateBlurredLibraryBackground(ImageBytes original,
                                           ArenaAllocator& scratch_arena,
                                           BlurredImageBackgroundOptions options);
 
-graphics::ImageID CreateImageIdChecked(graphics::Renderer& renderer, ImageBytes const& px);
+ImageID CreateImageIdChecked(Renderer& renderer, ImageBytes const& px);
 
-f32x2 GetMaxUVToMaintainAspectRatio(graphics::ImageID img, f32x2 container_size);
+f32x2 GetMaxUVToMaintainAspectRatio(ImageID img, f32x2 container_size);

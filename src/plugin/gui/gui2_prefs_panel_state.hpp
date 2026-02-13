@@ -11,6 +11,6 @@ struct PreferencesPanelState {
         Packages,
         Count,
     };
-    bool open {};
+    static constexpr u64 k_panel_id = HashFnv1a("prefs-panel");
     Tab tab {Tab::General};
 };

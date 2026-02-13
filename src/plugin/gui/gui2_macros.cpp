@@ -3,15 +3,14 @@
 
 #include "gui2_macros.hpp"
 
-#include "gui.hpp"
-#include "gui/gui2_parameter_component.hpp"
-#include "gui/gui_draw_knob.hpp"
-#include "gui/gui_drawing_helpers.hpp"
-#include "gui/gui_widget_helpers.hpp"
-#include "gui_framework/gui_box_system.hpp"
+#include "gui2_parameter_component.hpp"
+#include "gui_drawing_helpers.hpp"
+#include "gui_framework/gui_builder.hpp"
+#include "gui_state.hpp"
+#include "old/gui_widget_helpers.hpp"
 
-static void DrawLinkLine(Gui* g, f32x2 p1, f32x2 p2) {
-    auto const padding_radius_p1 = g->fonts[ToInt(FontType::Icons)]->font_size * 0.5f;
+static void DrawLinkLine(GuiState& g, f32x2 p1, f32x2 p2) {
+    auto const padding_radius_p1 = g.fonts.atlas[ToInt(FontType::Icons)]->font_size * 0.5f;
     auto const padding_radius_p2 = padding_radius_p1;
 
     // Move points inward by their padding radii
@@ -21,20 +20,18 @@ static void DrawLinkLine(Gui* g, f32x2 p1, f32x2 p2) {
     p1 = p1 + unit_direction * padding_radius_p1;
     p2 = p2 - unit_direction * padding_radius_p2;
 
-    g->imgui.overlay_draw_list->AddLine(p1,
-                                        p2,
-                                        colours::ChangeAlpha(style::Col(style::Colour::Blue), 0.7f),
-                                        Max(1.0f, g->imgui.VwToPixels(2)));
+    g.imgui.overlay_draw_list->AddLine(p1,
+                                       p2,
+                                       colour::ChangeAlpha(style::Col(style::Colour::Blue), 0.7f),
+                                       Max(1.0f, GuiIo().WwToPixels(2.0f)));
 }
 
-static void DrawPopupTextbox(Gui* g, String str, Rect r) {
-    auto const font = g->box_system.imgui.draw_list->renderer->CurrentFont();
+static void DrawPopupTextbox(GuiState& g, String str, Rect r) {
+    auto const size = g.fonts.CalcTextSize(str, {});
+    auto const pad_x = LiveSize(UiSizeId::TooltipPadX);
+    auto const pad_y = LiveSize(UiSizeId::TooltipPadY);
 
-    auto const size = draw::GetTextSize(font, str);
-    auto const pad_x = LiveSize(g->box_system.imgui, UiSizeId::TooltipPadX);
-    auto const pad_y = LiveSize(g->box_system.imgui, UiSizeId::TooltipPadY);
-
-    r = r.Expanded(g->imgui.VwToPixels(4));
+    r = r.Expanded(GuiIo().WwToPixels(4.0f));
 
     Rect popup_r;
     popup_r.x = r.x + (r.w / 2) - (size.x / 2 + pad_x);
@@ -48,33 +45,28 @@ static void DrawPopupTextbox(Gui* g, String str, Rect r) {
     text_start.x = popup_r.x + pad_x;
     text_start.y = popup_r.y + pad_y;
 
-    draw::DropShadow(g->box_system.imgui, popup_r);
-    g->box_system.imgui.overlay_draw_list->AddRectFilled(
-        popup_r.Min(),
-        popup_r.Max(),
-        LiveCol(g->box_system.imgui, UiColMap::TooltipBack),
-        LiveSize(g->box_system.imgui, UiSizeId::CornerRounding));
-    g->box_system.imgui.overlay_draw_list->AddText(text_start,
-                                                   LiveCol(g->box_system.imgui, UiColMap::TooltipText),
-                                                   str);
+    DrawDropShadow(g.builder.imgui, popup_r);
+    g.builder.imgui.overlay_draw_list->AddRectFilled(popup_r,
+                                                     LiveCol(UiColMap::TooltipBack),
+                                                     LiveSize(UiSizeId::CornerRounding));
+    g.builder.imgui.overlay_draw_list->AddText(text_start, LiveCol(UiColMap::TooltipText), str);
 }
 
-void DoMacrosEditGui(Gui* g, Box const& parent) {
-    auto& box_system = g->box_system;
+void DoMacrosEditGui(GuiState& g, Box const& parent) {
+    auto& builder = g.builder;
 
-    auto const initial_active_destination_knob = g->macros_gui_state.active_destination_knob;
-    if (g->box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender)
-        g->macros_gui_state.active_destination_knob = {};
+    auto const initial_active_destination_knob = g.macros_gui_state.active_destination_knob;
+    if (g.builder.IsInputAndRenderPass()) g.macros_gui_state.active_destination_knob = {};
     DEFER {
-        if (g->box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender) {
+        if (g.builder.IsInputAndRenderPass()) {
             auto const& a = initial_active_destination_knob;
-            auto const& b = g->macros_gui_state.active_destination_knob;
+            auto const& b = g.macros_gui_state.active_destination_knob;
             if (a.HasValue() != b.HasValue() || (b.HasValue() && a->dest.param_index != b->dest.param_index))
                 GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
         }
     };
 
-    auto const macro_box = DoBox(box_system,
+    auto const macro_box = DoBox(builder,
                                  {
                                      .parent = parent,
                                      .round_background_corners = 0b1111,
@@ -89,12 +81,12 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                                      },
                                  });
     for (auto const [macro_index, param_index] : Enumerate<u8>(k_macro_params)) {
-        box_system.imgui.PushID(macro_index);
-        DEFER { box_system.imgui.PopID(); };
+        builder.imgui.PushId(macro_index);
+        DEFER { builder.imgui.PopId(); };
 
-        auto& dests = g->engine.processor.main_macro_destinations[macro_index];
+        auto& dests = g.engine.processor.main_macro_destinations[macro_index];
 
-        auto const container = DoBox(box_system,
+        auto const container = DoBox(builder,
                                      {
                                          .parent = macro_box,
                                          .layout {
@@ -108,7 +100,7 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
 
         constexpr f32 k_text_input_x_padding = 4;
 
-        auto const knobs_box = DoBox(box_system,
+        auto const knobs_box = DoBox(builder,
                                      {
                                          .parent = container,
                                          .layout {
@@ -120,18 +112,21 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                          },
                                      });
-        auto const knob = DoParameterComponent(g,
-                                               knobs_box,
-                                               g->engine.processor.main_params.DescribedValue(param_index),
-                                               {.label = false});
+        auto const knob = DoKnobParameter(g,
+                                          knobs_box,
+                                          g.engine.processor.main_params.DescribedValue(param_index),
+                                          {
+                                              .size = ParameterComponentOptions::Size::Small,
+                                              .label = false,
+                                          });
 
         constexpr f32 k_dest_knob_size = 25;
         constexpr f32 k_dest_knob_gap_x = 1;
-        auto const dest_knob_size_px = box_system.imgui.VwToPixels(k_dest_knob_size);
-        auto const dest_knob_gap_x_px = box_system.imgui.VwToPixels(k_dest_knob_gap_x);
+        auto const dest_knob_size_px = GuiIo().WwToPixels(k_dest_knob_size);
+        auto const dest_knob_gap_x_px = GuiIo().WwToPixels(k_dest_knob_gap_x);
 
         auto const destination_box =
-            DoBox(box_system,
+            DoBox(builder,
                   {
                       .parent = knobs_box,
                       .layout {
@@ -144,7 +139,7 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
         Optional<u8> remove_destination_index {};
         DEFER {
             if (remove_destination_index) {
-                RemoveMacroDestination(g->engine.processor,
+                RemoveMacroDestination(g.engine.processor,
                                        {
                                            .macro_index = macro_index,
                                            .destination_index = *remove_destination_index,
@@ -155,13 +150,20 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                 // the memory is the same for the next element it incorrectly thinks it's the same element
                 // and is still active and needs its value updated; the knob value of the next knob is
                 // changed by SliderBehaviour. We work-around this by clearing the active ID.
-                box_system.imgui.SetActiveIDZero();
+                builder.imgui.ClearActive();
             }
         };
 
-        if (auto const rel_r = BoxRect(box_system, destination_box)) {
-            auto const r = box_system.imgui.GetRegisteredAndConvertedRect(*rel_r);
-            box_system.imgui.RegisterRegionForMouseTracking(r, false);
+        struct RemoveButton {
+            Rect r;
+            imgui::Id id;
+            u8 dest_index;
+        };
+        Optional<RemoveButton> remove_button {};
+
+        if (auto const rel_r = BoxRect(builder, destination_box)) {
+            auto const r = builder.imgui.RegisterAndConvertRect(*rel_r);
+            builder.imgui.RegisterRectForMouseTracking(r, false);
 
             for (auto const dest_knob_index : Range(CheckedCast<u8>(dests.Size()))) {
                 auto& dest = dests.items[dest_knob_index];
@@ -173,21 +175,25 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                     .h = dest_knob_size_px,
                 };
 
-                box_system.imgui.PushID(dest_knob_index);
-                DEFER { box_system.imgui.PopID(); };
-                auto const imgui_id = box_system.imgui.GetID("destination-knob"_s);
+                builder.imgui.PushId(dest_knob_index);
+                DEFER { builder.imgui.PopId(); };
+                auto const imgui_id = builder.imgui.MakeId("destination-knob"_s);
 
                 auto norm_value = MapTo01(dest.value, -1, 1);
-                if (box_system.imgui.SliderBehavior(knob_r,
-                                                    imgui_id,
-                                                    norm_value,
-                                                    MapTo01(0, -1, 1),
-                                                    {
-                                                        .slower_with_shift = true,
-                                                        .default_on_modifer = true,
-                                                    })) {
+                if (builder.imgui.SliderBehaviourFraction({
+                        .rect_in_window_coords = knob_r,
+                        .id = imgui_id,
+                        .fraction = norm_value,
+                        .default_fraction = MapTo01(0, -1, 1),
+                        .cfg =
+                            {
+                                .sensitivity = 400,
+                                .slower_with_shift = true,
+                                .default_on_modifer = true,
+                            },
+                    })) {
                     dest.value = MapFrom01(norm_value, -1, 1);
-                    MacroDestinationValueChanged(g->engine.processor,
+                    MacroDestinationValueChanged(g.engine.processor,
                                                  {
                                                      .value = dest.value,
                                                      .macro_index = macro_index,
@@ -200,25 +206,25 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
 
                 auto const arc_thickness = 5;
 
-                if (box_system.imgui.IsHotOrActive(imgui_id)) {
-                    box_system.imgui.draw_list->AddCircleFilled(centre,
-                                                                radius - arc_thickness,
-                                                                style::Col(style::Colour::Blue),
-                                                                12);
+                if (builder.imgui.IsHotOrActive(imgui_id)) {
+                    builder.imgui.draw_list->AddCircleFilled(centre,
+                                                             radius - arc_thickness,
+                                                             style::Col(style::Colour::Blue),
+                                                             12);
                 }
 
-                if (box_system.imgui.WasJustMadeHot(imgui_id))
+                if (builder.imgui.WasJustMadeHot(imgui_id))
                     GuiIo().out.AddTimedWakeup(TimePoint::Now() + 0.5, "macros_destination_knob_hot");
 
-                if (box_system.imgui.IsActive(imgui_id) ||
-                    (box_system.imgui.IsHot(imgui_id) && box_system.imgui.SecondsSpentHot() > 0.5)) {
-                    g->macros_gui_state.active_destination_knob = MacrosGuiState::DestinationKnob {
+                if (builder.imgui.IsActive(imgui_id) ||
+                    (builder.imgui.IsHot(imgui_id) && builder.imgui.SecondsSpentHot() > 0.5)) {
+                    g.macros_gui_state.active_destination_knob = MacrosGuiState::DestinationKnob {
                         .dest = dest,
                         .r = knob_r,
                     };
                 }
 
-                DrawKnob(box_system.imgui,
+                DrawKnob(builder.imgui,
                          imgui_id,
                          knob_r,
                          MapTo01(dest.value, -1, 1),
@@ -228,10 +234,10 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                              .bidirectional = true,
                          });
 
-                if (box_system.imgui.IsHotOrActive(imgui_id)) {
-                    dyn::Append(g->macros_gui_state.draw_overlays, [&dest, r = knob_r](Gui* g) {
+                if (builder.imgui.IsHotOrActive(imgui_id)) {
+                    dyn::Append(g.macros_gui_state.draw_overlays, [&dest, r = knob_r](GuiState& g) {
                         auto const& descriptor = k_param_descriptors[ToInt(*dest.param_index)];
-                        auto const str = fmt::Format(g->box_system.arena,
+                        auto const str = fmt::Format(g.builder.arena,
                                                      "{}\n{}\n{.0}%",
                                                      descriptor.gui_label,
                                                      descriptor.ModuleString(" › "_s),
@@ -241,62 +247,24 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                 }
 
                 {
-                    auto const remove_button_id = box_system.imgui.GetID("remove-destination-button"_s);
-
-                    auto const remove_button_r = Rect {
+                    auto const remove_button_id = builder.imgui.MakeId("remove-destination-button"_s);
+                    auto const remove_r = Rect {
                         .x = knob_r.x,
                         .y = knob_r.y + knob_r.h,
                         .w = dest_knob_size_px,
                         .h = dest_knob_size_px * 0.6f,
                     };
 
-                    if (box_system.imgui.IsHot(imgui_id))
-                        g->macros_gui_state.open_remove_destination_button_id = remove_button_id;
-
-                    if (g->macros_gui_state.open_remove_destination_button_id == remove_button_id) {
-                        auto const hovering_remove_button = remove_button_r.Contains(GuiIo().in.cursor_pos);
-
-                        if (hovering_remove_button) {
-                            // We are using overlay graphics; we need to make sure any item underneath this
-                            // button is not turned hot.
-                            box_system.imgui.active_item.id = imgui::k_imgui_noop_id;
-                        } else {
-                            g->macros_gui_state.open_remove_destination_button_id = 0;
-                        }
-
-                        box_system.imgui.RegisterRegionForMouseTracking(remove_button_r, false);
-                        if (imgui::ClickCheck(
-                                {
-                                    .left_mouse = true,
-                                    .triggers_on_mouse_up = true,
-                                },
-                                GuiIo().in)) {
-                            remove_destination_index = dest_knob_index;
-                        }
-
-                        dyn::Append(g->macros_gui_state.draw_overlays,
-                                    [r = remove_button_r, hot = hovering_remove_button](Gui* g) {
-                                        // Draw a dark circle with a circle-minus icon inside it.
-                                        g->box_system.imgui.overlay_draw_list->renderer->PushFont(
-                                            g->fonts[ToInt(FontType::Icons)]);
-                                        DEFER { g->box_system.imgui.overlay_draw_list->renderer->PopFont(); };
-                                        g->box_system.imgui.overlay_draw_list->AddCircleFilled(
-                                            r.Centre(),
-                                            r.w * 0.5f,
-                                            style::Col(style::Colour::Background0 | style::Colour::DarkMode),
-                                            12);
-                                        g->box_system.imgui.overlay_draw_list->AddTextJustified(
-                                            r,
-                                            ICON_FA_CIRCLE_MINUS,
-                                            ({
-                                                u32 c = style::Col(style::Colour::Red);
-                                                if (hot) c = colours::ChangeBrightness(c, 1.3f);
-                                                c;
-                                            }),
-                                            TextJustification::Centred,
-                                            TextOverflowType::AllowOverflow,
-                                            0.9f);
-                                    });
+                    if (builder.imgui.IsHot(imgui_id) ||
+                        (builder.imgui.WasJustMadeUnhot(imgui_id) &&
+                         remove_r.Contains(GuiIo().in.cursor_pos)) ||
+                        builder.imgui.IsHotOrActive(remove_button_id) ||
+                        builder.imgui.WasJustDeactivated(remove_button_id)) {
+                        remove_button = RemoveButton {
+                            .r = remove_r,
+                            .id = remove_button_id,
+                            .dest_index = dest_knob_index,
+                        };
                     }
                 }
             }
@@ -311,53 +279,56 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                     .h = dest_knob_size_px,
                 };
 
-                auto const imgui_id = box_system.imgui.GetID("add-destination-button"_s);
+                auto const imgui_id = builder.imgui.MakeId("add-destination-button"_s);
 
-                if (box_system.imgui.ButtonBehavior(knob_r,
-                                                    imgui_id,
-                                                    {
-                                                        .left_mouse = true,
-                                                        .triggers_on_mouse_up = true,
-                                                    })) {
-                    auto& mode = g->macros_gui_state.macro_destination_select_mode;
+                if (builder.imgui.ButtonBehaviour(knob_r,
+                                                  imgui_id,
+                                                  {
+                                                      .mouse_button = MouseButton::Left,
+                                                      .event = MouseButtonEvent::Up,
+                                                  })) {
+                    auto& mode = g.macros_gui_state.macro_destination_select_mode;
                     if (!mode || *mode != macro_index)
                         mode = macro_index;
                     else
                         mode.Clear();
                 }
 
-                box_system.imgui.draw_list->renderer->PushFont(g->fonts[ToInt(FontType::Icons)]);
-                DEFER { box_system.imgui.draw_list->renderer->PopFont(); };
-                box_system.imgui.draw_list->AddTextJustified(
+                builder.fonts.Push(ToInt(FontType::Icons));
+                DEFER { builder.fonts.Pop(); };
+
+                builder.imgui.draw_list->AddTextInRect(
                     knob_r,
-                    ICON_FA_CIRCLE_PLUS,
                     ({
                         u32 c = style::Col(style::Colour::Blue);
-                        if (g->macros_gui_state.macro_destination_select_mode) {
-                            if (*g->macros_gui_state.macro_destination_select_mode == macro_index)
-                                c = colours::ChangeBrightness(c, 1.3f);
+                        if (g.macros_gui_state.macro_destination_select_mode) {
+                            if (*g.macros_gui_state.macro_destination_select_mode == macro_index)
+                                c = colour::ChangeBrightness(c, 1.3f);
                             else
-                                c = colours::ChangeAlpha(c, 0.6f);
+                                c = colour::ChangeAlpha(c, 0.6f);
                         }
-                        if (box_system.imgui.IsHotOrActive(imgui_id)) c = colours::ChangeBrightness(c, 1.3f);
+                        if (builder.imgui.IsHotOrActive(imgui_id)) c = colour::ChangeBrightness(c, 1.3f);
                         c;
                     }),
-                    TextJustification::Centred,
-                    TextOverflowType::AllowOverflow,
-                    0.9f);
+                    ICON_FA_CIRCLE_PLUS,
+                    {
+                        .justification = TextJustification::Centred,
+                        .overflow_type = TextOverflowType::AllowOverflow,
+                        .font_scaling = 0.9f,
+                    });
 
-                if (g->macros_gui_state.hot_destination_param &&
-                    g->macros_gui_state.macro_destination_select_mode == macro_index) {
-                    auto const& hot_param = *g->macros_gui_state.hot_destination_param;
+                if (g.macros_gui_state.hot_destination_param &&
+                    g.macros_gui_state.macro_destination_select_mode == macro_index) {
+                    auto const& hot_param = *g.macros_gui_state.hot_destination_param;
                     dyn::Append(
-                        g->macros_gui_state.draw_overlays,
-                        [hot_param, p2 = knob_r.Centre(), macro_param = param_index](Gui* g) {
+                        g.macros_gui_state.draw_overlays,
+                        [hot_param, p2 = knob_r.Centre(), macro_param = param_index](GuiState& g) {
                             DrawLinkLine(g, hot_param.r.Centre(), p2);
 
                             auto const custom_macro_name =
-                                g->engine.macro_names[*g->macros_gui_state.macro_destination_select_mode];
+                                g.engine.macro_names[*g.macros_gui_state.macro_destination_select_mode];
 
-                            DynamicArray<char> text(g->scratch_arena);
+                            DynamicArray<char> text(g.scratch_arena);
                             fmt::Assign(text,
                                         "Connect {} to {}"_s,
                                         k_param_descriptors[ToInt(hot_param.param_index)].gui_label,
@@ -367,91 +338,145 @@ void DoMacrosEditGui(Gui* g, Box const& parent) {
                                 custom_macro_name != default_macro_name)
                                 fmt::Append(text, " ({})", default_macro_name);
 
-                            DoTooltipText(g, text, hot_param.r, true);
+                            DrawOverlayTooltipForRect(g.imgui,
+                                                      g.fonts,
+                                                      text,
+                                                      g.imgui.ViewportRectToWindowRect(hot_param.r));
                         });
                 }
             }
         }
 
-        auto const label = DoBox(box_system,
-                                 {
-                                     .parent = container,
-                                     .text = g->engine.macro_names[macro_index],
-                                     .text_colours = Splat(style::Colour::Text | style::Colour::DarkMode),
-                                     .text_overflow = TextOverflowType::ShowDotsOnRight,
-                                     .background_fill_colours {
-                                         .base = style::Colour::None,
-                                         .hot = style::Colour::Background0 | style::Colour::DarkMode,
-                                         .active = style::Colour::Background0 | style::Colour::DarkMode,
-                                     },
-                                     .border_colours {
-                                         .base = style::Colour::None,
-                                         .hot = style::Colour::Overlay1 | style::Colour::DarkMode,
-                                         .active = style::Colour::Subtext0 | style::Colour::DarkMode,
-                                     },
-                                     .round_background_corners = 0b1111,
-                                     .layout {
-                                         .size = {100, style::k_font_body_size},
-                                     },
-                                     .behaviour = Behaviour::TextInput,
-                                     .text_input_x_padding = k_text_input_x_padding,
-                                 });
-        DrawTextInput(box_system,
-                      label,
-                      {
-                          .text_col = style::Colour::Text | style::Colour::DarkMode,
-                          .cursor_col = style::Colour::Text | style::Colour::DarkMode,
-                          .selection_col = style::Colour::Highlight | style::Colour::Alpha50,
-                      });
-        if (label.text_input_result &&
-            (label.text_input_result->enter_pressed || label.text_input_result->buffer_changed)) {
-            dyn::AssignFitInCapacity(g->engine.macro_names[macro_index], label.text_input_result->text);
+        auto const name_input = DoBox(builder,
+                                      {
+                                          .parent = container,
+                                          .background_fill_colours {
+                                              .base = style::Colour::None,
+                                              .hot = style::Colour::Background0 | style::Colour::DarkMode,
+                                              .active = style::Colour::Background0 | style::Colour::DarkMode,
+                                          },
+                                          .border_colours {
+                                              .base = style::Colour::None,
+                                              .hot = style::Colour::Overlay1 | style::Colour::DarkMode,
+                                              .active = style::Colour::Subtext0 | style::Colour::DarkMode,
+                                          },
+                                          .round_background_corners = 0b1111,
+                                          .layout {
+                                              .size = {100, style::k_font_body_size},
+                                          },
+                                      });
+
+        if (auto const r = BoxRect(builder, name_input)) {
+            auto const window_r = builder.imgui.RegisterAndConvertRect(*r);
+            auto const result = builder.imgui.TextInputBehaviour({
+                .rect_in_window_coords = window_r,
+                .id = name_input.imgui_id,
+                .text = g.engine.macro_names[macro_index],
+                .input_cfg =
+                    {
+                        .x_padding = GuiIo().WwToPixels(k_text_input_x_padding),
+                        .centre_align = false,
+                        .escape_unfocuses = true,
+                        .select_all_when_opening = true,
+                        .multiline = false,
+                        .multiline_wordwrap_hack = false,
+                    },
+                .button_cfg =
+                    {
+                        .mouse_button = MouseButton::Left,
+                        .event = MouseButtonEvent::Up,
+                    },
+            });
+
+            DrawTextInput(builder.imgui,
+                          result,
+                          {
+                              .text_col = style::Colour::Text | style::Colour::DarkMode,
+                              .cursor_col = style::Colour::Text | style::Colour::DarkMode,
+                              .selection_col = style::Colour::Highlight | style::Colour::Alpha50,
+                          });
+
+            if (result.enter_pressed || result.buffer_changed)
+                dyn::AssignFitInCapacity(g.engine.macro_names[macro_index], result.text);
+        }
+
+        if (remove_button) {
+            auto const r = remove_button->r;
+
+            if (builder.imgui.ButtonBehaviour(remove_button->r,
+                                              remove_button->id,
+                                              {
+                                                  .mouse_button = MouseButton::Left,
+                                                  .event = MouseButtonEvent::Up,
+                                              })) {
+                remove_destination_index = remove_button->dest_index;
+            }
+
+            // Draw a dark circle with a circle-minus icon inside it.
+            g.fonts.Push(ToInt(FontType::Icons));
+            DEFER { g.fonts.Pop(); };
+            g.builder.imgui.overlay_draw_list->AddCircleFilled(
+                r.Centre(),
+                r.w * 0.5f,
+                style::Col(style::Colour::Background0 | style::Colour::DarkMode),
+                12);
+            g.builder.imgui.overlay_draw_list->AddTextInRect(
+                r,
+                ({
+                    u32 c = style::Col(style::Colour::Red);
+                    if (builder.imgui.IsHot(remove_button->id)) c = colour::ChangeBrightness(c, 1.3f);
+                    c;
+                }),
+                ICON_FA_CIRCLE_MINUS,
+                {
+                    .justification = TextJustification::Centred,
+                    .overflow_type = TextOverflowType::AllowOverflow,
+                    .font_scaling = 0.9f,
+                });
         }
     }
 }
 
-void MacroAddDestinationRegion(Gui* g, Rect rel_r, ParamIndex param_index) {
+void MacroAddDestinationRegion(GuiState& g, Rect window_r, ParamIndex param_index) {
     if (k_param_descriptors[ToInt(param_index)].module_parts[0] == ParameterModule::Macro) return;
 
     auto const active_dest_knob_linked =
-        g->macros_gui_state.active_destination_knob &&
-        g->macros_gui_state.active_destination_knob->dest.param_index == param_index;
+        g.macros_gui_state.active_destination_knob &&
+        g.macros_gui_state.active_destination_knob->dest.param_index == param_index;
 
-    if (!g->macros_gui_state.macro_destination_select_mode) {
+    if (!g.macros_gui_state.macro_destination_select_mode) {
         if (active_dest_knob_linked) {
-            auto const r = g->imgui.GetRegisteredAndConvertedRect(rel_r);
-            dyn::Append(g->macros_gui_state.draw_overlays,
-                        [p1 = r.Centre(), p2 = g->macros_gui_state.active_destination_knob->r.Centre()](
-                            Gui* g) { DrawLinkLine(g, p1, p2); });
+            dyn::Append(g.macros_gui_state.draw_overlays,
+                        [p1 = window_r.Centre(), p2 = g.macros_gui_state.active_destination_knob->r.Centre()](
+                            GuiState& g) { DrawLinkLine(g, p1, p2); });
 
-            g->imgui.ScrollWindowToShowRectangle(rel_r);
+            g.imgui.ScrollViewportToShowRectangle(g.imgui.WindowRectToViewportRect(window_r));
         }
 
         return;
     }
 
-    auto const imgui_id = (imgui::Id)(SourceLocationHash() + g->imgui.GetID((usize)param_index));
-    auto const r = g->imgui.GetRegisteredAndConvertedRect(rel_r);
+    auto const imgui_id = (imgui::Id)(SourceLocationHash() + g.imgui.MakeId((usize)param_index));
 
     // Behaviour.
     {
-        if (g->imgui.ButtonBehavior(r,
+        if (g.imgui.ButtonBehaviour(window_r,
                                     imgui_id,
                                     {
-                                        .left_mouse = true,
-                                        .triggers_on_mouse_up = true,
+                                        .mouse_button = MouseButton::Left,
+                                        .event = MouseButtonEvent::Up,
                                     })) {
-            AppendMacroDestination(g->engine.processor,
+            AppendMacroDestination(g.engine.processor,
                                    {
                                        .param = param_index,
-                                       .macro_index = *g->macros_gui_state.macro_destination_select_mode,
+                                       .macro_index = *g.macros_gui_state.macro_destination_select_mode,
                                    });
-            g->macros_gui_state.macro_destination_select_mode.Clear();
+            g.macros_gui_state.macro_destination_select_mode.Clear();
         }
 
-        if (g->imgui.IsHot(imgui_id)) {
-            g->macros_gui_state.hot_destination_param = MacrosGuiState::HotDestinationParam {
-                .r = r,
+        if (g.imgui.IsHot(imgui_id)) {
+            g.macros_gui_state.hot_destination_param = MacrosGuiState::HotDestinationParam {
+                .r = window_r,
                 .param_index = param_index,
             };
         }
@@ -459,51 +484,47 @@ void MacroAddDestinationRegion(Gui* g, Rect rel_r, ParamIndex param_index) {
 
     // Draw.
     {
-        auto const clip_rect = g->imgui.draw_list->clip_rect_stack.Back();
-        g->imgui.overlay_draw_list->PushClipRect(clip_rect.xy, clip_rect.zw);
-        DEFER { g->imgui.overlay_draw_list->PopClipRect(); };
+        auto const clip_rect = g.imgui.draw_list->clip_rect_stack.Back();
+        g.imgui.overlay_draw_list->PushClipRect(clip_rect.xy, clip_rect.zw);
+        DEFER { g.imgui.overlay_draw_list->PopClipRect(); };
 
-        g->imgui.overlay_draw_list->renderer->PushFont(g->fonts[ToInt(FontType::Icons)]);
-        DEFER { g->imgui.overlay_draw_list->renderer->PopFont(); };
+        g.fonts.Push(ToInt(FontType::Icons));
+        DEFER { g.fonts.Pop(); };
 
-        g->imgui.overlay_draw_list->AddCircleFilled(
-            r.Centre(),
-            g->imgui.overlay_draw_list->renderer->CurrentFontSize() * 0.4f,
+        g.imgui.overlay_draw_list->AddCircleFilled(
+            window_r.Centre(),
+            g.fonts.Current()->font_size * 0.4f,
             style::Col(style::Colour::Background0 | style::Colour::DarkMode));
 
-        g->imgui.overlay_draw_list->AddTextJustified(
-            r,
+        g.imgui.overlay_draw_list->AddTextInRect(
+            window_r,
+            g.imgui.IsHotOrActive(imgui_id) ? colour::ChangeBrightness(style::Col(style::Colour::Blue), 1.3f)
+                                            : style::Col(style::Colour::Blue),
             ICON_FA_CIRCLE_PLUS,
-            g->imgui.IsHotOrActive(imgui_id)
-                ? colours::ChangeBrightness(style::Col(style::Colour::Blue), 1.3f)
-                : style::Col(style::Colour::Blue),
-            TextJustification::Centred,
-            TextOverflowType::AllowOverflow,
-            0.9f);
+            {
+                .justification = TextJustification::Centred,
+                .overflow_type = TextOverflowType::AllowOverflow,
+                .font_scaling = 0.9f,
+            });
     }
 }
 
-void MacroGuiBeginFrame(Gui* g) {
-    g->macros_gui_state.hot_destination_param.Clear();
-    dyn::Clear(g->macros_gui_state.draw_overlays);
+void MacroGuiBeginFrame(GuiState& g) {
+    g.macros_gui_state.hot_destination_param.Clear();
+    dyn::Clear(g.macros_gui_state.draw_overlays);
 }
 
-void MacroGuiEndFrame(Gui* g) {
-    if (g->macros_gui_state.macro_destination_select_mode) {
+void MacroGuiEndFrame(GuiState& g) {
+    for (auto const& draw_overlay : g.macros_gui_state.draw_overlays)
+        draw_overlay(g);
+
+    // Check if we should exit macro destination select mode.
+    if (g.macros_gui_state.macro_destination_select_mode) {
         GuiIo().out.wants.keyboard_keys.Set(ToInt(KeyCode::Escape));
-        if (imgui::ClickCheck(
-                {
-                    .left_mouse = true,
-                    .triggers_on_mouse_down = true,
-                },
-                GuiIo().in) &&
-            !g->imgui.AnItemIsHot()) {
-            g->macros_gui_state.macro_destination_select_mode.Clear();
-        } else if (GuiIo().in.Key(KeyCode::Escape).presses.size) {
-            g->macros_gui_state.macro_destination_select_mode.Clear();
+        auto const& left_mouse = GuiIo().in.Mouse(MouseButton::Left);
+        if ((left_mouse.presses.size && !g.imgui.AnItemIsHot()) ||
+            GuiIo().in.Key(KeyCode::Escape).presses.size || g.imgui.IsAnyPopupMenuOpen()) {
+            g.macros_gui_state.macro_destination_select_mode.Clear();
         }
     }
-
-    for (auto const& draw_overlay : g->macros_gui_state.draw_overlays)
-        draw_overlay(g);
 }

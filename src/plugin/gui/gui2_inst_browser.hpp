@@ -8,7 +8,7 @@
 #include "gui/gui2_inst_browser_state.hpp"
 #include "gui/gui_frame_context.hpp"
 #include "gui/gui_library_images.hpp"
-#include "gui_framework/gui_box_system.hpp"
+#include "gui_framework/gui_builder.hpp"
 #include "processor/layer_processor.hpp"
 
 // Ephemeral
@@ -30,4 +30,4 @@ void LoadAdjacentInstrument(InstBrowserContext const& context,
 
 void LoadRandomInstrument(InstBrowserContext const& context, InstBrowserState& state);
 
-void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, InstBrowserState& state);
+void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBrowserState& state);

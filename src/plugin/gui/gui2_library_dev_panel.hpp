@@ -4,7 +4,7 @@
 #include "foundation/foundation.hpp"
 
 struct Engine;
-struct GuiBoxSystem;
+struct GuiBuilder;
 struct Notifications;
 
 struct LibraryDevPanelContext {
@@ -18,11 +18,9 @@ struct LibraryDevPanelState {
         Utilities,
         Count,
     };
-    bool open = false;
+    static constexpr u64 k_panel_id = SourceLocationHash();
     Tab tab = Tab::TagBuilder;
     bool modeless = true;
 };
 
-void DoLibraryDevPanel(GuiBoxSystem& box_system,
-                       LibraryDevPanelContext& context,
-                       LibraryDevPanelState& state);
+void DoLibraryDevPanel(GuiBuilder& builder, LibraryDevPanelContext& context, LibraryDevPanelState& state);

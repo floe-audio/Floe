@@ -35,11 +35,11 @@ static void CreateWaveformImageAsync(WaveformImage::FuturePixels& future,
         JobPriority::High);
 }
 
-Optional<graphics::ImageID> GetWaveformImage(WaveformImagesTable& table,
-                                             Instrument const& inst,
-                                             graphics::Renderer& renderer,
-                                             ThreadPool& thread_pool,
-                                             f32x2 f32_size) {
+Optional<ImageID> GetWaveformImage(WaveformImagesTable& table,
+                                   Instrument const& inst,
+                                   Renderer& renderer,
+                                   ThreadPool& thread_pool,
+                                   f32x2 f32_size) {
     auto const size = UiSize::FromFloat2(f32_size);
 
     u64 source_hash = 0;
@@ -89,7 +89,7 @@ Optional<graphics::ImageID> GetWaveformImage(WaveformImagesTable& table,
     return waveform.image_id;
 }
 
-void StartFrame(WaveformImagesTable& table, graphics::Renderer& renderer) {
+void StartFrame(WaveformImagesTable& table, Renderer& renderer) {
     for (auto [_, waveform, _] : table.table) {
         waveform.used = false;
 
@@ -103,7 +103,7 @@ void StartFrame(WaveformImagesTable& table, graphics::Renderer& renderer) {
     }
 }
 
-void EndFrame(WaveformImagesTable& table, graphics::Renderer& renderer) {
+void EndFrame(WaveformImagesTable& table, Renderer& renderer) {
     table.table.RemoveIf([&](u64 const&, WaveformImage& waveform) {
         if (!waveform.used) {
             if (waveform.image_id) {

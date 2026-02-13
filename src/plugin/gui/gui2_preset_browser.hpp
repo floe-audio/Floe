@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
-#include "os/misc.hpp"
-
 #include "common_infrastructure/preferences.hpp"
 
 #include "gui/gui2_common_browser.hpp"
@@ -12,7 +10,7 @@
 #include "gui/gui_fwd.hpp"
 #include "preset_server/preset_server.hpp"
 
-struct GuiBoxSystem;
+struct GuiBuilder;
 struct PresetServer;
 
 // Ephemeral
@@ -45,6 +43,7 @@ struct PresetBrowserContext {
 
 // Persistent
 struct PresetBrowserState {
+    static constexpr u64 k_panel_id = HashFnv1a("preset-browser");
     SelectedHashes selected_author_hashes {"Author"};
     bool scroll_to_show_selected = false;
 
@@ -63,4 +62,4 @@ void LoadAdjacentPreset(PresetBrowserContext const& context,
 
 void LoadRandomPreset(PresetBrowserContext const& context, PresetBrowserState& state);
 
-void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, PresetBrowserState& state);
+void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetBrowserState& state);

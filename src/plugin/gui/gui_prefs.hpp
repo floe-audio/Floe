@@ -5,7 +5,7 @@
 
 #include "common_infrastructure/preferences.hpp"
 
-enum class GuiSetting : u8 {
+enum class GuiPreference : u8 {
     WindowWidth,
     ShowTooltips,
     HighContrastGui,
@@ -13,6 +13,6 @@ enum class GuiSetting : u8 {
     Count,
 };
 
-prefs::Descriptor SettingDescriptor(GuiSetting);
+prefs::Descriptor SettingDescriptor(GuiPreference);
 
 Optional<UiSize> DesiredWindowSize(prefs::Preferences const&);

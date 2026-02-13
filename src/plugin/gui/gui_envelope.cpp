@@ -3,21 +3,23 @@
 
 #include "gui_envelope.hpp"
 
-#include "gui.hpp"
 #include "gui_drawing_helpers.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
-#include "gui_widget_helpers.hpp"
+#include "gui_state.hpp"
+#include "old/gui_widget_helpers.hpp"
 
-void GUIDoEnvelope(Gui* g,
-                   LayerProcessor* layer,
-                   Rect r,
+// TODO: this code needs adapting to no longer use old code such as old/gui_widget_helpers.hpp.
+
+void DoEnvelopeGui(GuiState& g,
+                   LayerProcessor& layer,
+                   Rect viewport_r,
                    bool greyed_out,
                    Array<LayerParamIndex, 4> adsr_layer_params,
                    GuiEnvelopeType type) {
     ASSERT_EQ(adsr_layer_params.size, 4u);
-    auto& imgui = g->imgui;
-    auto& engine = g->engine;
+    auto& imgui = g.imgui;
+    auto& engine = g.engine;
 
     auto const max_attack_percent = 0.31f;
     auto const max_decay_percent = 0.31f;
@@ -25,31 +27,35 @@ void GUIDoEnvelope(Gui* g,
     auto const sustain_point_percent = (max_attack_percent + max_decay_percent) +
                                        (1 - (max_attack_percent + max_decay_percent + max_release_percent));
 
-    auto const handle_size = r.w * 0.15f;
+    auto const handle_size = viewport_r.w * 0.15f;
     auto const att_rel_slider_sensitivity = 170.0f;
 
-    auto settings = imgui::DefWindow();
-    settings.pad_bottom_right = {};
-    settings.pad_top_left = {};
-    settings.draw_routine_window_background = [&handle_size](IMGUI_DRAW_WINDOW_BG_ARGS) {
-        auto const& r = window->bounds.Reduced(handle_size / 2);
-        auto const rounding = LiveSize(imgui, UiSizeId::CornerRounding);
-        imgui.draw_list->AddRectFilled(r.Min(), r.Max(), LiveCol(imgui, UiColMap::Envelope_Back), rounding);
-    };
-    imgui.PushID(layer->index);
-    DEFER { imgui.PopID(); };
-    imgui.BeginWindow(settings, imgui.GetID("envelope container"), r);
-    DEFER { imgui.EndWindow(); };
+    imgui.PushId(SourceLocationHash() + layer.index);
+    DEFER { imgui.PopId(); };
+
+    imgui.BeginViewport(
+        {
+            .draw_background =
+                [&handle_size](imgui::Context const& imgui) {
+                    auto const& r = imgui.curr_viewport->bounds.Reduced(handle_size / 2);
+                    auto const rounding = LiveSize(UiSizeId::CornerRounding);
+                    imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::EnvelopeBack), rounding);
+                },
+            .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
+        },
+        viewport_r,
+        "env-container");
+    DEFER { imgui.EndViewport(); };
 
     auto const padded_x = handle_size / 2;
     auto const padded_y = handle_size / 2;
-    auto const padded_height = imgui.Height() - handle_size;
-    auto const padded_width = imgui.Width() - handle_size;
-    auto const padded_bottom = imgui.Height() - (handle_size / 2);
+    auto const padded_height = imgui.CurrentVpHeight() - handle_size;
+    auto const padded_width = imgui.CurrentVpWidth() - handle_size;
+    auto const padded_bottom = imgui.CurrentVpHeight() - (handle_size / 2);
 
-    auto const attack_imgui_id = imgui.GetID("attack");
-    auto const dec_sus_imgui_id = imgui.GetID("dec-sus");
-    auto const release_imgui_id = imgui.GetID("release");
+    auto const attack_imgui_id = imgui.MakeId("attack");
+    auto const dec_sus_imgui_id = imgui.MakeId("dec-sus");
+    auto const release_imgui_id = imgui.MakeId("release");
 
     f32x2 attack_point;
     f32x2 decay_point;
@@ -66,7 +72,7 @@ void GUIDoEnvelope(Gui* g,
     Range release_x_range;
 
     {
-        auto attack_param_id = ParamIndexFromLayerParamIndex(layer->index, adsr_layer_params[0]);
+        auto attack_param_id = ParamIndexFromLayerParamIndex(layer.index, adsr_layer_params[0]);
         auto attack_param = engine.processor.main_params.DescribedValue(attack_param_id);
         auto norm_attack_val = attack_param.LinearValue();
 
@@ -80,33 +86,38 @@ void GUIDoEnvelope(Gui* g,
         attack_x_range.min = get_x_coord_at_percent(0);
         attack_x_range.max = get_x_coord_at_percent(1);
 
-        Rect grabber = {.xywh {0, 0, attack_point.x + (handle_size / 2), imgui.Height()}};
+        Rect grabber = {.xywh {0, 0, attack_point.x + (handle_size / 2), imgui.CurrentVpHeight()}};
         auto const grabber_unregistered = grabber;
         MidiLearnMenu(g, attack_param_id, grabber_unregistered);
-        imgui.RegisterAndConvertRect(&grabber);
+        grabber = imgui.RegisterAndConvertRect(grabber);
 
         f32 new_value = norm_attack_val;
         bool changed = false;
-        if (imgui.SliderBehavior(grabber,
-                                 attack_imgui_id,
-                                 new_value,
-                                 attack_param.DefaultLinearValue(),
-                                 att_rel_slider_sensitivity,
-                                 {.slower_with_shift = true, .default_on_modifer = true})) {
+        if (imgui.SliderBehaviourFraction({
+                .rect_in_window_coords = grabber,
+                .id = attack_imgui_id,
+                .fraction = new_value,
+                .default_fraction = attack_param.DefaultLinearValue(),
+                .cfg =
+                    {
+                        .sensitivity = att_rel_slider_sensitivity,
+                        .slower_with_shift = true,
+                        .default_on_modifer = true,
+                    },
+            })) {
             changed = true;
         }
 
-        if (imgui.IsHotOrActive(attack_imgui_id)) {
+        if (imgui.ButtonBehaviour(grabber,
+                                  attack_imgui_id,
+                                  {
+                                      .mouse_button = MouseButton::Left,
+                                      .event = MouseButtonEvent::DoubleClick,
+                                  }))
+            g.param_text_editor_to_open = attack_param_id;
+
+        if (imgui.IsHotOrActive(attack_imgui_id))
             GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
-            if (imgui::ClickCheck(
-                    {
-                        .left_mouse = true,
-                        .double_click = true,
-                        .triggers_on_mouse_down = true,
-                    },
-                    GuiIo().in))
-                g->param_text_editor_to_open = attack_param_id;
-        }
 
         if (imgui.WasJustActivated(attack_imgui_id))
             ParameterJustStartedMoving(engine.processor, attack_param_id);
@@ -114,15 +125,15 @@ void GUIDoEnvelope(Gui* g,
         if (imgui.WasJustDeactivated(attack_imgui_id))
             ParameterJustStoppedMoving(engine.processor, attack_param_id);
 
-        ParameterValuePopup(g, attack_param, attack_imgui_id, grabber_unregistered);
-        DoParameterTooltipIfNeeded(g, attack_param, attack_imgui_id, grabber_unregistered);
+        ParameterValuePopup(g, attack_param, attack_imgui_id, grabber);
+        DoParameterTooltipIfNeeded(g, attack_param, attack_imgui_id, grabber);
 
-        MacroAddDestinationRegion(g, grabber_unregistered, attack_param_id);
+        MacroAddDestinationRegion(g, grabber, attack_param_id);
     }
 
     {
-        auto decay_id = ParamIndexFromLayerParamIndex(layer->index, adsr_layer_params[1]);
-        auto sustain_id = ParamIndexFromLayerParamIndex(layer->index, adsr_layer_params[2]);
+        auto decay_id = ParamIndexFromLayerParamIndex(layer.index, adsr_layer_params[1]);
+        auto sustain_id = ParamIndexFromLayerParamIndex(layer.index, adsr_layer_params[2]);
         auto decay_param = engine.processor.main_params.DescribedValue(decay_id);
         auto sustain_param = engine.processor.main_params.DescribedValue(sustain_id);
         ParamIndex params[] = {decay_id, sustain_id};
@@ -153,31 +164,28 @@ void GUIDoEnvelope(Gui* g,
 
         f32x2 const grabber_min {Min(decay_point.x - (handle_size / 2), attack_point.x + (handle_size / 2)),
                                  grabber_y};
-        f32x2 const grabber_max {sustain_point.x, imgui.Height()};
+        f32x2 const grabber_max {sustain_point.x, imgui.CurrentVpHeight()};
         auto grabber = Rect::FromMinMax(grabber_min, grabber_max);
-        auto const grabber_unregistered = grabber;
 
         MidiLearnMenu(g, params, grabber);
 
-        imgui.RegisterAndConvertRect(&grabber);
+        grabber = imgui.RegisterAndConvertRect(grabber);
         static f32x2 rel_click_pos;
-        if (imgui.ButtonBehavior(grabber,
-                                 dec_sus_imgui_id,
-                                 {.left_mouse = true, .triggers_on_mouse_down = true})) {
-            rel_click_pos = GuiIo().in.cursor_pos - imgui.WindowPosToScreenPos(decay_point);
+        if (imgui.ButtonBehaviour(grabber,
+                                  dec_sus_imgui_id,
+                                  {.mouse_button = MouseButton::Left, .event = MouseButtonEvent::Down})) {
+            rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(decay_point);
         }
 
-        if (imgui.IsHotOrActive(dec_sus_imgui_id)) {
-            GuiIo().out.wants.cursor_type = CursorType::AllArrows;
-            if (imgui::ClickCheck(
-                    {
-                        .left_mouse = true,
-                        .double_click = true,
-                        .triggers_on_mouse_down = true,
-                    },
-                    GuiIo().in))
-                g->param_text_editor_to_open = decay_id;
-        }
+        if (imgui.ButtonBehaviour(grabber,
+                                  dec_sus_imgui_id,
+                                  {
+                                      .mouse_button = MouseButton::Left,
+                                      .event = MouseButtonEvent::DoubleClick,
+                                  }))
+            g.param_text_editor_to_open = decay_id;
+
+        if (imgui.IsHotOrActive(dec_sus_imgui_id)) GuiIo().out.wants.cursor_type = CursorType::AllArrows;
 
         if (imgui.WasJustActivated(dec_sus_imgui_id)) {
             ParameterJustStartedMoving(engine.processor, decay_id);
@@ -185,8 +193,8 @@ void GUIDoEnvelope(Gui* g,
         }
         if (imgui.IsActive(dec_sus_imgui_id)) {
             {
-                auto const min_pixels_pos = imgui.WindowPosToScreenPos({get_x_coord_at_percent(0), 0}).x;
-                auto const max_pixels_pos = imgui.WindowPosToScreenPos({get_x_coord_at_percent(1), 0}).x;
+                auto const min_pixels_pos = imgui.ViewportPosToWindowPos({get_x_coord_at_percent(0), 0}).x;
+                auto const max_pixels_pos = imgui.ViewportPosToWindowPos({get_x_coord_at_percent(1), 0}).x;
                 auto curr_pos = GuiIo().in.cursor_pos.x - rel_click_pos.x;
 
                 curr_pos = Clamp(curr_pos, min_pixels_pos, max_pixels_pos);
@@ -195,8 +203,8 @@ void GUIDoEnvelope(Gui* g,
                 SetParameterValue(engine.processor, decay_id, curr_pos_percent, {});
             }
             {
-                auto const min_pixels_pos = imgui.WindowPosToScreenPos({0, get_y_coord_at_percent(0)}).y;
-                auto const max_pixels_pos = imgui.WindowPosToScreenPos({0, get_y_coord_at_percent(1)}).y;
+                auto const min_pixels_pos = imgui.ViewportPosToWindowPos({0, get_y_coord_at_percent(0)}).y;
+                auto const max_pixels_pos = imgui.ViewportPosToWindowPos({0, get_y_coord_at_percent(1)}).y;
                 auto curr_pos = GuiIo().in.cursor_pos.y - rel_click_pos.y;
 
                 curr_pos = Clamp(curr_pos, min_pixels_pos, max_pixels_pos);
@@ -211,19 +219,19 @@ void GUIDoEnvelope(Gui* g,
             ParameterJustStoppedMoving(engine.processor, sustain_id);
         }
 
-        ParameterValuePopup(g, param_ptrs, dec_sus_imgui_id, grabber_unregistered);
-        DoParameterTooltipIfNeeded(g, param_ptrs, dec_sus_imgui_id, grabber_unregistered);
+        ParameterValuePopup(g, param_ptrs, dec_sus_imgui_id, grabber);
+        DoParameterTooltipIfNeeded(g, param_ptrs, dec_sus_imgui_id, grabber);
 
         {
-            auto const h = grabber_unregistered.h / 2;
-            auto macro_r = grabber_unregistered;
+            auto const h = grabber.h / 2;
+            auto macro_r = grabber;
             MacroAddDestinationRegion(g, rect_cut::CutTop(macro_r, h), decay_id);
             MacroAddDestinationRegion(g, rect_cut::CutTop(macro_r, h), sustain_id);
         }
     }
 
     {
-        auto release_param_id = ParamIndexFromLayerParamIndex(layer->index, adsr_layer_params[3]);
+        auto release_param_id = ParamIndexFromLayerParamIndex(layer.index, adsr_layer_params[3]);
         auto release_param = engine.processor.main_params.DescribedValue(release_param_id);
         auto const release_norm_value = release_param.LinearValue();
 
@@ -241,34 +249,39 @@ void GUIDoEnvelope(Gui* g,
         Rect grabber {.xywh {sustain_point.x,
                              0,
                              (max_release_percent * padded_width) + (handle_size / 2),
-                             imgui.Height()}};
+                             imgui.CurrentVpHeight()}};
         auto const grabber_unregistered = grabber;
 
         MidiLearnMenu(g, release_param_id, grabber_unregistered);
-        imgui.RegisterAndConvertRect(&grabber);
+        grabber = imgui.RegisterAndConvertRect(grabber);
 
         f32 new_value = release_norm_value;
         bool changed = false;
-        if (imgui.SliderBehavior(grabber,
-                                 release_imgui_id,
-                                 new_value,
-                                 release_param.DefaultLinearValue(),
-                                 att_rel_slider_sensitivity,
-                                 {.slower_with_shift = true, .default_on_modifer = true})) {
+        if (imgui.SliderBehaviourFraction({
+                .rect_in_window_coords = grabber,
+                .id = release_imgui_id,
+                .fraction = new_value,
+                .default_fraction = release_param.DefaultLinearValue(),
+                .cfg =
+                    {
+                        .sensitivity = att_rel_slider_sensitivity,
+                        .slower_with_shift = true,
+                        .default_on_modifer = true,
+                    },
+            })) {
             changed = true;
         }
 
-        if (imgui.IsHotOrActive(release_imgui_id)) {
+        if (imgui.ButtonBehaviour(grabber,
+                                  release_imgui_id,
+                                  {
+                                      .mouse_button = MouseButton::Left,
+                                      .event = MouseButtonEvent::DoubleClick,
+                                  }))
+            g.param_text_editor_to_open = release_param_id;
+
+        if (imgui.IsHotOrActive(release_imgui_id))
             GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
-            if (imgui::ClickCheck(
-                    {
-                        .left_mouse = true,
-                        .double_click = true,
-                        .triggers_on_mouse_down = true,
-                    },
-                    GuiIo().in))
-                g->param_text_editor_to_open = release_param_id;
-        }
 
         if (imgui.WasJustActivated(release_imgui_id))
             ParameterJustStartedMoving(engine.processor, release_param_id);
@@ -277,40 +290,40 @@ void GUIDoEnvelope(Gui* g,
         if (imgui.WasJustDeactivated(release_imgui_id))
             ParameterJustStoppedMoving(engine.processor, release_param_id);
 
-        ParameterValuePopup(g, release_param, release_imgui_id, grabber_unregistered);
-        DoParameterTooltipIfNeeded(g, release_param, release_imgui_id, grabber_unregistered);
+        ParameterValuePopup(g, release_param, release_imgui_id, grabber);
+        DoParameterTooltipIfNeeded(g, release_param, release_imgui_id, grabber);
 
-        MacroAddDestinationRegion(g, grabber_unregistered, release_param_id);
+        MacroAddDestinationRegion(g, grabber, release_param_id);
     }
 
     {
 
-        auto const attack_point_screen = imgui.WindowPosToScreenPos(attack_point);
-        auto const decay_point_screen = imgui.WindowPosToScreenPos(decay_point);
-        auto const sustain_point_screen = imgui.WindowPosToScreenPos(sustain_point);
-        auto const release_point_screen = imgui.WindowPosToScreenPos(release_point);
-        auto const bottom_left = imgui.WindowPosToScreenPos({padded_x, padded_bottom});
+        auto const attack_point_screen = imgui.ViewportPosToWindowPos(attack_point);
+        auto const decay_point_screen = imgui.ViewportPosToWindowPos(decay_point);
+        auto const sustain_point_screen = imgui.ViewportPosToWindowPos(sustain_point);
+        auto const release_point_screen = imgui.ViewportPosToWindowPos(release_point);
+        auto const bottom_left = imgui.ViewportPosToWindowPos({padded_x, padded_bottom});
 
         f32x2 const point_below_decay = {decay_point_screen.x, bottom_left.y};
 
-        auto const area_col = LiveCol(imgui, UiColMap::Envelope_Area);
-        auto const range_lines_col = LiveCol(imgui, UiColMap::Envelope_RangeLines);
-        auto const hover_col = LiveCol(imgui, UiColMap::Envelope_HandleHover);
-        auto const greyed_out_line_col = LiveCol(imgui, UiColMap::Envelope_LineGreyedOut);
-        auto const greyed_out_handle_col = LiveCol(imgui, UiColMap::Envelope_HandleGreyedOut);
-        auto line_col = LiveCol(imgui, UiColMap::Envelope_Line);
-        auto handle_col = LiveCol(imgui, UiColMap::Envelope_Handle);
+        auto const area_col = LiveCol(UiColMap::EnvelopeArea);
+        auto const range_lines_col = LiveCol(UiColMap::EnvelopeRangeLines);
+        auto const hover_col = LiveCol(UiColMap::EnvelopeHandleHover);
+        auto const greyed_out_line_col = LiveCol(UiColMap::EnvelopeLineGreyedOut);
+        auto const greyed_out_handle_col = LiveCol(UiColMap::EnvelopeHandleGreyedOut);
+        auto line_col = LiveCol(UiColMap::EnvelopeLine);
+        auto handle_col = LiveCol(UiColMap::EnvelopeHandle);
 
         auto const handle_visible_size = handle_size / 10;
 
         // range lines
         auto const do_range_lines = [&](Range range, imgui::Id id) {
             if (imgui.IsActive(id)) {
-                imgui.draw_list->AddLine(imgui.WindowPosToScreenPos({range.min, padded_x}),
-                                         imgui.WindowPosToScreenPos({range.min, padded_bottom}),
+                imgui.draw_list->AddLine(imgui.ViewportPosToWindowPos({range.min, padded_x}),
+                                         imgui.ViewportPosToWindowPos({range.min, padded_bottom}),
                                          range_lines_col);
-                imgui.draw_list->AddLine(imgui.WindowPosToScreenPos({range.max, padded_x}),
-                                         imgui.WindowPosToScreenPos({range.max, padded_bottom}),
+                imgui.draw_list->AddLine(imgui.ViewportPosToWindowPos({range.max, padded_x}),
+                                         imgui.ViewportPosToWindowPos({range.max, padded_bottom}),
                                          range_lines_col);
             }
         };
@@ -321,13 +334,12 @@ void GUIDoEnvelope(Gui* g,
 
         // Area under line, done with poly fill instead of a series of triangles/rects because it gives
         // better results
-        f32x2 area_points_a[4] = {bottom_left, attack_point_screen, decay_point_screen, point_below_decay};
-        f32x2 area_points_b[4] = {decay_point_screen,
-                                  sustain_point_screen,
-                                  release_point_screen,
-                                  point_below_decay};
-        imgui.draw_list->AddConvexPolyFilled(area_points_a, (int)ArraySize(area_points_a), area_col, false);
-        imgui.draw_list->AddConvexPolyFilled(area_points_b, (int)ArraySize(area_points_b), area_col, false);
+        auto const area_points_a =
+            Array {bottom_left, attack_point_screen, decay_point_screen, point_below_decay};
+        auto const area_points_b =
+            Array {decay_point_screen, sustain_point_screen, release_point_screen, point_below_decay};
+        imgui.draw_list->AddConvexPolyFilled(area_points_a, area_col, false);
+        imgui.draw_list->AddConvexPolyFilled(area_points_b, area_col, false);
 
         if (!greyed_out) {
             auto& voice_markers =
@@ -337,7 +349,7 @@ void GUIDoEnvelope(Gui* g,
 
             for (auto const voice_index : ::Range(k_num_voices)) {
                 auto const envelope_marker = voice_markers[voice_index];
-                if (envelope_marker.on && envelope_marker.layer_index == layer->index) {
+                if (envelope_marker.on && envelope_marker.layer_index == layer.index) {
                     f32 target_pos = 0;
                     f32 const env_pos = envelope_marker.pos / (f32)(UINT16_MAX);
                     ASSERT(env_pos >= 0 && env_pos <= 1);
@@ -367,7 +379,7 @@ void GUIDoEnvelope(Gui* g,
                         default: PanicIfReached();
                     }
 
-                    auto& cursor = g->envelope_voice_cursors[(int)type][voice_index];
+                    auto& cursor = g.envelope_voice_cursors[(int)type][voice_index];
                     if (cursor.marker_id != envelope_marker.id) {
                         cursor.cursor = bottom_left.x;
                         cursor.cursor_smoother.Reset();
@@ -390,31 +402,34 @@ void GUIDoEnvelope(Gui* g,
                     f32 cursor_y = attack_point_screen.y;
                     if (auto p = line.IntersectionWithVerticalLine(cursor_x)) cursor_y = p->y;
 
-                    draw::VoiceMarkerLine(imgui,
-                                          {cursor_x, cursor_y},
-                                          bottom_left.y - cursor_y,
-                                          bottom_left.x,
-                                          line);
+                    DrawVoiceMarkerLine(imgui,
+                                        f32x2 {cursor_x, cursor_y},
+                                        bottom_left.y - cursor_y,
+                                        bottom_left.x,
+                                        line);
                 }
             }
         }
 
         // lines
-        f32x2 line_points[5] = {bottom_left,
-                                attack_point_screen,
-                                decay_point_screen,
-                                sustain_point_screen,
-                                release_point_screen};
-        imgui.draw_list
-            ->AddPolyline(line_points, 5, greyed_out ? greyed_out_line_col : line_col, false, 1, true);
+        auto const line_points = Array {bottom_left,
+                                        attack_point_screen,
+                                        decay_point_screen,
+                                        sustain_point_screen,
+                                        release_point_screen};
+        imgui.draw_list->AddPolyline(line_points,
+                                     greyed_out ? greyed_out_line_col : line_col,
+                                     false,
+                                     1,
+                                     true);
 
         // handles
-        auto do_handle = [&](f32x2 point, u32 id) {
+        auto do_handle = [&](f32x2 point, imgui::Id id) {
             auto col = greyed_out ? greyed_out_handle_col : handle_col;
             if (imgui.IsHot(id)) {
-                auto background_col = colours::FromU32(col);
+                auto background_col = colour::FromU32(col);
                 background_col.a /= 2;
-                imgui.draw_list->AddCircleFilled(point, handle_size / 5, colours::ToU32(background_col));
+                imgui.draw_list->AddCircleFilled(point, handle_size / 5, colour::ToU32(background_col));
                 col = hover_col;
             }
             if (imgui.IsActive(id)) col = hover_col;
@@ -425,16 +440,16 @@ void GUIDoEnvelope(Gui* g,
         do_handle(release_point_screen, release_imgui_id);
     }
 
-    if (g->param_text_editor_to_open) {
+    if (g.param_text_editor_to_open) {
         ParamIndex const params[] = {
-            ParamIndexFromLayerParamIndex(layer->index, adsr_layer_params[0]),
-            ParamIndexFromLayerParamIndex(layer->index, adsr_layer_params[1]),
-            ParamIndexFromLayerParamIndex(layer->index, adsr_layer_params[2]),
-            ParamIndexFromLayerParamIndex(layer->index, adsr_layer_params[3]),
+            ParamIndexFromLayerParamIndex(layer.index, adsr_layer_params[0]),
+            ParamIndexFromLayerParamIndex(layer.index, adsr_layer_params[1]),
+            ParamIndexFromLayerParamIndex(layer.index, adsr_layer_params[2]),
+            ParamIndexFromLayerParamIndex(layer.index, adsr_layer_params[3]),
         };
 
-        auto const cut = imgui.Width() / 3;
-        Rect const edit_r {.xywh {cut, 0, imgui.Width() - (cut * 2), imgui.Height()}};
+        auto const cut = imgui.CurrentVpWidth() / 3;
+        Rect const edit_r {.xywh {cut, 0, imgui.CurrentVpWidth() - (cut * 2), imgui.CurrentVpHeight()}};
         HandleShowingTextEditorForParams(g, edit_r, params);
     }
 }

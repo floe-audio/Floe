@@ -5,7 +5,7 @@
 
 #include "foundation/foundation.hpp"
 
-struct Gui;
+struct GuiState;
 
 enum class BottomPanelType : u8 {
     Play,
@@ -17,4 +17,4 @@ struct BottomPanelState {
     BottomPanelType type = BottomPanelType::Play;
 };
 
-void BotPanel(Gui* g, Rect r);
+void BotPanel(GuiState& g, Rect r);

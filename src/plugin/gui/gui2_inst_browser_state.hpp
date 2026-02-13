@@ -6,6 +6,7 @@
 #include "gui2_common_browser.hpp"
 
 struct InstBrowserState {
+    imgui::Id const id;
     CommonBrowserState common_state {};
     bool scroll_to_show_selected = false;
 };

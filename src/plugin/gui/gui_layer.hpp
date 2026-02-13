@@ -5,9 +5,9 @@
 #include "engine/engine.hpp"
 #include "gui/gui_frame_context.hpp"
 #include "gui_framework/layout.hpp"
-#include "gui_widget_compounds.hpp"
+#include "old/gui_widget_compounds.hpp"
 
-struct Gui;
+struct GuiState;
 struct Engine;
 
 namespace layer_gui {
@@ -113,14 +113,14 @@ struct LayerLayout {
     PageType selected_page;
 };
 
-void Layout(Gui* g,
+void Layout(GuiState& g,
             LayerProcessor* layer,
             LayerLayoutTempIDs& ids,
             LayerLayout* layer_gui,
             f32 width,
             f32 height);
 
-void Draw(Gui* g,
+void Draw(GuiState& g,
           GuiFrameContext const& frame_context,
           Rect r,
           LayerProcessor* layer,

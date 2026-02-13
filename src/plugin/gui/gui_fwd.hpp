@@ -4,16 +4,14 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
-struct Gui;
+struct GuiState;
 struct Engine;
 struct DescribedParamValue;
+struct GuiFrameContext;
 
 namespace imgui {
 struct Context;
-using Id = u32;
-struct Window;
+using Id = u64;
+struct Viewport;
+struct TextInputResult;
 } // namespace imgui
-
-namespace graphics {
-struct Font;
-}

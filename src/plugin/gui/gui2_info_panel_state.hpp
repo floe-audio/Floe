@@ -12,7 +12,7 @@ struct InfoPanelState {
         Legal,
         Count,
     };
-    bool open {};
+    static constexpr u64 k_panel_id = SourceLocationHash();
     bool opened_before {};
     Tab tab {Tab::Libraries};
 };

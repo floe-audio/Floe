@@ -258,11 +258,11 @@ void LoadRandomInstrument(InstBrowserContext const& context, InstBrowserState& s
     LoadInstrument(context, state, cursor, true);
 }
 
-static void InstBrowserWaveformItems(GuiBoxSystem& box_system,
+static void InstBrowserWaveformItems(GuiBuilder& builder,
                                      InstBrowserContext& context,
                                      InstBrowserState& state,
                                      Box const root) {
-    auto const container = DoBox(box_system,
+    auto const container = DoBox(builder,
                                  {
                                      .parent = root,
                                      .layout =
@@ -298,14 +298,15 @@ static void InstBrowserWaveformItems(GuiBoxSystem& box_system,
         auto const is_favourite = IsFavourite(context.prefs, k_favourite_inst_key, inst_hash);
 
         auto const item = DoBrowserItem(
-            box_system,
+            builder,
             common_state,
             {
                 .parent = container,
+                .id_extra = (u64)waveform_type,
                 .text = k_waveform_type_names[ToInt(waveform_type)],
                 .tooltip = FunctionRef<String()>([&]() -> String {
                     return fmt::Format(
-                        box_system.arena,
+                        builder.arena,
                         "{} waveform. A simple waveform useful for layering with sample instruments.",
                         k_waveform_type_names[ToInt(waveform_type)]);
                 }),
@@ -328,14 +329,14 @@ static void InstBrowserWaveformItems(GuiBoxSystem& box_system,
     }
 }
 
-static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& context, InstBrowserState& state) {
+static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, InstBrowserState& state) {
     auto& common_state = state.common_state;
 
-    auto const root = DoBrowserItemsRoot(box_system);
+    auto const root = DoBrowserItemsRoot(builder);
 
-    DEFER { InstBrowserWaveformItems(box_system, context, state, root); };
+    DEFER { InstBrowserWaveformItems(builder, context, state, root); };
 
-    Optional<FolderNode*> previous_folder {};
+    Optional<u64> previous_folder_hash {};
     Optional<BrowserSection> folder_section {};
 
     auto const first =
@@ -349,20 +350,21 @@ static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& conte
         auto const& lib = *context.frame_context.libraries[cursor.lib_index];
         auto const& inst = *lib.sorted_instruments[cursor.inst_index];
         auto const& folder = inst.folder;
-        auto const new_folder = folder != previous_folder;
+        auto const folder_hash = folder->Hash();
+        auto const new_folder = folder_hash != previous_folder_hash;
 
         if (new_folder) {
-            previous_folder = folder;
+            previous_folder_hash = folder_hash;
 
             folder_section = BrowserSection {
                 .state = common_state,
-                .id = folder->Hash(),
+                .id = folder_hash,
                 .parent = root,
                 .folder = folder,
             };
         }
 
-        if (folder_section->Do(box_system).tag != BrowserSection::State::Collapsed) {
+        if (folder_section->Do(builder).tag != BrowserSection::State::Collapsed) {
             auto const inst_id = sample_lib::InstrumentId {lib.id, inst.id};
             auto const inst_hash = sample_lib::PersistentInstHash(inst);
             auto const is_current = context.layer.instrument_id == inst_id;
@@ -370,13 +372,14 @@ static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& conte
 
             // TODO: a Panic was hit here where the GUI changed between layout and render passes while
             // updating a floe.lua file. It's rare though.
-            auto const item = DoBrowserItem(box_system,
+            auto const item = DoBrowserItem(builder,
                                             common_state,
                                             {
-                                                .parent = folder_section->Do(box_system).Get<Box>(),
+                                                .parent = folder_section->Do(builder).Get<Box>(),
+                                                .id_extra = inst_hash,
                                                 .text = inst.name,
                                                 .tooltip = FunctionRef<String()>([&]() -> String {
-                                                    DynamicArray<char> buf {box_system.arena};
+                                                    DynamicArray<char> buf {builder.arena};
                                                     fmt::Append(buf,
                                                                 "{} from {} by {}.\n\n",
                                                                 inst.name,
@@ -406,7 +409,7 @@ static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& conte
                                                         previous_library = &lib;
                                                         auto const imgs =
                                                             GetLibraryImages(context.library_images,
-                                                                             box_system.imgui,
+                                                                             builder.imgui,
                                                                              lib.id,
                                                                              context.sample_library_server,
                                                                              LibraryImagesTypes::Icon);
@@ -423,11 +426,11 @@ static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& conte
                                                 .store = context.persistent_store,
                                             });
 
-            if (is_current &&
-                box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
-                Exchange(state.scroll_to_show_selected, false)) {
-                box_system.imgui.ScrollWindowToShowRectangle(
-                    layout::GetRect(box_system.layout, item.box.layout_id));
+            if (is_current) {
+                if (auto const r = BoxRect(builder, item.box)) {
+                    if (Exchange(state.scroll_to_show_selected, false))
+                        builder.imgui.ScrollViewportToShowRectangle(*r);
+                }
             }
 
             if (item.fired) {
@@ -437,12 +440,8 @@ static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& conte
                     LoadInstrument(context.engine, context.layer.index, inst_id);
             }
 
-            if (item.favourite_toggled) {
-                dyn::Append(box_system.state->deferred_actions,
-                            [&prefs = context.prefs, hash = inst_hash, is_favourite]() {
-                                ToggleFavourite(prefs, k_favourite_inst_key, hash, is_favourite);
-                            });
-            }
+            if (item.favourite_toggled)
+                ToggleFavourite(context.prefs, k_favourite_inst_key, inst_hash, is_favourite);
         }
 
         if (auto next = IterateInstrument(context, state, cursor, SearchDirection::Forward, false)) {
@@ -454,17 +453,17 @@ static void InstBrowserItems(GuiBoxSystem& box_system, InstBrowserContext& conte
     }
 }
 
-void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, InstBrowserState& state) {
-    if (!state.common_state.open) return;
+void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBrowserState& state) {
+    if (!builder.imgui.IsModalOpen(state.id)) return;
     auto const& libs = context.frame_context.libraries;
 
     HashTable<String, FilterItemInfo> tags {};
     auto libraries =
-        OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(box_system.arena, libs.size + 1);
-    auto library_authors = OrderedHashTable<String, FilterItemInfo>::Create(box_system.arena, libs.size + 1);
+        OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(builder.arena, libs.size + 1);
+    auto library_authors = OrderedHashTable<String, FilterItemInfo>::Create(builder.arena, libs.size + 1);
 
-    auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(box_system.arena, 16);
-    auto root_folder = FolderRootSet::Create(box_system.arena, 8);
+    auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(builder.arena, 16);
+    auto root_folder = FolderRootSet::Create(builder.arena, 8);
 
     FilterItemInfo favourites_info {};
 
@@ -474,7 +473,7 @@ void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, I
         auto& lib = libraries.FindOrInsertWithoutGrowing(l->id, {}).element.data;
         auto& author = library_authors.FindOrInsertWithoutGrowing(l->author, {}).element.data;
 
-        root_folder.InsertGrowIfNeeded(box_system.arena,
+        root_folder.InsertGrowIfNeeded(builder.arena,
                                        &l->root_folders[ToInt(sample_lib::ResourceType::Instrument)]);
 
         for (auto const& inst : l->sorted_instruments) {
@@ -496,19 +495,18 @@ void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, I
             }
 
             for (auto f = inst->folder; f; f = f->parent) {
-                auto& i = folders.FindOrInsertGrowIfNeeded(box_system.arena, f, {}).element.data;
+                auto& i = folders.FindOrInsertGrowIfNeeded(builder.arena, f, {}).element.data;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
             }
 
             for (auto const& [tag, tag_hash] : inst->tags) {
-                auto& i = tags.FindOrInsertGrowIfNeeded(box_system.arena, tag, {}, tag_hash).element.data;
+                auto& i = tags.FindOrInsertGrowIfNeeded(builder.arena, tag, {}, tag_hash).element.data;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
             }
             if (!inst->tags.size) {
-                auto& i =
-                    tags.FindOrInsertGrowIfNeeded(box_system.arena, k_untagged_tag_name, {}).element.data;
+                auto& i = tags.FindOrInsertGrowIfNeeded(builder.arena, k_untagged_tag_name, {}).element.data;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
             }
@@ -518,6 +516,7 @@ void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, I
     FilterCardOptions const waveform_card {
         .common =
             {
+                .id_extra = SourceLocationHash(),
                 .is_selected =
                     state.common_state.selected_library_hashes.Contains(Hash(k_waveform_library_id)),
                 .text = "Waveforms",
@@ -538,21 +537,22 @@ void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, I
 
     // IMPORTANT: we create the options struct inside the call so that lambdas and values from
     // statement-expressions live long enough.
-    DoBrowserPopup(
-        box_system,
+    DoBrowserModal(
+        builder,
         {
+            .browser_id = state.id,
             .sample_library_server = context.sample_library_server,
             .preferences = context.prefs,
             .store = context.persistent_store,
             .state = state.common_state,
         },
         BrowserPopupOptions {
-            .title = fmt::Format(box_system.arena, "Layer {} Instrument", context.layer.index + 1),
+            .title = fmt::Format(builder.arena, "Layer {} Instrument", context.layer.index + 1),
             .height = ({
                 auto const window_height = GuiIo().in.window_size.height;
                 auto const button_bottom = state.common_state.absolute_button_rect.Bottom();
                 auto const available_height = window_height - button_bottom - 20;
-                box_system.imgui.PixelsToVw(available_height);
+                GuiIo().PixelsToWw(available_height);
             }),
             .rhs_width = 300,
             .filters_col_width = 250,
@@ -560,12 +560,12 @@ void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, I
             .rhs_top_button =
                 BrowserPopupOptions::Button {
                     .text = fmt::Format(
-                        box_system.arena,
+                        builder.arena,
                         "Unload {}",
                         context.layer.instrument_id.tag == InstrumentType::None ? "Instrument"_s : ({
                             auto n = context.layer.InstName();
                             if (n.size > 14)
-                                n = fmt::Format(box_system.arena,
+                                n = fmt::Format(builder.arena,
                                                 "{}…",
                                                 n.SubSpan(0, FindUtf8TruncationPoint(n, 14)));
                             n;
@@ -574,10 +574,10 @@ void DoInstBrowserPopup(GuiBoxSystem& box_system, InstBrowserContext& context, I
                     .disabled = context.layer.instrument_id.tag == InstrumentType::None,
                     .on_fired = TrivialFunctionRef<void()>([&]() {
                                     LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
-                                    state.common_state.open = false;
-                                }).CloneObject(box_system.arena),
+                                    builder.imgui.CloseTopModal();
+                                }).CloneObject(builder.arena),
                 },
-            .rhs_do_items = [&](GuiBoxSystem& box_system) { InstBrowserItems(box_system, context, state); },
+            .rhs_do_items = [&](GuiBuilder& builder) { InstBrowserItems(builder, context, state); },
             .show_search = true,
             .filter_search_placeholder_text = "Search libraries/tags",
             .item_search_placeholder_text = "Search instruments",

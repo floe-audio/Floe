@@ -5,19 +5,18 @@
 #include "gui/gui2_confirmation_dialog_state.hpp"
 #include "gui2_common_modal_panel.hpp"
 
-static void ConfirmationDialog(GuiBoxSystem& box_system, ConfirmationDialogState& state) {
-    auto const root = DoModalRootBox(box_system);
+static void ConfirmationDialog(GuiBuilder& builder, ConfirmationDialogState& state) {
+    auto const root = DoModalRootBox(builder);
 
-    DoModalHeader(box_system,
+    DoModalHeader(builder,
                   {
                       .parent = root,
                       .title = state.title,
-                      .on_close = [&state]() { state.open = false; },
                   });
 
-    DoModalDivider(box_system, root, {.horizontal = true});
+    DoModalDivider(builder, root, {.horizontal = true});
 
-    auto const panel = DoBox(box_system,
+    auto const panel = DoBox(builder,
                              {
                                  .parent = root,
                                  .layout {
@@ -30,7 +29,7 @@ static void ConfirmationDialog(GuiBoxSystem& box_system, ConfirmationDialogState
                                  },
                              });
 
-    DoBox(box_system,
+    DoBox(builder,
           {
               .parent = panel,
               .text = state.body_text,
@@ -39,7 +38,7 @@ static void ConfirmationDialog(GuiBoxSystem& box_system, ConfirmationDialogState
               .font = FontType::Body,
           });
 
-    auto const buttons_container = DoBox(box_system,
+    auto const buttons_container = DoBox(builder,
                                          {
                                              .parent = panel,
                                              .layout {
@@ -50,32 +49,25 @@ static void ConfirmationDialog(GuiBoxSystem& box_system, ConfirmationDialogState
                                              },
                                          });
 
-    if (TextButton(box_system, buttons_container, {.text = "Cancel"})) {
-        state.open = false;
+    if (TextButton(builder, buttons_container, {.text = "Cancel"})) {
+        builder.imgui.CloseTopModal();
         if (state.callback) state.callback(ConfirmationDialogResult::Cancel);
     }
 
-    if (TextButton(box_system, buttons_container, {.text = "OK"})) {
-        state.open = false;
+    if (TextButton(builder, buttons_container, {.text = "OK"})) {
+        builder.imgui.CloseTopModal();
         if (state.callback) state.callback(ConfirmationDialogResult::Ok);
     }
 }
 
-PUBLIC void DoConfirmationDialog(GuiBoxSystem& box_system, ConfirmationDialogState& state) {
-    if (!state.open) return;
-    RunOrEnqueuePanel(box_system,
-                      Panel {
-                          .run = [&state](GuiBoxSystem& b) { ConfirmationDialog(b, state); },
-                          .data =
-                              ModalPanel {
-                                  .r = CentredRect({.pos = 0, .size = GuiIo().in.window_size.ToFloat2()},
-                                                   f32x2 {box_system.imgui.VwToPixels(300),
-                                                          box_system.imgui.VwToPixels(220)}),
-                                  .imgui_id = box_system.imgui.GetID("confirmation"),
-                                  .on_close = [&state]() { state.open = false; },
-                                  .close_on_click_outside = true,
-                                  .darken_background = true,
-                                  .disable_other_interaction = true,
-                              },
-                      });
+PUBLIC void DoConfirmationDialog(GuiBuilder& builder, ConfirmationDialogState& state) {
+    if (!builder.imgui.IsModalOpen(state.k_id)) return;
+    DoBoxViewport(builder,
+                  {
+                      .run = [&state](GuiBuilder& b) { ConfirmationDialog(b, state); },
+                      .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
+                          GuiIo().WwToPixels(f32x2 {300.0f, 220.0f})),
+                      .imgui_id = state.k_id,
+                      .viewport_config = k_default_modal_viewport,
+                  });
 }

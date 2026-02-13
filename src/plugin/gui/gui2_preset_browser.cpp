@@ -10,7 +10,7 @@
 #include "gui/gui2_common_modal_panel.hpp"
 #include "gui/gui2_notifications.hpp"
 #include "gui2_common_browser.hpp"
-#include "gui_framework/gui_box_system.hpp"
+#include "gui_framework/gui_builder.hpp"
 #include "preset_server/preset_server.hpp"
 
 constexpr String k_no_preset_author = "<no author>"_s;
@@ -292,13 +292,13 @@ void LoadRandomPreset(PresetBrowserContext const& context, PresetBrowserState& s
     LoadPreset(context, state, cursor, true);
 }
 
-void PresetRightClickMenu(GuiBoxSystem& box_system,
+void PresetRightClickMenu(GuiBuilder& builder,
                           BrowserPopupContext& common_context,
                           BrowserPopupOptions const& options) {
     auto& context = *(PresetBrowserContext*)options.right_click_menu_user_data;
     auto const& menu_state = common_context.state.right_click_menu_state;
 
-    auto const root = DoBox(box_system,
+    auto const root = DoBox(builder,
                             {
                                 .layout {
                                     .size = layout::k_hug_contents,
@@ -320,7 +320,7 @@ void PresetRightClickMenu(GuiBoxSystem& box_system,
         return k_nullopt;
     };
 
-    if (MenuItem(box_system,
+    if (MenuItem(builder,
                  root,
                  {
                      .text = "Open Containing Folder",
@@ -329,10 +329,10 @@ void PresetRightClickMenu(GuiBoxSystem& box_system,
             .button_fired) {
         if (auto const preset = find_preset(menu_state.item_hash)) {
             OpenFolderInFileBrowser(
-                path::Join(box_system.arena, Array {preset->folder.scan_folder, preset->folder.folder}));
+                path::Join(builder.arena, Array {preset->folder.scan_folder, preset->folder.folder}));
         }
     }
-    if (MenuItem(box_system,
+    if (MenuItem(builder,
                  root,
                  {
                      .text = "Send file to " TRASH_NAME,
@@ -341,8 +341,8 @@ void PresetRightClickMenu(GuiBoxSystem& box_system,
             .button_fired) {
         if (auto const preset = find_preset(menu_state.item_hash)) {
             auto const outcome =
-                TrashFileOrDirectory(preset->folder.FullPathForPreset(preset->preset, box_system.arena),
-                                     box_system.arena);
+                TrashFileOrDirectory(preset->folder.FullPathForPreset(preset->preset, builder.arena),
+                                     builder.arena);
             auto const error_id = ({
                 auto id = HashInit();
                 HashUpdate(id, "preset-trash"_s);
@@ -360,13 +360,13 @@ void PresetRightClickMenu(GuiBoxSystem& box_system,
     // TODO: add rename option
 }
 
-void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
+void PresetFolderRightClickMenu(GuiBuilder& builder,
                                 BrowserPopupContext& common_context,
                                 BrowserPopupOptions const& options) {
     auto& context = *(PresetBrowserContext*)options.right_click_menu_user_data;
     auto const& menu_state = common_context.state.right_click_menu_state;
 
-    auto const root = DoBox(box_system,
+    auto const root = DoBox(builder,
                             {
                                 .layout {
                                     .size = layout::k_hug_contents,
@@ -378,17 +378,17 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
     auto const folder = FindFolderByHash(context, menu_state.item_hash);
     if (!folder) return;
 
-    if (MenuItem(box_system,
+    if (MenuItem(builder,
                  root,
                  {
-                     .text = fmt::Format(box_system.arena, "Open Folder in {}", GetFileBrowserAppName()),
+                     .text = fmt::Format(builder.arena, "Open Folder in {}", GetFileBrowserAppName()),
                      .is_selected = false,
                  })
             .button_fired) {
-        if (auto const filepath = FolderPath(folder, box_system.arena)) OpenFolderInFileBrowser(*filepath);
+        if (auto const filepath = FolderPath(folder, builder.arena)) OpenFolderInFileBrowser(*filepath);
     }
 
-    if (MenuItem(box_system,
+    if (MenuItem(builder,
                  root,
                  {
                      .text = "Uninstall (Send folder to " TRASH_NAME ")",
@@ -403,7 +403,7 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
                 item->message =
                     "This folder contains one or more preset banks as subfolders. Please delete them first."_s;
             }
-        } else if (auto const folder_path = FolderPath(folder, box_system.arena)) {
+        } else if (auto const folder_path = FolderPath(folder, builder.arena)) {
             auto cloned_path = Malloc::Instance().Clone(*folder_path);
 
             dyn::AssignFitInCapacity(context.confirmation_dialog_state.title, "Delete Preset Folder");
@@ -449,20 +449,19 @@ void PresetFolderRightClickMenu(GuiBoxSystem& box_system,
                 }
             };
 
-            context.confirmation_dialog_state.open = true;
-            common_context.state.open = false;
+            builder.imgui.OpenModalViewport(context.confirmation_dialog_state.k_id);
         }
     }
 }
 
-void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context, PresetBrowserState& state) {
-    auto const root = DoBrowserItemsRoot(box_system);
+void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, PresetBrowserState& state) {
+    auto const root = DoBrowserItemsRoot(builder);
 
     auto const first =
         IteratePreset(context, state, {.folder_index = 0, .preset_index = 0}, SearchDirection::Forward, true);
     if (!first) return;
 
-    PresetFolderListing const* previous_folder = nullptr;
+    Optional<u64> previous_folder_hash = {};
 
     Optional<BrowserSection> folder_section;
 
@@ -470,13 +469,14 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
     while (true) {
         auto const& preset_folder = context.presets_snapshot.folders[cursor.folder_index];
         auto const& preset = preset_folder->folder->presets[cursor.preset_index];
-        auto const new_folder = preset_folder != previous_folder;
+        auto const folder_hash = preset_folder->node.Hash();
+        auto const new_folder = folder_hash != previous_folder_hash;
 
         if (new_folder) {
-            previous_folder = preset_folder;
+            previous_folder_hash = folder_hash;
             folder_section = BrowserSection {
                 .state = state.common_state,
-                .id = preset_folder->node.Hash(),
+                .id = folder_hash,
                 .parent = root,
                 .folder = &preset_folder->node,
                 .skip_root_folder = true,
@@ -484,7 +484,7 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
             };
         }
 
-        if (folder_section->Do(box_system).tag != BrowserSection::State::Collapsed) {
+        if (folder_section->Do(builder).tag != BrowserSection::State::Collapsed) {
             auto const is_current = ({
                 bool c {};
                 if (auto const current_path = CurrentPath(context.engine))
@@ -495,13 +495,14 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
             auto const is_favourite = IsFavourite(context.prefs, FavouriteItemKey(), preset.file_hash);
 
             auto const item = DoBrowserItem(
-                box_system,
+                builder,
                 state.common_state,
                 BrowserItemOptions {
-                    .parent = folder_section->Do(box_system).Get<Box>(),
+                    .parent = folder_section->Do(builder).Get<Box>(),
+                    .id_extra = preset.full_path_hash,
                     .text = preset.name,
                     .tooltip = FunctionRef<String()>([&preset,
-                                                      &scratch = box_system.arena,
+                                                      &scratch = builder.arena,
                                                       &frame_context = context.frame_context]() -> String {
                         DynamicArray<char> buffer {scratch};
 
@@ -551,11 +552,11 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
                         // Mirage Compatibility library and unknown libraries.
 
                         decltype(BrowserItemOptions::icons) icons {};
-                        Optional<graphics::ImageID> mirage_compat_icon = k_nullopt;
+                        Optional<ImageID> mirage_compat_icon = k_nullopt;
                         usize num_unknown = 0;
                         for (auto const [lib_id, _] : preset.used_libraries) {
                             auto const imgs = GetLibraryImages(context.library_images,
-                                                               box_system.imgui,
+                                                               builder.imgui,
                                                                lib_id,
                                                                context.sample_library_server,
                                                                LibraryImagesTypes::All);
@@ -582,17 +583,17 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
                 });
 
             // Right-click menu.
-            DoRightClickMenuForBox(box_system,
+            DoRightClickMenuForBox(builder,
                                    state.common_state,
                                    item.box,
                                    preset.full_path_hash,
                                    PresetRightClickMenu);
 
-            if (is_current &&
-                box_system.state->pass == BoxSystemCurrentPanelState::Pass::HandleInputAndRender &&
-                Exchange(state.scroll_to_show_selected, false)) {
-                box_system.imgui.ScrollWindowToShowRectangle(
-                    layout::GetRect(box_system.layout, item.box.layout_id));
+            if (is_current) {
+                if (auto const r = BoxRect(builder, item.box)) {
+                    if (Exchange(state.scroll_to_show_selected, false))
+                        builder.imgui.ScrollViewportToShowRectangle(*r);
+                }
             }
 
             if (item.fired) {
@@ -603,10 +604,7 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
             }
 
             if (item.favourite_toggled)
-                dyn::Append(box_system.state->deferred_actions,
-                            [&prefs = context.prefs, hash = preset.file_hash, is_favourite]() {
-                                ToggleFavourite(prefs, FavouriteItemKey(), hash, is_favourite);
-                            });
+                ToggleFavourite(context.prefs, FavouriteItemKey(), preset.file_hash, is_favourite);
         }
 
         if (auto next = IteratePreset(context, state, cursor, SearchDirection::Forward, false)) {
@@ -618,7 +616,7 @@ void PresetBrowserItems(GuiBoxSystem& box_system, PresetBrowserContext& context,
     }
 }
 
-void PresetBrowserExtraFilters(GuiBoxSystem& box_system,
+void PresetBrowserExtraFilters(GuiBuilder& builder,
                                PresetBrowserContext& context,
                                OrderedHashTable<String, FilterItemInfo> const& preset_authors,
                                Array<FilterItemInfo, ToInt(PresetFormat::Count)>& preset_type_filter_info,
@@ -654,15 +652,16 @@ void PresetBrowserExtraFilters(GuiBoxSystem& box_system,
                                      state.common_state.filter_search))
                 continue;
 
-            if (section.Do(box_system) == BrowserSection::State::Collapsed) break;
+            if (section.Do(builder) == BrowserSection::State::Collapsed) break;
 
-            DoFilterButton(box_system,
+            DoFilterButton(builder,
                            state.common_state,
                            preset_type_filter_info[type_index],
                            {
                                .common =
                                    {
-                                       .parent = section.Do(box_system).Get<Box>(),
+                                       .parent = section.Do(builder).Get<Box>(),
+                                       .id_extra = (u64)type_index,
                                        .is_selected = is_selected,
                                        .text = ({
                                            String s {};
@@ -693,17 +692,18 @@ void PresetBrowserExtraFilters(GuiBoxSystem& box_system,
 
         for (auto const [author, author_info, author_hash] : preset_authors) {
             if (!MatchesFilterSearch(author, state.common_state.filter_search)) continue;
-            if (section.Do(box_system) == BrowserSection::State::Collapsed) break;
+            if (section.Do(builder) == BrowserSection::State::Collapsed) break;
 
             auto const is_selected = state.selected_author_hashes.Contains(author_hash);
 
-            DoFilterButton(box_system,
+            DoFilterButton(builder,
                            state.common_state,
                            author_info,
                            {
                                .common =
                                    {
-                                       .parent = section.Do(box_system).Get<Box>(),
+                                       .parent = section.Do(builder).Get<Box>(),
+                                       .id_extra = author_hash,
                                        .is_selected = is_selected,
                                        .text = author,
                                        .hashes = state.selected_author_hashes,
@@ -715,29 +715,29 @@ void PresetBrowserExtraFilters(GuiBoxSystem& box_system,
     }
 }
 
-void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, PresetBrowserState& state) {
-    if (!state.common_state.open) return;
+void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetBrowserState& state) {
+    if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
 
-    context.Init(box_system.arena);
+    context.Init(builder.arena);
     DEFER { context.Deinit(); };
 
-    auto tags = HashTable<String, FilterItemInfo>::Create(box_system.arena,
-                                                          context.presets_snapshot.used_tags.size + 1);
+    auto tags =
+        HashTable<String, FilterItemInfo>::Create(builder.arena, context.presets_snapshot.used_tags.size + 1);
 
     auto libraries = OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(
-        box_system.arena,
+        builder.arena,
         context.presets_snapshot.used_libraries.size);
     auto library_authors =
-        OrderedHashTable<String, FilterItemInfo>::Create(box_system.arena,
+        OrderedHashTable<String, FilterItemInfo>::Create(builder.arena,
                                                          context.presets_snapshot.used_libraries.size);
 
     auto preset_authors =
-        OrderedHashTable<String, FilterItemInfo>::Create(box_system.arena,
+        OrderedHashTable<String, FilterItemInfo>::Create(builder.arena,
                                                          context.presets_snapshot.authors.size + 1);
 
     Array<FilterItemInfo, ToInt(PresetFormat::Count)> preset_type_filter_info;
 
-    auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(box_system.arena, 64);
+    auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(builder.arena, 64);
 
     FilterItemInfo favourites_info {};
 
@@ -795,7 +795,7 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
             }
 
             for (auto f = &folder->node; f; f = f->parent) {
-                auto& i = folders.FindOrInsertGrowIfNeeded(box_system.arena, f, {}).element.data;
+                auto& i = folders.FindOrInsertGrowIfNeeded(builder.arena, f, {}).element.data;
                 if (ContainingPresetBank(f) != folder_pack) break;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
@@ -805,9 +805,10 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
 
     // IMPORTANT: we create the options struct inside the call so that lambdas and values from
     // statement-expressions live long enough.
-    DoBrowserPopup(
-        box_system,
+    DoBrowserModal(
+        builder,
         {
+            .browser_id = state.k_panel_id,
             .sample_library_server = context.sample_library_server,
             .preferences = context.prefs,
             .store = context.persistent_store,
@@ -819,12 +820,12 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                 auto const window_height = GuiIo().in.window_size.height;
                 auto const button_bottom = state.common_state.absolute_button_rect.Bottom();
                 auto const available_height = window_height - button_bottom - 20;
-                box_system.imgui.PixelsToVw(available_height);
+                GuiIo().PixelsToWw(available_height);
             }),
             .rhs_width = 320,
             .filters_col_width = 320,
             .item_type_name = "preset",
-            .rhs_do_items = [&](GuiBoxSystem& box_system) { PresetBrowserItems(box_system, context, state); },
+            .rhs_do_items = [&](GuiBuilder& builder) { PresetBrowserItems(builder, context, state); },
             .filter_search_placeholder_text = "Search preset banks/tags",
             .item_search_placeholder_text = "Search presets",
             .on_load_previous = [&]() { LoadAdjacentPreset(context, state, SearchDirection::Backward); },
@@ -846,8 +847,8 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                     .tags = tags,
                 },
             .do_extra_filters_top =
-                [&](GuiBoxSystem& box_system, Box const& parent, u8& num_sections) {
-                    if (num_sections) DoModalDivider(box_system, parent, {.horizontal = true});
+                [&](GuiBuilder& builder, Box const& parent, u8& num_sections) {
+                    if (num_sections) DoModalDivider(builder, parent, {.horizontal = true});
                     ++num_sections;
 
                     auto constexpr k_section_id = HashFnv1a("preset-folders-section");
@@ -867,23 +868,26 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                         auto const folder_name =
                             folder->display_name.size ? folder->display_name : folder->name;
                         if (!MatchesFilterSearch(folder_name, state.common_state.filter_search)) return;
-                        if (section.Do(box_system).tag == BrowserSection::State::Collapsed) return;
+                        if (section.Do(builder).tag == BrowserSection::State::Collapsed) return;
+
+                        auto const folder_hash = folder->Hash();
 
                         DoFilterCard(
-                            box_system,
+                            builder,
                             state.common_state,
                             info,
                             FilterCardOptions {
                                 .common =
                                     {
-                                        .parent = section.Do(box_system).Get<Box>(),
-                                        .is_selected = state.common_state.selected_folder_hashes.Contains(
-                                            folder->Hash()),
+                                        .parent = section.Do(builder).Get<Box>(),
+                                        .id_extra = folder_hash,
+                                        .is_selected =
+                                            state.common_state.selected_folder_hashes.Contains(folder_hash),
                                         .text = folder_name,
                                         .tooltip = folder->display_name.size ? TooltipString {folder->name}
                                                                              : k_nullopt,
                                         .hashes = state.common_state.selected_folder_hashes,
-                                        .clicked_hash = folder->Hash(),
+                                        .clicked_hash = folder_hash,
                                         .filter_mode = state.common_state.filter_mode,
                                     },
                                 .library_id = AllPresetsSingleLibrary(*folder),
@@ -910,8 +914,8 @@ void DoPresetBrowser(GuiBoxSystem& box_system, PresetBrowserContext& context, Pr
                     }
                 },
             .do_extra_filters_bottom =
-                [&](GuiBoxSystem& box_system, Box const& parent, u8& num_sections) {
-                    PresetBrowserExtraFilters(box_system,
+                [&](GuiBuilder& builder, Box const& parent, u8& num_sections) {
+                    PresetBrowserExtraFilters(builder,
                                               context,
                                               preset_authors,
                                               preset_type_filter_info,

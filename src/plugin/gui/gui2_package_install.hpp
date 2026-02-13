@@ -6,7 +6,7 @@
 #include "engine/package_installation.hpp"
 #include "gui/gui2_common_modal_panel.hpp"
 #include "gui/gui2_notifications.hpp"
-#include "gui_framework/gui_box_system.hpp"
+#include "gui_framework/gui_builder.hpp"
 
 PUBLIC String InstallationOptionAskUserPretext(package::InstallJob::Component const& comp,
                                                ArenaAllocator& arena) {
@@ -68,8 +68,8 @@ PUBLIC String InstallationOptionAskUserPretext(package::InstallJob::Component co
                        package::ComponentTypeString(comp.component.type));
 }
 
-PUBLIC void PackageInstallAlertsPanel(GuiBoxSystem& box_system, package::InstallJobs& package_install_jobs) {
-    auto const root = DoBox(box_system,
+PUBLIC void PackageInstallAlertsPanel(GuiBuilder& builder, package::InstallJobs& package_install_jobs) {
+    auto const root = DoBox(builder,
                             {
                                 .layout {
                                     .size = layout::k_fill_parent,
@@ -80,7 +80,7 @@ PUBLIC void PackageInstallAlertsPanel(GuiBoxSystem& box_system, package::Install
                                 },
                             });
 
-    DoBox(box_system,
+    DoBox(builder,
           {
               .parent = root,
               .text = "File Conflict",
@@ -95,21 +95,21 @@ PUBLIC void PackageInstallAlertsPanel(GuiBoxSystem& box_system, package::Install
             if (!package::UserInputIsRequired(component.existing_installation_status)) continue;
 
             //
-            auto const container = DoBox(box_system,
+            auto const container = DoBox(builder,
                                          {
                                              .parent = root,
                                              .layout {
                                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                 .contents_gap = style::k_prefs_medium_gap,
+                                                 .contents_gap = style::k_medium_gap,
                                                  .contents_direction = layout::Direction::Column,
                                                  .contents_align = layout::Alignment::Start,
                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                              },
                                          });
 
-            auto const text = InstallationOptionAskUserPretext(component, box_system.arena);
+            auto const text = InstallationOptionAskUserPretext(component, builder.arena);
 
-            DoBox(box_system,
+            DoBox(builder,
                   {
                       .parent = container,
                       .text = text,
@@ -118,30 +118,30 @@ PUBLIC void PackageInstallAlertsPanel(GuiBoxSystem& box_system, package::Install
                       .font = FontType::Body,
                   });
 
-            auto const button_row = DoBox(box_system,
+            auto const button_row = DoBox(builder,
                                           {
                                               .parent = container,
                                               .layout {
                                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                  .contents_gap = style::k_prefs_medium_gap,
+                                                  .contents_gap = style::k_medium_gap,
                                                   .contents_direction = layout::Direction::Row,
                                                   .contents_align = layout::Alignment::Start,
                                               },
                                           });
 
-            if (TextButton(box_system, button_row, {.text = "Skip"}))
+            if (TextButton(builder, button_row, {.text = "Skip"}))
                 component.user_decision = package::InstallJob::UserDecision::Skip;
             if (component.install_config.allow_overwrite &&
-                TextButton(box_system, button_row, {.text = "Overwrite"}))
+                TextButton(builder, button_row, {.text = "Overwrite"}))
                 component.user_decision = package::InstallJob::UserDecision::Overwrite;
             if (component.component.type == package::ComponentType::Presets &&
-                TextButton(box_system, button_row, {.text = "Keep Both"}))
+                TextButton(builder, button_row, {.text = "Keep Both"}))
                 component.user_decision = package::InstallJob::UserDecision::InstallCopy;
         }
     }
 }
 
-PUBLIC void DoPackageInstallNotifications(GuiBoxSystem& box_system,
+PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                                           package::InstallJobs& package_install_jobs,
                                           Notifications& notifications,
                                           ThreadsafeErrorNotifications& error_notifs,
@@ -203,7 +203,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBoxSystem& box_system,
                         if (!num_truncated) {
                             if (!dyn::AppendSpan(
                                     buffer,
-                                    fmt::Format(box_system.arena,
+                                    fmt::Format(builder.arena,
                                                 "{} {} {}\n",
                                                 path::FilenameWithoutExtension(component.component.path),
                                                 package::ComponentTypeString(component.component.type),
@@ -257,24 +257,22 @@ PUBLIC void DoPackageInstallNotifications(GuiBoxSystem& box_system,
         }
 
         if (user_input_needed) {
-            RunOrEnqueuePanel(
-                box_system,
-                Panel {
+            DoBoxViewport(
+                builder,
+                {
                     .run = [&package_install_jobs](
-                               GuiBoxSystem& b) { PackageInstallAlertsPanel(b, package_install_jobs); },
-                    .data =
-                        ModalPanel {
-                            .r = CentredRect(
-                                {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()},
-                                f32x2 {box_system.imgui.VwToPixels(style::k_install_dialog_width),
-                                       box_system.imgui.VwToPixels(style::k_install_dialog_height)}),
-                            .imgui_id = box_system.imgui.GetID("install alerts"),
-                            .on_close = {},
-                            .close_on_click_outside = false,
-                            .darken_background = true,
-                            .disable_other_interaction = true,
-                            .auto_height = false,
-                        },
+                               GuiBuilder& b) { PackageInstallAlertsPanel(b, package_install_jobs); },
+                    .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
+                        GuiIo().WwToPixels(f32x2 {400, 300})),
+                    .imgui_id = builder.imgui.MakeId("install alerts"),
+                    .viewport_config = ({
+                        auto cfg = k_default_modal_viewport;
+                        cfg.mode = imgui::ViewportMode::Floating;
+                        cfg.exclusive_focus = true;
+                        cfg.z_order = 100;
+                        cfg;
+                    }),
+                    .debug_name = "pkg-user-input-dialog",
                 });
         }
     } else {

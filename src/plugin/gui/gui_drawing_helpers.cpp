@@ -3,53 +3,37 @@
 
 #include "gui_drawing_helpers.hpp"
 
-#include <float.h>
-
 #include "foundation/foundation.hpp"
 
 #include "gui_framework/colours.hpp"
+#include "gui_framework/fonts.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 
-namespace draw {
-
-void DropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding_opt) {
-    auto const rounding = rounding_opt ? *rounding_opt : LiveSize(imgui, UiSizeId::CornerRounding);
-    auto const blur = LiveSize(imgui, UiSizeId::WindowDropShadowBlur);
-    imgui.draw_list->AddDropShadow(r.Min(),
-                                   r.Max(),
-                                   LiveCol(imgui, UiColMap::WindowDropShadow),
-                                   blur,
-                                   rounding);
+void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding_opt) {
+    auto const rounding = rounding_opt ? *rounding_opt : LiveSize(UiSizeId::CornerRounding);
+    auto const blur = LiveSize(UiSizeId::ViewportDropShadowBlur);
+    imgui.draw_list->AddDropShadow(r.Min(), r.Max(), LiveCol(UiColMap::ViewportDropShadow), blur, rounding);
 }
 
-f32x2 GetTextSize(graphics::Font* font, String str, Optional<f32> wrap_width) {
-    auto const result = font->CalcTextSizeA(font->font_size, FLT_MAX, wrap_width.ValueOr(0), str);
-    return {result.x, result.y};
-}
-
-f32 GetTextWidth(graphics::Font* font, String str, Optional<f32> wrap_width) {
-    return GetTextSize(font, str, wrap_width).x;
-}
-
-void VoiceMarkerLine(imgui::Context const& imgui,
-                     f32x2 pos,
-                     f32 height,
-                     f32 left_min,
-                     Optional<Line> upper_line_opt,
-                     f32 opacity) {
+void DrawVoiceMarkerLine(imgui::Context const& imgui,
+                         f32x2 pos,
+                         f32 height,
+                         f32 left_min,
+                         Optional<Line> upper_line_opt,
+                         f32 opacity) {
     {
 
         constexpr f32 k_tail_size_max = 10;
         f32 const tail_size = Min(pos.x - left_min, k_tail_size_max);
 
         if (tail_size > 1) {
-            auto const aa = imgui.draw_list->renderer->fill_anti_alias;
-            imgui.draw_list->renderer->fill_anti_alias = false;
+            auto const aa = imgui.draw_list->renderer.fill_anti_alias;
+            imgui.draw_list->renderer.fill_anti_alias = false;
             auto const darkened_col =
-                colours::ChangeBrightness(LiveCol(imgui, UiColMap::Waveform_LoopVoiceMarkers), 0.7f);
-            auto const col = colours::WithAlpha(darkened_col, (u8)MapFrom01(opacity, 10, 40));
-            auto const transparent_col = colours::WithAlpha(darkened_col, 0);
+                colour::ChangeBrightness(LiveCol(UiColMap::WaveformLoopVoiceMarkers), 0.7f);
+            auto const col = colour::WithAlphaU8(darkened_col, (u8)MapFrom01(opacity, 10, 40));
+            auto const transparent_col = colour::WithAlphaU8(darkened_col, 0);
 
             if (upper_line_opt) {
                 auto& upper_line = *upper_line_opt;
@@ -71,19 +55,294 @@ void VoiceMarkerLine(imgui::Context const& imgui,
                                                          transparent_col);
             }
 
-            imgui.draw_list->renderer->fill_anti_alias = aa;
+            imgui.draw_list->renderer.fill_anti_alias = aa;
         }
     }
 
     {
-        auto const aa = imgui.draw_list->renderer->anti_aliased_lines;
-        imgui.draw_list->renderer->anti_aliased_lines = false;
+        auto const aa = imgui.draw_list->renderer.anti_aliased_lines;
+        imgui.draw_list->renderer.anti_aliased_lines = false;
         auto const col =
-            colours::WithAlpha(LiveCol(imgui, UiColMap::Waveform_LoopVoiceMarkers), (u8)(opacity * 255.0f));
+            colour::WithAlphaU8(LiveCol(UiColMap::WaveformLoopVoiceMarkers), (u8)(opacity * 255.0f));
 
         imgui.draw_list->AddLine(pos, pos + f32x2 {0, height}, col);
-        imgui.draw_list->renderer->anti_aliased_lines = aa;
+        imgui.draw_list->renderer.anti_aliased_lines = aa;
     }
 }
 
-} // namespace draw
+void DrawParameterTextInput(imgui::Context const& imgui, Rect r, imgui::TextInputResult const& result) {
+    auto const font = imgui.draw_list->fonts.Current();
+
+    auto const text_pos = result.text_pos;
+    auto const w = Max(r.w, font->CalcTextSize(result.text, {}).x);
+    Rect const background_r {.xywh {r.CentreX() - (w / 2), text_pos.y, w, font->font_size}};
+    auto const rounding = LiveSize(UiSizeId::CornerRounding);
+
+    imgui.draw_list->AddRectFilled(background_r, LiveCol(UiColMap::KnobTextInputBack), rounding);
+    imgui.draw_list->AddRect(background_r, LiveCol(UiColMap::KnobTextInputBorder), rounding);
+
+    if (result.HasSelection()) {
+        imgui::TextInputResult::SelectionIterator it {.imgui = imgui};
+        while (auto rect = result.NextSelectionRect(it))
+            imgui.draw_list->AddRectFilled(*rect, LiveCol(UiColMap::TextInputSelection));
+    }
+
+    if (result.cursor_rect)
+        imgui.draw_list->AddRectFilled(*result.cursor_rect, LiveCol(UiColMap::TextInputCursor));
+
+    imgui.draw_list->AddText(text_pos, LiveCol(UiColMap::TextInputText), result.text, {});
+}
+
+void DrawTextInput(imgui::Context const& imgui,
+                   imgui::TextInputResult const& result,
+                   DrawTextInputConfig const& config) {
+    if (result.HasSelection()) {
+        imgui::TextInputResult::SelectionIterator it {imgui};
+        auto const selection_col = style::Col(config.selection_col);
+        while (auto const r = result.NextSelectionRect(it))
+            imgui.draw_list->AddRectFilled(*r, selection_col);
+    }
+
+    if (result.cursor_rect)
+        imgui.draw_list->AddRectFilled(*result.cursor_rect, style::Col(config.cursor_col));
+
+    imgui.draw_list->AddText(
+        result.text_pos,
+        colour::WithAlphaU8(style::Col(config.text_col), result.is_placeholder ? 140 : 255),
+        result.text,
+        {});
+}
+
+// The width is filled by the knob. The height is not actually used.
+void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnobOptions const& options) {
+    auto const c = f32x2 {r.CentreX(), r.y + (r.w / 2)};
+    auto const outer_arc_percent = options.outer_arc_percent.ValueOr(percent);
+    auto const start_radians = (3 * k_pi<>) / 4;
+    auto const end_radians = k_tau<> + (k_pi<> / 4);
+    auto const delta = end_radians - start_radians;
+    auto const angle = start_radians + ((1 - percent) * delta);
+    auto const angle2 = start_radians + (outer_arc_percent * delta);
+    ASSERT(percent >= 0 && percent <= 1);
+    ASSERT(outer_arc_percent >= 0 && outer_arc_percent <= 1);
+    ASSERT(angle >= start_radians && angle <= end_radians);
+
+    auto inner_arc_col = LiveCol(UiColMap::KnobInnerArc);
+    auto bright_arc_col = options.highlight_col;
+    if (options.greyed_out) {
+        bright_arc_col = LiveCol(UiColMap::KnobOuterArcGreyedOut);
+        inner_arc_col = LiveCol(UiColMap::KnobInnerArcGreyedOut);
+    }
+    auto line_col = options.line_col;
+    if (!options.is_fake && (imgui.IsHot(id) || imgui.IsActive(id))) {
+        inner_arc_col = LiveCol(UiColMap::KnobInnerArcHover);
+        line_col = LiveCol(UiColMap::KnobLineHover);
+    }
+
+    // outer arc
+    auto const outer_arc_thickness = LiveSize(UiSizeId::KnobOuterArcWeight);
+    auto const outer_arc_radius_mid = r.w * 0.5f;
+    if (!options.overload_position) {
+        imgui.draw_list->PathArcTo(c,
+                                   outer_arc_radius_mid - (outer_arc_thickness / 2),
+                                   start_radians,
+                                   end_radians,
+                                   32);
+        imgui.draw_list->PathStroke(LiveCol(UiColMap::KnobOuterArcEmpty), false, outer_arc_thickness);
+    } else {
+        auto const overload_radians = start_radians + (delta * *options.overload_position);
+        auto const radians_per_px = k_tau<> * r.w / 2;
+        auto const desired_px_width = 15;
+        auto const overload_radians_end = overload_radians + (desired_px_width / radians_per_px);
+
+        {
+            imgui.draw_list->PathArcTo(c,
+                                       outer_arc_radius_mid - (outer_arc_thickness / 2),
+                                       start_radians,
+                                       overload_radians,
+                                       32);
+            imgui.draw_list->PathStroke(LiveCol(UiColMap::KnobOuterArcEmpty), false, outer_arc_thickness);
+        }
+
+        {
+            auto const gain_thickness = outer_arc_thickness;
+            imgui.draw_list->PathArcTo(c,
+                                       outer_arc_radius_mid - (gain_thickness / 2) +
+                                           (gain_thickness - outer_arc_thickness),
+                                       overload_radians_end,
+                                       end_radians,
+                                       32);
+            imgui.draw_list->PathStroke(LiveCol(UiColMap::KnobOuterArcOverload), false, gain_thickness);
+        }
+    }
+
+    if (!options.is_fake) {
+        if (!options.bidirectional) {
+            imgui.draw_list->PathArcTo(c,
+                                       outer_arc_radius_mid - (outer_arc_thickness / 2),
+                                       start_radians,
+                                       angle2,
+                                       32);
+        } else {
+            auto const mid_radians = start_radians + (delta / 2);
+            imgui.draw_list->PathArcTo(c,
+                                       outer_arc_radius_mid - (outer_arc_thickness / 2),
+                                       Min(mid_radians, angle2),
+                                       Max(mid_radians, angle2),
+                                       32);
+        }
+        imgui.draw_list->PathStroke(bright_arc_col, false, outer_arc_thickness);
+    }
+
+    // inner arc
+    auto const inner_arc_radius_mid = outer_arc_radius_mid - LiveSize(UiSizeId::KnobInnerArc);
+    auto const inner_arc_thickness = LiveSize(UiSizeId::KnobInnerArcWeight);
+    imgui.draw_list->PathArcTo(c, inner_arc_radius_mid, start_radians, end_radians, 32);
+    imgui.draw_list->PathStroke(inner_arc_col, false, inner_arc_thickness);
+
+    // cursor
+    if (!options.is_fake) {
+        auto const line_weight = LiveSize(UiSizeId::KnobLineWeight);
+
+        auto const inner_arc_radius_outer = inner_arc_radius_mid + (inner_arc_thickness / 2);
+        auto const inner_arc_radius_inner = inner_arc_radius_mid - (inner_arc_thickness / 2);
+
+        f32x2 offset;
+        offset.x = Sin(angle - (k_pi<> / 2));
+        offset.y = Cos(angle - (k_pi<> / 2));
+        auto const outer_point = c + (offset * f32x2 {inner_arc_radius_outer, inner_arc_radius_outer});
+        auto const inner_point = c + (offset * f32x2 {inner_arc_radius_inner, inner_arc_radius_inner});
+
+        imgui.draw_list->AddLine(inner_point, outer_point, line_col, line_weight);
+    }
+}
+
+void DrawPeakMeter(imgui::Context& imgui, Rect r, StereoPeakMeter const& level, bool flash_when_clipping) {
+    auto const snapshot = level.GetSnapshot();
+    auto const v = snapshot.levels;
+    auto const did_clip = flash_when_clipping && level.DidClipRecently();
+
+    auto const gap = LiveSize(UiSizeId::PeakMeterGap);
+    auto const marker_w = LiveSize(UiSizeId::PeakMeterMarkerWidth);
+    auto const marker_pad = LiveSize(UiSizeId::PeakMeterMarkerPad);
+    auto padded_r = Rect {.x = r.x + marker_w, .y = r.y, .w = r.w - (marker_w * 2), .h = r.h};
+    auto w = (padded_r.w / 2) - (gap / 2);
+
+    constexpr f32 k_max_db = 10;
+    constexpr f32 k_min_db = -60;
+    constexpr f32 k_min_amp = constexpr_math::Powf(10, k_min_db / 20);
+
+    auto const rounding = LiveSize(UiSizeId::CornerRounding);
+
+    {
+        // constexpr auto k_channel_col = colour::WithAlphaF(style::Col(style::Colour::Background0), 0.2f);
+        {
+            auto l_channel = padded_r;
+            l_channel.w = w;
+            imgui.draw_list->AddRectFilled(l_channel, LiveCol(UiColMap::PeakMeterBack), rounding);
+        }
+        {
+            auto r_channel = padded_r;
+            r_channel.x += w + gap;
+            r_channel.w = w;
+            imgui.draw_list->AddRectFilled(r_channel, LiveCol(UiColMap::PeakMeterBack), rounding);
+        }
+
+        auto draw_marker = [&](f32 db, bool bold) {
+            f32 const pos = MapTo01(db, k_min_db, k_max_db);
+            auto const line_y = padded_r.y + ((1 - pos) * padded_r.h);
+            imgui.draw_list->AddLine({r.x, line_y},
+                                     {r.x + (marker_w - marker_pad), line_y},
+                                     bold ? LiveCol(UiColMap::PeakMeterMarkersBold)
+                                          : LiveCol(UiColMap::PeakMeterMarkers));
+            imgui.draw_list->AddLine({r.Right() - (marker_w - marker_pad), line_y},
+                                     {r.Right(), line_y},
+                                     bold ? LiveCol(UiColMap::PeakMeterMarkersBold)
+                                          : LiveCol(UiColMap::PeakMeterMarkers));
+        };
+
+        draw_marker(0, true);
+        draw_marker(-12, false);
+        draw_marker(-24, false);
+        draw_marker(-36, false);
+        draw_marker(-48, false);
+    }
+
+    auto const clamped_v = Max(v, f32x2(k_min_amp)); // Ensure we don't Log10 zero.
+    auto const v_db = 20 * Log10(clamped_v);
+    auto const v_percieved = Clamp<f32x2>(MapTo01Unchecked<f32x2>(v_db, k_min_db, k_max_db), 0, 1);
+    auto const pixels = v_percieved * padded_r.h;
+    auto const level_y_pos = padded_r.y + (padded_r.h - pixels);
+
+    auto l_r = padded_r;
+    l_r.y = level_y_pos[0];
+    l_r.w = w;
+    l_r.SetBottomByResizing(padded_r.Bottom());
+
+    auto r_r = padded_r;
+    r_r.x += w + gap;
+    r_r.y = level_y_pos[1];
+    r_r.w = w;
+    r_r.SetBottomByResizing(padded_r.Bottom());
+
+    Array<Rect, 2> const channel_rs = {l_r, r_r};
+
+    auto const top_segment_line = padded_r.y + ((1 - MapTo01(0.0f, k_min_db, k_max_db)) * padded_r.h);
+    auto const mid_segment_line = padded_r.y + ((1 - MapTo01(-12.0f, k_min_db, k_max_db)) * padded_r.h);
+    for (auto& chan_r : channel_rs) {
+        if (chan_r.h < 1) continue;
+
+        if (chan_r.y < top_segment_line) {
+            auto col = LiveCol(UiColMap::PeakMeterHighlightTop);
+            if (did_clip) col = LiveCol(UiColMap::PeakMeterClipping);
+            imgui.draw_list->AddRectFilled(chan_r, col);
+        }
+
+        if (chan_r.y < mid_segment_line) {
+            auto col = LiveCol(UiColMap::PeakMeterHighlightMiddle);
+            if (did_clip) col = LiveCol(UiColMap::PeakMeterClipping);
+            auto const top = Max(chan_r.y, top_segment_line);
+            imgui.draw_list->AddRectFilled(f32x2 {chan_r.x, top}, chan_r.Max(), col);
+        }
+
+        auto col = LiveCol(UiColMap::PeakMeterHighlightBottom);
+        if (did_clip) col = LiveCol(UiColMap::PeakMeterClipping);
+        auto const top = Max(chan_r.y, mid_segment_line);
+        imgui.draw_list->AddRectFilled(f32x2 {chan_r.x, top}, chan_r.Max(), col, rounding, 0b0011);
+    }
+}
+
+void DrawOverlayTooltipForRect(imgui::Context const& imgui, Fonts& fonts, String str, Rect const r) {
+    fonts.Push(ToInt(FontType::Body));
+    DEFER { fonts.Pop(); };
+
+    auto const max_width = LiveSize(UiSizeId::TooltipMaxWidth);
+    auto const text_margin = f32x2 {LiveSize(UiSizeId::TooltipPadX), LiveSize(UiSizeId::TooltipPadY)};
+
+    auto const wrapped_size = fonts.CalcTextSize(str, {.wrap_width = max_width});
+
+    auto const size = Min(max_width, wrapped_size.x);
+
+    Rect popup_r;
+    popup_r.x = r.x;
+    popup_r.y = r.y + r.h;
+    popup_r.w = size + text_margin.x * 2;
+    popup_r.h = wrapped_size.y + text_margin.y * 2;
+
+    popup_r.x = popup_r.x + ((r.w / 2) - (popup_r.w / 2));
+
+    popup_r.pos = imgui::BestPopupPos(popup_r,
+                                      {.pos = r.pos, .size = r.size},
+                                      GuiIo().in.window_size.ToFloat2(),
+                                      false);
+
+    DrawDropShadow(imgui, popup_r);
+
+    imgui.overlay_draw_list->AddRectFilled(popup_r,
+                                           LiveCol(UiColMap::TooltipBack),
+                                           LiveSize(UiSizeId::CornerRounding));
+
+    imgui.overlay_draw_list->AddText(popup_r.pos + text_margin,
+                                     LiveCol(UiColMap::TooltipText),
+                                     str,
+                                     {.wrap_width = size + 1});
+}

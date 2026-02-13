@@ -119,6 +119,7 @@ PUBLIC UiSize PhysicalPixelsToClapPixels(PuglView* view, UiSize size) {
     }
     return size;
 }
+
 PUBLIC Optional<UiSize> ClapPixelsToPhysicalPixels(PuglView* view, u32 width, u32 height) {
     ASSERT(g_is_logical_main_thread);
     ASSERT(view);

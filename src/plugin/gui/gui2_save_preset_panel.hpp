@@ -9,7 +9,7 @@
 
 struct FilePickerState;
 struct Engine;
-struct GuiBoxSystem;
+struct GuiBuilder;
 struct Box;
 struct FloePaths;
 
@@ -21,7 +21,7 @@ struct SavePresetPanelContext {
 };
 
 struct SavePresetPanelState {
-    bool open;
+    static constexpr u64 k_panel_id = HashFnv1a("save-preset-panel");
     StateMetadata metadata;
     bool scroll_to_start;
     bool modeless {};
@@ -29,10 +29,8 @@ struct SavePresetPanelState {
 
 void OnEngineStateChange(SavePresetPanelState& state, Engine const& engine);
 
-void DoSavePresetPanel(GuiBoxSystem& box_system,
-                       SavePresetPanelContext& context,
-                       SavePresetPanelState& state);
+void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePresetPanelState& state);
 
-bool DoTagsGui(GuiBoxSystem& box_system,
+bool DoTagsGui(GuiBuilder& builder,
                DynamicArrayBounded<DynamicArrayBounded<char, k_max_tag_size>, k_max_num_tags>& tags,
                Box const& root);

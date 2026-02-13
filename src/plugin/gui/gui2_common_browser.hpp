@@ -10,7 +10,7 @@
 
 #include "gui/gui2_confirmation_dialog_state.hpp"
 #include "gui/gui_library_images.hpp"
-#include "gui_framework/gui_box_system.hpp"
+#include "gui_framework/gui_builder.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 
 struct Notifications;
@@ -34,7 +34,7 @@ struct BrowserPopupOptions;
 
 struct RightClickMenuState {
     // Use context.state and options.right_click_menu_user_data to get your own data.
-    using Function = void (*)(GuiBoxSystem&, BrowserPopupContext&, BrowserPopupOptions const&);
+    using Function = void (*)(GuiBuilder&, BrowserPopupContext&, BrowserPopupOptions const&);
     Function do_menu {};
     Rect absolute_creator_rect {}; // Absolute rectangle of the item that opened the menu.
     u64 item_hash {}; // The hash of the item that opened the menu.
@@ -203,7 +203,6 @@ struct CommonBrowserState {
         }
     }
 
-    bool open {};
     Rect absolute_button_rect {}; // Absolute rectangle of the button that opened the browser.
     SelectedHashes selected_library_hashes {"Library"};
     SelectedHashes selected_library_author_hashes {"Library Author"};
@@ -217,16 +216,15 @@ struct CommonBrowserState {
     FilterMode filter_mode = FilterMode::Single;
     RightClickMenuState right_click_menu_state {};
     BrowserKeyboardNavigation keyboard_navigation {};
-    imgui::Id browser_id; // TODO: this is emphemeral, mirror
 };
 
 // Ephemeral
 struct BrowserPopupContext {
+    u64 const& browser_id;
     sample_lib_server::Server& sample_library_server;
     prefs::Preferences& preferences;
     persistent_store::Store& store;
     CommonBrowserState& state;
-    imgui::Id browser_id;
 };
 
 struct FilterItemInfo {
@@ -248,6 +246,7 @@ using FolderFilterItemInfoLookupTable = HashTable<FolderNode const*, FilterItemI
 
 struct FilterButtonCommonOptions {
     Box parent;
+    u64 id_extra;
     bool is_selected;
     String text;
     TooltipString tooltip = k_nullopt;
@@ -307,7 +306,7 @@ struct BrowserPopupOptions {
     String item_type_name {}; // "instrument", "preset", etc.
 
     Optional<Button> rhs_top_button {};
-    TrivialFunctionRef<void(GuiBoxSystem&)> rhs_do_items {};
+    TrivialFunctionRef<void(GuiBuilder&)> rhs_do_items {};
     bool show_search {true};
     String filter_search_placeholder_text {"Search filters..."};
     String item_search_placeholder_text {"Search"};
@@ -319,15 +318,15 @@ struct BrowserPopupOptions {
 
     Optional<LibraryFilters> library_filters {};
     Optional<TagsFilters> tags_filters {};
-    TrivialFunctionRef<void(GuiBoxSystem&, Box const& parent, u8& num_sections)> do_extra_filters_top {};
-    TrivialFunctionRef<void(GuiBoxSystem&, Box const& parent, u8& num_sections)> do_extra_filters_bottom {};
+    TrivialFunctionRef<void(GuiBuilder&, Box const& parent, u8& num_sections)> do_extra_filters_top {};
+    TrivialFunctionRef<void(GuiBuilder&, Box const& parent, u8& num_sections)> do_extra_filters_bottom {};
     bool has_extra_filters {};
     FilterItemInfo const& favourites_filter_info;
 
     void* right_click_menu_user_data {};
 };
 
-Box DoBrowserItemsRoot(GuiBoxSystem& box_system);
+Box DoBrowserItemsRoot(GuiBuilder& builder);
 
 struct BrowserItemsSectionOptions {};
 
@@ -341,7 +340,7 @@ struct BrowserSection {
 
     // First time this is called, it either returns Collapsed or NormalBoxUninitialised. If
     // NormalBoxUninitialised, any subsequent calls will return a valid Box.
-    Result Do(GuiBoxSystem& box_system);
+    Result Do(GuiBuilder& builder);
 
     CommonBrowserState& state;
     u8* num_sections_rendered; // Optional.
@@ -367,10 +366,11 @@ struct BrowserSection {
 enum class ItemIconType { None, Image, Font };
 using ItemIcon = TaggedUnion<ItemIconType,
                              TypeAndTag<String, ItemIconType::Font>,
-                             TypeAndTag<graphics::ImageID, ItemIconType::Image>>;
+                             TypeAndTag<ImageID, ItemIconType::Image>>;
 
 struct BrowserItemOptions {
     Box parent;
+    u64 id_extra {};
     String text;
     TooltipString tooltip = k_nullopt;
     u64 item_id;
@@ -389,11 +389,11 @@ struct BrowserItemResult {
 };
 
 BrowserItemResult
-DoBrowserItem(GuiBoxSystem& box_system, CommonBrowserState& state, BrowserItemOptions const& options);
+DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions const& options);
 
 struct FilterButtonOptions {
     FilterButtonCommonOptions common;
-    graphics::ImageID const* icon;
+    ImageID const* icon;
     bool no_bottom_margin;
     RightClickMenuState::Function right_click_menu {nullptr};
 };
@@ -404,26 +404,24 @@ struct FilterTreeButtonOptions {
     u8 indent;
 };
 
-Box DoFilterButton(GuiBoxSystem& box_system,
+Box DoFilterButton(GuiBuilder& builder,
                    CommonBrowserState& state,
                    FilterItemInfo const& info,
                    FilterButtonOptions const& options);
 
-Box DoFilterTreeButton(GuiBoxSystem& box_system,
+Box DoFilterTreeButton(GuiBuilder& builder,
                        CommonBrowserState& state,
                        FilterItemInfo const& info,
                        FilterTreeButtonOptions const& options);
 
-Box DoFilterCard(GuiBoxSystem& box_system,
+Box DoFilterCard(GuiBuilder& builder,
                  CommonBrowserState& state,
                  FilterItemInfo const& info,
                  FilterCardOptions const& options);
 
-void DoBrowserPopup(GuiBoxSystem& box_system,
-                    BrowserPopupContext context,
-                    BrowserPopupOptions const& options);
+void DoBrowserModal(GuiBuilder& builder, BrowserPopupContext context, BrowserPopupOptions const& options);
 
-void DoRightClickMenuForBox(GuiBoxSystem& box_system,
+void DoRightClickMenuForBox(GuiBuilder& builder,
                             CommonBrowserState& state,
                             Box const& box,
                             u64 item_hash,

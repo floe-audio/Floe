@@ -8,7 +8,7 @@
 #include "gui/gui2_ir_browser_state.hpp"
 #include "gui/gui_frame_context.hpp"
 #include "gui/gui_library_images.hpp"
-#include "gui_framework/gui_box_system.hpp"
+#include "gui_framework/gui_builder.hpp"
 
 struct IrBrowserContext {
     sample_lib_server::Server& sample_library_server;
@@ -31,4 +31,4 @@ void LoadAdjacentIr(IrBrowserContext const& context, IrBrowserState& state, Sear
 
 void LoadRandomIr(IrBrowserContext const& context, IrBrowserState& state);
 
-void DoIrBrowserPopup(GuiBoxSystem& box_system, IrBrowserContext& context, IrBrowserState& state);
+void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserState& state);

@@ -46,6 +46,27 @@ PUBLIC constexpr UiSize ExpandChecked(UiSize size, UiSize expansion) {
     return {CheckedCast<u16>(size.width + expansion.width), CheckedCast<u16>(size.height + expansion.height)};
 }
 
+// Use with designated initialiser syntax.
+union Margins {
+    struct {
+        union {
+            struct {
+                f32 l;
+                f32 r;
+            };
+            f32x2 lr;
+        };
+        union {
+            struct {
+                f32 t;
+                f32 b;
+            };
+            f32x2 tb;
+        };
+    };
+    f32x4 lrtb {};
+};
+
 struct Rect {
     Rect Up(f32 offset) const { return {.xywh = {x, y - offset, w, h}}; }
     Rect Down(f32 offset) const { return {.xywh = {x, y + offset, w, h}}; }
@@ -123,6 +144,14 @@ struct Rect {
         result.pos -= val;
         result.size += val * 2;
         return result;
+    }
+
+    // Get a rectangle centered inside this one.
+    Rect CentredRect(f32x2 inner_rect_size) const {
+        return {
+            .pos = pos + ((size - inner_rect_size) / 2),
+            .size = inner_rect_size,
+        };
     }
 
     static bool Intersection(Rect& a, Rect b) {

@@ -15,27 +15,30 @@
 #include "gui2_common_modal_panel.hpp"
 #include "gui2_prefs_panel_state.hpp"
 #include "gui_framework/app_window.hpp"
-#include "gui_framework/gui_box_system.hpp"
+#include "gui_framework/gui_builder.hpp"
 #include "processor/processor.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 
-static void PreferencesLhsTextWidget(GuiBoxSystem& box_system, Box parent, String text) {
-    DoBox(box_system,
+static void
+PreferencesLhsTextWidget(GuiBuilder& builder, Box parent, String text, u64 id_extra = SourceLocationHash()) {
+    DoBox(builder,
           {
               .parent = parent,
+              .id_extra = id_extra,
               .text = text,
               .font = FontType::Body,
               .layout {
-                  .size = {style::k_prefs_lhs_width,
-                           box_system.imgui.PixelsToVw(box_system.fonts[ToInt(FontType::Body)]->font_size)},
+                  .size = {190.0f, style::k_font_body_size},
               },
           });
 }
 
-static void PreferencesRhsText(GuiBoxSystem& box_system, Box parent, String text) {
-    DoBox(box_system,
+static void
+PreferencesRhsText(GuiBuilder& builder, Box parent, String text, u64 id_extra = SourceLocationHash()) {
+    DoBox(builder,
           {
               .parent = parent,
+              .id_extra = id_extra,
               .text = text,
               .size_from_text = true,
               .font = FontType::BodyItalic,
@@ -43,10 +46,11 @@ static void PreferencesRhsText(GuiBoxSystem& box_system, Box parent, String text
           });
 }
 
-static Box PreferencesRow(GuiBoxSystem& box_system, Box parent) {
-    return DoBox(box_system,
+static Box PreferencesRow(GuiBuilder& builder, Box parent, u64 id_extra = SourceLocationHash()) {
+    return DoBox(builder,
                  {
                      .parent = parent,
+                     .id_extra = id_extra,
                      .layout {
                          .size = {layout::k_fill_parent, layout::k_hug_contents},
                          .contents_direction = layout::Direction::Row,
@@ -56,10 +60,12 @@ static Box PreferencesRow(GuiBoxSystem& box_system, Box parent) {
                  });
 }
 
-static Box PreferencesRhsColumn(GuiBoxSystem& box_system, Box parent, f32 gap) {
-    return DoBox(box_system,
+static Box
+PreferencesRhsColumn(GuiBuilder& builder, Box parent, f32 gap, u64 id_extra = SourceLocationHash()) {
+    return DoBox(builder,
                  {
                      .parent = parent,
+                     .id_extra = id_extra,
                      .layout {
                          .size = {layout::k_fill_parent, layout::k_hug_contents},
                          .contents_gap = gap,
@@ -75,21 +81,26 @@ struct FolderSelectorResult {
     bool open_pressed;
 };
 
-static FolderSelectorResult
-PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, String subtext, bool deletable) {
-    auto const container = DoBox(box_system,
+static FolderSelectorResult PreferencesFolderSelector(GuiBuilder& builder,
+                                                      Box parent,
+                                                      String path,
+                                                      String subtext,
+                                                      bool deletable,
+                                                      u64 id_extra = SourceLocationHash()) {
+    auto const container = DoBox(builder,
                                  {
                                      .parent = parent,
+                                     .id_extra = id_extra,
                                      .layout {
                                          .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                         .contents_gap = style::k_prefs_small_gap,
+                                         .contents_gap = style::k_small_gap,
                                          .contents_direction = layout::Direction::Column,
                                          .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                      },
                                  });
 
     auto const path_container =
-        DoBox(box_system,
+        DoBox(builder,
               {
                   .parent = container,
                   .background_fill_colours = {style::Colour::Background1},
@@ -102,9 +113,8 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
                   },
               });
 
-    auto const display_path =
-        path::MakeDisplayPath(path, {.compact_middle_sections = true}, box_system.arena);
-    DoBox(box_system,
+    auto const display_path = path::MakeDisplayPath(path, {.compact_middle_sections = true}, builder.arena);
+    DoBox(builder,
           {
               .parent = path_container,
               .text = display_path,
@@ -112,19 +122,19 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
               .font = FontType::Body,
               .tooltip = display_path.data == path.data ? TooltipString(k_nullopt) : path,
           });
-    auto const icon_button_container = DoBox(box_system,
+    auto const icon_button_container = DoBox(builder,
                                              {
                                                  .parent = path_container,
                                                  .layout {
                                                      .size = {layout::k_hug_contents, layout::k_hug_contents},
-                                                     .contents_gap = style::k_prefs_small_gap,
+                                                     .contents_gap = style::k_small_gap,
                                                      .contents_direction = layout::Direction::Row,
                                                  },
                                              });
 
     FolderSelectorResult result {};
     if (deletable) {
-        result.delete_pressed = DoBox(box_system,
+        result.delete_pressed = DoBox(builder,
                                       {
                                           .parent = icon_button_container,
                                           .text = ICON_FA_TRASH,
@@ -134,13 +144,13 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
                                           .background_fill_auto_hot_active_overlay = true,
                                           .round_background_corners = 0b1111,
                                           .tooltip = "Stop scanning this folder"_s,
-                                          .behaviour = Behaviour::Button,
+                                          .button_behaviour = imgui::ButtonConfig {},
                                           .extra_margin_for_mouse_events = 2,
                                       })
                                     .button_fired;
     }
     result.open_pressed =
-        DoBox(box_system,
+        DoBox(builder,
               {
                   .parent = icon_button_container,
                   .text = ICON_FA_UP_RIGHT_FROM_SQUARE,
@@ -150,12 +160,12 @@ PreferencesFolderSelector(GuiBoxSystem& box_system, Box parent, String path, Str
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
                   .tooltip = (String)fmt::FormatInline<64>("Open folder in {}"_s, GetFileBrowserAppName()),
-                  .behaviour = Behaviour::Button,
+                  .button_behaviour = imgui::ButtonConfig {},
                   .extra_margin_for_mouse_events = 2,
               })
             .button_fired;
 
-    if (subtext.size) PreferencesRhsText(box_system, container, subtext);
+    if (subtext.size) PreferencesRhsText(builder, container, subtext);
 
     return result;
 }
@@ -222,23 +232,25 @@ static void SetFolderSubtext(DynamicArrayBounded<char, 200>& out,
     }
 }
 
-static void FolderPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context) {
+static void FolderPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context) {
     sample_lib_server::RequestScanningOfUnscannedFolders(context.sample_lib_server);
 
-    auto const root = DoBox(box_system,
+    auto const root = DoBox(builder,
                             {
                                 .layout {
-                                    .size = box_system.imgui.PixelsToVw(box_system.imgui.Size()),
+                                    .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
                                     .contents_padding = {.lrtb = style::k_spacing},
-                                    .contents_gap = style::k_prefs_large_gap,
+                                    .contents_gap = style::k_large_gap,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
                             });
 
     for (auto const scan_folder_type : EnumIterator<ScanFolderType>()) {
-        auto const row = PreferencesRow(box_system, root);
-        PreferencesLhsTextWidget(box_system, row, ({
+        builder.imgui.PushId((u64)scan_folder_type);
+        DEFER { builder.imgui.PopId(); };
+        auto const row = PreferencesRow(builder, root);
+        PreferencesLhsTextWidget(builder, row, ({
                                      String s;
                                      switch ((ScanFolderType)scan_folder_type) {
                                          case ScanFolderType::Libraries: s = "Sample library folders"; break;
@@ -248,7 +260,7 @@ static void FolderPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCon
                                      s;
                                  }));
 
-        auto const rhs_column = PreferencesRhsColumn(box_system, row, style::k_prefs_medium_gap);
+        auto const rhs_column = PreferencesRhsColumn(builder, row, style::k_medium_gap);
 
         DynamicArrayBounded<char, 200> subtext_buffer {};
 
@@ -260,7 +272,7 @@ static void FolderPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCon
                              (ScanFolderType)scan_folder_type,
                              context.sample_lib_server,
                              context.presets->snapshot);
-            if (auto const o = PreferencesFolderSelector(box_system, rhs_column, dir, subtext_buffer, false);
+            if (auto const o = PreferencesFolderSelector(builder, rhs_column, dir, subtext_buffer, false);
                 o.open_pressed)
                 OpenFolderInFileBrowser(dir);
         }
@@ -273,7 +285,8 @@ static void FolderPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCon
                              (ScanFolderType)scan_folder_type,
                              context.sample_lib_server,
                              context.presets->snapshot);
-            if (auto const o = PreferencesFolderSelector(box_system, rhs_column, dir, subtext_buffer, true);
+            if (auto const o =
+                    PreferencesFolderSelector(builder, rhs_column, dir, subtext_buffer, true, Hash(dir));
                 o.open_pressed || o.delete_pressed) {
                 if (o.open_pressed) OpenFolderInFileBrowser(dir);
                 if (o.delete_pressed) to_remove = dir;
@@ -296,7 +309,7 @@ static void FolderPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCon
         if (ExtraScanFolders(context.paths, context.prefs, scan_folder_type).size !=
                 k_max_extra_scan_folders &&
             TextButton(
-                box_system,
+                builder,
                 rhs_column,
                 {
                     .text = "Add folder",
@@ -311,12 +324,11 @@ static void FolderPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCon
     }
 }
 
-static void InstallLocationMenu(GuiBoxSystem& box_system,
-                                PreferencesPanelContext& context,
-                                ScanFolderType scan_folder_type) {
+static void
+InstallLocationMenu(GuiBuilder& builder, PreferencesPanelContext& context, ScanFolderType scan_folder_type) {
     sample_lib_server::RequestScanningOfUnscannedFolders(context.sample_lib_server);
 
-    auto const root = DoBox(box_system,
+    auto const root = DoBox(builder,
                             {
                                 .layout {
                                     .size = layout::k_hug_contents,
@@ -339,7 +351,7 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
                          scan_folder_type,
                          context.sample_lib_server,
                          context.presets->snapshot);
-        if (MenuItem(box_system,
+        if (MenuItem(builder,
                      root,
                      {
                          .text = dir,
@@ -360,13 +372,14 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
                          scan_folder_type,
                          context.sample_lib_server,
                          context.presets->snapshot);
-        if (MenuItem(box_system,
+        if (MenuItem(builder,
                      root,
                      {
                          .text = dir,
                          .subtext = subtext_buffer,
                          .is_selected = path::Equal(dir, current_install_location),
-                     })
+                     },
+                     Hash(dir))
                 .button_fired) {
             prefs::SetValue(context.prefs,
                             InstallLocationDescriptor(context.paths, context.prefs, scan_folder_type),
@@ -374,33 +387,33 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
         }
     }
 
-    DoBox(box_system,
+    DoBox(builder,
           {
               .parent = root,
               .background_fill_colours = {style::Colour::Overlay0},
               .layout {
-                  .size = {layout::k_fill_parent, box_system.imgui.PixelsToVw(1)},
+                  .size = {layout::k_fill_parent, GuiIo().PixelsToWw(1.0f)},
                   .margins {.tb = style::k_menu_item_padding_y},
               },
           });
 
-    auto const add_button = DoBox(box_system,
-                                  {
-                                      .parent = root,
-                                      .background_fill_auto_hot_active_overlay = true,
-                                      .layout {
-                                          .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                          .contents_padding = {.l = (style::k_menu_item_padding_x * 2) +
-                                                                    style::k_prefs_icon_button_size,
-                                                               .r = style::k_menu_item_padding_x,
-                                                               .tb = style::k_menu_item_padding_y},
-                                          .contents_direction = layout::Direction::Row,
-                                          .contents_align = layout::Alignment::Start,
-                                      },
-                                      .tooltip = "Select a new folder"_s,
-                                      .behaviour = Behaviour::Button,
-                                  });
-    DoBox(box_system,
+    auto const add_button = DoBox(
+        builder,
+        {
+            .parent = root,
+            .background_fill_auto_hot_active_overlay = true,
+            .layout {
+                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                .contents_padding = {.l = (style::k_menu_item_padding_x * 2) + style::k_icon_button_size,
+                                     .r = style::k_menu_item_padding_x,
+                                     .tb = style::k_menu_item_padding_y},
+                .contents_direction = layout::Direction::Row,
+                .contents_align = layout::Alignment::Start,
+            },
+            .tooltip = "Select a new folder"_s,
+            .button_behaviour = imgui::ButtonConfig {},
+        });
+    DoBox(builder,
           {
               .parent = add_button,
               .text = "Add folder",
@@ -412,25 +425,28 @@ static void InstallLocationMenu(GuiBoxSystem& box_system,
                                           context.prefs,
                                           context.paths,
                                           {.type = scan_folder_type, .set_as_install_folder = true});
-        box_system.imgui.CloseTopPopupOnly();
+        builder.imgui.CloseTopPopupOnly();
     }
 }
 
-static void PackagesPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context) {
-    auto const root = DoBox(box_system,
+static void PackagesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context) {
+    auto const root = DoBox(builder,
                             {
                                 .layout {
-                                    .size = box_system.imgui.PixelsToVw(box_system.imgui.Size()),
+                                    .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
                                     .contents_padding = {.lrtb = style::k_spacing},
-                                    .contents_gap = style::k_prefs_medium_gap,
+                                    .contents_gap = style::k_medium_gap,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
                             });
 
     for (auto const scan_folder_type : EnumIterator<ScanFolderType>()) {
-        auto const row = PreferencesRow(box_system, root);
-        PreferencesLhsTextWidget(box_system, row, ({
+        builder.imgui.PushId((u64)scan_folder_type);
+        DEFER { builder.imgui.PopId(); };
+
+        auto const row = PreferencesRow(builder, root);
+        PreferencesLhsTextWidget(builder, row, ({
                                      String s;
                                      switch ((ScanFolderType)scan_folder_type) {
                                          case ScanFolderType::Libraries:
@@ -442,7 +458,7 @@ static void PackagesPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelC
                                      s;
                                  }));
 
-        auto const popup_id = box_system.imgui.GetID(ToInt(scan_folder_type));
+        auto const popup_id = builder.imgui.MakeId(ToInt(scan_folder_type));
 
         String menu_text =
             prefs::GetString(context.prefs,
@@ -451,42 +467,39 @@ static void PackagesPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelC
             menu_text == default_dir) {
             menu_text = "Default";
         } else {
-            menu_text = path::MakeDisplayPath(menu_text, {.compact_middle_sections = true}, box_system.arena);
+            menu_text = path::MakeDisplayPath(menu_text, {.compact_middle_sections = true}, builder.arena);
         }
 
-        auto const btn = MenuButton(box_system,
+        auto const btn = MenuButton(builder,
                                     row,
                                     {
                                         .text = menu_text,
                                         .tooltip = "Select install location"_s,
                                         .width = layout::k_fill_parent,
                                     });
-        if (btn.button_fired) box_system.imgui.OpenPopup(popup_id, btn.imgui_id);
+        if (btn.button_fired) builder.imgui.OpenPopupMenu(popup_id, btn.imgui_id);
 
-        if (box_system.imgui.IsPopupOpen(popup_id))
-            RunOrEnqueuePanel(
-                box_system,
-                Panel {
-                    .run =
-                        [scan_folder_type, &context](GuiBoxSystem& box_system) {
-                            InstallLocationMenu(box_system, context, (ScanFolderType)scan_folder_type);
-                        },
-                    .data =
-                        PopupPanel {
-                            .creator_layout_id = btn.layout_id,
-                            .popup_imgui_id = popup_id,
-                        },
-                });
+        if (builder.imgui.IsPopupMenuOpen(popup_id))
+            DoBoxViewport(builder,
+                          {
+                              .run =
+                                  [scan_folder_type, &context](GuiBuilder& builder) {
+                                      InstallLocationMenu(builder, context, (ScanFolderType)scan_folder_type);
+                                  },
+                              .bounds = btn,
+                              .imgui_id = popup_id,
+                              .viewport_config = k_default_popup_menu_viewport,
+                          });
     }
 
     {
-        auto const row = PreferencesRow(box_system, root);
-        PreferencesLhsTextWidget(box_system, row, "Install");
-        auto const rhs = PreferencesRhsColumn(box_system, row, style::k_prefs_small_gap);
-        PreferencesRhsText(box_system, rhs, "Install libraries and presets from a ZIP file");
+        auto const row = PreferencesRow(builder, root);
+        PreferencesLhsTextWidget(builder, row, "Install");
+        auto const rhs = PreferencesRhsColumn(builder, row, style::k_small_gap);
+        PreferencesRhsText(builder, rhs, "Install libraries and presets from a ZIP file");
         if (!context.package_install_jobs.Full() &&
             TextButton(
-                box_system,
+                builder,
                 rhs,
                 {.text = "Install package", .tooltip = "Install libraries and presets from a ZIP file"_s})) {
             OpenFilePickerInstallPackage(context.file_picker_state);
@@ -496,14 +509,15 @@ static void PackagesPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelC
 
 constexpr f32 k_settings_int_field_width = 30.0f;
 
-static void Setting(GuiBoxSystem& box_system,
-                    PreferencesPanelContext& context,
-                    Box parent,
-                    prefs::Descriptor const& info) {
+static void
+Setting(GuiBuilder& builder, PreferencesPanelContext& context, Box parent, prefs::Descriptor const& info) {
+    builder.imgui.PushId(HashKey(info.key));
+    DEFER { builder.imgui.PopId(); };
+
     switch (info.value_requirements.tag) {
         case prefs::ValueType::Int: {
             auto const& int_info = info.value_requirements.Get<prefs::Descriptor::IntRequirements>();
-            if (auto const v = IntField(box_system,
+            if (auto const v = IntField(builder,
                                         parent,
                                         {
                                             .label = info.gui_label,
@@ -522,7 +536,7 @@ static void Setting(GuiBoxSystem& box_system,
         }
         case prefs::ValueType::Bool: {
             auto const state = prefs::GetValue(context.prefs, info).value.Get<bool>();
-            if (CheckboxButton(box_system, parent, info.gui_label, state, info.long_description))
+            if (CheckboxButton(builder, parent, info.gui_label, state, info.long_description))
                 prefs::SetValue(context.prefs, info, !state);
             break;
         }
@@ -548,30 +562,30 @@ constexpr u16 k_prefs_window_width_step = []() {
     return step;
 }();
 
-static void GeneralPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context) {
-    auto const root = DoBox(box_system,
+static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context) {
+    auto const root = DoBox(builder,
                             {
                                 .layout {
-                                    .size = box_system.imgui.PixelsToVw(box_system.imgui.Size()),
+                                    .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
                                     .contents_padding = {.lrtb = style::k_spacing},
-                                    .contents_gap = style::k_prefs_medium_gap,
+                                    .contents_gap = style::k_medium_gap,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
                             });
 
     {
-        auto const style_row = PreferencesRow(box_system, root);
+        auto const style_row = PreferencesRow(builder, root);
 
-        PreferencesLhsTextWidget(box_system, style_row, "UI");
-        auto const options_rhs_column = PreferencesRhsColumn(box_system, style_row, style::k_prefs_small_gap);
+        PreferencesLhsTextWidget(builder, style_row, "UI");
+        auto const options_rhs_column = PreferencesRhsColumn(builder, style_row, style::k_small_gap);
 
-        for (auto const gui_setting : EnumIterator<GuiSetting>()) {
+        for (auto const gui_setting : EnumIterator<GuiPreference>()) {
             auto const desc = SettingDescriptor(gui_setting);
-            if (gui_setting == GuiSetting::WindowWidth) {
+            if (gui_setting == GuiPreference::WindowWidth) {
                 auto const& int_info = desc.value_requirements.Get<prefs::Descriptor::IntRequirements>();
                 if (auto const v =
-                        IntField(box_system,
+                        IntField(builder,
                                  options_rhs_column,
                                  {
                                      .label = "Window size",
@@ -590,32 +604,32 @@ static void GeneralPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelCo
                 }
                 continue;
             }
-            Setting(box_system, context, options_rhs_column, desc);
+            Setting(builder, context, options_rhs_column, desc);
         }
     }
 
     {
-        auto const misc_row = PreferencesRow(box_system, root);
+        auto const misc_row = PreferencesRow(builder, root);
 
-        PreferencesLhsTextWidget(box_system, misc_row, "General");
-        auto const options_rhs_column = PreferencesRhsColumn(box_system, misc_row, style::k_prefs_small_gap);
+        PreferencesLhsTextWidget(builder, misc_row, "General");
+        auto const options_rhs_column = PreferencesRhsColumn(builder, misc_row, style::k_small_gap);
 
-        Setting(box_system, context, options_rhs_column, IsOnlineReportingDisabledDescriptor());
-        Setting(box_system,
+        Setting(builder, context, options_rhs_column, IsOnlineReportingDisabledDescriptor());
+        Setting(builder,
                 context,
                 options_rhs_column,
                 SettingDescriptor(ProcessorSetting::DefaultCcParamMappings));
 
         for (auto const autosave_setting : EnumIterator<AutosaveSetting>())
-            Setting(box_system, context, options_rhs_column, SettingDescriptor(autosave_setting));
+            Setting(builder, context, options_rhs_column, SettingDescriptor(autosave_setting));
 
-        Setting(box_system, context, options_rhs_column, check_for_update::CheckAllowedPrefDescriptor());
-        Setting(box_system, context, options_rhs_column, check_for_update::CheckBetaPrefDescriptor());
+        Setting(builder, context, options_rhs_column, check_for_update::CheckAllowedPrefDescriptor());
+        Setting(builder, context, options_rhs_column, check_for_update::CheckBetaPrefDescriptor());
     }
 }
 
 static void
-PreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context, PreferencesPanelState& state) {
+PreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context, PreferencesPanelState& state) {
     constexpr auto k_tab_config = []() {
         Array<ModalTabConfig, ToInt(PreferencesPanelState::Tab::Count)> tabs {};
         for (auto const tab : EnumIterator<PreferencesPanelState::Tab>()) {
@@ -637,74 +651,58 @@ PreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context, Pre
         return tabs;
     }();
 
-    auto const root = DoModal(box_system,
+    auto const root = DoModal(builder,
                               {
                                   .title = "Preferences"_s,
-                                  .on_close = [&state] { state.open = false; },
                                   .tabs = k_tab_config,
                                   .current_tab_index = ToIntRef(state.tab),
                               });
 
-    using TabPanelFunction = void (*)(GuiBoxSystem&, PreferencesPanelContext&);
-    RunOrEnqueuePanel(box_system,
-                      Panel {
-                          .run = ({
-                              TabPanelFunction f {};
-                              switch (state.tab) {
-                                  case PreferencesPanelState::Tab::General:
-                                      f = GeneralPreferencesPanel;
-                                      break;
-                                  case PreferencesPanelState::Tab::Folders: f = FolderPreferencesPanel; break;
-                                  case PreferencesPanelState::Tab::Packages:
-                                      f = PackagesPreferencesPanel;
-                                      break;
-                                  case PreferencesPanelState::Tab::Count: PanicIfReached();
-                              }
-                              [f, &context](GuiBoxSystem& box_system) { f(box_system, context); };
-                          }),
-                          .data =
-                              Subpanel {
-                                  .id = DoBox(box_system,
-                                              {
-                                                  .parent = root,
-                                                  .layout {
-                                                      .size = {layout::k_fill_parent, layout::k_fill_parent},
-                                                  },
-                                              })
-                                            .layout_id,
-                                  .imgui_id = box_system.imgui.GetID((u64)state.tab + 999999),
-                              },
-                      });
+    using TabPanelFunction = void (*)(GuiBuilder&, PreferencesPanelContext&);
+    DoBoxViewport(builder,
+                  {
+                      .run = ({
+                          TabPanelFunction f {};
+                          switch (state.tab) {
+                              case PreferencesPanelState::Tab::General: f = GeneralPreferencesPanel; break;
+                              case PreferencesPanelState::Tab::Folders: f = FolderPreferencesPanel; break;
+                              case PreferencesPanelState::Tab::Packages: f = PackagesPreferencesPanel; break;
+                              case PreferencesPanelState::Tab::Count: PanicIfReached();
+                          }
+                          [f, &context](GuiBuilder& builder) { f(builder, context); };
+                      }),
+                      .bounds = DoBox(builder,
+                                      {
+                                          .parent = root,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                          },
+                                      }),
+                      .imgui_id = builder.imgui.MakeId((u64)state.tab + 999999),
+                      .viewport_config = k_default_modal_subviewport,
+                  });
 }
 
 PUBLIC void
-DoPreferencesPanel(GuiBoxSystem& box_system, PreferencesPanelContext& context, PreferencesPanelState& state) {
-    ASSERT(box_system.imgui.Width() > 0);
-    if (state.open) {
-        bool init = false;
-        if (!context.presets) {
-            context.presets = BeginReadFolders(context.presets_server, box_system.arena);
-            init = true;
-        }
-        DEFER {
-            if (init) EndReadFolders(context.presets_server, context.presets->handle);
-        };
+DoPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context, PreferencesPanelState& state) {
+    ASSERT(builder.imgui.CurrentVpWidth() > 0);
+    if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
 
-        RunOrEnqueuePanel(
-            box_system,
-            Panel {
-                .run = [&context, &state](GuiBoxSystem& b) { PreferencesPanel(b, context, state); },
-                .data =
-                    ModalPanel {
-                        .r = CentredRect({.pos = 0, .size = GuiIo().in.window_size.ToFloat2()},
-                                         f32x2 {box_system.imgui.VwToPixels(style::k_prefs_dialog_width),
-                                                box_system.imgui.VwToPixels(style::k_prefs_dialog_height)}),
-                        .imgui_id = box_system.imgui.GetID("prefs"),
-                        .on_close = [&state]() { state.open = false; },
-                        .close_on_click_outside = true,
-                        .darken_background = true,
-                        .disable_other_interaction = true,
-                    },
-            });
+    bool init = false;
+    if (!context.presets) {
+        context.presets = BeginReadFolders(context.presets_server, builder.arena);
+        init = true;
     }
+    DEFER {
+        if (init) EndReadFolders(context.presets_server, context.presets->handle);
+    };
+
+    DoBoxViewport(builder,
+                  {
+                      .run = [&context, &state](GuiBuilder& b) { PreferencesPanel(b, context, state); },
+                      .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
+                          GuiIo().WwToPixels(f32x2 {625, 443})),
+                      .imgui_id = state.k_panel_id,
+                      .viewport_config = k_default_modal_viewport,
+                  });
 }

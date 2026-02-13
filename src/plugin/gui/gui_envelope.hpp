@@ -17,9 +17,9 @@ struct GuiEnvelopeCursor {
     u64 marker_id {(u64)-1};
 };
 
-void GUIDoEnvelope(Gui* g,
-                   LayerProcessor* layer,
-                   Rect r,
+void DoEnvelopeGui(GuiState& g,
+                   LayerProcessor& layer,
+                   Rect viewport_r,
                    bool greyed_out,
                    Array<LayerParamIndex, 4> adsr_layer_params,
                    GuiEnvelopeType type);

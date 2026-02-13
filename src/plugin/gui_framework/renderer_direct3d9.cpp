@@ -17,9 +17,8 @@
 #include "utils/debug/tracy_wrapped.hpp"
 #include "utils/logger/logger.hpp"
 
-#include "graphics.hpp"
-
-namespace graphics {
+#include "draw_list.hpp"
+#include "renderer.hpp"
 
 struct CUSTOMVERTEX {
     f32 pos[3];
@@ -236,11 +235,11 @@ struct Direct3D9Renderer : public Renderer {
         handle = invalid_texture;
     }
 
-    ErrorCodeOr<void> CreateFontTexture() override {
+    ErrorCodeOr<void> CreateFontTexture(FontAtlas& atlas) override {
         ZoneScoped;
         Trace(ModuleName::Gui);
-        ASSERT(font_texture == nullptr);
-        ASSERT(fonts.fonts.size > 0);
+        ASSERT(font_texture == invalid_texture);
+        ASSERT(atlas.fonts.size > 0);
         bool success = false;
 
         // Build texture atlas
@@ -248,29 +247,27 @@ struct Direct3D9Renderer : public Renderer {
         int width {};
         int height {};
         int bytes_per_pixel {};
-        fonts.GetTexDataAsRGBA32(&pixels, &width, &height, &bytes_per_pixel);
+        atlas.GetTexDataAsRGBA32(&pixels, &width, &height, &bytes_per_pixel);
         ASSERT(pixels != nullptr);
         ASSERT(NumberCastIsSafe<u16>(width));
         ASSERT(NumberCastIsSafe<u16>(height));
         ASSERT(NumberCastIsSafe<u16>(bytes_per_pixel));
 
+        LPDIRECT3DTEXTURE9 tex = nullptr;
         D3D_TRYV(device->CreateTexture((u16)width,
                                        (u16)height,
                                        1,
                                        D3DUSAGE_DYNAMIC,
                                        D3DFMT_A8R8G8B8,
                                        D3DPOOL_DEFAULT,
-                                       &font_texture,
+                                       &tex,
                                        nullptr));
         DEFER {
-            if (!success && font_texture) {
-                font_texture->Release();
-                font_texture = nullptr;
-            }
+            if (!success && tex) tex->Release();
         };
 
         D3DLOCKED_RECT tex_locked_rect;
-        D3D_TRYV(font_texture->LockRect(0, &tex_locked_rect, nullptr, 0));
+        D3D_TRYV(tex->LockRect(0, &tex_locked_rect, nullptr, 0));
         // Convert RGBA to BGRA for D3DFMT_A8R8G8B8
         for (u16 y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
@@ -283,13 +280,12 @@ struct Direct3D9Renderer : public Renderer {
                 ((unsigned char*)tex_locked_rect.pBits)[write_index + 3] = pixels[read_index + 3]; // A
             }
         }
-        auto r = font_texture->UnlockRect(0);
+        auto r = tex->UnlockRect(0);
         ASSERT_EQ(r, D3D_OK);
 
-        // Store our identifier
-        fonts.tex_id = (TextureHandle)(uintptr)font_texture;
+        font_texture = (TextureHandle)(uintptr)tex;
 
-        fonts.ClearTexData();
+        atlas.ClearTexData();
 
         success = true;
         return k_success;
@@ -298,14 +294,13 @@ struct Direct3D9Renderer : public Renderer {
     void DestroyFontTexture() override {
         ZoneScoped;
         Trace(ModuleName::Gui);
-        if (font_texture) {
-            auto const ref_count = font_texture->Release();
+        if (font_texture != invalid_texture) {
+            auto tex = (LPDIRECT3DTEXTURE9)font_texture;
+            auto const ref_count = tex->Release();
             if (ref_count != 0)
                 LogWarning(ModuleName::Gui, "DestroyFontTexture: unexpected ref count: {}", ref_count);
-            fonts.tex_id = invalid_texture;
-            font_texture = nullptr;
+            font_texture = invalid_texture;
         }
-        fonts.Clear();
     }
 
     ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size, void*) override {
@@ -386,7 +381,7 @@ struct Direct3D9Renderer : public Renderer {
 
                 for (auto const& draw_list : draw_lists) {
                     DrawVert const* vtx_src = draw_list->vtx_buffer.data;
-                    for (int i = 0; i < draw_list->vtx_buffer.size; i++) {
+                    for (u32 i = 0; i < draw_list->vtx_buffer.size; i++) {
                         vtx_dst->pos[0] = vtx_src->pos.x;
                         vtx_dst->pos[1] = vtx_src->pos.y;
                         vtx_dst->pos[2] = 0.0f;
@@ -496,7 +491,7 @@ struct Direct3D9Renderer : public Renderer {
             int vtx_offset = 0;
             int idx_offset = 0;
             for (auto const& draw_list : draw_lists) {
-                for (int cmd_i = 0; cmd_i < draw_list->cmd_buffer.size; cmd_i++) {
+                for (u32 cmd_i = 0; cmd_i < draw_list->cmd_buffer.size; cmd_i++) {
                     DrawCmd const* pcmd = &draw_list->cmd_buffer[cmd_i];
                     const RECT r = {(LONG)pcmd->clip_rect.x,
                                     (LONG)pcmd->clip_rect.y,
@@ -577,10 +572,7 @@ struct Direct3D9Renderer : public Renderer {
     LPDIRECT3DDEVICE9 device = nullptr;
     LPDIRECT3DVERTEXBUFFER9 vertex_buf = nullptr;
     LPDIRECT3DINDEXBUFFER9 index_buf = nullptr;
-    LPDIRECT3DTEXTURE9 font_texture = nullptr;
     int vertex_buf_size = 5000, index_buf_size = 10000;
 };
 
 Renderer* CreateNewRendererDirect3D9() { return new Direct3D9Renderer(); }
-
-} // namespace graphics

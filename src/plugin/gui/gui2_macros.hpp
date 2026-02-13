@@ -8,9 +8,9 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/state/macros.hpp"
 
-#include "gui_framework/gui_box_system.hpp"
+#include "gui_framework/gui_builder.hpp"
 
-struct Gui;
+struct GuiState;
 
 struct MacrosGuiState {
     // If set, we're in 'macro destination select mode'. The value is the index of the macro that we want to
@@ -25,7 +25,7 @@ struct MacrosGuiState {
     };
     Optional<DestinationKnob> active_destination_knob {};
 
-    DynamicArrayBounded<TrivialFixedSizeFunction<64, void(Gui*)>, 4> draw_overlays {};
+    DynamicArrayBounded<TrivialFixedSizeFunction<64, void(GuiState&)>, 4> draw_overlays {};
 
     struct HotDestinationParam {
         Rect r {};
@@ -36,9 +36,9 @@ struct MacrosGuiState {
     imgui::Id open_remove_destination_button_id {0};
 };
 
-void DoMacrosEditGui(Gui* g, Box const& parent);
+void DoMacrosEditGui(GuiState& g, Box const& parent);
 
-void MacroAddDestinationRegion(Gui* g, Rect r, ParamIndex param_index);
+void MacroAddDestinationRegion(GuiState& g, Rect window_r, ParamIndex param_index);
 
-void MacroGuiBeginFrame(Gui* g);
-void MacroGuiEndFrame(Gui* g);
+void MacroGuiBeginFrame(GuiState& g);
+void MacroGuiEndFrame(GuiState& g);

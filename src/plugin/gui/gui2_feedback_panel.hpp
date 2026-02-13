@@ -12,20 +12,18 @@ struct FeedbackPanelContext {
     Notifications& notifications;
 };
 
-static void
-FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackPanelState& state) {
-    auto const root = DoModalRootBox(box_system);
+static void FeedbackPanel(GuiBuilder& builder, FeedbackPanelContext& context, FeedbackPanelState& state) {
+    auto const root = DoModalRootBox(builder);
 
-    DoModalHeader(box_system,
+    DoModalHeader(builder,
                   {
                       .parent = root,
                       .title = "Share Feedback",
-                      .on_close = [&state]() { state.open = false; },
                   });
 
-    DoModalDivider(box_system, root, {.horizontal = true});
+    DoModalDivider(builder, root, {.horizontal = true});
 
-    auto const panel = DoBox(box_system,
+    auto const panel = DoBox(builder,
                              {
                                  .parent = root,
                                  .layout {
@@ -39,7 +37,7 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
                              });
 
     DoBox(
-        box_system,
+        builder,
         {
             .parent = panel,
             .text =
@@ -49,7 +47,7 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
             .font = FontType::Body,
         });
 
-    DoBox(box_system,
+    DoBox(builder,
           {
               .parent = panel,
               .text = "Description:"_s,
@@ -57,17 +55,17 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
               .font = FontType::Body,
           });
 
-    auto const description_field = TextInput(box_system,
+    auto const description_field = TextInput(builder,
                                              panel,
                                              {
                                                  .text = state.description,
                                                  .size = f32x2 {layout::k_fill_parent, 90},
                                                  .multiline = true,
                                              });
-    if (description_field.text_input_result && description_field.text_input_result->buffer_changed)
-        dyn::AssignFitInCapacity(state.description, description_field.text_input_result->text);
+    if (description_field.result && description_field.result->buffer_changed)
+        dyn::AssignFitInCapacity(state.description, description_field.result->text);
 
-    DoBox(box_system,
+    DoBox(builder,
           {
               .parent = panel,
               .text = "Email (optional):"_s,
@@ -75,19 +73,19 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
               .font = FontType::Body,
           });
 
-    auto const email_field = TextInput(box_system,
+    auto const email_field = TextInput(builder,
                                        panel,
                                        {
                                            .text = state.email,
                                            .size = f32x2 {layout::k_fill_parent, 30},
                                        });
-    if (email_field.text_input_result && email_field.text_input_result->buffer_changed)
-        dyn::AssignFitInCapacity(state.email, email_field.text_input_result->text);
+    if (email_field.result && email_field.result->buffer_changed)
+        dyn::AssignFitInCapacity(state.email, email_field.result->text);
 
-    if (CheckboxButton(box_system, panel, "Include anonymous diagnostic data"_s, state.send_diagnostic_data))
+    if (CheckboxButton(builder, panel, "Include anonymous diagnostic data"_s, state.send_diagnostic_data))
         state.send_diagnostic_data = !state.send_diagnostic_data;
 
-    if (TextButton(box_system, panel, {.text = "Submit"})) {
+    if (TextButton(builder, panel, {.text = "Submit"})) {
         auto const return_code = ReportFeedback(state.description,
                                                 state.email.size ? Optional<String> {state.email} : k_nullopt,
                                                 state.send_diagnostic_data);
@@ -98,7 +96,7 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
                 notification_message = "Feedback submitted successfully"_s;
                 dyn::Clear(state.description);
                 dyn::Clear(state.email);
-                state.open = false;
+                builder.imgui.CloseTopModal();
                 break;
             }
             case ReportFeedbackReturnCode::InvalidEmail: {
@@ -131,28 +129,19 @@ FeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackP
                     .icon = icon,
                 };
             },
-            .id = HashFnv1a(__FILE__ STRINGIFY(__LINE__)),
+            .id = SourceLocationHash(),
         };
     }
 }
 
-PUBLIC void
-DoFeedbackPanel(GuiBoxSystem& box_system, FeedbackPanelContext& context, FeedbackPanelState& state) {
-    if (!state.open) return;
-    RunOrEnqueuePanel(
-        box_system,
-        Panel {
-            .run = [&context, &state](GuiBoxSystem& b) { FeedbackPanel(b, context, state); },
-            .data =
-                ModalPanel {
-                    .r = CentredRect({.pos = 0, .size = GuiIo().in.window_size.ToFloat2()},
-                                     f32x2 {box_system.imgui.VwToPixels(style::k_feedback_dialog_width),
-                                            box_system.imgui.VwToPixels(style::k_feedback_dialog_height)}),
-                    .imgui_id = box_system.imgui.GetID("feedback"),
-                    .on_close = [&state]() { state.open = false; },
-                    .close_on_click_outside = true,
-                    .darken_background = true,
-                    .disable_other_interaction = true,
-                },
-        });
+PUBLIC void DoFeedbackPanel(GuiBuilder& builder, FeedbackPanelContext& context, FeedbackPanelState& state) {
+    if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
+    DoBoxViewport(builder,
+                  {
+                      .run = [&context, &state](GuiBuilder& b) { FeedbackPanel(b, context, state); },
+                      .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
+                          GuiIo().WwToPixels(f32x2 {400, 443})),
+                      .imgui_id = state.k_panel_id,
+                      .viewport_config = k_default_modal_viewport,
+                  });
 }
