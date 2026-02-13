@@ -13,14 +13,14 @@
 #include "build_resources/embedded_files.h"
 #include "engine/engine.hpp"
 #include "gui/gui2_attribution_panel.hpp"
-#include "gui/gui2_errors_panel.hpp"
-#include "gui/gui2_loading_overlay.hpp"
 #include "gui/gui2_bot_panel.hpp"
 #include "gui/gui2_confirmation_dialog.hpp"
+#include "gui/gui2_errors_panel.hpp"
 #include "gui/gui2_feedback_panel.hpp"
 #include "gui/gui2_info_panel.hpp"
 #include "gui/gui2_inst_browser.hpp"
 #include "gui/gui2_ir_browser.hpp"
+#include "gui/gui2_loading_overlay.hpp"
 #include "gui/gui2_notifications.hpp"
 #include "gui/gui2_package_install.hpp"
 #include "gui/gui2_prefs_panel.hpp"
@@ -500,8 +500,8 @@ void GuiUpdate(GuiState& g) {
         DoLoadingOverlay(g.builder, g.engine.pending_state_change.HasValue());
 
         {
-            auto const notifs = Array {&g.engine.error_notifications,
-                                       &g.shared_engine_systems.error_notifications};
+            auto const notifs =
+                Array {&g.engine.error_notifications, &g.shared_engine_systems.error_notifications};
             DoErrorsPanel(g.builder, notifs);
         }
 
