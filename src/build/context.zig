@@ -89,6 +89,7 @@ pub const TopLevelSteps = struct {
     website_build: *std.Build.Step,
     website_dev: *std.Build.Step,
     website_promote: *std.Build.Step,
+    remove_unused_gui_defs: *std.Build.Step,
 };
 
 pub const TargetConfig = struct {

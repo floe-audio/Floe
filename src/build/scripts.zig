@@ -46,6 +46,8 @@ pub fn main() !u8 {
         return runCi(&context, .basic);
     } else if (std.mem.eql(u8, command, "website-promote-beta-to-stable")) {
         return runWebsitePromoteBetaToStable(&context);
+    } else if (std.mem.eql(u8, command, "remove-unused-gui-defs")) {
+        return runRemoveUnusedGuiDefs(&context);
     } else {
         std.log.err("Unknown command: {s}\n", .{command});
         return 1;
@@ -133,6 +135,140 @@ fn runFormat(context: *Context) !u8 {
         .Exited => |code| code,
         else => 1,
     };
+}
+
+fn runRemoveUnusedGuiDefs(context: *Context) !u8 {
+    const allocator = context.allocator;
+
+    // Find all C++ source files and read their contents.
+    const source_files = try std_extras.findSourceFiles(allocator, .{
+        .dir_path = "src",
+        .extensions = &.{ ".cpp", ".hpp", ".h", ".mm" },
+        .exclude_folders = &.{"shaders"},
+    });
+
+    var all_contents = std.ArrayList([]const u8).init(allocator);
+    for (source_files) |file| {
+        const full_path = try std.fs.path.join(allocator, &.{ "src", file });
+        const contents = std.fs.cwd().readFileAlloc(allocator, full_path, 1024 * 1024 * 4) catch continue;
+        try all_contents.append(contents);
+    }
+
+    const DefCheck = struct {
+        def_file: []const u8,
+        macro_prefix: []const u8,
+        enum_name: []const u8,
+    };
+
+    const checks = [_]DefCheck{
+        .{
+            .def_file = "src/plugin/gui/live_edit_defs/gui_sizes.def",
+            .macro_prefix = "GUI_SIZE(",
+            .enum_name = "UiSizeId",
+        },
+        .{
+            .def_file = "src/plugin/gui/live_edit_defs/gui_colour_map.def",
+            .macro_prefix = "GUI_COL_MAP(",
+            .enum_name = "UiColMap",
+        },
+    };
+
+    var total_removed: usize = 0;
+    const stdout = std.io.getStdOut().writer();
+
+    for (checks) |check| {
+        const removed = try removeUnusedDefEntries(allocator, all_contents.items, check.def_file, check.macro_prefix, check.enum_name, stdout);
+        total_removed += removed;
+    }
+
+    if (total_removed == 0) {
+        try stdout.writeAll("No unused entries found.\n");
+    }
+
+    return 0;
+}
+
+fn removeUnusedDefEntries(
+    allocator: std.mem.Allocator,
+    all_contents: []const []const u8,
+    def_file: []const u8,
+    macro_prefix: []const u8,
+    enum_name: []const u8,
+    stdout: anytype,
+) !usize {
+    const def_contents = std.fs.cwd().readFileAlloc(allocator, def_file, 1024 * 1024) catch |err| {
+        std.log.err("Failed to read {s}: {}\n", .{ def_file, err });
+        return error.ReadFailed;
+    };
+
+    var kept_lines = std.ArrayList([]const u8).init(allocator);
+    var removed_count: usize = 0;
+    var total_entries: usize = 0;
+
+    var lines = std.mem.splitScalar(u8, def_contents, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+
+        if (!std.mem.startsWith(u8, trimmed, macro_prefix)) {
+            try kept_lines.append(line);
+            continue;
+        }
+
+        total_entries += 1;
+
+        // Parse category and name from the macro.
+        const after_prefix = trimmed[macro_prefix.len..];
+        const comma1 = std.mem.indexOfScalar(u8, after_prefix, ',') orelse {
+            try kept_lines.append(line);
+            continue;
+        };
+        const category = std.mem.trim(u8, after_prefix[0..comma1], " ");
+
+        const rest = after_prefix[comma1 + 1 ..];
+        const comma2 = std.mem.indexOfScalar(u8, rest, ',') orelse {
+            try kept_lines.append(line);
+            continue;
+        };
+        const name = std.mem.trim(u8, rest[0..comma2], " ");
+
+        const combined = try std.fmt.allocPrint(allocator, "{s}{s}", .{ category, name });
+
+        var found = false;
+        for (all_contents) |contents| {
+            if (std.mem.indexOf(u8, contents, combined) != null) {
+                found = true;
+                break;
+            }
+        }
+
+        if (found) {
+            try kept_lines.append(line);
+        } else {
+            try stdout.print("Removed: {s}::{s}\n", .{ enum_name, combined });
+            removed_count += 1;
+        }
+    }
+
+    if (removed_count > 0) {
+        // Write the filtered file back.
+        var file = try std.fs.cwd().createFile(def_file, .{});
+        defer file.close();
+        var buffered_writer = std.io.bufferedWriter(file.writer());
+        const writer = buffered_writer.writer();
+
+        for (kept_lines.items, 0..) |line, i| {
+            try writer.writeAll(line);
+            if (i < kept_lines.items.len - 1)
+                try writer.writeAll("\n");
+        }
+        try buffered_writer.flush();
+
+        try stdout.print("{d} unused {s} entries removed out of {d} total.\n\n", .{ removed_count, enum_name, total_entries });
+    } else {
+        try stdout.print("All {s} entries are used.\n", .{enum_name});
+    }
+
+    return removed_count;
 }
 
 fn runCreateGithubRelease(context: *Context) !u8 {

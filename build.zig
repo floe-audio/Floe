@@ -532,6 +532,7 @@ pub fn build(b: *std.Build) void {
         .website_build = b.step("script:website-build", "Build the website"),
         .website_dev = b.step("script:website-dev", "Start website dev build locally"),
         .website_promote = b.step("script:website-promote-beta-to-stable", "Promote the 'beta' documentation to be the latest stable version"),
+        .remove_unused_gui_defs = b.step("script:remove-unused-gui-defs", "Remove unused GUI_SIZE and GUI_COL_MAP entries from def files"),
     };
 
     // The default is to compile everything.
@@ -600,6 +601,7 @@ pub fn build(b: *std.Build) void {
         addRunScript(exe, top_level_steps.ci, "ci");
         addRunScript(exe, top_level_steps.ci_basic, "ci-basic");
         addRunScript(exe, top_level_steps.website_promote, "website-promote-beta-to-stable");
+        addRunScript(exe, top_level_steps.remove_unused_gui_defs, "remove-unused-gui-defs");
     }
 
     // Shader compiler.
