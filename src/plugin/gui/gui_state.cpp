@@ -63,23 +63,17 @@ static void CreateFontsIfNeeded(FontAtlas& fonts) {
 
         for (auto const font_type : EnumIterator<FontType>()) {
             switch (font_type) {
-                case FontType::Body: load_font(roboto_ttf, style::k_font_body_size, def_ranges); break;
+                case FontType::Body: load_font(roboto_ttf, k_font_body_size, def_ranges); break;
                 case FontType::BodyItalic:
-                    load_font(roboto_italic_ttf, style::k_font_body_italic_size, def_ranges);
+                    load_font(roboto_italic_ttf, k_font_body_italic_size, def_ranges);
                     break;
-                case FontType::Heading1:
-                    load_font(roboto_ttf, style::k_font_heading1_size, def_ranges);
-                    break;
-                case FontType::Heading2:
-                    load_font(roboto_ttf, style::k_font_heading2_size, def_ranges);
-                    break;
-                case FontType::Heading3:
-                    load_font(roboto_ttf, style::k_font_heading3_size, def_ranges);
-                    break;
+                case FontType::Heading1: load_font(roboto_ttf, k_font_heading1_size, def_ranges); break;
+                case FontType::Heading2: load_font(roboto_ttf, k_font_heading2_size, def_ranges); break;
+                case FontType::Heading3: load_font(roboto_ttf, k_font_heading3_size, def_ranges); break;
                 case FontType::Icons: {
                     auto const icons_ttf = EmbeddedFontAwesome();
                     auto constexpr k_icon_ranges = Array {GlyphRange {ICON_MIN_FA, ICON_MAX_FA}};
-                    load_font(icons_ttf, style::k_font_icons_size, k_icon_ranges);
+                    load_font(icons_ttf, k_font_icons_size, k_icon_ranges);
                     break;
                 }
                 case FontType::Count: PanicIfReached();
@@ -228,11 +222,10 @@ static void DoResizeCorner(GuiState& g) {
     imgui.draw_list->AddTriangleFilled(r.TopRight(),
                                        r.BottomRight(),
                                        r.BottomLeft(),
-                                       style::Col(style::Colour::Background0 | style::Colour::DarkMode));
+                                       ToU32(Col {.c = Col::Background0, .dark_mode = true}));
 
     auto const line_col =
-        style::Col(imgui.IsHotOrActive(id) ? style::Colour::Text | style::Colour::DarkMode
-                                           : style::Colour::Overlay2 | style::Colour::DarkMode);
+        ToU32(Col {.c = imgui.IsHotOrActive(id) ? Col::Text : Col::Overlay2, .dark_mode = true});
     auto const line_gap = LiveSize(UiSizeId::ViewportResizeCornerLineGap);
     imgui.draw_list->AddLine(r.TopRight() + f32x2 {0, line_gap},
                              r.BottomLeft() + f32x2 {line_gap, 0},

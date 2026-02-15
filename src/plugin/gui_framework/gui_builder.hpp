@@ -164,19 +164,17 @@ using TooltipString = TaggedUnion<TooltipStringType,
                                   TypeAndTag<FunctionRef<String()>, TooltipStringType::Function>,
                                   TypeAndTag<String, TooltipStringType::String>>;
 
-struct Colours {
-    style::Colour base = style::Colour::None;
-    style::Colour hot = style::Colour::None;
-    style::Colour active = style::Colour::None;
+struct ColSet {
+    Col base {};
+    Col hot {};
+    Col active {};
 };
 
-inline Colours Splat(style::Colour colour) {
-    return Colours {
-        .base = colour,
-        .hot = colour,
-        .active = colour,
-    };
-}
+struct Colours {
+    constexpr Colours(Col c) { s.base = s.hot = s.active = c; }
+    constexpr Colours(ColSet set) { s = set; }
+    ColSet s;
+};
 
 enum class BackgroundTexFillMode : u8 {
     Stretch, // Stretch the image to fill the entire box (default behavior)
@@ -198,12 +196,12 @@ struct BoxConfig {
 
     FontType font {FontType::Body};
     f32 font_size = k_default_font_size;
-    Colours text_colours = Splat(style::Colour::Text);
+    Colours text_colours = Col {.c = Col::Text};
     TextJustification text_justification = TextJustification::TopLeft;
     TextOverflowType text_overflow = TextOverflowType::AllowOverflow;
     bool capitalize_text = false;
 
-    Colours background_fill_colours = Splat(style::Colour::None);
+    Colours background_fill_colours = Col {.c = Col::None};
     BackgroundShape background_shape = BackgroundShape::Rectangle;
     bool background_fill_auto_hot_active_overlay = false;
     bool drop_shadow = false;
@@ -211,7 +209,7 @@ struct BoxConfig {
     u8 background_tex_alpha = 255;
     BackgroundTexFillMode background_tex_fill_mode = BackgroundTexFillMode::Stretch;
 
-    Colours border_colours = Splat(style::Colour::None);
+    Colours border_colours = Col {.c = Col::None};
     f32 border_width_pixels = 1.0f; // Pixels is more useful than WW here.
     bool border_auto_hot_active_overlay = false;
 
@@ -219,7 +217,7 @@ struct BoxConfig {
 
     // Corners and rounding effect both fill and border.
     Corners round_background_corners = 0b0000;
-    f32 corner_rounding = style::k_button_rounding;
+    f32 corner_rounding = k_button_rounding;
 
     // For drawing borders, which sides to draw.
     // 4 bits, clockwise from left: left, top, right, bottom, set using 0b0001 etc.

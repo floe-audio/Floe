@@ -10,7 +10,7 @@ static void LoadingOverlayPanel(GuiBuilder& builder) {
                             {
                                 .layout {
                                     .size = layout::k_hug_contents,
-                                    .contents_padding = {.lrtb = style::k_spacing},
+                                    .contents_padding = {.lrtb = k_default_spacing},
                                 },
                             });
     DoBox(builder,

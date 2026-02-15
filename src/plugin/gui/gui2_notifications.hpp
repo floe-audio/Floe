@@ -49,7 +49,7 @@ PUBLIC void NotificationsPanel(GuiBuilder& builder, Notifications& notifications
                             {
                                 .layout {
                                     .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                    .contents_gap = style::k_spacing,
+                                    .contents_gap = k_default_spacing,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
@@ -74,13 +74,13 @@ PUBLIC void NotificationsPanel(GuiBuilder& builder, Notifications& notifications
         auto const notification = DoBox(builder,
                                         {
                                             .parent = root,
-                                            .background_fill_colours = {style::Colour::Background0},
+                                            .background_fill_colours = Col {.c = Col::Background0},
                                             .drop_shadow = true,
                                             .round_background_corners = 0b1111,
                                             .layout {
                                                 .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                .contents_padding = {.lrtb = style::k_spacing},
-                                                .contents_gap = style::k_spacing,
+                                                .contents_padding = {.lrtb = k_default_spacing},
+                                                .contents_gap = k_default_spacing,
                                                 .contents_direction = layout::Direction::Column,
                                                 .contents_align = layout::Alignment::Start,
                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -126,18 +126,14 @@ PUBLIC void NotificationsPanel(GuiBuilder& builder, Notifications& notifications
                       .size_from_text = true,
                       .font = FontType::Icons,
                       .text_colours = {({
-                          style::Colour c {};
+                          Col::Id c {};
                           switch (config.icon) {
                               case NotificationDisplayInfo::IconType::None: PanicIfReached();
-                              case NotificationDisplayInfo::IconType::Info:
-                                  c = style::Colour::Subtext1;
-                                  break;
-                              case NotificationDisplayInfo::IconType::Success:
-                                  c = style::Colour::Green;
-                                  break;
-                              case NotificationDisplayInfo::IconType::Error: c = style::Colour::Red; break;
+                              case NotificationDisplayInfo::IconType::Info: c = Col::Subtext1; break;
+                              case NotificationDisplayInfo::IconType::Success: c = Col::Green; break;
+                              case NotificationDisplayInfo::IconType::Error: c = Col::Red; break;
                           }
-                          c;
+                          Col {.c = c};
                       })},
                   });
         }
@@ -183,7 +179,7 @@ PUBLIC void NotificationsPanel(GuiBuilder& builder, Notifications& notifications
 PUBLIC void DoNotifications(GuiBuilder& builder, Notifications& notifications) {
     if (!notifications.Empty()) {
         auto const width_px = GuiIo().WwToPixels(400.0f);
-        auto const spacing = GuiIo().PixelsToWw(style::k_spacing);
+        auto const spacing = GuiIo().PixelsToWw(k_default_spacing);
 
         DoBoxViewport(builder,
                       {

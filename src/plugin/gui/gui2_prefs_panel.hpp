@@ -28,7 +28,7 @@ PreferencesLhsTextWidget(GuiBuilder& builder, Box parent, String text, u64 id_ex
               .text = text,
               .font = FontType::Body,
               .layout {
-                  .size = {190.0f, style::k_font_body_size},
+                  .size = {190.0f, k_font_body_size},
               },
           });
 }
@@ -42,7 +42,7 @@ PreferencesRhsText(GuiBuilder& builder, Box parent, String text, u64 id_extra = 
               .text = text,
               .size_from_text = true,
               .font = FontType::BodyItalic,
-              .text_colours = {style::Colour::Subtext0},
+              .text_colours = Col {.c = Col::Subtext0},
           });
 }
 
@@ -93,7 +93,7 @@ static FolderSelectorResult PreferencesFolderSelector(GuiBuilder& builder,
                                      .id_extra = id_extra,
                                      .layout {
                                          .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                         .contents_gap = style::k_small_gap,
+                                         .contents_gap = k_small_gap,
                                          .contents_direction = layout::Direction::Column,
                                          .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                      },
@@ -103,11 +103,11 @@ static FolderSelectorResult PreferencesFolderSelector(GuiBuilder& builder,
         DoBox(builder,
               {
                   .parent = container,
-                  .background_fill_colours = {style::Colour::Background1},
+                  .background_fill_colours = Col {.c = Col::Background1},
                   .round_background_corners = 0b1111,
                   .layout {
                       .size = {layout::k_fill_parent, layout::k_hug_contents},
-                      .contents_padding = {.lr = style::k_button_padding_x, .tb = style::k_button_padding_y},
+                      .contents_padding = {.lr = k_button_padding_x, .tb = k_button_padding_y},
                       .contents_direction = layout::Direction::Row,
                       .contents_align = layout::Alignment::Justify,
                   },
@@ -127,7 +127,7 @@ static FolderSelectorResult PreferencesFolderSelector(GuiBuilder& builder,
                                                  .parent = path_container,
                                                  .layout {
                                                      .size = {layout::k_hug_contents, layout::k_hug_contents},
-                                                     .contents_gap = style::k_small_gap,
+                                                     .contents_gap = k_small_gap,
                                                      .contents_direction = layout::Direction::Row,
                                                  },
                                              });
@@ -140,7 +140,7 @@ static FolderSelectorResult PreferencesFolderSelector(GuiBuilder& builder,
                                           .text = ICON_FA_TRASH,
                                           .size_from_text = true,
                                           .font = FontType::Icons,
-                                          .text_colours = Splat(style::Colour::Subtext0),
+                                          .text_colours = Col {.c = Col::Subtext0},
                                           .background_fill_auto_hot_active_overlay = true,
                                           .round_background_corners = 0b1111,
                                           .tooltip = "Stop scanning this folder"_s,
@@ -156,7 +156,7 @@ static FolderSelectorResult PreferencesFolderSelector(GuiBuilder& builder,
                   .text = ICON_FA_UP_RIGHT_FROM_SQUARE,
                   .size_from_text = true,
                   .font = FontType::Icons,
-                  .text_colours = Splat(style::Colour::Subtext0),
+                  .text_colours = Col {.c = Col::Subtext0},
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
                   .tooltip = (String)fmt::FormatInline<64>("Open folder in {}"_s, GetFileBrowserAppName()),
@@ -239,8 +239,8 @@ static void FolderPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext&
                             {
                                 .layout {
                                     .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
-                                    .contents_padding = {.lrtb = style::k_spacing},
-                                    .contents_gap = style::k_large_gap,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_large_gap,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
@@ -260,7 +260,7 @@ static void FolderPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext&
                                      s;
                                  }));
 
-        auto const rhs_column = PreferencesRhsColumn(builder, row, style::k_medium_gap);
+        auto const rhs_column = PreferencesRhsColumn(builder, row, k_medium_gap);
 
         DynamicArrayBounded<char, 200> subtext_buffer {};
 
@@ -390,29 +390,29 @@ InstallLocationMenu(GuiBuilder& builder, PreferencesPanelContext& context, ScanF
     DoBox(builder,
           {
               .parent = root,
-              .background_fill_colours = {style::Colour::Overlay0},
+              .background_fill_colours = Col {.c = Col::Overlay0},
               .layout {
                   .size = {layout::k_fill_parent, GuiIo().PixelsToWw(1.0f)},
-                  .margins {.tb = style::k_menu_item_padding_y},
+                  .margins {.tb = k_menu_item_padding_y},
               },
           });
 
-    auto const add_button = DoBox(
-        builder,
-        {
-            .parent = root,
-            .background_fill_auto_hot_active_overlay = true,
-            .layout {
-                .size = {layout::k_fill_parent, layout::k_hug_contents},
-                .contents_padding = {.l = (style::k_menu_item_padding_x * 2) + style::k_icon_button_size,
-                                     .r = style::k_menu_item_padding_x,
-                                     .tb = style::k_menu_item_padding_y},
-                .contents_direction = layout::Direction::Row,
-                .contents_align = layout::Alignment::Start,
-            },
-            .tooltip = "Select a new folder"_s,
-            .button_behaviour = imgui::ButtonConfig {},
-        });
+    auto const add_button =
+        DoBox(builder,
+              {
+                  .parent = root,
+                  .background_fill_auto_hot_active_overlay = true,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .contents_padding = {.l = (k_menu_item_padding_x * 2) + k_icon_button_size,
+                                           .r = k_menu_item_padding_x,
+                                           .tb = k_menu_item_padding_y},
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Start,
+                  },
+                  .tooltip = "Select a new folder"_s,
+                  .button_behaviour = imgui::ButtonConfig {},
+              });
     DoBox(builder,
           {
               .parent = add_button,
@@ -434,8 +434,8 @@ static void PackagesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContex
                             {
                                 .layout {
                                     .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
-                                    .contents_padding = {.lrtb = style::k_spacing},
-                                    .contents_gap = style::k_medium_gap,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_medium_gap,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
@@ -495,7 +495,7 @@ static void PackagesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContex
     {
         auto const row = PreferencesRow(builder, root);
         PreferencesLhsTextWidget(builder, row, "Install");
-        auto const rhs = PreferencesRhsColumn(builder, row, style::k_small_gap);
+        auto const rhs = PreferencesRhsColumn(builder, row, k_small_gap);
         PreferencesRhsText(builder, rhs, "Install libraries and presets from a ZIP file");
         if (!context.package_install_jobs.Full() &&
             TextButton(
@@ -567,8 +567,8 @@ static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
                             {
                                 .layout {
                                     .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
-                                    .contents_padding = {.lrtb = style::k_spacing},
-                                    .contents_gap = style::k_medium_gap,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_medium_gap,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
@@ -578,7 +578,7 @@ static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
         auto const style_row = PreferencesRow(builder, root);
 
         PreferencesLhsTextWidget(builder, style_row, "UI");
-        auto const options_rhs_column = PreferencesRhsColumn(builder, style_row, style::k_small_gap);
+        auto const options_rhs_column = PreferencesRhsColumn(builder, style_row, k_small_gap);
 
         for (auto const gui_setting : EnumIterator<GuiPreference>()) {
             auto const desc = SettingDescriptor(gui_setting);
@@ -612,7 +612,7 @@ static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
         auto const misc_row = PreferencesRow(builder, root);
 
         PreferencesLhsTextWidget(builder, misc_row, "General");
-        auto const options_rhs_column = PreferencesRhsColumn(builder, misc_row, style::k_small_gap);
+        auto const options_rhs_column = PreferencesRhsColumn(builder, misc_row, k_small_gap);
 
         Setting(builder, context, options_rhs_column, IsOnlineReportingDisabledDescriptor());
         Setting(builder,

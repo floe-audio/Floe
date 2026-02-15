@@ -98,19 +98,17 @@ void DrawTextInput(imgui::Context const& imgui,
                    DrawTextInputConfig const& config) {
     if (result.HasSelection()) {
         imgui::TextInputResult::SelectionIterator it {imgui};
-        auto const selection_col = style::Col(config.selection_col);
+        auto const selection_col = ToU32(config.selection_col);
         while (auto const r = result.NextSelectionRect(it))
             imgui.draw_list->AddRectFilled(*r, selection_col);
     }
 
-    if (result.cursor_rect)
-        imgui.draw_list->AddRectFilled(*result.cursor_rect, style::Col(config.cursor_col));
+    if (result.cursor_rect) imgui.draw_list->AddRectFilled(*result.cursor_rect, ToU32(config.cursor_col));
 
-    imgui.draw_list->AddText(
-        result.text_pos,
-        colour::WithAlphaU8(style::Col(config.text_col), result.is_placeholder ? 140 : 255),
-        result.text,
-        {});
+    imgui.draw_list->AddText(result.text_pos,
+                             colour::WithAlphaU8(ToU32(config.text_col), result.is_placeholder ? 140 : 255),
+                             result.text,
+                             {});
 }
 
 // The width is filled by the knob. The height is not actually used.
@@ -234,7 +232,7 @@ void DrawPeakMeter(imgui::Context& imgui, Rect r, StereoPeakMeter const& level, 
     auto const rounding = LiveSize(UiSizeId::CornerRounding);
 
     {
-        // constexpr auto k_channel_col = colour::WithAlphaF(style::Col(style::Colour::Background0), 0.2f);
+        // constexpr auto k_channel_col = colour::WithAlphaF(ToU32(ColType::Background0), 0.2f);
         {
             auto l_channel = padded_r;
             l_channel.w = w;

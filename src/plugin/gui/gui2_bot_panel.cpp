@@ -34,12 +34,13 @@ static bool IconButton(GuiBuilder& builder,
               .text = icon,
               .size_from_text = true,
               .font = FontType::Icons,
-              .font_size = style::k_font_icons_size * font_scale,
-              .text_colours {
-                  .base = style::Colour::Subtext1 | style::Colour::DarkMode,
-                  .hot = style::Colour::Highlight,
-                  .active = style::Colour::Highlight,
-              },
+              .font_size = k_font_icons_size * font_scale,
+              .text_colours =
+                  ColSet {
+                      .base {.c = Col::Subtext1, .dark_mode = true},
+                      .hot {.c = Col::Highlight},
+                      .active {.c = Col::Highlight},
+                  },
               .parent_dictates_hot_and_active = true,
           });
     return button.button_fired;
@@ -53,7 +54,7 @@ OctaveDragger(GuiBuilder& builder, Box const parent, s64 value, u64 id_extra = S
                                .parent = parent,
                                .id_extra = id_extra,
                                .layout {
-                                   .size = {28, style::k_font_body_size},
+                                   .size = {28, k_font_body_size},
                                    .contents_direction = layout::Direction::Row,
                                    .contents_align = layout::Alignment::Middle,
                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -72,9 +73,9 @@ OctaveDragger(GuiBuilder& builder, Box const parent, s64 value, u64 id_extra = S
             .select_all_when_opening = true,
         };
         DrawTextInputConfig constexpr k_draw_config = {
-            .text_col = style::Colour::Text | style::Colour::DarkMode,
-            .cursor_col = style::Colour::Text | style::Colour::DarkMode,
-            .selection_col = style::Colour::Highlight | style::Colour::Alpha50,
+            .text_col = {.c = Col::Text, .dark_mode = true},
+            .cursor_col = {.c = Col::Text, .dark_mode = true},
+            .selection_col = {.c = Col::Highlight, .alpha = 128},
         };
 
         auto const window_r = builder.imgui.RegisterAndConvertRect(*viewport_r);
@@ -110,7 +111,7 @@ OctaveDragger(GuiBuilder& builder, Box const parent, s64 value, u64 id_extra = S
         else {
             auto const draw_text = new_value ? fmt::Format(builder.arena, k_fmt_string, *new_value) : text;
             auto const pos = imgui::TextInputTextPos(draw_text, window_r, k_input_config, builder.fonts);
-            builder.imgui.draw_list->AddText(pos, style::Col(k_draw_config.text_col), draw_text, {});
+            builder.imgui.draw_list->AddText(pos, ToU32(k_draw_config.text_col), draw_text, {});
         }
     }
 
@@ -120,28 +121,27 @@ OctaveDragger(GuiBuilder& builder, Box const parent, s64 value, u64 id_extra = S
 static void DoBotPanel(GuiState& g) {
     auto& builder = g.builder;
 
-    auto const root =
-        DoBox(builder,
-              {
-                  .background_fill_colours = {style::Colour::Background0 | style::Colour::DarkMode},
-                  .layout {
-                      .size = layout::k_fill_parent,
-                      .contents_gap = 0,
-                      .contents_direction = layout::Direction::Row,
-                      .contents_align = layout::Alignment::Start,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-              });
+    auto const root = DoBox(builder,
+                            {
+                                .background_fill_colours = Col {.c = Col::Background0, .dark_mode = true},
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_gap = 0,
+                                    .contents_direction = layout::Direction::Row,
+                                    .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                },
+                            });
 
     {
-        constexpr auto k_border_col = style::Colour::Background2 | style::Colour::DarkMode;
+        constexpr Col k_border_col = {.c = Col::Background2, .dark_mode = true};
         constexpr auto k_top_bot_margin = 2.0f;
 
         auto const tabs =
             DoBox(builder,
                   {
                       .parent = root,
-                      .background_fill_colours = {style::Colour::Background1 | style::Colour::DarkMode},
+                      .background_fill_colours = Col {.c = Col::Background1, .dark_mode = true},
                       .layout {
                           .size = {layout::k_hug_contents, layout::k_fill_parent},
                           .contents_direction = layout::Direction::Column,
@@ -155,60 +155,61 @@ static void DoBotPanel(GuiState& g) {
             // Draw a divider line on the inside right side of the tab box. We do this here because it creates
             // a nice consistent line - active tabs will draw over it to connect with the main content.
             builder.imgui.draw_list->AddRectFilled(Rect {.xywh {r.x + r.w - 1, r.y, 1, r.h}},
-                                                   style::Col(k_border_col));
+                                                   ToU32(k_border_col));
         }
 
-        auto const tab_button =
-            [&](BottomPanelType type, TooltipString tooltip, u64 id_extra = SourceLocationHash()) {
-                auto const btn =
-                    DoBox(builder,
-                          {
-                              .parent = tabs,
-                              .id_extra = id_extra,
-                              .background_fill_colours =
-                                  Splat(type == g.bottom_panel_state.type
-                                            ? style::Colour::Background0 | style::Colour::DarkMode
-                                            : style::Colour::None),
-                              .border_colours = Splat(k_border_col),
-                              .border_edges = type == g.bottom_panel_state.type ? (u4)0b0101 : (u4)0b0000,
-                              .layout {
-                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                  .margins = {.t = ToInt(type) == 0 ? k_top_bot_margin : 0.0f,
-                                              .b = BottomPanelType(ToInt(type) + 1) == BottomPanelType::Count
-                                                       ? k_top_bot_margin
-                                                       : 0.0f},
-                                  .contents_padding = {.lr = 5, .tb = 4},
-                                  .contents_direction = layout::Direction::Row,
-                                  .contents_align = layout::Alignment::Start,
-                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                              },
-                              .tooltip = tooltip,
-                              .button_behaviour = imgui::ButtonConfig {},
-                          });
-
+        auto const tab_button = [&](BottomPanelType type,
+                                    TooltipString tooltip,
+                                    u64 id_extra = SourceLocationHash()) {
+            auto const btn =
                 DoBox(builder,
                       {
-                          .parent = btn,
-                          .text =
-                              [type]() {
-                                  switch (type) {
-                                      case BottomPanelType::Play: return "Play"_s;
-                                      case BottomPanelType::EditMacros: return "Macros"_s;
-                                      case BottomPanelType::Count: PanicIfReached();
-                                  }
-                              }(),
-                          .size_from_text = true,
-                          .text_colours {
-                              .base = type == g.bottom_panel_state.type
-                                          ? style::Colour::Highlight
-                                          : style::Colour::Text | style::Colour::DarkMode,
-                              .hot = style::Colour::Highlight,
-                              .active = style::Colour::Highlight,
+                          .parent = tabs,
+                          .id_extra = id_extra,
+                          .background_fill_colours = type == g.bottom_panel_state.type
+                                                         ? Col {.c = Col::Background0, .dark_mode = true}
+                                                         : Col {.c = Col::None},
+                          .border_colours = k_border_col,
+                          .border_edges = type == g.bottom_panel_state.type ? (u4)0b0101 : (u4)0b0000,
+                          .layout {
+                              .size = {layout::k_fill_parent, layout::k_hug_contents},
+                              .margins = {.t = ToInt(type) == 0 ? k_top_bot_margin : 0.0f,
+                                          .b = BottomPanelType(ToInt(type) + 1) == BottomPanelType::Count
+                                                   ? k_top_bot_margin
+                                                   : 0.0f},
+                              .contents_padding = {.lr = 5, .tb = 4},
+                              .contents_direction = layout::Direction::Row,
+                              .contents_align = layout::Alignment::Start,
+                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                           },
-                          .parent_dictates_hot_and_active = true,
+                          .tooltip = tooltip,
+                          .button_behaviour = imgui::ButtonConfig {},
                       });
-                return btn;
-            };
+
+            DoBox(builder,
+                  {
+                      .parent = btn,
+                      .text =
+                          [type]() {
+                              switch (type) {
+                                  case BottomPanelType::Play: return "Play"_s;
+                                  case BottomPanelType::EditMacros: return "Macros"_s;
+                                  case BottomPanelType::Count: PanicIfReached();
+                              }
+                          }(),
+                      .size_from_text = true,
+                      .text_colours =
+                          ColSet {
+                              .base = type == g.bottom_panel_state.type
+                                          ? Col {.c = Col::Highlight}
+                                          : Col {.c = Col::Text, .dark_mode = true},
+                              .hot {.c = Col::Highlight},
+                              .active {.c = Col::Highlight},
+                          },
+                      .parent_dictates_hot_and_active = true,
+                  });
+            return btn;
+        };
 
         Optional<BottomPanelType> new_panel {};
 
@@ -230,7 +231,7 @@ static void DoBotPanel(GuiState& g) {
                     DoBox(builder,
                           {
                               .parent = root,
-                              .background_fill_colours = {style::Colour::None},
+                              .background_fill_colours = Col {.c = Col::None},
                               .round_background_corners = 0b1111,
                               .layout {
                                   .size = {layout::k_hug_contents, layout::k_fill_parent},

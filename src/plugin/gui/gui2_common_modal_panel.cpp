@@ -10,19 +10,19 @@ void DrawModalScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars 
         if (!b) continue;
         if (imgui.IsViewportHovered(imgui.curr_viewport) || imgui.IsActive(b->id)) {
             auto const hot_or_active = imgui.IsHotOrActive(b->id);
-            auto const rounding = GuiIo().WwToPixels(style::k_panel_rounding);
+            auto const rounding = GuiIo().WwToPixels(k_panel_rounding);
 
             // Channel.
             if (hot_or_active) {
-                u32 col = style::Col(style::Colour::Background2);
+                u32 col = ToU32({.c = Col::Background2});
                 imgui.draw_list->AddRectFilled(b->strip, col, rounding);
             }
 
             // Handle.
             {
                 auto handle_rect = b->handle;
-                u32 handle_col = style::Col(style::Colour::Surface1);
-                if (hot_or_active) handle_col = style::Col(style::Colour::Overlay0);
+                u32 handle_col = ToU32({.c = Col::Surface1});
+                if (hot_or_active) handle_col = ToU32({.c = Col::Overlay0});
                 if (imgui.curr_viewport->cfg.scrollbar_inside_padding) {
                     auto const pad_l = GuiIo().WwToPixels(hot_or_active ? 1 : 3.0f);
                     auto const pad_r = 0;
@@ -43,17 +43,17 @@ void DrawModalViewportBackgroundWithFullscreenDim(imgui::Context const& imgui) {
     imgui.draw_list->AddRectFilled(0, GuiIo().in.window_size.ToFloat2(), 0x6c0f0d0d);
     imgui.draw_list->PopClipRect();
 
-    auto const rounding = GuiIo().WwToPixels(style::k_panel_rounding);
+    auto const rounding = GuiIo().WwToPixels(k_panel_rounding);
     auto const r = imgui.curr_viewport->unpadded_bounds;
     DrawDropShadow(imgui, r, rounding);
-    imgui.draw_list->AddRectFilled(r, style::Col(style::Colour::Background0), rounding);
+    imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background0}), rounding);
 }
 
 void DrawOverlayViewportBackground(imgui::Context const& imgui) {
-    auto const rounding = GuiIo().WwToPixels(style::k_panel_rounding);
+    auto const rounding = GuiIo().WwToPixels(k_panel_rounding);
     auto const r = imgui.curr_viewport->unpadded_bounds;
     DrawDropShadow(imgui, r, rounding);
-    imgui.draw_list->AddRectFilled(r, style::Col(style::Colour::Background0), rounding);
+    imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background0}), rounding);
 }
 
 Box DoModalRootBox(GuiBuilder& builder) {
@@ -75,8 +75,8 @@ Box DoModalHeader(GuiBuilder& builder, ModalHeaderConfig const& config) {
                                            .parent = config.parent,
                                            .layout {
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                               .contents_padding = {.lrtb = style::k_spacing},
-                                               .contents_gap = style::k_spacing * 1.2f,
+                                               .contents_padding = {.lrtb = k_default_spacing},
+                                               .contents_gap = k_default_spacing * 1.2f,
                                                .contents_direction = layout::Direction::Row,
                                                .contents_align = layout::Alignment::Justify,
                                            },
@@ -87,7 +87,7 @@ Box DoModalHeader(GuiBuilder& builder, ModalHeaderConfig const& config) {
            .text = config.title,
            .font = FontType::Heading1,
            .layout {
-               .size = {layout::k_fill_parent, style::k_font_heading1_size},
+               .size = {layout::k_fill_parent, k_font_heading1_size},
            }});
 
     if (config.modeless) {
@@ -128,19 +128,18 @@ Box DoModalHeader(GuiBuilder& builder, ModalHeaderConfig const& config) {
 
 Box DoModalDivider(GuiBuilder& builder, Box parent, DividerOptions options, u64 id_extra) {
     auto const one_pixel = GuiIo().PixelsToWw(1.0f);
-    return DoBox(
-        builder,
-        {
-            .parent = parent,
-            .id_extra = id_extra,
-            .background_fill_colours = {!options.subtle ? style::Colour::Surface2 : style::Colour::Surface0},
-            .layout {
-                .size = options.horizontal ? f32x2 {layout::k_fill_parent, one_pixel}
-                                           : f32x2 {one_pixel, layout::k_fill_parent},
-                .margins = {.lr = options.vertical ? options.margin : 0,
-                            .tb = options.horizontal ? options.margin : 0},
-            },
-        });
+    return DoBox(builder,
+                 {
+                     .parent = parent,
+                     .id_extra = id_extra,
+                     .background_fill_colours = Col {.c = !options.subtle ? Col::Surface2 : Col::Surface0},
+                     .layout {
+                         .size = options.horizontal ? f32x2 {layout::k_fill_parent, one_pixel}
+                                                    : f32x2 {one_pixel, layout::k_fill_parent},
+                         .margins = {.lr = options.vertical ? options.margin : 0,
+                                     .tb = options.horizontal ? options.margin : 0},
+                     },
+                 });
 }
 
 // Creates a tab bar with configurable tabs
@@ -149,7 +148,7 @@ Box DoModalTabBar(GuiBuilder& builder, ModalTabBarConfig const& config) {
     auto const tab_container = DoBox(builder,
                                      {
                                          .parent = config.parent,
-                                         .background_fill_colours = {style::Colour::Background1},
+                                         .background_fill_colours = Col {.c = Col::Background1},
                                          .layout {
                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
                                              .contents_padding = {.lr = k_tab_border, .t = k_tab_border},
@@ -162,23 +161,23 @@ Box DoModalTabBar(GuiBuilder& builder, ModalTabBarConfig const& config) {
     for (auto const tab : config.tabs) {
         bool const is_current = tab.index == config.current_tab_index;
 
-        auto const tab_box = DoBox(
-            builder,
-            {
-                .parent = tab_container,
-                .id_extra = tab.index,
-                .background_fill_colours = {is_current ? style::Colour::Background0 : style::Colour::None},
-                .background_fill_auto_hot_active_overlay = true,
-                .round_background_corners = 0b1100,
-                .layout {
-                    .size = layout::k_hug_contents,
-                    .contents_padding = {.lr = style::k_spacing, .tb = 4},
-                    .contents_gap = 5,
-                    .contents_direction = layout::Direction::Row,
-                },
-                .button_behaviour =
-                    is_current ? k_nullopt : Optional<imgui::ButtonConfig>(imgui::ButtonConfig {}),
-            });
+        auto const tab_box =
+            DoBox(builder,
+                  {
+                      .parent = tab_container,
+                      .id_extra = tab.index,
+                      .background_fill_colours = Col {.c = is_current ? Col::Background0 : Col::None},
+                      .background_fill_auto_hot_active_overlay = true,
+                      .round_background_corners = 0b1100,
+                      .layout {
+                          .size = layout::k_hug_contents,
+                          .contents_padding = {.lr = k_default_spacing, .tb = 4},
+                          .contents_gap = 5,
+                          .contents_direction = layout::Direction::Row,
+                      },
+                      .button_behaviour =
+                          is_current ? k_nullopt : Optional<imgui::ButtonConfig>(imgui::ButtonConfig {}),
+                  });
 
         if (tab_box.button_fired) config.current_tab_index = tab.index;
 
@@ -189,7 +188,7 @@ Box DoModalTabBar(GuiBuilder& builder, ModalTabBarConfig const& config) {
                       .text = *tab.icon,
                       .size_from_text = true,
                       .font = FontType::Icons,
-                      .text_colours = Splat(is_current ? style::Colour::Subtext0 : style::Colour::Surface2),
+                      .text_colours = Col {.c = is_current ? Col::Subtext0 : Col::Surface2},
                   });
         }
 
@@ -198,7 +197,7 @@ Box DoModalTabBar(GuiBuilder& builder, ModalTabBarConfig const& config) {
                   .parent = tab_box,
                   .text = tab.text,
                   .size_from_text = true,
-                  .text_colours = Splat(is_current ? style::Colour::Text : style::Colour::Subtext0),
+                  .text_colours = Col {.c = is_current ? Col::Text : Col::Subtext0},
               });
     }
 
@@ -238,7 +237,7 @@ bool CheckboxButton(GuiBuilder& builder,
                                   .id_extra = id_extra,
                                   .layout {
                                       .size = {layout::k_hug_contents, layout::k_hug_contents},
-                                      .contents_gap = style::k_medium_gap,
+                                      .contents_gap = k_medium_gap,
                                       .contents_direction = layout::Direction::Row,
                                       .contents_align = layout::Alignment::Start,
                                   },
@@ -251,17 +250,17 @@ bool CheckboxButton(GuiBuilder& builder,
               .parent = button,
               .text = state ? ICON_FA_CHECK : ""_s,
               .font = FontType::Icons,
-              .font_size = style::k_font_icons_size * 0.7f,
-              .text_colours = Splat(style::Colour::Text),
+              .font_size = k_font_icons_size * 0.7f,
+              .text_colours = Col {Col::Text},
               .text_justification = TextJustification::Centred,
-              .background_fill_colours = {style::Colour::Background2},
+              .background_fill_colours = Col {Col::Background2},
               .background_fill_auto_hot_active_overlay = true,
-              .border_colours = {style::Colour::Overlay0},
+              .border_colours = Col {Col::Overlay0},
               .border_auto_hot_active_overlay = true,
               .parent_dictates_hot_and_active = true,
               .round_background_corners = 0b1111,
               .layout {
-                  .size = style::k_icon_button_size,
+                  .size = k_icon_button_size,
               },
           });
     DoBox(builder,
@@ -280,31 +279,30 @@ bool TextButton(GuiBuilder& builder, Box parent, TextButtonOptions const& option
               {
                   .parent = parent,
                   .id_extra = id_extra,
-                  .background_fill_colours = Splat(style::Colour::Background2),
+                  .background_fill_colours = Col {.c = Col::Background2},
                   .background_fill_auto_hot_active_overlay = !options.disabled,
                   .round_background_corners = 0b1111,
                   .layout {
                       .size = {options.fill_x ? layout::k_fill_parent : layout::k_hug_contents,
                                layout::k_hug_contents},
-                      .contents_padding = {.lr = style::k_button_padding_x, .tb = style::k_button_padding_y},
+                      .contents_padding = {.lr = k_button_padding_x, .tb = k_button_padding_y},
                   },
                   .tooltip = options.disabled ? k_nullopt : options.tooltip,
                   .button_behaviour =
                       options.disabled ? k_nullopt : Optional<imgui::ButtonConfig>(imgui::ButtonConfig {}),
               });
 
-    auto const text_col = options.disabled ? style::Colour::Surface1 : style::Colour::Text;
     DoBox(builder,
           {
               .parent = button,
               .text = options.text,
               .size_from_text = !options.fill_x,
               .font = FontType::Body,
-              .text_colours = Splat(text_col),
+              .text_colours = Col {.c = options.disabled ? Col::Surface1 : Col::Text},
               .text_justification = TextJustification::Centred,
               .text_overflow = TextOverflowType::ShowDotsOnRight,
               .layout {
-                  .size = {layout::k_fill_parent, style::k_font_body_size},
+                  .size = {layout::k_fill_parent, k_font_body_size},
               },
           });
 
@@ -340,28 +338,29 @@ Box IconButton(GuiBuilder& builder,
               .size_from_text = true,
               .font = FontType::Icons,
               .font_size = font_size,
-              .text_colours = Splat(style::Colour::Subtext0),
+              .text_colours = Col {.c = Col::Subtext0},
           });
 
     return button;
 }
 
 TextInputResult TextInput(GuiBuilder& builder, Box parent, TextInputOptions const& options, u64 id_extra) {
-    auto const box = DoBox(builder,
-                           {
-                               .parent = parent,
-                               .id_extra = id_extra,
-                               .background_fill_colours = Splat(
-                                   options.background ? style::Colour::Background2 : style::Colour::None),
-                               .border_colours {
-                                   .base = options.border ? style::Colour::Overlay0 : style::Colour::None,
-                                   .hot = options.border ? style::Colour::Overlay1 : style::Colour::None,
-                                   .active = options.border ? style::Colour::Blue : style::Colour::None,
-                               },
-                               .round_background_corners = 0b1111,
-                               .layout {.size = options.size},
-                               .tooltip = options.tooltip,
-                           });
+    auto const box =
+        DoBox(builder,
+              {
+                  .parent = parent,
+                  .id_extra = id_extra,
+                  .background_fill_colours = Col {.c = options.background ? Col::Background2 : Col::None},
+                  .border_colours =
+                      ColSet {
+                          .base = {.c = options.border ? Col::Overlay0 : Col::None},
+                          .hot = {.c = options.border ? Col::Overlay1 : Col::None},
+                          .active = {.c = options.border ? Col::Blue : Col::None},
+                      },
+                  .round_background_corners = 0b1111,
+                  .layout {.size = options.size},
+                  .tooltip = options.tooltip,
+              });
 
     Optional<imgui::TextInputResult> result {};
 
@@ -390,9 +389,9 @@ TextInputResult TextInput(GuiBuilder& builder, Box parent, TextInputOptions cons
         DrawTextInput(builder.imgui,
                       *result,
                       {
-                          .text_col = style::Colour::Text,
-                          .cursor_col = style::Colour::Text,
-                          .selection_col = style::Colour::Highlight | style::Colour::Alpha50,
+                          .text_col = {Col::Text},
+                          .cursor_col = {Col::Text},
+                          .selection_col = {.c = Col::Highlight, .alpha = 128},
                       });
     }
 
@@ -408,7 +407,7 @@ Optional<s64> IntField(GuiBuilder& builder, Box parent, IntFieldOptions const& o
                                      .id_extra = id_extra,
                                      .layout {
                                          .size = layout::k_hug_contents,
-                                         .contents_gap = style::k_medium_gap,
+                                         .contents_gap = k_medium_gap,
                                          .contents_direction = layout::Direction::Row,
                                          .contents_align = layout::Alignment::Start,
                                      },
@@ -417,8 +416,8 @@ Optional<s64> IntField(GuiBuilder& builder, Box parent, IntFieldOptions const& o
     auto const item_container = DoBox(builder,
                                       {
                                           .parent = container,
-                                          .background_fill_colours = {style::Colour::Background2},
-                                          .border_colours = {style::Colour::Overlay0},
+                                          .background_fill_colours = Col {.c = Col::Background2},
+                                          .border_colours = Col {.c = Col::Overlay0},
                                           .round_background_corners = 0b1111,
                                           .layout {
                                               .size = layout::k_hug_contents,
@@ -499,13 +498,13 @@ Box MenuButton(GuiBuilder& builder, Box parent, MenuButtonOptions const& options
               {
                   .parent = parent,
                   .id_extra = id_extra,
-                  .background_fill_colours = {style::Colour::Background2},
+                  .background_fill_colours = Col {.c = Col::Background2},
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
                   .layout {
                       .size = {options.width, layout::k_hug_contents},
-                      .contents_padding = {.lr = style::k_button_padding_x, .tb = style::k_button_padding_y},
-                      .contents_gap = style::k_menu_item_padding_x,
+                      .contents_padding = {.lr = k_button_padding_x, .tb = k_button_padding_y},
+                      .contents_gap = k_menu_item_padding_x,
                       .contents_align = layout::Alignment::Justify,
                   },
                   .tooltip = options.tooltip,
@@ -552,25 +551,25 @@ Box MenuItem(GuiBuilder& builder, Box parent, MenuItemOptions const& options, u6
               .parent = item,
               .text = options.is_selected ? String(ICON_FA_CHECK) : "",
               .font = FontType::Icons,
-              .text_colours = Splat(style::Colour::Subtext0),
+              .text_colours = Col {.c = Col::Subtext0},
               .layout {
-                  .size = style::k_icon_button_size,
-                  .margins {.l = style::k_menu_item_padding_x},
+                  .size = k_icon_button_size,
+                  .margins {.l = k_menu_item_padding_x},
               },
           });
 
-    auto const text_container = DoBox(
-        builder,
-        {
-            .parent = item,
-            .layout {
-                .size = {layout::k_fill_parent, layout::k_hug_contents},
-                .contents_padding = {.lr = style::k_menu_item_padding_x, .tb = style::k_menu_item_padding_y},
-                .contents_direction = layout::Direction::Column,
-                .contents_align = layout::Alignment::Start,
-                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-            },
-        });
+    auto const text_container =
+        DoBox(builder,
+              {
+                  .parent = item,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .contents_padding = {.lr = k_menu_item_padding_x, .tb = k_menu_item_padding_y},
+                      .contents_direction = layout::Direction::Column,
+                      .contents_align = layout::Alignment::Start,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                  },
+              });
     DoBox(builder,
           {
               .parent = text_container,
@@ -584,7 +583,7 @@ Box MenuItem(GuiBuilder& builder, Box parent, MenuItemOptions const& options, u6
                   .parent = text_container,
                   .text = *options.subtext,
                   .size_from_text = true,
-                  .text_colours = Splat(style::Colour::Subtext0),
+                  .text_colours = Col {.c = Col::Subtext0},
               });
     }
 

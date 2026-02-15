@@ -59,7 +59,7 @@ bool DoTagsGui(GuiBuilder& builder,
                                             .id_extra = (u64)category,
                                             .layout {
                                                 .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                .contents_gap = style::k_spacing / 3,
+                                                .contents_gap = k_default_spacing / 3,
                                                 .contents_direction = layout::Direction::Column,
                                                 .contents_align = layout::Alignment::Start,
                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -76,7 +76,7 @@ bool DoTagsGui(GuiBuilder& builder,
                           .parent = category_box,
                           .layout {
                               .size = {layout::k_fill_parent, layout::k_hug_contents},
-                              .contents_gap = style::k_spacing / 3,
+                              .contents_gap = k_default_spacing / 3,
                               .contents_direction = layout::Direction::Row,
                               .contents_align = layout::Alignment::Start,
                               .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -107,7 +107,7 @@ bool DoTagsGui(GuiBuilder& builder,
                                          .parent = category_box,
                                          .layout {
                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                             .contents_gap = style::k_spacing / 2.5f,
+                                             .contents_gap = k_default_spacing / 2.5f,
                                              .contents_direction = layout::Direction::Row,
                                              .contents_multiline = true,
                                              .contents_align = layout::Alignment::Start,
@@ -132,9 +132,8 @@ bool DoTagsGui(GuiBuilder& builder,
                     .text = tag_info.name,
                     .size_from_text = true,
                     .font = FontType::Body,
-                    .text_colours = Splat(grey_out ? style::Colour::Overlay2 : style::Colour::Text),
-                    .background_fill_colours = {is_selected ? style::Colour::Highlight
-                                                            : style::Colour::Background1},
+                    .text_colours = Col {.c = grey_out ? Col::Overlay2 : Col::Text},
+                    .background_fill_colours = Col {.c = is_selected ? Col::Highlight : Col::Background1},
                     .background_fill_auto_hot_active_overlay = true,
                     .round_background_corners = 0b1100,
                     .tooltip = tag_info.description.size ? TooltipString(tag_info.description) : k_nullopt,
@@ -160,8 +159,8 @@ SavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePreset
                             {
                                 .layout {
                                     .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
-                                    .contents_padding = {.lrtb = style::k_spacing},
-                                    .contents_gap = style::k_spacing,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_default_spacing,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                     .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -185,7 +184,7 @@ SavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePreset
                                           .parent = root,
                                           .layout {
                                               .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                              .contents_gap = style::k_spacing / 3,
+                                              .contents_gap = k_default_spacing / 3,
                                               .contents_direction = layout::Direction::Row,
                                               .contents_align = layout::Alignment::Start,
                                               .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -204,7 +203,7 @@ SavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePreset
                                          {
                                              .text = state.metadata.author,
                                              .tooltip = "Creator of this preset"_s,
-                                             .size = f32x2 {200, style::k_font_body_size * 1.3f},
+                                             .size = f32x2 {200, k_font_body_size * 1.3f},
                                          });
             input.result && input.result->buffer_changed) {
             ASSERT(input.result->text.size < 10000);
@@ -215,8 +214,8 @@ SavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePreset
                        author_box,
                        ICON_FA_FLOPPY_DISK,
                        "Remember this author"_s,
-                       style::k_font_body_size,
-                       style::k_font_body_size)
+                       k_font_body_size,
+                       k_font_body_size)
                 .button_fired) {
             prefs::SetValue(context.prefs, RememberedAuthorPrefsDescriptor(), (String)state.metadata.author);
         }
@@ -227,8 +226,8 @@ SavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePreset
                            author_box,
                            ICON_FA_FILE_IMPORT,
                            fmt::Format(builder.arena, "Use saved author: {}"_s, remembered_name.value),
-                           style::k_font_body_size,
-                           style::k_font_body_size)
+                           k_font_body_size,
+                           k_font_body_size)
                     .button_fired) {
                 dyn::Assign(state.metadata.author, remembered_name.value.Get<String>());
             }
@@ -241,7 +240,7 @@ SavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePreset
                                          .parent = root,
                                          .layout {
                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                             .contents_gap = style::k_spacing / 3,
+                                             .contents_gap = k_default_spacing / 3,
                                              .contents_direction = layout::Direction::Column,
                                              .contents_align = layout::Alignment::Start,
                                              .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -323,8 +322,8 @@ void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, Sav
                                   .parent = root,
                                   .layout {
                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                      .contents_padding = {.lrtb = style::k_spacing},
-                                      .contents_gap = style::k_spacing,
+                                      .contents_padding = {.lrtb = k_default_spacing},
+                                      .contents_gap = k_default_spacing,
                                       .contents_direction = layout::Direction::Row,
                                       .contents_align = layout::Alignment::End,
                                   },

@@ -13,10 +13,10 @@ constexpr f64 k_tooltip_open_delay = 0.5;
 constexpr f32 k_tooltip_max_width = 200;
 constexpr f32 k_tooltip_pad_x = 5;
 constexpr f32 k_tooltip_pad_y = 2;
-constexpr f32 k_tooltip_rounding = style::k_button_rounding;
+constexpr f32 k_tooltip_rounding = k_button_rounding;
 
-constexpr u32 k_auto_hot_white_overlay = colour::Hsla(style::k_highlight_hue, 35, 70, 20);
-constexpr u32 k_auto_active_white_overlay = colour::Hsla(style::k_highlight_hue, 35, 70, 38);
+constexpr u32 k_auto_hot_white_overlay = colour::Hsla(k_highlight_hue, 35, 70, 20);
+constexpr u32 k_auto_active_white_overlay = colour::Hsla(k_highlight_hue, 35, 70, 38);
 
 static f32 HeightOfWrappedText(GuiBuilder& builder, layout::Id id, f32 width) {
     if (auto const t_ptr = builder.state->word_wrapped_texts.Find(id)) {
@@ -226,10 +226,10 @@ static bool Tooltip(GuiBuilder& builder,
 
         DrawDropShadow(imgui, popup_r);
         imgui.overlay_draw_list->AddRectFilled(popup_r,
-                                               style::Col(style::Colour::Background0),
+                                               ToU32({.c = Col::Background0}),
                                                GuiIo().WwToPixels(k_tooltip_rounding));
         imgui.overlay_draw_list->AddText(text_start,
-                                         style::Col(style::Colour::Text),
+                                         ToU32({.c = Col::Text}),
                                          str,
                                          {.wrap_width = text_size.x + 1});
         return true;
@@ -383,27 +383,27 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
             bool32 const is_hot = config.parent_dictates_hot_and_active ? config.parent->is_hot : box.is_hot;
 
             if (auto const background_fill = ({
-                    style::Colour c {};
+                    Col c {};
                     if (config.background_fill_auto_hot_active_overlay)
-                        c = config.background_fill_colours.base;
+                        c = config.background_fill_colours.s.base;
                     else if (is_active)
-                        c = config.background_fill_colours.active;
+                        c = config.background_fill_colours.s.active;
                     else if (is_hot)
-                        c = config.background_fill_colours.hot;
+                        c = config.background_fill_colours.s.hot;
                     else
-                        c = config.background_fill_colours.base;
+                        c = config.background_fill_colours.s.base;
                     c;
                 });
-                background_fill != style::Colour::None || config.background_fill_auto_hot_active_overlay) {
+                background_fill.c != Col::None || config.background_fill_auto_hot_active_overlay) {
 
                 auto r = rect;
                 // If we normally don't show a background, then we can assume that hot/active colours are
                 // exclusively for the mouse so we should use the mouse rectangle.
-                if (config.background_fill_colours.base == style::Colour::None) r = mouse_rect;
+                if (config.background_fill_colours.s.base.c == Col::None) r = mouse_rect;
 
                 auto const rounding = Min(GuiIo().WwToPixels(config.corner_rounding), Min(r.w, r.h) / 2);
 
-                u32 col_u32 = style::Col(background_fill);
+                u32 col_u32 = ToU32(background_fill);
                 if (config.background_fill_auto_hot_active_overlay) {
                     if (is_hot)
                         col_u32 = col_u32 ? colour::BlendColours(col_u32, k_auto_hot_white_overlay)
@@ -475,23 +475,23 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
             }
 
             if (auto const border = ({
-                    style::Colour c {};
+                    Col c {};
                     if (config.border_auto_hot_active_overlay)
-                        c = config.border_colours.base;
+                        c = config.border_colours.s.base;
                     else if (is_active)
-                        c = config.border_colours.active;
+                        c = config.border_colours.s.active;
                     else if (is_hot)
-                        c = config.border_colours.hot;
+                        c = config.border_colours.s.hot;
                     else
-                        c = config.border_colours.base;
+                        c = config.border_colours.s.base;
                     c;
                 });
-                border != style::Colour::None || config.border_auto_hot_active_overlay) {
+                border.c != Col::None || config.border_auto_hot_active_overlay) {
 
                 auto r = rect;
-                if (config.border_colours.base == style::Colour::None) r = mouse_rect;
+                if (config.border_colours.s.base.c == Col::None) r = mouse_rect;
 
-                u32 col_u32 = style::Col(border);
+                u32 col_u32 = ToU32(border);
                 if (config.border_auto_hot_active_overlay) {
                     if (is_hot)
                         col_u32 = col_u32 ? colour::BlendColours(col_u32, k_auto_hot_white_overlay)
@@ -566,9 +566,9 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
 
                 builder.imgui.draw_list->AddText(
                     text_pos,
-                    style::Col(is_hot      ? config.text_colours.hot
-                               : is_active ? config.text_colours.active
-                                           : config.text_colours.base),
+                    ToU32(is_hot      ? config.text_colours.s.hot
+                          : is_active ? config.text_colours.s.active
+                                      : config.text_colours.s.base),
                     text,
                     {
                         .wrap_width = wrap_width == k_wrap_to_parent ? rect.w : wrap_width,

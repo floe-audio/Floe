@@ -73,8 +73,8 @@ PUBLIC void PackageInstallAlertsPanel(GuiBuilder& builder, package::InstallJobs&
                             {
                                 .layout {
                                     .size = layout::k_fill_parent,
-                                    .contents_padding = {.lrtb = style::k_spacing},
-                                    .contents_gap = style::k_spacing,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_default_spacing,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
@@ -100,7 +100,7 @@ PUBLIC void PackageInstallAlertsPanel(GuiBuilder& builder, package::InstallJobs&
                                              .parent = root,
                                              .layout {
                                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                 .contents_gap = style::k_medium_gap,
+                                                 .contents_gap = k_medium_gap,
                                                  .contents_direction = layout::Direction::Column,
                                                  .contents_align = layout::Alignment::Start,
                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -123,7 +123,7 @@ PUBLIC void PackageInstallAlertsPanel(GuiBuilder& builder, package::InstallJobs&
                                               .parent = container,
                                               .layout {
                                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                  .contents_gap = style::k_medium_gap,
+                                                  .contents_gap = k_medium_gap,
                                                   .contents_direction = layout::Direction::Row,
                                                   .contents_align = layout::Alignment::Start,
                                               },

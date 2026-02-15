@@ -22,7 +22,7 @@ static void DrawLinkLine(GuiState& g, f32x2 p1, f32x2 p2) {
 
     g.imgui.overlay_draw_list->AddLine(p1,
                                        p2,
-                                       colour::ChangeAlpha(style::Col(style::Colour::Blue), 0.7f),
+                                       colour::ChangeAlpha(ToU32({.c = Col::Blue}), 0.7f),
                                        Max(1.0f, GuiIo().WwToPixels(2.0f)));
 }
 
@@ -209,7 +209,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                 if (builder.imgui.IsHotOrActive(imgui_id)) {
                     builder.imgui.draw_list->AddCircleFilled(centre,
                                                              radius - arc_thickness,
-                                                             style::Col(style::Colour::Blue),
+                                                             ToU32({.c = Col::Blue}),
                                                              12);
                 }
 
@@ -229,8 +229,8 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                          knob_r,
                          MapTo01(dest.value, -1, 1),
                          {
-                             .highlight_col = style::Col(style::Colour::Blue),
-                             .line_col = style::Col(style::Colour::Blue),
+                             .highlight_col = ToU32({.c = Col::Blue}),
+                             .line_col = ToU32({.c = Col::Blue}),
                              .bidirectional = true,
                          });
 
@@ -300,7 +300,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                 builder.imgui.draw_list->AddTextInRect(
                     knob_r,
                     ({
-                        u32 c = style::Col(style::Colour::Blue);
+                        u32 c = ToU32({.c = Col::Blue});
                         if (g.macros_gui_state.macro_destination_select_mode) {
                             if (*g.macros_gui_state.macro_destination_select_mode == macro_index)
                                 c = colour::ChangeBrightness(c, 1.3f);
@@ -350,19 +350,21 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
         auto const name_input = DoBox(builder,
                                       {
                                           .parent = container,
-                                          .background_fill_colours {
-                                              .base = style::Colour::None,
-                                              .hot = style::Colour::Background0 | style::Colour::DarkMode,
-                                              .active = style::Colour::Background0 | style::Colour::DarkMode,
-                                          },
-                                          .border_colours {
-                                              .base = style::Colour::None,
-                                              .hot = style::Colour::Overlay1 | style::Colour::DarkMode,
-                                              .active = style::Colour::Subtext0 | style::Colour::DarkMode,
-                                          },
+                                          .background_fill_colours =
+                                              ColSet {
+                                                  .base = {},
+                                                  .hot = {.c = Col::Background0, .dark_mode = true},
+                                                  .active = {.c = Col::Background0, .dark_mode = true},
+                                              },
+                                          .border_colours =
+                                              ColSet {
+                                                  .base = {},
+                                                  .hot = {.c = Col::Overlay1, .dark_mode = true},
+                                                  .active = {.c = Col::Subtext0, .dark_mode = true},
+                                              },
                                           .round_background_corners = 0b1111,
                                           .layout {
-                                              .size = {100, style::k_font_body_size},
+                                              .size = {100, k_font_body_size},
                                           },
                                       });
 
@@ -391,9 +393,9 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
             DrawTextInput(builder.imgui,
                           result,
                           {
-                              .text_col = style::Colour::Text | style::Colour::DarkMode,
-                              .cursor_col = style::Colour::Text | style::Colour::DarkMode,
-                              .selection_col = style::Colour::Highlight | style::Colour::Alpha50,
+                              .text_col = {.c = Col::Text, .dark_mode = true},
+                              .cursor_col = {.c = Col::Text, .dark_mode = true},
+                              .selection_col = {.c = Col::Highlight, .alpha = 128},
                           });
 
             if (result.enter_pressed || result.buffer_changed)
@@ -418,12 +420,12 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
             g.builder.imgui.overlay_draw_list->AddCircleFilled(
                 r.Centre(),
                 r.w * 0.5f,
-                style::Col(style::Colour::Background0 | style::Colour::DarkMode),
+                ToU32(Col {.c = Col::Background0, .dark_mode = true}),
                 12);
             g.builder.imgui.overlay_draw_list->AddTextInRect(
                 r,
                 ({
-                    u32 c = style::Col(style::Colour::Red);
+                    u32 c = ToU32({.c = Col::Red});
                     if (builder.imgui.IsHot(remove_button->id)) c = colour::ChangeBrightness(c, 1.3f);
                     c;
                 }),
@@ -491,15 +493,14 @@ void MacroAddDestinationRegion(GuiState& g, Rect window_r, ParamIndex param_inde
         g.fonts.Push(ToInt(FontType::Icons));
         DEFER { g.fonts.Pop(); };
 
-        g.imgui.overlay_draw_list->AddCircleFilled(
-            window_r.Centre(),
-            g.fonts.Current()->font_size * 0.4f,
-            style::Col(style::Colour::Background0 | style::Colour::DarkMode));
+        g.imgui.overlay_draw_list->AddCircleFilled(window_r.Centre(),
+                                                   g.fonts.Current()->font_size * 0.4f,
+                                                   ToU32(Col {.c = Col::Background0, .dark_mode = true}));
 
         g.imgui.overlay_draw_list->AddTextInRect(
             window_r,
-            g.imgui.IsHotOrActive(imgui_id) ? colour::ChangeBrightness(style::Col(style::Colour::Blue), 1.3f)
-                                            : style::Col(style::Colour::Blue),
+            g.imgui.IsHotOrActive(imgui_id) ? colour::ChangeBrightness(ToU32({.c = Col::Blue}), 1.3f)
+                                            : ToU32({.c = Col::Blue}),
             ICON_FA_CIRCLE_PLUS,
             {
                 .justification = TextJustification::Centred,

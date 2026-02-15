@@ -17,11 +17,9 @@ static void DrawDarkModeModalBackground(imgui::Context const& imgui) {
     imgui.draw_list->AddRectFilled(0, GuiIo().in.window_size.ToFloat2(), 0x6c0f0d0d);
     imgui.draw_list->PopClipRect();
 
-    auto const rounding = GuiIo().WwToPixels(style::k_panel_rounding);
+    auto const rounding = GuiIo().WwToPixels(k_panel_rounding);
     auto const r = imgui.curr_viewport->unpadded_bounds;
-    imgui.draw_list->AddRectFilled(r,
-                                   style::Col(style::Colour::Background0 | style::Colour::DarkMode),
-                                   rounding);
+    imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background0, .dark_mode = true}), rounding);
 }
 
 static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
@@ -41,8 +39,8 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
                                                .parent = root,
                                                .layout {
                                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                   .contents_padding = {.lrtb = style::k_spacing},
-                                                   .contents_gap = style::k_spacing * 1.2f,
+                                                   .contents_padding = {.lrtb = k_default_spacing},
+                                                   .contents_gap = k_default_spacing * 1.2f,
                                                    .contents_direction = layout::Direction::Row,
                                                    .contents_align = layout::Alignment::Justify,
                                                },
@@ -53,9 +51,9 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
                   .parent = title_container,
                   .text = "Legacy Parameters",
                   .font = FontType::Heading1,
-                  .text_colours = Splat(style::Colour::Text | style::Colour::DarkMode),
+                  .text_colours = Col {.c = Col::Text, .dark_mode = true},
                   .layout {
-                      .size = {layout::k_fill_parent, style::k_font_heading1_size},
+                      .size = {layout::k_fill_parent, k_font_heading1_size},
                   },
               });
 
@@ -65,7 +63,7 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
                   .text = ICON_FA_XMARK,
                   .size_from_text = true,
                   .font = FontType::Icons,
-                  .text_colours = Splat(style::Colour::Subtext0 | style::Colour::DarkMode),
+                  .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
                   .button_behaviour =
@@ -82,7 +80,7 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
         DoBox(builder,
               {
                   .parent = root,
-                  .background_fill_colours = {style::Colour::Surface2 | style::Colour::DarkMode},
+                  .background_fill_colours = Col {.c = Col::Surface2, .dark_mode = true},
                   .layout {
                       .size = {layout::k_fill_parent, one_pixel},
                   },
@@ -95,7 +93,7 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
                                 .parent = root,
                                 .layout {
                                     .size = layout::k_fill_parent,
-                                    .contents_padding = {.lrtb = style::k_spacing},
+                                    .contents_padding = {.lrtb = k_default_spacing},
                                     .contents_gap = {20, 10},
                                     .contents_direction = layout::Direction::Row,
                                     .contents_multiline = true,
@@ -127,15 +125,13 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
                                 container,
                                 g.engine.processor.main_params.DescribedValue(desc.index),
                                 {
-                                    .knob_highlight_col = style::Colour::Highlight,
-                                    .knob_line_col = style::Colour::Background0 | style::Colour::DarkMode,
+                                    .knob_highlight_col = {.c = Col::Highlight},
+                                    .knob_line_col = {.c = Col::Background0, .dark_mode = true},
                                 });
                 break;
             }
             case ParamValueType::Menu: {
-                DoMenuParameter(g,
-                                container,
-                                g.engine.processor.main_params.DescribedValue(desc.index));
+                DoMenuParameter(g, container, g.engine.processor.main_params.DescribedValue(desc.index));
                 break;
             }
             case ParamValueType::Bool: {
@@ -154,7 +150,7 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
                   .parent = container,
                   .text = desc.ModuleString(),
                   .size_from_text = true,
-                  .text_colours = Splat(style::Colour::Subtext0 | style::Colour::DarkMode),
+                  .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
                   .text_justification = TextJustification::Centred,
               });
     }

@@ -148,11 +148,11 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
     auto const root_size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize());
     auto root = DoBox(builder,
                       {
-                          .background_fill_colours = {style::Colour::Background0 | style::Colour::DarkMode},
+                          .background_fill_colours = Col {.c = Col::Background0, .dark_mode = true},
                           .layout {
                               .size = root_size,
-                              .contents_padding = {.lr = style::k_spacing},
-                              .contents_gap = style::k_spacing,
+                              .contents_padding = {.lr = k_default_spacing},
+                              .contents_gap = k_default_spacing,
                               .contents_direction = layout::Direction::Row,
                               .contents_align = layout::Alignment::Start,
                               .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -185,23 +185,22 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                       ? String {InstanceId(g.engine.autosave_state)}
                                       : ""_s),
               .size_from_text = true,
-              .text_colours = {style::Colour::Subtext0 | style::Colour::DarkMode},
+              .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
           });
 
-    auto preset_box =
-        DoBox(builder,
-              {
-                  .parent = root,
-                  .background_fill_colours = {style::Colour::Surface0 | style::Colour::DarkMode},
-                  .round_background_corners = 0b1111,
-                  .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
-                      .contents_padding = {.l = 7, .r = 4, .tb = 2},
-                      .contents_direction = layout::Direction::Row,
-                      .contents_align = layout::Alignment::Start,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-              });
+    auto preset_box = DoBox(builder,
+                            {
+                                .parent = root,
+                                .background_fill_colours = Col {.c = Col::Surface0, .dark_mode = true},
+                                .round_background_corners = 0b1111,
+                                .layout {
+                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                    .contents_padding = {.l = 7, .r = 4, .tb = 2},
+                                    .contents_direction = layout::Direction::Row,
+                                    .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                },
+                            });
 
     auto preset_box_left =
         DoBox(builder,
@@ -239,14 +238,14 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                   g.engine.last_snapshot.name_or_path.Name(),
                                   StateChangedSinceLastSnapshot(g.engine) ? " (modified)"_s : ""_s),
               .text_colours =
-                  {
-                      .base = style::Colour::Text | style::Colour::DarkMode,
-                      .hot = style::Colour::Highlight,
-                      .active = style::Colour::Highlight,
+                  ColSet {
+                      .base {.c = Col::Text, .dark_mode = true},
+                      .hot {.c = Col::Highlight},
+                      .active {.c = Col::Highlight},
                   },
               .parent_dictates_hot_and_active = true,
               .layout {
-                  .size = {layout::k_fill_parent, style::k_font_body_size},
+                  .size = {layout::k_fill_parent, k_font_body_size},
               },
           });
 
@@ -258,15 +257,16 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                           ? (String)g.engine.last_snapshot.state.metadata.description
                           : "No description"_s,
               .font = FontType::BodyItalic,
-              .text_colours {
-                  .base = style::Colour::Subtext0 | style::Colour::DarkMode,
-                  .hot = style::Colour::Subtext1 | style::Colour::DarkMode,
-                  .active = style::Colour::Subtext1 | style::Colour::DarkMode,
-              },
+              .text_colours =
+                  ColSet {
+                      .base {.c = Col::Subtext0, .dark_mode = true},
+                      .hot {.c = Col::Subtext1, .dark_mode = true},
+                      .active {.c = Col::Subtext1, .dark_mode = true},
+                  },
               .text_overflow = TextOverflowType::ShowDotsOnRight,
               .parent_dictates_hot_and_active = true,
               .layout {
-                  .size = {layout::k_fill_parent, style::k_font_body_italic_size},
+                  .size = {layout::k_fill_parent, k_font_body_italic_size},
               },
           });
 
@@ -275,7 +275,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                     String tooltip,
                                     f32 font_scale,
                                     f32 padding_x,
-                                    style::Colour colour = style::Colour::Subtext1 | style::Colour::DarkMode,
+                                    Col colour = {.c = Col::Subtext1, .dark_mode = true},
                                     u64 id_extra = SourceLocationHash()) {
         // We use a wrapper so that the interactable area is larger and touches the adjacent buttons.
         auto const button = DoBox(builder,
@@ -295,12 +295,13 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                   .text = icon,
                   .size_from_text = true,
                   .font = FontType::Icons,
-                  .font_size = style::k_font_icons_size * font_scale,
-                  .text_colours {
-                      .base = colour,
-                      .hot = style::Colour::Highlight,
-                      .active = style::Colour::Highlight,
-                  },
+                  .font_size = k_font_icons_size * font_scale,
+                  .text_colours =
+                      ColSet {
+                          .base = colour,
+                          .hot {.c = Col::Highlight},
+                          .active {.c = Col::Highlight},
+                      },
                   .parent_dictates_hot_and_active = true,
               });
         return button;
@@ -424,7 +425,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
             DoBox(builder,
                   {
                       .parent = info_button,
-                      .background_fill_colours {style::Colour::Red},
+                      .background_fill_colours = Col {.c = Col::Red},
                       .background_shape = BackgroundShape::Circle,
                       .layout {
                           .size = 7,
@@ -440,7 +441,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                                        "Open attribution requirements"_s,
                                                        0.9f,
                                                        5,
-                                                       style::Colour::Red);
+                                                       Col {.c = Col::Red});
         if (attribution_button.button_fired) g.imgui.OpenModalViewport(AttributionPanelContext::k_panel_id);
     }
 

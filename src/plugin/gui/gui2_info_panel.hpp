@@ -38,8 +38,8 @@ static void LibrariesInfoPanel(GuiBuilder& builder, InfoPanelContext& context, I
                             {
                                 .layout {
                                     .size = layout::k_fill_parent,
-                                    .contents_padding = {.lrtb = style::k_spacing},
-                                    .contents_gap = style::k_spacing,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_default_spacing,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                     .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -63,7 +63,7 @@ static void LibrariesInfoPanel(GuiBuilder& builder, InfoPanelContext& context, I
                                 {
                                     .parent = root,
                                     .id_extra = Hash(lib->id),
-                                    .border_colours = {style::Colour::Background2},
+                                    .border_colours = Col {.c = Col::Background2},
                                     .round_background_corners = 0b1111,
                                     .layout {
                                         .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -185,8 +185,8 @@ static void AboutInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoP
                             {
                                 .layout {
                                     .size = layout::k_fill_parent,
-                                    .contents_padding = {.lrtb = style::k_spacing},
-                                    .contents_gap = style::k_spacing,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_default_spacing,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                     .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -209,7 +209,7 @@ static void AboutInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoP
                                           .parent = root,
                                           .layout {
                                               .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                              .contents_gap = style::k_spacing,
+                                              .contents_gap = k_default_spacing,
                                               .contents_direction = layout::Direction::Row,
                                               .contents_align = layout::Alignment::Start,
                                           },
@@ -232,7 +232,7 @@ static void AboutInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoP
                                             .parent = root,
                                             .layout {
                                                 .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                .contents_gap = style::k_spacing / 4,
+                                                .contents_gap = k_default_spacing / 4,
                                                 .contents_direction = layout::Direction::Row,
                                                 .contents_align = layout::Alignment::Start,
                                             },
@@ -241,7 +241,7 @@ static void AboutInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoP
                 DoBox(builder,
                       {
                           .parent = text_row,
-                          .background_fill_colours = {style::Colour::Red},
+                          .background_fill_colours = Col {.c = Col::Red},
                           .background_shape = BackgroundShape::Circle,
                           .layout {
                               .size = 5,
@@ -261,7 +261,7 @@ static void AboutInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoP
                                               .parent = root,
                                               .layout {
                                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                  .contents_gap = style::k_spacing,
+                                                  .contents_gap = k_default_spacing,
                                                   .contents_direction = layout::Direction::Row,
                                                   .contents_align = layout::Alignment::Start,
                                               },
@@ -291,8 +291,8 @@ static void MetricsInfoPanel(GuiBuilder& builder, InfoPanelContext& context, Inf
                             {
                                 .layout {
                                     .size = layout::k_fill_parent,
-                                    .contents_padding = {.lrtb = style::k_spacing},
-                                    .contents_gap = style::k_spacing,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_default_spacing,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                     .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -493,7 +493,7 @@ static void LegalInfoPanel(GuiBuilder& builder, InfoPanelContext&, InfoPanelStat
                             {
                                 .layout {
                                     .size = layout::k_fill_parent,
-                                    .contents_padding = {.lrtb = style::k_spacing},
+                                    .contents_padding = {.lrtb = k_default_spacing},
                                     .contents_gap = 4,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
@@ -532,11 +532,12 @@ static void LegalInfoPanel(GuiBuilder& builder, InfoPanelContext&, InfoPanelStat
                   .text = open[i] ? ICON_FA_CARET_DOWN : ICON_FA_CARET_RIGHT,
                   .size_from_text = true,
                   .font = FontType::Icons,
-                  .text_colours {
-                      .base = style::Colour::Text,
-                      .hot = style::Colour::Subtext0,
-                      .active = style::Colour::Text,
-                  },
+                  .text_colours =
+                      ColSet {
+                          .base {.c = Col::Text},
+                          .hot {.c = Col::Subtext0},
+                          .active {.c = Col::Text},
+                      },
                   .parent_dictates_hot_and_active = true,
               });
         DoBox(builder,

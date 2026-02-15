@@ -20,9 +20,9 @@ void DrawVoiceMarkerLine(imgui::Context const& imgui,
 void DrawParameterTextInput(imgui::Context const& imgui, Rect r, imgui::TextInputResult const& result);
 
 struct DrawTextInputConfig {
-    style::Colour text_col = style::Colour::Text;
-    style::Colour cursor_col = style::Colour::Text;
-    style::Colour selection_col = style::Colour::Highlight | style::Colour::Alpha50;
+    Col text_col = {.c = Col::Text};
+    Col cursor_col = {.c = Col::Text};
+    Col selection_col = {.c = Col::Highlight, .alpha = 128};
 };
 
 void DrawTextInput(imgui::Context const& imgui,

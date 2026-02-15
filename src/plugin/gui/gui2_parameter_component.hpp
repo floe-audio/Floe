@@ -13,8 +13,8 @@ struct AudioProcessor;
 struct ParameterComponentOptions {
     enum class Size { Small, Medium, Large };
     Size size {Size::Medium};
-    style::Colour knob_highlight_col = style::Colour::Highlight;
-    style::Colour knob_line_col = style::Colour::Background0;
+    Col knob_highlight_col = {Col::Highlight};
+    Col knob_line_col = {Col::Background0};
     bool greyed_out = false;
     bool is_fake = false;
     bool label = true;

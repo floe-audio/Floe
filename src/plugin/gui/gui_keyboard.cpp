@@ -155,13 +155,13 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
     auto const keyboard = g.engine.processor.notes_currently_held.GetBlockwise();
     auto const& voices_per_midi_key = g.engine.processor.voice_pool.voices_per_midi_note_for_gui;
 
-    auto const col_black_key = style::Col(style::Colour::Background0 | style::Colour::DarkMode);
-    auto const col_black_key_outline = style::Col(style::Colour::Background0 | style::Colour::DarkMode);
-    auto const col_black_key_hover = style::Col(style::Colour::Background1 | style::Colour::DarkMode);
-    auto const col_black_key_down = style::Col(style::Colour::Highlight);
-    auto const col_white_key = style::Col(style::Colour::Text | style::Colour::DarkMode);
-    auto const col_white_key_hover = style::Col(style::Colour::Subtext1 | style::Colour::DarkMode);
-    auto const col_white_key_down = style::Col(style::Colour::Highlight);
+    auto const col_black_key = ToU32(Col {.c = Col::Background0, .dark_mode = true});
+    auto const col_black_key_outline = ToU32(Col {.c = Col::Background0, .dark_mode = true});
+    auto const col_black_key_hover = ToU32(Col {.c = Col::Background1, .dark_mode = true});
+    auto const col_black_key_down = ToU32({.c = Col::Highlight});
+    auto const col_white_key = ToU32(Col {.c = Col::Text, .dark_mode = true});
+    auto const col_white_key_hover = ToU32(Col {.c = Col::Subtext1, .dark_mode = true});
+    auto const col_white_key_down = ToU32({.c = Col::Highlight});
 
     auto const layout = KeyboardLayout::Create(r.x, r.w, starting_octave);
 
@@ -227,7 +227,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
             text_r.y += key_r.h - text_height;
             text_r.h = text_height;
             g.imgui.draw_list->AddTextInRect(text_r,
-                                             style::Col(style::Colour::Background2 | style::Colour::DarkMode),
+                                             ToU32(Col {.c = Col::Background2, .dark_mode = true}),
                                              "C3",
                                              {
                                                  .justification = TextJustification::Centred,
@@ -326,7 +326,7 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
         g.fonts.Push(ToInt(FontType::Heading2));
         DEFER { g.fonts.Pop(); };
         imgui.draw_list->AddText(imgui.ViewportPosToWindowPos({options.start_pos.x + text_pad_x, y_pos}),
-                                 style::Col(style::Colour::Text | style::Colour::DarkMode),
+                                 ToU32(Col {.c = Col::Text, .dark_mode = true}),
                                  "Key Ranges");
         y_pos += g.fonts.Current()->font_size + text_gap;
     }
@@ -367,7 +367,7 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
                                               layer_idx + 1,
                                               g.engine.Layer(layer_idx).InstName());
                 imgui.draw_list->AddTextInRect(text_r,
-                                               style::Col(style::Colour::Subtext1 | style::Colour::DarkMode),
+                                               ToU32(Col {.c = Col::Subtext1, .dark_mode = true}),
                                                layer_text,
                                                {
                                                    .justification = TextJustification::Left,
@@ -584,14 +584,13 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
                                            .w = clipped_end_x - clipped_start_x,
                                            .h = capsule_height};
 
-                        imgui.draw_list->AddTextInRect(
-                            range_text_r,
-                            style::Col(style::Colour::Text | style::Colour::DarkMode),
-                            named_range.name,
-                            {
-                                .justification = TextJustification::Centred,
-                                .overflow_type = TextOverflowType::ShowDotsOnRight,
-                            });
+                        imgui.draw_list->AddTextInRect(range_text_r,
+                                                       ToU32(Col {.c = Col::Text, .dark_mode = true}),
+                                                       named_range.name,
+                                                       {
+                                                           .justification = TextJustification::Centred,
+                                                           .overflow_type = TextOverflowType::ShowDotsOnRight,
+                                                       });
                     }
                 }
             }
@@ -680,7 +679,7 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_r
                     [](imgui::Context const& imgui) {
                         imgui.draw_list->AddRectFilled(
                             imgui.curr_viewport->unpadded_bounds,
-                            style::Col(style::Colour::Background1 | style::Colour::DarkMode),
+                            ToU32(Col {.c = Col::Background1, .dark_mode = true}),
                             LiveSize(UiSizeId::CornerRounding));
                     },
                 .padding = {.lr = 0, .tb = enlarged_viewport_padding},

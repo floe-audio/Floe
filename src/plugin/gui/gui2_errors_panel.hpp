@@ -41,8 +41,8 @@ PUBLIC void DoErrorsPanel(GuiBuilder& builder,
                                         {
                                             .layout {
                                                 .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
-                                                .contents_padding = {.lrtb = style::k_spacing},
-                                                .contents_gap = style::k_spacing,
+                                                .contents_padding = {.lrtb = k_default_spacing},
+                                                .contents_gap = k_default_spacing,
                                                 .contents_direction = layout::Direction::Column,
                                                 .contents_align = layout::Alignment::Start,
                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,

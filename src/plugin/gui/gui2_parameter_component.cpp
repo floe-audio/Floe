@@ -203,6 +203,7 @@ Box DoMenuParameter(GuiState& g,
     auto const row = DoBox(g.builder,
                            {
                                .parent = container,
+                               .background_fill_colours = Col {.c = Col::Background0},
                                .layout {
                                    .size = {width, height},
                                    .contents_direction = layout::Direction::Row,
@@ -220,8 +221,8 @@ Box DoMenuParameter(GuiState& g,
               {
                   .parent = row,
                   .text = ParamMenuText(param.info.index, param.LinearValue()),
-                  .text_colours = Splat(options.greyed_out ? style::Colour::Overlay0 | style::Colour::DarkMode
-                                                           : style::Colour::Text | style::Colour::DarkMode),
+                  .text_colours = options.greyed_out ? Col {.c = Col::Overlay0, .dark_mode = true}
+                                                     : Col {.c = Col::Text, .dark_mode = true},
                   .background_fill_auto_hot_active_overlay = true,
                   .layout {
                       .size = {layout::k_fill_parent, height},
@@ -252,7 +253,7 @@ Box DoMenuParameter(GuiState& g,
                                         .parent = row,
                                         .text = ICON_FA_CARET_LEFT,
                                         .font = FontType::Icons,
-                                        .text_colours = Splat(style::Colour::Subtext0),
+                                        .text_colours = Col {.c = Col::Subtext0},
                                         .background_fill_auto_hot_active_overlay = true,
                                         .layout {
                                             .size = {btn_w, height},
@@ -276,7 +277,7 @@ Box DoMenuParameter(GuiState& g,
                                          .parent = row,
                                          .text = ICON_FA_CARET_RIGHT,
                                          .font = FontType::Icons,
-                                         .text_colours = Splat(style::Colour::Subtext0),
+                                         .text_colours = Col {.c = Col::Subtext0},
                                          .background_fill_auto_hot_active_overlay = true,
                                          .layout {
                                              .size = {btn_w, height},
@@ -332,11 +333,11 @@ Box DoMenuParameter(GuiState& g,
               {
                   .parent = container,
                   .text = options.override_label.size ? options.override_label : param.info.gui_label,
-                  .text_colours = {options.greyed_out ? style::Colour::Overlay0 | style::Colour::DarkMode
-                                                      : style::Colour::Text | style::Colour::DarkMode},
+                  .text_colours = options.greyed_out ? Col {.c = Col::Overlay0, .dark_mode = true}
+                                                     : Col {.c = Col::Text, .dark_mode = true},
                   .text_justification = TextJustification::Centred,
                   .layout {
-                      .size = {width, style::k_font_body_size},
+                      .size = {width, k_font_body_size},
                   },
               });
 
@@ -463,8 +464,8 @@ Box DoKnobParameter(GuiState& g,
             g.builder.imgui.ViewportRectToWindowRect(*r),
             val,
             {
-                .highlight_col = style::Col(options.knob_highlight_col),
-                .line_col = style::Col(options.knob_line_col),
+                .highlight_col = ToU32(options.knob_highlight_col),
+                .line_col = ToU32(options.knob_line_col),
                 .overload_position = param.info.display_format == ParamDisplayFormat::VolumeAmp
                                          ? param.info.LineariseValue(1, true)
                                          : k_nullopt,
@@ -493,11 +494,11 @@ Box DoKnobParameter(GuiState& g,
               {
                   .parent = container,
                   .text = options.override_label.size ? options.override_label : param.info.gui_label,
-                  .text_colours = {options.greyed_out ? style::Colour::Overlay0 | style::Colour::DarkMode
-                                                      : style::Colour::Text | style::Colour::DarkMode},
+                  .text_colours = options.greyed_out ? Col {.c = Col::Overlay0, .dark_mode = true}
+                                                     : Col {.c = Col::Text, .dark_mode = true},
                   .text_justification = TextJustification::Centred,
                   .layout {
-                      .size = {knob_width, style::k_font_body_size},
+                      .size = {knob_width, k_font_body_size},
                   },
               });
 

@@ -90,7 +90,7 @@ static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
         result,
         [lib_id = sample_lib::LibraryId(lib_id_ref),
          &server,
-         desired_icon_size = CheckedCast<u16>(Ceil(GuiIo().WwToPixels(style::k_library_icon_standard_size)) *
+         desired_icon_size = CheckedCast<u16>(Ceil(GuiIo().WwToPixels(k_library_icon_standard_size)) *
                                               2)]() -> Optional<ImageBytes> {
             DEFER { g_request_gui_update.Store(true, StoreMemoryOrder::Release); };
 

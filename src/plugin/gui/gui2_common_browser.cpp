@@ -184,8 +184,8 @@ struct ItemArgs {
 
 static void DrawFocusBox(GuiBuilder& builder, Rect relative_rect) {
     builder.imgui.draw_list->AddRect(builder.imgui.RegisterAndConvertRect(relative_rect),
-                                     style::Col(style::Colour::Blue),
-                                     GuiIo().WwToPixels(style::k_button_rounding),
+                                     ToU32({.c = Col::Blue}),
+                                     GuiIo().WwToPixels(k_button_rounding),
                                      0b1111,
                                      2);
 }
@@ -299,22 +299,22 @@ DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions
                                      },
                                  });
 
-    auto item = DoBox(
-        builder,
-        {
-            .parent = container,
-            .background_fill_colours = {options.is_current ? style::Colour::Highlight : style::Colour::None},
-            .background_fill_auto_hot_active_overlay = true,
-            .round_background_corners = 0b1111,
-            .layout {
-                .size = {layout::k_fill_parent, layout::k_hug_contents},
-                .contents_direction = layout::Direction::Row,
-            },
-            .tooltip = options.tooltip,
-            .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-            .tooltip_show_left_or_right = true,
-            .button_behaviour = imgui::ButtonConfig {.dont_fire_on_double_click = true},
-        });
+    auto item =
+        DoBox(builder,
+              {
+                  .parent = container,
+                  .background_fill_colours = Col {.c = options.is_current ? Col::Highlight : Col::None},
+                  .background_fill_auto_hot_active_overlay = true,
+                  .round_background_corners = 0b1111,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .contents_direction = layout::Direction::Row,
+                  },
+                  .tooltip = options.tooltip,
+                  .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
+                  .tooltip_show_left_or_right = true,
+                  .button_behaviour = imgui::ButtonConfig {.dont_fire_on_double_click = true},
+              });
 
     if (options.icons.size) {
         auto const icon_container = DoBox(builder,
@@ -339,7 +339,7 @@ DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions
                               .id_extra = i,
                               .background_tex = &tex,
                               .layout {
-                                  .size = style::k_library_icon_standard_size,
+                                  .size = k_library_icon_standard_size,
                               },
                           });
                     break;
@@ -391,14 +391,14 @@ DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions
                     .parent = container,
                     .text = ICON_FA_STAR,
                     .font = FontType::Icons,
-                    .font_size = style::k_font_icons_size * 0.7f,
+                    .font_size = k_font_icons_size * 0.7f,
                     .text_colours =
-                        {
-                            .base = options.is_favourite ? style::Colour::Highlight400
-                                    : item.is_hot        ? style::Colour::Surface2
-                                                         : style::Colour::None,
-                            .hot = style::Colour::Highlight200,
-                            .active = style::Colour::Highlight200,
+                        ColSet {
+                            .base = Col {.c = options.is_favourite ? Col::Highlight400
+                                              : item.is_hot        ? Col::Surface2
+                                                                   : Col::None},
+                            .hot = Col {.c = Col::Highlight200},
+                            .active = Col {.c = Col::Highlight200},
                         },
                     .text_justification = TextJustification::CentredLeft,
                     .layout {
@@ -581,39 +581,38 @@ Box DoFilterButton(GuiBuilder& builder,
 
     f32 const lr_spacing = 4;
 
-    auto const button =
-        DoBox(builder,
-              {
-                  .parent = options.common.parent,
-                  .id_extra = options.common.id_extra,
-                  .background_fill_colours = options.common.is_selected
-                                                 ? Splat(style::Colour::Highlight)
-                                                 : Colours {
-                                                    .base = style::Colour::Background2,
-                                                    .hot = style::Colour::Surface1,
-                                                    .active = style::Colour::Surface1,
-                                                 },
-                  .background_fill_auto_hot_active_overlay = true,
-                  .round_background_corners = 0b1111,
-                  .corner_rounding = 999,
-                  .layout {
-                      .size {
-                          layout::k_hug_contents,
-                          k_browser_item_height,
-                      },
-                      .margins = {.b = options.no_bottom_margin ? 0 : k_browser_spacing / 2},
-                      .contents_padding {
-                          .l = !options.icon ? lr_spacing : 0,
-                          .r = lr_spacing,
-                      },
-                      .contents_align = layout::Alignment::Start,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-                  .tooltip = options.common.tooltip,
-                        .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                        .tooltip_show_left_or_right = true,
-                  .button_behaviour = imgui::ButtonConfig {},
-              });
+    auto const button = DoBox(builder,
+                              {
+                                  .parent = options.common.parent,
+                                  .id_extra = options.common.id_extra,
+                                  .background_fill_colours = options.common.is_selected
+                                                                 ? Colours {Col {.c = Col::Highlight}}
+                                                                 : Colours {ColSet {
+                                                                       .base = Col {.c = Col::Background2},
+                                                                       .hot = Col {.c = Col::Surface1},
+                                                                       .active = Col {.c = Col::Surface1},
+                                                                   }},
+                                  .background_fill_auto_hot_active_overlay = true,
+                                  .round_background_corners = 0b1111,
+                                  .corner_rounding = 999,
+                                  .layout {
+                                      .size {
+                                          layout::k_hug_contents,
+                                          k_browser_item_height,
+                                      },
+                                      .margins = {.b = options.no_bottom_margin ? 0 : k_browser_spacing / 2},
+                                      .contents_padding {
+                                          .l = !options.icon ? lr_spacing : 0,
+                                          .r = lr_spacing,
+                                      },
+                                      .contents_align = layout::Alignment::Start,
+                                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                  },
+                                  .tooltip = options.common.tooltip,
+                                  .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
+                                  .tooltip_show_left_or_right = true,
+                                  .button_behaviour = imgui::ButtonConfig {},
+                              });
 
     bool grey_out = false;
     if (options.common.filter_mode == FilterMode::MultipleAnd) grey_out = num_used == 0;
@@ -624,7 +623,7 @@ Box DoFilterButton(GuiBuilder& builder,
                   .parent = button,
                   .background_tex = options.icon,
                   .layout {
-                      .size = style::k_library_icon_standard_size,
+                      .size = k_library_icon_standard_size,
                       .margins = {.r = 3},
                   },
               });
@@ -636,11 +635,12 @@ Box DoFilterButton(GuiBuilder& builder,
               .text = options.common.text,
               .size_from_text = true,
               .font = FontType::Body,
-              .text_colours {
-                  .base = grey_out ? style::Colour::Surface1 : style::Colour::Text,
-                  .hot = style::Colour::Text,
-                  .active = style::Colour::Text,
-              },
+              .text_colours =
+                  ColSet {
+                      .base = Col {.c = grey_out ? Col::Surface1 : Col::Text},
+                      .hot = Col {.c = Col::Text},
+                      .active = Col {.c = Col::Text},
+                  },
               .text_overflow = TextOverflowType::AllowOverflow,
               .parent_dictates_hot_and_active = true,
               .layout =
@@ -660,11 +660,12 @@ Box DoFilterButton(GuiBuilder& builder,
               .text = total_text.str,
               .size_from_text = false,
               .font = k_numbering_font,
-              .text_colours {
-                  .base = grey_out ? style::Colour::Surface1 : style::Colour::Text,
-                  .hot = style::Colour::Text,
-                  .active = style::Colour::Text,
-              },
+              .text_colours =
+                  ColSet {
+                      .base = Col {.c = grey_out ? Col::Surface1 : Col::Text},
+                      .hot = Col {.c = Col::Text},
+                      .active = Col {.c = Col::Text},
+                  },
               .text_justification = TextJustification::CentredLeft,
               .parent_dictates_hot_and_active = true,
               .round_background_corners = 0b1111,
@@ -710,51 +711,60 @@ Box DoFilterTreeButton(GuiBuilder& builder,
         DoBox(builder,
               {
                   .parent = button_outer,
-                  .background_fill_colours = {style::Colour::Highlight},
+                  .background_fill_colours = Col {.c = Col::Highlight},
                   .layout {
                       .size = {k_selection_left_border_width, layout::k_fill_parent},
                   },
               });
     }
 
-    auto const button = DoBox(
-        builder,
-        {
-            .parent = button_outer,
-            .id_extra = options.common.id_extra,
-            .background_fill_colours {
-                .base = (options.common.is_selected ? style::Colour::Highlight300 : style::Colour::None) |
-                        style::Colour::Alpha15,
-                .hot = (options.common.is_selected ? style::Colour::Highlight200
-                                                   : style::Colour::Overlay0 | style::Colour::DarkMode) |
-                       style::Colour::Alpha15,
-                .active = (options.common.is_selected ? style::Colour::Highlight200
-                                                      : style::Colour::Overlay0 | style::Colour::DarkMode) |
-                          style::Colour::Alpha15,
-            },
-            .background_fill_auto_hot_active_overlay = false,
-            .round_background_corners = 0b1111,
-            .corner_rounding = 999,
-            .layout {
-                .size {
-                    layout::k_fill_parent,
-                    k_browser_item_height,
-                },
-                .contents_padding {
-                    .l = k_outer_pad + (options.indent * k_tree_indent),
-                    .r = k_outer_pad,
-                },
-                .contents_align = layout::Alignment::Start,
-                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-            },
-            .tooltip = options.common.tooltip,
-            .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-            .tooltip_show_left_or_right = true,
-            .button_behaviour = imgui::ButtonConfig {},
-        });
+    auto const button =
+        DoBox(builder,
+              {
+                  .parent = button_outer,
+                  .id_extra = options.common.id_extra,
+                  .background_fill_colours =
+                      ColSet {
+                          .base {
+                              .c = (options.common.is_selected ? Col::Highlight300 : Col::None),
+                              .alpha = 37,
+                          },
+                          .hot {
+                              .c = options.common.is_selected ? Col::Highlight200 : Col::Overlay0,
+                              .dark_mode = true,
+                              .alpha = 37,
+                          },
+                          .active {
+                              .c = options.common.is_selected ? Col::Highlight200 : Col::Overlay0,
+                              .dark_mode = true,
+                              .alpha = 37,
+                          },
+                      },
+                  .background_fill_auto_hot_active_overlay = false,
+                  .round_background_corners = 0b1111,
+                  .corner_rounding = 999,
+                  .layout {
+                      .size {
+                          layout::k_fill_parent,
+                          k_browser_item_height,
+                      },
+                      .contents_padding {
+                          .l = k_outer_pad + (options.indent * k_tree_indent),
+                          .r = k_outer_pad,
+                      },
+                      .contents_align = layout::Alignment::Start,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+                  .tooltip = options.common.tooltip,
+                  .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
+                  .tooltip_show_left_or_right = true,
+                  .button_behaviour = imgui::ButtonConfig {},
+              });
 
-    auto const text_cols = num_used != 0 ? Splat(style::Colour::Text | style::Colour::DarkMode)
-                                         : Splat(style::Colour::Overlay2 | style::Colour::DarkMode);
+    Col const text_cols = {
+        .c = num_used != 0 ? Col::Text : Col::Overlay2,
+        .dark_mode = true,
+    };
 
     DoBox(builder,
           {
@@ -766,7 +776,7 @@ Box DoFilterTreeButton(GuiBuilder& builder,
               .text_overflow = TextOverflowType::ShowDotsOnRight,
               .parent_dictates_hot_and_active = true,
               .layout {
-                  .size = f32x2 {layout::k_fill_parent, style::k_font_body_size},
+                  .size = f32x2 {layout::k_fill_parent, k_font_body_size},
               },
           });
 
@@ -844,7 +854,7 @@ Box DoFilterCard(GuiBuilder& builder,
         DoBox(builder,
               {
                   .parent = card_outer,
-                  .background_fill_colours = {style::Colour::Background2 | style::Colour::DarkMode},
+                  .background_fill_colours = Col {.c = Col::Background2, .dark_mode = true},
                   .background_tex = background_image1.NullableValue(),
                   .background_tex_alpha = 180,
                   .background_tex_fill_mode = BackgroundTexFillMode::Cover,
@@ -872,7 +882,7 @@ Box DoFilterCard(GuiBuilder& builder,
         DoBox(builder,
               {
                   .parent = card,
-                  .background_fill_colours = {style::Colour::Highlight},
+                  .background_fill_colours = Col {.c = Col::Highlight},
                   .round_background_corners = 0b1001,
                   .layout {
                       .size = {k_selection_left_border_width, layout::k_fill_parent},
@@ -892,34 +902,41 @@ Box DoFilterCard(GuiBuilder& builder,
                                         },
                                     });
 
-    auto const card_top = DoBox(
-        builder,
-        {
-            .parent = card_content,
-            .background_fill_colours {
-                .base = (options.common.is_selected ? style::Colour::Highlight300 : style::Colour::None) |
-                        style::Colour::Alpha15,
-                .hot = (options.common.is_selected ? style::Colour::Highlight200
-                                                   : style::Colour::Overlay2 | style::Colour::DarkMode) |
-                       style::Colour::Alpha15,
-                .active = (options.common.is_selected ? style::Colour::Highlight200
-                                                      : style::Colour::Overlay2 | style::Colour::DarkMode) |
-                          style::Colour::Alpha15,
-            },
-            .round_background_corners = !is_selected ? (u4)0b1111 : (u4)0b0110,
-            .layout {
-                .size = {layout::k_fill_parent, layout::k_hug_contents},
-                .contents_padding = {.lrtb = k_outer_pad},
-                .contents_gap = k_outer_pad,
-                .contents_direction = layout::Direction::Row,
-                .contents_align = layout::Alignment::Start,
-                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-            },
-            .tooltip = options.common.tooltip,
-            .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-            .tooltip_show_left_or_right = true,
-            .button_behaviour = imgui::ButtonConfig {},
-        });
+    auto const card_top =
+        DoBox(builder,
+              {
+                  .parent = card_content,
+                  .background_fill_colours =
+                      ColSet {
+                          .base {
+                              .c = options.common.is_selected ? Col::Highlight300 : Col::None,
+                              .alpha = 37,
+                          },
+                          .hot {
+                              .c = options.common.is_selected ? Col::Highlight200 : Col::Overlay2,
+                              .dark_mode = true,
+                              .alpha = 37,
+                          },
+                          .active {
+                              .c = options.common.is_selected ? Col::Highlight200 : Col::Overlay2,
+                              .dark_mode = true,
+                              .alpha = 37,
+                          },
+                      },
+                  .round_background_corners = !is_selected ? (u4)0b1111 : (u4)0b0110,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .contents_padding = {.lrtb = k_outer_pad},
+                      .contents_gap = k_outer_pad,
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Start,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+                  .tooltip = options.common.tooltip,
+                  .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
+                  .tooltip_show_left_or_right = true,
+                  .button_behaviour = imgui::ButtonConfig {},
+              });
 
     if (options.right_click_menu)
         DoRightClickMenuForBox(builder,
@@ -962,11 +979,14 @@ Box DoFilterCard(GuiBuilder& builder,
                                      },
                                  });
 
-    auto const title_text_colours = num_used != 0 ? Splat(style::Colour::Text | style::Colour::DarkMode)
-                                                  : Splat(style::Colour::Overlay2 | style::Colour::DarkMode);
-    auto const subtitle_text_colours = num_used != 0
-                                           ? Splat(style::Colour::Subtext1 | style::Colour::DarkMode)
-                                           : Splat(style::Colour::Overlay2 | style::Colour::DarkMode);
+    Col const title_text_colours = {
+        .c = num_used != 0 ? Col::Text : Col::Overlay2,
+        .dark_mode = true,
+    };
+    Col const subtitle_text_colours = {
+        .c = num_used != 0 ? Col::Subtext1 : Col::Overlay2,
+        .dark_mode = true,
+    };
 
     DoBox(builder,
           {
@@ -1023,23 +1043,23 @@ Box DoFilterCard(GuiBuilder& builder,
     if (card_top.button_fired || fired_via_keyboard) HandleFilterButtonClick(builder, state, options.common);
 
     if (options.folder && options.folder->first_child) {
-        auto const folder_box = DoBox(
-            builder,
-            {
-                .parent = card_content,
-                .background_fill_colours =
-                    {
-                        .base = style::Colour::Background0 | style::Colour::DarkMode | style::Colour::Alpha50,
-                        .hot = style::Colour::Overlay1 | style::Colour::DarkMode | style::Colour::Alpha50,
-                        .active = style::Colour::Overlay1 | style::Colour::DarkMode | style::Colour::Alpha50,
-                    },
-                .round_background_corners = 0b0011,
-                .layout {
-                    .size = {layout::k_fill_parent, layout::k_hug_contents},
-                    .contents_padding = {.tb = 3},
-                    .contents_direction = layout::Direction::Column,
-                },
-            });
+        auto const folder_box =
+            DoBox(builder,
+                  {
+                      .parent = card_content,
+                      .background_fill_colours =
+                          ColSet {
+                              .base {.c = Col::Background0, .dark_mode = true, .alpha = 128},
+                              .hot {.c = Col::Overlay1, .dark_mode = true, .alpha = 128},
+                              .active {.c = Col::Overlay1, .dark_mode = true, .alpha = 128},
+                          },
+                      .round_background_corners = 0b0011,
+                      .layout {
+                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                          .contents_padding = {.tb = 3},
+                          .contents_direction = layout::Direction::Column,
+                      },
+                  });
 
         // Do the folder children, not the root folder.
         for (auto* child = options.folder->first_child; child; child = child->next) {
@@ -1124,10 +1144,10 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                   .parent = heading_container,
                   .text = is_collapsed ? ICON_FA_CARET_RIGHT : ICON_FA_CARET_DOWN,
                   .font = FontType::Icons,
-                  .font_size = style::k_font_icons_size * 0.6f,
-                  .text_colours = {style::Colour::Subtext0},
+                  .font_size = k_font_icons_size * 0.6f,
+                  .text_colours = Col {.c = Col::Subtext0},
                   .layout {
-                      .size = style::k_font_icons_size * 0.4f,
+                      .size = k_font_icons_size * 0.4f,
                   },
               });
 
@@ -1138,7 +1158,7 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                       .text = *icon,
                       .size_from_text = true,
                       .font = FontType::Icons,
-                      .font_size = style::k_font_icons_size * 0.7f,
+                      .font_size = k_font_icons_size * 0.7f,
                   });
         }
 
@@ -1705,7 +1725,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                   .size_from_text_preserve_height = true,
                   .font = FontType::Heading2,
                   .layout {
-                      .size = style::k_font_heading2_size,
+                      .size = k_font_heading2_size,
                   },
               });
 
@@ -1737,13 +1757,12 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                     builder,
                     {
                         .parent = btn_container,
-                        .background_fill_colours = Splat(style::Colour::Background2),
+                        .background_fill_colours = Col {.c = Col::Background2},
                         .background_fill_auto_hot_active_overlay = !btn->disabled,
                         .round_background_corners = 0b1111,
                         .layout {
                             .size = {layout::k_hug_contents, layout::k_hug_contents},
-                            .contents_padding = {.lr = style::k_button_padding_x,
-                                                 .tb = style::k_button_padding_y},
+                            .contents_padding = {.lr = k_button_padding_x, .tb = k_button_padding_y},
                             .contents_gap = 3,
                             .contents_direction = layout::Direction::Row,
                             .contents_align = layout::Alignment::Start,
@@ -1761,7 +1780,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                           .text = btn->text,
                           .size_from_text = true,
                           .font = FontType::Body,
-                          .text_colours = {btn->disabled ? style::Colour::Surface1 : style::Colour::Text},
+                          .text_colours = Col {.c = btn->disabled ? Col::Surface1 : Col::Text},
                           .text_justification = TextJustification::CentredLeft,
                           .text_overflow = TextOverflowType::AllowOverflow,
                       });
@@ -1773,8 +1792,8 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                           .text = ICON_FA_XMARK,
                           .size_from_text = true,
                           .font = FontType::Icons,
-                          .font_size = style::k_font_body_size,
-                          .text_colours = {btn->disabled ? style::Colour::Surface1 : style::Colour::Subtext0},
+                          .font_size = k_font_body_size,
+                          .text_colours = Col {.c = btn->disabled ? Col::Surface1 : Col::Subtext0},
                       });
 
                 if (button.button_fired && !btn->disabled) btn->on_fired();
@@ -1812,8 +1831,8 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                rhs_top,
                                btn.text,
                                btn.tooltip,
-                               style::k_font_heading2_size * btn.icon_scaling,
-                               style::k_font_heading2_size,
+                               k_font_heading2_size * btn.icon_scaling,
+                               k_font_heading2_size,
                                Hash(btn.text))
                         .button_fired) {
                     btn.on_fired();
@@ -1824,8 +1843,8 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                             rhs_top,
                                             ICON_FA_ELLIPSIS_VERTICAL,
                                             "More options",
-                                            style::k_font_heading2_size * 0.9f,
-                                            style::k_font_heading2_size);
+                                            k_font_heading2_size * 0.9f,
+                                            k_font_heading2_size);
 
                 auto const popup_id = builder.imgui.MakeId("moreoptions");
 
@@ -1901,7 +1920,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                 DoBox(builder,
                       {
                           .parent = lhs_top,
-                          .background_fill_colours = {style::Colour::Background2},
+                          .background_fill_colours = Col {.c = Col::Background2},
                           .round_background_corners = 0b1111,
                           .layout {
                               .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -1919,7 +1938,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                       .size_from_text = true,
                       .font = FontType::Icons,
                       .font_size = k_browser_item_height * 0.8f,
-                      .text_colours = {style::Colour::Subtext0},
+                      .text_colours = Col {.c = Col::Subtext0},
                   });
 
             auto const filter_text_input =
@@ -1961,9 +1980,9 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                 DrawTextInput(builder.imgui,
                               *filter_text_input_result,
                               {
-                                  .text_col = style::Colour::Text,
-                                  .cursor_col = style::Colour::Text,
-                                  .selection_col = style::Colour::Highlight | style::Colour::Alpha50,
+                                  .text_col = {.c = Col::Text},
+                                  .cursor_col = {.c = Col::Text},
+                                  .selection_col = {.c = Col::Highlight, .alpha = 128},
                               });
             }
 
@@ -1980,7 +1999,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                               .size_from_text = true,
                               .font = FontType::Icons,
                               .font_size = k_browser_item_height * 0.9f,
-                              .text_colours = Splat(style::Colour::Subtext0),
+                              .text_colours = Col {.c = Col::Subtext0},
                               .background_fill_auto_hot_active_overlay = true,
                               .tooltip = "Clear search"_s,
                               .button_behaviour = imgui::ButtonConfig {},
@@ -1996,7 +2015,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                           {
                               .parent = lhs_top,
                               .font = FontType::Body,
-                              .border_colours = Splat(style::Colour::Overlay0),
+                              .border_colours = Col {.c = Col::Overlay0},
                               .round_background_corners = 0b1111,
                               .layout {
                                   .size = {layout::k_hug_contents, layout::k_fill_parent},
@@ -2017,7 +2036,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                           .text = FilterModeTextAbbreviated(context.state.filter_mode),
                           .size_from_text = true,
                           .font = FontType::Body,
-                          .text_colours = Splat(style::Colour::Subtext0),
+                          .text_colours = Col {.c = Col::Subtext0},
                       });
             }
         }
@@ -2126,7 +2145,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                     DoBox(builder,
                           {
                               .parent = search_and_fave_box,
-                              .background_fill_colours = {style::Colour::Background2},
+                              .background_fill_colours = Col {.c = Col::Background2},
                               .round_background_corners = 0b1111,
                               .layout {
                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -2144,7 +2163,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                           .size_from_text = true,
                           .font = FontType::Icons,
                           .font_size = k_browser_item_height * 0.8f,
-                          .text_colours = {style::Colour::Subtext0},
+                          .text_colours = Col {.c = Col::Subtext0},
                       });
 
                 auto const text_input = DoBox(builder,
@@ -2185,9 +2204,9 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                     DrawTextInput(builder.imgui,
                                   *text_input_result,
                                   {
-                                      .text_col = style::Colour::Text,
-                                      .cursor_col = style::Colour::Text,
-                                      .selection_col = style::Colour::Highlight,
+                                      .text_col = {Col::Text},
+                                      .cursor_col = {Col::Text},
+                                      .selection_col = {Col::Highlight},
                                   });
                 }
 
@@ -2219,7 +2238,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                   .size_from_text = true,
                                   .font = FontType::Icons,
                                   .font_size = k_browser_item_height * 0.9f,
-                                  .text_colours = Splat(style::Colour::Subtext0),
+                                  .text_colours = Col {.c = Col::Subtext0},
                                   .background_fill_auto_hot_active_overlay = true,
                                   .tooltip = "Clear search"_s,
                                   .button_behaviour = imgui::ButtonConfig {},
@@ -2286,77 +2305,76 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
 
                 bool first = true;
 
-                auto const do_item = [&](String category,
-                                         String item,
-                                         FilterMode mode,
-                                         u64 id_extra = SourceLocationHash()) {
-                    builder.imgui.PushId(id_extra);
-                    DEFER { builder.imgui.PopId(); };
+                auto const do_item =
+                    [&](String category, String item, FilterMode mode, u64 id_extra = SourceLocationHash()) {
+                        builder.imgui.PushId(id_extra);
+                        DEFER { builder.imgui.PopId(); };
 
-                    // If not first, we should add an 'AND' or 'OR' label depending on the filter mode.
-                    if (!first) {
-                        DoBox(builder,
-                              BoxConfig {
-                                  .parent = container,
-                                  .text = FilterModeTextAbbreviated(mode),
-                                  .size_from_text = true,
-                                  .size_from_text_preserve_height = true,
-                                  .font = FontType::Heading3,
-                                  .font_size = style::k_font_heading3_size * 0.8f,
-                                  .text_colours = {style::Colour::Subtext0},
-                                  .text_justification = TextJustification::CentredLeft,
-                                  .layout {
-                                      .size = {1, k_browser_item_height + (k_browser_spacing / 2)},
-                                  },
-                              });
-                    } else {
-                        first = false;
-                    }
+                        // If not first, we should add an 'AND' or 'OR' label depending on the filter mode.
+                        if (!first) {
+                            DoBox(builder,
+                                  BoxConfig {
+                                      .parent = container,
+                                      .text = FilterModeTextAbbreviated(mode),
+                                      .size_from_text = true,
+                                      .size_from_text_preserve_height = true,
+                                      .font = FontType::Heading3,
+                                      .font_size = k_font_heading3_size * 0.8f,
+                                      .text_colours = Col {.c = Col::Subtext0},
+                                      .text_justification = TextJustification::CentredLeft,
+                                      .layout {
+                                          .size = {1, k_browser_item_height + (k_browser_spacing / 2)},
+                                      },
+                                  });
+                        } else {
+                            first = false;
+                        }
 
-                    // button container for the text, and the 'x' icon.
-                    auto const button =
+                        // button container for the text, and the 'x' icon.
+                        auto const button =
+                            DoBox(builder,
+                                  {
+                                      .parent = container,
+                                      .background_fill_colours = Col {.c = Col::Background2},
+                                      .background_fill_auto_hot_active_overlay = true,
+                                      .round_background_corners = 0b1111,
+                                      .corner_rounding = 999,
+                                      .layout {
+                                          .size = {layout::k_hug_contents, k_browser_item_height},
+                                          .margins {.b = k_browser_spacing / 2},
+                                          .contents_padding {.lr = k_default_spacing / 2},
+                                          .contents_gap = k_default_spacing / 2,
+                                          .contents_direction = layout::Direction::Row,
+                                          .contents_align = layout::Alignment::Middle,
+                                          .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                      },
+                                      .tooltip = "Remove filter"_s,
+                                      .button_behaviour = imgui::ButtonConfig {},
+                                  });
+                        // Text
                         DoBox(builder,
                               {
-                                  .parent = container,
-                                  .background_fill_colours = {style::Colour::Background2},
-                                  .background_fill_auto_hot_active_overlay = true,
-                                  .round_background_corners = 0b1111,
-                                  .corner_rounding = 999,
-                                  .layout {
-                                      .size = {layout::k_hug_contents, k_browser_item_height},
-                                      .margins {.b = k_browser_spacing / 2},
-                                      .contents_padding {.lr = style::k_spacing / 2},
-                                      .contents_gap = style::k_spacing / 2,
-                                      .contents_direction = layout::Direction::Row,
-                                      .contents_align = layout::Alignment::Middle,
-                                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                  },
-                                  .tooltip = "Remove filter"_s,
-                                  .button_behaviour = imgui::ButtonConfig {},
+                                  .parent = button,
+                                  .text = item.size
+                                              ? (String)fmt::Format(builder.arena, "{}: {}", category, item)
+                                              : category,
+                                  .size_from_text = true,
+                                  .font = FontType::Heading3,
                               });
-                    // Text
-                    DoBox(builder,
-                          {
-                              .parent = button,
-                              .text = item.size ? (String)fmt::Format(builder.arena, "{}: {}", category, item)
-                                                : category,
-                              .size_from_text = true,
-                              .font = FontType::Heading3,
-                          });
-                    DoBox(builder,
-                          {
-                              .parent = button,
-                              .text = ICON_FA_XMARK,
-                              .font = FontType::Icons,
-                              .font_size = style::k_font_icons_size * 0.7f,
-                              .text_colours = {style::Colour::Subtext0},
-                              .layout {
-                                  .size = {style::k_font_icons_size * 0.7f, style::k_font_icons_size * 0.7f},
-                              },
-                          });
+                        DoBox(builder,
+                              {
+                                  .parent = button,
+                                  .text = ICON_FA_XMARK,
+                                  .font = FontType::Icons,
+                                  .font_size = k_font_icons_size * 0.7f,
+                                  .text_colours = Col {.c = Col::Subtext0},
+                                  .layout {
+                                      .size = {k_font_icons_size * 0.7f, k_font_icons_size * 0.7f},
+                                  },
+                              });
 
-                    return button.button_fired;
-                };
+                        return button.button_fired;
+                    };
 
                 for (auto const hashes : context.state.AllHashes()) {
                     for (usize i = 0; i < hashes->hashes.size;) {
