@@ -81,7 +81,7 @@ struct PopupMenuItems {
         Rect div_r = {
             .xywh {m_div_gap_x, m_y_pos + (m_div_h / 2), m_g.imgui.CurrentVpWidth() - (2 * m_div_gap_x), 1}};
         div_r = m_g.imgui.RegisterAndConvertRect(div_r);
-        m_g.imgui.draw_list->AddRectFilled(div_r, LiveCol(UiColMap::PopupItemDivider));
+        m_g.imgui.draw_list->AddRectFilled(div_r, ToU32({.c = Col::Surface0}));
         m_y_pos += m_div_h;
     }
 

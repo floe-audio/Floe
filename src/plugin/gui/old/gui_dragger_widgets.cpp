@@ -14,8 +14,8 @@ namespace draggers {
 Style DefaultStyle(imgui::Context const& imgui) {
     Style s {};
     s.sensitivity = 20;
-    s.background = LiveCol(UiColMap::Dragger1Back);
-    s.text = LiveCol(UiColMap::TextInputText);
+    s.background = LiveCol(UiColMap::MidDarkSurface);
+    s.text = LiveCol(UiColMap::MidText);
     s.selection_back = LiveCol(UiColMap::TextInputSelection);
     s.cursor = LiveCol(UiColMap::TextInputCursor);
     s.button_style = buttons::IconButton(imgui);

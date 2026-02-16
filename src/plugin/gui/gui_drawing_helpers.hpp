@@ -34,6 +34,7 @@ struct DrawKnobOptions {
     u32 line_col;
     Optional<f32> overload_position;
     Optional<f32> outer_arc_percent;
+    bool mid_panel_colours;
     bool greyed_out;
     bool is_fake;
     bool bidirectional;

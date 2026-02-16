@@ -159,7 +159,7 @@ void MidiLearnMenu(GuiState& g, Span<ParamIndex> params, Rect r) {
     Rect const popup_r {.pos = popup_pos};
 
     if (imgui.IsPopupMenuOpen(popup_id)) {
-        imgui.BeginViewport(FloeMenuConfig(g.imgui), popup_id, popup_r, __FUNCTION__);
+        imgui.BeginViewport(k_default_popup_menu_viewport, popup_id, popup_r, __FUNCTION__);
         DEFER { imgui.EndViewport(); };
 
         StartFloeMenu(g);
@@ -280,7 +280,7 @@ void MidiLearnMenu(GuiState& g, Span<ParamIndex> params, Rect r) {
 
                 Rect div_r = {.xywh {div_gap_x, pos + (div_h / 2), item_width - (2 * div_gap_x), 1}};
                 div_r = imgui.RegisterAndConvertRect(div_r);
-                imgui.draw_list->AddRectFilled(div_r, LiveCol(UiColMap::PopupItemDivider));
+                imgui.draw_list->AddRectFilled(div_r, ToU32({.c = Col::Surface0}));
                 pos += div_h;
             }
         }
@@ -370,30 +370,6 @@ void EndParameterGUI(GuiState& g,
         DoParameterTooltipIfNeeded(g, param, id, g.imgui.ViewportRectToWindowRect(viewport_r));
     if (!(flags & ParamDisplayFlagsNoValuePopup) && param.info.value_type == ParamValueType::Float)
         ParameterValuePopup(g, param, id, g.imgui.ViewportRectToWindowRect(viewport_r));
-}
-
-bool DoOverlayClickableBackground(GuiState& g) {
-    bool clicked = false;
-    auto& imgui = g.imgui;
-    imgui.BeginViewport(
-        {
-            .draw_background =
-                [](imgui::Context const& imgui) {
-                    auto r = imgui.curr_viewport->unpadded_bounds;
-                    imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::SidePanelOverlay));
-                },
-            .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-        },
-        {.xywh {0, 0, imgui.CurrentVpWidth(), imgui.CurrentVpHeight()}},
-        "invisible");
-    DEFER { imgui.EndViewport(); };
-
-    if (imgui.IsViewportHovered(imgui.curr_viewport)) {
-        GuiIo().out.wants.cursor_type = CursorType::Hand;
-        if (GuiIo().in.Mouse(MouseButton::Left).presses.size) clicked = true;
-    }
-
-    return clicked;
 }
 
 void HandleShowingTextEditorForParams(GuiState& g, Rect r, Span<ParamIndex const> params) {

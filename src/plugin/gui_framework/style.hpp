@@ -47,11 +47,27 @@ struct Col {
         Red,
         Green,
         Blue,
+        Yellow,
+        Error,
+        Black,
+        White,
+
+        // Additional vivid colours.
+        LimeGreen,
+        YellowGreen,
+        Orchid,
+        HotPink,
+        Amber,
+        Lilac,
+        Cyan,
+        Coral,
+        SkyBlue,
+        Mint,
+
+        Count,
 
         // Alias.
         Highlight = Highlight200,
-
-        Count,
     };
 
     constexpr u8 Index() const {
@@ -102,13 +118,29 @@ constexpr u32 ToU32(Col colour) {
         }
 
         // Manually set the rest.
-        for (auto const i : Range(ToInt(Col::Count))) {
+        for (auto const col_id : EnumIterator<Col::Id>()) {
             for (auto const dark_mode : Array {true, false}) {
-                auto const idx = Col {.c = Col::Id(i), .dark_mode = dark_mode}.Index();
-                switch (Col::Id(i)) {
+                auto const idx = Col {.c = col_id, .dark_mode = dark_mode}.Index();
+                switch (col_id) {
                     case Col::Green: result[idx] = colour::WebHex(0x40A02B); break;
                     case Col::Red: result[idx] = colour::WebHex(0xFF8C71); break;
                     case Col::Blue: result[idx] = colour::WebHex(0x66a9d4); break;
+                    case Col::Yellow: result[idx] = colour::WebHex(0xFBFF3F); break;
+                    case Col::Error: result[idx] = colour::WebHex(0xFF0000); break;
+                    case Col::Black: result[idx] = colour::WebHex(0x000000); break;
+                    case Col::White: result[idx] = colour::WebHex(0xFFFFFF); break;
+
+                    case Col::LimeGreen: result[idx] = colour::WebHex(0x8AFF6D); break;
+                    case Col::YellowGreen: result[idx] = colour::WebHex(0xDDFF5E); break;
+                    case Col::Orchid: result[idx] = colour::WebHex(0xE891FF); break;
+                    case Col::HotPink: result[idx] = colour::WebHex(0xFF5CBD); break;
+                    case Col::Amber: result[idx] = colour::WebHex(0xFFC36A); break;
+                    case Col::Lilac: result[idx] = colour::WebHex(0xC2B3FF); break;
+                    case Col::Cyan: result[idx] = colour::WebHex(0x4AFFFF); break;
+                    case Col::Coral: result[idx] = colour::WebHex(0xFF7777); break;
+                    case Col::SkyBlue: result[idx] = colour::WebHex(0x89B7FF); break;
+                    case Col::Mint: result[idx] = colour::WebHex(0x67FFA5); break;
+
 
                     case Col::Highlight50: result[idx] = colour::WebHex(0xfffbeb); break;
                     case Col::Highlight100: result[idx] = colour::WebHex(0xfdf1c8); break;

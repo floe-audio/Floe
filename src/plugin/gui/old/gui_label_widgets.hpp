@@ -13,55 +13,13 @@ using Style = buttons::Style;
 
 PUBLIC Style FakeMenuItem(imgui::Context const& imgui) { return buttons::MenuItem(imgui, false, true); }
 
-PUBLIC Style CentredLeft(imgui::Context const&, u32 col) {
-    Style s {};
-    s.type = buttons::LayoutAndSizeType::IconOrText;
-    s.icon_or_text.justification = TextJustification::CentredLeft;
-    s.icon_or_text.add_margin_x = true;
-    s.main_cols.reg = col;
-    return s;
-}
-
-PUBLIC Style TopLeft(imgui::Context const& imgui, u32 col) {
-    auto s = CentredLeft(imgui, col);
-    s.icon_or_text.justification = TextJustification::TopLeft;
-    return s;
-}
-
-PUBLIC Style Title(imgui::Context const& imgui, u32 col) {
-    auto s = TopLeft(imgui, col);
-    s.icon_or_text.justification = TextJustification::CentredLeft;
-    return s;
-}
-
-PUBLIC Style BrowserHeading(imgui::Context const& imgui) {
-    return CentredLeft(imgui, LiveCol(UiColMap::BrowserHeading));
-}
-
-PUBLIC Style PresetBrowserFolder(imgui::Context const& imgui) {
-    auto s = CentredLeft(imgui, LiveCol(UiColMap::PresetBrowserFileFolderText));
-    s.icon_or_text.justification = TextJustification::Baseline | TextJustification::Left;
-    return s;
-}
-
-PUBLIC Style PresetBrowserFolderPath(imgui::Context const& imgui) {
-    auto s = CentredLeft(imgui, LiveCol(UiColMap::PresetBrowserFileFolderTextPath));
-    s.icon_or_text.justification = TextJustification::Baseline | TextJustification::Right;
-    s.icon_or_text.overflow_type = TextOverflowType::ShowDotsOnLeft;
-    return s;
-}
-
-PUBLIC Style PresetSectionHeading(imgui::Context const& imgui) {
-    return CentredLeft(imgui, LiveCol(UiColMap::BrowserSectionHeading));
-}
-
 PUBLIC Style WaveformLabel(imgui::Context const&) {
     Style s {};
     s.type = buttons::LayoutAndSizeType::IconOrText;
     s.icon_or_text.justification = TextJustification::Centred;
     s.icon_or_text.add_margin_x = false;
     s.icon_or_text.capitalise = false;
-    s.main_cols.reg = LiveCol(UiColMap::WaveformLabel);
+    s.main_cols.reg = LiveCol(UiColMap::MidText);
     return s;
 }
 
@@ -71,8 +29,7 @@ PUBLIC Style Parameter(imgui::Context const&, bool greyed_out = false) {
     s.icon_or_text.justification = TextJustification::CentredLeft;
     s.icon_or_text.add_margin_x = false;
     s.icon_or_text.capitalise = false;
-    s.main_cols.reg =
-        greyed_out ? LiveCol(UiColMap::ParameterLabelGreyedOut) : LiveCol(UiColMap::ParameterLabel);
+    s.main_cols.reg = greyed_out ? LiveCol(UiColMap::MidTextDimmed) : LiveCol(UiColMap::MidText);
     return s;
 }
 

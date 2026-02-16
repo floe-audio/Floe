@@ -23,6 +23,7 @@ static void DrawKnob(GuiState& g, imgui::Id id, Rect r, f32 percent, Style const
                  .line_col = style.line_col,
                  .overload_position = style.overload_position,
                  .outer_arc_percent = style.outer_arc_percent,
+                 .mid_panel_colours = true,
                  .greyed_out = style.greyed_out,
                  .is_fake = style.is_fake,
                  .bidirectional = style.bidirectional,

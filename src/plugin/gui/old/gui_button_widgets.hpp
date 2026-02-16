@@ -98,14 +98,14 @@ struct Style {
 PUBLIC Style IconButton(imgui::Context const&) {
     Style s {};
     s.type = LayoutAndSizeType::IconOrText;
-    s.main_cols.reg = LiveCol(UiColMap::IconButton1Regular);
-    s.main_cols.on = LiveCol(UiColMap::IconButton1On);
-    s.main_cols.hot_on = LiveCol(UiColMap::IconButton1Hover);
+    s.main_cols.reg = LiveCol(UiColMap::MidIcon);
+    s.main_cols.on = LiveCol(UiColMap::MidTextOn);
+    s.main_cols.hot_on = LiveCol(UiColMap::MidTextHot);
     s.main_cols.hot_off = s.main_cols.hot_on;
-    s.main_cols.active_on = LiveCol(UiColMap::IconButton1Active);
+    s.main_cols.active_on = LiveCol(UiColMap::MidTextOn);
     s.main_cols.active_off = s.main_cols.active_on;
-    s.main_cols.greyed_out = LiveCol(UiColMap::IconButton1GreyedOut);
-    s.main_cols.greyed_out_on = LiveCol(UiColMap::IconButton1GreyedOutOn);
+    s.main_cols.greyed_out = LiveCol(UiColMap::MidTextDimmed);
+    s.main_cols.greyed_out_on = LiveCol(UiColMap::MidTextDimmed);
     s.main_cols.grey_out_aware = true;
     s.icon_or_text.add_margin_x = false;
     s.icon_or_text.justification = TextJustification::Centred;
@@ -116,10 +116,10 @@ PUBLIC Style IconButton(imgui::Context const&) {
 static Style MuteSoloButton(imgui::Context const&, bool is_solo) {
     Style s {};
     s.type = LayoutAndSizeType::IconOrText;
-    s.main_cols.reg = LiveCol(UiColMap::MuteSoloButtonTextRegular);
+    s.main_cols.reg = LiveCol(UiColMap::MidText);
     s.main_cols.on = LiveCol(UiColMap::MuteSoloButtonTextOn);
-    s.main_cols.hot_on = LiveCol(UiColMap::MuteSoloButtonTextOnHover);
-    s.main_cols.hot_off = LiveCol(UiColMap::MuteSoloButtonTextHover);
+    s.main_cols.hot_on = LiveCol(UiColMap::MidTextHot);
+    s.main_cols.hot_off = LiveCol(UiColMap::MidTextHot);
     s.main_cols.active_on = s.main_cols.hot_on;
     s.main_cols.active_off = s.main_cols.hot_off;
     s.back_cols.reg = {};
@@ -139,73 +139,19 @@ PUBLIC Style MuteButton(imgui::Context const& imgui) { return MuteSoloButton(img
 
 PUBLIC Style SoloButton(imgui::Context const& imgui) { return MuteSoloButton(imgui, true); }
 
-PUBLIC Style SettingsViewportButton(imgui::Context const& imgui) {
-    auto s = IconButton(imgui);
-    s.type = LayoutAndSizeType::IconAndText;
-    s.text_cols.reg = LiveCol(UiColMap::SettingsViewportMainText);
-    s.text_cols.hot_on = LiveCol(UiColMap::SettingsViewportHoveredMainText);
-    s.text_cols.hot_off = s.text_cols.hot_on;
-    s.text_cols.active_on = s.text_cols.reg;
-    s.text_cols.active_off = s.text_cols.active_on;
-    s.text_cols.on = s.text_cols.reg;
-    s.main_cols.reg = LiveCol(UiColMap::SettingsViewportIconButton);
-    s.main_cols.hot_on = s.main_cols.reg;
-    s.main_cols.hot_off = s.main_cols.reg;
-    s.main_cols.active_on = s.main_cols.reg;
-    s.main_cols.active_off = s.main_cols.active_on;
-    s.main_cols.on = s.main_cols.reg;
-    s.icon_and_text.on_icon = ICON_FA_SQUARE_CHECK;
-    s.icon_and_text.off_icon = ICON_FA_SQUARE;
-    s.icon_and_text.capitalise = false;
-    return s;
-}
-
-PUBLIC Style TopPanelIconButton(imgui::Context const& imgui) {
-    auto s = IconButton(imgui);
-    s.main_cols.reg = LiveCol(UiColMap::TopPanelIconButtonRegular);
-    s.main_cols.on = LiveCol(UiColMap::TopPanelIconButtonOn);
-    s.main_cols.hot_on = LiveCol(UiColMap::TopPanelIconButtonHover);
-    s.main_cols.hot_off = s.main_cols.hot_on;
-    s.main_cols.active_on = LiveCol(UiColMap::TopPanelIconButtonActive);
-    s.main_cols.active_off = s.main_cols.active_on;
-    return s;
-}
-
-PUBLIC Style TopPanelAttributionIconButton(imgui::Context const& imgui) {
-    auto s = IconButton(imgui).WithLargeIcon();
-    s.main_cols.reg = LiveCol(UiColMap::TopPanelAttributionIconButtonRegular);
-    s.main_cols.on = LiveCol(UiColMap::TopPanelAttributionIconButtonOn);
-    s.main_cols.hot_on = LiveCol(UiColMap::TopPanelAttributionIconButtonHover);
-    s.main_cols.hot_off = s.main_cols.hot_on;
-    s.main_cols.active_on = LiveCol(UiColMap::TopPanelAttributionIconButtonActive);
-    s.main_cols.active_off = s.main_cols.active_on;
-    return s;
-}
-
-PUBLIC Style BrowserIconButton(imgui::Context const& imgui) {
-    auto s = IconButton(imgui);
-    s.main_cols.reg = LiveCol(UiColMap::BrowserIconButtonRegular);
-    s.main_cols.on = LiveCol(UiColMap::BrowserIconButtonOn);
-    s.main_cols.hot_on = LiveCol(UiColMap::BrowserIconButtonHover);
-    s.main_cols.hot_off = s.main_cols.hot_on;
-    s.main_cols.active_on = LiveCol(UiColMap::BrowserIconButtonActive);
-    s.main_cols.active_on = s.main_cols.active_off;
-    return s;
-}
-
 PUBLIC Style LayerHeadingButton(imgui::Context const&, u32 highlight_col = {}) {
     Style s {};
-    if (!highlight_col) highlight_col = LiveCol(UiColMap::ToggleButtonIconOn);
+    if (!highlight_col) highlight_col = LiveCol(UiColMap::MidTextOn);
     s.type = LayoutAndSizeType::IconAndText;
-    s.main_cols.reg = LiveCol(UiColMap::ToggleButtonIconOff);
+    s.main_cols.reg = LiveCol(UiColMap::MidIcon);
     s.main_cols.on = highlight_col;
     s.main_cols.hot_off = s.main_cols.reg;
     s.main_cols.hot_on = s.main_cols.on;
     s.main_cols.active_on = s.main_cols.hot_on;
     s.main_cols.active_off = s.main_cols.active_on;
-    s.text_cols.reg = LiveCol(UiColMap::ToggleButtonTextOff);
-    s.text_cols.on = LiveCol(UiColMap::ToggleButtonTextOn);
-    s.text_cols.hot_on = LiveCol(UiColMap::ToggleButtonTextHover);
+    s.text_cols.reg = LiveCol(UiColMap::MidText);
+    s.text_cols.on = LiveCol(UiColMap::MidText);
+    s.text_cols.hot_on = LiveCol(UiColMap::MidTextHot);
     s.text_cols.hot_off = s.text_cols.hot_on;
     s.text_cols.active_on = s.text_cols.hot_on;
     s.text_cols.active_off = s.text_cols.active_on;
@@ -235,9 +181,9 @@ PUBLIC Style LayerTabButton(imgui::Context const&, bool has_dot) {
         s.type = LayoutAndSizeType::IconOrText;
     else
         s.type = LayoutAndSizeType::IconAndTextLayerTab;
-    s.main_cols.reg = LiveCol(UiColMap::LayerTabButtonText);
-    s.main_cols.on = LiveCol(UiColMap::LayerTabButtonTextActive);
-    s.main_cols.hot_on = LiveCol(UiColMap::LayerTabButtonTextHover);
+    s.main_cols.reg = LiveCol(UiColMap::MidText);
+    s.main_cols.on = LiveCol(UiColMap::MidTextOn);
+    s.main_cols.hot_on = LiveCol(UiColMap::MidTextHot);
     s.main_cols.hot_off = s.main_cols.hot_on;
     s.main_cols.active_on = s.main_cols.hot_on;
     s.main_cols.active_off = s.main_cols.active_on;
@@ -253,11 +199,11 @@ PUBLIC Style LayerTabButton(imgui::Context const&, bool has_dot) {
 PUBLIC Style ParameterPopupButton(imgui::Context const& imgui, bool _greyed_out = false) {
     auto s = LayerHeadingButton(imgui);
     s.type = LayoutAndSizeType::IconOrText;
-    s.main_cols.reg = LiveCol(UiColMap::MenuButtonText);
-    s.main_cols.greyed_out = LiveCol(UiColMap::MenuButtonTextInactive);
+    s.main_cols.reg = LiveCol(UiColMap::MidText);
+    s.main_cols.greyed_out = LiveCol(UiColMap::MidTextDimmed);
     s.main_cols.greyed_out_on = s.main_cols.greyed_out;
     s.main_cols.on = s.main_cols.reg;
-    s.main_cols.hot_on = LiveCol(UiColMap::MenuButtonTextHover);
+    s.main_cols.hot_on = LiveCol(UiColMap::MidTextHot);
     s.main_cols.hot_off = s.main_cols.hot_on;
     s.main_cols.active_on = s.main_cols.hot_on;
     s.main_cols.active_off = s.main_cols.active_on;
@@ -268,7 +214,7 @@ PUBLIC Style ParameterPopupButton(imgui::Context const& imgui, bool _greyed_out 
     s.icon_or_text.justification = TextJustification::CentredLeft;
     s.icon_or_text.overflow_type = TextOverflowType::ShowDotsOnRight;
 
-    s.back_cols.reg = LiveCol(UiColMap::MenuButtonBack);
+    s.back_cols.reg = LiveCol(UiColMap::MidDarkSurface);
     s.back_cols.on = s.back_cols.reg;
     s.back_cols.hot_on = s.back_cols.reg;
     s.back_cols.hot_off = s.back_cols.reg;
@@ -299,85 +245,23 @@ PUBLIC Style MidiButton(imgui::Context const& imgui) {
     return s;
 }
 
-PUBLIC Style PresetsBrowserFolderButton(imgui::Context const&) {
-    Style s {};
-    s.type = LayoutAndSizeType::IconOrText;
-    s.back_cols.reg = LiveCol(UiColMap::PresetBrowserFolderButtonBackOff);
-    s.back_cols.on = LiveCol(UiColMap::PresetBrowserFolderButtonBackOn);
-    s.back_cols.hot_on = LiveCol(UiColMap::PresetBrowserFolderButtonBackHover);
-    s.back_cols.hot_off = s.back_cols.hot_on;
-    s.back_cols.active_on = LiveCol(UiColMap::PresetBrowserFolderButtonBackActive);
-    s.back_cols.active_off = s.back_cols.active_on;
-    s.main_cols.reg = LiveCol(UiColMap::PresetBrowserFolderButtonTextOff);
-    s.main_cols.on = LiveCol(UiColMap::PresetBrowserFolderButtonTextOn);
-    s.main_cols.hot_on = LiveCol(UiColMap::PresetBrowserFolderButtonTextHover);
-    s.main_cols.hot_off = s.main_cols.hot_on;
-    s.main_cols.active_on = LiveCol(UiColMap::PresetBrowserFolderButtonTextActive);
-    s.main_cols.active_off = s.main_cols.active_on;
-    s.icon_or_text.add_margin_x = true;
-    s.icon_or_text.justification = TextJustification::CentredLeft;
-    s.icon_or_text.overflow_type = TextOverflowType::ShowDotsOnRight;
-    return s;
-}
-
-PUBLIC Style PresetsBrowserFileButton(imgui::Context const&) {
-    Style s {};
-    s.type = LayoutAndSizeType::IconOrText;
-    s.back_cols.reg = LiveCol(UiColMap::PresetBrowserFileButtonBackOff);
-    s.back_cols.on = LiveCol(UiColMap::PresetBrowserFileButtonBackOn);
-    s.back_cols.hot_on = LiveCol(UiColMap::PresetBrowserFileButtonBackHover);
-    s.back_cols.hot_off = s.back_cols.hot_on;
-    s.back_cols.active_on = LiveCol(UiColMap::PresetBrowserFileButtonBackActive);
-    s.back_cols.active_off = s.back_cols.active_on;
-    s.main_cols.reg = LiveCol(UiColMap::PresetBrowserFileButtonTextOff);
-    s.main_cols.on = LiveCol(UiColMap::PresetBrowserFileButtonTextOn);
-    s.main_cols.hot_on = LiveCol(UiColMap::PresetBrowserFileButtonTextHover);
-    s.main_cols.hot_off = s.main_cols.hot_on;
-    s.main_cols.active_on = LiveCol(UiColMap::PresetBrowserFileButtonTextActive);
-    s.main_cols.active_off = s.main_cols.active_on;
-    s.icon_or_text.add_margin_x = true;
-    s.icon_or_text.justification = TextJustification::CentredLeft;
-    s.icon_or_text.overflow_type = TextOverflowType::ShowDotsOnRight;
-    return s;
-}
-
-PUBLIC Style PresetsBrowserPopupButton(imgui::Context const& imgui) {
-    auto s = ParameterPopupButton(imgui);
-    s.icon_or_text.overflow_type = TextOverflowType::ShowDotsOnLeft;
-    s.main_cols.grey_out_aware = false;
-    s.main_cols.reg = LiveCol(UiColMap::BrowserFolderPopupButtonText);
-    s.main_cols.on = s.main_cols.reg;
-    s.main_cols.hot_on = LiveCol(UiColMap::BrowserFolderPopupButtonTextHover);
-    s.main_cols.hot_off = s.main_cols.hot_on;
-    s.main_cols.active_on = s.main_cols.hot_on;
-    s.main_cols.active_off = s.main_cols.active_on;
-    s.back_cols.reg = LiveCol(UiColMap::BrowserFolderPopupButtonBack);
-    s.back_cols.on = s.back_cols.reg;
-    s.back_cols.hot_on = s.back_cols.reg;
-    s.back_cols.hot_off = s.back_cols.hot_on;
-    s.back_cols.active_on = s.back_cols.reg;
-    s.back_cols.active_off = s.back_cols.active_on;
-    return s;
-}
-
 PUBLIC Style MenuItem(imgui::Context const&, bool _closes_popups, bool greyed_out = false) {
     Style s {};
     s.type = LayoutAndSizeType::IconAndTextMenuItem;
     s.closes_popups = _closes_popups;
     s.back_cols.reg = 0;
-    s.back_cols.hot_on =
-        LiveCol(!greyed_out ? UiColMap::PopupItemBackHover : UiColMap::PopupItemBackHoverGreyedOut);
+    s.back_cols.hot_on = ToU32(Col {.c = Col::Highlight100});
     s.back_cols.hot_off = s.back_cols.hot_on;
     s.back_cols.active_on = s.back_cols.hot_on;
     s.back_cols.active_off = s.back_cols.active_on;
-    s.back_cols.on = greyed_out ? 0 : LiveCol(UiColMap::PopupItemBackHover);
-    s.text_cols.reg = LiveCol(greyed_out ? UiColMap::PopupItemTextGreyedOut : UiColMap::PopupItemText);
+    s.back_cols.on = greyed_out ? 0 : ToU32(Col {.c = Col::Highlight50});
+    s.text_cols.reg = ToU32(Col {.c = greyed_out ? Col::Subtext0 : Col::Text});
     s.text_cols.hot_on = s.text_cols.reg;
     s.text_cols.hot_off = s.text_cols.reg;
     s.text_cols.active_on = s.text_cols.reg;
     s.text_cols.active_off = s.text_cols.active_on;
     s.text_cols.on = s.text_cols.reg;
-    s.main_cols.reg = LiveCol(UiColMap::PopupItemIcon);
+    s.main_cols.reg = ToU32(Col {.c = Col::Subtext1});
     s.main_cols.hot_on = s.main_cols.reg;
     s.main_cols.hot_off = s.main_cols.reg;
     s.main_cols.active_on = s.main_cols.reg;
@@ -419,7 +303,7 @@ PUBLIC Style EffectHeading(imgui::Context const&, u32 back_col) {
     Style s {};
     s.type = buttons::LayoutAndSizeType::IconOrText;
     s.icon_or_text.justification = TextJustification::Centred;
-    s.main_cols.reg = LiveCol(UiColMap::FXHeading);
+    s.main_cols.reg = LiveCol(UiColMap::MidText);
     s.main_cols.active_on = s.main_cols.reg;
     s.main_cols.active_off = s.main_cols.active_on;
     s.main_cols.hot_on = s.main_cols.reg;
@@ -434,8 +318,6 @@ PUBLIC Style EffectHeading(imgui::Context const&, u32 back_col) {
     s.corner_rounding_flags = 0b0010;
     return s;
 }
-
-PUBLIC Style LicencesFoldButton(imgui::Context const& imgui) { return MenuItem(imgui, false); }
 
 //
 //

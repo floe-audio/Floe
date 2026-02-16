@@ -3,8 +3,6 @@
 
 #include "gui_live_edit.hpp"
 
-bool g_high_contrast_gui = false;
-
 LiveEditGui g_live_edit_values {
     .ui_sizes =
         {
@@ -18,15 +16,9 @@ LiveEditGui g_live_edit_values {
 #include SIZES_DEF_FILENAME
 #undef GUI_SIZE
         },
-    .ui_cols =
-        {
-#define GUI_COL(name, val, based_on, bright, alpha) {String(name), val, String(based_on), bright, alpha},
-#include COLOURS_DEF_FILENAME
-#undef GUI_COL
-        },
     .ui_col_map =
         {
-#define GUI_COL_MAP(cat, n, col, high_contrast_col) {String(col), String(high_contrast_col)},
+#define GUI_COL_MAP(cat, n, col_id, a, dm) {Col {.c = Col::col_id, .dark_mode = dm, .alpha = a}},
 #include COLOUR_MAP_DEF_FILENAME
 #undef GUI_COL_MAP
         },

@@ -155,7 +155,7 @@ static bool DoCurveMap(GuiState& g,
 
                 if (g.imgui.IsPopupMenuOpen(right_click_id)) {
                     g.imgui.BeginViewport(
-                        FloeMenuConfig(g.imgui),
+                        k_default_popup_menu_viewport,
                         right_click_id,
                         {.pos = GuiIo().in.Mouse(MouseButton::Right).last_press.point, .size = {}});
                     DEFER { imgui.EndViewport(); };
@@ -256,7 +256,7 @@ static bool DoCurveMap(GuiState& g,
 
                     if (g.imgui.IsPopupMenuOpen(right_click_id)) {
                         g.imgui.BeginViewport(
-                            FloeMenuConfig(g.imgui),
+                            k_default_popup_menu_viewport,
                             right_click_id,
                             {.pos = GuiIo().in.Mouse(MouseButton::Right).last_press.point, .size = {}});
                         DEFER { imgui.EndViewport(); };
@@ -350,7 +350,7 @@ static bool DoCurveMap(GuiState& g,
                 }
 
                 if (g.imgui.IsPopupMenuOpen(right_click_id)) {
-                    g.imgui.BeginViewport(FloeMenuConfig(g.imgui), right_click_id, grabber_rect);
+                    g.imgui.BeginViewport(k_default_popup_menu_viewport, right_click_id, grabber_rect);
                     DEFER { imgui.EndViewport(); };
 
                     StartFloeMenu(g);

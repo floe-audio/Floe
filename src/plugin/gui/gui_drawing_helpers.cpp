@@ -90,7 +90,7 @@ void DrawParameterTextInput(imgui::Context const& imgui, Rect r, imgui::TextInpu
     if (result.cursor_rect)
         imgui.draw_list->AddRectFilled(*result.cursor_rect, LiveCol(UiColMap::TextInputCursor));
 
-    imgui.draw_list->AddText(text_pos, LiveCol(UiColMap::TextInputText), result.text, {});
+    imgui.draw_list->AddText(text_pos, LiveCol(UiColMap::MidText), result.text, {});
 }
 
 void DrawTextInput(imgui::Context const& imgui,
@@ -124,28 +124,33 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
     ASSERT(outer_arc_percent >= 0 && outer_arc_percent <= 1);
     ASSERT(angle >= start_radians && angle <= end_radians);
 
-    auto inner_arc_col = LiveCol(UiColMap::KnobInnerArc);
+    auto inner_arc_col =
+        LiveCol(options.mid_panel_colours ? UiColMap::KnobMidInnerArc : UiColMap::KnobInnerArc);
     auto bright_arc_col = options.highlight_col;
     if (options.greyed_out) {
         bright_arc_col = LiveCol(UiColMap::KnobOuterArcGreyedOut);
-        inner_arc_col = LiveCol(UiColMap::KnobInnerArcGreyedOut);
+        inner_arc_col = LiveCol(options.mid_panel_colours ? UiColMap::KnobMidInnerArcGreyedOut
+                                                          : UiColMap::KnobInnerArcGreyedOut);
     }
     auto line_col = options.line_col;
     if (!options.is_fake && (imgui.IsHot(id) || imgui.IsActive(id))) {
-        inner_arc_col = LiveCol(UiColMap::KnobInnerArcHover);
-        line_col = LiveCol(UiColMap::KnobLineHover);
+        inner_arc_col =
+            LiveCol(options.mid_panel_colours ? UiColMap::KnobMidInnerArcHover : UiColMap::KnobInnerArcHover);
+        line_col = LiveCol(options.mid_panel_colours ? UiColMap::KnobMidLineHover : UiColMap::KnobLineHover);
     }
 
     // outer arc
     auto const outer_arc_thickness = LiveSize(UiSizeId::KnobOuterArcWeight);
     auto const outer_arc_radius_mid = r.w * 0.5f;
+    auto const empty_outer_arc_col =
+        LiveCol(options.mid_panel_colours ? UiColMap::KnobMidOuterArcEmpty : UiColMap::KnobOuterArcEmpty);
     if (!options.overload_position) {
         imgui.draw_list->PathArcTo(c,
                                    outer_arc_radius_mid - (outer_arc_thickness / 2),
                                    start_radians,
                                    end_radians,
                                    32);
-        imgui.draw_list->PathStroke(LiveCol(UiColMap::KnobOuterArcEmpty), false, outer_arc_thickness);
+        imgui.draw_list->PathStroke(empty_outer_arc_col, false, outer_arc_thickness);
     } else {
         auto const overload_radians = start_radians + (delta * *options.overload_position);
         auto const radians_per_px = k_tau<> * r.w / 2;
@@ -158,7 +163,7 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
                                        start_radians,
                                        overload_radians,
                                        32);
-            imgui.draw_list->PathStroke(LiveCol(UiColMap::KnobOuterArcEmpty), false, outer_arc_thickness);
+            imgui.draw_list->PathStroke(empty_outer_arc_col, false, outer_arc_thickness);
         }
 
         {
@@ -169,7 +174,10 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
                                        overload_radians_end,
                                        end_radians,
                                        32);
-            imgui.draw_list->PathStroke(LiveCol(UiColMap::KnobOuterArcOverload), false, gain_thickness);
+            imgui.draw_list->PathStroke(LiveCol(options.mid_panel_colours ? UiColMap::KnobMidOuterArcOverload
+                                                                          : UiColMap::KnobOuterArcOverload),
+                                        false,
+                                        gain_thickness);
         }
     }
 
@@ -336,11 +344,11 @@ void DrawOverlayTooltipForRect(imgui::Context const& imgui, Fonts& fonts, String
     DrawDropShadow(imgui, popup_r);
 
     imgui.overlay_draw_list->AddRectFilled(popup_r,
-                                           LiveCol(UiColMap::TooltipBack),
+                                           ToU32(Col {.c = Col::Background0}),
                                            LiveSize(UiSizeId::CornerRounding));
 
     imgui.overlay_draw_list->AddText(popup_r.pos + text_margin,
-                                     LiveCol(UiColMap::TooltipText),
+                                     ToU32(Col {.c = Col::Text}),
                                      str,
                                      {.wrap_width = size + 1});
 }

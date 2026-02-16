@@ -247,9 +247,6 @@ void GuiUpdate(GuiState& g) {
     g.show_new_version_indicator =
         check_for_update::ShowNewVersionIndicator(g.shared_engine_systems.check_for_update_state, g.prefs);
 
-    g_high_contrast_gui = prefs::GetBool(g.prefs,
-                                         SettingDescriptor(GuiPreference::HighContrastGui)); // IMPROVE: hacky
-
     g.scratch_arena.ResetCursorAndConsolidateRegions();
 
     layout::ReserveItemsCapacity(g.layout, g.scratch_arena, 2048);
@@ -322,7 +319,7 @@ void GuiUpdate(GuiState& g) {
                     [&](imgui::Context const& imgui) {
                         auto const r = imgui.curr_viewport->unpadded_bounds;
 
-                        imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidPanelBack));
+                        imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportBackground));
 
                         if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui))) {
                             auto overall_library = LibraryForOverallBackground(g.engine);

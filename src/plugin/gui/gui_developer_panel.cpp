@@ -85,12 +85,15 @@ static void DevGuiHeading(DeveloperPanel& g, String text) {
         g.y_pos += k_item_h;
 
     auto r = DevGuiGetFullR(g);
-    auto back_r = r;
-    back_r = g.imgui.RegisterAndConvertRect(back_r);
-    g.imgui.draw_list->AddRectFilled(back_r, 0x50ffffff);
     DoBasicWhiteText(g.imgui, r, text);
 
-    g.y_pos += k_item_h * 1.1f;
+    g.y_pos += k_item_h;
+    auto const line_y = g.imgui.RegisterAndConvertRect({.xywh {0, g.y_pos, 0, 0}}).y;
+    auto const line_x1 = g.imgui.RegisterAndConvertRect({.xywh {0, 0, 0, 0}}).x;
+    auto const line_x2 = g.imgui.RegisterAndConvertRect({.xywh {g.imgui.CurrentVpWidth(), 0, 0, 0}}).x;
+    g.imgui.draw_list->AddLine({line_x1, line_y}, {line_x2, line_y}, 0x60ffffff);
+
+    g.y_pos += 2;
 }
 
 static void DevGuiLabel(DeveloperPanel& g, Rect r, String text, TextJustification just) {
@@ -305,13 +308,13 @@ constexpr String k_ui_sizes_categories[ToInt(UiSizeId::Count)] = {
 };
 
 constexpr String const k_ui_col_map_names[ToInt(UiColMap::Count)] = {
-#define GUI_COL_MAP(cat, n, v, high_contrast_col) #n,
+#define GUI_COL_MAP(cat, n, col_id, alpha, dark_mode) #n,
 #include COLOUR_MAP_DEF_FILENAME
 #undef GUI_COL_MAP
 };
 
 constexpr String k_ui_col_map_categories[ToInt(UiColMap::Count)] = {
-#define GUI_COL_MAP(cat, n, v, high_contrast_col) #cat,
+#define GUI_COL_MAP(cat, n, col_id, alpha, dark_mode) #cat,
 #include COLOUR_MAP_DEF_FILENAME
 #undef GUI_COL_MAP
 };
@@ -326,33 +329,6 @@ static void WriteHeader(Writer writer) {
         writer,
         "// Copyright 2018-2026 Sam Windell\n// SPDX-License-Identifier: GPL-3.0-or-later\n\n");
     // REUSE-IgnoreEnd
-}
-
-static void WriteColoursFile(LiveEditGui const& gui) {
-    ArenaAllocator scratch_arena {PageAllocator::Instance()};
-
-    auto outcome = OpenFile(UiStyleFilepath(scratch_arena, COLOURS_DEF_FILENAME), FileMode::Write());
-    if (outcome.HasError()) {
-        LogError(ModuleName::Gui, "{} failed: {}", __FUNCTION__, outcome.Error());
-        return;
-    }
-
-    WriteHeader(outcome.Value().Writer());
-
-    for (auto const& c : gui.ui_cols) {
-        auto o = fmt::FormatToWriter(outcome.Value().Writer(),
-                                     "GUI_COL(\"{}\", 0x{08x}, \"{}\", {.2}f, {.2}f)\n",
-                                     String(c.name),
-                                     c.col,
-                                     String(c.based_on),
-                                     c.with_brightness,
-                                     c.with_alpha);
-        if (o.HasError())
-            LogError(ModuleName::Gui,
-                     "could not write to file {} for reasion {}",
-                     COLOURS_DEF_FILENAME,
-                     o.Error());
-    }
 }
 
 static void WriteSizesFile(LiveEditGui const& gui) {
@@ -395,11 +371,12 @@ static void WriteColourMapFile(LiveEditGui const& gui) {
         auto name = k_ui_col_map_names[i];
         auto cat = k_ui_col_map_categories[i];
         auto o = fmt::FormatToWriter(outcome.Value().Writer(),
-                                     "GUI_COL_MAP({}, {}, \"{}\", \"{}\")\n",
+                                     "GUI_COL_MAP({}, {}, {}, {}, {})\n",
                                      cat,
                                      name,
-                                     String(v.colour),
-                                     String(v.high_contrast_colour));
+                                     EnumToString(v.col.c),
+                                     v.col.alpha,
+                                     v.col.dark_mode ? "true" : "false");
         if (o.HasError())
             LogError(ModuleName::Gui,
                      "could not write to file {} for reason {}",
@@ -465,23 +442,7 @@ static void LiveEditSliders(DeveloperPanel& g, String search) {
     }
 }
 
-static auto GetColourNames(LiveEditGui const& gui, bool include_none) {
-    DynamicArrayBounded<String, k_max_num_colours + 1> colour_names;
-    if (include_none) dyn::Append(colour_names, "---");
-    for (auto const i : Range(k_max_num_colours))
-        dyn::Append(colour_names, gui.ui_cols[i].name);
-    return colour_names;
-}
-
-static int FindColourIndex(LiveEditGui const& gui, String col_string) {
-    if (col_string.size == 0) return -1;
-    for (auto const i : Range(k_max_num_colours))
-        if (String(gui.ui_cols[i].name) == col_string) return i;
-    return -1;
-}
-
-static void
-LiveEditColourMapMenus(DeveloperPanel& g, String search, String colour_search, bool high_contrast) {
+static void LiveEditColourMapMenus(DeveloperPanel& g, String search) {
     auto& live_gui = g_live_edit_values;
     DevGuiHeading(g, "Colour Mapping");
 
@@ -489,7 +450,6 @@ LiveEditColourMapMenus(DeveloperPanel& g, String search, String colour_search, b
     if (categories.size == 0)
         for (auto const i : Range(ToInt(UiColMap::Count)))
             dyn::AppendIfNotAlreadyThere(categories, k_ui_col_map_categories[i]);
-    auto col_names = GetColourNames(live_gui, high_contrast);
 
     for (auto const cat : categories) {
         g.imgui.PushId(cat);
@@ -498,12 +458,8 @@ LiveEditColourMapMenus(DeveloperPanel& g, String search, String colour_search, b
         bool contains_values = search.size && ContainsCaseInsensitiveAscii(cat, search);
         if (!contains_values) {
             for (auto const i : Range(ToInt(UiColMap::Count))) {
-                auto& col_map = high_contrast ? live_gui.ui_col_map[i].high_contrast_colour
-                                              : live_gui.ui_col_map[i].colour;
-
                 if (k_ui_col_map_categories[i] != cat) continue;
                 if (!ContainsCaseInsensitiveAscii(k_ui_col_map_names[i], search)) continue;
-                if (col_map.size && !ContainsCaseInsensitiveAscii(col_map, colour_search)) continue;
                 contains_values = true;
                 break;
             }
@@ -520,324 +476,86 @@ LiveEditColourMapMenus(DeveloperPanel& g, String search, String colour_search, b
             if (!ContainsCaseInsensitiveAscii(name, search) && !ContainsCaseInsensitiveAscii(cat, search))
                 continue;
 
-            auto& col_map =
-                high_contrast ? live_gui.ui_col_map[i].high_contrast_colour : live_gui.ui_col_map[i].colour;
-            if (col_map.size && !ContainsCaseInsensitiveAscii(col_map, colour_search)) continue;
-
             g.imgui.PushId((u64)i);
             DEFER { g.imgui.PopId(); };
 
-            Rect const label_r = DevGuiGetLeftR(g);
-            Rect const sr = DevGuiGetRightR(g);
+            auto& col_map = live_gui.ui_col_map[i];
 
-            int index = FindColourIndex(live_gui, col_map);
-            if (index == -1 && high_contrast) index = 0;
-            bool const changed = DevGuiMenu(g, sr, col_names.Items(), index);
+            f32 const pad = 1.0f;
+            f32 const label_w = g.imgui.CurrentVpWidth() * 0.35f;
+            f32 const col_preview_size = k_item_h - pad;
+            f32 const alpha_w = g.imgui.CurrentVpWidth() * 0.1f;
+            f32 const dark_w = k_item_h * 3;
+            f32 const menu_w =
+                g.imgui.CurrentVpWidth() - label_w - col_preview_size - alpha_w - dark_w - pad * 4;
+
+            Rect const label_r = {.xywh {0, g.y_pos, label_w, k_item_h - 1}};
+            f32 x = label_w;
+            Rect col_preview_r = {.xywh {x, g.y_pos, col_preview_size, k_item_h}};
+            x += col_preview_size + pad;
+            Rect const menu_r = {.xywh {x, g.y_pos, menu_w, k_item_h - 1}};
+            x += menu_w + pad;
+            Rect const alpha_r = {.xywh {x, g.y_pos, alpha_w, k_item_h - 1}};
+            x += alpha_w + pad;
+            Rect const dark_r = {.xywh {x, g.y_pos, dark_w, k_item_h - 1}};
+
+            // Colour preview
+            {
+                col_preview_r = g.imgui.RegisterAndConvertRect(col_preview_r);
+                g.imgui.draw_list->AddRectFilled(col_preview_r, ToU32(col_map.col));
+            }
+
+            // Col::Id dropdown
+            int col_id_index = ToInt(col_map.col.c);
+            constexpr auto k_col_id_names = []() {
+                Array<String, ToInt(Col::Id::Count)> names {};
+                for (auto e : EnumIterator<Col::Id>())
+                    names[ToInt(e)] = EnumToString(e);
+                return names;
+            }();
+            bool changed = DevGuiMenu(g, menu_r, k_col_id_names, col_id_index);
+            if (changed) col_map.col.c = (Col::Id)col_id_index;
+
+            // Alpha dragger
+            {
+                f32 alpha_f = (f32)col_map.col.alpha;
+                changed |= DoDevGuiFloatDragger(g,
+                                                {
+                                                    .viewport_r = alpha_r,
+                                                    .id = g.imgui.MakeId("alpha"),
+                                                    .format_string = "{.0}",
+                                                    .min = 0,
+                                                    .max = 255,
+                                                    .value = alpha_f,
+                                                    .default_value = 255,
+                                                    .slider_cfg = ({
+                                                        auto f = imgui::SliderConfig {};
+                                                        f.sensitivity = 4;
+                                                        f;
+                                                    }),
+                                                });
+                if (changed) col_map.col.alpha = (u8)alpha_f;
+            }
+
+            // Dark mode toggle
+            {
+                auto const r = g.imgui.RegisterAndConvertRect(dark_r);
+                auto const id = g.imgui.MakeId("dark");
+                bool dark = col_map.col.dark_mode;
+                if (g.imgui.ToggleButtonBehaviour(r, id, imgui::ButtonConfig {}, dark)) {
+                    col_map.col.dark_mode = !col_map.col.dark_mode;
+                    changed = true;
+                }
+                DrawDevGuiTextButton(g.imgui, r, id, "DarkMode", col_map.col.dark_mode);
+            }
+
             DevGuiLabel(g, label_r, name, TextJustification::CentredRight);
 
-            if (changed) {
-                if (high_contrast && index == 0)
-                    col_map.size = 0;
-                else
-                    col_map = String(live_gui.ui_cols[index].name);
-                WriteColourMapFile(live_gui);
-            }
+            if (changed) WriteColourMapFile(live_gui);
 
             DevGuiIncrementPos(g);
         }
         DevGuiIncrementPos(g);
-    }
-}
-
-static void RecalculateBasedOnCol(LiveEditColour& c, LiveEditColour const& other_c) {
-    c.col = other_c.col;
-    c.col = colour::ChangeBrightness(c.col, Pow(2.0f, c.with_brightness));
-    c.col = colour::ChangeAlpha(c.col, Pow(2.0f, c.with_alpha));
-}
-
-static void LiveEditColourSliders(DeveloperPanel& gui, String search) {
-    auto& live_gui = g_live_edit_values;
-    auto& imgui = gui.imgui;
-    auto pad = 1.0f;
-
-    DevGuiHeading(gui, "Colours");
-
-    for (auto const index : Range<uintptr>(k_max_num_colours)) {
-        auto& c = live_gui.ui_cols[index];
-        if (c.name.size && !ContainsCaseInsensitiveAscii(c.name, search)) continue;
-
-        colour::Channels const col = colour::FromU32(c.col);
-        auto hex_rgb = u32(col.r << 16 | col.g << 8 | col.b);
-        auto const a = col.a / 255.0f;
-        auto const b = col.b / 255.0f;
-        auto const g = col.g / 255.0f;
-        auto const r = col.r / 255.0f;
-
-        auto hsv = colour::ConvertRgbtoHsv({.r = r, .g = g, .b = b});
-        f32 alpha = a;
-
-        imgui.PushId(index);
-        DEFER { imgui.PopId(); };
-
-        auto id = imgui.MakeId(index);
-
-        f32 x_pos = 0;
-        Rect const label_r = {.xywh {x_pos, gui.y_pos, imgui.CurrentVpWidth() / 3.5f, k_item_h}};
-        x_pos += label_r.w;
-        Rect const hex_col_r = {.xywh {x_pos, gui.y_pos, imgui.CurrentVpWidth() / 8, k_item_h}};
-        x_pos += hex_col_r.w + pad;
-        Rect col_preview_r = {.xywh {x_pos, gui.y_pos, k_item_h - pad, k_item_h}};
-        x_pos += col_preview_r.w + pad;
-        auto remaining_w = imgui.CurrentVpWidth() - x_pos;
-        Rect const edit_button_r = {.xywh {x_pos, gui.y_pos, ((remaining_w / 12) * 2) - pad, k_item_h}};
-        x_pos += edit_button_r.w + pad;
-        Rect const based_on_r = {.xywh {x_pos, gui.y_pos, ((remaining_w / 12) * 6) - pad, k_item_h}};
-        x_pos += based_on_r.w + pad;
-        Rect const bright_r = {.xywh {x_pos, gui.y_pos, ((remaining_w / 12) * 2) - pad, k_item_h}};
-        x_pos += bright_r.w + pad;
-        Rect const alpha_r = {.xywh {x_pos, gui.y_pos, ((remaining_w / 12) * 2) - pad, k_item_h}};
-
-        bool hex_code_changed = false;
-        bool hsv_changed = false;
-
-        {
-            auto const display = fmt::FormatInline<16>("{06x}", hex_rgb);
-            if (c.based_on.size == 0) {
-                auto const res = ({
-                    auto const input_r = gui.imgui.RegisterAndConvertRect(hex_col_r);
-                    auto const o = gui.imgui.TextInputBehaviour({
-                        .rect_in_window_coords = input_r,
-                        .id = id,
-                        .text = display,
-                        .input_cfg {
-                            .chars_hexadecimal = true,
-                        },
-                    });
-                    DrawDevGuiTextInput(gui.imgui, o, id, input_r);
-                    o;
-                });
-                if (res.buffer_changed) {
-                    hex_code_changed = true;
-                    auto const rgb = ParseInt(({
-                                                  auto hex_str = res.text;
-                                                  if (hex_str[0] == '#') hex_str.RemovePrefix(1);
-                                                  hex_str;
-                                              }),
-                                              ParseIntBase::Hexadecimal)
-                                         .ValueOr(0);
-                    c.col = colour::ToU32({
-                        .a = col.a,
-                        .b = (u8)(rgb & 0xff),
-                        .g = (u8)((rgb & 0xff00) >> 8),
-                        .r = (u8)((rgb & 0xff0000) >> 16),
-                    });
-                }
-            } else {
-                DevGuiLabel(gui, hex_col_r, display, TextJustification::CentredLeft);
-            }
-        }
-
-        if (c.based_on.size == 0) {
-            auto const pop_id = gui.imgui.MakeId("Pop");
-            auto const btn_r = imgui.RegisterAndConvertRect(edit_button_r);
-            auto const btn_id = imgui.MakeId("edit");
-            auto const o = imgui.PopupMenuButtonBehaviour(btn_r, btn_id, pop_id, imgui::ButtonConfig {});
-            DrawDevGuiPopupTextButton(imgui, btn_r, btn_id, "Edit", o.show_as_active);
-
-            if (gui.imgui.IsPopupMenuOpen(pop_id)) {
-                gui.imgui.BeginViewport(DevGuiPopupConfig(), pop_id, btn_r);
-                DEFER { imgui.EndViewport(); };
-
-                static f32 static_hue;
-                static f32 static_sat;
-                static f32 static_val;
-                static f32 static_alpha;
-
-                if (imgui.DidPopupMenuJustOpen(pop_id)) {
-                    static_hue = hsv.h;
-                    static_sat = hsv.s;
-                    static_val = hsv.v;
-                    static_alpha = alpha;
-                }
-
-                f32 const pop_w = (f32)GuiIo().in.window_size.width / 3.5f;
-                f32 const text_size = pop_w / 4;
-                f32 const itm_w = (pop_w - text_size) / 3;
-                f32 pop_pos = 0;
-
-                constexpr String k_format_string = "{.4}";
-                constexpr f32 k_slider_sensitivity = 1000;
-
-                DoBasicWhiteText(gui.imgui, {.xywh {0, pop_pos, text_size, k_item_h}}, "Alpha");
-                hsv_changed |= DoDevGuiFloatDragger(
-                    gui,
-                    {
-                        .viewport_r = {.xywh {text_size + (0 * itm_w), pop_pos, itm_w - pad, k_item_h}},
-                        .id = imgui.MakeId((uintptr)&alpha),
-                        .format_string = k_format_string,
-                        .min = 0,
-                        .max = 1,
-                        .value = static_alpha,
-                        .slider_cfg = ({
-                            auto f = imgui::SliderConfig {};
-                            f.sensitivity = k_slider_sensitivity;
-                            f;
-                        }),
-                    });
-                pop_pos += k_item_h + pad;
-
-                DoBasicWhiteText(gui.imgui, {.xywh {0, pop_pos, text_size, k_item_h}}, "Hue");
-                hsv_changed |= DoDevGuiFloatDragger(
-                    gui,
-                    {
-                        .viewport_r = {.xywh {text_size + (0 * itm_w), pop_pos, itm_w - pad, k_item_h}},
-                        .id = imgui.MakeId("hue"),
-                        .format_string = k_format_string,
-                        .min = 0,
-                        .max = 1,
-                        .value = static_hue,
-                        .slider_cfg = ({
-                            auto f = imgui::SliderConfig {};
-                            f.sensitivity = k_slider_sensitivity;
-                            f;
-                        }),
-                    });
-                pop_pos += k_item_h + pad;
-
-                DoBasicWhiteText(gui.imgui, {.xywh {0, pop_pos, text_size, k_item_h}}, "Sat");
-                hsv_changed |= DoDevGuiFloatDragger(
-                    gui,
-                    {
-                        .viewport_r = {.xywh {text_size + (0 * itm_w), pop_pos, itm_w - pad, k_item_h}},
-                        .id = imgui.MakeId("sat"),
-                        .format_string = k_format_string,
-                        .min = 0,
-                        .max = 1,
-                        .value = static_sat,
-                        .slider_cfg = ({
-                            auto f = imgui::SliderConfig {};
-                            f.sensitivity = k_slider_sensitivity;
-                            f;
-                        }),
-                    });
-                pop_pos += k_item_h + pad;
-
-                DoBasicWhiteText(gui.imgui, {.xywh {0, pop_pos, text_size, k_item_h}}, "Val");
-                hsv_changed |= DoDevGuiFloatDragger(
-                    gui,
-                    {
-                        .viewport_r = {.xywh {text_size + (0 * itm_w), pop_pos, itm_w - pad, k_item_h}},
-                        .id = imgui.MakeId("val"),
-                        .format_string = k_format_string,
-                        .min = 0,
-                        .max = 1,
-                        .value = static_val,
-                        .slider_cfg = ({
-                            auto f = imgui::SliderConfig {};
-                            f.sensitivity = k_slider_sensitivity;
-                            f;
-                        }),
-                    });
-
-                if (hsv_changed) {
-                    c.col = colour::ToU32(colour::FromFloatRgb(
-                        colour::ConvertHsvtoRgb({.h = static_hue, .s = static_sat, .v = static_val}),
-                        (u8)(static_alpha * 255.0f)));
-                }
-            }
-        }
-
-        {
-            col_preview_r = imgui.RegisterAndConvertRect(col_preview_r);
-            imgui.draw_list->AddRectFilled(col_preview_r, c.col);
-        }
-
-        auto float_dragger = [&](Rect slider_r, imgui::Id id, f32 min, f32 max, f32& value) {
-            return DoDevGuiFloatDragger(gui,
-                                        {
-                                            .viewport_r = slider_r,
-                                            .id = id,
-                                            .format_string = "{.3}",
-                                            .min = min,
-                                            .max = max,
-                                            .value = value,
-                                            .slider_cfg = ({
-                                                auto f = imgui::SliderConfig {};
-                                                f.sensitivity = 1000;
-                                                f;
-                                            }),
-                                        });
-        };
-
-        auto text_editor = [&](Rect edit_r, imgui::Id id, ColourString& str) {
-            str.NullTerminate();
-            auto const res = ({
-                auto const input_r = gui.imgui.RegisterAndConvertRect(edit_r);
-                auto const o = gui.imgui.TextInputBehaviour({
-                    .rect_in_window_coords = input_r,
-                    .id = id,
-                    .text = str,
-                });
-                DrawDevGuiTextInput(gui.imgui, o, id, input_r);
-                o;
-            });
-            if (res.enter_pressed) {
-                str = res.text;
-                return true;
-            }
-            return false;
-        };
-
-        ColourString const starting_name = c.name;
-        if (text_editor(label_r, imgui.MakeId("name"), c.name)) {
-            hex_code_changed = true;
-            for (auto& m : live_gui.ui_col_map) {
-                if (String(m.colour) == String(starting_name)) m.colour = String(c.name);
-                if (String(m.high_contrast_colour) == String(starting_name))
-                    m.high_contrast_colour = String(c.name);
-            }
-            for (auto& other_c : live_gui.ui_cols)
-                if (other_c.based_on.size && String(other_c.based_on) == String(starting_name))
-                    other_c.based_on = String(c.name);
-
-            WriteColourMapFile(live_gui);
-        }
-
-        bool recalculate_val = false;
-        if (c.based_on.size) {
-            recalculate_val |= float_dragger(bright_r, imgui.MakeId("Light Scale"), -8, 8, c.with_brightness);
-            recalculate_val |= float_dragger(alpha_r, imgui.MakeId("Alpha"), -8, 8, c.with_alpha);
-        }
-        if (text_editor(based_on_r, imgui.MakeId("based"), c.based_on)) {
-            bool valid = false;
-            for (auto const& other_c : live_gui.ui_cols)
-                if (other_c.name.size && String(other_c.name) == String(c.based_on)) valid = true;
-
-            if (!valid) c.based_on.size = 0;
-
-            recalculate_val = true;
-        }
-
-        if (recalculate_val) {
-            hex_code_changed = true;
-            for (auto const& other_c : live_gui.ui_cols) {
-                if (other_c.name.size && String(other_c.name) == String(c.based_on)) {
-                    RecalculateBasedOnCol(c, other_c);
-                    break;
-                }
-            }
-        }
-
-        if (hex_code_changed || hsv_changed) {
-            for (auto& other_c : live_gui.ui_cols)
-                if (other_c.based_on.size && String(other_c.based_on) == String(c.name))
-                    RecalculateBasedOnCol(other_c, c);
-
-            WriteColoursFile(live_gui);
-            GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
-        }
-
-        DevGuiIncrementPos(gui);
     }
 }
 
@@ -989,17 +707,6 @@ static void DoAudioDebugPanel(DeveloperPanel& g, Rect r) {
                max_ms);
 }
 
-static void DoLiveEditColourEditor(DeveloperPanel& g, Rect r) {
-    g.imgui.BeginViewport(DevGuiViewport(), r, "colour-edit");
-    DEFER { g.imgui.EndViewport(); };
-
-    DevGuiReset(g);
-
-    static DevGuiTextInputBuffer search;
-    DevGuiTextInput(g, "Search:", search);
-    LiveEditColourSliders(g, search);
-}
-
 static void DoLiveEditColourMapEditor(DeveloperPanel& g, Rect r) {
     g.imgui.BeginViewport(DevGuiViewport(), r, "colour-map-edit");
     DEFER { g.imgui.EndViewport(); };
@@ -1008,16 +715,8 @@ static void DoLiveEditColourMapEditor(DeveloperPanel& g, Rect r) {
 
     static DevGuiTextInputBuffer search;
     DevGuiTextInput(g, "Search:", search);
-    static DevGuiTextInputBuffer colour_search;
-    DevGuiTextInput(g, "Colour Search:", colour_search);
 
-    static bool show_high_contrast = false;
-    if (DevGuiButton(g,
-                     show_high_contrast ? "Current: On"_s : "Current: Off",
-                     "Show colours for high contrast mode"))
-        show_high_contrast = !show_high_contrast;
-
-    LiveEditColourMapMenus(g, search, colour_search, show_high_contrast);
+    LiveEditColourMapMenus(g, search);
 }
 
 static void DoLiveEditSizeEditor(DeveloperPanel& g, Rect r) {
@@ -1078,7 +777,6 @@ void DoDeveloperPanel(DeveloperPanel& g) {
         static String const tab_text[] = {
             "Commands",
             "Audio",
-            "Colours",
             "ColMap",
             "Sizes",
             "UI Inspect",
@@ -1104,10 +802,9 @@ void DoDeveloperPanel(DeveloperPanel& g) {
         switch (selected_tab) {
             case 0: DoCommandPanel(g, selected_r); break;
             case 1: DoAudioDebugPanel(g, selected_r); break;
-            case 2: DoLiveEditColourEditor(g, selected_r); break;
-            case 3: DoLiveEditColourMapEditor(g, selected_r); break;
-            case 4: DoLiveEditSizeEditor(g, selected_r); break;
-            case 5: DoImGuiInspector(g, selected_r); break;
+            case 2: DoLiveEditColourMapEditor(g, selected_r); break;
+            case 3: DoLiveEditSizeEditor(g, selected_r); break;
+            case 4: DoImGuiInspector(g, selected_r); break;
             default: PanicIfReached();
         }
     }

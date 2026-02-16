@@ -87,8 +87,3 @@ bool DoBasicTextButton(imgui::Context& imgui,
                        String str);
 
 void DoBasicWhiteText(imgui::Context& imgui, Rect viewport_r, String str);
-
-//
-// Misc
-//
-bool DoOverlayClickableBackground(GuiState& g);

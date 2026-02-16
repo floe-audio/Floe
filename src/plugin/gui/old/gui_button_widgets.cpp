@@ -229,7 +229,7 @@ static bool ButtonInternal(GuiState& g,
         auto const o = g.imgui.PopupMenuButtonBehaviour(r, *id, *popup_id, flags);
         draw(r, *id, str, o.show_as_active);
         if (g.imgui.IsPopupMenuOpen(*popup_id)) {
-            g.imgui.BeginViewport(FloeMenuConfig(g.imgui), *popup_id, r);
+            g.imgui.BeginViewport(k_default_popup_menu_viewport, *popup_id, r);
             return true;
         }
         return false;

@@ -47,9 +47,9 @@ static void DrawPopupTextbox(GuiState& g, String str, Rect r) {
 
     DrawDropShadow(g.builder.imgui, popup_r);
     g.builder.imgui.overlay_draw_list->AddRectFilled(popup_r,
-                                                     LiveCol(UiColMap::TooltipBack),
+                                                     ToU32({.c = Col::Background0}),
                                                      LiveSize(UiSizeId::CornerRounding));
-    g.builder.imgui.overlay_draw_list->AddText(text_start, LiveCol(UiColMap::TooltipText), str);
+    g.builder.imgui.overlay_draw_list->AddText(text_start, ToU32({.c = Col::Text}), str);
 }
 
 void DoMacrosEditGui(GuiState& g, Box const& parent) {
@@ -497,16 +497,16 @@ void MacroAddDestinationRegion(GuiState& g, Rect window_r, ParamIndex param_inde
                                                    g.fonts.Current()->font_size * 0.4f,
                                                    ToU32(Col {.c = Col::Background0, .dark_mode = true}));
 
-        g.imgui.overlay_draw_list->AddTextInRect(
-            window_r,
-            g.imgui.IsHotOrActive(imgui_id) ? colour::ChangeBrightness(ToU32({.c = Col::Blue}), 1.3f)
-                                            : ToU32({.c = Col::Blue}),
-            ICON_FA_CIRCLE_PLUS,
-            {
-                .justification = TextJustification::Centred,
-                .overflow_type = TextOverflowType::AllowOverflow,
-                .font_scaling = 0.9f,
-            });
+        g.imgui.overlay_draw_list->AddTextInRect(window_r,
+                                                 g.imgui.IsHotOrActive(imgui_id)
+                                                     ? colour::ChangeBrightness(ToU32({.c = Col::Blue}), 1.3f)
+                                                     : ToU32({.c = Col::Blue}),
+                                                 ICON_FA_CIRCLE_PLUS,
+                                                 {
+                                                     .justification = TextJustification::Centred,
+                                                     .overflow_type = TextOverflowType::AllowOverflow,
+                                                     .font_scaling = 0.9f,
+                                                 });
     }
 }
 

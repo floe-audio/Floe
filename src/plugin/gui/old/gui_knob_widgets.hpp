@@ -29,7 +29,7 @@ struct Style {
 PUBLIC Style DefaultKnob(imgui::Context const&, Optional<u32> _highlight_col = {}) {
     Style s {};
     s.highlight_col = _highlight_col ? *_highlight_col : LiveCol(UiColMap::KnobOuterArcBright);
-    s.line_col = _highlight_col ? LiveCol(UiColMap::FXKnobLine) : LiveCol(UiColMap::KnobLine);
+    s.line_col = LiveCol(UiColMap::KnobMidLine);
     return s;
 }
 

@@ -25,43 +25,49 @@ static void DoBlurredBackground(GuiState& g,
                                 sample_lib::LibraryIdRef library_id,
                                 f32x2 mid_panel_size,
                                 f32 opacity) {
-    if (prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui))) return;
-    auto& imgui = g.imgui;
     auto const panel_rounding = LiveSize(UiSizeId::BlurredPanelRounding);
 
-    auto imgs = GetLibraryImages(g.library_images,
-                                 g.imgui,
-                                 library_id,
-                                 g.shared_engine_systems.sample_library_server,
-                                 LibraryImagesTypes::Backgrounds);
+    if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui))) {
+        auto imgs = GetLibraryImages(g.library_images,
+                                     g.imgui,
+                                     library_id,
+                                     g.shared_engine_systems.sample_library_server,
+                                     LibraryImagesTypes::Backgrounds);
 
-    if (imgs.blurred_background) {
-        if (auto tex = GuiIo().in.renderer->GetTextureFromImage(imgs.blurred_background)) {
-            auto const whole_uv = GetMaxUVToMaintainAspectRatio(*imgs.blurred_background, mid_panel_size);
-            auto const left_margin = r.x - viewport->parent_viewport->bounds.x;
-            auto const top_margin = r.y - viewport->parent_viewport->bounds.y;
+        if (imgs.blurred_background) {
+            if (auto tex = GuiIo().in.renderer->GetTextureFromImage(imgs.blurred_background)) {
+                auto const whole_uv = GetMaxUVToMaintainAspectRatio(*imgs.blurred_background, mid_panel_size);
+                auto const left_margin = r.x - viewport->parent_viewport->bounds.x;
+                auto const top_margin = r.y - viewport->parent_viewport->bounds.y;
 
-            f32x2 min_uv = {whole_uv.x * (left_margin / mid_panel_size.x),
-                            whole_uv.y * (top_margin / mid_panel_size.y)};
-            f32x2 max_uv = {whole_uv.x * (r.w + left_margin) / mid_panel_size.x,
-                            whole_uv.y * (r.h + top_margin) / mid_panel_size.y};
+                f32x2 min_uv = {whole_uv.x * (left_margin / mid_panel_size.x),
+                                whole_uv.y * (top_margin / mid_panel_size.y)};
+                f32x2 max_uv = {whole_uv.x * (r.w + left_margin) / mid_panel_size.x,
+                                whole_uv.y * (r.h + top_margin) / mid_panel_size.y};
 
-            imgui.draw_list->PushClipRect(clipped_to.Min(), clipped_to.Max());
-            DEFER { imgui.draw_list->PopClipRect(); };
+                g.imgui.draw_list->PushClipRect(clipped_to.Min(), clipped_to.Max());
+                DEFER { g.imgui.draw_list->PopClipRect(); };
 
-            auto const image_draw_colour = colour::ToU32({
-                .a = (u8)(opacity * 255),
-                .b = 255,
-                .g = 255,
-                .r = 255,
-            });
+                auto const image_draw_colour = colour::ToU32({
+                    .a = (u8)(opacity * 255),
+                    .b = 255,
+                    .g = 255,
+                    .r = 255,
+                });
 
-            imgui.draw_list
-                ->AddImageRounded(*tex, r.Min(), r.Max(), min_uv, max_uv, image_draw_colour, panel_rounding);
-        } else {
-            imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::BlurredImageFallback), panel_rounding);
+                g.imgui.draw_list->AddImageRounded(*tex,
+                                                   r.Min(),
+                                                   r.Max(),
+                                                   min_uv,
+                                                   max_uv,
+                                                   image_draw_colour,
+                                                   panel_rounding);
+                return;
+            }
         }
     }
+
+    g.imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportSurface), panel_rounding);
 }
 
 static void DoOverlayGradient(GuiState& g, Rect r) {
@@ -143,52 +149,50 @@ void MidPanel(GuiState& g, GuiFrameContext const& frame_context) {
                     auto const layer_width_without_pad =
                         RoundUpToNearestMultiple(r.w, k_num_layers) / k_num_layers;
 
-                    if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui))) {
-                        auto const overall_lib = LibraryForOverallBackground(engine);
-                        if (overall_lib)
-                            DoBlurredBackground(
-                                g,
-                                r,
-                                r,
-                                viewport,
-                                *overall_lib,
-                                mid_panel_size,
-                                Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
+                    auto const overall_lib = LibraryForOverallBackground(engine);
+                    if (overall_lib)
+                        DoBlurredBackground(g,
+                                            r,
+                                            r,
+                                            viewport,
+                                            *overall_lib,
+                                            mid_panel_size,
+                                            Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
 
-                        auto const layer_opacity =
-                            Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacitySingleLayer1) / 100.0f);
-                        for (auto const layer_index : Range(k_num_layers)) {
-                            if (auto const lib_id = g.engine.Layer(layer_index).LibId(); lib_id) {
-                                if (*lib_id == overall_lib) continue;
-                                auto const layer_r =
-                                    Rect {.x = r.x + ((f32)layer_index * layer_width_without_pad),
-                                          .y = r.y,
-                                          .w = layer_width_without_pad,
-                                          .h = r.h}
-                                        .CutTop(mid_panel_title_height);
-                                DoBlurredBackground(g,
-                                                    r,
-                                                    layer_r,
-                                                    viewport,
-                                                    *lib_id,
-                                                    mid_panel_size,
-                                                    layer_opacity);
-                            }
+                    auto const layer_opacity =
+                        Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacitySingleLayer1) / 100.0f);
+                    for (auto const layer_index : Range(k_num_layers)) {
+                        if (auto const lib_id = g.engine.Layer(layer_index).LibId(); lib_id) {
+                            if (*lib_id == overall_lib) continue;
+                            auto const layer_r =
+                                Rect {.x = r.x + ((f32)layer_index * layer_width_without_pad),
+                                      .y = r.y,
+                                      .w = layer_width_without_pad,
+                                      .h = r.h}
+                                    .CutTop(mid_panel_title_height);
+                            DoBlurredBackground(g,
+                                                r,
+                                                layer_r,
+                                                viewport,
+                                                *lib_id,
+                                                mid_panel_size,
+                                                layer_opacity);
                         }
-
-                        DoOverlayGradient(g, r);
                     }
 
-                    imgui.draw_list->AddRect(r, LiveCol(UiColMap::BlurredImageBorder), panel_rounding);
+                    if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui)))
+                        DoOverlayGradient(g, r);
+
+                    imgui.draw_list->AddRect(r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
 
                     imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
                                              {r.Right(), r.y + mid_panel_title_height},
-                                             LiveCol(UiColMap::LayerDividerLine));
+                                             LiveCol(UiColMap::MidViewportDivider));
                     for (u32 i = 1; i < k_num_layers; ++i) {
                         auto const x_pos = r.x + ((f32)i * layer_width_without_pad) - 1;
                         imgui.draw_list->AddLine({x_pos, r.y + mid_panel_title_height},
                                                  {x_pos, r.Bottom()},
-                                                 LiveCol(UiColMap::LayerDividerLine));
+                                                 LiveCol(UiColMap::MidViewportDivider));
                     }
                 });
 
@@ -278,11 +282,11 @@ void MidPanel(GuiState& g, GuiFrameContext const& frame_context) {
 
                     DoOverlayGradient(g, r);
 
-                    imgui.draw_list->AddRect(r, LiveCol(UiColMap::BlurredImageBorder), panel_rounding);
+                    imgui.draw_list->AddRect(r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
 
                     imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
                                              {r.Right(), r.y + mid_panel_title_height},
-                                             LiveCol(UiColMap::LayerDividerLine));
+                                             LiveCol(UiColMap::MidViewportDivider));
                 });
                 conf.padding = {
                     .l = LiveSize(UiSizeId::FXListMarginL),

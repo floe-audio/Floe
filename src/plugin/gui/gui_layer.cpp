@@ -41,7 +41,7 @@ static void DoInstSelectorRightClickMenu(GuiState& g, Rect r, u32 layer) {
                                    {.mouse_button = MouseButton::Right, .event = MouseButtonEvent::Up});
 
     if (imgui.IsPopupMenuOpen(popup_id)) {
-        g.imgui.BeginViewport(FloeMenuConfig(g.imgui), popup_id, r);
+        g.imgui.BeginViewport(k_default_popup_menu_viewport, popup_id, r);
         DEFER { imgui.EndViewport(); };
 
         auto const items = Array {"Unload instrument"_s};
@@ -955,7 +955,7 @@ void Layout(GuiState& g,
 static void DrawSelectorProgressBar(imgui::Context const& imgui, Rect r, f32 load_percent) {
     auto min = r.Min();
     auto max = f32x2 {r.x + Max(4.0f, r.w * load_percent), r.Bottom()};
-    auto col = LiveCol(UiColMap::LayerSelectorMenuLoading);
+    auto col = LiveCol(UiColMap::InstSelectorMenuLoading);
     auto const rounding = LiveSize(UiSizeId::CornerRounding);
     imgui.draw_list->AddRectFilled(min, max, col, rounding);
 }
@@ -980,7 +980,7 @@ void Draw(GuiState& g,
         line_r = g.imgui.RegisterAndConvertRect(line_r);
         g.imgui.draw_list->AddLine({line_r.x, line_r.Bottom()},
                                    {line_r.Right(), line_r.Bottom()},
-                                   LiveCol(UiColMap::LayerDividerLine));
+                                   LiveCol(UiColMap::MidViewportDivider));
     };
 
     // Inst selector
@@ -1002,8 +1002,8 @@ void Draw(GuiState& g,
             g.imgui.RegisterAndConvertRect(layout::GetRect(g.layout, c.selector_box));
         {
             auto const rounding = LiveSize(UiSizeId::CornerRounding);
-            auto const col = should_highlight ? LiveCol(UiColMap::LayerSelectorMenuBackHighlight)
-                                              : LiveCol(UiColMap::LayerSelectorMenuBack);
+            auto const col = should_highlight ? LiveCol(UiColMap::InstSelectorMenuBackHighlight)
+                                              : LiveCol(UiColMap::MidDarkSurface);
             g.imgui.draw_list->AddRectFilled(registered_selector_box_r, col, rounding);
         }
 
@@ -1138,7 +1138,7 @@ void Draw(GuiState& g,
             .xywh {mute_solo_r.x + (mute_solo_r.w / 2), mute_solo_r.y, mute_solo_r.w / 2, mute_solo_r.h}};
 
         auto const col_border = LiveCol(UiColMap::MuteSoloButtonBorder);
-        auto const col_background = LiveCol(UiColMap::MuteSoloButtonBackground);
+        auto const col_background = LiveCol(UiColMap::MidDarkSurface);
         auto const rounding = LiveSize(UiSizeId::CornerRounding);
         auto reg_mute_solo_r = g.imgui.RegisterAndConvertRect(mute_solo_r);
         auto reg_mute_r = g.imgui.RegisterAndConvertRect(mute_r);
@@ -1438,7 +1438,7 @@ void Draw(GuiState& g,
             labels::Label(g,
                           params.DescribedValue(layer->index, LayerParamIndex::LfoDestination),
                           c.lfo.target_name,
-                          labels::Parameter(g.imgui));
+                          labels::Parameter(g.imgui, greyed_out));
 
             buttons::PopupWithItems(g,
                                     params.DescribedValue(layer->index, LayerParamIndex::LfoRestart),
@@ -1447,7 +1447,7 @@ void Draw(GuiState& g,
             labels::Label(g,
                           params.DescribedValue(layer->index, LayerParamIndex::LfoRestart),
                           c.lfo.mode_name,
-                          labels::Parameter(g.imgui));
+                          labels::Parameter(g.imgui, greyed_out));
 
             buttons::PopupWithItems(g,
                                     params.DescribedValue(layer->index, LayerParamIndex::LfoShape),
@@ -1456,7 +1456,7 @@ void Draw(GuiState& g,
             labels::Label(g,
                           params.DescribedValue(layer->index, LayerParamIndex::LfoShape),
                           c.lfo.shape_name,
-                          labels::Parameter(g.imgui));
+                          labels::Parameter(g.imgui, greyed_out));
 
             KnobAndLabel(g,
                          params.DescribedValue(layer->index, LayerParamIndex::LfoAmount),

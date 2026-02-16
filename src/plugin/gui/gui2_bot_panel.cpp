@@ -137,18 +137,17 @@ static void DoBotPanel(GuiState& g) {
         constexpr Col k_border_col = {.c = Col::Background2, .dark_mode = true};
         constexpr auto k_top_bot_margin = 2.0f;
 
-        auto const tabs =
-            DoBox(builder,
-                  {
-                      .parent = root,
-                      .background_fill_colours = Col {.c = Col::Background1, .dark_mode = true},
-                      .layout {
-                          .size = {layout::k_hug_contents, layout::k_fill_parent},
-                          .contents_direction = layout::Direction::Column,
-                          .contents_align = layout::Alignment::Start,
-                          .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                      },
-                  });
+        auto const tabs = DoBox(builder,
+                                {
+                                    .parent = root,
+                                    .background_fill_colours = Col {.c = Col::Background1, .dark_mode = true},
+                                    .layout {
+                                        .size = {layout::k_hug_contents, layout::k_fill_parent},
+                                        .contents_direction = layout::Direction::Column,
+                                        .contents_align = layout::Alignment::Start,
+                                        .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                    },
+                                });
 
         if (auto const rel_r = BoxRect(builder, tabs)) {
             auto const r = builder.imgui.RegisterAndConvertRect(*rel_r);
@@ -158,58 +157,57 @@ static void DoBotPanel(GuiState& g) {
                                                    ToU32(k_border_col));
         }
 
-        auto const tab_button = [&](BottomPanelType type,
-                                    TooltipString tooltip,
-                                    u64 id_extra = SourceLocationHash()) {
-            auto const btn =
+        auto const tab_button =
+            [&](BottomPanelType type, TooltipString tooltip, u64 id_extra = SourceLocationHash()) {
+                auto const btn =
+                    DoBox(builder,
+                          {
+                              .parent = tabs,
+                              .id_extra = id_extra,
+                              .background_fill_colours = type == g.bottom_panel_state.type
+                                                             ? Col {.c = Col::Background0, .dark_mode = true}
+                                                             : Col {.c = Col::None},
+                              .border_colours = k_border_col,
+                              .border_edges = type == g.bottom_panel_state.type ? (u4)0b0101 : (u4)0b0000,
+                              .layout {
+                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                  .margins = {.t = ToInt(type) == 0 ? k_top_bot_margin : 0.0f,
+                                              .b = BottomPanelType(ToInt(type) + 1) == BottomPanelType::Count
+                                                       ? k_top_bot_margin
+                                                       : 0.0f},
+                                  .contents_padding = {.lr = 5, .tb = 4},
+                                  .contents_direction = layout::Direction::Row,
+                                  .contents_align = layout::Alignment::Start,
+                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                              },
+                              .tooltip = tooltip,
+                              .button_behaviour = imgui::ButtonConfig {},
+                          });
+
                 DoBox(builder,
                       {
-                          .parent = tabs,
-                          .id_extra = id_extra,
-                          .background_fill_colours = type == g.bottom_panel_state.type
-                                                         ? Col {.c = Col::Background0, .dark_mode = true}
-                                                         : Col {.c = Col::None},
-                          .border_colours = k_border_col,
-                          .border_edges = type == g.bottom_panel_state.type ? (u4)0b0101 : (u4)0b0000,
-                          .layout {
-                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                              .margins = {.t = ToInt(type) == 0 ? k_top_bot_margin : 0.0f,
-                                          .b = BottomPanelType(ToInt(type) + 1) == BottomPanelType::Count
-                                                   ? k_top_bot_margin
-                                                   : 0.0f},
-                              .contents_padding = {.lr = 5, .tb = 4},
-                              .contents_direction = layout::Direction::Row,
-                              .contents_align = layout::Alignment::Start,
-                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                          },
-                          .tooltip = tooltip,
-                          .button_behaviour = imgui::ButtonConfig {},
+                          .parent = btn,
+                          .text =
+                              [type]() {
+                                  switch (type) {
+                                      case BottomPanelType::Play: return "Play"_s;
+                                      case BottomPanelType::EditMacros: return "Macros"_s;
+                                      case BottomPanelType::Count: PanicIfReached();
+                                  }
+                              }(),
+                          .size_from_text = true,
+                          .text_colours =
+                              ColSet {
+                                  .base = type == g.bottom_panel_state.type
+                                              ? Col {.c = Col::Highlight}
+                                              : Col {.c = Col::Text, .dark_mode = true},
+                                  .hot {.c = Col::Highlight},
+                                  .active {.c = Col::Highlight},
+                              },
+                          .parent_dictates_hot_and_active = true,
                       });
-
-            DoBox(builder,
-                  {
-                      .parent = btn,
-                      .text =
-                          [type]() {
-                              switch (type) {
-                                  case BottomPanelType::Play: return "Play"_s;
-                                  case BottomPanelType::EditMacros: return "Macros"_s;
-                                  case BottomPanelType::Count: PanicIfReached();
-                              }
-                          }(),
-                      .size_from_text = true,
-                      .text_colours =
-                          ColSet {
-                              .base = type == g.bottom_panel_state.type
-                                          ? Col {.c = Col::Highlight}
-                                          : Col {.c = Col::Text, .dark_mode = true},
-                              .hot {.c = Col::Highlight},
-                              .active {.c = Col::Highlight},
-                          },
-                      .parent_dictates_hot_and_active = true,
-                  });
-            return btn;
-        };
+                return btn;
+            };
 
         Optional<BottomPanelType> new_panel {};
 

@@ -52,7 +52,7 @@ PUBLIC void DoErrorsPanel(GuiBuilder& builder,
                               DoBox(builder,
                                     {
                                         .parent = root,
-                                        .text = "Errors",
+                                        .text = "Error",
                                         .size_from_text = true,
                                         .font = FontType::Heading1,
                                     });

@@ -125,7 +125,7 @@ static void DoIrSelectorRightClickMenu(GuiState& g, Rect r) {
                                    {.mouse_button = MouseButton::Right, .event = MouseButtonEvent::Up});
 
     if (imgui.IsPopupMenuOpen(popup_id)) {
-        g.imgui.BeginViewport(FloeMenuConfig(g.imgui), popup_id, r);
+        g.imgui.BeginViewport(k_default_popup_menu_viewport, popup_id, r);
         DEFER { imgui.EndViewport(); };
 
         auto const items = Array {"Unload IR"_s};
@@ -795,7 +795,7 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
         imgui.draw_list->AddLine(line_r.TopLeft(),
                                  line_r.TopRight(),
                                  (id == closest_divider) ? LiveCol(UiColMap::FXDividerLineDropZone)
-                                                         : LiveCol(UiColMap::FXDividerLine));
+                                                         : LiveCol(UiColMap::MidViewportDivider));
     };
 
     auto const fx_knob_joining_line_thickness = LiveSize(FXKnobJoiningLineThickness);

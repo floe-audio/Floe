@@ -4,6 +4,5 @@
 #pragma once
 #include "gui_framework/gui_imgui.hpp"
 
-imgui::ViewportConfig FloeMenuConfig(imgui::Context const& imgui);
 imgui::ViewportConfig FloeStandardConfig(imgui::Context const& imgui,
                                          imgui::DrawViewportBackgroundFunction draw_background);
