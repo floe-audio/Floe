@@ -219,7 +219,7 @@ void MidPanel(GuiState& g, GuiFrameContext const& frame_context) {
                                  mid_panel_title_height}};
             title_r = imgui.RegisterAndConvertRect(title_r);
             imgui.draw_list->AddTextInRect(title_r,
-                                           LiveCol(UiColMap::MidPanelTitleText),
+                                           LiveCol(UiColMap::MidText),
                                            "Layers",
                                            {.justification = TextJustification::CentredLeft});
         }
@@ -312,7 +312,7 @@ void MidPanel(GuiState& g, GuiFrameContext const& frame_context) {
                                  mid_panel_title_height}};
             title_r = imgui.RegisterAndConvertRect(title_r);
             imgui.draw_list->AddTextInRect(title_r,
-                                           LiveCol(UiColMap::MidPanelTitleText),
+                                           LiveCol(UiColMap::MidText),
                                            "Effects",
                                            {.justification = TextJustification::CentredLeft});
         }

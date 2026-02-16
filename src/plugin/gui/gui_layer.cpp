@@ -1137,7 +1137,7 @@ void Draw(GuiState& g,
         Rect const solo_r = {
             .xywh {mute_solo_r.x + (mute_solo_r.w / 2), mute_solo_r.y, mute_solo_r.w / 2, mute_solo_r.h}};
 
-        auto const col_border = LiveCol(UiColMap::MuteSoloButtonBorder);
+        auto const col_divider = LiveCol(UiColMap::MuteSoloButtonDivider);
         auto const col_background = LiveCol(UiColMap::MidDarkSurface);
         auto const rounding = LiveSize(UiSizeId::CornerRounding);
         auto reg_mute_solo_r = g.imgui.RegisterAndConvertRect(mute_solo_r);
@@ -1145,7 +1145,7 @@ void Draw(GuiState& g,
         g.imgui.draw_list->AddRectFilled(reg_mute_solo_r, col_background, rounding);
         g.imgui.draw_list->AddLine({reg_mute_r.Right(), reg_mute_r.y},
                                    {reg_mute_r.Right(), reg_mute_r.Bottom()},
-                                   col_border);
+                                   col_divider);
 
         buttons::Toggle(g,
                         params.DescribedValue(layer->index, LayerParamIndex::Mute),
@@ -1599,7 +1599,7 @@ void Draw(GuiState& g,
         auto const pos = g.imgui.curr_viewport->unpadded_bounds.pos;
         g.imgui.draw_list->AddRectFilled(pos,
                                          pos + g.imgui.CurrentVpSize(),
-                                         LiveCol(UiColMap::LayerMutedOverlay));
+                                         LiveCol(UiColMap::MidMutedLayerOverlay));
     }
 }
 

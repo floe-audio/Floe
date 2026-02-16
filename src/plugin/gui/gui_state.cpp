@@ -341,10 +341,6 @@ void GuiUpdate(GuiState& g) {
                                 }
                             }
                         }
-
-                        imgui.draw_list->AddLine(r.TopLeft(),
-                                                 r.TopRight(),
-                                                 LiveCol(UiColMap::MidPanelTopLine));
                     },
                 .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
             },

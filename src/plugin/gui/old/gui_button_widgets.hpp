@@ -118,7 +118,7 @@ static Style MuteSoloButton(imgui::Context const&, bool is_solo) {
     s.type = LayoutAndSizeType::IconOrText;
     s.main_cols.reg = LiveCol(UiColMap::MidText);
     s.main_cols.on = LiveCol(UiColMap::MuteSoloButtonTextOn);
-    s.main_cols.hot_on = LiveCol(UiColMap::MidTextHot);
+    s.main_cols.hot_on = LiveCol(UiColMap::MuteSoloButtonTextOnHot);
     s.main_cols.hot_off = LiveCol(UiColMap::MidTextHot);
     s.main_cols.active_on = s.main_cols.hot_on;
     s.main_cols.active_off = s.main_cols.hot_off;
@@ -170,7 +170,7 @@ PUBLIC Style ParameterToggleButton(imgui::Context const& imgui,
     s.icon_and_text.off_icon = ICON_FA_TOGGLE_OFF;
     s.text_cols.grey_out_aware = true;
     s.greyed_out = _greyed_out;
-    s.text_cols.greyed_out = LiveCol(UiColMap::MenuButtonTextInactive);
+    s.text_cols.greyed_out = LiveCol(UiColMap::MidTextDimmed);
     s.text_cols.greyed_out_on = s.text_cols.greyed_out;
     return s;
 }
