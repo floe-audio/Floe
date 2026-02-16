@@ -335,6 +335,7 @@ struct DrawList {
     //
     //
     struct DrawChannel {
+        using MemcpySafe = void; // Safe: members are just {pointer, size, capacity}
         BasicDynamicArray<DrawCmd> cmd_buffer;
         BasicDynamicArray<DrawIdx> idx_buffer;
     };

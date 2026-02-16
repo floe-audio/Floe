@@ -14,15 +14,22 @@
 // Copyright (c) 2014-2024 Omar Cornut
 // SPDX-License-Identifier: MIT
 
-template <TriviallyCopyable T>
+// Elements stored in BasicDynamicArray must be safe to memcpy/realloc because the array uses GlobalRealloc
+// for growth. Types that are TriviallyCopyable satisfy this automatically. Non-trivially-copyable types
+// (such as BasicDynamicArray itself) can opt in by defining a MemcpySafe tag type.
+template <typename T>
+concept MemcpySafe = TriviallyCopyable<T> || requires { typename T::MemcpySafe; };
+
+template <MemcpySafe T>
 struct BasicDynamicArray {
+    using MemcpySafe = void;
+
     using ValueType = T;
     using Iterator = ValueType*;
     using ConstIterator = ValueType const*;
 
     DEFINE_SPAN_INTERFACE_METHODS(BasicDynamicArray, data, size, )
     DEFINE_SPAN_INTERFACE_METHODS(BasicDynamicArray, data, size, const)
-    PROPAGATE_TRIVIALLY_COPYABLE(BasicDynamicArray, T);
 
     NON_COPYABLE(BasicDynamicArray);
 
