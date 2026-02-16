@@ -166,6 +166,9 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryIdRef const& lib_id_ref,
                                                                            ImageBytesAllocator(),
                                                                            scratch_arena,
                                                                            blur_options);
+
+            if (!reload_background) background.Free(ImageBytesAllocator());
+
             return result;
         },
         []() {
