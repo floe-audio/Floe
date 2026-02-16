@@ -28,6 +28,7 @@ Box DoKnobParameter(GuiState& g,
                     ParameterComponentOptions const& options = {});
 
 struct MenuParameterComponentOptions {
+    f32 width = 0; // 0 means auto-size from the widest menu item string.
     bool greyed_out = false;
     bool label = true;
     String override_tooltip {};
@@ -38,3 +39,15 @@ Box DoMenuParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,
                     MenuParameterComponentOptions const& options = {});
+
+struct ButtonParameterComponentOptions {
+    f32 width = 0; // 0 means auto-size from text + icon.
+    bool greyed_out = false;
+    String override_tooltip {};
+    String override_label {};
+};
+
+Box DoButtonParameter(GuiState& g,
+                      Box parent,
+                      DescribedParamValue const& param,
+                      ButtonParameterComponentOptions const& options = {});

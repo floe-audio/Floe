@@ -149,6 +149,9 @@ void BeginFrame(GuiBuilder& builder, bool show_tooltips);
 
 // Begin a viewport, or if we're already in a box-viewport function, queue it to run after the current has
 // completed. This very directly maps to a call to IMGUI BeginViewport (although you don't need EndViewport).
+// IMPORTANT: if you are already inside a DoBoxViewport function, the run function of this viewport will be
+// run after the current run function completes. As such, you must not capture by reference variables that
+// will not be alive at that point.
 void DoBoxViewport(GuiBuilder& builder, BoxViewportConfig const& cfg);
 
 constexpr f32 k_no_wrap = 0;

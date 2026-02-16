@@ -171,7 +171,6 @@ static void DoMenuParameterMenu(GuiState& g, ParamIndex param_index) {
     }
 }
 
-// TODO: this needs a lot of work still
 Box DoMenuParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,
@@ -179,13 +178,14 @@ Box DoMenuParameter(GuiState& g,
     ASSERT(param.info.value_type == ParamValueType::Menu);
 
     auto const btn_w = LiveWw(UiSizeId::NextPrevButtonSize);
-    auto const margin_r = LiveWw(UiSizeId::ParamIntButtonMarginR);
-    auto const menu_text_margin = LiveWw(UiSizeId::MenuButtonTextMarginL);
-    auto const strings_width =
-        g.imgui.draw_list->fonts.Current()->LargestStringWidth(0, ParameterMenuItems(param.info.index)) +
-        (menu_text_margin * 2);
-    auto const width = strings_width + (btn_w * 2) + margin_r;
     auto const height = LiveWw(UiSizeId::ParamPopupButtonHeight);
+    Margins const row_padding {.l = LiveWw(UiSizeId::MenuButtonTextMarginL),
+                               .r = LiveWw(UiSizeId::ParamIntButtonMarginR)};
+    bool const auto_width = options.width == 0;
+    auto const text_width =
+        auto_width
+            ? g.imgui.draw_list->fonts.Current()->LargestStringWidth(0, ParameterMenuItems(param.info.index))
+            : 0.0f;
 
     auto const container = DoBox(g.builder,
                                  {
@@ -203,9 +203,12 @@ Box DoMenuParameter(GuiState& g,
     auto const row = DoBox(g.builder,
                            {
                                .parent = container,
-                               .background_fill_colours = Col {.c = Col::Background0},
+                               .background_fill_colours = LiveColStruct(UiColMap::MidDarkSurface),
+                               .round_background_corners = 0b1111,
+                               .corner_rounding = LiveWw(UiSizeId::CornerRounding),
                                .layout {
-                                   .size = {width, height},
+                                   .size = {auto_width ? layout::k_hug_contents : options.width, height},
+                                   .contents_padding = row_padding,
                                    .contents_direction = layout::Direction::Row,
                                    .contents_align = layout::Alignment::Middle,
                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -221,11 +224,16 @@ Box DoMenuParameter(GuiState& g,
               {
                   .parent = row,
                   .text = ParamMenuText(param.info.index, param.LinearValue()),
-                  .text_colours = options.greyed_out ? Col {.c = Col::Overlay0, .dark_mode = true}
-                                                     : Col {.c = Col::Text, .dark_mode = true},
-                  .background_fill_auto_hot_active_overlay = true,
+                  .text_colours = options.greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                                     : Colours {ColSet {
+                                                           .base = LiveColStruct(UiColMap::MidText),
+                                                           .hot = LiveColStruct(UiColMap::MidTextHot),
+                                                           .active = LiveColStruct(UiColMap::MidTextHot),
+                                                       }},
+                  .text_justification = TextJustification::CentredLeft,
+                  .text_overflow = TextOverflowType::ShowDotsOnRight,
                   .layout {
-                      .size = {layout::k_fill_parent, height},
+                      .size = {auto_width ? text_width : layout::k_fill_parent, height},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
                       if (options.override_tooltip.size) return options.override_tooltip;
@@ -241,58 +249,41 @@ Box DoMenuParameter(GuiState& g,
                       {
                           .run = [param_index = param.info.index,
                                   &g](GuiBuilder&) { DoMenuParameterMenu(g, param_index); },
-                          .bounds = row,
+                          .bounds = menu_btn,
                           .imgui_id = popup_id,
                           .viewport_config = k_default_popup_menu_viewport,
                       });
 
-    // Left arrow button.
-    {
-        auto const left_btn = DoBox(g.builder,
-                                    {
-                                        .parent = row,
-                                        .text = ICON_FA_CARET_LEFT,
-                                        .font = FontType::Icons,
-                                        .text_colours = Col {.c = Col::Subtext0},
-                                        .background_fill_auto_hot_active_overlay = true,
-                                        .layout {
-                                            .size = {btn_w, height},
-                                            .contents_align = layout::Alignment::Middle,
-                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                        },
-                                        .tooltip = "Previous"_s,
-                                        .button_behaviour = imgui::ButtonConfig {},
-                                    });
-        if (left_btn.button_fired) {
-            auto val = (f32)param.IntValue<int>() - 1;
+    // Arrow buttons for prev/next.
+    auto const arrow_btn = [&](String icon, String tooltip, int direction) {
+        auto const btn = DoBox(g.builder,
+                               {
+                                   .parent = row,
+                                   .id_extra = Hash(icon),
+                                   .text = icon,
+                                   .font = FontType::Icons,
+                                   .text_colours =
+                                       ColSet {
+                                           .base = LiveColStruct(UiColMap::MidIcon),
+                                           .hot = LiveColStruct(UiColMap::MidTextHot),
+                                           .active = LiveColStruct(UiColMap::MidTextOn),
+                                       },
+                                   .text_justification = TextJustification::Centred,
+                                   .layout {
+                                       .size = {btn_w, height},
+                                   },
+                                   .tooltip = tooltip,
+                                   .button_behaviour = imgui::ButtonConfig {},
+                               });
+        if (btn.button_fired) {
+            auto val = (f32)(param.IntValue<int>() + direction);
             if (val < param.info.linear_range.min) val = param.info.linear_range.max;
-            new_val = val;
-        }
-    }
-
-    // Right arrow button.
-    {
-        auto const right_btn = DoBox(g.builder,
-                                     {
-                                         .parent = row,
-                                         .text = ICON_FA_CARET_RIGHT,
-                                         .font = FontType::Icons,
-                                         .text_colours = Col {.c = Col::Subtext0},
-                                         .background_fill_auto_hot_active_overlay = true,
-                                         .layout {
-                                             .size = {btn_w, height},
-                                             .contents_align = layout::Alignment::Middle,
-                                             .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                         },
-                                         .tooltip = "Next"_s,
-                                         .button_behaviour = imgui::ButtonConfig {},
-                                     });
-        if (right_btn.button_fired) {
-            auto val = (f32)param.IntValue<int>() + 1;
             if (val > param.info.linear_range.max) val = param.info.linear_range.min;
             new_val = val;
         }
-    }
+    };
+    arrow_btn(ICON_FA_CARET_LEFT, "Previous"_s, -1);
+    arrow_btn(ICON_FA_CARET_RIGHT, "Next"_s, +1);
 
     // Slider behaviour
     if (auto const viewport_r = BoxRect(g.builder, menu_btn)) {
@@ -319,8 +310,6 @@ Box DoMenuParameter(GuiState& g,
         if (g.imgui.WasJustDeactivated(menu_btn.imgui_id))
             ParameterJustStoppedMoving(g.engine.processor, param.info.index);
 
-        ParameterValuePopup(g, param, menu_btn.imgui_id, window_r);
-
         MacroAddDestinationRegion(g, window_r, param.info.index);
     }
 
@@ -333,11 +322,12 @@ Box DoMenuParameter(GuiState& g,
               {
                   .parent = container,
                   .text = options.override_label.size ? options.override_label : param.info.gui_label,
-                  .text_colours = options.greyed_out ? Col {.c = Col::Overlay0, .dark_mode = true}
-                                                     : Col {.c = Col::Text, .dark_mode = true},
+                  .text_colours = options.greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                                     : Colours {LiveColStruct(UiColMap::MidText)},
                   .text_justification = TextJustification::Centred,
+                  .text_overflow = TextOverflowType::ShowDotsOnRight,
                   .layout {
-                      .size = {width, k_font_body_size},
+                      .size = {layout::k_fill_parent, k_font_body_size},
                   },
               });
 
@@ -501,6 +491,88 @@ Box DoKnobParameter(GuiState& g,
                       .size = {knob_width, k_font_body_size},
                   },
               });
+
+    return container;
+}
+
+Box DoButtonParameter(GuiState& g,
+                      Box parent,
+                      DescribedParamValue const& param,
+                      ButtonParameterComponentOptions const& options) {
+    auto const height = LiveWw(UiSizeId::PageHeadingHeight);
+    auto const icon_area_width = LiveWw(UiSizeId::PageHeadingTextOffset);
+    bool const state = param.BoolValue();
+
+    auto const label_text = options.override_label.size ? options.override_label : param.info.gui_label;
+    bool const auto_width = options.width == 0;
+    auto const text_width = auto_width ? g.imgui.draw_list->fonts.CalcTextSize(label_text, {}).x : 0.0f;
+
+    auto const container =
+        DoBox(g.builder,
+              {
+                  .parent = parent,
+                  .id_extra = (u64)param.info.id,
+                  .layout {
+                      .size = {auto_width ? layout::k_hug_contents : options.width, height},
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Start,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+                  .tooltip = FunctionRef<String()> {[&]() -> String {
+                      if (options.override_tooltip.size) return options.override_tooltip;
+                      return ParamTooltipText(param, g.builder.arena);
+                  }},
+                  .button_behaviour = imgui::ButtonConfig {},
+              });
+
+    // Toggle icon.
+    DoBox(g.builder,
+          {
+              .parent = container,
+              .text = state ? ICON_FA_TOGGLE_ON : ICON_FA_TOGGLE_OFF,
+              .font = FontType::Icons,
+              .font_size = k_font_icons_size * 0.75f,
+              .text_colours = state ? Colours {LiveColStruct(UiColMap::MidTextOn)}
+                                    : Colours {ColSet {
+                                          .base = LiveColStruct(UiColMap::MidIcon),
+                                          .hot = LiveColStruct(UiColMap::MidIcon),
+                                          .active = LiveColStruct(UiColMap::MidTextOn),
+                                      }},
+              .text_justification = TextJustification::CentredLeft,
+              .parent_dictates_hot_and_active = true,
+              .layout {
+                  .size = {icon_area_width, height},
+              },
+          });
+
+    // Text label.
+    DoBox(g.builder,
+          {
+              .parent = container,
+              .text = label_text,
+              .text_colours = options.greyed_out ? Colours {ColSet {
+                                                       .base = LiveColStruct(UiColMap::MidTextDimmed),
+                                                       .hot = LiveColStruct(UiColMap::MidTextHot),
+                                                       .active = LiveColStruct(UiColMap::MidTextHot),
+                                                   }}
+                                                 : Colours {ColSet {
+                                                       .base = LiveColStruct(UiColMap::MidText),
+                                                       .hot = LiveColStruct(UiColMap::MidTextHot),
+                                                       .active = LiveColStruct(UiColMap::MidTextHot),
+                                                   }},
+              .text_justification = TextJustification::CentredLeft,
+              .parent_dictates_hot_and_active = true,
+              .layout {
+                  .size = {auto_width ? text_width : layout::k_fill_parent, height},
+              },
+          });
+
+    // Toggle behaviour.
+    if (container.button_fired)
+        SetParameterValue(g.engine.processor, param.info.index, state ? 0.0f : 1.0f, {});
+
+    // Right-click menu.
+    AddMidiLearnRightClickBehaviour(g, container, param);
 
     return container;
 }

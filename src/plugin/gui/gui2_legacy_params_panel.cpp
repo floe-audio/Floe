@@ -19,7 +19,7 @@ static void DrawDarkModeModalBackground(imgui::Context const& imgui) {
 
     auto const rounding = GuiIo().WwToPixels(k_panel_rounding);
     auto const r = imgui.curr_viewport->unpadded_bounds;
-    imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background0, .dark_mode = true}), rounding);
+    imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background1, .dark_mode = true}), rounding);
 }
 
 static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
@@ -131,11 +131,16 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
                 break;
             }
             case ParamValueType::Menu: {
-                DoMenuParameter(g, container, g.engine.processor.main_params.DescribedValue(desc.index));
+                DoMenuParameter(g,
+                                container,
+                                g.engine.processor.main_params.DescribedValue(desc.index),
+                                {.width = 120});
                 break;
             }
             case ParamValueType::Bool: {
-                // TODO: add bool/toggle parameter component
+                DoButtonParameter(g,
+                                  container,
+                                  g.engine.processor.main_params.DescribedValue(desc.index));
                 break;
             }
             case ParamValueType::Int: {
