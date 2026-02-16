@@ -40,15 +40,12 @@ Memory GlobalAlloc(AllocOptions options) {
 }
 
 Memory GlobalRealloc(Memory allocation, ReallocOptions options) {
-    if (options.align <= k_max_alignment) {
-        auto new_mem = realloc(allocation.data, options.size);
-        return {new_mem, options.size};
-    } else {
-        auto new_mem = GlobalAlloc({.size = options.size, .align = options.align});
-        CopyMemory(new_mem.data, allocation.data, Min(new_mem.size, allocation.size));
-        GlobalFree(allocation);
-        return new_mem;
-    }
+    // IMPROVE: maybe there's a way to do this without freeing and reallocating but there doesn't appear to be
+    // a simple solution.
+    auto new_mem = GlobalAlloc({.size = options.size, .align = options.align});
+    CopyMemory(new_mem.data, allocation.data, Min(new_mem.size, allocation.size));
+    GlobalFree(allocation);
+    return new_mem;
 }
 
 void GlobalFreeNoSize(void* ptr) { GlobalFree({ptr, 0}); }
