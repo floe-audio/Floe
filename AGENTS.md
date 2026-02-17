@@ -10,10 +10,8 @@ Floe, at it's core, is a CLAP plugin, a modern alternative to APIs such as VST3.
 Additionally, this repository contains Floe's website in the subdirectory `website/`, built using Docusaurus. We have 2 release channels: **stable** and **beta**. We use Docusaurus' versioning feature to maintain separate documentation for each channel. `website/docs` contains the beta documentation, and `website/versioned_docs/version-stable` contains the stable documentation. We use the command `zig build script:github-publish-release` to promote the beta website to stable.
 
 # Commands
-**IMPORTANT**: with zig build, NEVER grep, tail or head the output.
-
 Building is done inside a Nix flake shell. You can use `nix develop` to enter the shell. Or to run a command inside a shell (normally recommended), use `nix develop --command <command>`. All these commands should be prefixed with `nix develop --command` if you're not already in the shell:
-- Compile the project: `zig build -Dtargets=native -Dbuild-mode=development`. NEVER grep, tail or head the output. Cross-compiling is supported. Alternatives options instead of `native` are: `linux`, `windows`, `mac_arm`, `mac_x86`. You can add `-Dsanitize-thread` to enable Clang's thread sanitizer.
+- **Check for compilation errors**: `zb`. This is a wrapper around `zig build` that provides clean output - just "Build succeeded" or a clear summary of errors. Run it without any output filtering (no grep/tail/head). Default arguments are usually fine, but you can pass extra args: `zb -Dtargets=native -Dbuild-mode=development`. Cross-compiling is supported with `-Dtargets=linux`, `windows`, `mac_arm`, or `mac_x86`. Add `-Dsanitize-thread` to enable Clang's thread sanitizer. Note: `zb` is only for compilation - use `zig build` directly for other build commands like scripts.
 - Compile and run unit tests: `zig build test -- --filter=*`. `--filter` should match the whole name, or use wildcards. You can use `--filter` multiple times to match multiple cases.
 - Format all code using clang-tidy: `zig build script:format`
 - Check spelling : `zig build script:check-spelling`
@@ -34,8 +32,7 @@ Here are some notable subdirectories, though there are plenty more.
 Floe uses a few third-party libraries. These are typically managed by the Zig package manager. See `build.zig.zon` for the full list. Once the project has been built once, you can get the source code for these libraries by searching the `.zig-cache-global/` directory using `fd` or `find`. This is the directory we've configured Zig to put downloaded packages.
 
 # Workflow
-- **NEVER ask permission before compiling**. Just run the compile command automatically when needed to verify changes.
-- Run the compile command. Don't try filtering its output with grep, tail or head. Just read all of it. It will contain errors with file names and line numbers - understand the error and fix it if necessary.
+- **NEVER ask permission before compiling**. Just run `zb` automatically when needed to verify changes. It will output "Build succeeded" or a clear summary of any compilation errors.
 - Where possible, add tests. We have our own test framework that is similar to Catch2: src/tests/framework.hpp. We tend to put tests in the same cpp file as the implementation. Write a test case with TEST_CASE(TestName). Then use TEST_REGISTRATION(RegisterMyTests) to create a registration function, inside that use REGISTER_TEST(TestName) to register the test, finally add this registration function to src/tests/tests_main.cpp. If you want an example of a test, look at src/common_infrastructure/autosave.cpp. The API for the test framework is in src/tests/framework.hpp.
 
 # Style

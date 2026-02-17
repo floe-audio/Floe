@@ -46,6 +46,19 @@ pkgs.mkShell rec {
 
     # dsymutil internally calls "lipo", so we have to make sure it's available under that name
     (pkgs.writeShellScriptBin "lipo" "llvm-lipo $@")
+
+    # Wrapper around zig build that suppresses noise and only shows errors
+    (pkgs.writeShellScriptBin "zb" ''
+      echo "Building..."
+      output=$(zig build --prominent-compile-errors "$@" 2>&1)
+      exit_code=$?
+      if [ $exit_code -eq 0 ]; then
+        echo "Build succeeded"
+      else
+        echo "$output" | sed -n '/Build Summary/,$p'
+      fi
+      exit $exit_code
+    '')
   ]
   ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
     pkgs.pkg-config
