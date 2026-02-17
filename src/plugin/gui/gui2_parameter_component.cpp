@@ -198,7 +198,8 @@ Box DoPrevNextRow(GuiBuilder& builder, Box parent, f32 width) {
                  });
 }
 
-PrevNextButtonsResult DoPrevNextButtons(GuiBuilder& builder, Box row) {
+PrevNextButtonsResult
+DoPrevNextButtons(GuiBuilder& builder, Box row, PrevNextButtonsOptions const& options) {
     PrevNextButtonsResult result {};
 
     auto const do_button = [&](String icon, String tooltip) {
@@ -224,8 +225,8 @@ PrevNextButtonsResult DoPrevNextButtons(GuiBuilder& builder, Box row) {
         return btn.button_fired;
     };
 
-    result.prev_fired = do_button(ICON_FA_CARET_LEFT, "Previous"_s);
-    result.next_fired = do_button(ICON_FA_CARET_RIGHT, "Next"_s);
+    result.prev_fired = do_button(ICON_FA_CARET_LEFT, options.prev_tooltip);
+    result.next_fired = do_button(ICON_FA_CARET_RIGHT, options.next_tooltip);
 
     return result;
 }

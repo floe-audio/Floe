@@ -74,4 +74,8 @@ struct PrevNextButtonsResult {
     bool prev_fired;
     bool next_fired;
 };
-PrevNextButtonsResult DoPrevNextButtons(GuiBuilder& builder, Box row);
+struct PrevNextButtonsOptions {
+    String prev_tooltip {"Previous"};
+    String next_tooltip {"Next"};
+};
+PrevNextButtonsResult DoPrevNextButtons(GuiBuilder& builder, Box row, PrevNextButtonsOptions const& options = {});

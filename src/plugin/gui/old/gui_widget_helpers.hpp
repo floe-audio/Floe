@@ -27,6 +27,7 @@ f32 MenuItemWidth(GuiState& g, Span<String const> strs);
 //
 //
 
+// This function assumes that the ID is somehow already used (either via some Behaviour call or SetHot).
 struct TooltipOptions {
     bool ignore_show_tooltips_preference = false;
 };

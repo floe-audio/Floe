@@ -1343,7 +1343,7 @@ void Draw(GuiState& g,
                 auto const label_id = g.imgui.MakeId("transp");
                 auto const label_r = layout::GetRect(g.layout, c.play.transpose_name);
                 auto const label_window_r = g.imgui.RegisterAndConvertRect(label_r);
-                g.imgui.ButtonBehaviour(label_window_r, label_id, {});
+                g.imgui.SetHot(label_window_r, label_id);
                 Tooltip(
                     g,
                     label_id,

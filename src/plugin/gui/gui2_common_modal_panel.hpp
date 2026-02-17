@@ -168,6 +168,7 @@ struct MenuItemOptions {
     Optional<String> subtext;
     bool is_selected;
     bool close_on_click = true;
+    bool inactive = false;
 };
 
 Box MenuItem(GuiBuilder& builder,

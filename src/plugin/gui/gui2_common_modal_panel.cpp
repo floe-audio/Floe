@@ -576,6 +576,7 @@ Box MenuItem(GuiBuilder& builder, Box parent, MenuItemOptions const& options, u6
               .text = options.text,
               .size_from_text = true,
               .font = FontType::Body,
+              .text_colours = Col {.c = options.inactive ? Col::Subtext0 : Col::Text},
           });
     if (options.subtext && options.subtext->size) {
         DoBox(builder,
