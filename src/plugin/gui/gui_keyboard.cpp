@@ -3,13 +3,11 @@
 
 #include "gui_keyboard.hpp"
 
+#include "gui/gui_utils.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_state.hpp"
-#include "old/gui_widget_helpers.hpp"
 #include "processing_utils/key_range.hpp"
-
-// TODO: find a way to remove usage of old/* include.
 
 enum class NoteEdge { Left, Right };
 
@@ -183,6 +181,9 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
         }
     };
 
+    constexpr imgui::ButtonConfig k_click_cfg = {.mouse_button = MouseButton::Left,
+                                                 .event = MouseButtonEvent::Down};
+
     imgui.PushId("white");
     for (auto const i : Range(k_num_octaves_shown * 7)) {
         s32 const this_white_key = i % 7;
@@ -197,9 +198,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
         key_r = imgui.RegisterAndConvertRect(key_r);
         auto const id = imgui.MakeId((u32)i);
         if (!keyboard.Get((usize)this_abs_key)) {
-            if (imgui.ButtonBehaviour(key_r,
-                                      id,
-                                      {.mouse_button = MouseButton::Left, .event = MouseButtonEvent::Down})) {
+            if (imgui.ButtonBehaviour(key_r, id, k_click_cfg)) {
                 f32 const rel_yclick_pos = GuiIo().in.cursor_pos.y - key_r.y;
                 result = KeyboardGuiKeyPressed {.is_down = true,
                                                 .note = CheckedCast<u7>(this_abs_key),
@@ -212,7 +211,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
             result = KeyboardGuiKeyPressed {.is_down = false, .note = CheckedCast<u7>(this_abs_key)};
 
         u32 col = col_white_key;
-        if (imgui.IsActive(id) || keyboard.Get((usize)this_abs_key)) col = col_white_key_down;
+        if (imgui.IsActive(id, k_click_cfg) || keyboard.Get((usize)this_abs_key)) col = col_white_key_down;
         if (imgui.IsHot(id)) col = col_white_key_hover;
         imgui.draw_list->AddRectFilled(key_r, col);
         overlay_key(this_abs_key, key_r, UiColMap::KeyboardWhiteVoiceOverlay);
@@ -252,9 +251,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
         key_r = imgui.RegisterAndConvertRect(key_r);
         auto const id = imgui.MakeId((u32)i);
         if (!keyboard.Get((usize)this_abs_key)) {
-            if (imgui.ButtonBehaviour(key_r,
-                                      id,
-                                      {.mouse_button = MouseButton::Left, .event = MouseButtonEvent::Down})) {
+            if (imgui.ButtonBehaviour(key_r, id, k_click_cfg)) {
                 f32 const rel_yclick_pos = GuiIo().in.cursor_pos.y - key_r.y;
                 result = KeyboardGuiKeyPressed {.is_down = true,
                                                 .note = CheckedCast<u7>(this_abs_key),
@@ -267,7 +264,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
             result = KeyboardGuiKeyPressed {.is_down = false, .note = CheckedCast<u7>(this_abs_key)};
 
         u32 col = col_black_key;
-        if (imgui.IsActive(id) || keyboard.Get((usize)this_abs_key)) col = col_black_key_down;
+        if (imgui.IsActive(id, k_click_cfg) || keyboard.Get((usize)this_abs_key)) col = col_black_key_down;
         if (imgui.IsHot(id)) col = col_black_key_hover;
 
         if (col != col_black_key) {

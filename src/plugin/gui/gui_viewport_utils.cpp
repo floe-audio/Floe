@@ -18,7 +18,7 @@ imgui::ViewportConfig FloeStandardConfig(imgui::Context const& imgui,
                     u32 handle_col = LiveCol(UiColMap::ScrollbarHandle);
                     if (imgui.IsHot(b->id))
                         handle_col = LiveCol(UiColMap::ScrollbarHandleHover);
-                    else if (imgui.IsActive(b->id))
+                    else if (imgui.IsActive(b->id, {}))
                         handle_col = LiveCol(UiColMap::ScrollbarHandleActive);
                     imgui.draw_list->AddRectFilled(b->handle, handle_col, rounding);
                 }

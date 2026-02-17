@@ -8,8 +8,8 @@
 void DrawModalScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars) {
     for (auto const b : bars) {
         if (!b) continue;
-        if (imgui.IsViewportHovered(imgui.curr_viewport) || imgui.IsActive(b->id)) {
-            auto const hot_or_active = imgui.IsHotOrActive(b->id);
+        if (imgui.IsViewportHovered(imgui.curr_viewport) || imgui.IsActive(b->id, {})) {
+            auto const hot_or_active = imgui.IsHotOrActive(b->id, {});
             auto const rounding = GuiIo().WwToPixels(k_panel_rounding);
 
             // Channel.

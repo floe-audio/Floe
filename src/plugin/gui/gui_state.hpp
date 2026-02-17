@@ -80,7 +80,6 @@ struct GuiState {
         .arena = scratch_arena,
         .imgui = imgui,
         .fonts = fonts,
-        .layout = layout,
     };
 
     layer_gui::LayerLayout layer_gui[k_num_layers] = {};

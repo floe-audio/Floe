@@ -5,11 +5,9 @@
 
 #include "gui/gui_drawing_helpers.hpp"
 #include "gui/gui_state.hpp"
-#include "gui/gui_viewport_utils.hpp"
-#include "old/gui_menu.hpp"
-#include "old/gui_widget_helpers.hpp"
-
-// TODO: this code needs adapting to no longer use old code such as old/gui_widget_helpers.hpp.
+#include "gui/gui_utils.hpp"
+#include "gui/old/gui_menu.hpp"
+#include "gui/old/gui_widget_helpers.hpp"
 
 static void DrawCurvedSegment(DrawList& graphics,
                               f32x2 screen_p0,
@@ -66,7 +64,7 @@ static bool DoCurveMap(GuiState& g,
 
     constexpr auto k_remove_all = LargestRepresentableValue<usize>();
     Optional<usize> remove_working_index {};
-    Optional<f32x2> new_point_at_gui_pos {};
+    Optional<f32x2> new_point_at_window_pos {};
 
     auto working = curve_map.CreateWorkingPoints(points);
 
@@ -122,7 +120,6 @@ static bool DoCurveMap(GuiState& g,
             };
 
             auto const imgui_id = imgui.MakeId("unused-space");
-            imgui.SetHot(region_rect, imgui_id);
 
             Tooltip(g,
                     imgui_id,
@@ -137,7 +134,7 @@ static bool DoCurveMap(GuiState& g,
                                           .mouse_button = MouseButton::Left,
                                           .event = MouseButtonEvent::DoubleClick,
                                       })) {
-                new_point_at_gui_pos = GuiIo().in.Mouse(MouseButton::Left).last_press.point;
+                new_point_at_window_pos = GuiIo().in.Mouse(MouseButton::Left).last_press.point;
             }
 
             // Right-click menu
@@ -168,7 +165,7 @@ static bool DoCurveMap(GuiState& g,
                     PopupMenuItems menu(g, k_items);
                     if (points.size != points.Capacity()) {
                         if (menu.DoButton(0))
-                            new_point_at_gui_pos = GuiIo().in.Mouse(MouseButton::Right).last_press.point;
+                            new_point_at_window_pos = GuiIo().in.Mouse(MouseButton::Right).last_press.point;
                     } else {
                         menu.DoFakeButton(0);
                     }
@@ -217,7 +214,7 @@ static bool DoCurveMap(GuiState& g,
                     changed = true;
                 }
 
-                if (imgui.IsHotOrActive(curve_handle_imgui_id)) {
+                if (imgui.IsHotOrActive(curve_handle_imgui_id, imgui::SliderConfig::k_activation_cfg)) {
                     draw_list.AddRectFilled(curve_handle_rect, LiveCol(UiColMap::CurveMapLineHover));
                     GuiIo().out.wants.cursor_type = CursorType::VerticalArrows;
                 }
@@ -238,7 +235,7 @@ static bool DoCurveMap(GuiState& g,
                                               .mouse_button = MouseButton::Left,
                                               .event = MouseButtonEvent::DoubleClick,
                                           })) {
-                    new_point_at_gui_pos = GuiIo().in.Mouse(MouseButton::Left).last_press.point;
+                    new_point_at_window_pos = GuiIo().in.Mouse(MouseButton::Left).last_press.point;
                 }
 
                 // Right-click
@@ -269,7 +266,8 @@ static bool DoCurveMap(GuiState& g,
                         PopupMenuItems menu(g, k_items);
                         if (points.size != points.Capacity()) {
                             if (menu.DoButton(0))
-                                new_point_at_gui_pos = GuiIo().in.Mouse(MouseButton::Right).last_press.point;
+                                new_point_at_window_pos =
+                                    GuiIo().in.Mouse(MouseButton::Right).last_press.point;
                         } else {
                             menu.DoFakeButton(0);
                         }
@@ -281,15 +279,9 @@ static bool DoCurveMap(GuiState& g,
         // Point handle
         if (!working_point.is_virtual) {
             auto const imgui_id = imgui.MakeId("point handle");
-            imgui.ButtonBehaviour(grabber_rect,
+            imgui.ButtonBehaviour(grabber_rect, imgui_id, imgui::SliderConfig::k_activation_cfg);
 
-                                  imgui_id,
-                                  {
-                                      .mouse_button = MouseButton::Left,
-                                      .event = MouseButtonEvent::Down,
-                                  });
-
-            if (imgui.IsActive(imgui_id)) {
+            if (imgui.IsActive(imgui_id, imgui::SliderConfig::k_activation_cfg)) {
                 // Dragging point
                 f32x2 mouse_pos = GuiIo().in.cursor_pos;
                 f32x2 new_pos = {
@@ -325,7 +317,8 @@ static bool DoCurveMap(GuiState& g,
                 remove_working_index = working_index;
             }
 
-            if (imgui.IsHotOrActive(imgui_id)) GuiIo().out.wants.cursor_type = CursorType::AllArrows;
+            if (imgui.IsHotOrActive(imgui_id, imgui::SliderConfig::k_activation_cfg))
+                GuiIo().out.wants.cursor_type = CursorType::AllArrows;
 
             if (imgui.IsHot(imgui_id))
                 Tooltip(g,
@@ -373,7 +366,9 @@ static bool DoCurveMap(GuiState& g,
 
             draw_list.AddCircleFilled(pos,
                                       point_radius,
-                                      imgui.IsHotOrActive(imgui_id) ? point_hover_color : point_color,
+                                      imgui.IsHotOrActive(imgui_id, imgui::SliderConfig::k_activation_cfg)
+                                          ? point_hover_color
+                                          : point_color,
                                       12);
         }
     }
@@ -393,10 +388,10 @@ static bool DoCurveMap(GuiState& g,
             if (!wp.is_virtual) dyn::Append(curve_map.points, {wp.x, wp.y, wp.curve});
     }
 
-    if (new_point_at_gui_pos) {
+    if (new_point_at_window_pos) {
         f32x2 new_point = {
-            (new_point_at_gui_pos->x - rect_min.x) / width,
-            1.0f - ((new_point_at_gui_pos->y - rect_min.y) / height),
+            (new_point_at_window_pos->x - rect_min.x) / width,
+            1.0f - ((new_point_at_window_pos->y - rect_min.y) / height),
         };
         new_point = Clamp(new_point, f32x2(0.0f), f32x2(1.0f));
 

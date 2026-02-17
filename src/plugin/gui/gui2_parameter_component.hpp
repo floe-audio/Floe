@@ -78,4 +78,16 @@ struct PrevNextButtonsOptions {
     String prev_tooltip {"Previous"};
     String next_tooltip {"Next"};
 };
-PrevNextButtonsResult DoPrevNextButtons(GuiBuilder& builder, Box row, PrevNextButtonsOptions const& options = {});
+PrevNextButtonsResult
+DoPrevNextButtons(GuiBuilder& builder, Box row, PrevNextButtonsOptions const& options = {});
+
+void AddMidiLearnRightClickBehaviour(GuiState& g,
+                                     Rect window_r,
+                                     imgui::Id id,
+                                     DescribedParamValue const& param);
+void AddMidiLearnRightClickBehaviour(GuiState& g,
+                                     Rect window_r,
+                                     imgui::Id id,
+                                     Span<DescribedParamValue const> params);
+
+void AddMidiLearnRightClickBehaviour(GuiState& g, Box const& box, DescribedParamValue const& param);

@@ -25,6 +25,7 @@
 #include "gui/gui2_package_install.hpp"
 #include "gui/gui2_prefs_panel.hpp"
 #include "gui/gui2_top_panel.hpp"
+#include "gui/gui_drawing_helpers.hpp"
 #include "gui/gui_file_picker.hpp"
 #include "gui/gui_frame_context.hpp"
 #include "gui/gui_library_images.hpp"
@@ -36,7 +37,6 @@
 #include "gui_framework/image.hpp"
 #include "gui_framework/renderer.hpp"
 #include "gui_prefs.hpp"
-#include "old/gui_widget_helpers.hpp"
 #include "plugin/plugin.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 
@@ -198,12 +198,13 @@ static void DoResizeCorner(GuiState& g) {
     auto const id = imgui.MakeId("resize_corner");
 
     static f32x2 size_at_start {};
-    if (g.imgui.ButtonBehaviour(r, id, {.mouse_button = MouseButton::Left, .event = MouseButtonEvent::Down}))
+    if (g.imgui.ButtonBehaviour(r, id, imgui::SliderConfig::k_activation_cfg))
         size_at_start = frame_input.window_size.ToFloat2();
 
-    if (g.imgui.IsHotOrActive(id)) frame_output.wants.cursor_type = CursorType::UpLeftDownRight;
+    if (g.imgui.IsHotOrActive(id, imgui::SliderConfig::k_activation_cfg))
+        frame_output.wants.cursor_type = CursorType::UpLeftDownRight;
 
-    if (g.imgui.IsActive(id)) {
+    if (g.imgui.IsActive(id, imgui::SliderConfig::k_activation_cfg)) {
         frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
 
         auto const cursor = frame_input.cursor_pos;
@@ -224,8 +225,9 @@ static void DoResizeCorner(GuiState& g) {
                                        r.BottomLeft(),
                                        ToU32(Col {.c = Col::Background0, .dark_mode = true}));
 
-    auto const line_col =
-        ToU32(Col {.c = imgui.IsHotOrActive(id) ? Col::Text : Col::Overlay2, .dark_mode = true});
+    auto const line_col = ToU32(
+        Col {.c = imgui.IsHotOrActive(id, imgui::SliderConfig::k_activation_cfg) ? Col::Text : Col::Overlay2,
+             .dark_mode = true});
     auto const line_gap = LiveSize(UiSizeId::ViewportResizeCornerLineGap);
     imgui.draw_list->AddLine(r.TopRight() + f32x2 {0, line_gap},
                              r.BottomLeft() + f32x2 {line_gap, 0},
@@ -242,7 +244,11 @@ void GuiUpdate(GuiState& g) {
     auto const& frame_input = GuiIo().in;
 
     BeginFrame(g.library_images);
-    BeginFrame(g.builder, prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::ShowTooltips)));
+    BeginFrame(g.builder,
+               {
+                   .show_tooltips = prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::ShowTooltips)),
+                   .draw_tooltip = DrawOverlayTooltipForRect,
+               });
 
     g.show_new_version_indicator =
         check_for_update::ShowNewVersionIndicator(g.shared_engine_systems.check_for_update_state, g.prefs);

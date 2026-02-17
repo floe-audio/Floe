@@ -21,10 +21,10 @@ auto ScopedEnableTooltips(GuiBuilder& builder, bool enable) {
         bool old_value;
 
         ScopeGuard(GuiBuilder& b, bool old) : builder(b), old_value(old) {}
-        ~ScopeGuard() { builder.show_tooltips = old_value; }
+        ~ScopeGuard() { builder.config.show_tooltips = old_value; }
     };
-    auto old_value = builder.show_tooltips;
-    builder.show_tooltips = enable;
+    auto old_value = builder.config.show_tooltips;
+    builder.config.show_tooltips = enable;
     return ScopeGuard {builder, old_value};
 }
 

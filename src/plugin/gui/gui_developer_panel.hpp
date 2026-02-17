@@ -5,6 +5,7 @@
 
 #include "foundation/foundation.hpp"
 
+#include "gui_framework/gui_imgui.hpp"
 #include "gui_fwd.hpp"
 
 struct DeveloperPanel {
@@ -14,3 +15,11 @@ struct DeveloperPanel {
 };
 
 void DoDeveloperPanel(DeveloperPanel& g);
+
+bool DoBasicTextButton(imgui::Context& imgui,
+                       imgui::ButtonConfig flags,
+                       Rect viewport_r,
+                       imgui::Id id,
+                       String str);
+
+void DoBasicWhiteText(imgui::Context& imgui, Rect viewport_r, String str);

@@ -109,6 +109,16 @@ enum class GuiBuilderPass {
     HandleInputAndRender,
 };
 
+struct DrawTooltipArgs {
+    Rect r; // The rect that opened the tooltip.
+    Rect avoid_r; // The rect to avoid when placing the tooltip;
+    bool show_left_or_right; // Prefer placing the tooltip to the side, not top/bottom.
+};
+using DrawOverlayTooltipForRectFunc = void(imgui::Context const& imgui,
+                                           Fonts& fonts,
+                                           String str,
+                                           DrawTooltipArgs const& args);
+
 struct GuiBuilder {
     struct WordWrappedText {
         layout::Id id;
@@ -117,21 +127,22 @@ struct GuiBuilder {
         f32 font_size;
     };
 
-    struct BoxViewport {
-        BoxViewportConfig cfg;
-        Optional<Rect> rect {};
-        BoxViewport* next {};
-        BoxViewport* first_child {};
-    };
-
     // Ephemeral
     struct CurrentViewportState {
-        BoxViewport* current_viewport {};
-
+        BoxViewportConfig cfg;
+        Optional<Rect> rect {};
+        layout::Context layout {};
         GuiBuilderPass pass {GuiBuilderPass::LayoutBoxes};
         HashTable<u64, Box, NoHash> boxes {};
         HashTable<layout::Id, WordWrappedText> word_wrapped_texts {};
         bool mouse_down_on_modal_background = false;
+        CurrentViewportState* next {};
+        CurrentViewportState* first_child {};
+    };
+
+    struct Config {
+        bool show_tooltips;
+        DrawOverlayTooltipForRectFunc* draw_tooltip;
     };
 
     bool IsLayoutPass() const { return state->pass == GuiBuilderPass::LayoutBoxes; }
@@ -140,19 +151,18 @@ struct GuiBuilder {
     ArenaAllocator& arena; // Scratch arena, cleared each frame.
     imgui::Context& imgui;
     Fonts& fonts;
-    layout::Context layout;
-    bool show_tooltips;
+    Config config;
 
     CurrentViewportState* state; // Ephemeral
 };
 
-void BeginFrame(GuiBuilder& builder, bool show_tooltips);
+void BeginFrame(GuiBuilder& builder, GuiBuilder::Config const& config);
 
 // Begin a viewport, or if we're already in a box-viewport function, queue it to run after the current has
 // completed. This very directly maps to a call to IMGUI BeginViewport (although you don't need EndViewport).
-// IMPORTANT: if you are already inside a DoBoxViewport function, the run function of this viewport will be
-// run after the current run function completes. As such, you must not capture by reference variables that
-// will not be alive at that point.
+// IMPORTANT: if the cfg.bounds is a Box and you are already inside a DoBoxViewport function, the run function
+// of this viewport will be run AFTER the current run function completes. As such, you must not capture by
+// reference variables that will not be alive at that point. If cfg.bounds is a rect it's run immediately.
 void DoBoxViewport(GuiBuilder& builder, BoxViewportConfig const& cfg);
 
 constexpr f32 k_no_wrap = 0;

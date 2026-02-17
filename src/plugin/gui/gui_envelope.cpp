@@ -3,13 +3,12 @@
 
 #include "gui_envelope.hpp"
 
+#include "gui/gui2_parameter_component.hpp"
+#include "gui/gui_utils.hpp"
 #include "gui_drawing_helpers.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_state.hpp"
-#include "old/gui_widget_helpers.hpp"
-
-// TODO: this code needs adapting to no longer use old code such as old/gui_widget_helpers.hpp.
 
 void DoEnvelopeGui(GuiState& g,
                    LayerProcessor& layer,
@@ -86,10 +85,8 @@ void DoEnvelopeGui(GuiState& g,
         attack_x_range.min = get_x_coord_at_percent(0);
         attack_x_range.max = get_x_coord_at_percent(1);
 
-        Rect grabber = {.xywh {0, 0, attack_point.x + (handle_size / 2), imgui.CurrentVpHeight()}};
-        auto const grabber_unregistered = grabber;
-        MidiLearnMenu(g, attack_param_id, grabber_unregistered);
-        grabber = imgui.RegisterAndConvertRect(grabber);
+        auto const grabber = imgui.RegisterAndConvertRect(
+            {.xywh {0, 0, attack_point.x + (handle_size / 2), imgui.CurrentVpHeight()}});
 
         f32 new_value = norm_attack_val;
         bool changed = false;
@@ -116,10 +113,12 @@ void DoEnvelopeGui(GuiState& g,
                                   }))
             g.param_text_editor_to_open = attack_param_id;
 
-        if (imgui.IsHotOrActive(attack_imgui_id))
+        AddMidiLearnRightClickBehaviour(g, grabber, attack_imgui_id, attack_param);
+
+        if (imgui.IsHotOrActive(attack_imgui_id, imgui::SliderConfig::k_activation_cfg))
             GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
 
-        if (imgui.WasJustActivated(attack_imgui_id))
+        if (imgui.WasJustActivated(attack_imgui_id, imgui::SliderConfig::k_activation_cfg))
             ParameterJustStartedMoving(engine.processor, attack_param_id);
         if (changed) SetParameterValue(engine.processor, attack_param_id, new_value, {});
         if (imgui.WasJustDeactivated(attack_imgui_id))
@@ -136,7 +135,6 @@ void DoEnvelopeGui(GuiState& g,
         auto sustain_id = ParamIndexFromLayerParamIndex(layer.index, adsr_layer_params[2]);
         auto decay_param = engine.processor.main_params.DescribedValue(decay_id);
         auto sustain_param = engine.processor.main_params.DescribedValue(sustain_id);
-        ParamIndex params[] = {decay_id, sustain_id};
         DescribedParamValue const* param_ptrs[] = {&decay_param, &sustain_param};
         auto const decay_norm_value = decay_param.LinearValue();
         auto const sustain_norm_value = sustain_param.LinearValue();
@@ -167,15 +165,11 @@ void DoEnvelopeGui(GuiState& g,
         f32x2 const grabber_max {sustain_point.x, imgui.CurrentVpHeight()};
         auto grabber = Rect::FromMinMax(grabber_min, grabber_max);
 
-        MidiLearnMenu(g, params, grabber);
-
         grabber = imgui.RegisterAndConvertRect(grabber);
+
         static f32x2 rel_click_pos;
-        if (imgui.ButtonBehaviour(grabber,
-                                  dec_sus_imgui_id,
-                                  {.mouse_button = MouseButton::Left, .event = MouseButtonEvent::Down})) {
+        if (imgui.ButtonBehaviour(grabber, dec_sus_imgui_id, imgui::SliderConfig::k_activation_cfg))
             rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(decay_point);
-        }
 
         if (imgui.ButtonBehaviour(grabber,
                                   dec_sus_imgui_id,
@@ -185,13 +179,16 @@ void DoEnvelopeGui(GuiState& g,
                                   }))
             g.param_text_editor_to_open = decay_id;
 
-        if (imgui.IsHotOrActive(dec_sus_imgui_id)) GuiIo().out.wants.cursor_type = CursorType::AllArrows;
+        AddMidiLearnRightClickBehaviour(g, grabber, dec_sus_imgui_id, Array {decay_param, sustain_param});
 
-        if (imgui.WasJustActivated(dec_sus_imgui_id)) {
+        if (imgui.IsHotOrActive(dec_sus_imgui_id, imgui::SliderConfig::k_activation_cfg))
+            GuiIo().out.wants.cursor_type = CursorType::AllArrows;
+
+        if (imgui.WasJustActivated(dec_sus_imgui_id, imgui::SliderConfig::k_activation_cfg)) {
             ParameterJustStartedMoving(engine.processor, decay_id);
             ParameterJustStartedMoving(engine.processor, sustain_id);
         }
-        if (imgui.IsActive(dec_sus_imgui_id)) {
+        if (imgui.IsActive(dec_sus_imgui_id, imgui::SliderConfig::k_activation_cfg)) {
             {
                 auto const min_pixels_pos = imgui.ViewportPosToWindowPos({get_x_coord_at_percent(0), 0}).x;
                 auto const max_pixels_pos = imgui.ViewportPosToWindowPos({get_x_coord_at_percent(1), 0}).x;
@@ -246,14 +243,13 @@ void DoEnvelopeGui(GuiState& g,
         release_x_range.min = get_x_coord_at_percent(0);
         release_x_range.max = get_x_coord_at_percent(1);
 
-        Rect grabber {.xywh {sustain_point.x,
-                             0,
-                             (max_release_percent * padded_width) + (handle_size / 2),
-                             imgui.CurrentVpHeight()}};
-        auto const grabber_unregistered = grabber;
+        auto const grabber =
+            imgui.RegisterAndConvertRect({.xywh {sustain_point.x,
+                                                 0,
+                                                 (max_release_percent * padded_width) + (handle_size / 2),
+                                                 imgui.CurrentVpHeight()}});
 
-        MidiLearnMenu(g, release_param_id, grabber_unregistered);
-        grabber = imgui.RegisterAndConvertRect(grabber);
+        AddMidiLearnRightClickBehaviour(g, grabber, release_imgui_id, release_param);
 
         f32 new_value = release_norm_value;
         bool changed = false;
@@ -280,10 +276,10 @@ void DoEnvelopeGui(GuiState& g,
                                   }))
             g.param_text_editor_to_open = release_param_id;
 
-        if (imgui.IsHotOrActive(release_imgui_id))
+        if (imgui.IsHotOrActive(release_imgui_id, imgui::SliderConfig::k_activation_cfg))
             GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
 
-        if (imgui.WasJustActivated(release_imgui_id))
+        if (imgui.WasJustActivated(release_imgui_id, imgui::SliderConfig::k_activation_cfg))
             ParameterJustStartedMoving(engine.processor, release_param_id);
         if (changed) SetParameterValue(engine.processor, release_param_id, new_value, {});
 
@@ -318,7 +314,7 @@ void DoEnvelopeGui(GuiState& g,
 
         // range lines
         auto const do_range_lines = [&](Range range, imgui::Id id) {
-            if (imgui.IsActive(id)) {
+            if (imgui.IsActive(id, imgui::SliderConfig::k_activation_cfg)) {
                 imgui.draw_list->AddLine(imgui.ViewportPosToWindowPos({range.min, padded_x}),
                                          imgui.ViewportPosToWindowPos({range.min, padded_bottom}),
                                          range_lines_col);
@@ -432,7 +428,7 @@ void DoEnvelopeGui(GuiState& g,
                 imgui.draw_list->AddCircleFilled(point, handle_size / 5, ToU32(background_col));
                 col = hover_col;
             }
-            if (imgui.IsActive(id)) col = hover_col;
+            if (imgui.IsActive(id, imgui::SliderConfig::k_activation_cfg)) col = hover_col;
             imgui.draw_list->AddCircleFilled(point, handle_visible_size, col);
         };
         do_handle(attack_point_screen, attack_imgui_id);

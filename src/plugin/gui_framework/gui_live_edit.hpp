@@ -15,8 +15,7 @@
 //
 // This system is quite convenient but by no means perfect. The 2 main disadvantages:
 // - Adding new values requires manually modifying the .def and recompiling.
-// - It's inevitable that the .def fills up with values not longer used in the codebase.
-// - The entire GUI codecase is littered with lookups into these tables
+// - The entire GUI codebase is littered with lookups into these tables
 
 // The build system needs to -I the directory containing these files
 #define SIZES_DEF_FILENAME      "gui_sizes.def"
@@ -56,7 +55,6 @@ inline f32 LiveSize(UiSizeId size_id) {
     return GuiIo().WwToPixels(g_live_edit_values.ui_sizes[ToInt(size_id)]);
 }
 
-// Returns WW
 inline f32 LiveWw(UiSizeId size_id) { return g_live_edit_values.ui_sizes[ToInt(size_id)]; }
 
 inline f32 LiveRaw(UiSizeId size_id) { return g_live_edit_values.ui_sizes[ToInt(size_id)]; }

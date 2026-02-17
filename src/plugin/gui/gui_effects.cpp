@@ -849,12 +849,12 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
                                 k_effect_info[ToInt(fx.type)].name,
                                 buttons::EffectHeading(imgui, col));
 
-                if (imgui.WasJustActivated(id)) {
+                if (imgui.WasJustActivated(id, {})) {
                     dragging_fx_unit = DraggingFX {id, &fx, FindSlotInEffects(ordered_effects, &fx), {}};
                     GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
                 }
 
-                if (imgui.IsHotOrActive(id)) GuiIo().out.wants.cursor_type = CursorType::AllArrows;
+                if (imgui.IsHotOrActive(id, {})) GuiIo().out.wants.cursor_type = CursorType::AllArrows;
                 Tooltip(g,
                         id,
                         g.imgui.ViewportRectToWindowRect(r),
@@ -1237,7 +1237,7 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
                         GuiIo().out.wants.cursor_type = CursorType::AllArrows;
                 }
 
-                if (imgui.IsActive(id) && !dragging_fx) {
+                if (imgui.IsActive(id, {}) && !dragging_fx) {
                     auto const click_pos = GuiIo().in.mouse_buttons[0].last_press.point;
                     auto const current_pos = GuiIo().in.cursor_pos;
                     auto const delta = current_pos - click_pos;

@@ -11,6 +11,7 @@
 #include "../gui_prefs.hpp"
 #include "../gui_state.hpp"
 #include "../gui_viewport_utils.hpp"
+#include "gui/gui_utils.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_label_widgets.hpp"
 
@@ -43,55 +44,8 @@ f32 MenuItemWidth(GuiState& g, Span<String const> strs) {
 //
 //
 
-bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOptions const& options) {
-    if (!options.ignore_show_tooltips_preference &&
-        !prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::ShowTooltips)))
-        return false;
-
-    constexpr auto k_delay_secs = 0.5;
-
-    if (g.imgui.WasJustMadeHot(id))
-        GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_delay_secs, "Tooltip");
-
-    if (g.imgui.IsHot(id) && g.imgui.SecondsSpentHot() >= k_delay_secs) {
-        DrawOverlayTooltipForRect(g.imgui, g.fonts, str, window_r);
-        return true;
-    }
-
-    return false;
-}
-
-void ParameterValuePopup(GuiState& g, DescribedParamValue const& param, imgui::Id id, Rect window_r) {
-    auto param_ptr = &param;
-    ParameterValuePopup(g, {&param_ptr, 1}, id, window_r);
-}
-
-void ParameterValuePopup(GuiState& g, Span<DescribedParamValue const*> params, imgui::Id id, Rect window_r) {
-    auto& imgui = g.imgui;
-
-    if (imgui.IsActive(id)) {
-        if (params.size == 1) {
-            auto const str = params[0]->info.LinearValueToString(params[0]->LinearValue());
-            ASSERT(str);
-
-            DrawOverlayTooltipForRect(g.imgui, g.fonts, str.Value(), window_r);
-        } else {
-            DynamicArray<char> buf {g.scratch_arena};
-            for (auto param : params) {
-                auto const str = param->info.LinearValueToString(param->LinearValue());
-                ASSERT(str.HasValue());
-
-                fmt::Append(buf, "{}: {}", param->info.gui_label, str.Value());
-                if (param != Last(params)) dyn::Append(buf, '\n');
-            }
-            DrawOverlayTooltipForRect(g.imgui, g.fonts, buf, window_r);
-        }
-    }
-}
-
 void MidiLearnMenu(GuiState& g, ParamIndex param, Rect r) { MidiLearnMenu(g, {&param, 1}, r); }
 
-// TODO: replace this with the much nicer version in gui2_parameter_component.cpp.
 void MidiLearnMenu(GuiState& g, Span<ParamIndex> params, Rect r) {
     auto& imgui = g.imgui;
     auto& engine = g.engine;
@@ -324,33 +278,6 @@ bool DoMultipleMenuItems(GuiState& g, Span<String const> items, int& current) {
     return DoMultipleMenuItems(g, (void*)&items, (int)items.size, current, str_get);
 }
 
-void DoParameterTooltipIfNeeded(GuiState& g,
-                                DescribedParamValue const& param,
-                                imgui::Id imgui_id,
-                                Rect param_rect_in_window_coords) {
-    auto param_ptr = &param;
-    DoParameterTooltipIfNeeded(g, {&param_ptr, 1}, imgui_id, param_rect_in_window_coords);
-}
-
-void DoParameterTooltipIfNeeded(GuiState& g,
-                                Span<DescribedParamValue const*> params,
-                                imgui::Id imgui_id,
-                                Rect param_rect_in_window_coords) {
-    DynamicArray<char> buf {g.scratch_arena};
-    for (auto param : params) {
-        auto const str = param->info.LinearValueToString(param->LinearValue());
-        ASSERT(str);
-
-        fmt::Append(buf, "{}: {}\n{}", param->info.name, str.Value(), param->info.tooltip);
-
-        if (param->info.value_type == ParamValueType::Int)
-            fmt::Append(buf, ". Drag to edit or double-click to type a value");
-
-        if (params.size != 1 && param != Last(params)) fmt::Append(buf, "\n\n");
-    }
-    Tooltip(g, imgui_id, param_rect_in_window_coords, buf, {});
-}
-
 imgui::Id BeginParameterGUI(GuiState& g, DescribedParamValue const& param, Rect r, Optional<imgui::Id> id) {
     if (!(param.info.flags.not_automatable)) MidiLearnMenu(g, (ParamIndex)param.info.index, r);
     return id ? *id : g.imgui.MakeId((u64)param.info.id);
@@ -362,7 +289,8 @@ void EndParameterGUI(GuiState& g,
                      Rect viewport_r,
                      Optional<f32> new_val,
                      ParamDisplayFlags flags) {
-    if (g.imgui.WasJustActivated(id)) ParameterJustStartedMoving(g.engine.processor, param.info.index);
+    if (g.imgui.WasJustActivated(id, imgui::SliderConfig::k_activation_cfg))
+        ParameterJustStartedMoving(g.engine.processor, param.info.index);
     if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
     if (g.imgui.WasJustDeactivated(id)) ParameterJustStoppedMoving(g.engine.processor, param.info.index);
 
@@ -370,68 +298,4 @@ void EndParameterGUI(GuiState& g,
         DoParameterTooltipIfNeeded(g, param, id, g.imgui.ViewportRectToWindowRect(viewport_r));
     if (!(flags & ParamDisplayFlagsNoValuePopup) && param.info.value_type == ParamValueType::Float)
         ParameterValuePopup(g, param, id, g.imgui.ViewportRectToWindowRect(viewport_r));
-}
-
-void HandleShowingTextEditorForParams(GuiState& g, Rect r, Span<ParamIndex const> params) {
-    if (g.param_text_editor_to_open) {
-        for (auto const p : params) {
-            if (p == *g.param_text_editor_to_open) {
-                auto const id = g.imgui.MakeId("text input");
-
-                auto const p_obj = g.engine.processor.main_params.DescribedValue(p);
-                auto const str = p_obj.info.LinearValueToString(p_obj.LinearValue());
-                ASSERT(str.HasValue());
-
-                g.imgui.SetTextInputFocus(id, *str, false);
-
-                auto const text_input = ({
-                    auto const input_r = g.imgui.RegisterAndConvertRect(r);
-                    auto const o = g.imgui.TextInputBehaviour({
-                        .rect_in_window_coords = input_r,
-                        .id = id,
-                        .text = *str,
-                        .input_cfg = k_param_text_input_flags,
-                        .button_cfg = k_param_text_input_button_flags,
-                    });
-                    DrawParameterTextInput(g.imgui, input_r, o);
-                    o;
-                });
-
-                if (text_input.enter_pressed || g.imgui.TextInputJustUnfocused(id)) {
-                    if (auto val = p_obj.info.StringToLinearValue(text_input.text)) {
-                        SetParameterValue(g.engine.processor, p, *val, {});
-                        GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
-                    }
-                    g.param_text_editor_to_open.Clear();
-                }
-                break;
-            }
-        }
-    }
-}
-
-bool DoBasicTextButton(imgui::Context& imgui, imgui::ButtonConfig flags, Rect r, imgui::Id id, String str) {
-    r = imgui.RegisterAndConvertRect(r);
-    bool const clicked = imgui.ButtonBehaviour(r, id, flags);
-
-    u32 col = 0xffd5d5d5;
-    if (imgui.IsHot(id)) col = 0xfff0f0f0;
-    if (imgui.IsActive(id)) col = 0xff808080;
-    imgui.draw_list->AddRectFilled(r.Min(), r.Max(), col);
-
-    auto const font_size = imgui.draw_list->fonts.Current()->font_size;
-    auto const pad = (f32)GuiIo().in.window_size.width / 200.0f;
-    imgui.draw_list->AddText(f32x2 {r.x + pad, r.y + (r.h / 2 - font_size / 2)}, 0xff000000, str);
-
-    return clicked;
-}
-
-void DoBasicWhiteText(imgui::Context& imgui, Rect r, String str) {
-    r = imgui.RegisterAndConvertRect(r);
-    auto const font_size = imgui.draw_list->fonts.Current()->font_size;
-    f32x2 pos;
-    pos.x = (f32)(int)r.x;
-    pos.y = r.y + ((r.h / 2) - (font_size / 2));
-    pos.y = (f32)(int)pos.y;
-    imgui.draw_list->AddText(pos, 0xffffffff, str);
 }

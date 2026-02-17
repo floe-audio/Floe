@@ -27,23 +27,6 @@ f32 MenuItemWidth(GuiState& g, Span<String const> strs);
 //
 //
 
-// This function assumes that the ID is somehow already used (either via some Behaviour call or SetHot).
-struct TooltipOptions {
-    bool ignore_show_tooltips_preference = false;
-};
-bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOptions const& options);
-
-void DoParameterTooltipIfNeeded(GuiState& g,
-                                DescribedParamValue const& param,
-                                imgui::Id imgui_id,
-                                Rect window_r);
-void DoParameterTooltipIfNeeded(GuiState& g,
-                                Span<DescribedParamValue const*> param,
-                                imgui::Id imgui_id,
-                                Rect window_r);
-void ParameterValuePopup(GuiState& g, DescribedParamValue const& param, imgui::Id id, Rect window_r);
-void ParameterValuePopup(GuiState& g, Span<DescribedParamValue const*> params, imgui::Id id, Rect window_r);
-
 void MidiLearnMenu(GuiState& g, Span<ParamIndex> params, Rect r);
 void MidiLearnMenu(GuiState& g, ParamIndex param, Rect r);
 
@@ -57,8 +40,6 @@ constexpr imgui::TextInputConfig k_param_text_input_flags = {
     .escape_unfocuses = true,
     .select_all_when_opening = true,
 };
-
-void HandleShowingTextEditorForParams(GuiState& g, Rect r, Span<ParamIndex const> params);
 
 bool DoMultipleMenuItems(GuiState& g,
                          void* items,
@@ -80,11 +61,3 @@ void EndParameterGUI(GuiState& g,
                      Rect r,
                      Optional<f32> new_val,
                      ParamDisplayFlags flags = ParamDisplayFlagsDefault);
-
-bool DoBasicTextButton(imgui::Context& imgui,
-                       imgui::ButtonConfig flags,
-                       Rect viewport_r,
-                       imgui::Id id,
-                       String str);
-
-void DoBasicWhiteText(imgui::Context& imgui, Rect viewport_r, String str);

@@ -17,7 +17,6 @@
 #include "gui_framework/gui_builder.hpp"
 #include "gui_prefs.hpp"
 #include "gui_state.hpp"
-#include "old/gui_widget_helpers.hpp"
 
 static Optional<ImageID> LogoImage(GuiState& g) {
     if (!g.imgui.draw_list->renderer.ImageIdIsValid(g.floe_logo_image)) {
@@ -502,7 +501,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
 
         g.timbre_slider_is_held = box.is_active;
 
-        if (builder.imgui.WasJustActivated(box.imgui_id))
+        if (builder.imgui.WasJustActivated(box.imgui_id, {}))
             GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
 

@@ -7,6 +7,7 @@
 
 #include "gui_framework/colours.hpp"
 #include "gui_framework/fonts.hpp"
+#include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_framework/style.hpp"
@@ -132,7 +133,7 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
                                                           : UiColMap::KnobInnerArcGreyedOut);
     }
     auto line_col = options.line_col;
-    if (!options.is_fake && (imgui.IsHot(id) || imgui.IsActive(id))) {
+    if (!options.is_fake && (imgui.IsHot(id) || imgui.IsActive(id, {}))) {
         inner_arc_col =
             LiveCol(options.mid_panel_colours ? UiColMap::KnobMidInnerArcHover : UiColMap::KnobInnerArcHover);
         line_col = LiveCol(options.mid_panel_colours ? UiColMap::KnobMidLineHover : UiColMap::KnobLineHover);
@@ -316,7 +317,10 @@ void DrawPeakMeter(imgui::Context& imgui, Rect r, StereoPeakMeter const& level, 
     }
 }
 
-void DrawOverlayTooltipForRect(imgui::Context const& imgui, Fonts& fonts, String str, Rect const r) {
+void DrawOverlayTooltipForRect(imgui::Context const& imgui,
+                               Fonts& fonts,
+                               String str,
+                               DrawTooltipArgs const& args) {
     fonts.Push(ToInt(FontType::Body));
     DEFER { fonts.Pop(); };
 
@@ -328,17 +332,16 @@ void DrawOverlayTooltipForRect(imgui::Context const& imgui, Fonts& fonts, String
     auto const size = Min(max_width, wrapped_size.x);
 
     Rect popup_r;
-    popup_r.x = r.x;
-    popup_r.y = r.y + r.h;
-    popup_r.w = size + text_margin.x * 2;
-    popup_r.h = wrapped_size.y + text_margin.y * 2;
+    popup_r.x = args.r.x;
+    popup_r.y = args.r.y + args.r.h;
+    popup_r.size = f32x2 {size, wrapped_size.y} + text_margin * 2;
 
-    popup_r.x = popup_r.x + ((r.w / 2) - (popup_r.w / 2));
+    popup_r.x = popup_r.x + ((args.r.w / 2) - (popup_r.w / 2));
 
     popup_r.pos = imgui::BestPopupPos(popup_r,
-                                      {.pos = r.pos, .size = r.size},
+                                      args.avoid_r,
                                       GuiIo().in.window_size.ToFloat2(),
-                                      false);
+                                      args.show_left_or_right);
 
     DrawDropShadow(imgui, popup_r);
 

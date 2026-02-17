@@ -331,7 +331,7 @@ static ScrollbarResult Scrollbar(Context& im,
         static f32x2 cached_pos {};
         if (im.ButtonBehaviour(scroll_r, id, button_cfg)) cached_pos.y = cursor_y - *scroll_y;
 
-        if (im.IsActive(id)) {
+        if (im.IsActive(id, {})) {
             auto const new_ypos = (cursor_y - cached_pos.y) - viewport_y;
             scrollbar_rel_y = Clamp(new_ypos, 0.0f, viewport_h - scrollbar_h);
             *scroll_y = viewport_y + scrollbar_rel_y;
@@ -524,9 +524,14 @@ bool Context::WasJustMadeUnhot(Id id) const { return !IsHot(id) && hot_item_last
 bool Context::AnItemIsHot() const { return hot_item != k_null_id; }
 
 // Active
-bool Context::IsActive(Id id) const { return active_item.id == id; }
-bool Context::WasJustActivated(Id id) const { return IsActive(id) && active_item_last_frame != id; }
-bool Context::WasJustDeactivated(Id id) const { return !IsActive(id) && active_item_last_frame == id; }
+bool Context::IsActive(Id id, Optional<ButtonConfig> via_button_config) const {
+    return active_item.id == id &&
+           FindIf(active_item.button_cfgs, [&](auto const& cfg) { return via_button_config == cfg; });
+}
+bool Context::WasJustActivated(Id id, Optional<ButtonConfig> via_button_config) const {
+    return IsActive(id, via_button_config) && active_item_last_frame != id;
+}
+bool Context::WasJustDeactivated(Id id) const { return !IsActive(id, {}) && active_item_last_frame == id; }
 bool Context::AnItemIsActive() const { return active_item.id != k_null_id; }
 
 // Hovered
@@ -610,7 +615,19 @@ void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
     temp_hot_item = k_null_id;
     temp_hovered_item = k_null_id;
 
-    if (AnItemIsActive() && !GuiIo().in.Mouse(active_item.button_cfg.mouse_button).is_down) ClearActive();
+    if (AnItemIsActive()) {
+        for (auto const btn : EnumIterator<MouseButton>()) {
+            if (GuiIo().in.Mouse(btn).is_down) continue;
+            for (usize i = 0; i < active_item.button_cfgs.size;) {
+                auto const& btn_cfg = active_item.button_cfgs[i];
+                if (btn_cfg.mouse_button == btn)
+                    dyn::Remove(active_item.button_cfgs, i);
+                else
+                    ++i;
+            }
+        }
+        if (active_item.button_cfgs.size == 0) ClearActive();
+    }
 
     active_text_input_shown = false;
 
@@ -764,7 +781,8 @@ void Context::EndFrame() {
     }
 
     // Close popups/modals if clicked outside.
-    if (active_item.just_activated && active_item.button_cfg.closes_popup_or_modal) {
+    if (active_item.just_activated &&
+        FindIf(active_item.button_cfgs, [](auto const& cfg) { return cfg.closes_popup_or_modal; })) {
         if (open_popups.size && popup_menu_just_opened == k_null_id) {
             auto const popup_clicked =
                 (hovered_viewport && hovered_viewport->root_viewport->cfg.mode == ViewportMode::PopupMenu)
@@ -856,16 +874,14 @@ bool Context::SliderBehaviourFraction(SliderBehaviourFractionArgs const& args) {
 
     auto const& frame_input = GuiIo().in;
 
-    if (ButtonBehaviour(args.rect_in_window_coords,
-                        args.id,
-                        {.mouse_button = MouseButton::Left, .event = MouseButtonEvent::Down})) {
+    if (ButtonBehaviour(args.rect_in_window_coords, args.id, SliderConfig::k_activation_cfg)) {
         if ((args.cfg.default_on_modifer) && frame_input.modifiers.Get(ModifierKey::Modifier))
             args.fraction = args.default_fraction;
         val_at_click = args.fraction;
         start_location = frame_input.cursor_pos;
     }
 
-    if (IsActive(args.id)) {
+    if (IsActive(args.id, SliderConfig::k_activation_cfg)) {
         f32 sensitivity = args.cfg.sensitivity;
         if (args.cfg.slower_with_shift) {
             if (frame_input.Key(KeyCode::ShiftL).presses.size ||
@@ -1116,11 +1132,11 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
         stb_textedit_click(this, &stb_state, rel_pos.x, rel_pos.y);
         reset_cursor = true;
     }
-    if (IsActive(id)) {
+    if (IsActive(id, button_cfg)) {
         if (!frame_input.mouse_buttons[0].is_down) {
             ClearActive();
-        } else if (!WasJustActivated(id)) {
-            if (active_item.button_cfg.event == MouseButtonEvent::Down) {
+        } else if (!WasJustActivated(id, button_cfg)) {
+            if (button_cfg.event == MouseButtonEvent::Down) {
                 if (frame_input.Mouse(MouseButton::Left).dragging_started) {
                     auto rel_pos = get_rel_click_point(r.pos, x_offset);
                     stb_textedit_click(this, &stb_state, rel_pos.x, rel_pos.y);
@@ -1133,7 +1149,7 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
         }
     }
 
-    if (IsHotOrActive(id)) frame_output.wants.cursor_type = CursorType::IBeam;
+    if (IsHotOrActive(id, button_cfg)) frame_output.wants.cursor_type = CursorType::IBeam;
 
     // Select word
     if (!(cfg.select_all_when_opening && TextInputJustFocused(id))) {
@@ -1539,15 +1555,15 @@ bool Context::ButtonBehaviour(Rect r, Id id, ButtonConfig cfg) {
     }
 
     if (cfg.hold_to_repeat) {
-        if (WasJustActivated(id))
+        if (WasJustActivated(id, cfg))
             button_repeat_counter = GuiIo().in.current_time + k_button_repeat_rate;
-        else if (IsActive(id)) {
+        else if (IsActive(id, cfg)) {
             if (GuiIo().WakeupAtTimedInterval(button_repeat_counter, k_button_repeat_rate))
                 button_fired = true;
         }
     }
 
-    if (IsHotOrActive(id)) GuiIo().out.wants.cursor_type = CursorType::Hand;
+    if (IsHotOrActive(id, cfg)) GuiIo().out.wants.cursor_type = CursorType::Hand;
 
     // If we haven't run ButtonBehaviour on this ID before, track the rectangle.
     if (temp_hot_item != id) RegisterRectForMouseTracking(r);
@@ -2055,15 +2071,17 @@ void Context::SetActive(Id id, ButtonConfig button_cfg) {
     temp_active_item.id = id;
     temp_active_item.just_activated = (id != k_null_id);
     temp_active_item.viewport = curr_viewport;
-    temp_active_item.button_cfg = button_cfg;
 
     if (id != k_null_id) {
         // An id has been set so we no longer want to have a hot item.
         temp_hot_item = k_null_id;
+        auto const appended = dyn::Append(temp_active_item.button_cfgs, button_cfg);
+        ASSERT(appended, "too many button configs used on the same ID");
     } else {
         // Unlike when activating an item - where we need a frame of lag, when deactivating, we can
         // immediately apply the changes.
         active_item = {};
+        temp_active_item.button_cfgs = {};
     }
 
     GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
@@ -2205,6 +2223,16 @@ Context::DraggerResult Context::DraggerBehaviour(DraggerBehaviourArgs const& arg
     }
 
     return result;
+}
+
+bool Context::TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id) {
+    SetHot(rect_in_window_coords, id);
+
+    constexpr auto k_delay_secs = 0.5;
+
+    if (WasJustMadeHot(id)) GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_delay_secs, "Tooltip");
+
+    return IsHot(id) && SecondsSpentHot() >= k_delay_secs;
 }
 
 } // namespace imgui

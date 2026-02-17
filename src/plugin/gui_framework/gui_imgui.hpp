@@ -80,6 +80,8 @@ using Id = u64;
 constexpr Id k_null_id = 0;
 
 struct ButtonConfig {
+    bool operator==(ButtonConfig const&) const = default;
+
     // The mouse button that will cause the button to fire.
     MouseButton mouse_button = MouseButton::Left;
 
@@ -109,6 +111,9 @@ struct ButtonConfig {
 };
 
 struct SliderConfig {
+    static constexpr ButtonConfig const k_activation_cfg = {.mouse_button = MouseButton::Left,
+                                                            .event = MouseButtonEvent::Down};
+
     // Number of pixels for a value change of a full turn (from min to max).
     f32 sensitivity = 256;
 
@@ -395,8 +400,8 @@ struct Context {
     // state. Text inputs have an additional concept of 'focus', outlined further down.
 
     // 'active' means the user holding the element with a mouse-click.
-    bool IsActive(Id id) const;
-    bool WasJustActivated(Id id) const;
+    bool IsActive(Id id, Optional<ButtonConfig> via_button_config) const;
+    bool WasJustActivated(Id id, Optional<ButtonConfig> via_button_config) const;
     bool WasJustDeactivated(Id id) const;
     bool AnItemIsActive() const;
     Id GetActive() const { return active_item.id; }
@@ -411,7 +416,9 @@ struct Context {
         return time_when_turned_hot ? GuiIo().in.current_time - time_when_turned_hot : 0;
     }
 
-    bool IsHotOrActive(Id id) const { return IsHot(id) || IsActive(id); }
+    bool IsHotOrActive(Id id, Optional<ButtonConfig> via_button_config) const {
+        return IsHot(id) || IsActive(id, via_button_config);
+    }
 
     // Having keyboard focus means that this element is allowed to consume text events. This is different to
     // text input focus. Returns true if the ID is the keyboard focus item.
@@ -562,6 +569,14 @@ struct Context {
     DraggerResult DraggerBehaviour(DraggerBehaviourArgs const& args);
 
     //
+    // Tooltip behaviour
+    //
+
+    // Returns true if you should draw a tooltip for the given ID. Probably use overlay draw-list for drawing
+    // tooltips.
+    bool TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id);
+
+    //
     // Viewports
     //
 
@@ -694,7 +709,7 @@ struct Context {
         Id id = k_null_id;
         bool just_activated = false;
         Viewport* viewport = nullptr;
-        ButtonConfig button_cfg {};
+        DynamicArrayBounded<ButtonConfig, 5> button_cfgs {};
     };
 
     bool debug_show_register_widget_overlay = false;

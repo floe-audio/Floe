@@ -5,6 +5,7 @@
 
 #include "../gui_state.hpp"
 #include "../gui_viewport_utils.hpp"
+#include "gui/gui_utils.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_widget_helpers.hpp"
 #include "processor/param.hpp"
@@ -15,7 +16,7 @@ static u32 GetCol(GuiState& g, Style const& style, ColourSet const& colours, img
     auto col = state ? colours.on : colours.reg;
     if (colours.grey_out_aware && style.greyed_out) col = state ? colours.greyed_out_on : colours.greyed_out;
     if (g.imgui.IsHot(id)) col = state ? colours.hot_on : colours.hot_off;
-    if (g.imgui.IsActive(id)) col = state ? colours.active_on : colours.active_off;
+    if (g.imgui.IsActive(id, {})) col = state ? colours.active_on : colours.active_off;
     return col;
 }
 

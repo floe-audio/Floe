@@ -8,7 +8,6 @@
 #include "gui/gui_drawing_helpers.hpp"
 #include "gui_keyboard.hpp"
 #include "gui_state.hpp"
-#include "old/gui_widget_helpers.hpp"
 
 static bool IconButton(GuiBuilder& builder,
                        Box const parent,

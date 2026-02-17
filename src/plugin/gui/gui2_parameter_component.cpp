@@ -7,14 +7,14 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "gui/gui_drawing_helpers.hpp"
+#include "gui/gui_utils.hpp"
 #include "gui2_common_modal_panel.hpp"
 #include "gui2_macros.hpp"
 #include "gui_state.hpp"
-#include "old/gui_widget_helpers.hpp"
 #include "processor/param.hpp"
 #include "processor/processor.hpp"
 
-static void DoMidiLearnMenu(GuiState& g, ParamIndex param_index) {
+static void DoMidiLearnMenu(GuiState& g, Span<ParamIndex const> param_indices) {
     auto const root = DoBox(g.builder,
                             {
                                 .layout {
@@ -23,114 +23,166 @@ static void DoMidiLearnMenu(GuiState& g, ParamIndex param_index) {
                                     .contents_align = layout::Alignment::Start,
                                 },
                             });
-    if (MenuItem(g.builder,
-                 root,
-                 {
-                     .text = "Set to Default Value",
-                     .tooltip = "Set the parameter to its default value"_s,
-                 })
-            .button_fired) {
-        SetParameterValue(g.engine.processor,
-                          param_index,
-                          k_param_descriptors[ToInt(param_index)].default_linear_value,
-                          {});
-    }
 
-    if (MenuItem(g.builder,
-                 root,
-                 {
-                     .text = "Enter Value",
-                     .tooltip = "Open a text input to enter a value for the parameter"_s,
-                 })
-            .button_fired) {
-        g.param_text_editor_to_open = param_index;
-    }
+    for (auto const param_index : param_indices) {
+        g.imgui.PushId(ToInt(param_index));
+        DEFER { g.imgui.PopId(); };
 
-    if (IsMidiCCLearnActive(g.engine.processor)) {
-        if (MenuItem(g.builder,
+        if (param_indices.size != 1) {
+            // TODO: inactive isn't quite the right option - we need properly disabled
+            MenuItem(g.builder,
                      root,
                      {
-                         .text = "Cancel MIDI CC Learn",
-                         .tooltip = "Cancel waiting for CC to learn"_s,
-                     })
-                .button_fired) {
-            CancelMidiCCLearn(g.engine.processor);
+                         .text = fmt::Format(g.scratch_arena,
+                                             "{}: ",
+                                             k_param_descriptors[ToInt(param_index)].gui_label),
+                         .inactive = true,
+                     });
         }
-    } else if (MenuItem(g.builder,
-                        root,
-                        {
-                            .text = "MIDI CC Learn",
-                            .tooltip = "Assign the next MIDI CC message received to this parameter"_s,
-                        })
-                   .button_fired) {
-        LearnMidiCC(g.engine.processor, param_index);
-    }
-
-    auto const persistent_ccs = PersistentCcsForParam(g.prefs, ParamIndexToId(param_index));
-    auto const ccs_bitset = GetLearnedCCsBitsetForParam(g.engine.processor, param_index);
-    bool const closes_popups = ccs_bitset.AnyValuesSet();
-    for (auto const cc_num : Range(128uz)) {
-        if (!ccs_bitset.Get(cc_num)) continue;
 
         if (MenuItem(g.builder,
                      root,
                      {
-                         .text = fmt::Format(g.scratch_arena, "Remove MIDI CC {}", cc_num),
-                         .tooltip = "Remove the MIDI CC assignment for this parameter"_s,
-                         .close_on_click = closes_popups,
+                         .text = "Set to Default Value",
+                         .tooltip = "Set the parameter to its default value"_s,
                      })
                 .button_fired) {
-            UnlearnMidiCC(g.engine.processor, param_index, (u7)cc_num);
+            SetParameterValue(g.engine.processor,
+                              param_index,
+                              k_param_descriptors[ToInt(param_index)].default_linear_value,
+                              {});
         }
 
-        {
-            bool state = persistent_ccs.Get(cc_num);
+        if (k_param_descriptors[ToInt(param_index)].value_type == ParamValueType::Float) {
             if (MenuItem(g.builder,
                          root,
                          {
-                             .text = fmt::Format(g.scratch_arena,
-                                                 "Always set MIDI CC {} to this when Floe opens",
-                                                 cc_num),
-                             .tooltip = "Set this MIDI CC to this parameter value when Floe starts"_s,
-                             .is_selected = state,
+                             .text = "Enter Value",
+                             .tooltip = "Open a text input to enter a value for the parameter"_s,
+                         })
+                    .button_fired) {
+                g.param_text_editor_to_open = param_index;
+            }
+        }
+
+        if (IsMidiCCLearnActive(g.engine.processor)) {
+            if (MenuItem(g.builder,
+                         root,
+                         {
+                             .text = "Cancel MIDI CC Learn",
+                             .tooltip = "Cancel waiting for CC to learn"_s,
+                         })
+                    .button_fired) {
+                CancelMidiCCLearn(g.engine.processor);
+            }
+        } else if (MenuItem(g.builder,
+                            root,
+                            {
+                                .text = "MIDI CC Learn",
+                                .tooltip = "Assign the next MIDI CC message received to this parameter"_s,
+                            })
+                       .button_fired) {
+            LearnMidiCC(g.engine.processor, param_index);
+        }
+
+        auto const persistent_ccs = PersistentCcsForParam(g.prefs, ParamIndexToId(param_index));
+        auto const ccs_bitset = GetLearnedCCsBitsetForParam(g.engine.processor, param_index);
+        bool const closes_popups = ccs_bitset.AnyValuesSet();
+        for (auto const cc_num : Range(128uz)) {
+            if (!ccs_bitset.Get(cc_num)) continue;
+
+            if (MenuItem(g.builder,
+                         root,
+                         {
+                             .text = fmt::Format(g.scratch_arena, "Remove MIDI CC {}", cc_num),
+                             .tooltip = "Remove the MIDI CC assignment for this parameter"_s,
                              .close_on_click = closes_popups,
                          })
                     .button_fired) {
-                state = !state;
-                if (state)
-                    AddPersistentCcToParamMapping(g.prefs, (u8)cc_num, ParamIndexToId(param_index));
-                else
-                    RemovePersistentCcToParamMapping(g.prefs, (u8)cc_num, ParamIndexToId(param_index));
+                UnlearnMidiCC(g.engine.processor, param_index, (u7)cc_num);
+            }
+
+            {
+                bool state = persistent_ccs.Get(cc_num);
+                if (MenuItem(g.builder,
+                             root,
+                             {
+                                 .text = fmt::Format(g.scratch_arena,
+                                                     "Always set MIDI CC {} to this when Floe opens",
+                                                     cc_num),
+                                 .tooltip = "Set this MIDI CC to this parameter value when Floe starts"_s,
+                                 .is_selected = state,
+                                 .close_on_click = closes_popups,
+                             })
+                        .button_fired) {
+                    state = !state;
+                    if (state)
+                        AddPersistentCcToParamMapping(g.prefs, (u8)cc_num, ParamIndexToId(param_index));
+                    else
+                        RemovePersistentCcToParamMapping(g.prefs, (u8)cc_num, ParamIndexToId(param_index));
+                }
             }
         }
+
+        if (param_indices.size != 1 && param_index != Last(param_indices))
+            DoModalDivider(g.builder, root, {.horizontal = true});
     }
 }
 
-static void AddMidiLearnRightClickBehaviour(GuiState& g, Box const& box, DescribedParamValue const& param) {
+void AddMidiLearnRightClickBehaviour(GuiState& g,
+                                     Rect window_r,
+                                     imgui::Id id,
+                                     Span<DescribedParamValue const> params) {
+    if (AllOf(params, [](DescribedParamValue const& p) { return p.info.flags.not_automatable; })) return;
+
+    auto const popup_id = (imgui::Id)(SourceLocationHash() ^ ({
+                                          auto hash = HashInit();
+                                          for (auto const& p : params)
+                                              HashUpdate(hash, p.info.id);
+                                          hash;
+                                      }));
+
+    if (g.builder.imgui.ButtonBehaviour(window_r,
+                                        id,
+                                        {
+                                            .mouse_button = MouseButton::Right,
+                                            .event = MouseButtonEvent::Up,
+                                        })) {
+        g.builder.imgui.OpenPopupMenu(popup_id, id);
+    }
+
+    if (g.builder.imgui.IsPopupMenuOpen(popup_id))
+        DoBoxViewport(g.builder,
+                      {
+                          .run = [&g, indices = ({
+                                          auto const indices =
+                                              g.scratch_arena.AllocateExactSizeUninitialised<ParamIndex>(
+                                                  params.size);
+                                          for (auto const i : Range(params.size))
+                                              indices[i] = params[i].info.index;
+                                          indices;
+                                      })](GuiBuilder&) { DoMidiLearnMenu(g, indices); },
+                          .bounds = window_r,
+                          .imgui_id = popup_id,
+                          .viewport_config = k_default_popup_menu_viewport,
+                      });
+}
+
+void AddMidiLearnRightClickBehaviour(GuiState& g,
+                                     Rect window_r,
+                                     imgui::Id id,
+                                     DescribedParamValue const& param) {
+    AddMidiLearnRightClickBehaviour(g, window_r, id, Array {param});
+}
+
+void AddMidiLearnRightClickBehaviour(GuiState& g, Box const& box, DescribedParamValue const& param) {
     if (param.info.flags.not_automatable) return;
 
     if (auto const viewport_r = BoxRect(g.builder, box)) {
-        auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
-        auto const popup_id = (imgui::Id)(SourceLocationHash() ^ param.info.id);
-
-        if (g.builder.imgui.ButtonBehaviour(window_r,
-                                            box.imgui_id,
-                                            {
-                                                .mouse_button = MouseButton::Right,
-                                                .event = MouseButtonEvent::Up,
-                                            })) {
-            g.builder.imgui.OpenPopupMenu(popup_id, box.imgui_id);
-        }
-
-        if (g.builder.imgui.IsPopupMenuOpen(popup_id))
-            DoBoxViewport(
-                g.builder,
-                {
-                    .run = [&g, index = param.info.index](GuiBuilder&) { DoMidiLearnMenu(g, index); },
-                    .bounds = box,
-                    .imgui_id = popup_id,
-                    .viewport_config = k_default_popup_menu_viewport,
-                });
+        AddMidiLearnRightClickBehaviour(g,
+                                        g.imgui.ViewportRectToWindowRect(*viewport_r),
+                                        box.imgui_id,
+                                        param);
     }
 }
 
@@ -146,7 +198,7 @@ static String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator&
     return buf.ToOwnedSpan();
 }
 
-static void DoMenuParameterMenu(GuiState& g, ParamIndex param_index) {
+static void DoParamMenuItems(GuiState& g, ParamIndex param_index) {
     auto const menu_root = DoBox(g.builder,
                                  {
                                      .layout {
@@ -198,8 +250,7 @@ Box DoPrevNextRow(GuiBuilder& builder, Box parent, f32 width) {
                  });
 }
 
-PrevNextButtonsResult
-DoPrevNextButtons(GuiBuilder& builder, Box row, PrevNextButtonsOptions const& options) {
+PrevNextButtonsResult DoPrevNextButtons(GuiBuilder& builder, Box row, PrevNextButtonsOptions const& options) {
     PrevNextButtonsResult result {};
 
     auto const do_button = [&](String icon, String tooltip) {
@@ -251,8 +302,7 @@ Box DoMenuParameter(GuiState& g,
                                      },
                                  });
 
-    auto const row =
-        DoPrevNextRow(g.builder, container, auto_width ? layout::k_hug_contents : options.width);
+    auto const row = DoPrevNextRow(g.builder, container, auto_width ? layout::k_hug_contents : options.width);
 
     Optional<f32> new_val {};
 
@@ -291,7 +341,7 @@ Box DoMenuParameter(GuiState& g,
         DoBoxViewport(g.builder,
                       {
                           .run = [param_index = param.info.index,
-                                  &g](GuiBuilder&) { DoMenuParameterMenu(g, param_index); },
+                                  &g](GuiBuilder&) { DoParamMenuItems(g, param_index); },
                           .bounds = menu_btn,
                           .imgui_id = popup_id,
                           .viewport_config = k_default_popup_menu_viewport,
@@ -322,7 +372,7 @@ Box DoMenuParameter(GuiState& g,
             new_val = current;
         }
 
-        if (g.imgui.WasJustActivated(menu_btn.imgui_id))
+        if (g.imgui.WasJustActivated(menu_btn.imgui_id, imgui::SliderConfig::k_activation_cfg))
             ParameterJustStartedMoving(g.engine.processor, param.info.index);
 
         if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
@@ -418,7 +468,7 @@ Box DoKnobParameter(GuiState& g,
         if (dragger_result.value_changed) new_val = val;
         param_text_input_result = dragger_result.text_input_result;
 
-        if (g.imgui.WasJustActivated(container.imgui_id))
+        if (g.imgui.WasJustActivated(container.imgui_id, imgui::SliderConfig::k_activation_cfg))
             ParameterJustStartedMoving(g.engine.processor, param.info.index);
 
         if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
@@ -696,7 +746,7 @@ Box DoIntParameter(GuiState& g,
         if (dragger_result.value_changed) new_val = (f32)(int)val;
         param_text_input_result = dragger_result.text_input_result;
 
-        if (g.imgui.WasJustActivated(dragger_box.imgui_id))
+        if (g.imgui.WasJustActivated(dragger_box.imgui_id, imgui::SliderConfig::k_activation_cfg))
             ParameterJustStartedMoving(g.engine.processor, param.info.index);
 
         if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});

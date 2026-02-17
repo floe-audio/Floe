@@ -3,6 +3,7 @@
 
 #include <IconsFontAwesome6.h>
 
+#include "gui/gui_utils.hpp"
 #include "gui2_inst_browser.hpp"
 #include "gui2_ir_browser.hpp"
 #include "gui_effects.hpp"

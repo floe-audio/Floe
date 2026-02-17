@@ -8,16 +8,14 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "engine/loop_modes.hpp"
+#include "gui/gui2_parameter_component.hpp"
+#include "gui/gui_utils.hpp"
 #include "gui_drawing_helpers.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_state.hpp"
 #include "gui_waveform_images.hpp"
-#include "old/gui_label_widgets.hpp"
-#include "old/gui_widget_helpers.hpp"
 #include "processor/layer_processor.hpp"
 #include "processor/sample_processing.hpp"
-
-// TODO: this code needs adapting to no longer use old code such as old/gui_widget_helpers.hpp.
 
 static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
     if (layer.instrument_id.tag == InstrumentType::WaveformSynth) return;
@@ -148,10 +146,11 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
             }
         }
 
-        imgui.draw_list->AddRectFilled(r,
-                                       imgui.IsHotOrActive(id) ? back_hover_col : back_col,
-                                       6,
-                                       rounding_corners);
+        imgui.draw_list->AddRectFilled(
+            r,
+            imgui.IsHotOrActive(id, imgui::SliderConfig::k_activation_cfg) ? back_hover_col : back_col,
+            6,
+            rounding_corners);
         g.fonts.Push(g.fonts.atlas[ToInt(FontType::Icons)]);
         DEFER { g.fonts.Pop(); };
         imgui.draw_list->AddTextInRect(r,
@@ -167,16 +166,18 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
     auto do_handle_slider = [&](imgui::Id id,
                                 Span<ParamIndex const> params,
                                 Optional<ParamIndex> tooltip_param,
-                                Rect grabber_r,
+                                Rect grabber_unregistered,
                                 f32 value,
                                 f32 default_val,
                                 bool invert_slider,
                                 FunctionRef<void(f32)> callback) {
-        auto const grabber_unregistered = grabber_r;
-        if (tooltip_param) MidiLearnMenu(g, *tooltip_param, grabber_unregistered);
         if (grabber_unregistered.w == 0) return;
-
-        grabber_r = imgui.RegisterAndConvertRect(grabber_r);
+        auto const grabber_r = imgui.RegisterAndConvertRect(grabber_unregistered);
+        if (tooltip_param)
+            AddMidiLearnRightClickBehaviour(g,
+                                            grabber_r,
+                                            id,
+                                            engine.processor.main_params.DescribedValue(*tooltip_param));
 
         bool const changed = imgui.SliderBehaviourRange({
             .rect_in_window_coords = grabber_r,
@@ -202,9 +203,10 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
             g.param_text_editor_to_open = params[0];
         }
 
-        if (imgui.IsHotOrActive(id)) GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
+        if (imgui.IsHotOrActive(id, imgui::SliderConfig::k_activation_cfg))
+            GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
 
-        if (imgui.WasJustActivated(id))
+        if (imgui.WasJustActivated(id, imgui::SliderConfig::k_activation_cfg))
             for (auto p : params)
                 ParameterJustStartedMoving(engine.processor, p);
         if (changed) callback(value);
@@ -438,11 +440,12 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
         sample_offset_r = imgui.RegisterAndConvertRect(sample_offset_r);
 
         imgui.draw_list->AddRectFilled(sample_offset_r, LiveCol(UiColMap::WaveformSampleOffset));
-        imgui.draw_list->AddRectFilled(f32x2 {sample_offset_r.Right() - 1, sample_offset_r.y},
-                                       sample_offset_r.Max(),
-                                       imgui.IsHotOrActive(offs_imgui_id)
-                                           ? LiveCol(UiColMap::WaveformOffsetHandleHover)
-                                           : LiveCol(UiColMap::WaveformOffsetHandle));
+        imgui.draw_list->AddRectFilled(
+            f32x2 {sample_offset_r.Right() - 1, sample_offset_r.y},
+            sample_offset_r.Max(),
+            imgui.IsHotOrActive(offs_imgui_id, imgui::SliderConfig::k_activation_cfg)
+                ? LiveCol(UiColMap::WaveformOffsetHandleHover)
+                : LiveCol(UiColMap::WaveformOffsetHandle));
     }
 
     // drawing
@@ -470,7 +473,8 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
             }
         }
 
-        auto const region_active = imgui.IsHot(loop_region_id) || imgui.IsActive(loop_region_id);
+        auto const region_active = imgui.IsHot(loop_region_id) ||
+                                   imgui.IsActive(loop_region_id, imgui::SliderConfig::k_activation_cfg);
         if (!region_active && loop_xfade_size > 0.01f && draw_xfade) {
             if (mode.value.mode == sample_lib::LoopMode::Standard) {
                 auto const points = Array {start_line.TopLeft(),
@@ -499,18 +503,20 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
                  LineAndId {start_line, start_id},
                  LineAndId {end_line, end_id},
              }) {
-            imgui.draw_list->AddRectFilled(line,
-                                           LiveCol(imgui.IsHotOrActive(id) ? UiColMap::WaveformLoopHandleHover
-                                                   : !single_builtin_loop
-                                                       ? UiColMap::WaveformLoopHandle
-                                                       : UiColMap::WaveformLoopHandleInactive));
+            imgui.draw_list->AddRectFilled(
+                line,
+                LiveCol(imgui.IsHotOrActive(id, imgui::SliderConfig::k_activation_cfg)
+                            ? UiColMap::WaveformLoopHandleHover
+                        : !single_builtin_loop ? UiColMap::WaveformLoopHandle
+                                               : UiColMap::WaveformLoopHandleInactive));
         }
 
         if (draw_xfade && loop_xfade_size > 0.01f) {
-            imgui.draw_list->AddRectFilled(xfade_line,
-                                           imgui.IsHotOrActive(xfade_id)
-                                               ? LiveCol(UiColMap::WaveformXfadeHandleHover)
-                                               : LiveCol(UiColMap::WaveformXfadeHandle));
+            imgui.draw_list->AddRectFilled(
+                xfade_line,
+                imgui.IsHotOrActive(xfade_id, imgui::SliderConfig::k_activation_cfg)
+                    ? LiveCol(UiColMap::WaveformXfadeHandleHover)
+                    : LiveCol(UiColMap::WaveformXfadeHandle));
         }
 
         draw_handle(start_handle, start_id, HandleType::LoopStart, false);
@@ -550,7 +556,14 @@ void DoWaveformElement(GuiState& g, LayerProcessor& layer, Rect viewport_r) {
 
     if (g.engine.sample_lib_server_async_channel.instrument_loading_percents[(usize)layer.index].Load(
             LoadMemoryOrder::Relaxed) != -1) {
-        labels::Label(g, viewport_r, "Loading...", labels::WaveformLoadingLabel(g.imgui));
+        g.imgui.draw_list->AddTextInRect(window_r,
+                                         LiveCol(UiColMap::WaveformLoadingText),
+                                         "Loading…",
+                                         {
+                                             .justification = TextJustification::Centred,
+                                             .overflow_type = TextOverflowType::AllowOverflow,
+                                             .font_scaling = 1,
+                                         });
     } else {
         auto const& params = g.engine.processor.main_params;
 

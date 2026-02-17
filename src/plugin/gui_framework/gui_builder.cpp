@@ -9,12 +9,6 @@
 #include "gui_framework/fonts.hpp"
 #include "image.hpp"
 
-constexpr f64 k_tooltip_open_delay = 0.5;
-constexpr f32 k_tooltip_max_width = 200;
-constexpr f32 k_tooltip_pad_x = 5;
-constexpr f32 k_tooltip_pad_y = 2;
-constexpr f32 k_tooltip_rounding = k_button_rounding;
-
 constexpr u32 k_auto_hot_white_overlay = Hsla(k_highlight_hue, 35, 70, 20);
 constexpr u32 k_auto_active_white_overlay = Hsla(k_highlight_hue, 35, 70, 38);
 
@@ -39,60 +33,58 @@ static imgui::ViewportConfig ConvertViewportConfigWwToPixels(imgui::ViewportConf
     return c;
 }
 
-static void Run(GuiBuilder& builder, GuiBuilder::BoxViewport* panel) {
-    ZoneScoped;
-    if (!panel) return;
+static void Run(GuiBuilder& builder, GuiBuilder::CurrentViewportState* state) {
+    if (!state) return;
 
+    ZoneScoped;
     // If the panel is the first panel of this current builder, we can just use the
     // given rectangle if there is one.
-    auto const rect = panel->rect.OrElse([&]() { return panel->cfg.bounds.Get<Rect>(); });
+    auto const rect = state->rect.OrElse([&]() { return state->cfg.bounds.Get<Rect>(); });
 
-    builder.imgui.BeginViewport(ConvertViewportConfigWwToPixels(panel->cfg.viewport_config),
-                                panel->cfg.imgui_id,
+    builder.imgui.BeginViewport(ConvertViewportConfigWwToPixels(state->cfg.viewport_config),
+                                state->cfg.imgui_id,
                                 rect,
-                                panel->cfg.debug_name);
+                                state->cfg.debug_name);
 
-    builder.imgui.SetViewportMinimumAutoSize(rect.size);
+    if (state->cfg.viewport_config.positioning != imgui::ViewportPositioning::AutoPosition)
+        builder.imgui.SetViewportMinimumAutoSize(rect.size);
 
     {
-        GuiBuilder::CurrentViewportState state {
-            .current_viewport = panel,
-        };
-        builder.state = &state;
-        DEFER { builder.state = nullptr; };
+        auto const initial_state = builder.state;
+        builder.state = state;
+        DEFER { builder.state = initial_state; };
 
         {
-            layout::ReserveItemsCapacity(builder.layout, builder.arena, 2048);
+            layout::ReserveItemsCapacity(state->layout, builder.arena, 2048);
             ZoneNamedN(prof1, "Builder: create layout", true);
-            panel->cfg.run(builder);
+            state->cfg.run(builder);
         }
 
-        builder.layout.item_height_from_width_calculation = [&builder](layout::Id id, f32 width) {
+        state->layout.item_height_from_width_calculation = [&builder](layout::Id id, f32 width) {
             return HeightOfWrappedText(builder, id, width);
         };
 
         {
             ZoneNamedN(prof2, "Builder: calculate layout", true);
-            layout::RunContext(builder.layout);
+            layout::RunContext(state->layout);
         }
 
         {
             ZoneNamedN(prof3, "Builder: handle input and render", true);
-            state.pass = GuiBuilderPass::HandleInputAndRender;
-            panel->cfg.run(builder);
+            state->pass = GuiBuilderPass::HandleInputAndRender;
+            state->cfg.run(builder);
         }
     }
 
-    // Fill in the rect of new panels so we can reuse the layout system.
-    // New panels can be identified because they have no rect.
-    for (auto p = panel->first_child; p != nullptr; p = p->next) {
+    // Fill in the rect of new panels. New panels can be identified because they have no rect.
+    for (auto p = state->first_child; p != nullptr; p = p->next) {
         if (p->rect) continue;
 
         p->rect = ({
             Rect r {};
             switch (p->cfg.bounds.tag) {
                 case BoxViewportConfig::BoundsType::Box: {
-                    r = layout::GetRect(builder.layout, p->cfg.bounds.Get<Box>().layout_id);
+                    r = layout::GetRect(state->layout, p->cfg.bounds.Get<Box>().layout_id);
                     switch (p->cfg.viewport_config.positioning) {
                         case imgui::ViewportPositioning::ParentRelative: break;
                         case imgui::ViewportPositioning::WindowAbsolute:
@@ -104,42 +96,41 @@ static void Run(GuiBuilder& builder, GuiBuilder::BoxViewport* panel) {
                 }
                 case BoxViewportConfig::BoundsType::Rect: r = p->cfg.bounds.Get<Rect>(); break;
             }
+            ASSERT(All(r.size > 0));
             r;
         });
-
-        ASSERT(All(p->rect->size > 0));
     }
 
-    layout::ResetContext(builder.layout);
-
-    for (auto p = panel->first_child; p != nullptr; p = p->next)
+    for (auto p = state->first_child; p != nullptr; p = p->next)
         Run(builder, p);
 
     builder.imgui.EndViewport();
 }
 
-void BeginFrame(GuiBuilder& builder, bool show_tooltips) {
-    // The layout uses the scratch arena, so we need to make sure we're not using any memory from the previous
-    // frame.
-    builder.layout = {};
-    builder.show_tooltips = show_tooltips;
-}
+void BeginFrame(GuiBuilder& builder, GuiBuilder::Config const& config) { builder.config = config; }
 
 void DoBoxViewport(GuiBuilder& builder, BoxViewportConfig const& config) {
     if (builder.state) {
         if (builder.IsInputAndRenderPass()) {
-            auto p = builder.arena.New<GuiBuilder::BoxViewport>(GuiBuilder::BoxViewport {.cfg = config});
-            if (builder.state->current_viewport->first_child) {
-                for (auto q = builder.state->current_viewport->first_child; q; q = q->next)
-                    if (!q->next) {
-                        q->next = p;
-                        break;
-                    }
-            } else
-                builder.state->current_viewport->first_child = p;
+            auto s = builder.arena.New<GuiBuilder::CurrentViewportState>(
+                GuiBuilder::CurrentViewportState {.cfg = config});
+            if (config.bounds.tag == BoxViewportConfig::BoundsType::Box) {
+                if (builder.state->first_child) {
+                    for (auto q = builder.state->first_child; q; q = q->next)
+                        if (!q->next) {
+                            q->next = s;
+                            break;
+                        }
+                } else
+                    builder.state->first_child = s;
+            } else {
+                Run(builder, s);
+            }
         }
     } else {
-        Run(builder, builder.arena.New<GuiBuilder::BoxViewport>(GuiBuilder::BoxViewport {.cfg = config}));
+        Run(builder,
+            builder.arena.New<GuiBuilder::CurrentViewportState>(
+                GuiBuilder::CurrentViewportState {.cfg = config}));
     }
 }
 
@@ -165,21 +156,10 @@ static bool Tooltip(GuiBuilder& builder,
                     TooltipString tooltip_str,
                     bool show_left_or_right) {
     ZoneScoped;
-    if (!builder.show_tooltips) return false;
+    if (!builder.config.show_tooltips) return false;
     if (tooltip_str.tag == TooltipStringType::None) return false;
 
-    auto& imgui = builder.imgui;
-    if (imgui.WasJustMadeHot(id))
-        GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_tooltip_open_delay, "Tooltip");
-
-    auto hot_seconds = imgui.SecondsSpentHot();
-    if (imgui.IsHot(id) && hot_seconds >= k_tooltip_open_delay) {
-        builder.fonts.Push(ToInt(FontType::Body));
-        DEFER { builder.fonts.Pop(); };
-
-        auto const pad_x = GuiIo().WwToPixels(k_tooltip_pad_x);
-        auto const pad_y = GuiIo().WwToPixels(k_tooltip_pad_y);
-
+    if (builder.imgui.TooltipBehaviour(r, id)) {
         auto const str = ({
             String s;
             switch (tooltip_str.tag) {
@@ -196,51 +176,31 @@ static bool Tooltip(GuiBuilder& builder,
             s;
         });
 
-        auto text_size =
-            builder.fonts.CalcTextSize(str, {.wrap_width = GuiIo().WwToPixels(k_tooltip_max_width)});
+        auto const avoid_r = ({
+            auto a_r = r;
+            if (additional_avoid_r) a_r = Rect::MakeRectThatEnclosesRects(a_r, *additional_avoid_r);
+            a_r;
+        });
 
-        Rect popup_r;
-        if (!show_left_or_right) {
-            popup_r.x = r.x;
-            popup_r.y = r.y + r.h;
-        } else {
-            popup_r.pos = r.pos;
-        }
-        popup_r.w = text_size.x + pad_x * 2;
-        popup_r.h = text_size.y + pad_y * 2;
+        builder.config.draw_tooltip(builder.imgui,
+                                    builder.fonts,
+                                    str,
+                                    {
+                                        .r = r,
+                                        .avoid_r = avoid_r,
+                                        .show_left_or_right = show_left_or_right,
+                                    });
 
-        auto const cursor_pos = GuiIo().in.cursor_pos;
-
-        // Shift the x so that it's centred on the cursor.
-        popup_r.x = cursor_pos.x - popup_r.w / 2;
-
-        auto avoid_r = r;
-        if (additional_avoid_r) avoid_r = Rect::MakeRectThatEnclosesRects(avoid_r, *additional_avoid_r);
-
-        popup_r.pos =
-            imgui::BestPopupPos(popup_r, avoid_r, GuiIo().in.window_size.ToFloat2(), show_left_or_right);
-
-        f32x2 text_start;
-        text_start.x = popup_r.x + pad_x;
-        text_start.y = popup_r.y + pad_y;
-
-        DrawDropShadow(imgui, popup_r);
-        imgui.overlay_draw_list->AddRectFilled(popup_r,
-                                               ToU32({.c = Col::Background0}),
-                                               GuiIo().WwToPixels(k_tooltip_rounding));
-        imgui.overlay_draw_list->AddText(text_start,
-                                         ToU32({.c = Col::Text}),
-                                         str,
-                                         {.wrap_width = text_size.x + 1});
         return true;
     }
+
     return false;
 }
 
 Optional<Rect> BoxRect(GuiBuilder& builder, Box const& box) {
     if (!builder.IsInputAndRenderPass()) return {};
     if (box.layout_id == layout::k_invalid_id) return {};
-    return layout::GetRect(builder.layout, box.layout_id);
+    return layout::GetRect(builder.state->layout, box.layout_id);
 }
 
 Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
@@ -263,7 +223,7 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
             ZoneNamedN(tracy_layout, "Builder: layout boxes", true);
             auto const box = Box {
                 .layout_id =
-                    layout::CreateItem(builder.layout, builder.arena, ({
+                    layout::CreateItem(builder.state->layout, builder.arena, ({
                                            layout::ItemOptions layout = config.layout;
 
                                            if (config.parent) [[likely]]
@@ -279,7 +239,7 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                                            layout.contents_padding.lrtb *= GuiIo().in.pixels_per_ww;
 
                                            // Root items need a real size.
-                                           if (builder.layout.num_items == 0) {
+                                           if (builder.state->layout.num_items == 0) {
                                                if (layout.size.x == layout::k_fill_parent)
                                                    layout.size.x = builder.imgui.CurrentVpWidth();
                                                if (layout.size.y == layout::k_fill_parent)
@@ -344,13 +304,13 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
             auto& box = *box_ptr;
 
             auto const rect =
-                builder.imgui.RegisterAndConvertRect(layout::GetRect(builder.layout, box.layout_id));
+                builder.imgui.RegisterAndConvertRect(layout::GetRect(builder.state->layout, box.layout_id));
 
             // We want to let our IMGUI system know our margins when it's doing an auto-size otherwise the
             // bottom or rightmost elements might not have the requested spacing around it.
             if (Any(builder.imgui.curr_viewport->cfg.auto_size)) {
-                auto const margins = layout::GetMargins(builder.layout, box.layout_id);
-                auto bb = layout::GetRect(builder.layout, box.layout_id);
+                auto const margins = layout::GetMargins(builder.state->layout, box.layout_id);
+                auto bb = layout::GetRect(builder.state->layout, box.layout_id);
                 bb.size += margins.lrtb.yw;
                 auto _ = builder.imgui.RegisterAndConvertRect(bb);
             }
@@ -365,12 +325,7 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
             if (config.button_behaviour) {
                 box.button_fired =
                     builder.imgui.ButtonBehaviour(mouse_rect, box.imgui_id, *config.button_behaviour);
-                box.is_active = builder.imgui.IsActive(box.imgui_id);
-                box.is_hot = builder.imgui.IsHot(box.imgui_id);
-            }
-
-            if (config.tooltip.tag != TooltipStringType::None && !config.button_behaviour) {
-                builder.imgui.SetHot(rect, box.imgui_id);
+                box.is_active = builder.imgui.IsActive(box.imgui_id, config.button_behaviour);
                 box.is_hot = builder.imgui.IsHot(box.imgui_id);
             }
 

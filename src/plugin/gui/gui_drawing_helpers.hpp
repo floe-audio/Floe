@@ -5,6 +5,7 @@
 #include "foundation/foundation.hpp"
 
 #include "gui_framework/colours.hpp"
+#include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "processing_utils/peak_meter.hpp"
 
@@ -44,4 +45,7 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
 
 void DrawPeakMeter(imgui::Context& imgui, Rect r, StereoPeakMeter const& level, bool flash_when_clipping);
 
-void DrawOverlayTooltipForRect(imgui::Context const& imgui, Fonts& fonts, String str, Rect window_r);
+void DrawOverlayTooltipForRect(imgui::Context const& imgui,
+                               Fonts& fonts,
+                               String str,
+                               DrawTooltipArgs const& args);
