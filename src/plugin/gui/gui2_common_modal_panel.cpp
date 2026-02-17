@@ -492,7 +492,7 @@ Optional<s64> IntField(GuiBuilder& builder, Box parent, IntFieldOptions const& o
     return k_nullopt;
 }
 
-Box MenuButton(GuiBuilder& builder, Box parent, MenuButtonOptions const& options, u64 id_extra) {
+Box MenuOpenButton(GuiBuilder& builder, Box parent, MenuOpenButtonOptions const& options, u64 id_extra) {
     auto const button =
         DoBox(builder,
               {

@@ -151,16 +151,16 @@ Optional<s64> IntField(GuiBuilder& builder,
                        IntFieldOptions const& options,
                        u64 id_extra = SourceLocationHash());
 
-struct MenuButtonOptions {
+struct MenuOpenButtonOptions {
     String text;
     TooltipString tooltip = k_nullopt;
     f32 width = layout::k_hug_contents;
 };
 
-Box MenuButton(GuiBuilder& builder,
-               Box parent,
-               MenuButtonOptions const& options,
-               u64 id_extra = SourceLocationHash());
+Box MenuOpenButton(GuiBuilder& builder,
+                   Box parent,
+                   MenuOpenButtonOptions const& options,
+                   u64 id_extra = SourceLocationHash());
 
 struct MenuItemOptions {
     String text;

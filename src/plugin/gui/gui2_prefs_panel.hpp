@@ -470,13 +470,13 @@ static void PackagesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContex
             menu_text = path::MakeDisplayPath(menu_text, {.compact_middle_sections = true}, builder.arena);
         }
 
-        auto const btn = MenuButton(builder,
-                                    row,
-                                    {
-                                        .text = menu_text,
-                                        .tooltip = "Select install location"_s,
-                                        .width = layout::k_fill_parent,
-                                    });
+        auto const btn = MenuOpenButton(builder,
+                                        row,
+                                        {
+                                            .text = menu_text,
+                                            .tooltip = "Select install location"_s,
+                                            .width = layout::k_fill_parent,
+                                        });
         if (btn.button_fired) builder.imgui.OpenPopupMenu(popup_id, btn.imgui_id);
 
         if (builder.imgui.IsPopupMenuOpen(popup_id))

@@ -181,6 +181,55 @@ static Margins ParamControlPadding() {
     };
 }
 
+Box DoPrevNextRow(GuiBuilder& builder, Box parent, f32 width) {
+    return DoBox(builder,
+                 {
+                     .parent = parent,
+                     .background_fill_colours = LiveColStruct(UiColMap::MidDarkSurface),
+                     .round_background_corners = 0b1111,
+                     .corner_rounding = LiveWw(UiSizeId::CornerRounding),
+                     .layout {
+                         .size = {width, layout::k_hug_contents},
+                         .contents_padding = ParamControlPadding(),
+                         .contents_direction = layout::Direction::Row,
+                         .contents_align = layout::Alignment::Middle,
+                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                     },
+                 });
+}
+
+PrevNextButtonsResult DoPrevNextButtons(GuiBuilder& builder, Box row) {
+    PrevNextButtonsResult result {};
+
+    auto const do_button = [&](String icon, String tooltip) {
+        auto const btn = DoBox(builder,
+                               {
+                                   .parent = row,
+                                   .id_extra = Hash(icon),
+                                   .text = icon,
+                                   .font = FontType::Icons,
+                                   .text_colours =
+                                       ColSet {
+                                           .base = LiveColStruct(UiColMap::MidIcon),
+                                           .hot = LiveColStruct(UiColMap::MidTextHot),
+                                           .active = LiveColStruct(UiColMap::MidTextOn),
+                                       },
+                                   .text_justification = TextJustification::Centred,
+                                   .layout {
+                                       .size = {LiveWw(UiSizeId::NextPrevButtonSize), k_font_body_size},
+                                   },
+                                   .tooltip = tooltip,
+                                   .button_behaviour = imgui::ButtonConfig {},
+                               });
+        return btn.button_fired;
+    };
+
+    result.prev_fired = do_button(ICON_FA_CARET_LEFT, "Previous"_s);
+    result.next_fired = do_button(ICON_FA_CARET_RIGHT, "Next"_s);
+
+    return result;
+}
+
 Box DoMenuParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,
@@ -201,27 +250,12 @@ Box DoMenuParameter(GuiState& g,
                                      },
                                  });
 
-    // Row containing left button, menu text, right button.
     auto const row =
-        DoBox(g.builder,
-              {
-                  .parent = container,
-                  .background_fill_colours = LiveColStruct(UiColMap::MidDarkSurface),
-                  .round_background_corners = 0b1111,
-                  .corner_rounding = LiveWw(UiSizeId::CornerRounding),
-                  .layout {
-                      .size = {auto_width ? layout::k_hug_contents : options.width, layout::k_hug_contents},
-                      .contents_padding = ParamControlPadding(),
-                      .contents_direction = layout::Direction::Row,
-                      .contents_align = layout::Alignment::Middle,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-              });
+        DoPrevNextRow(g.builder, container, auto_width ? layout::k_hug_contents : options.width);
 
     Optional<f32> new_val {};
 
     // Menu text button that opens a popup.
-    auto const popup_id = (imgui::Id)(SourceLocationHash() ^ param.info.id);
     auto const menu_btn =
         DoBox(g.builder,
               {
@@ -247,6 +281,8 @@ Box DoMenuParameter(GuiState& g,
                   }},
                   .button_behaviour = imgui::ButtonConfig {},
               });
+
+    auto const popup_id = (imgui::Id)(SourceLocationHash() ^ param.info.id);
     if (menu_btn.button_fired) g.builder.imgui.OpenPopupMenu(popup_id, menu_btn.imgui_id);
 
     // Popup menu with items.
@@ -260,36 +296,13 @@ Box DoMenuParameter(GuiState& g,
                           .viewport_config = k_default_popup_menu_viewport,
                       });
 
-    // Arrow buttons for prev/next.
-    auto const arrow_btn = [&](String icon, String tooltip, int direction) {
-        auto const btn = DoBox(g.builder,
-                               {
-                                   .parent = row,
-                                   .id_extra = Hash(icon),
-                                   .text = icon,
-                                   .font = FontType::Icons,
-                                   .text_colours =
-                                       ColSet {
-                                           .base = LiveColStruct(UiColMap::MidIcon),
-                                           .hot = LiveColStruct(UiColMap::MidTextHot),
-                                           .active = LiveColStruct(UiColMap::MidTextOn),
-                                       },
-                                   .text_justification = TextJustification::Centred,
-                                   .layout {
-                                       .size = {LiveWw(UiSizeId::NextPrevButtonSize), k_font_body_size},
-                                   },
-                                   .tooltip = tooltip,
-                                   .button_behaviour = imgui::ButtonConfig {},
-                               });
-        if (btn.button_fired) {
-            auto val = (f32)(param.IntValue<int>() + direction);
-            if (val < param.info.linear_range.min) val = param.info.linear_range.max;
-            if (val > param.info.linear_range.max) val = param.info.linear_range.min;
-            new_val = val;
-        }
-    };
-    arrow_btn(ICON_FA_CARET_LEFT, "Previous"_s, -1);
-    arrow_btn(ICON_FA_CARET_RIGHT, "Next"_s, +1);
+    auto const arrows = DoPrevNextButtons(g.builder, row);
+    if (arrows.prev_fired || arrows.next_fired) {
+        auto val = (f32)(param.IntValue<int>() + (arrows.prev_fired ? -1 : 1));
+        if (val < param.info.linear_range.min) val = param.info.linear_range.max;
+        if (val > param.info.linear_range.max) val = param.info.linear_range.min;
+        new_val = val;
+    }
 
     // Slider behaviour
     if (auto const viewport_r = BoxRect(g.builder, menu_btn)) {
@@ -602,21 +615,7 @@ Box DoIntParameter(GuiState& g,
                                      },
                                  });
 
-    // Row containing left button, dragger text, right button.
-    auto const row = DoBox(g.builder,
-                           {
-                               .parent = container,
-                               .background_fill_colours = LiveColStruct(UiColMap::MidDarkSurface),
-                               .round_background_corners = 0b1111,
-                               .corner_rounding = LiveWw(UiSizeId::CornerRounding),
-                               .layout {
-                                   .size = {options.width, layout::k_hug_contents},
-                                   .contents_padding = ParamControlPadding(),
-                                   .contents_direction = layout::Direction::Row,
-                                   .contents_align = layout::Alignment::Middle,
-                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                               },
-                           });
+    auto const row = DoPrevNextRow(g.builder, container, options.width);
 
     auto const format_value = [&]() -> String {
         if (options.midi_note_names)
@@ -707,36 +706,12 @@ Box DoIntParameter(GuiState& g,
         MacroAddDestinationRegion(g, window_r, param.info.index);
     }
 
-    // Arrow buttons for prev/next.
-    auto const arrow_btn = [&](String icon, String tooltip, int direction) {
-        auto const btn = DoBox(g.builder,
-                               {
-                                   .parent = row,
-                                   .id_extra = Hash(icon),
-                                   .text = icon,
-                                   .font = FontType::Icons,
-                                   .text_colours =
-                                       ColSet {
-                                           .base = LiveColStruct(UiColMap::MidIcon),
-                                           .hot = LiveColStruct(UiColMap::MidTextHot),
-                                           .active = LiveColStruct(UiColMap::MidTextOn),
-                                       },
-                                   .text_justification = TextJustification::Centred,
-                                   .layout {
-                                       .size = {LiveWw(UiSizeId::NextPrevButtonSize), k_font_body_size},
-                                   },
-                                   .tooltip = tooltip,
-                                   .button_behaviour = imgui::ButtonConfig {},
-                               });
-        if (btn.button_fired) {
-            auto val = (f32)(param.IntValue<int>() + direction);
-            val = Clamp(val, param.info.linear_range.min, param.info.linear_range.max);
-            new_val = val;
-            SetParameterValue(g.engine.processor, param.info.index, val, {});
-        }
-    };
-    arrow_btn(ICON_FA_CARET_LEFT, "Previous"_s, -1);
-    arrow_btn(ICON_FA_CARET_RIGHT, "Next"_s, +1);
+    auto const arrows = DoPrevNextButtons(g.builder, row);
+    if (arrows.prev_fired || arrows.next_fired) {
+        auto val = (f32)(param.IntValue<int>() + (arrows.prev_fired ? -1 : 1));
+        val = Clamp(val, param.info.linear_range.min, param.info.linear_range.max);
+        SetParameterValue(g.engine.processor, param.info.index, val, {});
+    }
 
     // Draw text input overlay after the row so it's on top.
     if (param_text_input_result) {

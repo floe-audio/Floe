@@ -66,3 +66,12 @@ Box DoIntParameter(GuiState& g,
                    Box parent,
                    DescribedParamValue const& param,
                    IntParameterComponentOptions const& options);
+
+// Reusable row with prev/next arrow buttons. Add your content to the row, then call DoPrevNextButtons.
+Box DoPrevNextRow(GuiBuilder& builder, Box parent, f32 width);
+
+struct PrevNextButtonsResult {
+    bool prev_fired;
+    bool next_fired;
+};
+PrevNextButtonsResult DoPrevNextButtons(GuiBuilder& builder, Box row);
