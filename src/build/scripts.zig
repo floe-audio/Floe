@@ -214,22 +214,33 @@ fn removeUnusedDefEntries(
 
         total_entries += 1;
 
-        // Parse category and name from the macro.
+        // Parse enum name from the macro.
+        // New format: X("Category", EnumName, ...)
+        // Skip the first quoted category string and extract the enum name.
         const after_prefix = trimmed[macro_prefix.len..];
-        const comma1 = std.mem.indexOfScalar(u8, after_prefix, ',') orelse {
+
+        // Find the end of the quoted category string
+        const quote1 = std.mem.indexOfScalar(u8, after_prefix, '"') orelse {
             try kept_lines.append(line);
             continue;
         };
-        const category = std.mem.trim(u8, after_prefix[0..comma1], " ");
+        const quote2 = std.mem.indexOfScalarPos(u8, after_prefix, quote1 + 1, '"') orelse {
+            try kept_lines.append(line);
+            continue;
+        };
+
+        // Find the comma after the category
+        const comma1 = std.mem.indexOfScalarPos(u8, after_prefix, quote2 + 1, ',') orelse {
+            try kept_lines.append(line);
+            continue;
+        };
 
         const rest = after_prefix[comma1 + 1 ..];
         const comma2 = std.mem.indexOfScalar(u8, rest, ',') orelse {
             try kept_lines.append(line);
             continue;
         };
-        const name = std.mem.trim(u8, rest[0..comma2], " ");
-
-        const combined = try std.fmt.allocPrint(allocator, "{s}{s}", .{ category, name });
+        const combined = std.mem.trim(u8, rest[0..comma2], " ");
 
         var found = false;
         for (all_contents) |contents| {
