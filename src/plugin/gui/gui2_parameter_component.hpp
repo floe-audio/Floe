@@ -51,3 +51,18 @@ Box DoButtonParameter(GuiState& g,
                       Box parent,
                       DescribedParamValue const& param,
                       ButtonParameterComponentOptions const& options = {});
+
+struct IntParameterComponentOptions {
+    f32 width; // Required, no auto-width.
+    bool greyed_out = false;
+    bool always_show_plus = false;
+    bool midi_note_names = false;
+    bool label = true;
+    String override_tooltip {};
+    String override_label {};
+};
+
+Box DoIntParameter(GuiState& g,
+                   Box parent,
+                   DescribedParamValue const& param,
+                   IntParameterComponentOptions const& options);

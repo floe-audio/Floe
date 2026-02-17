@@ -80,7 +80,7 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
         DoBox(builder,
               {
                   .parent = root,
-                  .background_fill_colours = Col {.c = Col::Surface2, .dark_mode = true},
+                  .background_fill_colours = Col {.c = Col::Surface0, .dark_mode = true},
                   .layout {
                       .size = {layout::k_fill_parent, one_pixel},
                   },
@@ -94,7 +94,7 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
                                 .layout {
                                     .size = layout::k_fill_parent,
                                     .contents_padding = {.lrtb = k_default_spacing},
-                                    .contents_gap = {20, 10},
+                                    .contents_gap = {8, 0},
                                     .contents_direction = layout::Direction::Row,
                                     .contents_multiline = true,
                                     .contents_align = layout::Alignment::Start,
@@ -111,9 +111,11 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
         auto const container = DoBox(builder,
                                      {
                                          .parent = grid,
+                                         .border_colours = Col {.c = Col::Overlay0, .dark_mode = true},
+                                         .round_background_corners = 0b1111,
                                          .layout {
                                              .size = layout::k_hug_contents,
-                                             .margins = {.b = 20},
+                                             .contents_padding = {.lrtb = 5},
                                              .contents_direction = layout::Direction::Column,
                                              .contents_align = layout::Alignment::Start,
                                          },
@@ -138,9 +140,7 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
                 break;
             }
             case ParamValueType::Bool: {
-                DoButtonParameter(g,
-                                  container,
-                                  g.engine.processor.main_params.DescribedValue(desc.index));
+                DoButtonParameter(g, container, g.engine.processor.main_params.DescribedValue(desc.index));
                 break;
             }
             case ParamValueType::Int: {
@@ -155,7 +155,7 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
                   .parent = container,
                   .text = desc.ModuleString(),
                   .size_from_text = true,
-                  .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+                  .text_colours = Col {.c = Col::Overlay2, .dark_mode = true},
                   .text_justification = TextJustification::Centred,
               });
     }

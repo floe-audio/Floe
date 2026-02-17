@@ -3,6 +3,7 @@
 
 #include "gui2_parameter_component.hpp"
 
+#include "common_infrastructure/audio_utils.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "gui/gui_drawing_helpers.hpp"
@@ -171,21 +172,22 @@ static void DoMenuParameterMenu(GuiState& g, ParamIndex param_index) {
     }
 }
 
+static Margins ParamControlPadding() {
+    return {
+        .l = LiveWw(UiSizeId::ParamControlPadL),
+        .r = LiveWw(UiSizeId::ParamControlPadR),
+        .t = LiveWw(UiSizeId::ParamControlPadT),
+        .b = LiveWw(UiSizeId::ParamControlPadB),
+    };
+}
+
 Box DoMenuParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,
                     MenuParameterComponentOptions const& options) {
     ASSERT(param.info.value_type == ParamValueType::Menu);
 
-    auto const btn_w = LiveWw(UiSizeId::NextPrevButtonSize);
-    auto const height = LiveWw(UiSizeId::ParamPopupButtonHeight);
-    Margins const row_padding {.l = LiveWw(UiSizeId::MenuButtonTextMarginL),
-                               .r = LiveWw(UiSizeId::ParamIntButtonMarginR)};
     bool const auto_width = options.width == 0;
-    auto const text_width =
-        auto_width
-            ? g.imgui.draw_list->fonts.Current()->LargestStringWidth(0, ParameterMenuItems(param.info.index))
-            : 0.0f;
 
     auto const container = DoBox(g.builder,
                                  {
@@ -200,20 +202,21 @@ Box DoMenuParameter(GuiState& g,
                                  });
 
     // Row containing left button, menu text, right button.
-    auto const row = DoBox(g.builder,
-                           {
-                               .parent = container,
-                               .background_fill_colours = LiveColStruct(UiColMap::MidDarkSurface),
-                               .round_background_corners = 0b1111,
-                               .corner_rounding = LiveWw(UiSizeId::CornerRounding),
-                               .layout {
-                                   .size = {auto_width ? layout::k_hug_contents : options.width, height},
-                                   .contents_padding = row_padding,
-                                   .contents_direction = layout::Direction::Row,
-                                   .contents_align = layout::Alignment::Middle,
-                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                               },
-                           });
+    auto const row =
+        DoBox(g.builder,
+              {
+                  .parent = container,
+                  .background_fill_colours = LiveColStruct(UiColMap::MidDarkSurface),
+                  .round_background_corners = 0b1111,
+                  .corner_rounding = LiveWw(UiSizeId::CornerRounding),
+                  .layout {
+                      .size = {auto_width ? layout::k_hug_contents : options.width, layout::k_hug_contents},
+                      .contents_padding = ParamControlPadding(),
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Middle,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+              });
 
     Optional<f32> new_val {};
 
@@ -233,7 +236,10 @@ Box DoMenuParameter(GuiState& g,
                   .text_justification = TextJustification::CentredLeft,
                   .text_overflow = TextOverflowType::ShowDotsOnRight,
                   .layout {
-                      .size = {auto_width ? text_width : layout::k_fill_parent, height},
+                      .size = {auto_width ? g.imgui.draw_list->fonts.Current()
+                                                ->LargestStringWidth(0, ParameterMenuItems(param.info.index))
+                                          : layout::k_fill_parent,
+                               k_font_body_size},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
                       if (options.override_tooltip.size) return options.override_tooltip;
@@ -270,7 +276,7 @@ Box DoMenuParameter(GuiState& g,
                                        },
                                    .text_justification = TextJustification::Centred,
                                    .layout {
-                                       .size = {btn_w, height},
+                                       .size = {LiveWw(UiSizeId::NextPrevButtonSize), k_font_body_size},
                                    },
                                    .tooltip = tooltip,
                                    .button_behaviour = imgui::ButtonConfig {},
@@ -343,7 +349,7 @@ Box DoKnobParameter(GuiState& g,
     auto const container = DoBox(g.builder,
                                  {
                                      .parent = parent,
-                                     .id_extra = (u64)param.info.id,
+                                     .id_extra = param.info.id,
                                      .layout {
                                          .size = layout::k_hug_contents,
                                          .contents_direction = layout::Direction::Column,
@@ -505,7 +511,6 @@ Box DoButtonParameter(GuiState& g,
 
     auto const label_text = options.override_label.size ? options.override_label : param.info.gui_label;
     bool const auto_width = options.width == 0;
-    auto const text_width = auto_width ? g.imgui.draw_list->fonts.CalcTextSize(label_text, {}).x : 0.0f;
 
     auto const container =
         DoBox(g.builder,
@@ -563,7 +568,9 @@ Box DoButtonParameter(GuiState& g,
               .text_justification = TextJustification::CentredLeft,
               .parent_dictates_hot_and_active = true,
               .layout {
-                  .size = {auto_width ? text_width : layout::k_fill_parent, height},
+                  .size = {auto_width ? g.imgui.draw_list->fonts.CalcTextSize(label_text, {}).x
+                                      : layout::k_fill_parent,
+                           height},
               },
           });
 
@@ -577,26 +584,193 @@ Box DoButtonParameter(GuiState& g,
     return container;
 }
 
-#if 0
+Box DoIntParameter(GuiState& g,
+                   Box parent,
+                   DescribedParamValue const& param,
+                   IntParameterComponentOptions const& options) {
+    ASSERT(param.info.value_type == ParamValueType::Int);
 
-Box DoIntParameter(GuiState& g, Box parent, DescribedParamValue const& param) {
-    auto& builder = g.builder;
+    auto const container = DoBox(g.builder,
+                                 {
+                                     .parent = parent,
+                                     .id_extra = (u64)param.info.id,
+                                     .layout {
+                                         .size = layout::k_hug_contents,
+                                         .contents_gap = LiveWw(UiSizeId::ParamComponentLabelGapY),
+                                         .contents_direction = layout::Direction::Column,
+                                         .contents_align = layout::Alignment::Start,
+                                     },
+                                 });
 
-    ASSERT(param.info.value_type == ParamValueType::Float);
+    // Row containing left button, dragger text, right button.
+    auto const row = DoBox(g.builder,
+                           {
+                               .parent = container,
+                               .background_fill_colours = LiveColStruct(UiColMap::MidDarkSurface),
+                               .round_background_corners = 0b1111,
+                               .corner_rounding = LiveWw(UiSizeId::CornerRounding),
+                               .layout {
+                                   .size = {options.width, layout::k_hug_contents},
+                                   .contents_padding = ParamControlPadding(),
+                                   .contents_direction = layout::Direction::Row,
+                                   .contents_align = layout::Alignment::Middle,
+                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                               },
+                           });
 
-    auto const type = param.info.IsLayerParam()
-                          ? LayoutType::Layer
-                          : (param.info.IsEffectParam() ? LayoutType::Effect : LayoutType::Generic);
+    auto const format_value = [&]() -> String {
+        if (options.midi_note_names)
+            return g.scratch_arena.Clone(NoteName(CheckedCast<u7>(param.IntValue<int>())));
+        auto const format_str = options.always_show_plus ? "{+}"_s : "{}"_s;
+        return fmt::Format(g.scratch_arena, format_str, param.IntValue<int>());
+    };
 
-    Margins margins {.b = LiveWw(UiSizeId::ParamComponentLabelGapY)};
+    auto const display_string = format_value();
+    Optional<f32> new_val {};
+    Optional<imgui::TextInputResult> param_text_input_result {};
 
-    auto width = LiveWw(UiSizeId::FXDraggerWidth);
-    auto height = LiveWw(UiSizeId::FXDraggerHeight);
-    margins.t += LiveWw(UiSizeId::FXDraggerMarginT);
-    margins.b += LiveWw(UiSizeId::FXDraggerMarginB);
+    // Dragger text area.
+    auto const dragger_box =
+        DoBox(g.builder,
+              {
+                  .parent = row,
+                  .text = display_string,
+                  .text_colours = Colours {options.greyed_out ? LiveColStruct(UiColMap::MidTextDimmed)
+                                                              : LiveColStruct(UiColMap::MidText)},
+                  .text_justification = TextJustification::Centred,
+                  .text_overflow = TextOverflowType::ShowDotsOnRight,
+                  .layout {
+                      .size = {layout::k_fill_parent, k_font_body_size},
+                  },
+                  .tooltip = FunctionRef<String()> {[&]() -> String {
+                      if (options.override_tooltip.size) return options.override_tooltip;
+                      return ParamTooltipText(param, g.builder.arena);
+                  }},
+              });
 
-    // TODO: modern GuiBuilder version of:
-    // bool Dragger(GuiState& g, DescribedParamValue const& param, Rect r, Style const& style)
+    // Dragger behaviour.
+    if (auto const viewport_r = BoxRect(g.builder, dragger_box)) {
+        auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
+
+        auto val = (f32)param.IntValue<int>();
+
+        imgui::TextInputConfig const text_input_cfg = {
+            .chars_decimal = !options.midi_note_names,
+            .chars_note_names = options.midi_note_names,
+            .tab_focuses_next_input = true,
+            .centre_align = true,
+            .escape_unfocuses = true,
+            .select_all_when_opening = true,
+        };
+
+        auto const dragger_result = g.builder.imgui.DraggerBehaviour({
+            .rect_in_window_coords = window_r,
+            .id = dragger_box.imgui_id,
+            .text = display_string,
+            .min = param.info.linear_range.min,
+            .max = param.info.linear_range.max,
+            .value = val,
+            .default_value = param.info.default_linear_value,
+            .text_input_button_cfg {
+                .mouse_button = MouseButton::Left,
+                .event = MouseButtonEvent::DoubleClick,
+            },
+            .text_input_cfg = text_input_cfg,
+            .slider_cfg {
+                .sensitivity = 15,
+                .slower_with_shift = true,
+                .default_on_modifer = true,
+            },
+        });
+
+        if (dragger_result.new_string_value) {
+            if (options.midi_note_names) {
+                if (auto const midi_note = MidiNoteFromName(*dragger_result.new_string_value))
+                    new_val = (f32)midi_note.Value();
+            } else if (auto const o = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal)) {
+                new_val = (f32)Clamp((int)o.Value(),
+                                     (int)param.info.linear_range.min,
+                                     (int)param.info.linear_range.max);
+            }
+        }
+        if (dragger_result.value_changed) new_val = (f32)(int)val;
+        param_text_input_result = dragger_result.text_input_result;
+
+        if (g.imgui.WasJustActivated(dragger_box.imgui_id))
+            ParameterJustStartedMoving(g.engine.processor, param.info.index);
+
+        if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+
+        if (g.imgui.WasJustDeactivated(dragger_box.imgui_id))
+            ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+
+        MacroAddDestinationRegion(g, window_r, param.info.index);
+    }
+
+    // Arrow buttons for prev/next.
+    auto const arrow_btn = [&](String icon, String tooltip, int direction) {
+        auto const btn = DoBox(g.builder,
+                               {
+                                   .parent = row,
+                                   .id_extra = Hash(icon),
+                                   .text = icon,
+                                   .font = FontType::Icons,
+                                   .text_colours =
+                                       ColSet {
+                                           .base = LiveColStruct(UiColMap::MidIcon),
+                                           .hot = LiveColStruct(UiColMap::MidTextHot),
+                                           .active = LiveColStruct(UiColMap::MidTextOn),
+                                       },
+                                   .text_justification = TextJustification::Centred,
+                                   .layout {
+                                       .size = {LiveWw(UiSizeId::NextPrevButtonSize), k_font_body_size},
+                                   },
+                                   .tooltip = tooltip,
+                                   .button_behaviour = imgui::ButtonConfig {},
+                               });
+        if (btn.button_fired) {
+            auto val = (f32)(param.IntValue<int>() + direction);
+            val = Clamp(val, param.info.linear_range.min, param.info.linear_range.max);
+            new_val = val;
+            SetParameterValue(g.engine.processor, param.info.index, val, {});
+        }
+    };
+    arrow_btn(ICON_FA_CARET_LEFT, "Previous"_s, -1);
+    arrow_btn(ICON_FA_CARET_RIGHT, "Next"_s, +1);
+
+    // Draw text input overlay after the row so it's on top.
+    if (param_text_input_result) {
+        if (auto const rel_r = BoxRect(g.builder, dragger_box)) {
+            auto const r = g.builder.imgui.ViewportRectToWindowRect(*rel_r);
+            DrawParameterTextInput(g.builder.imgui, r, *param_text_input_result);
+        }
+    }
+
+    // Right-click menu.
+    AddMidiLearnRightClickBehaviour(g, dragger_box, param);
+
+    // Focus the text input if requested.
+    if (g.builder.IsInputAndRenderPass()) {
+        if (g.param_text_editor_to_open && *g.param_text_editor_to_open == param.info.index) {
+            g.param_text_editor_to_open.Clear();
+            g.imgui.SetTextInputFocus(dragger_box.imgui_id, display_string, false);
+        }
+    }
+
+    // Label.
+    if (options.label)
+        DoBox(g.builder,
+              {
+                  .parent = container,
+                  .text = options.override_label.size ? options.override_label : param.info.gui_label,
+                  .text_colours = options.greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                                     : Colours {LiveColStruct(UiColMap::MidText)},
+                  .text_justification = TextJustification::Centred,
+                  .text_overflow = TextOverflowType::ShowDotsOnRight,
+                  .layout {
+                      .size = {layout::k_fill_parent, k_font_body_size},
+                  },
+              });
+
+    return container;
 }
-
-#endif
