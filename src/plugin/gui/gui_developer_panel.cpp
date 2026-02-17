@@ -302,21 +302,21 @@ static bool DevGuiMenu(DeveloperPanel& g, Rect r, Span<String const> items, int&
 }
 
 constexpr String k_ui_sizes_categories[ToInt(UiSizeId::Count)] = {
-#define GUI_SIZE(cat, n, v) #cat,
+#define X(cat, n, v) #cat,
 #include SIZES_DEF_FILENAME
-#undef GUI_SIZE
+#undef X
 };
 
 constexpr String const k_ui_col_map_names[ToInt(UiColMap::Count)] = {
-#define GUI_COL_MAP(cat, n, col_id, alpha, dark_mode) #n,
+#define X(cat, n, col_id, alpha, dark_mode) #n,
 #include COLOUR_MAP_DEF_FILENAME
-#undef GUI_COL_MAP
+#undef X
 };
 
 constexpr String k_ui_col_map_categories[ToInt(UiColMap::Count)] = {
-#define GUI_COL_MAP(cat, n, col_id, alpha, dark_mode) #cat,
+#define X(cat, n, col_id, alpha, dark_mode) #cat,
 #include COLOUR_MAP_DEF_FILENAME
-#undef GUI_COL_MAP
+#undef X
 };
 
 static String UiStyleFilepath(Allocator& a, String filename) {
@@ -346,7 +346,7 @@ static void WriteSizesFile(LiveEditGui const& gui) {
         auto const sz = gui.ui_sizes[i];
         String const name = gui.ui_sizes_names[i];
         auto cat = k_ui_sizes_categories[i];
-        auto o = fmt::FormatToWriter(outcome.Value().Writer(), "GUI_SIZE({}, {}, {.6}f)\n", cat, name, sz);
+        auto o = fmt::FormatToWriter(outcome.Value().Writer(), "X({}, {}, {.6}f)\n", cat, name, sz);
         if (o.HasError())
             LogError(ModuleName::Gui,
                      "could not write to file {} for reason {}",
@@ -371,7 +371,7 @@ static void WriteColourMapFile(LiveEditGui const& gui) {
         auto name = k_ui_col_map_names[i];
         auto cat = k_ui_col_map_categories[i];
         auto o = fmt::FormatToWriter(outcome.Value().Writer(),
-                                     "GUI_COL_MAP({}, {}, {}, {}, {})\n",
+                                     "X({}, {}, {}, {}, {})\n",
                                      cat,
                                      name,
                                      EnumToString(v.col.c),

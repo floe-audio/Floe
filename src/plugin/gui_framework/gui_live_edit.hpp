@@ -23,16 +23,16 @@
 #define COLOUR_MAP_DEF_FILENAME "gui_colour_map.def"
 
 enum class UiSizeId : u16 {
-#define GUI_SIZE(cat, n, v) cat##n,
+#define X(cat, n, v) cat##n,
 #include SIZES_DEF_FILENAME
-#undef GUI_SIZE
+#undef X
     Count
 };
 
 enum class UiColMap : u16 {
-#define GUI_COL_MAP(cat, n, col_id, alpha, dark_mode) cat##n,
+#define X(cat, n, col_id, alpha, dark_mode) cat##n,
 #include COLOUR_MAP_DEF_FILENAME
-#undef GUI_COL_MAP
+#undef X
     Count
 };
 

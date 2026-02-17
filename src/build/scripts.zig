@@ -156,19 +156,16 @@ fn runRemoveUnusedGuiDefs(context: *Context) !u8 {
 
     const DefCheck = struct {
         def_file: []const u8,
-        macro_prefix: []const u8,
         enum_name: []const u8,
     };
 
     const checks = [_]DefCheck{
         .{
             .def_file = "src/plugin/gui/live_edit_defs/gui_sizes.def",
-            .macro_prefix = "GUI_SIZE(",
             .enum_name = "UiSizeId",
         },
         .{
             .def_file = "src/plugin/gui/live_edit_defs/gui_colour_map.def",
-            .macro_prefix = "GUI_COL_MAP(",
             .enum_name = "UiColMap",
         },
     };
@@ -177,7 +174,7 @@ fn runRemoveUnusedGuiDefs(context: *Context) !u8 {
     const stdout = std.io.getStdOut().writer();
 
     for (checks) |check| {
-        const removed = try removeUnusedDefEntries(allocator, all_contents.items, check.def_file, check.macro_prefix, check.enum_name, stdout);
+        const removed = try removeUnusedDefEntries(allocator, all_contents.items, check.def_file, check.enum_name, stdout);
         total_removed += removed;
     }
 
@@ -192,7 +189,6 @@ fn removeUnusedDefEntries(
     allocator: std.mem.Allocator,
     all_contents: []const []const u8,
     def_file: []const u8,
-    macro_prefix: []const u8,
     enum_name: []const u8,
     stdout: anytype,
 ) !usize {
@@ -200,6 +196,8 @@ fn removeUnusedDefEntries(
         std.log.err("Failed to read {s}: {}\n", .{ def_file, err });
         return error.ReadFailed;
     };
+
+    const macro_prefix = "X(";
 
     var kept_lines = std.ArrayList([]const u8).init(allocator);
     var removed_count: usize = 0;
