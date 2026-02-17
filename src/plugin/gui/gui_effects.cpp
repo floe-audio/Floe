@@ -1148,8 +1148,7 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
         {
             auto style = buttons::EffectHeading(
                 imgui,
-                colour::ChangeBrightness(GetFxCols(imgui, dragging_fx_unit->fx->type).back | 0xff000000,
-                                         0.7f));
+                ChangeBrightness(GetFxCols(imgui, dragging_fx_unit->fx->type).back | 0xff000000, 0.7f));
             style.draw_with_overlay_graphics = true;
 
             auto const text = k_effect_info[ToInt(dragging_fx_unit->fx->type)].name;

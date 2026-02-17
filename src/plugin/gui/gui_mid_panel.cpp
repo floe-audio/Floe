@@ -48,7 +48,7 @@ static void DoBlurredBackground(GuiState& g,
                 g.imgui.draw_list->PushClipRect(clipped_to.Min(), clipped_to.Max());
                 DEFER { g.imgui.draw_list->PopClipRect(); };
 
-                auto const image_draw_colour = colour::ToU32({
+                auto const image_draw_colour = ToU32({
                     .a = (u8)(opacity * 255),
                     .b = 255,
                     .g = 255,
@@ -84,7 +84,7 @@ static void DoOverlayGradient(GuiState& g, Rect r) {
 
     auto const col_value =
         (u8)(Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOverlayGradientColour1) / 100.0f) * 255);
-    auto const col = colour::ToU32({
+    auto const col = ToU32({
         .a = (u8)(Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOverlayGradientOpacity1) / 100.0f) * 255),
         .b = col_value,
         .g = col_value,

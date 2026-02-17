@@ -108,7 +108,7 @@ void FontAtlas::GetTexDataAsRGBA32(unsigned char** out_pixels,
         unsigned char const* src = pixels;
         unsigned int* dst = tex_pixels_rgb_a32;
         for (int n = tex_width * tex_height; n > 0; n--)
-            *dst++ = colour::Rgba(255, 255, 255, (u8)(*src++) / 255.0f);
+            *dst++ = Rgba(255, 255, 255, (u8)(*src++) / 255.0f);
     }
 
     *out_pixels = (unsigned char*)tex_pixels_rgb_a32;

@@ -4,8 +4,8 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
+#include "gui_framework/colours.hpp"
 #include "gui_framework/gui_imgui.hpp"
-#include "gui_framework/style.hpp"
 #include "processing_utils/peak_meter.hpp"
 
 void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding = {});

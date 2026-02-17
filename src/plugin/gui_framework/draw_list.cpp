@@ -374,7 +374,7 @@ void DrawList::AddPolyline(Span<f32x2 const> points_span,
         // Anti-aliased stroke
         // const f32 AA_SIZE = 1.0f;
         f32 const aa_size = renderer.stroke_anti_alias;
-        u32 const col_trans = col & colour::Rgba(255, 255, 255, 0);
+        u32 const col_trans = col & Rgba(255, 255, 255, 0);
 
         auto const idx_count = thick_line ? count * 18 : count * 12;
         auto const vtx_count = thick_line ? points_count * 4 : points_count * 3;
@@ -591,7 +591,7 @@ void DrawList::AddConvexPolyFilled(Span<f32x2 const> points_span, u32 col, bool 
     if (anti_aliased) {
         // Anti-aliased Fill
         auto const aa_size = renderer.fill_anti_alias;
-        auto const col_trans = col & colour::Rgba(255, 255, 255, 0);
+        auto const col_trans = col & Rgba(255, 255, 255, 0);
         auto const idx_count = ((points_count - 2) * 3) + (points_count * 6);
         auto const vtx_count = (points_count * 2);
         PrimReserve(idx_count, vtx_count);
@@ -815,7 +815,7 @@ void DrawList::PathRect(f32x2 a, f32x2 b, f32 rounding, u4 rounding_corners) {
 }
 
 void DrawList::AddLine(f32x2 a, f32x2 b, u32 col, f32 thickness) {
-    if ((col & colour::k_alpha_mask) == 0) return;
+    if ((col & k_alpha_mask) == 0) return;
     PathLineTo(a + f32x2 {0.5f, 0.5f});
     PathLineTo(b + f32x2 {0.5f, 0.5f});
     PathStroke(col, false, thickness);
@@ -981,13 +981,13 @@ void DrawList::AddNonAABox(f32x2 a, f32x2 b, u32 col, f32 thickness) {
 
 // a: upper-left, b: lower-right. we don't render 1 px sized rectangles properly.
 void DrawList::AddRect(f32x2 a, f32x2 b, u32 col, f32 rounding, u4 rounding_corners_flags, f32 thickness) {
-    if ((col & colour::k_alpha_mask) == 0) return;
+    if ((col & k_alpha_mask) == 0) return;
     PathRect(a + f32x2 {0.5f, 0.5f}, b - f32x2 {0.5f, 0.5f}, rounding, rounding_corners_flags);
     PathStroke(col, true, thickness);
 }
 
 void DrawList::AddRectFilled(f32x2 a, f32x2 b, u32 col, f32 rounding, u4 rounding_corners_flags) {
-    if ((col & colour::k_alpha_mask) == 0) return;
+    if ((col & k_alpha_mask) == 0) return;
     if (rounding > 0.0f) {
         PathRect(a, b, rounding, rounding_corners_flags);
         PathFill(col);
@@ -1003,7 +1003,7 @@ void DrawList::AddRectFilledMultiColor(f32x2 a,
                                        u32 col_upr_right,
                                        u32 col_bot_right,
                                        u32 col_bot_left) {
-    if (((col_upr_left | col_upr_right | col_bot_right | col_bot_left) & colour::k_alpha_mask) == 0) return;
+    if (((col_upr_left | col_upr_right | col_bot_right | col_bot_left) & k_alpha_mask) == 0) return;
 
     f32x2 const uv = fonts.atlas.tex_uv_white_pixel;
     PrimReserve(6, 4);
@@ -1027,7 +1027,7 @@ void DrawList::AddQuadFilledMultiColor(f32x2 upr_left,
                                        u32 col_upr_right,
                                        u32 col_bot_right,
                                        u32 col_bot_left) {
-    if (((col_upr_left | col_upr_right | col_bot_right | col_bot_left) & colour::k_alpha_mask) == 0) return;
+    if (((col_upr_left | col_upr_right | col_bot_right | col_bot_left) & k_alpha_mask) == 0) return;
 
     f32x2 const uv = fonts.atlas.tex_uv_white_pixel;
     PrimReserve(6, 4);
@@ -1044,7 +1044,7 @@ void DrawList::AddQuadFilledMultiColor(f32x2 upr_left,
 }
 
 void DrawList::AddQuad(f32x2 a, f32x2 b, f32x2 c, f32x2 d, u32 col, f32 thickness) {
-    if ((col & colour::k_alpha_mask) == 0) return;
+    if ((col & k_alpha_mask) == 0) return;
 
     PathLineTo(a);
     PathLineTo(b);
@@ -1054,7 +1054,7 @@ void DrawList::AddQuad(f32x2 a, f32x2 b, f32x2 c, f32x2 d, u32 col, f32 thicknes
 }
 
 void DrawList::AddQuadFilled(f32x2 a, f32x2 b, f32x2 c, f32x2 d, u32 col) {
-    if ((col & colour::k_alpha_mask) == 0) return;
+    if ((col & k_alpha_mask) == 0) return;
 
     PathLineTo(a);
     PathLineTo(b);
@@ -1064,7 +1064,7 @@ void DrawList::AddQuadFilled(f32x2 a, f32x2 b, f32x2 c, f32x2 d, u32 col) {
 }
 
 void DrawList::AddTriangle(f32x2 a, f32x2 b, f32x2 c, u32 col, f32 thickness) {
-    if ((col & colour::k_alpha_mask) == 0) return;
+    if ((col & k_alpha_mask) == 0) return;
 
     PathLineTo(a);
     PathLineTo(b);
@@ -1073,7 +1073,7 @@ void DrawList::AddTriangle(f32x2 a, f32x2 b, f32x2 c, u32 col, f32 thickness) {
 }
 
 void DrawList::AddTriangleFilled(f32x2 a, f32x2 b, f32x2 c, u32 col) {
-    if ((col & colour::k_alpha_mask) == 0) return;
+    if ((col & k_alpha_mask) == 0) return;
 
     PathLineTo(a);
     PathLineTo(b);
@@ -1082,7 +1082,7 @@ void DrawList::AddTriangleFilled(f32x2 a, f32x2 b, f32x2 c, u32 col) {
 }
 
 void DrawList::AddCircle(f32x2 centre, f32 radius, u32 col, u32 num_segments, f32 thickness) {
-    if ((col & colour::k_alpha_mask) == 0) return;
+    if ((col & k_alpha_mask) == 0) return;
 
     f32 const a_max = k_pi<> * 2.0f * ((f32)num_segments - 1.0f) / (f32)num_segments;
     PathArcTo(centre, radius - 0.5f, 0.0f, a_max, num_segments);
@@ -1090,7 +1090,7 @@ void DrawList::AddCircle(f32x2 centre, f32 radius, u32 col, u32 num_segments, f3
 }
 
 void DrawList::AddCircleFilled(f32x2 centre, f32 radius, u32 col, u32 num_segments) {
-    if ((col & colour::k_alpha_mask) == 0) return;
+    if ((col & k_alpha_mask) == 0) return;
 
     f32 const a_max = k_pi<> * 2.0f * ((f32)num_segments - 1.0f) / (f32)num_segments;
     PathArcTo(centre, radius, 0.0f, a_max, num_segments);
@@ -1104,7 +1104,7 @@ void DrawList::AddBezierCurve(f32x2 pos0,
                               u32 col,
                               f32 thickness,
                               u32 num_segments) {
-    if ((col & colour::k_alpha_mask) == 0) return;
+    if ((col & k_alpha_mask) == 0) return;
 
     PathLineTo(pos0);
     PathBezierCurveTo(cp0, cp1, pos1, num_segments);
@@ -1273,7 +1273,7 @@ void DrawList::AddTextInRect(Rect r, u32 col, String str, AddTextInRectOptions c
 }
 
 void DrawList::AddText(f32x2 pos, u32 col, String str, AddTextOptions const& options) {
-    if ((col & colour::k_alpha_mask) == 0) return;
+    if ((col & k_alpha_mask) == 0) return;
     if (str.size == 0) return;
 
     auto const clip_rect = clip_rect_stack.Back();
@@ -1324,14 +1324,14 @@ void DrawList::ShadeVertsLinearColorGradientSetAlpha(DrawList* draw_list,
     auto const gradient_inv_length2 = 1.0f / LengthSqr(gradient_extent);
     auto const vert_start = draw_list->vtx_buffer.data + vert_start_idx;
     auto const vert_end = draw_list->vtx_buffer.data + vert_end_idx;
-    auto const col0_r = (f32)((int)(col0 >> colour::k_red_shift) & 0xFF);
-    auto const col0_g = (f32)((int)(col0 >> colour::k_green_shift) & 0xFF);
-    auto const col0_b = (f32)((int)(col0 >> colour::k_blue_shift) & 0xFF);
-    auto const col0_a = (f32)((int)(col0 >> colour::k_alpha_shift) & 0xFF);
-    auto const col_delta_r = ((f32)((int)(col1 >> colour::k_red_shift) & 0xFF) - col0_r);
-    auto const col_delta_g = ((f32)((int)(col1 >> colour::k_green_shift) & 0xFF) - col0_g);
-    auto const col_delta_b = ((f32)((int)(col1 >> colour::k_blue_shift) & 0xFF) - col0_b);
-    auto const col_delta_a = ((f32)((int)(col1 >> colour::k_alpha_shift) & 0xFF) - col0_a);
+    auto const col0_r = (f32)((int)(col0 >> k_red_shift) & 0xFF);
+    auto const col0_g = (f32)((int)(col0 >> k_green_shift) & 0xFF);
+    auto const col0_b = (f32)((int)(col0 >> k_blue_shift) & 0xFF);
+    auto const col0_a = (f32)((int)(col0 >> k_alpha_shift) & 0xFF);
+    auto const col_delta_r = ((f32)((int)(col1 >> k_red_shift) & 0xFF) - col0_r);
+    auto const col_delta_g = ((f32)((int)(col1 >> k_green_shift) & 0xFF) - col0_g);
+    auto const col_delta_b = ((f32)((int)(col1 >> k_blue_shift) & 0xFF) - col0_b);
+    auto const col_delta_a = ((f32)((int)(col1 >> k_alpha_shift) & 0xFF) - col0_a);
     for (auto vert = vert_start; vert < vert_end; vert++) {
         auto const d = Dot(vert->pos - gradient_p0, gradient_extent);
         auto const t = Clamp(d * gradient_inv_length2, 0.0f, 1.0f);
@@ -1339,13 +1339,12 @@ void DrawList::ShadeVertsLinearColorGradientSetAlpha(DrawList* draw_list,
         auto const g = (u32)(col0_g + (col_delta_g * t));
         auto const b = (u32)(col0_b + (col_delta_b * t));
         auto const a = (u32)(col0_a + (col_delta_a * t));
-        vert->col = (r << colour::k_red_shift) | (g << colour::k_green_shift) | (b << colour::k_blue_shift) |
-                    (a << colour::k_alpha_shift);
+        vert->col = (r << k_red_shift) | (g << k_green_shift) | (b << k_blue_shift) | (a << k_alpha_shift);
     }
 }
 
 void DrawList::AddImage(TextureHandle user_texture_id, f32x2 a, f32x2 b, f32x2 uv0, f32x2 uv1, u32 col) {
-    if ((col & colour::k_alpha_mask) == 0) return;
+    if ((col & k_alpha_mask) == 0) return;
     if (user_texture_id == renderer.invalid_texture) return;
 
     // FIXME-OPT: This is wasting draw calls.
@@ -1366,7 +1365,7 @@ void DrawList::AddImageRounded(TextureHandle user_texture_id,
                                u32 col,
                                f32 rounding,
                                u4 rounding_corners) {
-    if ((col & colour::k_alpha_mask) == 0) return;
+    if ((col & k_alpha_mask) == 0) return;
     if (user_texture_id == renderer.invalid_texture) return;
 
     if (rounding <= 0.0f || (u8)rounding_corners == 0) {

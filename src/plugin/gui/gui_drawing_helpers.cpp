@@ -9,6 +9,7 @@
 #include "gui_framework/fonts.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
+#include "gui_framework/style.hpp"
 
 void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding_opt) {
     auto const rounding = rounding_opt ? *rounding_opt : LiveSize(UiSizeId::CornerRounding);
@@ -30,10 +31,9 @@ void DrawVoiceMarkerLine(imgui::Context const& imgui,
         if (tail_size > 1) {
             auto const aa = imgui.draw_list->renderer.fill_anti_alias;
             imgui.draw_list->renderer.fill_anti_alias = false;
-            auto const darkened_col =
-                colour::ChangeBrightness(LiveCol(UiColMap::WaveformLoopVoiceMarkers), 0.7f);
-            auto const col = colour::WithAlphaU8(darkened_col, (u8)MapFrom01(opacity, 10, 40));
-            auto const transparent_col = colour::WithAlphaU8(darkened_col, 0);
+            auto const darkened_col = ChangeBrightness(LiveCol(UiColMap::WaveformLoopVoiceMarkers), 0.7f);
+            auto const col = WithAlphaU8(darkened_col, (u8)MapFrom01(opacity, 10, 40));
+            auto const transparent_col = WithAlphaU8(darkened_col, 0);
 
             if (upper_line_opt) {
                 auto& upper_line = *upper_line_opt;
@@ -62,8 +62,7 @@ void DrawVoiceMarkerLine(imgui::Context const& imgui,
     {
         auto const aa = imgui.draw_list->renderer.anti_aliased_lines;
         imgui.draw_list->renderer.anti_aliased_lines = false;
-        auto const col =
-            colour::WithAlphaU8(LiveCol(UiColMap::WaveformLoopVoiceMarkers), (u8)(opacity * 255.0f));
+        auto const col = WithAlphaU8(LiveCol(UiColMap::WaveformLoopVoiceMarkers), (u8)(opacity * 255.0f));
 
         imgui.draw_list->AddLine(pos, pos + f32x2 {0, height}, col);
         imgui.draw_list->renderer.anti_aliased_lines = aa;
@@ -106,7 +105,7 @@ void DrawTextInput(imgui::Context const& imgui,
     if (result.cursor_rect) imgui.draw_list->AddRectFilled(*result.cursor_rect, ToU32(config.cursor_col));
 
     imgui.draw_list->AddText(result.text_pos,
-                             colour::WithAlphaU8(ToU32(config.text_col), result.is_placeholder ? 140 : 255),
+                             WithAlphaU8(ToU32(config.text_col), result.is_placeholder ? 140 : 255),
                              result.text,
                              {});
 }
@@ -240,7 +239,7 @@ void DrawPeakMeter(imgui::Context& imgui, Rect r, StereoPeakMeter const& level, 
     auto const rounding = LiveSize(UiSizeId::CornerRounding);
 
     {
-        // constexpr auto k_channel_col = colour::WithAlphaF(ToU32(ColType::Background0), 0.2f);
+        // constexpr auto k_channel_col = WithAlphaF(ToU32(ColType::Background0), 0.2f);
         {
             auto l_channel = padded_r;
             l_channel.w = w;

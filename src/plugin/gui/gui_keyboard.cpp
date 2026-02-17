@@ -174,9 +174,9 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
     auto const overlay_key = [&](s32 key, Rect key_rect, UiColMap col_index) {
         auto const num_active_voices = voices_per_midi_key[(usize)key].Load(LoadMemoryOrder::Relaxed);
         if (num_active_voices != 0) {
-            auto overlay = colour::FromU32(LiveCol(col_index));
+            auto overlay = FromU32(LiveCol(col_index));
             overlay.a = (u8)Min(255, overlay.a + (40 * num_active_voices));
-            auto overlay_u32 = colour::ToU32(overlay);
+            auto overlay_u32 = ToU32(overlay);
             imgui.draw_list->AddRectFilled(key_rect.Min(),
                                            f32x2 {key_rect.Right(), key_rect.y + active_voice_marker_h},
                                            overlay_u32);
@@ -311,9 +311,9 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
     auto const text_gap = GuiIo().WwToPixels(options.text_gap);
 
     auto const capsule_cols = Array {
-        colour::Rgba(80, 90, 105, 1.0f), // Layer 1 - Cool blue-grey
-        colour::Rgba(105, 90, 80, 1.0f), // Layer 2 - Warm orange-grey
-        colour::Rgba(100, 85, 100, 1.0f), // Layer 3 - Purple-grey
+        Rgba(80, 90, 105, 1.0f), // Layer 1 - Cool blue-grey
+        Rgba(105, 90, 80, 1.0f), // Layer 2 - Warm orange-grey
+        Rgba(100, 85, 100, 1.0f), // Layer 3 - Purple-grey
     };
     auto const line_cols = capsule_cols;
 
@@ -482,9 +482,9 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
                     imgui.draw_list->AddRectFilled(
                         f32x2 {x_pos, y_start},
                         f32x2 {next_x_pos - extra_offset, y_end},
-                        colour::WithAlphaU8(line_cols[layer_idx],
-                                            (u8)(KeyRangeFadeIn(key, range_start, fade_in) *
-                                                 KeyRangeFadeOut(key, range_finish, fade_out) * 255.0f)),
+                        WithAlphaU8(line_cols[layer_idx],
+                                    (u8)(KeyRangeFadeIn(key, range_start, fade_in) *
+                                         KeyRangeFadeOut(key, range_finish, fade_out) * 255.0f)),
                         rounding,
                         corner_flags);
                     x_pos = next_x_pos;

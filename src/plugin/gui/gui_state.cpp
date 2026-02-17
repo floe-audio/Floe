@@ -308,7 +308,7 @@ void GuiUpdate(GuiState& g) {
     g.fonts.Push(ToInt(FontType::Body));
     DEFER { g.fonts.Pop(); };
 
-    auto const top_h = Round(LiveSize(UiSizeId::Top2Height));
+    auto const top_h = Round(LiveSize(UiSizeId::TopHeight));
     auto const bot_h = Round(LiveSize(UiSizeId::BotPanelHeight));
     auto const mid_h = frame_input.window_size.height - top_h - bot_h;
 

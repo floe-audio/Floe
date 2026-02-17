@@ -5,7 +5,7 @@
 #include "foundation/foundation.hpp"
 
 #include "gui_frame.hpp"
-#include "gui_framework/style.hpp"
+#include "gui_framework/colours.hpp"
 
 // The live-edit system maintains global arrays of colours, colour-mapping and sizes for GUI to access
 // anywhere. The data is stored in .def files which are compiled into the program. However, these .def files

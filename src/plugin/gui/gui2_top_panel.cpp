@@ -514,15 +514,15 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                     });
 
     // peak meter
-    if (auto const viewport_r = BoxRect(
-            builder,
-            DoBox(builder,
-                  {
-                      .parent = root,
-                      .layout {
-                          .size = {LiveWw(UiSizeId::Top2PeakMeterW), LiveWw(UiSizeId::Top2PeakMeterH)},
-                      },
-                  })))
+    if (auto const viewport_r =
+            BoxRect(builder,
+                    DoBox(builder,
+                          {
+                              .parent = root,
+                              .layout {
+                                  .size = {LiveWw(UiSizeId::TopPeakMeterW), LiveWw(UiSizeId::TopPeakMeterH)},
+                              },
+                          })))
         DrawPeakMeter(g.imgui,
                       builder.imgui.RegisterAndConvertRect(*viewport_r),
                       g.engine.processor.peak_meter,

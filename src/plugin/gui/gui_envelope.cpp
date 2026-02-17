@@ -427,9 +427,9 @@ void DoEnvelopeGui(GuiState& g,
         auto do_handle = [&](f32x2 point, imgui::Id id) {
             auto col = greyed_out ? greyed_out_handle_col : handle_col;
             if (imgui.IsHot(id)) {
-                auto background_col = colour::FromU32(col);
+                auto background_col = FromU32(col);
                 background_col.a /= 2;
-                imgui.draw_list->AddCircleFilled(point, handle_size / 5, colour::ToU32(background_col));
+                imgui.draw_list->AddCircleFilled(point, handle_size / 5, ToU32(background_col));
                 col = hover_col;
             }
             if (imgui.IsActive(id)) col = hover_col;

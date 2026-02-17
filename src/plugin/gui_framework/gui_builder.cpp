@@ -15,8 +15,8 @@ constexpr f32 k_tooltip_pad_x = 5;
 constexpr f32 k_tooltip_pad_y = 2;
 constexpr f32 k_tooltip_rounding = k_button_rounding;
 
-constexpr u32 k_auto_hot_white_overlay = colour::Hsla(k_highlight_hue, 35, 70, 20);
-constexpr u32 k_auto_active_white_overlay = colour::Hsla(k_highlight_hue, 35, 70, 38);
+constexpr u32 k_auto_hot_white_overlay = Hsla(k_highlight_hue, 35, 70, 20);
+constexpr u32 k_auto_active_white_overlay = Hsla(k_highlight_hue, 35, 70, 38);
 
 static f32 HeightOfWrappedText(GuiBuilder& builder, layout::Id id, f32 width) {
     if (auto const t_ptr = builder.state->word_wrapped_texts.Find(id)) {
@@ -406,10 +406,10 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                 u32 col_u32 = ToU32(background_fill);
                 if (config.background_fill_auto_hot_active_overlay) {
                     if (is_hot)
-                        col_u32 = col_u32 ? colour::BlendColours(col_u32, k_auto_hot_white_overlay)
+                        col_u32 = col_u32 ? BlendColours(col_u32, k_auto_hot_white_overlay)
                                           : k_auto_hot_white_overlay;
                     else if (is_active)
-                        col_u32 = col_u32 ? colour::BlendColours(col_u32, k_auto_active_white_overlay)
+                        col_u32 = col_u32 ? BlendColours(col_u32, k_auto_active_white_overlay)
                                           : k_auto_active_white_overlay;
                 }
 
@@ -494,10 +494,10 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                 u32 col_u32 = ToU32(border);
                 if (config.border_auto_hot_active_overlay) {
                     if (is_hot)
-                        col_u32 = col_u32 ? colour::BlendColours(col_u32, k_auto_hot_white_overlay)
+                        col_u32 = col_u32 ? BlendColours(col_u32, k_auto_hot_white_overlay)
                                           : k_auto_hot_white_overlay;
                     else if (is_active)
-                        col_u32 = col_u32 ? colour::BlendColours(col_u32, k_auto_active_white_overlay)
+                        col_u32 = col_u32 ? BlendColours(col_u32, k_auto_active_white_overlay)
                                           : k_auto_active_white_overlay;
                 }
 

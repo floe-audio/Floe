@@ -22,7 +22,7 @@ static void DrawLinkLine(GuiState& g, f32x2 p1, f32x2 p2) {
 
     g.imgui.overlay_draw_list->AddLine(p1,
                                        p2,
-                                       colour::ChangeAlpha(ToU32({.c = Col::Blue}), 0.7f),
+                                       ChangeAlpha(ToU32({.c = Col::Blue}), 0.7f),
                                        Max(1.0f, GuiIo().WwToPixels(2.0f)));
 }
 
@@ -303,11 +303,11 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                         u32 c = ToU32({.c = Col::Blue});
                         if (g.macros_gui_state.macro_destination_select_mode) {
                             if (*g.macros_gui_state.macro_destination_select_mode == macro_index)
-                                c = colour::ChangeBrightness(c, 1.3f);
+                                c = ChangeBrightness(c, 1.3f);
                             else
-                                c = colour::ChangeAlpha(c, 0.6f);
+                                c = ChangeAlpha(c, 0.6f);
                         }
-                        if (builder.imgui.IsHotOrActive(imgui_id)) c = colour::ChangeBrightness(c, 1.3f);
+                        if (builder.imgui.IsHotOrActive(imgui_id)) c = ChangeBrightness(c, 1.3f);
                         c;
                     }),
                     ICON_FA_CIRCLE_PLUS,
@@ -426,7 +426,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                 r,
                 ({
                     u32 c = ToU32({.c = Col::Red});
-                    if (builder.imgui.IsHot(remove_button->id)) c = colour::ChangeBrightness(c, 1.3f);
+                    if (builder.imgui.IsHot(remove_button->id)) c = ChangeBrightness(c, 1.3f);
                     c;
                 }),
                 ICON_FA_CIRCLE_MINUS,
@@ -499,7 +499,7 @@ void MacroAddDestinationRegion(GuiState& g, Rect window_r, ParamIndex param_inde
 
         g.imgui.overlay_draw_list->AddTextInRect(window_r,
                                                  g.imgui.IsHotOrActive(imgui_id)
-                                                     ? colour::ChangeBrightness(ToU32({.c = Col::Blue}), 1.3f)
+                                                     ? ChangeBrightness(ToU32({.c = Col::Blue}), 1.3f)
                                                      : ToU32({.c = Col::Blue}),
                                                  ICON_FA_CIRCLE_PLUS,
                                                  {
