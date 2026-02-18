@@ -26,7 +26,7 @@ bool DoBasicTextButton(imgui::Context& imgui, imgui::ButtonConfig cfg, Rect r, i
 
     u32 col = 0xffd5d5d5;
     if (imgui.IsHot(id)) col = 0xfff0f0f0;
-    if (imgui.IsActive(id, cfg)) col = 0xff808080;
+    if (imgui.IsActive(id, cfg.mouse_button)) col = 0xff808080;
     imgui.draw_list->AddRectFilled(r.Min(), r.Max(), col);
 
     auto const font_size = imgui.draw_list->fonts.Current()->font_size;
@@ -54,7 +54,7 @@ static void DrawDevGuiTextButton(imgui::Context const& imgui, Rect r, imgui::Id 
     imgui.draw_list->AddRectFilled(r, ({
                                        u32 c = 0xffd5d5d5;
                                        if (imgui.IsHot(id)) c = 0xfff0f0f0;
-                                       if (imgui.IsActive(id, {})) c = 0xff808080;
+                                       if (imgui.IsActive(id, MouseButton::Left)) c = 0xff808080;
                                        if (state) c = 0xff808080;
                                        c;
                                    }));
@@ -70,7 +70,7 @@ DrawDevGuiPopupTextButton(imgui::Context const& imgui, Rect r, imgui::Id id, Str
     imgui.draw_list->AddRectFilled(r, ({
                                        u32 c = 0xffd5d5d5;
                                        if (imgui.IsHot(id)) c = 0xfff0f0f0;
-                                       if (imgui.IsActive(id, {}) || popup_open) c = 0xff808080;
+                                       if (imgui.IsActive(id, MouseButton::Left) || popup_open) c = 0xff808080;
                                        c;
                                    }));
 
@@ -196,7 +196,7 @@ static void DrawDevGuiScrollbars(imgui::Context const& imgui, imgui::ViewportScr
         u32 col = 0xffe5e5e5;
         if (imgui.IsHot(b->id))
             col = 0xffffffff;
-        else if (imgui.IsActive(b->id, {}))
+        else if (imgui.IsActive(b->id, MouseButton::Left))
             col = 0xffb5b5b5;
         imgui.draw_list->AddRectFilled(b->handle, col);
     }

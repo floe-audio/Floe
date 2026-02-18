@@ -326,7 +326,7 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
             if (config.button_behaviour) {
                 box.button_fired =
                     builder.imgui.ButtonBehaviour(mouse_rect, box.imgui_id, *config.button_behaviour);
-                box.is_active = builder.imgui.IsActive(box.imgui_id, config.button_behaviour);
+                box.is_active = builder.imgui.IsActive(box.imgui_id, config.button_behaviour->mouse_button);
                 box.is_hot = builder.imgui.IsHot(box.imgui_id);
             }
 

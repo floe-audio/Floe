@@ -207,11 +207,12 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
         } else {
             imgui.SetHot(key_r, id);
         }
-        if (imgui.WasJustDeactivated(id))
+        if (imgui.WasJustDeactivated(id, k_click_cfg.mouse_button))
             result = KeyboardGuiKeyPressed {.is_down = false, .note = CheckedCast<u7>(this_abs_key)};
 
         u32 col = col_white_key;
-        if (imgui.IsActive(id, k_click_cfg) || keyboard.Get((usize)this_abs_key)) col = col_white_key_down;
+        if (imgui.IsActive(id, k_click_cfg.mouse_button) || keyboard.Get((usize)this_abs_key))
+            col = col_white_key_down;
         if (imgui.IsHot(id)) col = col_white_key_hover;
         imgui.draw_list->AddRectFilled(key_r, col);
         overlay_key(this_abs_key, key_r, UiColMap::KeyboardWhiteVoiceOverlay);
@@ -260,11 +261,12 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
         } else {
             imgui.SetHot(key_r, id);
         }
-        if (imgui.WasJustDeactivated(id))
+        if (imgui.WasJustDeactivated(id, k_click_cfg.mouse_button))
             result = KeyboardGuiKeyPressed {.is_down = false, .note = CheckedCast<u7>(this_abs_key)};
 
         u32 col = col_black_key;
-        if (imgui.IsActive(id, k_click_cfg) || keyboard.Get((usize)this_abs_key)) col = col_black_key_down;
+        if (imgui.IsActive(id, k_click_cfg.mouse_button) || keyboard.Get((usize)this_abs_key))
+            col = col_black_key_down;
         if (imgui.IsHot(id)) col = col_black_key_hover;
 
         if (col != col_black_key) {

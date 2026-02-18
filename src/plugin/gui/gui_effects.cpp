@@ -849,12 +849,13 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
                                 k_effect_info[ToInt(fx.type)].name,
                                 buttons::EffectHeading(imgui, col));
 
-                if (imgui.WasJustActivated(id, {})) {
+                if (imgui.WasJustActivated(id, MouseButton::Left)) {
                     dragging_fx_unit = DraggingFX {id, &fx, FindSlotInEffects(ordered_effects, &fx), {}};
                     GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
                 }
 
-                if (imgui.IsHotOrActive(id, {})) GuiIo().out.wants.cursor_type = CursorType::AllArrows;
+                if (imgui.IsHotOrActive(id, MouseButton::Left))
+                    GuiIo().out.wants.cursor_type = CursorType::AllArrows;
                 Tooltip(g,
                         id,
                         g.imgui.ViewportRectToWindowRect(r),
@@ -1180,7 +1181,7 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
 
     bool effects_order_changed = false;
 
-    if (dragging_fx_unit && imgui.WasJustDeactivated(dragging_fx_unit->id)) {
+    if (dragging_fx_unit && imgui.WasJustDeactivated(dragging_fx_unit->id, MouseButton::Left)) {
         MoveEffectToNewSlot(ordered_effects, dragging_fx_unit->fx, dragging_fx_unit->drop_slot);
         effects_order_changed = true;
         dragging_fx_unit.Clear();
@@ -1237,7 +1238,7 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
                         GuiIo().out.wants.cursor_type = CursorType::AllArrows;
                 }
 
-                if (imgui.IsActive(id, {}) && !dragging_fx) {
+                if (imgui.IsActive(id, MouseButton::Left) && !dragging_fx) {
                     auto const click_pos = GuiIo().in.mouse_buttons[0].last_press.point;
                     auto const current_pos = GuiIo().in.cursor_pos;
                     auto const delta = current_pos - click_pos;
@@ -1266,7 +1267,7 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
             GuiIo().out.wants.cursor_type = CursorType::AllArrows;
         }
 
-        if (dragging_fx && imgui.WasJustDeactivated(dragging_fx->id)) {
+        if (dragging_fx && imgui.WasJustDeactivated(dragging_fx->id, MouseButton::Left)) {
             MoveEffectToNewSlot(ordered_effects, dragging_fx->fx, dragging_fx->drop_slot);
             effects_order_changed = true;
             dragging_fx.Clear();

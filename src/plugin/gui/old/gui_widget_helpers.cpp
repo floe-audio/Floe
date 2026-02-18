@@ -289,10 +289,11 @@ void EndParameterGUI(GuiState& g,
                      Rect viewport_r,
                      Optional<f32> new_val,
                      ParamDisplayFlags flags) {
-    if (g.imgui.WasJustActivated(id, imgui::SliderConfig::k_activation_cfg))
+    if (g.imgui.WasJustActivated(id, MouseButton::Left))
         ParameterJustStartedMoving(g.engine.processor, param.info.index);
     if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
-    if (g.imgui.WasJustDeactivated(id)) ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+    if (g.imgui.WasJustDeactivated(id, MouseButton::Left))
+        ParameterJustStoppedMoving(g.engine.processor, param.info.index);
 
     if (!(flags & ParamDisplayFlagsNoTooltip) && !g.imgui.TextInputHasFocus(id))
         DoParameterTooltipIfNeeded(g, param, id, g.imgui.ViewportRectToWindowRect(viewport_r));

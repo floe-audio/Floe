@@ -115,13 +115,13 @@ void DoEnvelopeGui(GuiState& g,
 
         AddMidiLearnRightClickBehaviour(g, grabber, attack_imgui_id, attack_param);
 
-        if (imgui.IsHotOrActive(attack_imgui_id, imgui::SliderConfig::k_activation_cfg))
+        if (imgui.IsHotOrActive(attack_imgui_id, MouseButton::Left))
             GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
 
-        if (imgui.WasJustActivated(attack_imgui_id, imgui::SliderConfig::k_activation_cfg))
+        if (imgui.WasJustActivated(attack_imgui_id, MouseButton::Left))
             ParameterJustStartedMoving(engine.processor, attack_param_id);
         if (changed) SetParameterValue(engine.processor, attack_param_id, new_value, {});
-        if (imgui.WasJustDeactivated(attack_imgui_id))
+        if (imgui.WasJustDeactivated(attack_imgui_id, MouseButton::Left))
             ParameterJustStoppedMoving(engine.processor, attack_param_id);
 
         ParameterValuePopup(g, attack_param, attack_imgui_id, grabber);
@@ -181,14 +181,14 @@ void DoEnvelopeGui(GuiState& g,
 
         AddMidiLearnRightClickBehaviour(g, grabber, dec_sus_imgui_id, Array {decay_param, sustain_param});
 
-        if (imgui.IsHotOrActive(dec_sus_imgui_id, imgui::SliderConfig::k_activation_cfg))
+        if (imgui.IsHotOrActive(dec_sus_imgui_id, MouseButton::Left))
             GuiIo().out.wants.cursor_type = CursorType::AllArrows;
 
-        if (imgui.WasJustActivated(dec_sus_imgui_id, imgui::SliderConfig::k_activation_cfg)) {
+        if (imgui.WasJustActivated(dec_sus_imgui_id, MouseButton::Left)) {
             ParameterJustStartedMoving(engine.processor, decay_id);
             ParameterJustStartedMoving(engine.processor, sustain_id);
         }
-        if (imgui.IsActive(dec_sus_imgui_id, imgui::SliderConfig::k_activation_cfg)) {
+        if (imgui.IsActive(dec_sus_imgui_id, MouseButton::Left)) {
             {
                 auto const min_pixels_pos = imgui.ViewportPosToWindowPos({get_x_coord_at_percent(0), 0}).x;
                 auto const max_pixels_pos = imgui.ViewportPosToWindowPos({get_x_coord_at_percent(1), 0}).x;
@@ -211,7 +211,7 @@ void DoEnvelopeGui(GuiState& g,
             }
         }
 
-        if (imgui.WasJustDeactivated(dec_sus_imgui_id)) {
+        if (imgui.WasJustDeactivated(dec_sus_imgui_id, MouseButton::Left)) {
             ParameterJustStoppedMoving(engine.processor, decay_id);
             ParameterJustStoppedMoving(engine.processor, sustain_id);
         }
@@ -276,14 +276,14 @@ void DoEnvelopeGui(GuiState& g,
                                   }))
             g.param_text_editor_to_open = release_param_id;
 
-        if (imgui.IsHotOrActive(release_imgui_id, imgui::SliderConfig::k_activation_cfg))
+        if (imgui.IsHotOrActive(release_imgui_id, MouseButton::Left))
             GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
 
-        if (imgui.WasJustActivated(release_imgui_id, imgui::SliderConfig::k_activation_cfg))
+        if (imgui.WasJustActivated(release_imgui_id, MouseButton::Left))
             ParameterJustStartedMoving(engine.processor, release_param_id);
         if (changed) SetParameterValue(engine.processor, release_param_id, new_value, {});
 
-        if (imgui.WasJustDeactivated(release_imgui_id))
+        if (imgui.WasJustDeactivated(release_imgui_id, MouseButton::Left))
             ParameterJustStoppedMoving(engine.processor, release_param_id);
 
         ParameterValuePopup(g, release_param, release_imgui_id, grabber);
@@ -314,7 +314,7 @@ void DoEnvelopeGui(GuiState& g,
 
         // range lines
         auto const do_range_lines = [&](Range range, imgui::Id id) {
-            if (imgui.IsActive(id, imgui::SliderConfig::k_activation_cfg)) {
+            if (imgui.IsActive(id, MouseButton::Left)) {
                 imgui.draw_list->AddLine(imgui.ViewportPosToWindowPos({range.min, padded_x}),
                                          imgui.ViewportPosToWindowPos({range.min, padded_bottom}),
                                          range_lines_col);
@@ -428,7 +428,7 @@ void DoEnvelopeGui(GuiState& g,
                 imgui.draw_list->AddCircleFilled(point, handle_size / 5, ToU32(background_col));
                 col = hover_col;
             }
-            if (imgui.IsActive(id, imgui::SliderConfig::k_activation_cfg)) col = hover_col;
+            if (imgui.IsActive(id, MouseButton::Left)) col = hover_col;
             imgui.draw_list->AddCircleFilled(point, handle_visible_size, col);
         };
         do_handle(attack_point_window, attack_imgui_id);

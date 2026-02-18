@@ -201,10 +201,10 @@ static void DoResizeCorner(GuiState& g) {
     if (g.imgui.ButtonBehaviour(r, id, imgui::SliderConfig::k_activation_cfg))
         size_at_start = frame_input.window_size.ToFloat2();
 
-    if (g.imgui.IsHotOrActive(id, imgui::SliderConfig::k_activation_cfg))
+    if (g.imgui.IsHotOrActive(id, MouseButton::Left))
         frame_output.wants.cursor_type = CursorType::UpLeftDownRight;
 
-    if (g.imgui.IsActive(id, imgui::SliderConfig::k_activation_cfg)) {
+    if (g.imgui.IsActive(id, MouseButton::Left)) {
         frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
 
         auto const cursor = frame_input.cursor_pos;
@@ -226,7 +226,7 @@ static void DoResizeCorner(GuiState& g) {
                                        ToU32(Col {.c = Col::Background0, .dark_mode = true}));
 
     auto const line_col = ToU32(
-        Col {.c = imgui.IsHotOrActive(id, imgui::SliderConfig::k_activation_cfg) ? Col::Text : Col::Overlay2,
+        Col {.c = imgui.IsHotOrActive(id, MouseButton::Left) ? Col::Text : Col::Overlay2,
              .dark_mode = true});
     auto const line_gap = LiveSize(UiSizeId::ViewportResizeCornerLineGap);
     imgui.draw_list->AddLine(r.TopRight() + f32x2 {0, line_gap},

@@ -82,7 +82,7 @@ void ParameterValuePopup(GuiState& g, DescribedParamValue const& param, imgui::I
 }
 
 void ParameterValuePopup(GuiState& g, Span<DescribedParamValue const*> params, imgui::Id id, Rect window_r) {
-    if (!g.imgui.IsActive(id, imgui::SliderConfig::k_activation_cfg)) return;
+    if (!g.imgui.IsActive(id, MouseButton::Left)) return;
 
     DrawOverlayTooltipForRect(g.imgui,
                               g.fonts,

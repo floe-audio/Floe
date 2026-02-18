@@ -371,12 +371,12 @@ Box DoMenuParameter(GuiState& g,
             new_val = current;
         }
 
-        if (g.imgui.WasJustActivated(menu_btn.imgui_id, imgui::SliderConfig::k_activation_cfg))
+        if (g.imgui.WasJustActivated(menu_btn.imgui_id, MouseButton::Left))
             ParameterJustStartedMoving(g.engine.processor, param.info.index);
 
         if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
 
-        if (g.imgui.WasJustDeactivated(menu_btn.imgui_id))
+        if (g.imgui.WasJustDeactivated(menu_btn.imgui_id, MouseButton::Left))
             ParameterJustStoppedMoving(g.engine.processor, param.info.index);
 
         MacroAddDestinationRegion(g, window_r, param.info.index);
@@ -467,12 +467,12 @@ Box DoKnobParameter(GuiState& g,
         if (dragger_result.value_changed) new_val = val;
         param_text_input_result = dragger_result.text_input_result;
 
-        if (g.imgui.WasJustActivated(container.imgui_id, imgui::SliderConfig::k_activation_cfg))
+        if (g.imgui.WasJustActivated(container.imgui_id, MouseButton::Left))
             ParameterJustStartedMoving(g.engine.processor, param.info.index);
 
         if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
 
-        if (g.imgui.WasJustDeactivated(container.imgui_id))
+        if (g.imgui.WasJustDeactivated(container.imgui_id, MouseButton::Left))
             ParameterJustStoppedMoving(g.engine.processor, param.info.index);
 
         ParameterValuePopup(g, param, container.imgui_id, window_r);
@@ -745,12 +745,12 @@ Box DoIntParameter(GuiState& g,
         if (dragger_result.value_changed) new_val = (f32)(int)val;
         param_text_input_result = dragger_result.text_input_result;
 
-        if (g.imgui.WasJustActivated(dragger_box.imgui_id, imgui::SliderConfig::k_activation_cfg))
+        if (g.imgui.WasJustActivated(dragger_box.imgui_id, MouseButton::Left))
             ParameterJustStartedMoving(g.engine.processor, param.info.index);
 
         if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
 
-        if (g.imgui.WasJustDeactivated(dragger_box.imgui_id))
+        if (g.imgui.WasJustDeactivated(dragger_box.imgui_id, MouseButton::Left))
             ParameterJustStoppedMoving(g.engine.processor, param.info.index);
 
         MacroAddDestinationRegion(g, window_r, param.info.index);

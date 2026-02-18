@@ -501,7 +501,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
 
         g.timbre_slider_is_held = box.is_active;
 
-        if (builder.imgui.WasJustActivated(box.imgui_id, {}))
+        if (builder.imgui.WasJustActivated(box.imgui_id, MouseButton::Left))
             GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
 

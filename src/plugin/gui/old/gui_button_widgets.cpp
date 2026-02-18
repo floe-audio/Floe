@@ -16,7 +16,7 @@ static u32 GetCol(GuiState& g, Style const& style, ColourSet const& colours, img
     auto col = state ? colours.on : colours.reg;
     if (colours.grey_out_aware && style.greyed_out) col = state ? colours.greyed_out_on : colours.greyed_out;
     if (g.imgui.IsHot(id)) col = state ? colours.hot_on : colours.hot_off;
-    if (g.imgui.IsActive(id, {})) col = state ? colours.active_on : colours.active_off;
+    if (g.imgui.IsActive(id, MouseButton::Left)) col = state ? colours.active_on : colours.active_off;
     return col;
 }
 

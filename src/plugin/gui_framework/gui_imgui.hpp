@@ -93,6 +93,9 @@ struct ButtonConfig {
     // Modifiers required to fire the button. Currently not supported for MouseButtonEvent::Up events.
     ModifierFlags required_modifiers {};
 
+    // Cursor to show while hot.
+    CursorType cursor_type = CursorType::Hand;
+
     // For a single-click event, don't fire another single-click if the click is detected to be a double-click
     // (that is, a click that happens in quick succession to the first). The default is that rapid clicks all
     // fire single-click events even if the second click might typically be considered a double-click. Turning
@@ -401,9 +404,9 @@ struct Context {
     // state. Text inputs have an additional concept of 'focus', outlined further down.
 
     // 'active' means the user holding the element with a mouse-click.
-    bool IsActive(Id id, Optional<ButtonConfig> via_button_config) const;
-    bool WasJustActivated(Id id, Optional<ButtonConfig> via_button_config) const;
-    bool WasJustDeactivated(Id id) const;
+    bool IsActive(Id id, Optional<MouseButton> via_mouse_button = {}) const;
+    bool WasJustActivated(Id id, Optional<MouseButton> via_mouse_button = {}) const;
+    bool WasJustDeactivated(Id id, Optional<MouseButton> via_mouse_button = {}) const;
     bool AnItemIsActive() const;
     Id GetActive() const { return active_item.id; }
 
@@ -417,8 +420,8 @@ struct Context {
         return time_when_turned_hot ? GuiIo().in.current_time - time_when_turned_hot : 0;
     }
 
-    bool IsHotOrActive(Id id, Optional<ButtonConfig> via_button_config) const {
-        return IsHot(id) || IsActive(id, via_button_config);
+    bool IsHotOrActive(Id id, Optional<MouseButton> via_mouse_button = {}) const {
+        return IsHot(id) || IsActive(id, via_mouse_button);
     }
 
     // Having keyboard focus means that this element is allowed to consume text events. This is different to
@@ -687,12 +690,10 @@ struct Context {
 
     // Set a rectangle to the 'hot' state if possible.
     // is_not_viewport_content means something that is not inside a viewport, but part of it e.g. scrollbar.
-    // Returns true if the ID managed to acquire a preliminary 'hot' state - though this should not be used
-    // for updates or rendering logic, instead you should query IsHot().
-    bool SetHot(Rect r_in_window_coords, Id id, bool32 is_not_viewport_content = false);
+    void SetHot(Rect r_in_window_coords, Id id, bool32 is_not_viewport_content = false);
 
     // Set an ID as the active. Most likely the element would have previously be made hot.
-    void SetActive(Id id, ButtonConfig cfg);
+    void SetActive(Id id, MouseButton mouse_button);
 
     // Clear the current active ID.
     void ClearActive();
@@ -710,7 +711,7 @@ struct Context {
         Id id = k_null_id;
         bool just_activated = false;
         Viewport* viewport = nullptr;
-        DynamicArrayBounded<ButtonConfig, 5> button_cfgs {};
+        MouseButton mouse_button {};
     };
 
     bool debug_show_register_widget_overlay = false;
@@ -769,12 +770,13 @@ struct Context {
     // We use temp variables to add a frame of lag so that you can layer widgets on top of each other and the
     // behaviour is as expected. If we don't do this, if you put a button on top of another button, they will
     // both highlight on hovering.
-    Id active_item_last_frame = k_null_id;
+    ActiveItem active_item_last_frame = {};
     Id hot_item_last_frame = k_null_id;
     Id hovered_item_last_frame = k_null_id;
 
     Id hot_item = k_null_id;
     Id temp_hot_item = k_null_id;
+    CursorType temp_hot_item_cursor {};
     TimePoint time_when_turned_hot = {};
 
     Id hovered_item = k_null_id;

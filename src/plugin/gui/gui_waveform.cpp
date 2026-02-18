@@ -148,7 +148,7 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
 
         imgui.draw_list->AddRectFilled(
             r,
-            imgui.IsHotOrActive(id, imgui::SliderConfig::k_activation_cfg) ? back_hover_col : back_col,
+            imgui.IsHotOrActive(id, MouseButton::Left) ? back_hover_col : back_col,
             6,
             rounding_corners);
         g.fonts.Push(g.fonts.atlas[ToInt(FontType::Icons)]);
@@ -203,14 +203,14 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
             g.param_text_editor_to_open = params[0];
         }
 
-        if (imgui.IsHotOrActive(id, imgui::SliderConfig::k_activation_cfg))
+        if (imgui.IsHotOrActive(id, MouseButton::Left))
             GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
 
-        if (imgui.WasJustActivated(id, imgui::SliderConfig::k_activation_cfg))
+        if (imgui.WasJustActivated(id, MouseButton::Left))
             for (auto p : params)
                 ParameterJustStartedMoving(engine.processor, p);
         if (changed) callback(value);
-        if (imgui.WasJustDeactivated(id))
+        if (imgui.WasJustDeactivated(id, MouseButton::Left))
             for (auto p : params)
                 ParameterJustStoppedMoving(engine.processor, p);
 
@@ -443,7 +443,7 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
         imgui.draw_list->AddRectFilled(
             f32x2 {sample_offset_r.Right() - 1, sample_offset_r.y},
             sample_offset_r.Max(),
-            imgui.IsHotOrActive(offs_imgui_id, imgui::SliderConfig::k_activation_cfg)
+            imgui.IsHotOrActive(offs_imgui_id, MouseButton::Left)
                 ? LiveCol(UiColMap::WaveformOffsetHandleHover)
                 : LiveCol(UiColMap::WaveformOffsetHandle));
     }
@@ -474,7 +474,7 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
         }
 
         auto const region_active = imgui.IsHot(loop_region_id) ||
-                                   imgui.IsActive(loop_region_id, imgui::SliderConfig::k_activation_cfg);
+                                   imgui.IsActive(loop_region_id, MouseButton::Left);
         if (!region_active && loop_xfade_size > 0.01f && draw_xfade) {
             if (mode.value.mode == sample_lib::LoopMode::Standard) {
                 auto const points = Array {start_line.TopLeft(),
@@ -505,7 +505,7 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
              }) {
             imgui.draw_list->AddRectFilled(
                 line,
-                LiveCol(imgui.IsHotOrActive(id, imgui::SliderConfig::k_activation_cfg)
+                LiveCol(imgui.IsHotOrActive(id, MouseButton::Left)
                             ? UiColMap::WaveformLoopHandleHover
                         : !single_builtin_loop ? UiColMap::WaveformLoopHandle
                                                : UiColMap::WaveformLoopHandleInactive));
@@ -514,7 +514,7 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
         if (draw_xfade && loop_xfade_size > 0.01f) {
             imgui.draw_list->AddRectFilled(
                 xfade_line,
-                imgui.IsHotOrActive(xfade_id, imgui::SliderConfig::k_activation_cfg)
+                imgui.IsHotOrActive(xfade_id, MouseButton::Left)
                     ? LiveCol(UiColMap::WaveformXfadeHandleHover)
                     : LiveCol(UiColMap::WaveformXfadeHandle));
         }

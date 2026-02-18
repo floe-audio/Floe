@@ -39,9 +39,9 @@ static void DrawPopupTextbox(GuiState& g, String str, Rect r) {
     popup_r.h = size.y + pad_y * 2;
 
     popup_r.pos = imgui::BestPopupPos(popup_r,
-                                       r,
-                                       GuiIo().in.window_size.ToFloat2(),
-                                       imgui::PopupJustification::AboveOrBelow);
+                                      r,
+                                      GuiIo().in.window_size.ToFloat2(),
+                                      imgui::PopupJustification::AboveOrBelow);
 
     f32x2 text_start;
     text_start.x = popup_r.x + pad_x;
@@ -208,7 +208,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
 
                 auto const arc_thickness = 5;
 
-                if (builder.imgui.IsHotOrActive(imgui_id, imgui::SliderConfig::k_activation_cfg)) {
+                if (builder.imgui.IsHotOrActive(imgui_id, MouseButton::Left)) {
                     builder.imgui.draw_list->AddCircleFilled(centre,
                                                              radius - arc_thickness,
                                                              ToU32({.c = Col::Blue}),
@@ -218,7 +218,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                 if (builder.imgui.WasJustMadeHot(imgui_id))
                     GuiIo().out.AddTimedWakeup(TimePoint::Now() + 0.5, "macros_destination_knob_hot");
 
-                if (builder.imgui.IsActive(imgui_id, imgui::SliderConfig::k_activation_cfg) ||
+                if (builder.imgui.IsActive(imgui_id, MouseButton::Left) ||
                     (builder.imgui.IsHot(imgui_id) && builder.imgui.SecondsSpentHot() > 0.5)) {
                     g.macros_gui_state.active_destination_knob = MacrosGuiState::DestinationKnob {
                         .dest = dest,
@@ -236,7 +236,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                              .bidirectional = true,
                          });
 
-                if (builder.imgui.IsHotOrActive(imgui_id, imgui::SliderConfig::k_activation_cfg)) {
+                if (builder.imgui.IsHotOrActive(imgui_id, MouseButton::Left)) {
                     dyn::Append(g.macros_gui_state.draw_overlays, [&dest, r = knob_r](GuiState& g) {
                         auto const& descriptor = k_param_descriptors[ToInt(*dest.param_index)];
                         auto const str = fmt::Format(g.builder.arena,
@@ -260,8 +260,8 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                     if (builder.imgui.IsHot(imgui_id) ||
                         (builder.imgui.WasJustMadeUnhot(imgui_id) &&
                          remove_r.Contains(GuiIo().in.cursor_pos)) ||
-                        builder.imgui.IsHotOrActive(remove_button_id, {}) ||
-                        builder.imgui.WasJustDeactivated(remove_button_id)) {
+                        builder.imgui.IsHotOrActive(remove_button_id, MouseButton::Left) ||
+                        builder.imgui.WasJustDeactivated(remove_button_id, MouseButton::Left)) {
                         remove_button = RemoveButton {
                             .r = remove_r,
                             .id = remove_button_id,
@@ -309,7 +309,8 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                             else
                                 c = ChangeAlpha(c, 0.6f);
                         }
-                        if (builder.imgui.IsHotOrActive(imgui_id, {})) c = ChangeBrightness(c, 1.3f);
+                        if (builder.imgui.IsHotOrActive(imgui_id, MouseButton::Left))
+                            c = ChangeBrightness(c, 1.3f);
                         c;
                     }),
                     ICON_FA_CIRCLE_PLUS,
@@ -506,7 +507,7 @@ void MacroAddDestinationRegion(GuiState& g, Rect window_r, ParamIndex param_inde
                                                    ToU32(Col {.c = Col::Background0, .dark_mode = true}));
 
         g.imgui.overlay_draw_list->AddTextInRect(window_r,
-                                                 g.imgui.IsHotOrActive(imgui_id, {})
+                                                 g.imgui.IsHotOrActive(imgui_id, MouseButton::Left)
                                                      ? ChangeBrightness(ToU32({.c = Col::Blue}), 1.3f)
                                                      : ToU32({.c = Col::Blue}),
                                                  ICON_FA_CIRCLE_PLUS,

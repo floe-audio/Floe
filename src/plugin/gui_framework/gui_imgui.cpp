@@ -331,7 +331,7 @@ static ScrollbarResult Scrollbar(Context& im,
         static f32x2 cached_pos {};
         if (im.ButtonBehaviour(scroll_r, id, button_cfg)) cached_pos.y = cursor_y - *scroll_y;
 
-        if (im.IsActive(id, {})) {
+        if (im.IsActive(id, MouseButton::Left)) {
             auto const new_ypos = (cursor_y - cached_pos.y) - viewport_y;
             scrollbar_rel_y = Clamp(new_ypos, 0.0f, viewport_h - scrollbar_h);
             *scroll_y = viewport_y + scrollbar_rel_y;
@@ -524,14 +524,19 @@ bool Context::WasJustMadeUnhot(Id id) const { return !IsHot(id) && hot_item_last
 bool Context::AnItemIsHot() const { return hot_item != k_null_id; }
 
 // Active
-bool Context::IsActive(Id id, Optional<ButtonConfig> via_button_config) const {
+bool Context::IsActive(Id id, Optional<MouseButton> via_mouse_button) const {
     return active_item.id == id &&
-           FindIf(active_item.button_cfgs, [&](auto const& cfg) { return via_button_config == cfg; });
+           (!via_mouse_button || active_item.mouse_button == *via_mouse_button);
 }
-bool Context::WasJustActivated(Id id, Optional<ButtonConfig> via_button_config) const {
-    return IsActive(id, via_button_config) && active_item_last_frame != id;
+bool Context::WasJustActivated(Id id, Optional<MouseButton> via_mouse_button) const {
+    return IsActive(id, via_mouse_button) && active_item_last_frame.id != id;
 }
-bool Context::WasJustDeactivated(Id id) const { return !IsActive(id, {}) && active_item_last_frame == id; }
+bool Context::WasJustDeactivated(Id id, Optional<MouseButton> via_mouse_button) const {
+    return active_item.id != id &&
+           (active_item_last_frame.id == id &&
+            (!via_mouse_button ||
+             active_item_last_frame.mouse_button == *via_mouse_button));
+}
 bool Context::AnItemIsActive() const { return active_item.id != k_null_id; }
 
 // Hovered
@@ -616,17 +621,7 @@ void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
     temp_hovered_item = k_null_id;
 
     if (AnItemIsActive()) {
-        for (auto const btn : EnumIterator<MouseButton>()) {
-            if (GuiIo().in.Mouse(btn).is_down) continue;
-            for (usize i = 0; i < active_item.button_cfgs.size;) {
-                auto const& btn_cfg = active_item.button_cfgs[i];
-                if (btn_cfg.mouse_button == btn)
-                    dyn::Remove(active_item.button_cfgs, i);
-                else
-                    ++i;
-            }
-        }
-        if (active_item.button_cfgs.size == 0) ClearActive();
+        if (!GuiIo().in.Mouse(active_item.mouse_button).is_down) ClearActive();
     }
 
     active_text_input_shown = false;
@@ -772,17 +767,11 @@ void Context::EndFrame() {
     if (GuiIo().in.Mouse(MouseButton::Left).presses.size && temp_active_item.id == k_null_id &&
         temp_hot_item == k_null_id) {
         // Indicate when the mouse is pressed down, but not over anything important.
-        ButtonConfig const no_op_config {
-            .mouse_button = MouseButton::Left,
-            .event = MouseButtonEvent::Down,
-            .closes_popup_or_modal = true,
-        };
-        SetActive(k_no_op_id, no_op_config);
+        SetActive(k_no_op_id, MouseButton::Left);
     }
 
     // Close popups/modals if clicked outside.
-    if (active_item.just_activated &&
-        FindIf(active_item.button_cfgs, [](auto const& cfg) { return cfg.closes_popup_or_modal; })) {
+    if (active_item.just_activated) {
         if (open_popups.size && popup_menu_just_opened == k_null_id) {
             auto const popup_clicked =
                 (hovered_viewport && hovered_viewport->root_viewport->cfg.mode == ViewportMode::PopupMenu)
@@ -817,7 +806,7 @@ void Context::EndFrame() {
     frame_output.wants.mouse_capture = AnItemIsActive();
     frame_output.wants.mouse_scroll = true;
 
-    active_item_last_frame = active_item.id;
+    active_item_last_frame = active_item;
     hot_item_last_frame = hot_item;
     hovered_item_last_frame = hovered_item;
     prev_active_text_input = active_text_input;
@@ -881,7 +870,7 @@ bool Context::SliderBehaviourFraction(SliderBehaviourFractionArgs const& args) {
         start_location = frame_input.cursor_pos;
     }
 
-    if (IsActive(args.id, SliderConfig::k_activation_cfg)) {
+    if (IsActive(args.id, SliderConfig::k_activation_cfg.mouse_button)) {
         f32 sensitivity = args.cfg.sensitivity;
         if (args.cfg.slower_with_shift) {
             if (frame_input.Key(KeyCode::ShiftL).presses.size ||
@@ -1007,30 +996,18 @@ static void HandleHoverPopupMenuClosing(Context& imgui, Id id) {
     }
 }
 
-bool Context::SetHot(Rect r, Id id, bool32 is_not_viewport_content) {
-    // If there is a popup viewport focused and it is not this viewport we can leave
-    // early as the popup has focus. (We also check that this current viewport is not
-    // nested inside a popup - in that case we proceed as normal).
-    if (exclusive_focus_viewport != nullptr && exclusive_focus_viewport != curr_viewport) {
-        if (exclusive_focus_viewport->cfg.mode == ViewportMode::PopupMenu)
-            HandleHoverPopupMenuClosing(*this, id);
+void Context::SetHot(Rect r, Id id, bool32 is_not_viewport_content) {
+    if (exclusive_focus_viewport && curr_viewport->root_viewport != exclusive_focus_viewport) return;
 
-        if (curr_viewport->root_viewport != exclusive_focus_viewport) return false;
-    }
+    if (curr_viewport != (is_not_viewport_content ? hovered_viewport : hovered_viewport_content)) return;
 
-    // Valid if the current viewport is hovered and the cursor is in the rect.
-    if (curr_viewport == (is_not_viewport_content ? hovered_viewport : hovered_viewport_content) &&
-        r.Contains(GuiIo().in.cursor_pos)) {
-        temp_hovered_item = id;
-        // Only allow it if there is not an active item (for example a disallow when a slider is held
-        // down).
-        if (!AnItemIsActive()) {
-            temp_hot_item = id;
-            return true;
-        }
-    }
+    if (!r.Contains(GuiIo().in.cursor_pos)) return;
 
-    return false;
+    temp_hovered_item = id;
+
+    // Only allow it if there is not an active item (for example a disallow when a slider is held
+    // down).
+    if (!AnItemIsActive()) temp_hot_item = id;
 }
 
 TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) {
@@ -1135,10 +1112,10 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
         stb_textedit_click(this, &stb_state, rel_pos.x, rel_pos.y);
         reset_cursor = true;
     }
-    if (IsActive(id, button_cfg)) {
+    if (IsActive(id, button_cfg.mouse_button)) {
         if (!frame_input.mouse_buttons[0].is_down) {
             ClearActive();
-        } else if (!WasJustActivated(id, button_cfg)) {
+        } else if (!WasJustActivated(id, button_cfg.mouse_button)) {
             if (button_cfg.event == MouseButtonEvent::Down) {
                 if (frame_input.Mouse(MouseButton::Left).dragging_started) {
                     auto rel_pos = get_rel_click_point(r.pos, x_offset);
@@ -1152,7 +1129,7 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
         }
     }
 
-    if (IsHotOrActive(id, button_cfg)) frame_output.wants.cursor_type = CursorType::IBeam;
+    if (IsHotOrActive(id, button_cfg.mouse_button)) frame_output.wants.cursor_type = CursorType::IBeam;
 
     // Select word
     if (!(cfg.select_all_when_opening && TextInputJustFocused(id))) {
@@ -1527,22 +1504,29 @@ bool Context::ButtonBehaviour(Rect r, Id id, ButtonConfig cfg) {
 
     bool button_fired = false;
 
-    if (SetHot(r, id, cfg.is_non_viewport_content)) {
-        if (auto const& mouse_btn = GuiIo().in.Mouse(cfg.mouse_button).is_down; mouse_btn) {
-            SetActive(id, cfg);
+    // If we haven't run ButtonBehaviour on this ID before, track the rectangle. Multiple calls to behaviour
+    // is supported but we don't want to register the same rectangle multiple times.
+    if (temp_hot_item != id) {
+        RegisterRectForMouseTracking(r);
+        SetHot(r, id, cfg.is_non_viewport_content);
+    }
+
+    if (temp_hot_item == id) {
+        if (auto const click = GuiIo().in.Mouse(cfg.mouse_button).is_down; click) {
+            SetActive(id, cfg.mouse_button);
 
             bool const matches_modifiers =
-                cfg.required_modifiers.IsNone() || cfg.required_modifiers == mouse_btn->modifiers;
+                cfg.required_modifiers.IsNone() || cfg.required_modifiers == click->modifiers;
 
             switch (cfg.event) {
                 case MouseButtonEvent::Down: {
-                    if (cfg.dont_fire_on_double_click && mouse_btn->is_double_click) break;
+                    if (cfg.dont_fire_on_double_click && click->is_double_click) break;
                     if (matches_modifiers) button_fired = true;
                     break;
                 }
 
                 case MouseButtonEvent::DoubleClick: {
-                    if (mouse_btn->is_double_click && matches_modifiers) button_fired = true;
+                    if (click->is_double_click && matches_modifiers) button_fired = true;
                     break;
                 }
 
@@ -1551,25 +1535,25 @@ bool Context::ButtonBehaviour(Rect r, Id id, ButtonConfig cfg) {
                 case MouseButtonEvent::Count: PanicIfReached();
             }
         }
-
-        if (WasJustDeactivated(id) && GuiIo().in.Mouse(cfg.mouse_button).releases.size &&
-            cfg.event == MouseButtonEvent::Up)
-            button_fired = true;
     }
 
+    if (exclusive_focus_viewport && exclusive_focus_viewport->cfg.mode == ViewportMode::PopupMenu)
+        HandleHoverPopupMenuClosing(*this, id);
+
+    if (cfg.event == MouseButtonEvent::Up && WasJustDeactivated(id, cfg.mouse_button) &&
+        r.Contains(GuiIo().in.cursor_pos))
+        button_fired = true;
+
     if (cfg.hold_to_repeat) {
-        if (WasJustActivated(id, cfg))
+        if (WasJustActivated(id, cfg.mouse_button))
             button_repeat_counter = GuiIo().in.current_time + k_button_repeat_rate;
-        else if (IsActive(id, cfg)) {
+        else if (IsActive(id, cfg.mouse_button)) {
             if (GuiIo().WakeupAtTimedInterval(button_repeat_counter, k_button_repeat_rate))
                 button_fired = true;
         }
     }
 
-    if (IsHotOrActive(id, cfg)) GuiIo().out.wants.cursor_type = CursorType::Hand;
-
-    // If we haven't run ButtonBehaviour on this ID before, track the rectangle.
-    if (temp_hot_item != id) RegisterRectForMouseTracking(r);
+    if (IsHotOrActive(id, cfg.mouse_button)) GuiIo().out.wants.cursor_type = cfg.cursor_type;
 
     if (button_fired && cfg.closes_popup_or_modal) {
         switch (curr_viewport->root_viewport->cfg.mode) {
@@ -2072,23 +2056,21 @@ void Context::TextInputSelectAll() {
     GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
 
-void Context::ClearActive() { SetActive(k_null_id, {}); }
+void Context::ClearActive() { SetActive(k_null_id, MouseButton::Left); }
 
-void Context::SetActive(Id id, ButtonConfig button_cfg) {
+void Context::SetActive(Id id, MouseButton mouse_button) {
     temp_active_item.id = id;
     temp_active_item.just_activated = (id != k_null_id);
     temp_active_item.viewport = curr_viewport;
+    temp_active_item.mouse_button = mouse_button;
 
     if (id != k_null_id) {
         // An id has been set so we no longer want to have a hot item.
         temp_hot_item = k_null_id;
-        auto const appended = dyn::Append(temp_active_item.button_cfgs, button_cfg);
-        ASSERT(appended, "too many button configs used on the same ID");
     } else {
         // Unlike when activating an item - where we need a frame of lag, when deactivating, we can
         // immediately apply the changes.
         active_item = {};
-        temp_active_item.button_cfgs = {};
     }
 
     GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
