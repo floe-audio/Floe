@@ -168,6 +168,7 @@ static bool DoCurveMap(GuiState& g,
                                                            {
                                                                .text = "Add Point"_s,
                                                                .inactive = points.size == points.Capacity(),
+                                                               .no_icon_gap = true,
                                                            })
                                                       .button_fired) {
                                                   new_point_at_window_pos =
@@ -279,6 +280,7 @@ static bool DoCurveMap(GuiState& g,
                                                      {
                                                          .text = "Add Point"_s,
                                                          .inactive = points.size == points.Capacity(),
+                                                         .no_icon_gap = true,
                                                      })
                                                 .button_fired) {
                                             new_point_at_window_pos =
@@ -377,6 +379,7 @@ static bool DoCurveMap(GuiState& g,
                                                            root,
                                                            {
                                                                .text = "Remove Point"_s,
+                                                               .no_icon_gap = true,
                                                            })
                                                       .button_fired) {
                                                   remove_working_index = working_index;
@@ -386,6 +389,7 @@ static bool DoCurveMap(GuiState& g,
                                                            root,
                                                            {
                                                                .text = "Remove All Points"_s,
+                                                               .no_icon_gap = true,
                                                            })
                                                       .button_fired) {
                                                   remove_working_index = k_remove_all;

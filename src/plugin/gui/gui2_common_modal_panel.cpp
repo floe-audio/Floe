@@ -546,17 +546,18 @@ Box MenuItem(GuiBuilder& builder, Box parent, MenuItemOptions const& options, u6
 
     if (item.button_fired && options.close_on_click) builder.imgui.CloseTopPopupOnly();
 
-    DoBox(builder,
-          {
-              .parent = item,
-              .text = options.is_selected ? String(ICON_FA_CHECK) : "",
-              .font = FontType::Icons,
-              .text_colours = Col {.c = Col::Subtext0},
-              .layout {
-                  .size = k_icon_button_size,
-                  .margins {.l = k_menu_item_padding_x},
-              },
-          });
+    if (!options.no_icon_gap)
+        DoBox(builder,
+              {
+                  .parent = item,
+                  .text = options.is_selected ? String(ICON_FA_CHECK) : "",
+                  .font = FontType::Icons,
+                  .text_colours = Col {.c = Col::Subtext0},
+                  .layout {
+                      .size = k_icon_button_size,
+                      .margins {.l = k_menu_item_padding_x},
+                  },
+              });
 
     auto const text_container =
         DoBox(builder,

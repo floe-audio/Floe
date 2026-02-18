@@ -169,6 +169,7 @@ struct MenuItemOptions {
     bool is_selected;
     bool close_on_click = true;
     bool inactive = false;
+    bool no_icon_gap = false;
 };
 
 Box MenuItem(GuiBuilder& builder,
