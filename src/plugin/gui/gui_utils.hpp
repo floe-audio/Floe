@@ -6,12 +6,13 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "gui_fwd.hpp"
+#include "gui_framework/gui_builder.hpp"
 
 void HandleShowingTextEditorForParams(GuiState& g, Rect r, Span<ParamIndex const> params);
 
 struct TooltipOptions {
     bool ignore_show_tooltips_preference = false;
-    bool show_left_or_right = false;
+    TooltipJustification justification = TooltipJustification::AboveOrBelow;
 };
 bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOptions const& options);
 

@@ -312,7 +312,7 @@ DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions
                   },
                   .tooltip = options.tooltip,
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                  .tooltip_show_left_or_right = true,
+                  .tooltip_justification = TooltipJustification::LeftOrRight,
                   .button_behaviour = imgui::ButtonConfig {.dont_fire_on_double_click = true},
               });
 
@@ -610,7 +610,7 @@ Box DoFilterButton(GuiBuilder& builder,
                                   },
                                   .tooltip = options.common.tooltip,
                                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                                  .tooltip_show_left_or_right = true,
+                                  .tooltip_justification = TooltipJustification::LeftOrRight,
                                   .button_behaviour = imgui::ButtonConfig {},
                               });
 
@@ -757,7 +757,7 @@ Box DoFilterTreeButton(GuiBuilder& builder,
                   },
                   .tooltip = options.common.tooltip,
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                  .tooltip_show_left_or_right = true,
+                  .tooltip_justification = TooltipJustification::LeftOrRight,
                   .button_behaviour = imgui::ButtonConfig {},
               });
 
@@ -934,7 +934,7 @@ Box DoFilterCard(GuiBuilder& builder,
                   },
                   .tooltip = options.common.tooltip,
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                  .tooltip_show_left_or_right = true,
+                  .tooltip_justification = TooltipJustification::LeftOrRight,
                   .button_behaviour = imgui::ButtonConfig {},
               });
 
@@ -1126,7 +1126,7 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                       },
                       .tooltip = folder ? TooltipString {"Folder"_s} : k_nullopt,
                       .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                      .tooltip_show_left_or_right = true,
+                      .tooltip_justification = TooltipJustification::LeftOrRight,
                       .button_behaviour = imgui::ButtonConfig {},
                   });
 

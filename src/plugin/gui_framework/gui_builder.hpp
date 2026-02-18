@@ -111,10 +111,12 @@ enum class GuiBuilderPass {
     HandleInputAndRender,
 };
 
+enum class TooltipJustification { AboveOrBelow, LeftOrRight };
+
 struct DrawTooltipArgs {
     Rect r; // The rect that opened the tooltip.
     Rect avoid_r; // The rect to avoid when placing the tooltip;
-    bool show_left_or_right; // Prefer placing the tooltip to the side, not top/bottom.
+    TooltipJustification justification;
 };
 using DrawOverlayTooltipForRectFunc = void(imgui::Context const& imgui,
                                            Fonts& fonts,
@@ -243,7 +245,7 @@ struct BoxConfig {
 
     TooltipString tooltip = k_nullopt;
     imgui::Id tooltip_avoid_viewport_id = 0; // 0 = avoid nothing.
-    bool tooltip_show_left_or_right = false;
+    TooltipJustification tooltip_justification = TooltipJustification::AboveOrBelow;
 
     Optional<imgui::ButtonConfig> button_behaviour = k_nullopt;
     u8 extra_margin_for_mouse_events = 0;

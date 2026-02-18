@@ -344,7 +344,8 @@ struct TextInputResult {
 f32x2 TextInputTextPos(String text, Rect r, TextInputConfig cfg, Fonts const& fonts);
 
 // Tries to find a appropriate position for a popup, given the constraints.
-f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 viewport_size, bool find_left_or_right);
+enum class PopupJustification { AboveOrBelow, LeftOrRight };
+f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 viewport_size, PopupJustification justification);
 
 struct Context {
     //

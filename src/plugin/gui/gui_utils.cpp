@@ -68,7 +68,7 @@ bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOption
                                   {
                                       .r = window_r,
                                       .avoid_r = window_r,
-                                      .show_left_or_right = options.show_left_or_right,
+                                      .justification = options.justification,
                                   });
         return true;
     }
@@ -107,7 +107,7 @@ void ParameterValuePopup(GuiState& g, Span<DescribedParamValue const*> params, i
                               {
                                   .r = window_r,
                                   .avoid_r = window_r,
-                                  .show_left_or_right = false,
+                                  .justification = TooltipJustification::AboveOrBelow,
                               });
 }
 

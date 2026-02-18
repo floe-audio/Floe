@@ -374,7 +374,7 @@ void Context::OnScissorChanged() const {
         draw_list->SetClipRectFullscreen();
 }
 
-f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 viewport_size, bool find_left_or_right) {
+f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 viewport_size, PopupJustification justification) {
     auto ensure_bottom_fits = [&](f32x2 pos) {
         auto bottom = pos.y + base_r.h;
         if (bottom < viewport_size.y) {
@@ -406,7 +406,7 @@ f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 viewport_size, bool find_lef
         return pos;
     };
 
-    if (find_left_or_right) {
+    if (justification == PopupJustification::LeftOrRight) {
         auto right_outer_most = avoid_r.Right() + base_r.w;
         if (right_outer_most < viewport_size.x) {
             auto pos = f32x2 {avoid_r.Right(), base_r.y};
@@ -432,7 +432,7 @@ f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 viewport_size, bool find_lef
             return ensure_right_fits(ensure_left_fits(pos));
         }
 
-        return BestPopupPos(base_r, avoid_r, viewport_size, true);
+        return BestPopupPos(base_r, avoid_r, viewport_size, PopupJustification::LeftOrRight);
     }
 
     return {-1, -1};
@@ -965,6 +965,9 @@ bool Context::RegisterRectForMouseTracking(Rect r_in_window_coords, bool check_i
                     .rect = r_in_window_coords,
                     .mouse_over = r_in_window_coords.Contains(GuiIo().in.cursor_pos),
                 });
+
+    overlay_draw_list->AddRect(r_in_window_coords, 0xff0000ff);
+
     return true;
 }
 
@@ -1704,7 +1707,11 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
             auto avoid_r = rect_to_avoid;
             auto window_size = GuiIo().in.window_size.ToFloat2();
 
-            r.pos = BestPopupPos(base_r, avoid_r, window_size, has_parent_popup);
+            r.pos = BestPopupPos(base_r,
+                                 avoid_r,
+                                 window_size,
+                                 has_parent_popup ? PopupJustification::LeftOrRight
+                                                  : PopupJustification::AboveOrBelow);
             r.pos = Trunc(r.pos);
         }
     }

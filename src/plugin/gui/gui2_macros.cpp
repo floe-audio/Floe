@@ -38,7 +38,10 @@ static void DrawPopupTextbox(GuiState& g, String str, Rect r) {
     popup_r.w = size.x + pad_x * 2;
     popup_r.h = size.y + pad_y * 2;
 
-    popup_r.pos = imgui::BestPopupPos(popup_r, r, GuiIo().in.window_size.ToFloat2(), false);
+    popup_r.pos = imgui::BestPopupPos(popup_r,
+                                       r,
+                                       GuiIo().in.window_size.ToFloat2(),
+                                       imgui::PopupJustification::AboveOrBelow);
 
     f32x2 text_start;
     text_start.x = popup_r.x + pad_x;
@@ -345,7 +348,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                                                       {
                                                           .r = window_r,
                                                           .avoid_r = window_r,
-                                                          .show_left_or_right = false,
+                                                          .justification = TooltipJustification::AboveOrBelow,
                                                       });
                         });
                 }

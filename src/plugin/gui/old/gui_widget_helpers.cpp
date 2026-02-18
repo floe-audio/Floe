@@ -109,7 +109,7 @@ void MidiLearnMenu(GuiState& g, Span<ParamIndex> params, Rect r) {
         Rect {.x = centred_x, .y = r.y, .w = item_width, .h = item_height * (f32)num_items},
         r,
         GuiIo().in.window_size.ToFloat2(),
-        false);
+        imgui::PopupJustification::AboveOrBelow);
     Rect const popup_r {.pos = popup_pos};
 
     if (imgui.IsPopupMenuOpen(popup_id)) {

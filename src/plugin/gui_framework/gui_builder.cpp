@@ -155,7 +155,7 @@ static bool Tooltip(GuiBuilder& builder,
                     Rect r,
                     Optional<Rect> additional_avoid_r,
                     TooltipString tooltip_str,
-                    bool show_left_or_right) {
+                    TooltipJustification justification) {
     ZoneScoped;
     if (!builder.config.show_tooltips) return false;
     if (tooltip_str.tag == TooltipStringType::None) return false;
@@ -189,7 +189,7 @@ static bool Tooltip(GuiBuilder& builder,
                                     {
                                         .r = r,
                                         .avoid_r = avoid_r,
-                                        .show_left_or_right = show_left_or_right,
+                                        .justification = justification,
                                     });
 
         return true;
@@ -543,7 +543,7 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                         rect,
                         additional_avoid_r,
                         config.tooltip,
-                        config.tooltip_show_left_or_right);
+                        config.tooltip_justification);
             }
 
             return box;
