@@ -49,7 +49,7 @@ struct TrivialFunctionRef<ReturnType(Args...)> {
         function_object_size = !FunctionPointer<Decay<F>> ? sizeof(Decay<F>) : 0;
     }
 
-    TrivialFunctionRef CloneObject(ArenaAllocator& a) {
+    TrivialFunctionRef CloneObject(ArenaAllocator& a) const {
         TrivialFunctionRef result;
         result.invoke_function = invoke_function;
         if (function_object_size != 0) {

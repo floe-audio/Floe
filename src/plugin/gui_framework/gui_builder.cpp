@@ -115,6 +115,7 @@ void DoBoxViewport(GuiBuilder& builder, BoxViewportConfig const& config) {
             auto s = builder.arena.New<GuiBuilder::CurrentViewportState>(
                 GuiBuilder::CurrentViewportState {.cfg = config});
             if (config.bounds.tag == BoxViewportConfig::BoundsType::Box) {
+                s->cfg.run = config.run.CloneObject(builder.arena);
                 if (builder.state->first_child) {
                     for (auto q = builder.state->first_child; q; q = q->next)
                         if (!q->next) {

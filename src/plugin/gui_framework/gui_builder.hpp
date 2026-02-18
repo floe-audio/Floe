@@ -43,8 +43,8 @@
 // In order to have a single codepath for both layout and input-handling/rendering, we use a 2-pass approach.
 // This means that your box-viewport functions are actually called twice per frame - this is almost
 // entirely a technical detail, though occasionally you need to be aware of it if you want to add some custom
-// rendering or input-handling (which must be done in the second pass). This is also why we
-// TrivialFixedSizeFunction as part of the API - we need to call the function twice at different stages.
+// rendering or input-handling (which must be done in the second pass). This is also why we have callbacks as
+// part of the API - we need to call the function twice at different stages.
 // 1. The first pass is the layout pass where we build a tree of boxes and perform layout on them. No input or
 //    rendering should be done here.
 // 2. The second pass is the input-handling and rendering pass. At this point we have the layout data.
@@ -79,14 +79,16 @@ struct Box {
 };
 
 struct BoxViewportConfig {
-    using RunFunction = TrivialFixedSizeFunction<24, void(GuiBuilder&)>;
+    using RunFunction = TrivialFunctionRef<void(GuiBuilder&)>;
 
     enum class BoundsType { Box, Rect };
 
     using Bounds =
         TaggedUnion<BoundsType, TypeAndTag<Box, BoundsType::Box>, TypeAndTag<Rect, BoundsType::Rect>>;
 
-    // The run function is where you do all the work which presumably includes lots of calls to DoBox.
+    // The run function is where you do all the work which presumably includes lots of calls to DoBox. The
+    // function object is cloned if the system needs to store it, so it's safe to use a lambda here (so long
+    // as you understand the lambda references lifetime comment of DoBoxViewport).
     RunFunction run;
 
     // The rectangle for this viewport. Just like IMGUI BeginViewport, the interpretation of this value is
