@@ -707,6 +707,7 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
     var timer = try std.time.Timer.start();
 
     try child.spawn();
+    ciLog("Spawned", args, "");
     errdefer {
         _ = child.kill() catch {};
     }
@@ -801,12 +802,34 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
     }
 }
 
+fn ciLog(prefix: []const u8, args: []const []const u8, extra: []const u8) void {
+    var buf: [4096]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    const writer = stream.writer();
+    writer.print("[ci] {s}: zig build", .{prefix}) catch return;
+    for (args) |arg| {
+        writer.print(" {s}", .{arg}) catch return;
+    }
+    if (extra.len > 0) {
+        writer.print(" — {s}", .{extra}) catch return;
+    }
+    writer.writeAll("\n") catch return;
+    std.debug.print("{s}", .{stream.getWritten()});
+}
+
 fn runZigBuild(ci_report: *CiReport, args: []const []const u8) void {
+    ciLog("Starting", args, "");
+
     _ = tryRunZigBuild(ci_report, args) catch |err| {
-        std.log.err("runZigBuild failed: {any}\n", .{err});
+        var err_buf: [256]u8 = undefined;
+        const err_msg = std.fmt.bufPrint(&err_buf, "{any}", .{err}) catch "?";
+        ciLog("Error", args, err_msg);
         if (@errorReturnTrace()) |st|
             std.debug.dumpStackTrace(st.*);
+        return;
     };
+
+    ciLog("Finished", args, "");
 }
 
 fn spawnZigBuild(pool: *std.Thread.Pool, wg: *std.Thread.WaitGroup, ci_report: *CiReport, args: []const []const u8) void {
@@ -824,6 +847,8 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
         .arena = std.heap.ArenaAllocator.init(tsa.allocator()),
         .tasks = std.ArrayListUnmanaged(CiTask).empty,
     };
+
+    std.debug.print("[ci] CI started (level: {s})\n", .{@tagName(test_level)});
 
     // Start a simple HTTP server so that tests can use it.
     var http_server = TestHttpServer.start(tsa.allocator()) catch |err| {
@@ -952,7 +977,9 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
         else => {},
     }
 
+    std.debug.print("[ci] Waiting for first batch of tasks...\n", .{});
     pool.waitAndWork(&wg);
+    std.debug.print("[ci] First batch complete.\n", .{});
 
     if (test_level == .full) {
         switch (builtin.os.tag) {
@@ -978,7 +1005,9 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
                     au_install_location,
                 });
 
+                std.debug.print("[ci] Waiting for second batch (macOS AU tests)...\n", .{});
                 pool.waitAndWork(&wg);
+                std.debug.print("[ci] Second batch complete.\n", .{});
             },
             else => {},
         }
@@ -1011,10 +1040,13 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
         try stdout_buffered.flush();
     }
 
+    std.debug.print("[ci] Uploading error logs...\n", .{});
     // Upload logs
     _ = try runUploadErrors(context);
 
-    return ci_report.returnCode();
+    const ret = ci_report.returnCode();
+    std.debug.print("[ci] CI finished (return code: {d})\n", .{ret});
+    return ret;
 }
 
 fn auInstallLocation(context: *Context) ![]const u8 {
