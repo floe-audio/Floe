@@ -11,6 +11,7 @@ void HandleShowingTextEditorForParams(GuiState& g, Rect r, Span<ParamIndex const
 
 struct TooltipOptions {
     bool ignore_show_tooltips_preference = false;
+    bool show_left_or_right = false;
 };
 bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOptions const& options);
 

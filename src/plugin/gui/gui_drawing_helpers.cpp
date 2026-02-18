@@ -331,12 +331,17 @@ void DrawOverlayTooltipForRect(imgui::Context const& imgui,
 
     auto const size = Min(max_width, wrapped_size.x);
 
-    Rect popup_r;
-    popup_r.x = args.r.x;
-    popup_r.y = args.r.y + args.r.h;
-    popup_r.size = f32x2 {size, wrapped_size.y} + text_margin * 2;
+    Rect popup_r {
+        .pos = args.r.pos,
+        .size = f32x2 {size, wrapped_size.y} + (text_margin * 2),
+    };
 
-    popup_r.x = popup_r.x + ((args.r.w / 2) - (popup_r.w / 2));
+    if (!args.show_left_or_right) {
+        popup_r.y += args.r.h;
+        popup_r.x = popup_r.x + ((args.r.w / 2) - (popup_r.w / 2));
+    } else {
+        popup_r.y = popup_r.y + ((args.r.h / 2) - (popup_r.h / 2));
+    }
 
     popup_r.pos = imgui::BestPopupPos(popup_r,
                                       args.avoid_r,

@@ -68,7 +68,7 @@ bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOption
                                   {
                                       .r = window_r,
                                       .avoid_r = window_r,
-                                      .show_left_or_right = false,
+                                      .show_left_or_right = options.show_left_or_right,
                                   });
         return true;
     }
