@@ -167,7 +167,9 @@ static bool DoCurveMap(GuiState& g,
                                                            root,
                                                            {
                                                                .text = "Add Point"_s,
-                                                               .inactive = points.size == points.Capacity(),
+                                                               .mode = points.size == points.Capacity()
+                                                                           ? MenuItemOptions::Mode::Disabled
+                                                                           : MenuItemOptions::Mode::Active,
                                                                .no_icon_gap = true,
                                                            })
                                                       .button_fired) {
@@ -279,7 +281,9 @@ static bool DoCurveMap(GuiState& g,
                                                      root,
                                                      {
                                                          .text = "Add Point"_s,
-                                                         .inactive = points.size == points.Capacity(),
+                                                         .mode = points.size == points.Capacity()
+                                                                     ? MenuItemOptions::Mode::Disabled
+                                                                     : MenuItemOptions::Mode::Active,
                                                          .no_icon_gap = true,
                                                      })
                                                 .button_fired) {

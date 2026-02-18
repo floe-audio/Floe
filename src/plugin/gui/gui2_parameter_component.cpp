@@ -29,14 +29,13 @@ static void DoMidiLearnMenu(GuiState& g, Span<ParamIndex const> param_indices) {
         DEFER { g.imgui.PopId(); };
 
         if (param_indices.size != 1) {
-            // TODO: inactive isn't quite the right option - we need properly disabled
             MenuItem(g.builder,
                      root,
                      {
                          .text = fmt::Format(g.scratch_arena,
                                              "{}: ",
                                              k_param_descriptors[ToInt(param_index)].gui_label),
-                         .inactive = true,
+                         .mode = MenuItemOptions::Mode::Disabled,
                      });
         }
 

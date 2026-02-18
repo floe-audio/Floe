@@ -163,12 +163,13 @@ Box MenuOpenButton(GuiBuilder& builder,
                    u64 id_extra = SourceLocationHash());
 
 struct MenuItemOptions {
+    enum class Mode : u8 { Active, Dimmed, Disabled };
     String text;
     TooltipString tooltip = k_nullopt;
     Optional<String> subtext;
     bool is_selected;
     bool close_on_click = true;
-    bool inactive = false;
+    Mode mode {Mode::Active};
     bool no_icon_gap = false;
 };
 
