@@ -48,6 +48,7 @@ static bool DoCurveMap(GuiState& g,
     auto const rect = Rect::FromMinMax(rect_min, rect_max);
     auto const point_radius = (rect_max.x - rect_min.x) * 0.02f;
     constexpr f32 k_extra_grabber_scale = 3.0f;
+    auto const tooltip_rect = rect.Expanded(point_radius * k_extra_grabber_scale);
 
     {
         auto const rounding = LiveSize(UiSizeId::CornerRounding);
@@ -122,7 +123,7 @@ static bool DoCurveMap(GuiState& g,
 
             Tooltip(g,
                     imgui_id,
-                    region_rect,
+                    tooltip_rect,
                     fmt::Format(g.scratch_arena, "Double-click to add point.\n\n{}", additional_tooltip),
                     {});
 
@@ -147,6 +148,7 @@ static bool DoCurveMap(GuiState& g,
                                               .event = MouseButtonEvent::Up,
                                           })) {
                     imgui.OpenPopupMenu(right_click_id, imgui_id);
+                    g.curve_map_add_point_click_pos = GuiIo().in.cursor_pos;
                 }
 
                 if (g.imgui.IsPopupMenuOpen(right_click_id))
@@ -173,11 +175,11 @@ static bool DoCurveMap(GuiState& g,
                                                                .no_icon_gap = true,
                                                            })
                                                       .button_fired) {
-                                                  new_point_at_window_pos =
-                                                      GuiIo().in.Mouse(MouseButton::Right).last_press.point;
+                                                  new_point_at_window_pos = g.curve_map_add_point_click_pos;
                                               }
                                           },
-                                      .bounds = region_rect,
+                                      .bounds = Rect {.pos = g.curve_map_add_point_click_pos}.Expanded(
+                                          point_radius * k_extra_grabber_scale),
                                       .imgui_id = right_click_id,
                                       .viewport_config = k_default_popup_menu_viewport,
                                   });
@@ -233,7 +235,7 @@ static bool DoCurveMap(GuiState& g,
                 if (imgui.IsHot(curve_handle_imgui_id))
                     Tooltip(g,
                             curve_handle_imgui_id,
-                            curve_handle_rect,
+                            tooltip_rect,
                             fmt::Format(g.scratch_arena,
                                         "Drag to change curve. Double-click to add point.\n\n{}",
                                         additional_tooltip),
@@ -260,6 +262,7 @@ static bool DoCurveMap(GuiState& g,
                                                   .event = MouseButtonEvent::Up,
                                               })) {
                         imgui.OpenPopupMenu(right_click_id, curve_handle_imgui_id);
+                        g.curve_map_add_point_click_pos = GuiIo().in.cursor_pos;
                     }
 
                     if (g.imgui.IsPopupMenuOpen(right_click_id))
@@ -287,11 +290,11 @@ static bool DoCurveMap(GuiState& g,
                                                          .no_icon_gap = true,
                                                      })
                                                 .button_fired) {
-                                            new_point_at_window_pos =
-                                                GuiIo().in.Mouse(MouseButton::Right).last_press.point;
+                                            new_point_at_window_pos = g.curve_map_add_point_click_pos;
                                         }
                                     },
-                                .bounds = curve_handle_rect,
+                                .bounds = Rect {.pos = g.curve_map_add_point_click_pos}.Expanded(
+                                    point_radius * k_extra_grabber_scale),
                                 .imgui_id = right_click_id,
                                 .viewport_config = k_default_popup_menu_viewport,
                             });
@@ -346,7 +349,7 @@ static bool DoCurveMap(GuiState& g,
             if (imgui.IsHot(imgui_id))
                 Tooltip(g,
                         imgui_id,
-                        grabber_rect,
+                        tooltip_rect,
                         fmt::Format(g.scratch_arena,
                                     "Drag to move point. Double-click to remove point.\n\n{}",
                                     additional_tooltip),

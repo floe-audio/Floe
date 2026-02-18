@@ -68,6 +68,7 @@ struct GuiState {
     bool show_new_version_indicator {};
     BottomPanelState bottom_panel_state {};
     MacrosGuiState macros_gui_state {};
+    f32x2 curve_map_add_point_click_pos {};
 
     Engine& engine;
     SharedEngineSystems& shared_engine_systems;
