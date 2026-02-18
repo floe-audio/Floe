@@ -6,8 +6,7 @@
 #include "gui/gui_drawing_helpers.hpp"
 #include "gui/gui_state.hpp"
 #include "gui/gui_utils.hpp"
-#include "gui/old/gui_menu.hpp"
-#include "gui/old/gui_widget_helpers.hpp"
+#include "gui2_common_modal_panel.hpp"
 
 static void DrawCurvedSegment(DrawList& graphics,
                               f32x2 screen_p0,
@@ -150,26 +149,35 @@ static bool DoCurveMap(GuiState& g,
                     imgui.OpenPopupMenu(right_click_id, imgui_id);
                 }
 
-                if (g.imgui.IsPopupMenuOpen(right_click_id)) {
-                    g.imgui.BeginViewport(
-                        k_default_popup_menu_viewport,
-                        right_click_id,
-                        {.pos = GuiIo().in.Mouse(MouseButton::Right).last_press.point, .size = {}});
-                    DEFER { imgui.EndViewport(); };
-
-                    StartFloeMenu(g);
-                    DEFER { EndFloeMenu(g); };
-
-                    auto const k_items = Array {"Add Point"_s};
-
-                    PopupMenuItems menu(g, k_items);
-                    if (points.size != points.Capacity()) {
-                        if (menu.DoButton(0))
-                            new_point_at_window_pos = GuiIo().in.Mouse(MouseButton::Right).last_press.point;
-                    } else {
-                        menu.DoFakeButton(0);
-                    }
-                }
+                if (g.imgui.IsPopupMenuOpen(right_click_id))
+                    DoBoxViewport(g.builder,
+                                  {
+                                      .run =
+                                          [&](GuiBuilder&) {
+                                              auto const root = DoBox(
+                                                  g.builder,
+                                                  {
+                                                      .layout {
+                                                          .size = layout::k_hug_contents,
+                                                          .contents_direction = layout::Direction::Column,
+                                                          .contents_align = layout::Alignment::Start,
+                                                      },
+                                                  });
+                                              if (MenuItem(g.builder,
+                                                           root,
+                                                           {
+                                                               .text = "Add Point"_s,
+                                                               .inactive = points.size == points.Capacity(),
+                                                           })
+                                                      .button_fired) {
+                                                  new_point_at_window_pos =
+                                                      GuiIo().in.Mouse(MouseButton::Right).last_press.point;
+                                              }
+                                          },
+                                      .bounds = region_rect,
+                                      .imgui_id = right_click_id,
+                                      .viewport_config = k_default_popup_menu_viewport,
+                                  });
             }
 
             continue;
@@ -251,27 +259,36 @@ static bool DoCurveMap(GuiState& g,
                         imgui.OpenPopupMenu(right_click_id, curve_handle_imgui_id);
                     }
 
-                    if (g.imgui.IsPopupMenuOpen(right_click_id)) {
-                        g.imgui.BeginViewport(
-                            k_default_popup_menu_viewport,
-                            right_click_id,
-                            {.pos = GuiIo().in.Mouse(MouseButton::Right).last_press.point, .size = {}});
-                        DEFER { imgui.EndViewport(); };
-
-                        StartFloeMenu(g);
-                        DEFER { EndFloeMenu(g); };
-
-                        auto const k_items = Array {"Add Point"_s};
-
-                        PopupMenuItems menu(g, k_items);
-                        if (points.size != points.Capacity()) {
-                            if (menu.DoButton(0))
-                                new_point_at_window_pos =
-                                    GuiIo().in.Mouse(MouseButton::Right).last_press.point;
-                        } else {
-                            menu.DoFakeButton(0);
-                        }
-                    }
+                    if (g.imgui.IsPopupMenuOpen(right_click_id))
+                        DoBoxViewport(
+                            g.builder,
+                            {
+                                .run =
+                                    [&](GuiBuilder&) {
+                                        auto const root =
+                                            DoBox(g.builder,
+                                                  {
+                                                      .layout {
+                                                          .size = layout::k_hug_contents,
+                                                          .contents_direction = layout::Direction::Column,
+                                                          .contents_align = layout::Alignment::Start,
+                                                      },
+                                                  });
+                                        if (MenuItem(g.builder,
+                                                     root,
+                                                     {
+                                                         .text = "Add Point"_s,
+                                                         .inactive = points.size == points.Capacity(),
+                                                     })
+                                                .button_fired) {
+                                            new_point_at_window_pos =
+                                                GuiIo().in.Mouse(MouseButton::Right).last_press.point;
+                                        }
+                                    },
+                                .bounds = curve_handle_rect,
+                                .imgui_id = right_click_id,
+                                .viewport_config = k_default_popup_menu_viewport,
+                            });
                 }
             }
         }
@@ -342,26 +359,43 @@ static bool DoCurveMap(GuiState& g,
                     imgui.OpenPopupMenu(right_click_id, imgui_id);
                 }
 
-                if (g.imgui.IsPopupMenuOpen(right_click_id)) {
-                    g.imgui.BeginViewport(k_default_popup_menu_viewport, right_click_id, grabber_rect);
-                    DEFER { imgui.EndViewport(); };
-
-                    StartFloeMenu(g);
-                    DEFER { EndFloeMenu(g); };
-
-                    auto const k_items = Array {"Remove Point"_s, "Remove All Points"_s};
-
-                    PopupMenuItems menu(g, k_items);
-                    if (menu.DoButton(0)) {
-                        remove_working_index = working_index;
-                        imgui.ClearActive();
-                    }
-
-                    if (menu.DoButton(1)) {
-                        remove_working_index = k_remove_all; // Remove all points
-                        imgui.ClearActive();
-                    }
-                }
+                if (g.imgui.IsPopupMenuOpen(right_click_id))
+                    DoBoxViewport(g.builder,
+                                  {
+                                      .run =
+                                          [&](GuiBuilder&) {
+                                              auto const root = DoBox(
+                                                  g.builder,
+                                                  {
+                                                      .layout {
+                                                          .size = layout::k_hug_contents,
+                                                          .contents_direction = layout::Direction::Column,
+                                                          .contents_align = layout::Alignment::Start,
+                                                      },
+                                                  });
+                                              if (MenuItem(g.builder,
+                                                           root,
+                                                           {
+                                                               .text = "Remove Point"_s,
+                                                           })
+                                                      .button_fired) {
+                                                  remove_working_index = working_index;
+                                                  imgui.ClearActive();
+                                              }
+                                              if (MenuItem(g.builder,
+                                                           root,
+                                                           {
+                                                               .text = "Remove All Points"_s,
+                                                           })
+                                                      .button_fired) {
+                                                  remove_working_index = k_remove_all;
+                                                  imgui.ClearActive();
+                                              }
+                                          },
+                                      .bounds = grabber_rect,
+                                      .imgui_id = right_click_id,
+                                      .viewport_config = k_default_popup_menu_viewport,
+                                  });
             }
 
             draw_list.AddCircleFilled(pos,
