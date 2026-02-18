@@ -294,13 +294,13 @@ void DoEnvelopeGui(GuiState& g,
 
     {
 
-        auto const attack_point_screen = imgui.ViewportPosToWindowPos(attack_point);
-        auto const decay_point_screen = imgui.ViewportPosToWindowPos(decay_point);
-        auto const sustain_point_screen = imgui.ViewportPosToWindowPos(sustain_point);
-        auto const release_point_screen = imgui.ViewportPosToWindowPos(release_point);
+        auto const attack_point_window = imgui.ViewportPosToWindowPos(attack_point);
+        auto const decay_point_window = imgui.ViewportPosToWindowPos(decay_point);
+        auto const sustain_point_window = imgui.ViewportPosToWindowPos(sustain_point);
+        auto const release_point_window = imgui.ViewportPosToWindowPos(release_point);
         auto const bottom_left = imgui.ViewportPosToWindowPos({padded_x, padded_bottom});
 
-        f32x2 const point_below_decay = {decay_point_screen.x, bottom_left.y};
+        f32x2 const point_below_decay = {decay_point_window.x, bottom_left.y};
 
         auto const area_col = LiveCol(UiColMap::EnvelopeArea);
         auto const range_lines_col = LiveCol(UiColMap::EnvelopeRangeLines);
@@ -331,9 +331,9 @@ void DoEnvelopeGui(GuiState& g,
         // Area under line, done with poly fill instead of a series of triangles/rects because it gives
         // better results
         auto const area_points_a =
-            Array {bottom_left, attack_point_screen, decay_point_screen, point_below_decay};
+            Array {bottom_left, attack_point_window, decay_point_window, point_below_decay};
         auto const area_points_b =
-            Array {decay_point_screen, sustain_point_screen, release_point_screen, point_below_decay};
+            Array {decay_point_window, sustain_point_window, release_point_window, point_below_decay};
         imgui.draw_list->AddConvexPolyFilled(area_points_a, area_col, false);
         imgui.draw_list->AddConvexPolyFilled(area_points_b, area_col, false);
 
@@ -351,7 +351,7 @@ void DoEnvelopeGui(GuiState& g,
                     ASSERT(env_pos >= 0 && env_pos <= 1);
                     switch (envelope_marker.state) {
                         case adsr::State::Attack: {
-                            target_pos = bottom_left.x + env_pos * (attack_point_screen.x - bottom_left.x);
+                            target_pos = bottom_left.x + env_pos * (attack_point_window.x - bottom_left.x);
                             break;
                         }
                         case adsr::State::Decay: {
@@ -359,17 +359,17 @@ void DoEnvelopeGui(GuiState& g,
                             ASSERT(sustain_level >= 0 && sustain_level <= 1);
                             auto const pos = 1.0f - MapTo01(env_pos, sustain_level, 1.0f);
                             target_pos =
-                                attack_point_screen.x + pos * (decay_point_screen.x - attack_point_screen.x);
+                                attack_point_window.x + pos * (decay_point_window.x - attack_point_window.x);
                             break;
                         }
                         case adsr::State::Sustain: {
-                            target_pos = decay_point_screen.x;
+                            target_pos = decay_point_window.x;
                             break;
                         }
                         case adsr::State::Release: {
                             auto const pos = 1.0f - env_pos;
-                            target_pos = sustain_point_screen.x +
-                                         pos * (release_point_screen.x - sustain_point_screen.x);
+                            target_pos = sustain_point_window.x +
+                                         pos * (release_point_window.x - sustain_point_window.x);
                             break;
                         }
                         default: PanicIfReached();
@@ -386,16 +386,16 @@ void DoEnvelopeGui(GuiState& g,
                     f32 const cursor_x = cursor.cursor_smoother.LowPass(cursor.cursor, 0.5f);
 
                     Line line {};
-                    if (cursor_x > sustain_point_screen.x)
-                        line = {sustain_point_screen, release_point_screen};
-                    else if (cursor_x > decay_point_screen.x)
-                        line = {decay_point_screen, sustain_point_screen};
-                    else if (cursor_x > attack_point_screen.x)
-                        line = {attack_point_screen, decay_point_screen};
+                    if (cursor_x > sustain_point_window.x)
+                        line = {sustain_point_window, release_point_window};
+                    else if (cursor_x > decay_point_window.x)
+                        line = {decay_point_window, sustain_point_window};
+                    else if (cursor_x > attack_point_window.x)
+                        line = {attack_point_window, decay_point_window};
                     else
-                        line = {bottom_left, attack_point_screen};
+                        line = {bottom_left, attack_point_window};
 
-                    f32 cursor_y = attack_point_screen.y;
+                    f32 cursor_y = attack_point_window.y;
                     if (auto p = line.IntersectionWithVerticalLine(cursor_x)) cursor_y = p->y;
 
                     DrawVoiceMarkerLine(imgui,
@@ -409,10 +409,10 @@ void DoEnvelopeGui(GuiState& g,
 
         // lines
         auto const line_points = Array {bottom_left,
-                                        attack_point_screen,
-                                        decay_point_screen,
-                                        sustain_point_screen,
-                                        release_point_screen};
+                                        attack_point_window,
+                                        decay_point_window,
+                                        sustain_point_window,
+                                        release_point_window};
         imgui.draw_list->AddPolyline(line_points,
                                      greyed_out ? greyed_out_line_col : line_col,
                                      false,
@@ -431,9 +431,9 @@ void DoEnvelopeGui(GuiState& g,
             if (imgui.IsActive(id, imgui::SliderConfig::k_activation_cfg)) col = hover_col;
             imgui.draw_list->AddCircleFilled(point, handle_visible_size, col);
         };
-        do_handle(attack_point_screen, attack_imgui_id);
-        do_handle(decay_point_screen, dec_sus_imgui_id);
-        do_handle(release_point_screen, release_imgui_id);
+        do_handle(attack_point_window, attack_imgui_id);
+        do_handle(decay_point_window, dec_sus_imgui_id);
+        do_handle(release_point_window, release_imgui_id);
     }
 
     if (g.param_text_editor_to_open) {
