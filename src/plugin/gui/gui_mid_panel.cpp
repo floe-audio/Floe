@@ -3,21 +3,17 @@
 
 #include <IconsFontAwesome6.h>
 
-#include "gui/gui_utils.hpp"
 #include "gui2_inst_browser.hpp"
 #include "gui2_ir_browser.hpp"
 #include "gui_drawing_helpers.hpp"
 #include "gui_effects.hpp"
 #include "gui_framework/colours.hpp"
+#include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_framework/image.hpp"
 #include "gui_library_images.hpp"
 #include "gui_prefs.hpp"
 #include "gui_state.hpp"
-#include "old/gui_button_widgets.hpp"
-#include "old/gui_widget_helpers.hpp"
-
-// TODO: this needs code entirely adapting to use GuiBuilder
 
 static void DoBlurredBackground(GuiState& g,
                                 Rect r,
@@ -108,7 +104,7 @@ static void DoOverlayGradient(GuiState& g, Rect r) {
                                                     0);
 }
 
-// reduces chance of floating point errors
+// Reduces chance of floating point errors.
 static f32 RoundUpToNearestMultiple(f32 value, f32 multiple) { return multiple * Ceil(value / multiple); }
 
 static void DrawMidPanelOverallBackground(GuiState& g, imgui::Context const& imgui) {
@@ -211,8 +207,208 @@ static void DrawEffectsContainerBackground(GuiState& g,
                              LiveCol(UiColMap::MidViewportDivider));
 }
 
+static Box DoTitleShuffleButton(GuiBuilder& builder, Box parent, f32 width, f32 margin_r, String tooltip) {
+    return DoBox(builder,
+                 {
+                     .parent = parent,
+                     .text = ICON_FA_SHUFFLE,
+                     .font = FontType::Icons,
+                     .font_size = k_font_icons_size * 0.82f,
+                     .text_colours =
+                         ColSet {
+                             .base = LiveColStruct(UiColMap::MidIcon),
+                             .hot = LiveColStruct(UiColMap::MidTextHot),
+                             .active = LiveColStruct(UiColMap::MidTextOn),
+                         },
+                     .text_justification = TextJustification::Centred,
+                     .layout {
+                         .size = {width, layout::k_fill_parent},
+                         .margins = {.r = margin_r},
+                     },
+                     .tooltip = tooltip,
+                     .button_behaviour = imgui::ButtonConfig {},
+                 });
+}
+
+static void DoLayersContainer(GuiBuilder& builder,
+                              GuiState& g,
+                              GuiFrameContext const& frame_context,
+                              f32 mid_panel_title_height) {
+    auto const ww = [](f32 v) { return GuiIo().PixelsToWw(v); };
+    auto const title_height_ww = ww(mid_panel_title_height);
+    auto const title_margin_ww = ww(LiveSize(UiSizeId::MidPanelTitleMarginLeft));
+    auto const rand_btn_width_ww = ww(LiveSize(UiSizeId::ResourceSelectorRandomButtonW));
+    auto& engine = g.engine;
+    auto& lay = g.layout;
+
+    auto const root = DoBox(builder,
+                            {
+                                .layout {
+                                    .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    // Title row
+    auto const title_row = DoBox(builder,
+                                 {
+                                     .parent = root,
+                                     .layout {
+                                         .size = {layout::k_fill_parent, title_height_ww},
+                                         .contents_direction = layout::Direction::Row,
+                                         .contents_align = layout::Alignment::Justify,
+                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                     },
+                                 });
+
+    DoBox(builder,
+          {
+              .parent = title_row,
+              .text = "Layers",
+              .size_from_text = true,
+              .text_colours = LiveColStruct(UiColMap::MidText),
+              .text_justification = TextJustification::CentredLeft,
+              .layout {
+                  .margins = {.l = title_margin_ww},
+              },
+          });
+
+    auto const rand_btn = DoTitleShuffleButton(builder,
+                                               title_row,
+                                               rand_btn_width_ww,
+                                               title_margin_ww,
+                                               "Load random instruments for all 3 layers"_s);
+
+    if (rand_btn.button_fired) {
+        for (auto& layer : engine.processor.layer_processors) {
+            InstBrowserContext context {
+                .layer = layer,
+                .sample_library_server = g.shared_engine_systems.sample_library_server,
+                .library_images = g.library_images,
+                .engine = g.engine,
+                .prefs = g.prefs,
+                .notifications = g.notifications,
+                .persistent_store = g.shared_engine_systems.persistent_store,
+                .confirmation_dialog_state = g.confirmation_dialog_state,
+                .frame_context = frame_context,
+            };
+            LoadRandomInstrument(context, g.inst_browser_state[layer.index]);
+        }
+    }
+
+    // Layer panels
+    auto const layers_row = DoBox(builder,
+                                  {
+                                      .parent = root,
+                                      .layout {
+                                          .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                          .contents_direction = layout::Direction::Row,
+                                      },
+                                  });
+
+    Box layer_boxes[k_num_layers];
+    for (auto const i : Range(k_num_layers)) {
+        layer_boxes[i] = DoBox(builder,
+                               {
+                                   .parent = layers_row,
+                                   .id_extra = (u64)i,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                   },
+                               });
+    }
+
+    for (auto const i : Range(k_num_layers)) {
+        if (auto const r = BoxRect(builder, layer_boxes[i])) {
+            layer_gui::LayerLayoutTempIDs ids {};
+            layer_gui::Layout(g, &engine.Layer(i), ids, &g.layer_gui[i], r->w, r->h);
+            layout::RunContext(lay);
+            layer_gui::Draw(g, frame_context, *r, &engine.Layer(i), ids, &g.layer_gui[i]);
+            layout::ResetContext(lay);
+        }
+    }
+}
+
+static void DoEffectsContainer(GuiBuilder& builder,
+                               GuiState& g,
+                               GuiFrameContext const& frame_context,
+                               f32 mid_panel_title_height) {
+    auto const ww = [](f32 v) { return GuiIo().PixelsToWw(v); };
+    auto const title_height_ww = ww(mid_panel_title_height);
+    auto const title_margin_ww = ww(LiveSize(UiSizeId::MidPanelTitleMarginLeft));
+    auto const rand_btn_width_ww = ww(LiveSize(UiSizeId::ResourceSelectorRandomButtonW));
+    auto& engine = g.engine;
+
+    auto const root = DoBox(builder,
+                            {
+                                .layout {
+                                    .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    // Title row
+    auto const title_row = DoBox(builder,
+                                 {
+                                     .parent = root,
+                                     .layout {
+                                         .size = {layout::k_fill_parent, title_height_ww},
+                                         .contents_direction = layout::Direction::Row,
+                                         .contents_align = layout::Alignment::Justify,
+                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                     },
+                                 });
+
+    DoBox(builder,
+          {
+              .parent = title_row,
+              .text = "Effects",
+              .size_from_text = true,
+              .text_colours = LiveColStruct(UiColMap::MidText),
+              .text_justification = TextJustification::CentredLeft,
+              .layout {
+                  .margins = {.l = title_margin_ww},
+              },
+          });
+
+    auto const rand_btn = DoTitleShuffleButton(builder,
+                                               title_row,
+                                               rand_btn_width_ww,
+                                               title_margin_ww,
+                                               "Randomise all of the effects"_s);
+
+    if (rand_btn.button_fired) {
+        RandomiseAllEffectParameterValues(engine.processor);
+        IrBrowserContext ir_context {
+            .sample_library_server = g.shared_engine_systems.sample_library_server,
+            .library_images = g.library_images,
+            .engine = g.engine,
+            .prefs = g.prefs,
+            .notifications = g.notifications,
+            .persistent_store = g.shared_engine_systems.persistent_store,
+            .confirmation_dialog_state = g.confirmation_dialog_state,
+            .frame_context = frame_context,
+        };
+        LoadRandomIr(ir_context, g.ir_browser_state);
+    }
+
+    // Effects content
+    auto const effects_box = DoBox(builder,
+                                   {
+                                       .parent = root,
+                                       .layout {
+                                           .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                       },
+                                   });
+
+    if (auto const r = BoxRect(builder, effects_box)) DoEffectsViewport(g, frame_context, *r);
+}
+
 void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
     auto& imgui = g.imgui;
+    auto& builder = g.builder;
 
     imgui.BeginViewport(
         {
@@ -223,176 +419,63 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
         "MidPanel");
     DEFER { imgui.EndViewport(); };
 
-    auto& lay = g.layout;
-    auto& engine = g.engine;
-
     auto const layer_width = RoundUpToNearestMultiple(LiveSize(UiSizeId::LayerWidth), k_num_layers);
     auto const total_layer_width = layer_width * k_num_layers;
     auto const mid_panel_title_height = LiveSize(UiSizeId::MidPanelTitleHeight);
     auto const mid_panel_size = imgui.CurrentVpSize();
 
-    auto do_randomise_button = [&](String tooltip) {
-        auto const margin = LiveSize(UiSizeId::MidPanelTitleMarginLeft);
-        auto const size = LiveSize(UiSizeId::ResourceSelectorRandomButtonW);
-        Rect const btn_r = {
-            .xywh {imgui.CurrentVpWidth() - (size + margin), 0, size, mid_panel_title_height}};
-        auto const id = imgui.MakeId("rand");
-        if (buttons::Button(g,
-                            id,
-                            btn_r,
-                            ICON_FA_SHUFFLE,
-                            buttons::IconButton(imgui).WithRandomiseIconScaling()))
-            return true;
-        Tooltip(g, id, imgui.ViewportRectToWindowRect(btn_r), tooltip, {});
-        return false;
-    };
-
-    {
-        imgui.BeginViewport(({
-                                imgui::ViewportConfig conf {
-                                    .draw_background =
-                                        [&](imgui::Context const& imgui) {
-                                            DrawLayersContainerBackground(g,
-                                                                          imgui,
-                                                                          mid_panel_size,
-                                                                          mid_panel_title_height);
-                                        },
-                                    .draw_scrollbars = DrawMidPanelScrollbars,
-                                    .padding =
-                                        {
-                                            .l = LiveSize(UiSizeId::LayersBoxMarginL),
-                                            .r = LiveSize(UiSizeId::LayersBoxMarginR),
-                                            .t = LiveSize(UiSizeId::LayersBoxMarginT),
-                                            .b = LiveSize(UiSizeId::LayersBoxMarginB),
-                                        },
-                                    .scrollbar_padding = 4,
-                                    .scrollbar_width = LiveSize(UiSizeId::ScrollbarWidth),
-                                    .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-                                };
-                                conf;
-                            }),
-                            {.xywh {0, 0, total_layer_width, imgui.CurrentVpHeight()}},
-                            "layers-container");
-        DEFER { imgui.EndViewport(); };
-
-        // do the title
+    DoBoxViewport(
+        builder,
         {
-            Rect title_r {.xywh {LiveSize(UiSizeId::MidPanelTitleMarginLeft),
-                                 0,
-                                 imgui.CurrentVpWidth(),
-                                 mid_panel_title_height}};
-            title_r = imgui.RegisterAndConvertRect(title_r);
-            imgui.draw_list->AddTextInRect(title_r,
-                                           LiveCol(UiColMap::MidText),
-                                           "Layers",
-                                           {.justification = TextJustification::CentredLeft});
-        }
+            .run =
+                [&](GuiBuilder& builder) {
+                    DoLayersContainer(builder, g, frame_context, mid_panel_title_height);
+                },
+            .bounds = Rect {.xywh {0, 0, total_layer_width, imgui.CurrentVpHeight()}},
+            .imgui_id = imgui.MakeId("layers-container"),
+            .viewport_config {
+                .draw_background =
+                    [&](imgui::Context const& imgui) {
+                        DrawLayersContainerBackground(g, imgui, mid_panel_size, mid_panel_title_height);
+                    },
+                .padding =
+                    {
+                        .l = LiveSize(UiSizeId::LayersBoxMarginL),
+                        .r = LiveSize(UiSizeId::LayersBoxMarginR),
+                        .t = LiveSize(UiSizeId::LayersBoxMarginT),
+                        .b = LiveSize(UiSizeId::LayersBoxMarginB),
+                    },
+                .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
+            },
+            .debug_name = "layers-container",
+        });
 
-        // randomise button
-        if (do_randomise_button("Load random instruments for all 3 layers")) {
-            for (auto& layer : engine.processor.layer_processors) {
-                InstBrowserContext context {
-                    .layer = layer,
-                    .sample_library_server = g.shared_engine_systems.sample_library_server,
-                    .library_images = g.library_images,
-                    .engine = g.engine,
-                    .prefs = g.prefs,
-                    .notifications = g.notifications,
-                    .persistent_store = g.shared_engine_systems.persistent_store,
-                    .confirmation_dialog_state = g.confirmation_dialog_state,
-                    .frame_context = frame_context,
-                };
-                LoadRandomInstrument(context, g.inst_browser_state[layer.index]);
-            }
-        }
-
-        // do the 3 panels
-        auto const layer_width_minus_pad = imgui.CurrentVpWidth() / 3;
-        auto const layer_height = imgui.CurrentVpHeight() - mid_panel_title_height;
-        for (auto const i : Range(k_num_layers)) {
-            layer_gui::LayerLayoutTempIDs ids {};
-            layer_gui::Layout(g, &engine.Layer(i), ids, &g.layer_gui[i], layer_width_minus_pad, layer_height);
-            layout::RunContext(lay);
-
-            layer_gui::Draw(g,
-                            frame_context,
-                            {.xywh {(f32)i * layer_width_minus_pad,
-                                    mid_panel_title_height,
-                                    layer_width_minus_pad,
-                                    layer_height}},
-                            &engine.Layer(i),
-                            ids,
-                            &g.layer_gui[i]);
-            layout::ResetContext(lay);
-        }
-    }
-
-    {
-        imgui.BeginViewport(({
-                                imgui::ViewportConfig {
-                                    .draw_background =
-                                        [&](imgui::Context const& imgui) {
-                                            DrawEffectsContainerBackground(g,
-                                                                           imgui,
-                                                                           mid_panel_size,
-                                                                           mid_panel_title_height);
-                                        },
-                                    .draw_scrollbars = DrawMidPanelScrollbars,
-                                    .padding =
-                                        {
-                                            .l = LiveSize(UiSizeId::FXListMarginL),
-                                            .r = LiveSize(UiSizeId::FXListMarginR),
-                                            .t = LiveSize(UiSizeId::FXListMarginT),
-                                            .b = LiveSize(UiSizeId::FXListMarginB),
-                                        },
-                                    .scrollbar_padding = 4,
-                                    .scrollbar_width = LiveSize(UiSizeId::ScrollbarWidth),
-                                    .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-                                };
-                            }),
-                            {.xywh {total_layer_width,
-                                    0,
-                                    imgui.CurrentVpWidth() - total_layer_width,
-                                    imgui.CurrentVpHeight()}},
-                            "effects-container");
-        DEFER { imgui.EndViewport(); };
-
-        // do the title
+    DoBoxViewport(
+        builder,
         {
-            Rect title_r {.xywh {LiveSize(UiSizeId::MidPanelTitleMarginLeft),
-                                 0,
-                                 imgui.CurrentVpWidth(),
-                                 mid_panel_title_height}};
-            title_r = imgui.RegisterAndConvertRect(title_r);
-            imgui.draw_list->AddTextInRect(title_r,
-                                           LiveCol(UiColMap::MidText),
-                                           "Effects",
-                                           {.justification = TextJustification::CentredLeft});
-        }
-
-        // randomise button
-        if (do_randomise_button("Randomise all of the effects")) {
-            RandomiseAllEffectParameterValues(engine.processor);
-            {
-                IrBrowserContext ir_context {
-                    .sample_library_server = g.shared_engine_systems.sample_library_server,
-                    .library_images = g.library_images,
-                    .engine = g.engine,
-                    .prefs = g.prefs,
-                    .notifications = g.notifications,
-                    .persistent_store = g.shared_engine_systems.persistent_store,
-                    .confirmation_dialog_state = g.confirmation_dialog_state,
-                    .frame_context = frame_context,
-                };
-                LoadRandomIr(ir_context, g.ir_browser_state);
-            }
-        }
-
-        DoEffectsViewport(g,
-                          frame_context,
-                          {.xywh {0,
-                                  mid_panel_title_height,
-                                  imgui.CurrentVpWidth(),
-                                  imgui.CurrentVpHeight() - mid_panel_title_height}});
-    }
+            .run =
+                [&](GuiBuilder& builder) {
+                    DoEffectsContainer(builder, g, frame_context, mid_panel_title_height);
+                },
+            .bounds = Rect {.xywh {total_layer_width,
+                                   0,
+                                   imgui.CurrentVpWidth() - total_layer_width,
+                                   imgui.CurrentVpHeight()}},
+            .imgui_id = imgui.MakeId("effects-container"),
+            .viewport_config {
+                .draw_background =
+                    [&](imgui::Context const& imgui) {
+                        DrawEffectsContainerBackground(g, imgui, mid_panel_size, mid_panel_title_height);
+                    },
+                .padding =
+                    {
+                        .l = LiveSize(UiSizeId::FXListMarginL),
+                        .r = LiveSize(UiSizeId::FXListMarginR),
+                        .t = LiveSize(UiSizeId::FXListMarginT),
+                        .b = LiveSize(UiSizeId::FXListMarginB),
+                    },
+                .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
+            },
+            .debug_name = "effects-container",
+        });
 }
