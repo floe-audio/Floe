@@ -277,6 +277,29 @@ PrevNextButtonsResult DoPrevNextButtons(GuiBuilder& builder, Box row, PrevNextBu
     return result;
 }
 
+Box DoShuffleButton(GuiBuilder& builder, Box row, ShuffleButtonOptions const& options) {
+    return DoBox(builder,
+                 {
+                     .parent = row,
+                     .id_extra = SourceLocationHash(),
+                     .text = ICON_FA_SHUFFLE,
+                     .font = FontType::Icons,
+                     .font_size = k_font_icons_size * 0.82f,
+                     .text_colours =
+                         ColSet {
+                             .base = LiveColStruct(UiColMap::MidIcon),
+                             .hot = LiveColStruct(UiColMap::MidTextHot),
+                             .active = LiveColStruct(UiColMap::MidTextOn),
+                         },
+                     .text_justification = TextJustification::Centred,
+                     .layout {
+                         .size = {LiveWw(UiSizeId::NextPrevButtonSize), k_font_body_size},
+                     },
+                     .tooltip = options.tooltip,
+                     .button_behaviour = imgui::ButtonConfig {},
+                 });
+}
+
 Box DoMenuParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,

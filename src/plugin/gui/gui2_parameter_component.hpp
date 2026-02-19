@@ -81,6 +81,11 @@ struct PrevNextButtonsOptions {
 PrevNextButtonsResult
 DoPrevNextButtons(GuiBuilder& builder, Box row, PrevNextButtonsOptions const& options = {});
 
+struct ShuffleButtonOptions {
+    String tooltip {"Shuffle"};
+};
+Box DoShuffleButton(GuiBuilder& builder, Box row, ShuffleButtonOptions const& options = {});
+
 void AddParamContextMenuBehaviour(GuiState& g, Rect window_r, imgui::Id id, DescribedParamValue const& param);
 void AddParamContextMenuBehaviour(GuiState& g,
                                   Rect window_r,
