@@ -27,9 +27,6 @@ f32 MenuItemWidth(GuiState& g, Span<String const> strs);
 //
 //
 
-void MidiLearnMenu(GuiState& g, Span<ParamIndex> params, Rect r);
-void MidiLearnMenu(GuiState& g, ParamIndex param, Rect r);
-
 constexpr imgui::ButtonConfig k_param_text_input_button_flags = {
     .mouse_button = MouseButton::Left,
     .event = MouseButtonEvent::DoubleClick,
@@ -48,8 +45,7 @@ bool DoMultipleMenuItems(GuiState& g,
                          String (*GetStr)(void* items, int index));
 bool DoMultipleMenuItems(GuiState& g, Span<String const> items, int& current);
 
-imgui::Id
-BeginParameterGUI(GuiState& g, DescribedParamValue const& param, Rect r, Optional<imgui::Id> id = {});
+imgui::Id BeginParameterGUI(GuiState& g, DescribedParamValue const& param, Rect r);
 enum ParamDisplayFlags {
     ParamDisplayFlagsDefault = 0,
     ParamDisplayFlagsNoTooltip = 1,

@@ -5,12 +5,13 @@
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
-#include "gui_fwd.hpp"
 #include "gui_framework/gui_builder.hpp"
+#include "gui_fwd.hpp"
 
 void HandleShowingTextEditorForParams(GuiState& g, Rect r, Span<ParamIndex const> params);
 
 struct TooltipOptions {
+    Optional<Rect> avoid_r {}; // If nullopt, uses the window_r.
     bool ignore_show_tooltips_preference = false;
     TooltipJustification justification = TooltipJustification::AboveOrBelow;
 };

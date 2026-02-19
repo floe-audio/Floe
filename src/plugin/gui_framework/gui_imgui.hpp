@@ -692,7 +692,7 @@ struct Context {
     // is_not_viewport_content means something that is not inside a viewport, but part of it e.g. scrollbar.
     void SetHot(Rect r_in_window_coords, Id id, bool32 is_not_viewport_content = false);
 
-    // Set an ID as the active. Most likely the element would have previously be made hot.
+    // Set an ID as the active. Most likely the element would have previously been made hot.
     void SetActive(Id id, MouseButton mouse_button);
 
     // Clear the current active ID.

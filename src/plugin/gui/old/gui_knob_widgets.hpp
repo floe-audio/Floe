@@ -46,11 +46,9 @@ PUBLIC Style FakeKnobStyle(imgui::Context const& imgui) {
 }
 
 bool Knob(GuiState& g, imgui::Id id, Rect r, f32& percent, f32 default_percent, Style const& style);
-bool Knob(GuiState& g, imgui::Id id, DescribedParamValue const& param, Rect r, Style const& style);
 bool Knob(GuiState& g, DescribedParamValue const& param, Rect r, Style const& style);
 
 bool Knob(GuiState& g, imgui::Id id, layout::Id r, f32& percent, f32 default_percent, Style const& style);
-bool Knob(GuiState& g, imgui::Id id, DescribedParamValue const& param, layout::Id r, Style const& style);
 bool Knob(GuiState& g, DescribedParamValue const& param, layout::Id r, Style const& style);
 
 void FakeKnob(GuiState& g, Rect r);

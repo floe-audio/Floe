@@ -44,14 +44,12 @@ f32 MenuItemWidth(GuiState& g, Span<String const> strs) {
 //
 //
 
-void MidiLearnMenu(GuiState& g, ParamIndex param, Rect r) { MidiLearnMenu(g, {&param, 1}, r); }
-
-void MidiLearnMenu(GuiState& g, Span<ParamIndex> params, Rect r) {
+static void MidiLearnMenu(GuiState& g, imgui::Id id, Span<ParamIndex> params, Rect r) {
     auto& imgui = g.imgui;
     auto& engine = g.engine;
+    auto right_clicker_id = id;
     imgui.PushId((uintptr)params[0]);
     auto popup_id = imgui.MakeId("MidiLearnPopup");
-    auto right_clicker_id = imgui.MakeId("MidiLearnClicker");
     imgui.PopId();
 
     r = imgui.RegisterAndConvertRect(r);
@@ -241,6 +239,10 @@ void MidiLearnMenu(GuiState& g, Span<ParamIndex> params, Rect r) {
     }
 }
 
+static void MidiLearnMenu(GuiState& g, imgui::Id id, ParamIndex param, Rect r) {
+    MidiLearnMenu(g, id, {&param, 1}, r);
+}
+
 bool DoMultipleMenuItems(GuiState& g,
                          void* items,
                          int num_items,
@@ -278,9 +280,10 @@ bool DoMultipleMenuItems(GuiState& g, Span<String const> items, int& current) {
     return DoMultipleMenuItems(g, (void*)&items, (int)items.size, current, str_get);
 }
 
-imgui::Id BeginParameterGUI(GuiState& g, DescribedParamValue const& param, Rect r, Optional<imgui::Id> id) {
-    if (!(param.info.flags.not_automatable)) MidiLearnMenu(g, (ParamIndex)param.info.index, r);
-    return id ? *id : g.imgui.MakeId((u64)param.info.id);
+imgui::Id BeginParameterGUI(GuiState& g, DescribedParamValue const& param, Rect r) {
+    auto const id = g.imgui.MakeId(param.info.id);
+    if (!(param.info.flags.not_automatable)) MidiLearnMenu(g, id, param.info.index, r);
+    return id;
 }
 
 void EndParameterGUI(GuiState& g,

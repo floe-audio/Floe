@@ -67,7 +67,7 @@ bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOption
                                   str,
                                   {
                                       .r = window_r,
-                                      .avoid_r = window_r,
+                                      .avoid_r = options.avoid_r.ValueOr(window_r),
                                       .justification = options.justification,
                                   });
         return true;

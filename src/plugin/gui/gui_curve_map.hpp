@@ -39,30 +39,24 @@ static void DoCurveMap(GuiState& g,
                        Optional<f32> velocity_marker,
                        String additional_tooltip) {
     auto& imgui = g.imgui;
-    float width = rect_max.x - rect_min.x;
-    float height = rect_max.y - rect_min.y;
+    auto const width = rect_max.x - rect_min.x;
+    auto const height = rect_max.y - rect_min.y;
     auto const rect = Rect::FromMinMax(rect_min, rect_max);
     auto const point_radius = (rect_max.x - rect_min.x) * 0.02f;
     constexpr f32 k_extra_grabber_scale = 3.0f;
     auto const grabber_radius = point_radius * k_extra_grabber_scale;
-    auto const tooltip_rect = rect.Expanded(grabber_radius);
-
-    {
-        auto const rounding = LiveSize(UiSizeId::CornerRounding);
-        imgui.draw_list->AddRectFilled(rect, LiveCol(UiColMap::EnvelopeBack), rounding);
-    }
-
-    auto& draw_list = *imgui.draw_list;
 
     bool changed = false;
 
+    auto& draw_list = *imgui.draw_list;
     draw_list.PathClear();
+    draw_list.AddRectFilled(rect, LiveCol(UiColMap::EnvelopeBack), LiveSize(UiSizeId::CornerRounding));
 
     constexpr auto k_remove_all = LargestRepresentableValue<usize>();
     Optional<usize> remove_real_index {};
     Optional<f32x2> new_point_at_window_pos {};
 
-    auto working = CurveMap::CreateWorkingPoints(curve_map.points);
+    auto const working = CurveMap::CreateWorkingPoints(curve_map.points);
 
     for (auto const i : Range(working.size - 1)) {
         auto const& p0 = working[i];
@@ -80,8 +74,6 @@ static void DoCurveMap(GuiState& g,
     auto const point_hover_color = LiveCol(UiColMap::CurveMapPointHover);
 
     draw_list.PathStroke(curve_color, false, k_curve_thickness);
-
-    // Draw control points
 
     imgui.PushId("curve-map-points");
     DEFER { imgui.PopId(); };
@@ -118,9 +110,9 @@ static void DoCurveMap(GuiState& g,
 
             Tooltip(g,
                     imgui_id,
-                    tooltip_rect,
+                    region_rect,
                     fmt::Format(g.scratch_arena, "Double-click to add point.\n\n{}", additional_tooltip),
-                    {});
+                    {.avoid_r = region_rect.Expanded(grabber_radius)});
 
             // Double-click to add point
             if (imgui.ButtonBehaviour(region_rect,
@@ -187,7 +179,7 @@ static void DoCurveMap(GuiState& g,
         // Curve shape control
         if (working_index + 1 < working.size) {
             ASSERT(working_point.real_index >= 0);
-            auto const curve_shaper_imgui_id = imgui.MakeId(SourceLocationHash());
+            auto const imgui_id = imgui.MakeId(SourceLocationHash());
 
             // We allow the whole rectangle from the grabber to the next grabber to be clicked and dragged.
 
@@ -209,7 +201,7 @@ static void DoCurveMap(GuiState& g,
 
                 if (imgui.SliderBehaviourFraction({
                         .rect_in_window_coords = curve_shaper_rect,
-                        .id = curve_shaper_imgui_id,
+                        .id = imgui_id,
                         .fraction = percent,
                         .default_fraction = 0.5f,
                         .cfg =
@@ -225,16 +217,16 @@ static void DoCurveMap(GuiState& g,
                 }
 
                 Tooltip(g,
-                        curve_shaper_imgui_id,
-                        tooltip_rect,
+                        imgui_id,
+                        curve_shaper_rect,
                         fmt::Format(g.scratch_arena,
                                     "Drag to change curve. Double-click to add point.\n\n{}",
                                     additional_tooltip),
-                        {});
+                        {.avoid_r = curve_shaper_rect.Expanded(grabber_radius)});
 
                 // Double-click to add point
                 if (imgui.ButtonBehaviour(curve_shaper_rect,
-                                          curve_shaper_imgui_id,
+                                          imgui_id,
                                           {
                                               .mouse_button = MouseButton::Left,
                                               .event = MouseButtonEvent::DoubleClick,
@@ -247,12 +239,12 @@ static void DoCurveMap(GuiState& g,
                     auto const right_click_id = imgui.MakeId(SourceLocationHash());
 
                     if (imgui.ButtonBehaviour(curve_shaper_rect,
-                                              curve_shaper_imgui_id,
+                                              imgui_id,
                                               {
                                                   .mouse_button = MouseButton::Right,
                                                   .event = MouseButtonEvent::Up,
                                               })) {
-                        imgui.OpenPopupMenu(right_click_id, curve_shaper_imgui_id);
+                        imgui.OpenPopupMenu(right_click_id, imgui_id);
                         g.curve_map_add_point_click_pos = GuiIo().in.cursor_pos;
                     }
 
@@ -292,7 +284,7 @@ static void DoCurveMap(GuiState& g,
                             });
                 }
 
-                if (imgui.IsHotOrActive(curve_shaper_imgui_id, MouseButton::Left)) {
+                if (imgui.IsHotOrActive(imgui_id, MouseButton::Left)) {
                     draw_list.AddRectFilled(curve_shaper_rect, LiveCol(UiColMap::CurveMapLineHover));
                     GuiIo().out.wants.cursor_type = CursorType::VerticalArrows;
                 }
@@ -373,8 +365,8 @@ static void DoCurveMap(GuiState& g,
 
             if (imgui.IsActive(imgui_id, drag_activation_cfg.mouse_button)) {
                 // Dragging point
-                f32x2 mouse_pos = GuiIo().in.cursor_pos;
-                f32x2 new_pos = {
+                auto const mouse_pos = GuiIo().in.cursor_pos;
+                auto new_pos = f32x2 {
                     (mouse_pos.x - rect_min.x) / width,
                     1.0f - ((mouse_pos.y - rect_min.y) / height),
                 };
@@ -391,7 +383,7 @@ static void DoCurveMap(GuiState& g,
                     if (new_pos.x < prev_point.x) new_pos.x = prev_point.x;
                 }
 
-                new_pos = Clamp(new_pos, f32x2(0.0f), f32x2(1.0f));
+                new_pos = Clamp<f32x2>(new_pos, 0.0f, 1.0f);
 
                 curve_map.points[(usize)working_point.real_index].x = new_pos.x;
                 curve_map.points[(usize)working_point.real_index].y = new_pos.y;
@@ -407,11 +399,11 @@ static void DoCurveMap(GuiState& g,
 
             Tooltip(g,
                     imgui_id,
-                    tooltip_rect,
+                    grabber_rect,
                     fmt::Format(g.scratch_arena,
                                 "Drag to move point. Double-click to remove point.\n\n{}",
                                 additional_tooltip),
-                    {});
+                    {.avoid_r = grabber_rect.Expanded(grabber_radius)});
         }
     }
 

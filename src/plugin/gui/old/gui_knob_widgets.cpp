@@ -50,11 +50,7 @@ bool Knob(GuiState& g, imgui::Id id, Rect r, f32& fraction, f32 default_fraction
 }
 
 bool Knob(GuiState& g, DescribedParamValue const& param, Rect r, Style const& style) {
-    return Knob(g, 0, param, r, style);
-}
-
-bool Knob(GuiState& g, imgui::Id id, DescribedParamValue const& param, Rect r, Style const& style) {
-    id = BeginParameterGUI(g, param, r, id ? Optional<imgui::Id>(id) : k_nullopt);
+    auto const id = BeginParameterGUI(g, param, r);
     Optional<f32> new_val {};
     f32 val = param.LinearValue();
 
@@ -127,14 +123,7 @@ bool Knob(GuiState& g,
     return Knob(g, id, layout::GetRect(g.layout, lay_id), percent, default_percent, style);
 }
 bool Knob(GuiState& g, DescribedParamValue const& param, layout::Id lay_id, Style const& style) {
-    return Knob(g, 0, param, layout::GetRect(g.layout, lay_id), style);
-}
-bool Knob(GuiState& g,
-          imgui::Id id,
-          DescribedParamValue const& param,
-          layout::Id lay_id,
-          Style const& style) {
-    return Knob(g, id, param, layout::GetRect(g.layout, lay_id), style);
+    return Knob(g, param, layout::GetRect(g.layout, lay_id), style);
 }
 
 void FakeKnob(GuiState& g, Rect r) {
