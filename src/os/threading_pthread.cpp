@@ -54,7 +54,7 @@ void RecursiveMutex::Unlock() { pthread_mutex_unlock(&mutex.As<pthread_mutex_t>(
 Thread::Thread() {}
 Thread::~Thread() { ASSERT(!Joinable()); }
 
-Thread::Thread(Thread&& other) : m_thread(other.m_thread), m_active(other.m_active) {}
+Thread::Thread(Thread&& other) : m_thread(other.m_thread), m_active(Exchange(other.m_active, false)) {}
 Thread& Thread::operator=(Thread&& other) {
     ASSERT(!Joinable());
     m_thread = other.m_thread;
