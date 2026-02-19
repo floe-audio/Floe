@@ -11,6 +11,8 @@
 
 enum class GuiEnvelopeType { Volume, Filter, Count };
 
+constexpr usize k_num_adsr_params = 4;
+
 struct GuiEnvelopeCursor {
     f32 cursor {};
     OnePoleLowPassFilter<f32> cursor_smoother {};
@@ -21,5 +23,5 @@ void DoEnvelopeGui(GuiState& g,
                    LayerProcessor& layer,
                    Rect viewport_r,
                    bool greyed_out,
-                   Array<LayerParamIndex, 4> adsr_layer_params,
+                   Array<LayerParamIndex, k_num_adsr_params> adsr_layer_params,
                    GuiEnvelopeType type);
