@@ -3,4 +3,4 @@
 
 #include "gui_fwd.hpp"
 
-void MidPanel(GuiState& g, GuiFrameContext const& frame_context);
+void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context);

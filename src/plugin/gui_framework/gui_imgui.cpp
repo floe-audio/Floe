@@ -936,8 +936,6 @@ Rect Context::RegisterAndConvertRect(Rect r) {
 
 bool Context::RegisterRectForMouseTracking(Rect r_in_window_coords, bool check_intersection) {
     if (exclusive_focus_viewport && curr_viewport->root_viewport != exclusive_focus_viewport) return false;
-    // auto const this_viewport_has_exclusive_focus = WantsExclusiveFocus(curr_viewport->root_viewport->cfg);
-    // if (exclusive_focus_viewport != nullptr && !this_viewport_has_exclusive_focus) return false;
     if (check_intersection && !Rect::DoRectsIntersect(r_in_window_coords, GetCurrentClipRect())) return false;
 
     dyn::Append(GuiIo().out.mouse_tracked_rects,
@@ -946,7 +944,7 @@ bool Context::RegisterRectForMouseTracking(Rect r_in_window_coords, bool check_i
                     .mouse_over = r_in_window_coords.Contains(GuiIo().in.cursor_pos),
                 });
 
-    overlay_draw_list->AddRect(r_in_window_coords, 0xff0000ff);
+    // overlay_draw_list->AddRect(r_in_window_coords, 0xff0000ff);
 
     return true;
 }

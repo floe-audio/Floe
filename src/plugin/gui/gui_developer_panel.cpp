@@ -70,7 +70,8 @@ DrawDevGuiPopupTextButton(imgui::Context const& imgui, Rect r, imgui::Id id, Str
     imgui.draw_list->AddRectFilled(r, ({
                                        u32 c = 0xffd5d5d5;
                                        if (imgui.IsHot(id)) c = 0xfff0f0f0;
-                                       if (imgui.IsActive(id, MouseButton::Left) || popup_open) c = 0xff808080;
+                                       if (imgui.IsActive(id, MouseButton::Left) || popup_open)
+                                           c = 0xff808080;
                                        c;
                                    }));
 
@@ -793,11 +794,16 @@ void DoDeveloperPanel(DeveloperPanel& g) {
         }
 
         auto const half_w = (f32)(int)(g.imgui.CurrentVpWidth() / 2);
-        g.imgui.BeginViewport(DevGuiViewport(),
-                              (g_show_dev_gui_on_left)
-                                  ? Rect {.xywh {half_w + 1, 0, half_w - 1, g.imgui.CurrentVpHeight()}}
-                                  : Rect {.xywh {0, 0, half_w - 1, g.imgui.CurrentVpHeight()}},
-                              "whole-dev-gui");
+        g.imgui.BeginViewport(
+            {
+                .mode = imgui::ViewportMode::Floating,
+                .positioning = imgui::ViewportPositioning::WindowAbsolute,
+                .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
+                .z_order = 200,
+            },
+            (g_show_dev_gui_on_left) ? Rect {.xywh {half_w + 1, 0, half_w - 1, g.imgui.CurrentVpHeight()}}
+                                     : Rect {.xywh {0, 0, half_w - 1, g.imgui.CurrentVpHeight()}},
+            "whole-dev-gui");
         DEFER { g.imgui.EndViewport(); };
 
         static String const tab_text[] = {

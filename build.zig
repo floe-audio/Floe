@@ -1572,7 +1572,6 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "gui/gui_prefs.cpp",
             "gui/gui_state.cpp",
             "gui/gui_utils.cpp",
-            "gui/gui_viewport_utils.cpp",
             "gui/gui_waveform.cpp",
             "gui/gui_waveform_images.cpp",
             "gui/old/gui_button_widgets.cpp",

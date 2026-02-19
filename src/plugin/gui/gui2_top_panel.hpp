@@ -3,4 +3,4 @@
 
 #include "gui_fwd.hpp"
 
-void TopPanel(GuiState& g, f32 height, GuiFrameContext const& frame_context);
+void TopPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context);

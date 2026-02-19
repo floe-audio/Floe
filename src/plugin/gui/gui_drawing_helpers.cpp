@@ -317,6 +317,20 @@ void DrawPeakMeter(imgui::Context& imgui, Rect r, StereoPeakMeter const& level, 
     }
 }
 
+void DrawMidPanelScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars) {
+    for (auto const b : bars) {
+        if (!b) continue;
+        auto const rounding = LiveSize(UiSizeId::CornerRounding);
+        imgui.draw_list->AddRectFilled(b->strip, LiveCol(UiColMap::ScrollbarBack), rounding);
+        u32 handle_col = LiveCol(UiColMap::ScrollbarHandle);
+        if (imgui.IsHot(b->id))
+            handle_col = LiveCol(UiColMap::ScrollbarHandleHover);
+        else if (imgui.IsActive(b->id, MouseButton::Left))
+            handle_col = LiveCol(UiColMap::ScrollbarHandleActive);
+        imgui.draw_list->AddRectFilled(b->handle, handle_col, rounding);
+    }
+}
+
 void DrawOverlayTooltipForRect(imgui::Context const& imgui,
                                Fonts& fonts,
                                String str,

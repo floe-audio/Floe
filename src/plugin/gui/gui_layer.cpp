@@ -14,7 +14,6 @@
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_library_images.hpp"
 #include "gui_state.hpp"
-#include "gui_viewport_utils.hpp"
 #include "gui_waveform.hpp"
 #include "old/gui_button_widgets.hpp"
 #include "old/gui_dragger_widgets.hpp"
@@ -271,7 +270,7 @@ static void DoLoopModeSelectorGui(GuiState& g, Rect r, LayerProcessor& layer) {
             {});
 }
 
-static String GetPageTitle(PageType type) {
+static String PageTitle(PageType type) {
     switch (type) {
         case PageType::Main: return "Main";
         case PageType::Eq: return "EQ";
@@ -281,6 +280,45 @@ static String GetPageTitle(PageType type) {
         case PageType::Count: PanicIfReached();
     }
     return "";
+}
+
+static Optional<PageType> PageTypeForParam(u8 layer_num, LayerParamIndex index) {
+    auto const k_desc = ParamDescriptorAt(ParamIndexFromLayerParamIndex(layer_num, index));
+
+    if (k_desc.module_parts.size < 2) return k_nullopt;
+
+    ASSERT(k_desc.IsLayerParam());
+
+    switch (k_desc.module_parts[1]) {
+        case ParameterModule::Loop: return PageType::Main;
+        case ParameterModule::VolEnv: return PageType::Main;
+        case ParameterModule::Lfo: return PageType::Lfo;
+        case ParameterModule::Filter: return PageType::Filter;
+        case ParameterModule::Playback: return PageType::Play;
+        case ParameterModule::Eq: return PageType::Eq;
+
+        case ParameterModule::None:
+        case ParameterModule::Layer1:
+        case ParameterModule::Layer2:
+        case ParameterModule::Layer3:
+        case ParameterModule::Effect:
+        case ParameterModule::Master:
+        case ParameterModule::Macro:
+        case ParameterModule::Distortion:
+        case ParameterModule::Reverb:
+        case ParameterModule::Delay:
+        case ParameterModule::StereoWiden:
+        case ParameterModule::Chorus:
+        case ParameterModule::Phaser:
+        case ParameterModule::ConvolutionReverb:
+        case ParameterModule::Bitcrush:
+        case ParameterModule::Compressor:
+        case ParameterModule::Band1:
+        case ParameterModule::Band2:
+        case ParameterModule::Count: break;
+    }
+
+    return k_nullopt;
 }
 
 void Layout(GuiState& g,
@@ -461,7 +499,7 @@ void Layout(GuiState& g,
         auto const layer_params_group_tabs_gap = LiveSize(LayerParamsGroupTabsGap);
         for (auto const i : Range(k_num_pages)) {
             auto const page_type = (PageType)i;
-            auto size = g.fonts.Current()->CalcTextSize(GetPageTitle(page_type), {}).x;
+            auto size = g.fonts.Current()->CalcTextSize(PageTitle(page_type), {}).x;
 
             if (page_type == PageType::Filter || page_type == PageType::Lfo || page_type == PageType::Eq)
                 size += LiveSize(LayerParamsGroupTabsIconW2);
@@ -970,9 +1008,14 @@ void Draw(GuiState& g,
 
     auto& params = g.engine.processor.main_params;
 
-    auto settings = FloeStandardConfig(g.imgui, {});
-    settings.scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never;
-    g.imgui.BeginViewport(settings, g.imgui.MakeId((uintptr)layer), r);
+    g.imgui.BeginViewport({
+                              .draw_scrollbars = DrawMidPanelScrollbars,
+                              .scrollbar_padding = 4,
+                              .scrollbar_width = LiveSize(UiSizeId::ScrollbarWidth),
+                              .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
+                          },
+                          g.imgui.MakeId((uintptr)layer),
+                          r);
     DEFER { g.imgui.EndViewport(); };
 
     auto const draw_divider = [&](layout::Id id) {
@@ -1496,18 +1539,23 @@ void Draw(GuiState& g,
         case PageType::Count: PanicIfReached();
     }
 
-    // tabs
+    // Tabs
     for (auto const i : Range(k_num_pages)) {
         auto const page_type = (PageType)i;
         bool state = page_type == layer_gui->selected_page;
         auto const id = g.imgui.MakeId((u64)i);
         auto const tab_r = layout::GetRect(g.layout, c.tabs[i]);
-        auto const name {GetPageTitle(page_type)};
-        bool const has_dot =
+        auto const name {PageTitle(page_type)};
+        bool const tab_has_active_content =
             (page_type == PageType::Filter && params.BoolValue(layer->index, LayerParamIndex::FilterOn)) ||
             (page_type == PageType::Lfo && params.BoolValue(layer->index, LayerParamIndex::LfoOn)) ||
             (page_type == PageType::Eq && params.BoolValue(layer->index, LayerParamIndex::EqOn));
-        if (buttons::Toggle(g, id, tab_r, state, name, buttons::LayerTabButton(g.imgui, has_dot)))
+        if (buttons::Toggle(g,
+                            id,
+                            tab_r,
+                            state,
+                            name,
+                            buttons::LayerTabButton(g.imgui, tab_has_active_content)))
             layer_gui->selected_page = page_type;
         Tooltip(g,
                 id,
@@ -1516,82 +1564,20 @@ void Draw(GuiState& g,
                 {});
     }
 
+    // Switch to this tab if there's an active macro destination for it being interacted.
     if (g.macros_gui_state.active_destination_knob) {
         auto const param =
             LayerParamIndexAndLayerFor(*g.macros_gui_state.active_destination_knob->dest.param_index);
         if (param && param->layer_num == layer->index) {
-            auto const new_page = [&]() -> Optional<PageType> {
-                switch (param->param) {
-                    case LayerParamIndex::Volume:
-                    case LayerParamIndex::Mute:
-                    case LayerParamIndex::Solo:
-                    case LayerParamIndex::Pan:
-                    case LayerParamIndex::TuneCents:
-                    case LayerParamIndex::TuneSemitone: return k_nullopt;
-
-                    case LayerParamIndex::LoopMode:
-                    case LayerParamIndex::LoopStart:
-                    case LayerParamIndex::LoopEnd:
-                    case LayerParamIndex::LoopCrossfade:
-                    case LayerParamIndex::SampleOffset:
-                    case LayerParamIndex::Reverse:
-                    case LayerParamIndex::VolEnvOn:
-                    case LayerParamIndex::VolumeAttack:
-                    case LayerParamIndex::VolumeDecay:
-                    case LayerParamIndex::VolumeSustain:
-                    case LayerParamIndex::VolumeRelease: return PageType::Main;
-
-                    case LayerParamIndex::FilterOn:
-                    case LayerParamIndex::FilterCutoff:
-                    case LayerParamIndex::FilterResonance:
-                    case LayerParamIndex::FilterType:
-                    case LayerParamIndex::FilterEnvAmount:
-                    case LayerParamIndex::FilterAttack:
-                    case LayerParamIndex::FilterDecay:
-                    case LayerParamIndex::FilterSustain:
-                    case LayerParamIndex::FilterRelease: return PageType::Filter;
-
-                    case LayerParamIndex::LfoOn:
-                    case LayerParamIndex::LfoShape:
-                    case LayerParamIndex::LfoRestart:
-                    case LayerParamIndex::LfoAmount:
-                    case LayerParamIndex::LfoDestination:
-                    case LayerParamIndex::LfoRateTempoSynced:
-                    case LayerParamIndex::LfoRateHz:
-                    case LayerParamIndex::LfoSyncSwitch: return PageType::Lfo;
-
-                    case LayerParamIndex::EqOn:
-                    case LayerParamIndex::EqFreq1:
-                    case LayerParamIndex::EqResonance1:
-                    case LayerParamIndex::EqGain1:
-                    case LayerParamIndex::EqType1:
-                    case LayerParamIndex::EqFreq2:
-                    case LayerParamIndex::EqResonance2:
-                    case LayerParamIndex::EqGain2:
-                    case LayerParamIndex::EqType2: return PageType::Eq;
-
-                    case LayerParamIndex::VelocityMapping:
-                    case LayerParamIndex::Keytrack:
-                    case LayerParamIndex::Monophonic:
-                    case LayerParamIndex::MonophonicMode:
-                    case LayerParamIndex::MidiTranspose:
-                    case LayerParamIndex::PitchBendRange:
-                    case LayerParamIndex::KeyRangeLow:
-                    case LayerParamIndex::KeyRangeHigh:
-                    case LayerParamIndex::KeyRangeLowFade:
-                    case LayerParamIndex::KeyRangeHighFade: return PageType::Play;
-
-                    case LayerParamIndex::Count: PanicIfReached();
-                }
-            }();
-            if (new_page && new_page != layer_gui->selected_page) {
+            if (auto const new_page = PageTypeForParam(layer->index, param->param);
+                new_page && new_page != layer_gui->selected_page) {
                 layer_gui->selected_page = *new_page;
                 GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
             }
         }
     }
 
-    // overlay
+    // Dim if silent.
     if (LayerIsSilent(g.engine.processor, layer->index)) {
         auto const pos = g.imgui.curr_viewport->unpadded_bounds.pos;
         g.imgui.draw_list->AddRectFilled(pos,

@@ -10,7 +10,6 @@
 #include "../gui_drawing_helpers.hpp"
 #include "../gui_prefs.hpp"
 #include "../gui_state.hpp"
-#include "../gui_viewport_utils.hpp"
 #include "gui/gui_utils.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_label_widgets.hpp"

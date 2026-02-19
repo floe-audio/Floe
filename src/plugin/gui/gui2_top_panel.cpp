@@ -528,11 +528,11 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                       true);
 }
 
-void TopPanel(GuiState& g, f32 height, GuiFrameContext const& frame_context) {
+void TopPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
     DoBoxViewport(g.builder,
                   {
                       .run = [&](GuiBuilder& builder) { DoTopPanel(builder, g, frame_context); },
-                      .bounds = Rect {.xywh {0, 0, g.imgui.CurrentVpWidth(), height}},
+                      .bounds = bounds,
                       .imgui_id = g.imgui.MakeId("TopPanel"),
                       .viewport_config = ({
                           auto cfg = k_default_modal_subviewport;

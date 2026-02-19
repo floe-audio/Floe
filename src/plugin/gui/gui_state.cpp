@@ -226,8 +226,7 @@ static void DoResizeCorner(GuiState& g) {
                                        ToU32(Col {.c = Col::Background0, .dark_mode = true}));
 
     auto const line_col = ToU32(
-        Col {.c = imgui.IsHotOrActive(id, MouseButton::Left) ? Col::Text : Col::Overlay2,
-             .dark_mode = true});
+        Col {.c = imgui.IsHotOrActive(id, MouseButton::Left) ? Col::Text : Col::Overlay2, .dark_mode = true});
     auto const line_gap = LiveSize(UiSizeId::ViewportResizeCornerLineGap);
     imgui.draw_list->AddLine(r.TopRight() + f32x2 {0, line_gap},
                              r.BottomLeft() + f32x2 {line_gap, 0},
@@ -296,6 +295,7 @@ void GuiUpdate(GuiState& g) {
     auto& imgui = g.imgui;
 
     MacroGuiBeginFrame(g);
+    DEFER { MacroGuiEndFrame(g); };
 
     StartFrame(g.waveform_images, *frame_input.renderer);
     DEFER { EndFrame(g.waveform_images, *frame_input.renderer); };
@@ -310,56 +310,20 @@ void GuiUpdate(GuiState& g) {
             .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
         },
         g.fonts);
+    DEFER { imgui.EndFrame(); };
 
     g.fonts.Push(ToInt(FontType::Body));
     DEFER { g.fonts.Pop(); };
 
-    auto const top_h = Round(LiveSize(UiSizeId::TopHeight));
-    auto const bot_h = Round(LiveSize(UiSizeId::BotPanelHeight));
-    auto const mid_h = frame_input.window_size.height - top_h - bot_h;
-
     {
-        imgui.BeginViewport(
-            {
-                .draw_background =
-                    [&](imgui::Context const& imgui) {
-                        auto const r = imgui.curr_viewport->unpadded_bounds;
+        auto const top_h = Round(LiveSize(UiSizeId::TopHeight));
+        auto const bot_h = Round(LiveSize(UiSizeId::BotPanelHeight));
+        auto const mid_h = frame_input.window_size.height - top_h - bot_h;
 
-                        imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportBackground));
-
-                        if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui))) {
-                            auto overall_library = LibraryForOverallBackground(g.engine);
-                            if (overall_library) {
-                                auto imgs = GetLibraryImages(g.library_images,
-                                                             g.imgui,
-                                                             *overall_library,
-                                                             g.shared_engine_systems.sample_library_server,
-                                                             LibraryImagesTypes::Backgrounds);
-                                if (imgs.background) {
-                                    auto tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.background);
-                                    if (tex) {
-                                        imgui.draw_list->AddImageRect(
-                                            *tex,
-                                            r,
-                                            {0, 0},
-                                            GetMaxUVToMaintainAspectRatio(*imgs.background, r.size));
-                                    }
-                                }
-                            }
-                        }
-                    },
-                .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-            },
-            {.x = 0, .y = top_h, .w = imgui.CurrentVpWidth(), .h = mid_h},
-            "MidPanel");
-        DEFER { imgui.EndViewport(); };
-
-        MidPanel(g, frame_context);
+        TopPanel(g, {.xywh {0, 0, imgui.CurrentVpWidth(), top_h}}, frame_context);
+        MidPanel(g, {.xywh {0, top_h, imgui.CurrentVpWidth(), mid_h}}, frame_context);
+        BotPanel(g, {.xywh {0, top_h + mid_h, imgui.CurrentVpWidth(), bot_h}});
     }
-
-    TopPanel(g, top_h, frame_context);
-
-    BotPanel(g, {.xywh {0, top_h + mid_h, imgui.CurrentVpWidth(), bot_h}});
 
     DoResizeCorner(g);
 
@@ -368,149 +332,142 @@ void GuiUpdate(GuiState& g) {
 
     DoLegacyParamsPanel(g.builder, g);
 
-    // GUI2 panels. This is the future.
     {
-        {
-            LibraryDevPanelContext context {
-                .engine = g.engine,
-                .notifications = g.notifications,
-            };
-            DoLibraryDevPanel(g.builder, context, g.library_dev_panel_state);
-        }
-
-        {
-            PreferencesPanelContext context {
-                .prefs = g.prefs,
-                .paths = g.shared_engine_systems.paths,
-                .sample_lib_server = g.shared_engine_systems.sample_library_server,
-                .package_install_jobs = g.engine.package_install_jobs,
-                .thread_pool = g.shared_engine_systems.thread_pool,
-                .file_picker_state = g.file_picker_state,
-                .presets_server = g.shared_engine_systems.preset_server,
-            };
-
-            DoPreferencesPanel(g.builder, context, g.preferences_panel_state);
-        }
-
-        {
-            FeedbackPanelContext context {
-                .notifications = g.notifications,
-            };
-            DoFeedbackPanel(g.builder, context, g.feedback_panel_state);
-        }
-
-        DoConfirmationDialog(g.builder, g.confirmation_dialog_state);
-
-        {
-            SavePresetPanelContext context {
-                .engine = g.engine,
-                .file_picker_state = g.file_picker_state,
-                .paths = g.shared_engine_systems.paths,
-                .prefs = g.prefs,
-            };
-            DoSavePresetPanel(g.builder, context, g.save_preset_panel_state);
-        }
-
-        {
-            InfoPanelContext context {
-                .server = g.shared_engine_systems.sample_library_server,
-                .voice_pool = g.engine.processor.voice_pool,
-                .scratch_arena = g.scratch_arena,
-                .check_for_update_state = g.shared_engine_systems.check_for_update_state,
-                .prefs = g.prefs,
-                .libraries =
-                    sample_lib_server::AllLibrariesRetained(g.shared_engine_systems.sample_library_server,
-                                                            g.scratch_arena),
-                .error_notifications = g.engine.error_notifications,
-                .notifications = g.notifications,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-            };
-            DEFER { sample_lib_server::ReleaseAll(context.libraries); };
-
-            DoInfoPanel(g.builder, context, g.info_panel_state);
-        }
-
-        {
-            AttributionPanelContext context {
-                .attribution_text = g.engine.attribution_requirements.formatted_text,
-            };
-
-            DoAttributionPanel(g.builder, context);
-        }
-
-        {
-            for (auto& layer_obj : g.engine.processor.layer_processors) {
-                imgui.PushId(layer_obj.index);
-                DEFER { imgui.PopId(); };
-                InstBrowserContext context {
-                    .layer = layer_obj,
-                    .sample_library_server = g.shared_engine_systems.sample_library_server,
-                    .library_images = g.library_images,
-                    .engine = g.engine,
-                    .prefs = g.prefs,
-                    .notifications = g.notifications,
-                    .persistent_store = g.shared_engine_systems.persistent_store,
-                    .confirmation_dialog_state = g.confirmation_dialog_state,
-                    .frame_context = frame_context,
-                };
-
-                auto& state = g.inst_browser_state[layer_obj.index];
-                DoInstBrowserPopup(g.builder, context, state);
-            }
-        }
-
-        {
-            PresetBrowserContext context {
-                .sample_library_server = g.shared_engine_systems.sample_library_server,
-                .preset_server = g.shared_engine_systems.preset_server,
-                .library_images = g.library_images,
-                .prefs = g.prefs,
-                .engine = g.engine,
-                .notifications = g.notifications,
-                .persistent_store = g.shared_engine_systems.persistent_store,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-                .frame_context = frame_context,
-            };
-            DoPresetBrowser(g.builder, context, g.preset_browser_state);
-        }
-
-        {
-            IrBrowserContext context {
-                .sample_library_server = g.shared_engine_systems.sample_library_server,
-                .library_images = g.library_images,
-                .engine = g.engine,
-                .prefs = g.prefs,
-                .notifications = g.notifications,
-                .persistent_store = g.shared_engine_systems.persistent_store,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-                .frame_context = frame_context,
-            };
-
-            DoIrBrowserPopup(g.builder, context, g.ir_browser_state);
-        }
-
-        DoLoadingOverlay(g.builder, g.engine.pending_state_change.HasValue());
-
-        {
-            auto const notifs =
-                Array {&g.engine.error_notifications, &g.shared_engine_systems.error_notifications};
-            DoErrorsPanel(g.builder, notifs);
-        }
-
-        DoNotifications(g.builder, g.notifications);
-
-        DoPackageInstallNotifications(g.builder,
-                                      g.engine.package_install_jobs,
-                                      g.notifications,
-                                      g.engine.error_notifications,
-                                      g.shared_engine_systems.thread_pool);
+        LibraryDevPanelContext context {
+            .engine = g.engine,
+            .notifications = g.notifications,
+        };
+        DoLibraryDevPanel(g.builder, context, g.library_dev_panel_state);
     }
 
+    {
+        PreferencesPanelContext context {
+            .prefs = g.prefs,
+            .paths = g.shared_engine_systems.paths,
+            .sample_lib_server = g.shared_engine_systems.sample_library_server,
+            .package_install_jobs = g.engine.package_install_jobs,
+            .thread_pool = g.shared_engine_systems.thread_pool,
+            .file_picker_state = g.file_picker_state,
+            .presets_server = g.shared_engine_systems.preset_server,
+        };
+
+        DoPreferencesPanel(g.builder, context, g.preferences_panel_state);
+    }
+
+    {
+        FeedbackPanelContext context {
+            .notifications = g.notifications,
+        };
+        DoFeedbackPanel(g.builder, context, g.feedback_panel_state);
+    }
+
+    DoConfirmationDialog(g.builder, g.confirmation_dialog_state);
+
+    {
+        SavePresetPanelContext context {
+            .engine = g.engine,
+            .file_picker_state = g.file_picker_state,
+            .paths = g.shared_engine_systems.paths,
+            .prefs = g.prefs,
+        };
+        DoSavePresetPanel(g.builder, context, g.save_preset_panel_state);
+    }
+
+    {
+        InfoPanelContext context {
+            .server = g.shared_engine_systems.sample_library_server,
+            .voice_pool = g.engine.processor.voice_pool,
+            .scratch_arena = g.scratch_arena,
+            .check_for_update_state = g.shared_engine_systems.check_for_update_state,
+            .prefs = g.prefs,
+            .libraries =
+                sample_lib_server::AllLibrariesRetained(g.shared_engine_systems.sample_library_server,
+                                                        g.scratch_arena),
+            .error_notifications = g.engine.error_notifications,
+            .notifications = g.notifications,
+            .confirmation_dialog_state = g.confirmation_dialog_state,
+        };
+        DEFER { sample_lib_server::ReleaseAll(context.libraries); };
+
+        DoInfoPanel(g.builder, context, g.info_panel_state);
+    }
+
+    {
+        AttributionPanelContext context {
+            .attribution_text = g.engine.attribution_requirements.formatted_text,
+        };
+
+        DoAttributionPanel(g.builder, context);
+    }
+
+    {
+        for (auto& layer_obj : g.engine.processor.layer_processors) {
+            imgui.PushId(layer_obj.index);
+            DEFER { imgui.PopId(); };
+            InstBrowserContext context {
+                .layer = layer_obj,
+                .sample_library_server = g.shared_engine_systems.sample_library_server,
+                .library_images = g.library_images,
+                .engine = g.engine,
+                .prefs = g.prefs,
+                .notifications = g.notifications,
+                .persistent_store = g.shared_engine_systems.persistent_store,
+                .confirmation_dialog_state = g.confirmation_dialog_state,
+                .frame_context = frame_context,
+            };
+
+            auto& state = g.inst_browser_state[layer_obj.index];
+            DoInstBrowserPopup(g.builder, context, state);
+        }
+    }
+
+    {
+        PresetBrowserContext context {
+            .sample_library_server = g.shared_engine_systems.sample_library_server,
+            .preset_server = g.shared_engine_systems.preset_server,
+            .library_images = g.library_images,
+            .prefs = g.prefs,
+            .engine = g.engine,
+            .notifications = g.notifications,
+            .persistent_store = g.shared_engine_systems.persistent_store,
+            .confirmation_dialog_state = g.confirmation_dialog_state,
+            .frame_context = frame_context,
+        };
+        DoPresetBrowser(g.builder, context, g.preset_browser_state);
+    }
+
+    {
+        IrBrowserContext context {
+            .sample_library_server = g.shared_engine_systems.sample_library_server,
+            .library_images = g.library_images,
+            .engine = g.engine,
+            .prefs = g.prefs,
+            .notifications = g.notifications,
+            .persistent_store = g.shared_engine_systems.persistent_store,
+            .confirmation_dialog_state = g.confirmation_dialog_state,
+            .frame_context = frame_context,
+        };
+
+        DoIrBrowserPopup(g.builder, context, g.ir_browser_state);
+    }
+
+    DoLoadingOverlay(g.builder, g.engine.pending_state_change.HasValue());
+
+    {
+        auto const notifs =
+            Array {&g.engine.error_notifications, &g.shared_engine_systems.error_notifications};
+        DoErrorsPanel(g.builder, notifs);
+    }
+
+    DoNotifications(g.builder, g.notifications);
+
+    DoPackageInstallNotifications(g.builder,
+                                  g.engine.package_install_jobs,
+                                  g.notifications,
+                                  g.engine.error_notifications,
+                                  g.shared_engine_systems.thread_pool);
+
     DoDeveloperPanel(g.dev_gui);
-
-    MacroGuiEndFrame(g);
-
-    imgui.EndFrame();
 
     prefs::WriteIfNeeded(g.prefs);
 }

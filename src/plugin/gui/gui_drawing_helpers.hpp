@@ -49,3 +49,5 @@ void DrawOverlayTooltipForRect(imgui::Context const& imgui,
                                Fonts& fonts,
                                String str,
                                DrawTooltipArgs const& args);
+
+void DrawMidPanelScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars);

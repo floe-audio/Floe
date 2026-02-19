@@ -17,7 +17,6 @@
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_state.hpp"
-#include "gui_viewport_utils.hpp"
 #include "old/gui_dragger_widgets.hpp"
 #include "old/gui_label_widgets.hpp"
 #include "old/gui_menu.hpp"
@@ -266,16 +265,20 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
     auto const corner_rounding = LiveSize(CornerRounding);
 
     imgui.BeginViewport(({
-                            auto conf = FloeStandardConfig(imgui, {});
-                            conf.scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
-                                                         imgui::ViewportScrollbarVisibility::Always};
-                            conf.padding = {
-                                .l = LiveSize(FXViewportPadL),
-                                .t = LiveSize(FXViewportPadT),
-                                .r = LiveSize(FXViewportPadR),
-                                .b = LiveSize(FXViewportPadB),
+                            imgui::ViewportConfig {
+                                .draw_scrollbars = DrawMidPanelScrollbars,
+                                .padding =
+                                    {
+                                        .l = LiveSize(FXViewportPadL),
+                                        .t = LiveSize(FXViewportPadT),
+                                        .r = LiveSize(FXViewportPadR),
+                                        .b = LiveSize(FXViewportPadB),
+                                    },
+                                .scrollbar_padding = 4,
+                                .scrollbar_width = LiveSize(ScrollbarWidth),
+                                .scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
+                                                         imgui::ViewportScrollbarVisibility::Always},
                             };
-                            conf;
                         }),
                         r,
                         "Effects");
