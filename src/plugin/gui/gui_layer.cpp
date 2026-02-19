@@ -1407,8 +1407,7 @@ void Draw(GuiState& g,
                 DoCurveMap(
                     g,
                     layer->velocity_curve_map,
-                    velograph_r.Min(),
-                    velograph_r.Max(),
+                    velograph_r,
                     ({
                         Optional<f32> velocity {};
                         if (g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed)) {
