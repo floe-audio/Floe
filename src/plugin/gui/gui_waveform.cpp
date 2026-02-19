@@ -20,13 +20,10 @@
 static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
     if (layer.instrument_id.tag == InstrumentType::WaveformSynth) return;
 
-    auto& engine = g.engine;
-    auto& imgui = g.imgui;
-
     auto const handle_height = LiveSize(UiSizeId::MainWaveformHandleHeight);
     auto const handle_width = LiveSize(UiSizeId::MainWaveformHandleWidth);
-    auto const epsilon = 0.001f;
-    auto const slider_sensitivity = 320.0f;
+    constexpr auto k_epsilon = 0.001f;
+    constexpr auto k_slider_sensitivity = 320.0f;
 
     auto const& params = g.engine.processor.main_params;
 
@@ -70,7 +67,7 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
     enum class HandleType { LoopStart, LoopEnd, Offset, Xfade };
     enum class HandleDirection { Left, Right };
 
-    // Loop points and xfade
+    // Loop points and crossfade.
     Rect start_line;
     Rect start_handle;
     Rect end_line;
@@ -86,19 +83,16 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
     bool draw_xfade_as_inactive = false;
     f32 loop_xfade_size {};
 
-    auto const start_id = imgui.MakeId("loop start");
-    auto const end_id = imgui.MakeId("loop end");
-    auto const xfade_id = imgui.MakeId("loop xfade");
-    auto const loop_region_id = imgui.MakeId("region");
+    auto const start_id = g.imgui.MakeId("loop start");
+    auto const end_id = g.imgui.MakeId("loop end");
+    auto const xfade_id = g.imgui.MakeId("loop xfade");
+    auto const loop_region_id = g.imgui.MakeId("region");
 
     auto draw_handle = [&](Rect r, imgui::Id id, HandleType type, bool inactive) {
-        u32 back_col;
-        u32 back_hover_col;
-        u32 text_col;
-        back_col = LiveCol(!single_builtin_loop ? UiColMap::WaveformLoopHandle
-                                                : UiColMap::WaveformLoopHandleInactive);
-        back_hover_col = LiveCol(UiColMap::WaveformLoopHandleHover);
-        text_col = LiveCol(UiColMap::WaveformLoopHandleText);
+        auto back_col = LiveCol(!single_builtin_loop ? UiColMap::WaveformLoopHandle
+                                                     : UiColMap::WaveformLoopHandleInactive);
+        auto back_hover_col = LiveCol(UiColMap::WaveformLoopHandleHover);
+        auto text_col = LiveCol(UiColMap::WaveformLoopHandleText);
 
         String text {};
         HandleDirection handle_direction {HandleDirection::Left};
@@ -134,32 +128,25 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
             }
         }
 
-        u4 rounding_corners = 0;
-        switch (handle_direction) {
-            case HandleDirection::Left: {
-                rounding_corners = 0b1001;
-                break;
-            }
-            case HandleDirection::Right: {
-                rounding_corners = 0b0110;
-                break;
-            }
-        }
-
-        imgui.draw_list->AddRectFilled(r,
-                                       imgui.IsHotOrActive(id, MouseButton::Left) ? back_hover_col : back_col,
-                                       6,
-                                       rounding_corners);
+        g.imgui.draw_list
+            ->AddRectFilled(r, g.imgui.IsHotOrActive(id, MouseButton::Left) ? back_hover_col : back_col, 6, ({
+                                u4 rc = 0;
+                                switch (handle_direction) {
+                                    case HandleDirection::Left: rc = 0b1001; break;
+                                    case HandleDirection::Right: rc = 0b0110; break;
+                                }
+                                rc;
+                            }));
         g.fonts.Push(g.fonts.atlas[ToInt(FontType::Icons)]);
         DEFER { g.fonts.Pop(); };
-        imgui.draw_list->AddTextInRect(r,
-                                       text_col,
-                                       text,
-                                       {
-                                           .justification = TextJustification::Centred,
-                                           .overflow_type = TextOverflowType::AllowOverflow,
-                                           .font_scaling = 0.5f,
-                                       });
+        g.imgui.draw_list->AddTextInRect(r,
+                                         text_col,
+                                         text,
+                                         {
+                                             .justification = TextJustification::Centred,
+                                             .overflow_type = TextOverflowType::AllowOverflow,
+                                             .font_scaling = 0.5f,
+                                         });
     };
 
     auto do_handle_slider = [&](imgui::Id id,
@@ -171,14 +158,14 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
                                 bool invert_slider,
                                 FunctionRef<void(f32)> callback) {
         if (grabber_unregistered.w == 0) return;
-        auto const grabber_r = imgui.RegisterAndConvertRect(grabber_unregistered);
+        auto const grabber_r = g.imgui.RegisterAndConvertRect(grabber_unregistered);
         if (tooltip_param)
             AddParamContextMenuBehaviour(g,
                                          grabber_r,
                                          id,
-                                         engine.processor.main_params.DescribedValue(*tooltip_param));
+                                         g.engine.processor.main_params.DescribedValue(*tooltip_param));
 
-        bool const changed = imgui.SliderBehaviourRange({
+        bool const changed = g.imgui.SliderBehaviourRange({
             .rect_in_window_coords = grabber_r,
             .id = id,
             .min = invert_slider ? 1.0f : 0.0f,
@@ -187,34 +174,34 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
             .default_value = default_val,
             .cfg =
                 {
-                    .sensitivity = slider_sensitivity,
+                    .sensitivity = k_slider_sensitivity,
                     .slower_with_shift = true,
                     .default_on_modifer = true,
                 },
         });
 
-        if (imgui.ButtonBehaviour(grabber_r,
-                                  id,
-                                  {
-                                      .mouse_button = MouseButton::Left,
-                                      .event = MouseButtonEvent::DoubleClick,
-                                  })) {
+        if (g.imgui.ButtonBehaviour(grabber_r,
+                                    id,
+                                    {
+                                        .mouse_button = MouseButton::Left,
+                                        .event = MouseButtonEvent::DoubleClick,
+                                    })) {
             g.param_text_editor_to_open = params[0];
         }
 
-        if (imgui.IsHotOrActive(id, MouseButton::Left))
+        if (g.imgui.IsHotOrActive(id, MouseButton::Left))
             GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
 
-        if (imgui.WasJustActivated(id, MouseButton::Left))
+        if (g.imgui.WasJustActivated(id, MouseButton::Left))
             for (auto p : params)
-                ParameterJustStartedMoving(engine.processor, p);
+                ParameterJustStartedMoving(g.engine.processor, p);
         if (changed) callback(value);
-        if (imgui.WasJustDeactivated(id, MouseButton::Left))
+        if (g.imgui.WasJustDeactivated(id, MouseButton::Left))
             for (auto p : params)
-                ParameterJustStoppedMoving(engine.processor, p);
+                ParameterJustStoppedMoving(g.engine.processor, p);
 
         if (tooltip_param) {
-            auto param_obj = engine.processor.main_params.DescribedValue(*tooltip_param);
+            auto param_obj = g.engine.processor.main_params.DescribedValue(*tooltip_param);
             ParameterValuePopup(g, param_obj, id, grabber_r);
             DoParameterTooltipIfNeeded(g, param_obj, id, grabber_r);
         }
@@ -258,7 +245,7 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
         auto const end_param_id = ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopEnd);
 
         auto set_xfade_size_if_needed = [&]() {
-            auto xfade = engine.processor.main_params.LinearValue(xfade_param_id);
+            auto xfade = g.engine.processor.main_params.LinearValue(xfade_param_id);
             auto clamped_xfade =
                 ClampCrossfadeSize(xfade,
                                    loop_start,
@@ -266,16 +253,16 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
                                    1.0f,
                                    *mode.value.mode);
             if (xfade > clamped_xfade) {
-                SetParameterValue(engine.processor,
+                SetParameterValue(g.engine.processor,
                                   xfade_param_id,
                                   clamped_xfade,
                                   {.host_should_not_record = true});
             }
         };
 
-        // start
+        // Start.
         {
-            auto const param = engine.processor.main_params.DescribedValue(start_param_id);
+            auto const param = g.engine.processor.main_params.DescribedValue(start_param_id);
 
             start_line = r.WithXW(r.x + loop_start_pos, 1);
             start_handle = {.xywh {start_line.Right() - handle_width, r.y, handle_width, handle_height}};
@@ -296,18 +283,18 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
                                  param.DefaultLinearValue(),
                                  reverse,
                                  [&](f32 val) {
-                                     val = Max(0.0f, Min(loop_end - epsilon, val));
-                                     SetParameterValue(engine.processor, start_param_id, val, {});
+                                     val = Max(0.0f, Min(loop_end - k_epsilon, val));
+                                     SetParameterValue(g.engine.processor, start_param_id, val, {});
                                      set_xfade_size_if_needed();
                                  });
 
-            start_line = imgui.RegisterAndConvertRect(start_line);
-            start_handle = imgui.RegisterAndConvertRect(start_handle);
+            start_line = g.imgui.RegisterAndConvertRect(start_line);
+            start_handle = g.imgui.RegisterAndConvertRect(start_handle);
         };
 
-        // end
+        // End.
         {
-            auto const param = engine.processor.main_params.DescribedValue(end_param_id);
+            auto const param = g.engine.processor.main_params.DescribedValue(end_param_id);
 
             end_line = r.WithXW(r.x + loop_end_pos, 1);
             end_handle = {.xywh {end_line.x, r.y, handle_width, handle_height}};
@@ -328,16 +315,16 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
                                  param.DefaultLinearValue(),
                                  reverse,
                                  [&](f32 value) {
-                                     value = Min(1.0f, Max(loop_start + epsilon, value));
-                                     SetParameterValue(engine.processor, end_param_id, value, {});
+                                     value = Min(1.0f, Max(loop_start + k_epsilon, value));
+                                     SetParameterValue(g.engine.processor, end_param_id, value, {});
                                      set_xfade_size_if_needed();
                                  });
 
-            end_line = imgui.RegisterAndConvertRect(end_line);
-            end_handle = imgui.RegisterAndConvertRect(end_handle);
+            end_line = g.imgui.RegisterAndConvertRect(end_line);
+            end_handle = g.imgui.RegisterAndConvertRect(end_handle);
         };
 
-        // region
+        // Region.
         {
             loop_region_r = Rect::FromMinMax({r.x + Min(loop_start_pos, loop_end_pos), r.y},
                                              {r.x + Max(loop_start_pos, loop_end_pos), r.Bottom()});
@@ -358,18 +345,18 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
                                      auto new_end = loop_end + delta;
 
                                      if (new_start != loop_start || new_end != loop_end) {
-                                         SetParameterValue(engine.processor, start_param_id, new_start, {});
-                                         SetParameterValue(engine.processor, end_param_id, new_end, {});
+                                         SetParameterValue(g.engine.processor, start_param_id, new_start, {});
+                                         SetParameterValue(g.engine.processor, end_param_id, new_end, {});
                                          set_xfade_size_if_needed();
                                      }
                                  });
             }
-            loop_region_r = imgui.RegisterAndConvertRect(loop_region_r);
+            loop_region_r = g.imgui.RegisterAndConvertRect(loop_region_r);
         }
 
-        // xfade
+        // Crossfade.
         {
-            auto const& param = engine.processor.main_params.DescribedValue(xfade_param_id);
+            auto const& param = g.engine.processor.main_params.DescribedValue(xfade_param_id);
 
             xfade_line = r.WithXW(r.x + loop_xfade_line_pos, 1);
             xfade_handle = {.xywh {xfade_line.x, r.y + handle_height, handle_width, handle_height}};
@@ -393,27 +380,27 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
                                  invert,
                                  [&](f32 value) {
                                      value = ClampCrossfadeSize<f32>(value,
-                                                                     loop_start - epsilon,
-                                                                     loop_end + epsilon,
+                                                                     loop_start - k_epsilon,
+                                                                     loop_end + k_epsilon,
                                                                      1.0f,
                                                                      *mode.value.mode);
-                                     SetParameterValue(engine.processor, xfade_param_id, value, {});
+                                     SetParameterValue(g.engine.processor, xfade_param_id, value, {});
                                  });
             }
 
-            xfade_line = imgui.RegisterAndConvertRect(xfade_line);
-            xfade_handle = imgui.RegisterAndConvertRect(xfade_handle);
+            xfade_line = g.imgui.RegisterAndConvertRect(xfade_line);
+            xfade_handle = g.imgui.RegisterAndConvertRect(xfade_handle);
             draw_xfade = true;
         }
     }
 
-    // offset
+    // Offset.
     Rect offs_handle;
-    auto const offs_imgui_id = imgui.MakeId("offset");
+    auto const offs_imgui_id = g.imgui.MakeId("offset");
     {
         auto const sample_offset = params.LinearValue(layer.index, LayerParamIndex::SampleOffset);
         auto const param_id = ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::SampleOffset);
-        auto const& param = engine.processor.main_params.DescribedValue(param_id);
+        auto const& param = g.engine.processor.main_params.DescribedValue(param_id);
 
         auto sample_offset_r = r.WithW(r.w * sample_offset);
         offs_handle = {.xywh {sample_offset_r.Right() - handle_width,
@@ -433,20 +420,20 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
                          param.LinearValue(),
                          param.DefaultLinearValue(),
                          false,
-                         [&](f32 value) { SetParameterValue(engine.processor, param_id, value, {}); });
+                         [&](f32 value) { SetParameterValue(g.engine.processor, param_id, value, {}); });
 
-        offs_handle = imgui.RegisterAndConvertRect(offs_handle);
-        sample_offset_r = imgui.RegisterAndConvertRect(sample_offset_r);
+        offs_handle = g.imgui.RegisterAndConvertRect(offs_handle);
+        sample_offset_r = g.imgui.RegisterAndConvertRect(sample_offset_r);
 
-        imgui.draw_list->AddRectFilled(sample_offset_r, LiveCol(UiColMap::WaveformSampleOffset));
-        imgui.draw_list->AddRectFilled(f32x2 {sample_offset_r.Right() - 1, sample_offset_r.y},
-                                       sample_offset_r.Max(),
-                                       imgui.IsHotOrActive(offs_imgui_id, MouseButton::Left)
-                                           ? LiveCol(UiColMap::WaveformOffsetHandleHover)
-                                           : LiveCol(UiColMap::WaveformOffsetHandle));
+        g.imgui.draw_list->AddRectFilled(sample_offset_r, LiveCol(UiColMap::WaveformSampleOffset));
+        g.imgui.draw_list->AddRectFilled(f32x2 {sample_offset_r.Right() - 1, sample_offset_r.y},
+                                         sample_offset_r.Max(),
+                                         g.imgui.IsHotOrActive(offs_imgui_id, MouseButton::Left)
+                                             ? LiveCol(UiColMap::WaveformOffsetHandleHover)
+                                             : LiveCol(UiColMap::WaveformOffsetHandle));
     }
 
-    // drawing
+    // Drawing.
     if (mode.value.editable || single_builtin_loop) {
         auto other_xfade_line = start_line.WithPos(start_line.TopRight() +
                                                    f32x2 {reverse ? loop_xfade_size : -loop_xfade_size, 0});
@@ -455,42 +442,46 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
 
         if (draw_xfade && loop_xfade_size > 0.01f) {
             if (mode.value.mode == sample_lib::LoopMode::Standard) {
-                imgui.draw_list->AddLine(xfade_line.Min(),
-                                         end_line.BottomLeft(),
-                                         LiveCol(UiColMap::WaveformXFade));
-                imgui.draw_list->AddLine(other_xfade_line.BottomLeft(),
-                                         start_line.TopLeft(),
-                                         LiveCol(UiColMap::WaveformXFade));
+                g.imgui.draw_list->AddLine(xfade_line.Min(),
+                                           end_line.BottomLeft(),
+                                           LiveCol(UiColMap::WaveformXFade));
+                g.imgui.draw_list->AddLine(other_xfade_line.BottomLeft(),
+                                           start_line.TopLeft(),
+                                           LiveCol(UiColMap::WaveformXFade));
             } else {
-                imgui.draw_list->AddLine(other_xfade_line.BottomLeft(),
-                                         left_line.TopLeft(),
-                                         LiveCol(UiColMap::WaveformXFade));
-                imgui.draw_list->AddLine(right_line.TopRight(),
-                                         xfade_line.BottomLeft(),
-                                         LiveCol(UiColMap::WaveformXFade));
+                g.imgui.draw_list->AddLine(other_xfade_line.BottomLeft(),
+                                           left_line.TopLeft(),
+                                           LiveCol(UiColMap::WaveformXFade));
+                g.imgui.draw_list->AddLine(right_line.TopRight(),
+                                           xfade_line.BottomLeft(),
+                                           LiveCol(UiColMap::WaveformXFade));
             }
         }
 
         auto const region_active =
-            imgui.IsHot(loop_region_id) || imgui.IsActive(loop_region_id, MouseButton::Left);
+            g.imgui.IsHot(loop_region_id) || g.imgui.IsActive(loop_region_id, MouseButton::Left);
         if (!region_active && loop_xfade_size > 0.01f && draw_xfade) {
             if (mode.value.mode == sample_lib::LoopMode::Standard) {
                 auto const points = Array {start_line.TopLeft(),
                                            xfade_line.TopLeft(),
                                            end_line.BottomRight(),
                                            start_line.BottomLeft()};
-                imgui.draw_list->AddConvexPolyFilled(points, LiveCol(UiColMap::WaveformRegionOverlay), true);
+                g.imgui.draw_list->AddConvexPolyFilled(points,
+                                                       LiveCol(UiColMap::WaveformRegionOverlay),
+                                                       true);
             } else {
                 auto const points = Array {other_xfade_line.BottomLeft(),
                                            left_line.TopLeft(),
                                            right_line.TopLeft(),
                                            xfade_line.BottomRight()};
-                imgui.draw_list->AddConvexPolyFilled(points, LiveCol(UiColMap::WaveformRegionOverlay), true);
+                g.imgui.draw_list->AddConvexPolyFilled(points,
+                                                       LiveCol(UiColMap::WaveformRegionOverlay),
+                                                       true);
             }
         } else {
-            imgui.draw_list->AddRectFilled(loop_region_r,
-                                           region_active ? LiveCol(UiColMap::WaveformRegionOverlayHover)
-                                                         : LiveCol(UiColMap::WaveformRegionOverlay));
+            g.imgui.draw_list->AddRectFilled(loop_region_r,
+                                             region_active ? LiveCol(UiColMap::WaveformRegionOverlayHover)
+                                                           : LiveCol(UiColMap::WaveformRegionOverlay));
         }
 
         struct LineAndId {
@@ -501,18 +492,18 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
                  LineAndId {start_line, start_id},
                  LineAndId {end_line, end_id},
              }) {
-            imgui.draw_list->AddRectFilled(
+            g.imgui.draw_list->AddRectFilled(
                 line,
-                LiveCol(imgui.IsHotOrActive(id, MouseButton::Left) ? UiColMap::WaveformLoopHandleHover
-                        : !single_builtin_loop                     ? UiColMap::WaveformLoopHandle
-                                                                   : UiColMap::WaveformLoopHandleInactive));
+                LiveCol(g.imgui.IsHotOrActive(id, MouseButton::Left) ? UiColMap::WaveformLoopHandleHover
+                        : !single_builtin_loop                       ? UiColMap::WaveformLoopHandle
+                                                                     : UiColMap::WaveformLoopHandleInactive));
         }
 
         if (draw_xfade && loop_xfade_size > 0.01f) {
-            imgui.draw_list->AddRectFilled(xfade_line,
-                                           imgui.IsHotOrActive(xfade_id, MouseButton::Left)
-                                               ? LiveCol(UiColMap::WaveformXfadeHandleHover)
-                                               : LiveCol(UiColMap::WaveformXfadeHandle));
+            g.imgui.draw_list->AddRectFilled(xfade_line,
+                                             g.imgui.IsHotOrActive(xfade_id, MouseButton::Left)
+                                                 ? LiveCol(UiColMap::WaveformXfadeHandleHover)
+                                                 : LiveCol(UiColMap::WaveformXfadeHandle));
         }
 
         draw_handle(start_handle, start_id, HandleType::LoopStart, false);
@@ -521,8 +512,9 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r) {
     }
     draw_handle(offs_handle, offs_imgui_id, HandleType::Offset, false);
 
+    // Text editor.
     if (g.param_text_editor_to_open) {
-        ParamIndex const waveform_params[] = {
+        auto const waveform_params = Array {
             ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopStart),
             ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopEnd),
             ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopCrossfade),
@@ -563,7 +555,7 @@ void DoWaveformElement(GuiState& g, LayerProcessor& layer, Rect viewport_r) {
     } else {
         auto const& params = g.engine.processor.main_params;
 
-        // Draw waveform image
+        // Waveform image.
         if (layer.instrument_id.tag != InstrumentType::None) {
             auto const offset = layer.instrument_id.tag == InstrumentType::Sampler
                                     ? params.LinearValue(layer.index, LayerParamIndex::SampleOffset)
@@ -582,22 +574,18 @@ void DoWaveformElement(GuiState& g, LayerProcessor& layer, Rect viewport_r) {
                 f32x2 hi;
             };
 
-            Range loop_section_uv;
-            Range whole_section_uv;
-            Range offset_section_uv;
-
-            whole_section_uv.lo = {offset, 0};
-            whole_section_uv.hi = {1, 1};
-            offset_section_uv.lo = {0, 0};
-            offset_section_uv.hi = {offset, 1};
-            loop_section_uv.lo = {loop_start, 0};
-            loop_section_uv.hi = {loop_start + (loop_end - loop_start), 1};
-            if (reverse) {
-                whole_section_uv.lo.x = 1.0f - whole_section_uv.lo.x;
-                whole_section_uv.hi.x = 1.0f - whole_section_uv.hi.x;
-                offset_section_uv.lo.x = 1.0f - offset_section_uv.lo.x;
-                offset_section_uv.hi.x = 1.0f - offset_section_uv.hi.x;
-            }
+            Range const whole_section_uv {
+                .lo = {reverse ? 1.0f - offset : offset, 0},
+                .hi = {reverse ? 0.0f : 1.0f, 1},
+            };
+            Range const offset_section_uv {
+                .lo = {reverse ? 1.0f : 0.0f, 0},
+                .hi = {reverse ? 1.0f - offset : offset, 1},
+            };
+            Range const loop_section_uv {
+                .lo = {loop_start, 0},
+                .hi = {loop_start + (loop_end - loop_start), 1},
+            };
 
             if (auto const tex = GuiIo().in.renderer->GetTextureFromImage(
                     GetWaveformImage(g.waveform_images,
@@ -636,10 +624,10 @@ void DoWaveformElement(GuiState& g, LayerProcessor& layer, Rect viewport_r) {
             }
         }
 
-        // Sliders/controls
+        // Controls.
         DoWaveformControls(g, layer, viewport_r);
 
-        // Draw cursors
+        // Voice cursors.
         if (g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed)) {
             auto& voice_waveform_markers =
                 g.engine.processor.voice_pool.voice_waveform_markers_for_gui.Consume().data;
@@ -664,20 +652,19 @@ void DoWaveformElement(GuiState& g, LayerProcessor& layer, Rect viewport_r) {
         }
     }
 
+    // Macro destination regions: stacked vertically in the top-right corner.
     {
-        Rect macro_dest_region = ({
-            auto dest_r = window_r;
-            dest_r.size = Min(window_r.w, window_r.h) / 3;
-            dest_r.x = window_r.x + window_r.w - dest_r.w;
-            dest_r;
-        });
+        auto const cell_size = Min(window_r.w, window_r.h) / 3;
+        auto const base_x = window_r.Right() - cell_size;
 
-        auto do_macro_dest_region = [&](ParamIndex param) {
-            MacroAddDestinationRegion(g, macro_dest_region, param);
-            macro_dest_region.y += macro_dest_region.h;
+        auto const macro_params = Array {
+            ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopStart),
+            ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopEnd),
+            ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopCrossfade),
         };
-        do_macro_dest_region(ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopStart));
-        do_macro_dest_region(ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopEnd));
-        do_macro_dest_region(ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopCrossfade));
+        for (auto const [i, param] : Enumerate(macro_params)) {
+            auto const r = Rect {.xywh {base_x, window_r.y + (cell_size * (f32)i), cell_size, cell_size}};
+            MacroAddDestinationRegion(g, r, param);
+        }
     }
 }
