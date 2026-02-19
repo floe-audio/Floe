@@ -6,6 +6,7 @@
 #include "gui/gui_utils.hpp"
 #include "gui2_inst_browser.hpp"
 #include "gui2_ir_browser.hpp"
+#include "gui_drawing_helpers.hpp"
 #include "gui_effects.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -14,7 +15,6 @@
 #include "gui_prefs.hpp"
 #include "gui_state.hpp"
 #include "old/gui_button_widgets.hpp"
-#include "gui_drawing_helpers.hpp"
 #include "old/gui_widget_helpers.hpp"
 
 // TODO: this needs code entirely adapting to use GuiBuilder

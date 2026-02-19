@@ -184,6 +184,7 @@ analog
 api
 aren
 arm64
+args
 arp
 arpeggiated
 asc
@@ -397,6 +398,7 @@ xdg
 xmark
 xml
 xzf
+zb
 zenity
 zig
 zon
