@@ -140,8 +140,8 @@ static void DrawMidPanelOverallBackground(GuiState& g, imgui::Context const& img
 static void DrawLayersContainerBackground(GuiState& g,
                                           imgui::Context const& imgui,
                                           f32x2 mid_panel_size,
-                                          f32 mid_panel_title_height,
-                                          f32 panel_rounding) {
+                                          f32 mid_panel_title_height) {
+    auto const panel_rounding = LiveSize(UiSizeId::BlurredPanelRounding);
     auto const viewport = imgui.curr_viewport;
     auto const& r = viewport->bounds;
 
@@ -188,8 +188,8 @@ static void DrawLayersContainerBackground(GuiState& g,
 static void DrawEffectsContainerBackground(GuiState& g,
                                            imgui::Context const& imgui,
                                            f32x2 mid_panel_size,
-                                           f32 mid_panel_title_height,
-                                           f32 panel_rounding) {
+                                           f32 mid_panel_title_height) {
+    auto const panel_rounding = LiveSize(UiSizeId::BlurredPanelRounding);
     auto const& r = imgui.curr_viewport->bounds;
 
     auto const overall_lib = LibraryForOverallBackground(g.engine);
@@ -231,8 +231,6 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
     auto const mid_panel_title_height = LiveSize(UiSizeId::MidPanelTitleHeight);
     auto const mid_panel_size = imgui.CurrentVpSize();
 
-    auto const panel_rounding = LiveSize(UiSizeId::BlurredPanelRounding);
-
     auto do_randomise_button = [&](String tooltip) {
         auto const margin = LiveSize(UiSizeId::MidPanelTitleMarginLeft);
         auto const size = LiveSize(UiSizeId::ResourceSelectorRandomButtonW);
@@ -257,8 +255,7 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
                                             DrawLayersContainerBackground(g,
                                                                           imgui,
                                                                           mid_panel_size,
-                                                                          mid_panel_title_height,
-                                                                          panel_rounding);
+                                                                          mid_panel_title_height);
                                         },
                                     .draw_scrollbars = DrawMidPanelScrollbars,
                                     .padding =
@@ -338,8 +335,7 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
                                             DrawEffectsContainerBackground(g,
                                                                            imgui,
                                                                            mid_panel_size,
-                                                                           mid_panel_title_height,
-                                                                           panel_rounding);
+                                                                           mid_panel_title_height);
                                         },
                                     .draw_scrollbars = DrawMidPanelScrollbars,
                                     .padding =
