@@ -81,13 +81,10 @@ struct PrevNextButtonsOptions {
 PrevNextButtonsResult
 DoPrevNextButtons(GuiBuilder& builder, Box row, PrevNextButtonsOptions const& options = {});
 
-void AddMidiLearnRightClickBehaviour(GuiState& g,
-                                     Rect window_r,
-                                     imgui::Id id,
-                                     DescribedParamValue const& param);
-void AddMidiLearnRightClickBehaviour(GuiState& g,
-                                     Rect window_r,
-                                     imgui::Id id,
-                                     Span<DescribedParamValue const> params);
+void AddParamContextMenuBehaviour(GuiState& g, Rect window_r, imgui::Id id, DescribedParamValue const& param);
+void AddParamContextMenuBehaviour(GuiState& g,
+                                  Rect window_r,
+                                  imgui::Id id,
+                                  Span<DescribedParamValue const> params);
 
-void AddMidiLearnRightClickBehaviour(GuiState& g, Box const& box, DescribedParamValue const& param);
+void AddParamContextMenuBehaviour(GuiState& g, Box const& box, DescribedParamValue const& param);

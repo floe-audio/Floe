@@ -113,7 +113,7 @@ void DoEnvelopeGui(GuiState& g,
                                   }))
             g.param_text_editor_to_open = attack_param_id;
 
-        AddMidiLearnRightClickBehaviour(g, grabber, attack_imgui_id, attack_param);
+        AddParamContextMenuBehaviour(g, grabber, attack_imgui_id, attack_param);
 
         if (imgui.IsHotOrActive(attack_imgui_id, MouseButton::Left))
             GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
@@ -179,7 +179,7 @@ void DoEnvelopeGui(GuiState& g,
                                   }))
             g.param_text_editor_to_open = decay_id;
 
-        AddMidiLearnRightClickBehaviour(g, grabber, dec_sus_imgui_id, Array {decay_param, sustain_param});
+        AddParamContextMenuBehaviour(g, grabber, dec_sus_imgui_id, Array {decay_param, sustain_param});
 
         if (imgui.IsHotOrActive(dec_sus_imgui_id, MouseButton::Left))
             GuiIo().out.wants.cursor_type = CursorType::AllArrows;
@@ -249,7 +249,7 @@ void DoEnvelopeGui(GuiState& g,
                                                  (max_release_percent * padded_width) + (handle_size / 2),
                                                  imgui.CurrentVpHeight()}});
 
-        AddMidiLearnRightClickBehaviour(g, grabber, release_imgui_id, release_param);
+        AddParamContextMenuBehaviour(g, grabber, release_imgui_id, release_param);
 
         f32 new_value = release_norm_value;
         bool changed = false;

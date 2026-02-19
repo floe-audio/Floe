@@ -14,7 +14,7 @@
 #include "processor/param.hpp"
 #include "processor/processor.hpp"
 
-static void DoMidiLearnMenu(GuiState& g, Span<ParamIndex const> param_indices) {
+static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices) {
     auto const root = DoBox(g.builder,
                             {
                                 .layout {
@@ -128,10 +128,10 @@ static void DoMidiLearnMenu(GuiState& g, Span<ParamIndex const> param_indices) {
     }
 }
 
-void AddMidiLearnRightClickBehaviour(GuiState& g,
-                                     Rect window_r,
-                                     imgui::Id id,
-                                     Span<DescribedParamValue const> params) {
+void AddParamContextMenuBehaviour(GuiState& g,
+                                  Rect window_r,
+                                  imgui::Id id,
+                                  Span<DescribedParamValue const> params) {
     if (AllOf(params, [](DescribedParamValue const& p) { return p.info.flags.not_automatable; })) return;
 
     auto const popup_id = (imgui::Id)(SourceLocationHash() ^ ({
@@ -160,29 +160,25 @@ void AddMidiLearnRightClickBehaviour(GuiState& g,
                                           for (auto const i : Range(params.size))
                                               indices[i] = params[i].info.index;
                                           indices;
-                                      })](GuiBuilder&) { DoMidiLearnMenu(g, indices); },
+                                      })](GuiBuilder&) { DoParamContextMenu(g, indices); },
                           .bounds = window_r,
                           .imgui_id = popup_id,
                           .viewport_config = k_default_popup_menu_viewport,
                       });
 }
 
-void AddMidiLearnRightClickBehaviour(GuiState& g,
-                                     Rect window_r,
-                                     imgui::Id id,
-                                     DescribedParamValue const& param) {
-    AddMidiLearnRightClickBehaviour(g, window_r, id, Array {param});
+void AddParamContextMenuBehaviour(GuiState& g,
+                                  Rect window_r,
+                                  imgui::Id id,
+                                  DescribedParamValue const& param) {
+    AddParamContextMenuBehaviour(g, window_r, id, Array {param});
 }
 
-void AddMidiLearnRightClickBehaviour(GuiState& g, Box const& box, DescribedParamValue const& param) {
+void AddParamContextMenuBehaviour(GuiState& g, Box const& box, DescribedParamValue const& param) {
     if (param.info.flags.not_automatable) return;
 
-    if (auto const viewport_r = BoxRect(g.builder, box)) {
-        AddMidiLearnRightClickBehaviour(g,
-                                        g.imgui.ViewportRectToWindowRect(*viewport_r),
-                                        box.imgui_id,
-                                        param);
-    }
+    if (auto const viewport_r = BoxRect(g.builder, box))
+        AddParamContextMenuBehaviour(g, g.imgui.ViewportRectToWindowRect(*viewport_r), box.imgui_id, param);
 }
 
 static String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena) {
@@ -383,7 +379,7 @@ Box DoMenuParameter(GuiState& g,
     }
 
     // Right-click menu.
-    AddMidiLearnRightClickBehaviour(g, menu_btn, param);
+    AddParamContextMenuBehaviour(g, menu_btn, param);
 
     // Label.
     if (options.label)
@@ -481,7 +477,7 @@ Box DoKnobParameter(GuiState& g,
     }
 
     // Right-click menu.
-    AddMidiLearnRightClickBehaviour(g, container, param);
+    AddParamContextMenuBehaviour(g, container, param);
 
     // Focus the text input if requested.
     if (g.builder.IsInputAndRenderPass()) {
@@ -642,7 +638,7 @@ Box DoButtonParameter(GuiState& g,
         SetParameterValue(g.engine.processor, param.info.index, state ? 0.0f : 1.0f, {});
 
     // Right-click menu.
-    AddMidiLearnRightClickBehaviour(g, container, param);
+    AddParamContextMenuBehaviour(g, container, param);
 
     return container;
 }
@@ -772,7 +768,7 @@ Box DoIntParameter(GuiState& g,
     }
 
     // Right-click menu.
-    AddMidiLearnRightClickBehaviour(g, dragger_box, param);
+    AddParamContextMenuBehaviour(g, dragger_box, param);
 
     // Focus the text input if requested.
     if (g.builder.IsInputAndRenderPass()) {
