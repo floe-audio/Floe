@@ -221,6 +221,9 @@ struct BoxConfig {
 
     Colours background_fill_colours = Col {.c = Col::None};
     BackgroundShape background_shape = BackgroundShape::Rectangle;
+    // Instead of using the hot/active variants from background_fill_colours, always use the base
+    // colour and blend a semi-transparent highlight overlay on top for hot (hovered) and active
+    // (pressed) states.
     bool background_fill_auto_hot_active_overlay = false;
     bool drop_shadow = false;
     ImageID const* background_tex {};
