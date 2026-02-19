@@ -39,7 +39,10 @@ struct ThreadPool {
 
     void StopAllThreads() {
         ZoneScoped;
-        m_thread_stop_requested.Store(true, StoreMemoryOrder::Release);
+        {
+            ScopedMutexLock const lock(m_mutex);
+            m_thread_stop_requested.Store(true, StoreMemoryOrder::Release);
+        }
         m_cond_var.WakeAll();
         for (auto& t : m_workers)
             if (t.Joinable()) t.Join();
