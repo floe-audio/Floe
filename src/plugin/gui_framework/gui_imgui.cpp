@@ -525,8 +525,7 @@ bool Context::AnItemIsHot() const { return hot_item != k_null_id; }
 
 // Active
 bool Context::IsActive(Id id, Optional<MouseButton> via_mouse_button) const {
-    return active_item.id == id &&
-           (!via_mouse_button || active_item.mouse_button == *via_mouse_button);
+    return active_item.id == id && (!via_mouse_button || active_item.mouse_button == *via_mouse_button);
 }
 bool Context::WasJustActivated(Id id, Optional<MouseButton> via_mouse_button) const {
     return IsActive(id, via_mouse_button) && active_item_last_frame.id != id;
@@ -534,8 +533,7 @@ bool Context::WasJustActivated(Id id, Optional<MouseButton> via_mouse_button) co
 bool Context::WasJustDeactivated(Id id, Optional<MouseButton> via_mouse_button) const {
     return active_item.id != id &&
            (active_item_last_frame.id == id &&
-            (!via_mouse_button ||
-             active_item_last_frame.mouse_button == *via_mouse_button));
+            (!via_mouse_button || active_item_last_frame.mouse_button == *via_mouse_button));
 }
 bool Context::AnItemIsActive() const { return active_item.id != k_null_id; }
 
@@ -2056,7 +2054,7 @@ void Context::TextInputSelectAll() {
     GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
 
-void Context::ClearActive() { SetActive(k_null_id, MouseButton::Left); }
+void Context::ClearActive() { SetActive(k_null_id, {}); }
 
 void Context::SetActive(Id id, MouseButton mouse_button) {
     temp_active_item.id = id;
