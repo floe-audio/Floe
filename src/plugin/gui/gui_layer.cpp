@@ -27,34 +27,53 @@
 
 namespace layer_gui {
 
-static void DoInstSelectorRightClickMenu(GuiState& g, Rect r, u32 layer) {
+static void DoInstSelectorRightClickMenu(GuiState& g, Rect r, u32 layer, imgui::Id imgui_id) {
     auto& imgui = g.imgui;
     auto layer_obj = &g.engine.Layer(layer);
-    auto const popup_id = imgui.MakeId("inst selector popup");
-    auto const right_clicker_id = imgui.MakeId("inst selector right clicker");
+    auto const right_click_id = imgui.MakeId("inst-selector-popup");
 
     r = imgui.RegisterAndConvertRect(r);
-    imgui.PopupMenuButtonBehaviour(r,
-                                   right_clicker_id,
-                                   popup_id,
-                                   {.mouse_button = MouseButton::Right, .event = MouseButtonEvent::Up});
 
-    if (imgui.IsPopupMenuOpen(popup_id)) {
-        g.imgui.BeginViewport(k_default_popup_menu_viewport, popup_id, r);
-        DEFER { imgui.EndViewport(); };
-
-        auto const items = Array {"Unload instrument"_s};
-
-        PopupMenuItems menu(g, items);
-
-        StartFloeMenu(g);
-        DEFER { EndFloeMenu(g); };
-
-        if (layer_obj->instrument_id.tag == InstrumentType::None)
-            menu.DoFakeButton(items[0]);
-        else if (menu.DoButton(items[0]))
-            LoadInstrument(g.engine, layer, InstrumentType::None);
+    if (imgui.ButtonBehaviour(r,
+                              imgui_id,
+                              {
+                                  .mouse_button = MouseButton::Right,
+                                  .event = MouseButtonEvent::Up,
+                              })) {
+        imgui.OpenPopupMenu(right_click_id, imgui_id);
     }
+
+    if (imgui.IsPopupMenuOpen(right_click_id))
+        DoBoxViewport(
+            g.builder,
+            {
+                .run =
+                    [&](GuiBuilder&) {
+                        auto const root = DoBox(g.builder,
+                                                {
+                                                    .layout {
+                                                        .size = layout::k_hug_contents,
+                                                        .contents_direction = layout::Direction::Column,
+                                                        .contents_align = layout::Alignment::Start,
+                                                    },
+                                                });
+                        if (MenuItem(g.builder,
+                                     root,
+                                     {
+                                         .text = "Unload instrument"_s,
+                                         .mode = layer_obj->instrument_id.tag == InstrumentType::None
+                                                     ? MenuItemOptions::Mode::Disabled
+                                                     : MenuItemOptions::Mode::Active,
+                                         .no_icon_gap = true,
+                                     })
+                                .button_fired) {
+                            LoadInstrument(g.engine, layer, InstrumentType::None);
+                        }
+                    },
+                .bounds = r,
+                .imgui_id = right_click_id,
+                .viewport_config = k_default_popup_menu_viewport,
+            });
 }
 
 static void DoInstSelectorGUI(GuiState& g, Rect r, u32 layer) {
@@ -77,7 +96,7 @@ static void DoInstSelectorGUI(GuiState& g, Rect r, u32 layer) {
         if (imgs.icon) icon_tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.icon);
     }
 
-    DoInstSelectorRightClickMenu(g, r, layer);
+    DoInstSelectorRightClickMenu(g, r, layer, imgui_id);
 
     if (buttons::Button(g, imgui_id, r, inst_name, buttons::InstSelectorPopupButton(g.imgui, icon_tex))) {
         g.imgui.OpenModalViewport(g.inst_browser_state[layer].id);
@@ -1008,14 +1027,15 @@ void Draw(GuiState& g,
 
     auto& params = g.engine.processor.main_params;
 
-    g.imgui.BeginViewport({
-                              .draw_scrollbars = DrawMidPanelScrollbars,
-                              .scrollbar_padding = 4,
-                              .scrollbar_width = LiveSize(UiSizeId::ScrollbarWidth),
-                              .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-                          },
-                          g.imgui.MakeId((uintptr)layer),
-                          r);
+    g.imgui.BeginViewport(
+        {
+            .draw_scrollbars = DrawMidPanelScrollbars,
+            .scrollbar_padding = 4,
+            .scrollbar_width = LiveSize(UiSizeId::ScrollbarWidth),
+            .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
+        },
+        g.imgui.MakeId((uintptr)layer),
+        r);
     DEFER { g.imgui.EndViewport(); };
 
     auto const draw_divider = [&](layout::Id id) {
