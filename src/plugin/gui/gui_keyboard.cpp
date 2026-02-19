@@ -202,7 +202,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
                 f32 const rel_yclick_pos = GuiIo().in.cursor_pos.y - key_r.y;
                 result = KeyboardGuiKeyPressed {.is_down = true,
                                                 .note = CheckedCast<u7>(this_abs_key),
-                                                .velocity = (rel_yclick_pos / key_r.h)};
+                                                .velocity = Clamp01(rel_yclick_pos / key_r.h)};
             }
         } else {
             imgui.SetHot(key_r, id);
@@ -256,7 +256,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
                 f32 const rel_yclick_pos = GuiIo().in.cursor_pos.y - key_r.y;
                 result = KeyboardGuiKeyPressed {.is_down = true,
                                                 .note = CheckedCast<u7>(this_abs_key),
-                                                .velocity = (rel_yclick_pos / key_r.h)};
+                                                .velocity = Clamp01(rel_yclick_pos / key_r.h)};
             }
         } else {
             imgui.SetHot(key_r, id);
