@@ -544,7 +544,7 @@ static void LiveEditColourMapMenus(DeveloperPanel& g, String search) {
 
             // Alpha dragger
             {
-                f32 alpha_f = (f32)col_map.col.alpha;
+                auto alpha_f = (f32)col_map.col.alpha;
                 changed |= DoDevGuiFloatDragger(g,
                                                 {
                                                     .viewport_r = alpha_r,
