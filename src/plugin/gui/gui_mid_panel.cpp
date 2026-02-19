@@ -111,38 +111,112 @@ static void DoOverlayGradient(GuiState& g, Rect r) {
 // reduces chance of floating point errors
 static f32 RoundUpToNearestMultiple(f32 value, f32 multiple) { return multiple * Ceil(value / multiple); }
 
+static void DrawMidPanelOverallBackground(GuiState& g, imgui::Context const& imgui) {
+    auto const r = imgui.curr_viewport->unpadded_bounds;
+
+    imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportBackground));
+
+    if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui))) {
+        auto overall_library = LibraryForOverallBackground(g.engine);
+        if (overall_library) {
+            auto imgs = GetLibraryImages(g.library_images,
+                                         g.imgui,
+                                         *overall_library,
+                                         g.shared_engine_systems.sample_library_server,
+                                         LibraryImagesTypes::Backgrounds);
+            if (imgs.background) {
+                auto tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.background);
+                if (tex) {
+                    imgui.draw_list->AddImageRect(*tex,
+                                                  r,
+                                                  {0, 0},
+                                                  GetMaxUVToMaintainAspectRatio(*imgs.background, r.size));
+                }
+            }
+        }
+    }
+}
+
+static void DrawLayersContainerBackground(GuiState& g,
+                                          imgui::Context const& imgui,
+                                          f32x2 mid_panel_size,
+                                          f32 mid_panel_title_height,
+                                          f32 panel_rounding) {
+    auto const viewport = imgui.curr_viewport;
+    auto const& r = viewport->bounds;
+
+    auto const layer_width_without_pad = RoundUpToNearestMultiple(r.w, k_num_layers) / k_num_layers;
+
+    auto const overall_lib = LibraryForOverallBackground(g.engine);
+    if (overall_lib)
+        DoBlurredBackground(g,
+                            r,
+                            r,
+                            viewport,
+                            *overall_lib,
+                            mid_panel_size,
+                            Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
+
+    auto const layer_opacity = Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacitySingleLayer1) / 100.0f);
+    for (auto const layer_index : Range(k_num_layers)) {
+        if (auto const lib_id = g.engine.Layer(layer_index).LibId(); lib_id) {
+            if (*lib_id == overall_lib) continue;
+            auto const layer_r = Rect {.x = r.x + ((f32)layer_index * layer_width_without_pad),
+                                       .y = r.y,
+                                       .w = layer_width_without_pad,
+                                       .h = r.h}
+                                     .CutTop(mid_panel_title_height);
+            DoBlurredBackground(g, r, layer_r, viewport, *lib_id, mid_panel_size, layer_opacity);
+        }
+    }
+
+    if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui))) DoOverlayGradient(g, r);
+
+    imgui.draw_list->AddRect(r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
+
+    imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
+                             {r.Right(), r.y + mid_panel_title_height},
+                             LiveCol(UiColMap::MidViewportDivider));
+    for (u32 i = 1; i < k_num_layers; ++i) {
+        auto const x_pos = r.x + ((f32)i * layer_width_without_pad) - 1;
+        imgui.draw_list->AddLine({x_pos, r.y + mid_panel_title_height},
+                                 {x_pos, r.Bottom()},
+                                 LiveCol(UiColMap::MidViewportDivider));
+    }
+}
+
+static void DrawEffectsContainerBackground(GuiState& g,
+                                           imgui::Context const& imgui,
+                                           f32x2 mid_panel_size,
+                                           f32 mid_panel_title_height,
+                                           f32 panel_rounding) {
+    auto const& r = imgui.curr_viewport->bounds;
+
+    auto const overall_lib = LibraryForOverallBackground(g.engine);
+    if (overall_lib)
+        DoBlurredBackground(g,
+                            r,
+                            r,
+                            imgui.curr_viewport,
+                            *overall_lib,
+                            mid_panel_size,
+                            Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
+
+    DoOverlayGradient(g, r);
+
+    imgui.draw_list->AddRect(r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
+
+    imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
+                             {r.Right(), r.y + mid_panel_title_height},
+                             LiveCol(UiColMap::MidViewportDivider));
+}
+
 void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
     auto& imgui = g.imgui;
 
     imgui.BeginViewport(
         {
-            .draw_background =
-                [&](imgui::Context const& imgui) {
-                    auto const r = imgui.curr_viewport->unpadded_bounds;
-
-                    imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportBackground));
-
-                    if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui))) {
-                        auto overall_library = LibraryForOverallBackground(g.engine);
-                        if (overall_library) {
-                            auto imgs = GetLibraryImages(g.library_images,
-                                                         g.imgui,
-                                                         *overall_library,
-                                                         g.shared_engine_systems.sample_library_server,
-                                                         LibraryImagesTypes::Backgrounds);
-                            if (imgs.background) {
-                                auto tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.background);
-                                if (tex) {
-                                    imgui.draw_list->AddImageRect(
-                                        *tex,
-                                        r,
-                                        {0, 0},
-                                        GetMaxUVToMaintainAspectRatio(*imgs.background, r.size));
-                                }
-                            }
-                        }
-                    }
-                },
+            .draw_background = [&](imgui::Context const& imgui) { DrawMidPanelOverallBackground(g, imgui); },
             .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
         },
         bounds,
@@ -176,83 +250,32 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
     };
 
     {
-        imgui.BeginViewport(
-            ({
-                imgui::ViewportConfig conf {
-                    .draw_background =
-                        [&](imgui::Context const& imgui) {
-                            auto const viewport = imgui.curr_viewport;
-
-                            auto const& r = viewport->bounds;
-
-                            auto const layer_width_without_pad =
-                                RoundUpToNearestMultiple(r.w, k_num_layers) / k_num_layers;
-
-                            auto const overall_lib = LibraryForOverallBackground(engine);
-                            if (overall_lib)
-                                DoBlurredBackground(
-                                    g,
-                                    r,
-                                    r,
-                                    viewport,
-                                    *overall_lib,
-                                    mid_panel_size,
-                                    Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
-
-                            auto const layer_opacity =
-                                Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacitySingleLayer1) / 100.0f);
-                            for (auto const layer_index : Range(k_num_layers)) {
-                                if (auto const lib_id = g.engine.Layer(layer_index).LibId(); lib_id) {
-                                    if (*lib_id == overall_lib) continue;
-                                    auto const layer_r =
-                                        Rect {.x = r.x + ((f32)layer_index * layer_width_without_pad),
-                                              .y = r.y,
-                                              .w = layer_width_without_pad,
-                                              .h = r.h}
-                                            .CutTop(mid_panel_title_height);
-                                    DoBlurredBackground(g,
-                                                        r,
-                                                        layer_r,
-                                                        viewport,
-                                                        *lib_id,
-                                                        mid_panel_size,
-                                                        layer_opacity);
-                                }
-                            }
-
-                            if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui)))
-                                DoOverlayGradient(g, r);
-
-                            imgui.draw_list->AddRect(r,
-                                                     LiveCol(UiColMap::MidViewportSurfaceBorder),
-                                                     panel_rounding);
-
-                            imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
-                                                     {r.Right(), r.y + mid_panel_title_height},
-                                                     LiveCol(UiColMap::MidViewportDivider));
-                            for (u32 i = 1; i < k_num_layers; ++i) {
-                                auto const x_pos = r.x + ((f32)i * layer_width_without_pad) - 1;
-                                imgui.draw_list->AddLine({x_pos, r.y + mid_panel_title_height},
-                                                         {x_pos, r.Bottom()},
-                                                         LiveCol(UiColMap::MidViewportDivider));
-                            }
-                        },
-                    .draw_scrollbars = DrawMidPanelScrollbars,
-                    .padding =
-                        {
-                            .l = LiveSize(UiSizeId::LayersBoxMarginL),
-                            .r = LiveSize(UiSizeId::LayersBoxMarginR),
-                            .t = LiveSize(UiSizeId::LayersBoxMarginT),
-                            .b = LiveSize(UiSizeId::LayersBoxMarginB),
-                        },
-                    .scrollbar_padding = 4,
-                    .scrollbar_width = LiveSize(UiSizeId::ScrollbarWidth),
-                    .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-                };
-                conf;
-            }),
-            {.xywh {0, 0, total_layer_width, imgui.CurrentVpHeight()}},
-            "layers-container");
+        imgui.BeginViewport(({
+                                imgui::ViewportConfig conf {
+                                    .draw_background =
+                                        [&](imgui::Context const& imgui) {
+                                            DrawLayersContainerBackground(g,
+                                                                          imgui,
+                                                                          mid_panel_size,
+                                                                          mid_panel_title_height,
+                                                                          panel_rounding);
+                                        },
+                                    .draw_scrollbars = DrawMidPanelScrollbars,
+                                    .padding =
+                                        {
+                                            .l = LiveSize(UiSizeId::LayersBoxMarginL),
+                                            .r = LiveSize(UiSizeId::LayersBoxMarginR),
+                                            .t = LiveSize(UiSizeId::LayersBoxMarginT),
+                                            .b = LiveSize(UiSizeId::LayersBoxMarginB),
+                                        },
+                                    .scrollbar_padding = 4,
+                                    .scrollbar_width = LiveSize(UiSizeId::ScrollbarWidth),
+                                    .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
+                                };
+                                conf;
+                            }),
+                            {.xywh {0, 0, total_layer_width, imgui.CurrentVpHeight()}},
+                            "layers-container");
         DEFER { imgui.EndViewport(); };
 
         // do the title
@@ -308,52 +331,34 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
     }
 
     {
-        imgui.BeginViewport(
-            ({
-                imgui::ViewportConfig {
-                    .draw_background =
-                        [&](imgui::Context const& imgui) {
-                            auto const& r = imgui.curr_viewport->bounds;
-
-                            auto const overall_lib = LibraryForOverallBackground(engine);
-                            if (overall_lib)
-                                DoBlurredBackground(
-                                    g,
-                                    r,
-                                    r,
-                                    imgui.curr_viewport,
-                                    *overall_lib,
-                                    mid_panel_size,
-                                    Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
-
-                            DoOverlayGradient(g, r);
-
-                            imgui.draw_list->AddRect(r,
-                                                     LiveCol(UiColMap::MidViewportSurfaceBorder),
-                                                     panel_rounding);
-
-                            imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
-                                                     {r.Right(), r.y + mid_panel_title_height},
-                                                     LiveCol(UiColMap::MidViewportDivider));
-                        },
-                    .draw_scrollbars = DrawMidPanelScrollbars,
-                    .padding =
-                        {
-                            .l = LiveSize(UiSizeId::FXListMarginL),
-                            .r = LiveSize(UiSizeId::FXListMarginR),
-                            .t = LiveSize(UiSizeId::FXListMarginT),
-                            .b = LiveSize(UiSizeId::FXListMarginB),
-                        },
-                    .scrollbar_padding = 4,
-                    .scrollbar_width = LiveSize(UiSizeId::ScrollbarWidth),
-                    .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-                };
-            }),
-            {.xywh {total_layer_width,
-                    0,
-                    imgui.CurrentVpWidth() - total_layer_width,
-                    imgui.CurrentVpHeight()}},
-            "effects-container");
+        imgui.BeginViewport(({
+                                imgui::ViewportConfig {
+                                    .draw_background =
+                                        [&](imgui::Context const& imgui) {
+                                            DrawEffectsContainerBackground(g,
+                                                                           imgui,
+                                                                           mid_panel_size,
+                                                                           mid_panel_title_height,
+                                                                           panel_rounding);
+                                        },
+                                    .draw_scrollbars = DrawMidPanelScrollbars,
+                                    .padding =
+                                        {
+                                            .l = LiveSize(UiSizeId::FXListMarginL),
+                                            .r = LiveSize(UiSizeId::FXListMarginR),
+                                            .t = LiveSize(UiSizeId::FXListMarginT),
+                                            .b = LiveSize(UiSizeId::FXListMarginB),
+                                        },
+                                    .scrollbar_padding = 4,
+                                    .scrollbar_width = LiveSize(UiSizeId::ScrollbarWidth),
+                                    .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
+                                };
+                            }),
+                            {.xywh {total_layer_width,
+                                    0,
+                                    imgui.CurrentVpWidth() - total_layer_width,
+                                    imgui.CurrentVpHeight()}},
+                            "effects-container");
         DEFER { imgui.EndViewport(); };
 
         // do the title

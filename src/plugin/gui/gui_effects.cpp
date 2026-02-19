@@ -128,36 +128,36 @@ static void DoIrSelectorRightClickMenu(GuiState& g, Rect r, imgui::Id imgui_id) 
     }
 
     if (imgui.IsPopupMenuOpen(right_click_id))
-        DoBoxViewport(
-            g.builder,
-            {
-                .run =
-                    [&](GuiBuilder&) {
-                        auto const root = DoBox(g.builder,
-                                                {
-                                                    .layout {
-                                                        .size = layout::k_hug_contents,
-                                                        .contents_direction = layout::Direction::Column,
-                                                        .contents_align = layout::Alignment::Start,
-                                                    },
-                                                });
-                        if (MenuItem(g.builder,
-                                     root,
-                                     {
-                                         .text = "Unload IR"_s,
-                                         .mode = !g.engine.processor.convo.ir_id
-                                                     ? MenuItemOptions::Mode::Disabled
-                                                     : MenuItemOptions::Mode::Active,
-                                         .no_icon_gap = true,
-                                     })
-                                .button_fired) {
-                            LoadConvolutionIr(g.engine, k_nullopt);
-                        }
-                    },
-                .bounds = r,
-                .imgui_id = right_click_id,
-                .viewport_config = k_default_popup_menu_viewport,
-            });
+        DoBoxViewport(g.builder,
+                      {
+                          .run =
+                              [&](GuiBuilder&) {
+                                  auto const root =
+                                      DoBox(g.builder,
+                                            {
+                                                .layout {
+                                                    .size = layout::k_hug_contents,
+                                                    .contents_direction = layout::Direction::Column,
+                                                    .contents_align = layout::Alignment::Start,
+                                                },
+                                            });
+                                  if (MenuItem(g.builder,
+                                               root,
+                                               {
+                                                   .text = "Unload IR"_s,
+                                                   .mode = !g.engine.processor.convo.ir_id
+                                                               ? MenuItemOptions::Mode::Disabled
+                                                               : MenuItemOptions::Mode::Active,
+                                                   .no_icon_gap = true,
+                                               })
+                                          .button_fired) {
+                                      LoadConvolutionIr(g.engine, k_nullopt);
+                                  }
+                              },
+                          .bounds = r,
+                          .imgui_id = right_click_id,
+                          .viewport_config = k_default_popup_menu_viewport,
+                      });
 }
 
 static void DoImpulseResponseMenu(GuiState& g, GuiFrameContext const& frame_context, layout::Id lay_id) {
