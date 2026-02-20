@@ -5,7 +5,7 @@
 
 #include "foundation/foundation.hpp"
 
-#include "../gui_fwd.hpp"
+#include "gui/core/gui_fwd.hpp"
 #include "gui_button_widgets.hpp"
 
 namespace draggers {

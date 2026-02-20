@@ -3,7 +3,7 @@
 
 #include "gui_label_widgets.hpp"
 
-#include "../gui_state.hpp"
+#include "gui/core/gui_state.hpp"
 #include "processor/param.hpp"
 
 namespace labels {

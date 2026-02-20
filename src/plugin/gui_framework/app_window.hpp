@@ -11,7 +11,7 @@
 
 #include "aspect_ratio.hpp"
 #include "engine/engine.hpp"
-#include "gui/gui_state.hpp"
+#include "gui/core/gui_state.hpp"
 #include "gui_frame.hpp"
 
 constexpr bool k_debug_app_window = false;

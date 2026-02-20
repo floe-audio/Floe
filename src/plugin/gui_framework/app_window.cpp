@@ -15,8 +15,8 @@
 
 #include "aspect_ratio.hpp"
 #include "engine/engine.hpp"
-#include "gui/gui_prefs.hpp"
-#include "gui/gui_state.hpp"
+#include "gui/core/gui_prefs.hpp"
+#include "gui/core/gui_state.hpp"
 #include "gui_frame.hpp"
 
 ErrorCodeCategory const app_window_error_code {

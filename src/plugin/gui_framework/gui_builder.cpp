@@ -5,7 +5,7 @@
 
 #include "utils/debug/tracy_wrapped.hpp"
 
-#include "gui/gui_drawing_helpers.hpp"
+#include "gui/elements/gui_drawing_helpers.hpp"
 #include "gui_framework/fonts.hpp"
 #include "image.hpp"
 

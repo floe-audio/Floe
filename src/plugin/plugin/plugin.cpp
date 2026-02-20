@@ -25,7 +25,7 @@
 
 #include "engine/engine.hpp"
 #include "engine/shared_engine_systems.hpp"
-#include "gui/gui_prefs.hpp"
+#include "gui/core/gui_prefs.hpp"
 #include "gui_framework/app_window.hpp"
 #include "processing_utils/scoped_denormals.hpp"
 #include "processor/processor.hpp"

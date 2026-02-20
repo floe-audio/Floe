@@ -7,7 +7,7 @@
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
-#include "../gui_fwd.hpp"
+#include "gui/core/gui_fwd.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_framework/layout.hpp"
