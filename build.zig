@@ -1574,6 +1574,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "gui/panels/gui_top_panel.cpp",
             "gui/panels/gui_effects.cpp",
             "gui/panels/gui_layer.cpp",
+            "gui/panels/gui_layer_new.cpp",
             "gui/panels/gui_mid_panel.cpp",
             "gui/old/gui_button_widgets.cpp",
             "gui/old/gui_dragger_widgets.cpp",

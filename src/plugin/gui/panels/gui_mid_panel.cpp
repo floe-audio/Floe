@@ -9,6 +9,7 @@
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/panels/gui_effects.hpp"
 #include "gui/panels/gui_inst_browser.hpp"
+#include "gui/panels/gui_layer_new.hpp"
 #include "gui/panels/gui_ir_browser.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_builder.hpp"
@@ -271,17 +272,18 @@ DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame
                                   });
 
     for (auto const i : Range(k_num_layers)) {
-        if (auto const r = BoxRect(builder,
-                                   DoBox(builder,
-                                         {
-                                             .parent = layers_row,
-                                             .id_extra = (u64)i,
-                                             .layout {
-                                                 .size = {layout::k_fill_parent, layout::k_fill_parent},
-                                             },
-                                         }))) {
-            // TODO: this will be replaced by a new layer_gui that use the GuiBuilder rather than us having to
-            // do layout stuff here.
+        auto const layer_box = DoBox(builder,
+                                     {
+                                         .parent = layers_row,
+                                         .id_extra = (u64)i,
+                                         .layout {
+                                             .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                         },
+                                     });
+
+        if (i == 0) {
+            layer_gui_new::DoLayerPanel(g, frame_context, i, layer_box);
+        } else if (auto const r = BoxRect(builder, layer_box)) {
             layer_gui::LayerLayoutTempIDs ids {};
             layer_gui::Layout(g, &g.engine.Layer(i), ids, &g.layer_gui[i], r->w, r->h);
             layout::RunContext(g.layout);
