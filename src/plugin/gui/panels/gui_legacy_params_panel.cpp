@@ -128,6 +128,8 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
                                 container,
                                 g.engine.processor.main_params.DescribedValue(desc.index),
                                 {
+                                    .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
+                                    .knob_height_fraction = LiveRaw(UiSizeId::ParamComponentKnobHeightPercent) / 100.0f,
                                     .knob_highlight_col = {.c = Col::Highlight},
                                     .knob_line_col = {.c = Col::Background0, .dark_mode = true},
                                 });

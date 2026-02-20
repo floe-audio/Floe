@@ -282,7 +282,7 @@ DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame
                                      });
 
         if (i == 0) {
-            layer_gui_new::DoLayerPanel(g, frame_context, i, layer_box);
+            layer_gui_new::DoLayerPanel(g, frame_context, (u8)i, layer_box);
         } else if (auto const r = BoxRect(builder, layer_box)) {
             layer_gui::LayerLayoutTempIDs ids {};
             layer_gui::Layout(g, &g.engine.Layer(i), ids, &g.layer_gui[i], r->w, r->h);

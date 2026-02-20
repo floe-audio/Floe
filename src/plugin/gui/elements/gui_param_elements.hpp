@@ -6,15 +6,17 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "gui/core/gui_fwd.hpp"
+#include "gui/elements/gui_constants.hpp"
 #include "gui_framework/gui_builder.hpp"
 
 struct AudioProcessor;
 
 struct ParameterComponentOptions {
-    enum class Size { Small, Medium, Large };
-    Size size {Size::Medium};
+    f32 width; // In window-width units.
+    f32 knob_height_fraction = 1; // Height = width * knob_height_fraction.
     Col knob_highlight_col = {Col::Highlight};
     Col knob_line_col = {Col::Background0};
+    GuiStyleSystem style_system {};
     bool greyed_out = false;
     bool is_fake = false;
     bool label = true;
@@ -66,6 +68,8 @@ Box DoIntParameter(GuiState& g,
                    Box parent,
                    DescribedParamValue const& param,
                    IntParameterComponentOptions const& options);
+
+String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena);
 
 void AddParamContextMenuBehaviour(GuiState& g, Rect window_r, imgui::Id id, DescribedParamValue const& param);
 void AddParamContextMenuBehaviour(GuiState& g,

@@ -182,7 +182,7 @@ void AddParamContextMenuBehaviour(GuiState& g, Box const& box, DescribedParamVal
         AddParamContextMenuBehaviour(g, g.imgui.ViewportRectToWindowRect(*viewport_r), box.imgui_id, param);
 }
 
-static String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena) {
+String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena) {
     auto const str = param.info.LinearValueToString(param.LinearValue());
     ASSERT(str);
 
@@ -431,32 +431,18 @@ Box DoKnobParameter(GuiState& g,
         }
     }
 
-    auto const knob_width = ({
-        f32 w;
-        switch (options.size) {
-            case ParameterComponentOptions::Size::Small:
-                w = LiveWw(UiSizeId::ParamComponentExtraSmallWidth);
-                break;
-            case ParameterComponentOptions::Size::Medium:
-                w = LiveWw(UiSizeId::ParamComponentSmallWidth);
-                break;
-            case ParameterComponentOptions::Size::Large:
-                w = LiveWw(UiSizeId::ParamComponentLargeWidth);
-                break;
-        }
-        w;
-    });
+    auto const knob_width = options.width;
+    auto const knob_height = knob_width * options.knob_height_fraction;
 
-    if (auto const r = BoxRect(
-            g.builder,
-            DoBox(g.builder,
-                  {
-                      .parent = container,
-                      .layout {
-                          .size = {knob_width, knob_width - LiveWw(UiSizeId::ParamComponentHeightOffset)},
-                          .margins = {.b = LiveWw(UiSizeId::ParamComponentLabelGapY)},
-                      },
-                  }))) {
+    if (auto const r = BoxRect(g.builder,
+                               DoBox(g.builder,
+                                     {
+                                         .parent = container,
+                                         .layout {
+                                             .size = {knob_width, knob_height},
+                                             .margins = {.b = LiveWw(UiSizeId::ParamComponentLabelGapY)},
+                                         },
+                                     }))) {
         DrawKnob(
             g.builder.imgui,
             container.imgui_id,
@@ -474,6 +460,7 @@ Box DoKnobParameter(GuiState& g,
                                                                  param.info.index),
                                              param.info.linear_range.min,
                                              param.info.linear_range.max),
+                .style_system = options.style_system,
                 .greyed_out = options.greyed_out,
                 .is_fake = options.is_fake,
             });

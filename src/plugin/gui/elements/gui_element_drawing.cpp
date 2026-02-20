@@ -124,26 +124,35 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
     ASSERT(outer_arc_percent >= 0 && outer_arc_percent <= 1);
     ASSERT(angle >= start_radians && angle <= end_radians);
 
-    auto inner_arc_col =
-        LiveCol(options.mid_panel_colours ? UiColMap::KnobMidInnerArc : UiColMap::KnobInnerArc);
+    auto const mid_panel_colours = ({
+        bool m;
+        switch (options.style_system) {
+            case GuiStyleSystem::MidPanel: m = true; break;
+            case GuiStyleSystem::TopBottomPanels: m = false; break;
+            case GuiStyleSystem::Overlay: Panic("overlay style not supported yet");
+        }
+        m;
+    });
+
+    auto inner_arc_col = LiveCol(mid_panel_colours ? UiColMap::KnobMidInnerArc : UiColMap::KnobInnerArc);
     auto bright_arc_col = options.highlight_col;
     if (options.greyed_out) {
         bright_arc_col = LiveCol(UiColMap::KnobOuterArcGreyedOut);
-        inner_arc_col = LiveCol(options.mid_panel_colours ? UiColMap::KnobMidInnerArcGreyedOut
-                                                          : UiColMap::KnobInnerArcGreyedOut);
+        inner_arc_col =
+            LiveCol(mid_panel_colours ? UiColMap::KnobMidInnerArcGreyedOut : UiColMap::KnobInnerArcGreyedOut);
     }
     auto line_col = options.line_col;
     if (!options.is_fake && (imgui.IsHot(id) || imgui.IsActive(id, MouseButton::Left))) {
         inner_arc_col =
-            LiveCol(options.mid_panel_colours ? UiColMap::KnobMidInnerArcHover : UiColMap::KnobInnerArcHover);
-        line_col = LiveCol(options.mid_panel_colours ? UiColMap::KnobMidLineHover : UiColMap::KnobLineHover);
+            LiveCol(mid_panel_colours ? UiColMap::KnobMidInnerArcHover : UiColMap::KnobInnerArcHover);
+        line_col = LiveCol(mid_panel_colours ? UiColMap::KnobMidLineHover : UiColMap::KnobLineHover);
     }
 
     // outer arc
     auto const outer_arc_thickness = LivePx(UiSizeId::KnobOuterArcWeight);
     auto const outer_arc_radius_mid = r.w * 0.5f;
     auto const empty_outer_arc_col =
-        LiveCol(options.mid_panel_colours ? UiColMap::KnobMidOuterArcEmpty : UiColMap::KnobOuterArcEmpty);
+        LiveCol(mid_panel_colours ? UiColMap::KnobMidOuterArcEmpty : UiColMap::KnobOuterArcEmpty);
     if (!options.overload_position) {
         imgui.draw_list->PathArcTo(c,
                                    outer_arc_radius_mid - (outer_arc_thickness / 2),
@@ -174,8 +183,8 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
                                        overload_radians_end,
                                        end_radians,
                                        32);
-            imgui.draw_list->PathStroke(LiveCol(options.mid_panel_colours ? UiColMap::KnobMidOuterArcOverload
-                                                                          : UiColMap::KnobOuterArcOverload),
+            imgui.draw_list->PathStroke(LiveCol(mid_panel_colours ? UiColMap::KnobMidOuterArcOverload
+                                                                  : UiColMap::KnobOuterArcOverload),
                                         false,
                                         gain_thickness);
         }
