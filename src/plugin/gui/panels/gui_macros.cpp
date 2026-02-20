@@ -118,7 +118,8 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                                           knobs_box,
                                           g.engine.processor.main_params.DescribedValue(param_index),
                                           {
-                                              .size = ParameterComponentOptions::Size::Small,
+                                              .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
+                                              .knob_height_fraction = LiveRaw(UiSizeId::ParamComponentKnobHeightPercent) / 100.0f,
                                               .label = false,
                                           });
 

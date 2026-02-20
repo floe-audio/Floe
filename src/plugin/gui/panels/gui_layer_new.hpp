@@ -11,6 +11,6 @@ struct GuiFrameContext;
 
 namespace layer_gui_new {
 
-void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u32 layer_index, Box parent);
+void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box parent);
 
 } // namespace layer_gui_new

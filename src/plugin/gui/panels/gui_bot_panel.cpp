@@ -247,7 +247,8 @@ static void DoBotPanel(GuiState& g) {
                         macro_box,
                         g.engine.processor.main_params.DescribedValue(param_index),
                         {
-                            .size = ParameterComponentOptions::Size::Small,
+                            .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
+                            .knob_height_fraction = LiveRaw(UiSizeId::ParamComponentKnobHeightPercent) / 100.0f,
                             .greyed_out = g.engine.processor.main_macro_destinations[macro_index].Size() == 0,
                             .override_label = g.engine.macro_names[macro_index],
                         });

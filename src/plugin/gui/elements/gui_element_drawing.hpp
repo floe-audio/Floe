@@ -4,6 +4,7 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
+#include "gui/elements/gui_constants.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_imgui.hpp"
@@ -37,7 +38,7 @@ struct DrawKnobOptions {
     u32 line_col;
     Optional<f32> overload_position;
     Optional<f32> outer_arc_percent;
-    bool mid_panel_colours;
+    GuiStyleSystem style_system;
     bool greyed_out;
     bool is_fake;
     bool bidirectional;

@@ -4,6 +4,12 @@
 
 #include "foundation/foundation.hpp"
 
+enum class GuiStyleSystem {
+    MidPanel, // On top of an image background, uses transparent black/white shades often.
+    Overlay, // Modals and popups, often light-mode and bold.
+    TopBottomPanels, // Dark-mode, bold.
+};
+
 constexpr f32 k_button_rounding = 3.0f;
 constexpr f32 k_default_spacing = 16.0f;
 constexpr f32 k_button_padding_x = 5.0f;

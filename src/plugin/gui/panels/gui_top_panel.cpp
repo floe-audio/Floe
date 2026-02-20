@@ -491,7 +491,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
             knob_container,
             g.engine.processor.main_params.DescribedValue(ParamIndex::MasterTimbre),
             {
-                .size = ParameterComponentOptions::Size::Small,
+                .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
+                .knob_height_fraction = LiveRaw(UiSizeId::ParamComponentKnobHeightPercent) / 100.0f,
                 .greyed_out = !has_insts_with_timbre_layers,
                 .is_fake = !has_insts_with_timbre_layers,
                 .override_tooltip =
@@ -510,7 +511,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                     knob_container,
                     g.engine.processor.main_params.DescribedValue(ParamIndex::MasterVolume),
                     {
-                        .size = ParameterComponentOptions::Size::Small,
+                        .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
+                        .knob_height_fraction = LiveRaw(UiSizeId::ParamComponentKnobHeightPercent) / 100.0f,
                     });
 
     // peak meter
