@@ -14,9 +14,10 @@
 // Copyright (c) 2014-2024 Omar Cornut
 // SPDX-License-Identifier: MIT
 
-// Elements stored in BasicDynamicArray must be safe to memcpy/realloc because the array uses GlobalReallocOversizeAllowed
-// for growth. Types that are TriviallyCopyable satisfy this automatically. Non-trivially-copyable types
-// (such as BasicDynamicArray itself) can opt in by defining a MemcpySafe tag type.
+// Elements stored in BasicDynamicArray must be safe to memcpy/realloc because the array uses
+// GlobalReallocOversizeAllowed for growth. Types that are TriviallyCopyable satisfy this automatically.
+// Non-trivially-copyable types (such as BasicDynamicArray itself) can opt in by defining a MemcpySafe tag
+// type.
 template <typename T>
 concept MemcpySafe = TriviallyCopyable<T> || requires { typename T::MemcpySafe; };
 

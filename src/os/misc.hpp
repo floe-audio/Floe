@@ -144,7 +144,8 @@ class Malloc final : public Allocator {
                             : k_max_alignment;
 
                     // fallback: new allocation and move memory
-                    auto new_allocation = GlobalAllocOversizeAllowed({.size = cmd.new_size, .align = alignment});
+                    auto new_allocation =
+                        GlobalAllocOversizeAllowed({.size = cmd.new_size, .align = alignment});
                     if (cmd.move_memory_handler.function)
                         cmd.move_memory_handler.function({.context = cmd.move_memory_handler.context,
                                                           .destination = new_allocation.data,

@@ -98,8 +98,9 @@ static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
             auto pixels =
                 ImagePixelsFromLibrary(lib_id, LibraryImageType::Icon, server, scratch_arena, scratch_arena);
             if (!pixels) return k_nullopt;
-            auto const result = ResizeImage(*pixels, desired_icon_size, ImageBytesAllocator())
-                                    .OrElse([&] { return pixels->Clone(ImageBytesAllocator()); });
+            auto const result = ResizeImage(*pixels, desired_icon_size, ImageBytesAllocator()).OrElse([&] {
+                return pixels->Clone(ImageBytesAllocator());
+            });
             return result;
         },
         []() {
@@ -156,8 +157,9 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryIdRef const& lib_id_ref,
             // image on the GPU
             auto const background =
                 pixels->size.width > CheckedCast<u16>(window_width * 1.3f)
-                    ? ResizeImage(*pixels, window_width, ImageBytesAllocator())
-                          .OrElse([&] { return pixels->Clone(ImageBytesAllocator()); })
+                    ? ResizeImage(*pixels, window_width, ImageBytesAllocator()).OrElse([&] {
+                          return pixels->Clone(ImageBytesAllocator());
+                      })
                     : pixels->Clone(ImageBytesAllocator());
 
             if (reload_background) result.background = background;

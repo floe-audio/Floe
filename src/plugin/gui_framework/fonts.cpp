@@ -104,7 +104,8 @@ void FontAtlas::GetTexDataAsRGBA32(unsigned char** out_pixels,
     if (!tex_pixels_rgb_a32) {
         unsigned char* pixels;
         GetTexDataAsAlpha8(&pixels, nullptr, nullptr);
-        tex_pixels_rgb_a32 = (unsigned int*)GlobalAllocOversizeAllowed({(usize)(tex_width * tex_height * 4)}).data;
+        tex_pixels_rgb_a32 =
+            (unsigned int*)GlobalAllocOversizeAllowed({(usize)(tex_width * tex_height * 4)}).data;
         unsigned char const* src = pixels;
         unsigned int* dst = tex_pixels_rgb_a32;
         for (int n = tex_width * tex_height; n > 0; n--)
@@ -171,7 +172,8 @@ bool FontAtlas::Build() {
         u32 ranges_count;
     };
     auto* tmp_array =
-        (FontTempBuildData*)GlobalAllocOversizeAllowed({(usize)config_data.size * sizeof(FontTempBuildData)}).data;
+        (FontTempBuildData*)GlobalAllocOversizeAllowed({(usize)config_data.size * sizeof(FontTempBuildData)})
+            .data;
 
     // Initialize font information early (so we can error without any cleanup) + count glyphs
     u32 total_glyph_count = 0;
@@ -223,7 +225,8 @@ bool FontAtlas::Build() {
         (stbtt_packedchar*)GlobalAllocOversizeAllowed({total_glyph_count * sizeof(stbtt_packedchar)}).data;
     auto* buf_rects = (stbrp_rect*)GlobalAllocOversizeAllowed({total_glyph_count * sizeof(stbrp_rect)}).data;
     auto* buf_ranges =
-        (stbtt_pack_range*)GlobalAllocOversizeAllowed({total_glyph_range_count * sizeof(stbtt_pack_range)}).data;
+        (stbtt_pack_range*)GlobalAllocOversizeAllowed({total_glyph_range_count * sizeof(stbtt_pack_range)})
+            .data;
     ZeroMemory(buf_packedchars, total_glyph_count * sizeof(stbtt_packedchar));
     ZeroMemory(buf_rects,
                total_glyph_count *
