@@ -240,7 +240,7 @@ static void FolderPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext&
     auto const root = DoBox(builder,
                             {
                                 .layout {
-                                    .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
+                                    .size = layout::k_fill_parent,
                                     .contents_padding = {.lrtb = k_default_spacing},
                                     .contents_gap = k_large_gap,
                                     .contents_direction = layout::Direction::Column,
@@ -435,7 +435,7 @@ static void PackagesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContex
     auto const root = DoBox(builder,
                             {
                                 .layout {
-                                    .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
+                                    .size = layout::k_fill_parent,
                                     .contents_padding = {.lrtb = k_default_spacing},
                                     .contents_gap = k_medium_gap,
                                     .contents_direction = layout::Direction::Column,
@@ -568,7 +568,7 @@ static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
     auto const root = DoBox(builder,
                             {
                                 .layout {
-                                    .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
+                                    .size = layout::k_fill_parent,
                                     .contents_padding = {.lrtb = k_default_spacing},
                                     .contents_gap = k_medium_gap,
                                     .contents_direction = layout::Direction::Column,

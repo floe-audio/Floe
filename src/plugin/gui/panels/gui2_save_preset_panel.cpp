@@ -159,7 +159,7 @@ SavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePreset
     auto const root = DoBox(builder,
                             {
                                 .layout {
-                                    .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
+                                    .size = layout::k_fill_parent,
                                     .contents_padding = {.lrtb = k_default_spacing},
                                     .contents_gap = k_default_spacing,
                                     .contents_direction = layout::Direction::Column,
