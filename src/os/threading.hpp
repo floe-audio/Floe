@@ -686,6 +686,10 @@ struct Future {
     // Consumer thread
     void Reset() {
         ASSERT(!IsInProgress());
+        // Wait for the producer to finish touching this object before we allow it to be reused or
+        // destroyed. The working bit is cleared very shortly after the status transitions to
+        // Finished/Inactive, so this spin is brief.
+        BusyWaitForWorkingBitClear();
         if constexpr (!TriviallyCopyable<Type>) {
             if (IsFinished()) RawResult().~Type();
         }
