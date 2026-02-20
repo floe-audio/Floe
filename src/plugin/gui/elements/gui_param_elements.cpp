@@ -463,6 +463,7 @@ Box DoKnobParameter(GuiState& g,
                 .style_system = options.style_system,
                 .greyed_out = options.greyed_out,
                 .is_fake = options.is_fake,
+                .bidirectional = options.bidirectional,
             });
     }
 
