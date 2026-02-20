@@ -173,14 +173,12 @@ static void DoImpulseResponseMenu(GuiState& g, GuiFrameContext const& frame_cont
     // Draw around the whole thing, not just the menu.
     if (style.back_cols.reg) {
         auto const converted_r = g.imgui.RegisterAndConvertRect(r);
-        g.imgui.draw_list->AddRectFilled(converted_r,
-                                         style.back_cols.reg,
-                                         LiveSize(UiSizeId::CornerRounding));
+        g.imgui.draw_list->AddRectFilled(converted_r, style.back_cols.reg, LivePx(UiSizeId::CornerRounding));
     }
 
-    auto const arrow_btn_w = LiveSize(UiSizeId::NextPrevButtonSize);
-    auto const rand_btn_w = LiveSize(UiSizeId::ResourceSelectorRandomButtonW);
-    auto const margin_r = LiveSize(UiSizeId::ParamIntButtonMarginR);
+    auto const arrow_btn_w = LivePx(UiSizeId::NextPrevButtonSize);
+    auto const rand_btn_w = LivePx(UiSizeId::ResourceSelectorRandomButtonW);
+    auto const margin_r = LivePx(UiSizeId::ParamIntButtonMarginR);
     rect_cut::CutRight(r, margin_r);
     auto rect_rand = rect_cut::CutRight(r, rand_btn_w);
     auto rect_next = rect_cut::CutRight(r, arrow_btn_w);
@@ -280,22 +278,22 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
     auto& lay = g.layout;
     auto& engine = g.engine;
 
-    auto const fx_divider_margin_b = LiveSize(FXDividerMarginB);
-    auto const fx_param_button_height = LiveSize(FXParamButtonHeight);
-    auto const corner_rounding = LiveSize(CornerRounding);
+    auto const fx_divider_margin_b = LivePx(FXDividerMarginB);
+    auto const fx_param_button_height = LivePx(FXParamButtonHeight);
+    auto const corner_rounding = LivePx(CornerRounding);
 
     imgui.BeginViewport(({
                             imgui::ViewportConfig {
                                 .draw_scrollbars = DrawMidPanelScrollbars,
                                 .padding =
                                     {
-                                        .l = LiveSize(FXViewportPadL),
-                                        .t = LiveSize(FXViewportPadT),
-                                        .r = LiveSize(FXViewportPadR),
-                                        .b = LiveSize(FXViewportPadB),
+                                        .l = LivePx(FXViewportPadL),
+                                        .t = LivePx(FXViewportPadT),
+                                        .r = LivePx(FXViewportPadR),
+                                        .b = LivePx(FXViewportPadB),
                                     },
                                 .scrollbar_padding = 4,
-                                .scrollbar_width = LiveSize(ScrollbarWidth),
+                                .scrollbar_width = LivePx(ScrollbarWidth),
                                 .scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
                                                          imgui::ViewportScrollbarVisibility::Always},
                             };
@@ -328,8 +326,8 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
     int const switches_left_col_size = (k_num_effect_types / 2) + (k_num_effect_types % 2);
 
     {
-        auto const fx_switch_board_margin_l = LiveSize(FXSwitchBoardMarginL);
-        auto const fx_switch_board_margin_r = LiveSize(FXSwitchBoardMarginR);
+        auto const fx_switch_board_margin_l = LivePx(FXSwitchBoardMarginL);
+        auto const fx_switch_board_margin_r = LivePx(FXSwitchBoardMarginR);
 
         auto switches_container =
             layout::CreateItem(lay,
@@ -339,8 +337,8 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
                                    .margins = {.l = fx_switch_board_margin_l,
                                                .r = fx_switch_board_margin_r,
-                                               .t = LiveSize(FXSwitchBoardMarginT),
-                                               .b = LiveSize(FXSwitchBoardMarginB)},
+                                               .t = LivePx(FXSwitchBoardMarginT),
+                                               .b = LivePx(FXSwitchBoardMarginB)},
                                    .contents_direction = layout::Direction::Row,
                                });
 
@@ -360,7 +358,7 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
                                             .contents_direction = layout::Direction::Column,
                                         });
 
-        auto const fx_switch_board_item_height = LiveSize(FXSwitchBoardItemHeight);
+        auto const fx_switch_board_item_height = LivePx(FXSwitchBoardItemHeight);
         for (auto const i : Range(k_num_effect_types)) {
             auto const parent = (i < switches_left_col_size) ? left : right;
             switches[i] = layout::CreateItem(
@@ -388,7 +386,7 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
             name,
             {.font_size = font->font_size * buttons::EffectHeading(imgui, 0).text_scaling});
         f32 const epsilon = 2;
-        return f32x2 {Round(size.x + epsilon) + LiveSize(FXHeadingExtraWidth), LiveSize(FXHeadingH)};
+        return f32x2 {Round(size.x + epsilon) + LivePx(FXHeadingExtraWidth), LivePx(FXHeadingH)};
     };
 
     auto create_fx_ids = [&](Effect& fx, layout::Id* heading_container_out) {
@@ -406,15 +404,14 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
                                });
 
         auto const heading_size = get_heading_size(k_effect_info[ToInt(fx.type)].name);
-        ids.heading =
-            layout::CreateItem(lay,
-                               g.scratch_arena,
-                               {
-                                   .parent = master_heading_container,
-                                   .size = {heading_size.x, heading_size.y},
-                                   .margins = {.l = LiveSize(FXHeadingL), .r = LiveSize(FXHeadingR)},
-                                   .anchor = layout::Anchor::Left | layout::Anchor::Top,
-                               });
+        ids.heading = layout::CreateItem(lay,
+                                         g.scratch_arena,
+                                         {
+                                             .parent = master_heading_container,
+                                             .size = {heading_size.x, heading_size.y},
+                                             .margins = {.l = LivePx(FXHeadingL), .r = LivePx(FXHeadingR)},
+                                             .anchor = layout::Anchor::Left | layout::Anchor::Top,
+                                         });
 
         auto heading_container =
             layout::CreateItem(lay,
@@ -426,13 +423,12 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
                                    .contents_align = layout::Alignment::End,
                                });
 
-        ids.close =
-            layout::CreateItem(lay,
-                               g.scratch_arena,
-                               {
-                                   .parent = master_heading_container,
-                                   .size = {LiveSize(FXCloseButtonWidth), LiveSize(FXCloseButtonHeight)},
-                               });
+        ids.close = layout::CreateItem(lay,
+                                       g.scratch_arena,
+                                       {
+                                           .parent = master_heading_container,
+                                           .size = {LivePx(FXCloseButtonWidth), LivePx(FXCloseButtonHeight)},
+                                       });
 
         if (heading_container_out) *heading_container_out = heading_container;
         return ids;
@@ -441,7 +437,7 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
     auto const divider_options = layout::ItemOptions {
         .parent = effects_root,
         .size = {layout::k_fill_parent, 1},
-        .margins = {.t = LiveSize(FXDividerMarginT), .b = fx_divider_margin_b},
+        .margins = {.t = LivePx(FXDividerMarginT), .b = fx_divider_margin_b},
     };
 
     auto const param_container_options = layout::ItemOptions {
@@ -554,7 +550,7 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
                     g.scratch_arena,
                     {
                         .parent = heading_container,
-                        .size = {LiveSize(FXCompressorAutoGainWidth), fx_param_button_height},
+                        .size = {LivePx(FXCompressorAutoGainWidth), fx_param_button_height},
                     });
 
                 LayoutParameterComponent(
@@ -688,7 +684,7 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
                                        g.scratch_arena,
                                        {
                                            .parent = heading_container,
-                                           .size = {LiveSize(FXDelaySyncBtnWidth), fx_param_button_height},
+                                           .size = {LivePx(FXDelaySyncBtnWidth), fx_param_button_height},
                                        });
 
                 auto left_index = ParamIndex::DelayTimeSyncedL;
@@ -821,8 +817,8 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
                                                          : LiveCol(UiColMap::MidViewportDivider));
     };
 
-    auto const fx_knob_joining_line_thickness = LiveSize(FXKnobJoiningLineThickness);
-    auto const fx_knob_joining_line_pad_lr = LiveSize(FXKnobJoiningLinePadLR);
+    auto const fx_knob_joining_line_thickness = LivePx(FXKnobJoiningLineThickness);
+    auto const fx_knob_joining_line_pad_lr = LivePx(FXKnobJoiningLinePadLR);
     auto const draw_knob_joining_line = [&](layout::Id knob1, layout::Id knob2) {
         auto r1 = imgui.RegisterAndConvertRect(layout::GetRect(lay, knob1));
         auto r2 = imgui.RegisterAndConvertRect(layout::GetRect(lay, knob2));
@@ -1211,8 +1207,8 @@ void DoEffectsViewport(GuiState& g, GuiFrameContext const& frame_context, Rect r
     }
 
     {
-        auto const fx_switch_board_number_width = LiveSize(FXSwitchBoardNumberWidth);
-        auto const fx_switch_board_grab_region_width = LiveSize(FXSwitchBoardGrabRegionWidth);
+        auto const fx_switch_board_number_width = LivePx(FXSwitchBoardNumberWidth);
+        auto const fx_switch_board_grab_region_width = LivePx(FXSwitchBoardGrabRegionWidth);
 
         auto& dragging_fx = g.dragging_fx_switch;
         usize fx_index = 0;

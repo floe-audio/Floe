@@ -180,7 +180,7 @@ static void DoResizeCorner(GuiState& g) {
     auto const& frame_input = GuiIo().in;
     auto& frame_output = GuiIo().out;
 
-    auto const corner_size = LiveSize(UiSizeId::ViewportResizeCornerSize);
+    auto const corner_size = LivePx(UiSizeId::ViewportResizeCornerSize);
     imgui.BeginViewport(
         {
             .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
@@ -228,7 +228,7 @@ static void DoResizeCorner(GuiState& g) {
 
     auto const line_col = ToU32(
         Col {.c = imgui.IsHotOrActive(id, MouseButton::Left) ? Col::Text : Col::Overlay2, .dark_mode = true});
-    auto const line_gap = LiveSize(UiSizeId::ViewportResizeCornerLineGap);
+    auto const line_gap = LivePx(UiSizeId::ViewportResizeCornerLineGap);
     imgui.draw_list->AddLine(r.TopRight() + f32x2 {0, line_gap},
                              r.BottomLeft() + f32x2 {line_gap, 0},
                              line_col);
@@ -318,8 +318,8 @@ void GuiUpdate(GuiState& g) {
     DEFER { g.fonts.Pop(); };
 
     {
-        auto const top_h = Round(LiveSize(UiSizeId::TopHeight));
-        auto const bot_h = Round(LiveSize(UiSizeId::BotPanelHeight));
+        auto const top_h = Round(LivePx(UiSizeId::TopHeight));
+        auto const bot_h = Round(LivePx(UiSizeId::BotPanelHeight));
         auto const mid_h = frame_input.window_size.height - top_h - bot_h;
 
         TopPanel(g, {.xywh {0, 0, imgui.CurrentVpWidth(), top_h}}, frame_context);

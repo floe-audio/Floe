@@ -158,13 +158,11 @@ static void DoLoopModeSelectorGui(GuiState& g, Rect r, LayerProcessor& layer) {
     // Draw around the whole thing, not just the menu.
     if (style.back_cols.reg) {
         auto const converted_r = g.imgui.RegisterAndConvertRect(r);
-        g.imgui.draw_list->AddRectFilled(converted_r,
-                                         style.back_cols.reg,
-                                         LiveSize(UiSizeId::CornerRounding));
+        g.imgui.draw_list->AddRectFilled(converted_r, style.back_cols.reg, LivePx(UiSizeId::CornerRounding));
     }
 
-    auto const btn_w = LiveSize(UiSizeId::NextPrevButtonSize);
-    auto const margin_r = LiveSize(UiSizeId::ParamIntButtonMarginR);
+    auto const btn_w = LivePx(UiSizeId::NextPrevButtonSize);
+    auto const margin_r = LivePx(UiSizeId::ParamIntButtonMarginR);
     rect_cut::CutRight(r, margin_r);
     auto rect_r = rect_cut::CutRight(r, btn_w);
     auto rect_l = rect_cut::CutRight(r, btn_w);
@@ -181,7 +179,7 @@ static void DoLoopModeSelectorGui(GuiState& g, Rect r, LayerProcessor& layer) {
         items[ToInt(param_values::LoopMode::InstrumentDefault)] = default_mode_str;
 
         auto const w = MenuItemWidth(g, items);
-        auto const h = LiveSize(UiSizeId::MenuItemHeight);
+        auto const h = LivePx(UiSizeId::MenuItemHeight);
 
         for (auto const i : Range<u32>(items.size)) {
             bool state = i == ToInt(desired_loop_mode);
@@ -348,8 +346,8 @@ void Layout(GuiState& g,
             f32 width,
             f32 height) {
     using enum UiSizeId;
-    auto const param_popup_button_height = LiveSize(ParamPopupButtonHeight);
-    auto const page_heading_height = LiveSize(PageHeadingHeight);
+    auto const param_popup_button_height = LivePx(ParamPopupButtonHeight);
+    auto const page_heading_height = LivePx(PageHeadingHeight);
 
     auto& params = g.engine.processor.main_params;
 
@@ -369,11 +367,11 @@ void Layout(GuiState& g,
                                g.scratch_arena,
                                {
                                    .parent = container,
-                                   .size = {layout::k_fill_parent, LiveSize(LayerSelectorBoxHeight)},
-                                   .margins = {.l = LiveSize(LayerSelectorBoxMarginL),
-                                               .r = LiveSize(LayerSelectorBoxMarginR),
-                                               .t = LiveSize(LayerSelectorBoxMarginT),
-                                               .b = LiveSize(LayerSelectorBoxMarginB)},
+                                   .size = {layout::k_fill_parent, LivePx(LayerSelectorBoxHeight)},
+                                   .margins = {.l = LivePx(LayerSelectorBoxMarginL),
+                                               .r = LivePx(LayerSelectorBoxMarginR),
+                                               .t = LivePx(LayerSelectorBoxMarginT),
+                                               .b = LivePx(LayerSelectorBoxMarginB)},
                                    .contents_direction = layout::Direction::Row,
                                    .contents_align = layout::Alignment::Start,
                                });
@@ -385,9 +383,9 @@ void Layout(GuiState& g,
                                                  .size = layout::k_fill_parent,
                                              });
 
-        auto const layer_selector_button_w = LiveSize(ResourceSelectorRandomButtonW);
-        auto const layer_selector_lr_button_w = LiveSize(UiSizeId::NextPrevButtonSize);
-        auto const layer_selector_box_buttons_margin_r = LiveSize(LayerSelectorBoxButtonsMarginR);
+        auto const layer_selector_button_w = LivePx(ResourceSelectorRandomButtonW);
+        auto const layer_selector_lr_button_w = LivePx(UiSizeId::NextPrevButtonSize);
+        auto const layer_selector_box_buttons_margin_r = LivePx(LayerSelectorBoxButtonsMarginR);
 
         c.selector_l = layout::CreateItem(g.layout,
                                           g.scratch_arena,
@@ -421,10 +419,10 @@ void Layout(GuiState& g,
                                                      .parent = container,
                                                      .size = {layout::k_fill_parent, layout::k_hug_contents},
                                                      .margins {
-                                                         .l = LiveSize(LayerMixerContainer1MarginL),
-                                                         .r = LiveSize(LayerMixerContainer1MarginR),
-                                                         .t = LiveSize(LayerMixerContainer1MarginT),
-                                                         .b = LiveSize(LayerMixerContainer1MarginB),
+                                                         .l = LivePx(LayerMixerContainer1MarginL),
+                                                         .r = LivePx(LayerMixerContainer1MarginR),
+                                                         .t = LivePx(LayerMixerContainer1MarginT),
+                                                         .b = LivePx(LayerMixerContainer1MarginB),
                                                      },
                                                      .contents_direction = layout::Direction::Row,
                                                      .contents_align = layout::Alignment::Middle,
@@ -434,8 +432,8 @@ void Layout(GuiState& g,
                                       g.scratch_arena,
                                       {
                                           .parent = subcontainer_1,
-                                          .size = LiveSize(LayerVolumeKnobSize),
-                                          .margins = {.r = LiveSize(LayerVolumeKnobMarginR)},
+                                          .size = LivePx(LayerVolumeKnobSize),
+                                          .margins = {.r = LivePx(LayerVolumeKnobMarginR)},
                                       });
 
         c.mute_solo =
@@ -443,12 +441,12 @@ void Layout(GuiState& g,
                                g.scratch_arena,
                                {
                                    .parent = subcontainer_1,
-                                   .size = {LiveSize(LayerMuteSoloWidth), LiveSize(LayerMuteSoloHeight)},
+                                   .size = {LivePx(LayerMuteSoloWidth), LivePx(LayerMuteSoloHeight)},
                                    .margins {
-                                       .l = LiveSize(LayerMuteSoloMarginL),
-                                       .r = LiveSize(LayerMuteSoloMarginR),
-                                       .t = LiveSize(LayerMuteSoloMarginT),
-                                       .b = LiveSize(LayerMuteSoloMarginB),
+                                       .l = LivePx(LayerMuteSoloMarginL),
+                                       .r = LivePx(LayerMuteSoloMarginR),
+                                       .t = LivePx(LayerMuteSoloMarginT),
+                                       .b = LivePx(LayerMuteSoloMarginB),
                                    },
                                });
     }
@@ -471,14 +469,14 @@ void Layout(GuiState& g,
         layout::SetSize(g.layout,
                         c.knob1.control,
                         f32x2 {
-                            LiveSize(LayerPitchWidth),
-                            LiveSize(LayerPitchHeight),
+                            LivePx(LayerPitchWidth),
+                            LivePx(LayerPitchHeight),
                         });
         layout::SetMargins(g.layout,
                            c.knob1.control,
                            {
-                               .t = LiveSize(LayerPitchMarginT),
-                               .b = LiveSize(LayerPitchMarginB),
+                               .t = LivePx(LayerPitchMarginT),
+                               .b = LivePx(LayerPitchMarginB),
                            });
 
         LayoutParameterComponent(g,
@@ -493,7 +491,7 @@ void Layout(GuiState& g,
                                  LayerMixerKnobGapX);
     }
 
-    auto const layer_mixer_divider_vert_margins = LiveSize(LayerMixerDividerVertMargins);
+    auto const layer_mixer_divider_vert_margins = LivePx(LayerMixerDividerVertMargins);
     // divider
     c.divider = layout::CreateItem(g.layout,
                                    g.scratch_arena,
@@ -505,24 +503,23 @@ void Layout(GuiState& g,
 
     // tabs
     {
-        auto tab_lay =
-            layout::CreateItem(g.layout,
-                               g.scratch_arena,
-                               {
-                                   .parent = container,
-                                   .size = {layout::k_fill_parent, LiveSize(LayerParamsGroupTabsH)},
-                                   .margins = {.lr = LiveSize(LayerParamsGroupBoxGapX)},
-                                   .contents_direction = layout::Direction::Row,
-                                   .contents_align = layout::Alignment::Middle,
-                               });
+        auto tab_lay = layout::CreateItem(g.layout,
+                                          g.scratch_arena,
+                                          {
+                                              .parent = container,
+                                              .size = {layout::k_fill_parent, LivePx(LayerParamsGroupTabsH)},
+                                              .margins = {.lr = LivePx(LayerParamsGroupBoxGapX)},
+                                              .contents_direction = layout::Direction::Row,
+                                              .contents_align = layout::Alignment::Middle,
+                                          });
 
-        auto const layer_params_group_tabs_gap = LiveSize(LayerParamsGroupTabsGap);
+        auto const layer_params_group_tabs_gap = LivePx(LayerParamsGroupTabsGap);
         for (auto const i : Range(k_num_pages)) {
             auto const page_type = (PageType)i;
             auto size = g.fonts.Current()->CalcTextSize(PageTitle(page_type), {}).x;
 
             if (page_type == PageType::Filter || page_type == PageType::Lfo || page_type == PageType::Eq)
-                size += LiveSize(LayerParamsGroupTabsIconW2);
+                size += LivePx(LayerParamsGroupTabsIconW2);
             c.tabs[i] =
                 layout::CreateItem(g.layout,
                                    g.scratch_arena,
@@ -545,9 +542,9 @@ void Layout(GuiState& g,
     }
 
     {
-        auto const page_heading_margin_l = LiveSize(PageHeadingMarginL);
-        auto const page_heading_margin_t = LiveSize(PageHeadingMarginT);
-        auto const page_heading_margin_b = LiveSize(PageHeadingMarginB);
+        auto const page_heading_margin_l = LivePx(PageHeadingMarginL);
+        auto const page_heading_margin_t = LivePx(PageHeadingMarginT);
+        auto const page_heading_margin_b = LivePx(PageHeadingMarginB);
         auto const heading_margins = Margins {
             .l = page_heading_margin_l,
             .r = 0,
@@ -564,21 +561,21 @@ void Layout(GuiState& g,
                                                      .contents_align = layout::Alignment::Start,
                                                  });
 
-        auto const main_envelope_h = LiveSize(MainEnvelopeH);
+        auto const main_envelope_h = LivePx(MainEnvelopeH);
 
         switch (layer_gui->selected_page) {
             case PageType::Main: {
-                auto const waveform_margins_lr = LiveSize(MainWaveformMarginLR);
+                auto const waveform_margins_lr = LivePx(MainWaveformMarginLR);
                 c.main.waveform =
                     layout::CreateItem(g.layout,
                                        g.scratch_arena,
                                        {
                                            .parent = page_container,
-                                           .size = {layout::k_fill_parent, LiveSize(MainWaveformH)},
+                                           .size = {layout::k_fill_parent, LivePx(MainWaveformH)},
                                            .margins =
                                                {
                                                    .lr = waveform_margins_lr,
-                                                   .tb = LiveSize(MainWaveformMarginTB),
+                                                   .tb = LivePx(MainWaveformMarginTB),
                                                },
                                        });
 
@@ -587,14 +584,14 @@ void Layout(GuiState& g,
                                        g.scratch_arena,
                                        {
                                            .parent = page_container,
-                                           .size = {layout::k_fill_parent, LiveSize(MainWaveformLabelH)},
+                                           .size = {layout::k_fill_parent, LivePx(MainWaveformLabelH)},
                                            .margins = {.lr = waveform_margins_lr},
                                        });
 
-                auto const main_item_margin_l = LiveSize(MainItemMarginL);
-                auto const main_item_margin_r = LiveSize(MainItemMarginR);
-                auto const main_item_height = LiveSize(MainItemHeight);
-                auto const main_item_gap_y = LiveSize(MainItemGapY);
+                auto const main_item_margin_l = LivePx(MainItemMarginL);
+                auto const main_item_margin_r = LivePx(MainItemMarginR);
+                auto const main_item_height = LivePx(MainItemHeight);
+                auto const main_item_gap_y = LivePx(MainItemGapY);
                 auto btn_container =
                     layout::CreateItem(g.layout,
                                        g.scratch_arena,
@@ -609,7 +606,7 @@ void Layout(GuiState& g,
                                        g.scratch_arena,
                                        {
                                            .parent = btn_container,
-                                           .size = {LiveSize(MainReverseButtonWidth), main_item_height},
+                                           .size = {LivePx(MainReverseButtonWidth), main_item_height},
                                            .margins = {.tb = main_item_gap_y},
                                        });
                 c.main.loop_mode =
@@ -621,8 +618,8 @@ void Layout(GuiState& g,
                                            .margins = {.tb = main_item_gap_y},
                                        });
 
-                auto const main_divider_margin_t = LiveSize(MainDividerMarginT);
-                auto const main_divider_margin_b = LiveSize(MainDividerMarginB);
+                auto const main_divider_margin_t = LivePx(MainDividerMarginT);
+                auto const main_divider_margin_b = LivePx(MainDividerMarginB);
                 c.main.divider = layout::CreateItem(
                     g.layout,
                     g.scratch_arena,
@@ -650,14 +647,14 @@ void Layout(GuiState& g,
                                                          .parent = page_container,
                                                          .size = {layout::k_fill_parent, main_envelope_h},
                                                          .margins {
-                                                             .lr = LiveSize(MainEnvelopeMarginLR),
-                                                             .tb = LiveSize(MainEnvelopeMarginTB),
+                                                             .lr = LivePx(MainEnvelopeMarginLR),
+                                                             .tb = LivePx(MainEnvelopeMarginTB),
                                                          },
                                                      });
                 break;
             }
             case PageType::Filter: {
-                auto const filter_gap_y_before_knobs = LiveSize(FilterGapYBeforeKnobs);
+                auto const filter_gap_y_before_knobs = LivePx(FilterGapYBeforeKnobs);
 
                 auto filter_heading_container =
                     layout::CreateItem(g.layout,
@@ -673,7 +670,7 @@ void Layout(GuiState& g,
                                        g.scratch_arena,
                                        {
                                            .parent = filter_heading_container,
-                                           .size = {LiveSize(FilterOnWidth), page_heading_height},
+                                           .size = {LivePx(FilterOnWidth), page_heading_height},
                                            .margins = heading_margins,
                                            .anchor = layout::Anchor::Top,
                                        });
@@ -719,8 +716,8 @@ void Layout(GuiState& g,
                                                            .parent = page_container,
                                                            .size = {layout::k_fill_parent, main_envelope_h},
                                                            .margins {
-                                                               .lr = LiveSize(FilterEnvelopeMarginLR),
-                                                               .tb = LiveSize(FilterEnvelopeMarginTB),
+                                                               .lr = LivePx(FilterEnvelopeMarginLR),
+                                                               .tb = LivePx(FilterEnvelopeMarginTB),
                                                            },
                                                        });
                 break;
@@ -734,7 +731,7 @@ void Layout(GuiState& g,
                                                  .margins = heading_margins,
                                              });
 
-                auto const eq_band_gap_y = LiveSize(EqBandGapY);
+                auto const eq_band_gap_y = LivePx(EqBandGapY);
                 {
                     c.eq.type[0] =
                         layout::CreateItem(g.layout,
@@ -818,10 +815,10 @@ void Layout(GuiState& g,
                 break;
             }
             case PageType::Play: {
-                auto const midi_item_height = LiveSize(MidiItemHeight);
-                auto const midi_item_width = LiveSize(MidiItemWidth);
-                auto const midi_item_margin_lr = LiveSize(MidiItemMarginLR);
-                auto const midi_item_gap_y = LiveSize(MidiItemGapY);
+                auto const midi_item_height = LivePx(MidiItemHeight);
+                auto const midi_item_width = LivePx(MidiItemWidth);
+                auto const midi_item_margin_lr = LivePx(MidiItemMarginLR);
+                auto const midi_item_gap_y = LivePx(MidiItemGapY);
 
                 auto layout_item = [&](layout::Id& control, layout::Id& name, f32 height) {
                     auto parent =
@@ -930,7 +927,7 @@ void Layout(GuiState& g,
                                        g.scratch_arena,
                                        {
                                            .parent = page_container,
-                                           .size = {layout::k_fill_parent, LiveSize(MidiVeloGraphHeight)},
+                                           .size = {layout::k_fill_parent, LivePx(MidiVeloGraphHeight)},
                                            .margins = {.lr = midi_item_margin_lr},
                                        });
                 break;
@@ -957,11 +954,11 @@ void Layout(GuiState& g,
                                            g.scratch_arena,
                                            {
                                                .parent = parent,
-                                               .size = {LiveSize(LfoItemWidth), param_popup_button_height},
+                                               .size = {LivePx(LfoItemWidth), param_popup_button_height},
                                                .margins {
-                                                   .l = LiveSize(LfoItemMarginL),
-                                                   .r = LiveSize(LfoItemMarginR),
-                                                   .tb = LiveSize(LfoItemGapY),
+                                                   .l = LivePx(LfoItemMarginL),
+                                                   .r = LivePx(LfoItemMarginR),
+                                                   .tb = LivePx(LfoItemGapY),
                                                },
                                            });
                     name = layout::CreateItem(g.layout,
@@ -982,7 +979,7 @@ void Layout(GuiState& g,
                                        {
                                            .parent = page_container,
                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                           .margins = {.t = LiveSize(LfoGapYBeforeKnobs)},
+                                           .margins = {.t = LivePx(LfoGapYBeforeKnobs)},
                                            .contents_direction = layout::Direction::Row,
                                            .contents_align = layout::Alignment::Middle,
                                        });
@@ -1014,7 +1011,7 @@ static void DrawSelectorProgressBar(imgui::Context const& imgui, Rect r, f32 loa
     auto min = r.Min();
     auto max = f32x2 {r.x + Max(4.0f, r.w * load_percent), r.Bottom()};
     auto col = LiveCol(UiColMap::InstSelectorMenuLoading);
-    auto const rounding = LiveSize(UiSizeId::CornerRounding);
+    auto const rounding = LivePx(UiSizeId::CornerRounding);
     imgui.draw_list->AddRectFilled(min, max, col, rounding);
 }
 
@@ -1032,7 +1029,7 @@ void Draw(GuiState& g,
         {
             .draw_scrollbars = DrawMidPanelScrollbars,
             .scrollbar_padding = 4,
-            .scrollbar_width = LiveSize(UiSizeId::ScrollbarWidth),
+            .scrollbar_width = LivePx(UiSizeId::ScrollbarWidth),
             .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
         },
         g.imgui.MakeId((uintptr)layer),
@@ -1065,7 +1062,7 @@ void Draw(GuiState& g,
         auto const registered_selector_box_r =
             g.imgui.RegisterAndConvertRect(layout::GetRect(g.layout, c.selector_box));
         {
-            auto const rounding = LiveSize(UiSizeId::CornerRounding);
+            auto const rounding = LivePx(UiSizeId::CornerRounding);
             auto const col = should_highlight ? LiveCol(UiColMap::InstSelectorMenuBackHighlight)
                                               : LiveCol(UiColMap::MidDarkSurface);
             g.imgui.draw_list->AddRectFilled(registered_selector_box_r, col, rounding);
@@ -1165,9 +1162,9 @@ void Draw(GuiState& g,
     auto const volume_knob_r = layout::GetRect(g.layout, c.volume);
     // level meter
     {
-        auto const layer_peak_meter_width = LiveSize(LayerPeakMeterWidth);
-        auto const layer_peak_meter_height = LiveSize(LayerPeakMeterHeight);
-        auto const layer_peak_meter_bottom_gap = LiveSize(LayerPeakMeterBottomGap);
+        auto const layer_peak_meter_width = LivePx(LayerPeakMeterWidth);
+        auto const layer_peak_meter_height = LivePx(LayerPeakMeterHeight);
+        auto const layer_peak_meter_bottom_gap = LivePx(LayerPeakMeterBottomGap);
 
         Rect const peak_meter_r {.xywh {
             volume_knob_r.Centre().x - (layer_peak_meter_width / 2),
@@ -1181,7 +1178,7 @@ void Draw(GuiState& g,
     // volume
     {
         auto const volume_name_h = layout::GetRect(g.layout, c.knob1.label).h;
-        auto const volume_name_y_gap = LiveSize(LayerVolumeNameGapY);
+        auto const volume_name_y_gap = LivePx(LayerVolumeNameGapY);
         Rect const volume_name_r {.xywh {volume_knob_r.x,
                                          volume_knob_r.Bottom() - volume_name_h + volume_name_y_gap,
                                          volume_knob_r.w,
@@ -1203,7 +1200,7 @@ void Draw(GuiState& g,
 
         auto const col_divider = LiveCol(UiColMap::MuteSoloButtonDivider);
         auto const col_background = LiveCol(UiColMap::MidDarkSurface);
-        auto const rounding = LiveSize(UiSizeId::CornerRounding);
+        auto const rounding = LivePx(UiSizeId::CornerRounding);
         auto reg_mute_solo_r = g.imgui.RegisterAndConvertRect(mute_solo_r);
         auto reg_mute_r = g.imgui.RegisterAndConvertRect(mute_r);
         g.imgui.draw_list->AddRectFilled(reg_mute_solo_r, col_background, rounding);
@@ -1543,9 +1540,9 @@ void Draw(GuiState& g,
             auto const rate_name_r = layout::GetRect(g.layout, c.lfo.rate.label);
             labels::Label(g, *rate_param, rate_name_r, labels::ParameterCentred(g.imgui, greyed_out));
 
-            auto const lfo_sync_switch_width = LiveSize(LfoSyncSwitchWidth);
-            auto const lfo_sync_switch_height = LiveSize(LfoSyncSwitchHeight);
-            auto const lfo_sync_switch_gap_y = LiveSize(LfoSyncSwitchGapY);
+            auto const lfo_sync_switch_width = LivePx(LfoSyncSwitchWidth);
+            auto const lfo_sync_switch_height = LivePx(LfoSyncSwitchHeight);
+            auto const lfo_sync_switch_gap_y = LivePx(LfoSyncSwitchGapY);
 
             buttons::Toggle(g,
                             params.DescribedValue(layer->index, LayerParamIndex::LfoSyncSwitch),

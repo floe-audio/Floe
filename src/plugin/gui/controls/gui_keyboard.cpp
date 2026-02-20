@@ -678,7 +678,7 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_r
                     [](imgui::Context const& imgui) {
                         imgui.draw_list->AddRectFilled(imgui.curr_viewport->unpadded_bounds,
                                                        ToU32(Col {.c = Col::Background1, .dark_mode = true}),
-                                                       LiveSize(UiSizeId::CornerRounding));
+                                                       LivePx(UiSizeId::CornerRounding));
                     },
                 .padding = {.lr = 0, .tb = enlarged_viewport_padding},
                 .auto_size = true,

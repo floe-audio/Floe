@@ -147,7 +147,7 @@ void DoEnvelopeGui(GuiState& g,
             .draw_background =
                 [&handle_size](imgui::Context const& imgui) {
                     auto const& r = imgui.curr_viewport->bounds.Reduced(handle_size / 2);
-                    auto const rounding = LiveSize(UiSizeId::CornerRounding);
+                    auto const rounding = LivePx(UiSizeId::CornerRounding);
                     imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::EnvelopeBack), rounding);
                 },
             .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,

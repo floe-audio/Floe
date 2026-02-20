@@ -132,11 +132,11 @@ bool Dragger(GuiState& g, DescribedParamValue const& param, Rect r, Style const&
     // draw it around the whole thing, not just the dragger
     if (style.background) {
         auto const converted_r = imgui.RegisterAndConvertRect(r);
-        imgui.draw_list->AddRectFilled(converted_r, style.background, LiveSize(UiSizeId::CornerRounding));
+        imgui.draw_list->AddRectFilled(converted_r, style.background, LivePx(UiSizeId::CornerRounding));
     }
 
-    auto const btn_w = LiveSize(UiSizeId::NextPrevButtonSize);
-    auto const margin_r = LiveSize(UiSizeId::ParamIntButtonMarginR);
+    auto const btn_w = LivePx(UiSizeId::NextPrevButtonSize);
+    auto const margin_r = LivePx(UiSizeId::ParamIntButtonMarginR);
 
     rect_cut::CutRight(r, margin_r);
     auto right_r = rect_cut::CutRight(r, btn_w);

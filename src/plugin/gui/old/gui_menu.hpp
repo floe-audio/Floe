@@ -12,10 +12,10 @@ struct PopupMenuItems {
     PopupMenuItems(GuiState& _g, Span<String const> _items) : m_g(_g) {
         m_items = _items;
 
-        m_h = LiveSize(UiSizeId::MenuItemHeight);
+        m_h = LivePx(UiSizeId::MenuItemHeight);
 
-        m_div_gap_x = LiveSize(UiSizeId::MenuItemDividerGapX);
-        m_div_h = LiveSize(UiSizeId::MenuItemDividerH);
+        m_div_gap_x = LivePx(UiSizeId::MenuItemDividerGapX);
+        m_div_h = LivePx(UiSizeId::MenuItemDividerH);
 
         m_w = MenuItemWidth(m_g, m_items);
         m_y_pos = 0;

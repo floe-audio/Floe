@@ -29,30 +29,30 @@ layout::Id LayoutParameterComponent(GuiState& g,
                                     bool set_gapx_independent_of_size,
                                     bool set_bottom_gap_independent_of_size) {
     auto width = type == LayoutType::Layer
-                     ? LiveSize(UiSizeId::ParamComponentLargeWidth)
-                     : (type == LayoutType::Effect ? LiveSize(UiSizeId::ParamComponentSmallWidth)
-                                                   : LiveSize(UiSizeId::ParamComponentExtraSmallWidth));
+                     ? LivePx(UiSizeId::ParamComponentLargeWidth)
+                     : (type == LayoutType::Effect ? LivePx(UiSizeId::ParamComponentSmallWidth)
+                                                   : LivePx(UiSizeId::ParamComponentExtraSmallWidth));
     auto const starting_width = width;
-    auto height = width - LiveSize(UiSizeId::ParamComponentHeightOffset);
+    auto height = width - LivePx(UiSizeId::ParamComponentHeightOffset);
     auto const starting_height = height;
     auto gap_x =
-        size_index_for_gapx ? LiveSize(*size_index_for_gapx) : LiveSize(UiSizeId::ParamComponentMarginLR);
+        size_index_for_gapx ? LivePx(*size_index_for_gapx) : LivePx(UiSizeId::ParamComponentMarginLR);
     ASSERT(gap_x >= 0.0f);
-    auto gap_bottom = LiveSize(UiSizeId::ParamComponentMarginB);
-    auto gap_top = LiveSize(UiSizeId::ParamComponentMarginT);
+    auto gap_bottom = LivePx(UiSizeId::ParamComponentMarginB);
+    auto gap_top = LivePx(UiSizeId::ParamComponentMarginT);
 
-    auto const param_popup_button_height = LiveSize(UiSizeId::ParamPopupButtonHeight);
+    auto const param_popup_button_height = LivePx(UiSizeId::ParamPopupButtonHeight);
     if (index_for_menu_items) {
         auto const menu_items = ParameterMenuItems(*index_for_menu_items);
-        auto strings_width = MaxStringLength(g, menu_items) + (LiveSize(UiSizeId::MenuButtonTextMarginL) * 2);
-        auto const btn_w = LiveSize(UiSizeId::NextPrevButtonSize);
-        auto const margin_r = LiveSize(UiSizeId::ParamIntButtonMarginR);
+        auto strings_width = MaxStringLength(g, menu_items) + (LivePx(UiSizeId::MenuButtonTextMarginL) * 2);
+        auto const btn_w = LivePx(UiSizeId::NextPrevButtonSize);
+        auto const margin_r = LivePx(UiSizeId::ParamIntButtonMarginR);
         strings_width += btn_w * 2 + margin_r;
         width = strings_width;
         height = param_popup_button_height;
     } else if (is_convo_ir) {
         height = param_popup_button_height;
-        width = LiveSize(UiSizeId::FXConvoIRWidth);
+        width = LivePx(UiSizeId::FXConvoIRWidth);
     }
 
     if (set_gapx_independent_of_size && width != starting_width)
@@ -79,7 +79,7 @@ layout::Id LayoutParameterComponent(GuiState& g,
                                      {
                                          .parent = container,
                                          .size = {width, height},
-                                         .margins = {.b = LiveSize(UiSizeId::ParamComponentLabelGapY)},
+                                         .margins = {.b = LivePx(UiSizeId::ParamComponentLabelGapY)},
                                      });
     ids.label = layout::CreateItem(g.layout,
                                    g.scratch_arena,
@@ -113,10 +113,10 @@ layout::Id LayoutParameterComponent(GuiState& g,
     if (param.info.value_type == ParamValueType::Int) {
         layout::SetSize(g.layout,
                         ids.control,
-                        f32x2 {LiveSize(UiSizeId::FXDraggerWidth), LiveSize(UiSizeId::FXDraggerHeight)});
+                        f32x2 {LivePx(UiSizeId::FXDraggerWidth), LivePx(UiSizeId::FXDraggerHeight)});
         auto margins = layout::GetMargins(g.layout, ids.control);
-        margins.t = LiveSize(UiSizeId::FXDraggerMarginT);
-        margins.b = LiveSize(UiSizeId::FXDraggerMarginB);
+        margins.t = LivePx(UiSizeId::FXDraggerMarginT);
+        margins.b = LivePx(UiSizeId::FXDraggerMarginB);
         layout::SetMargins(g.layout, ids.control, margins);
     }
 

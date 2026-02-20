@@ -28,8 +28,8 @@ static void DrawLinkLine(GuiState& g, f32x2 p1, f32x2 p2) {
 
 static void DrawPopupTextbox(GuiState& g, String str, Rect r) {
     auto const size = g.fonts.CalcTextSize(str, {});
-    auto const pad_x = LiveSize(UiSizeId::TooltipPadX);
-    auto const pad_y = LiveSize(UiSizeId::TooltipPadY);
+    auto const pad_x = LivePx(UiSizeId::TooltipPadX);
+    auto const pad_y = LivePx(UiSizeId::TooltipPadY);
 
     r = r.Expanded(GuiIo().WwToPixels(4.0f));
 
@@ -51,7 +51,7 @@ static void DrawPopupTextbox(GuiState& g, String str, Rect r) {
     DrawDropShadow(g.builder.imgui, popup_r);
     g.builder.imgui.overlay_draw_list->AddRectFilled(popup_r,
                                                      ToU32({.c = Col::Background0}),
-                                                     LiveSize(UiSizeId::CornerRounding));
+                                                     LivePx(UiSizeId::CornerRounding));
     g.builder.imgui.overlay_draw_list->AddText(text_start, ToU32({.c = Col::Text}), str);
 }
 

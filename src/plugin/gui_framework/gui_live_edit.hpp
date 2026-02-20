@@ -50,11 +50,9 @@ extern LiveEditGui g_live_edit_values;
 inline u32 LiveCol(UiColMap type) { return ToU32(g_live_edit_values.ui_col_map[ToInt(type)].col); }
 inline Col LiveColStruct(UiColMap type) { return g_live_edit_values.ui_col_map[ToInt(type)].col; }
 
-// Returns pixels
-inline f32 LiveSize(UiSizeId size_id) {
+inline f32 LiveWw(UiSizeId size_id) { return g_live_edit_values.ui_sizes[ToInt(size_id)]; }
+inline f32 LivePx(UiSizeId size_id) {
     return GuiIo().WwToPixels(g_live_edit_values.ui_sizes[ToInt(size_id)]);
 }
-
-inline f32 LiveWw(UiSizeId size_id) { return g_live_edit_values.ui_sizes[ToInt(size_id)]; }
 
 inline f32 LiveRaw(UiSizeId size_id) { return g_live_edit_values.ui_sizes[ToInt(size_id)]; }

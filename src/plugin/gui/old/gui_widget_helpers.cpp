@@ -33,11 +33,11 @@ f32 MaxStringLength(GuiState& g, Span<String const> strs) {
 
 static f32 MenuItemWidth(GuiState& g, void* items, int num, String (*GetStr)(void* items, int index)) {
     auto const w = g.imgui.draw_list->fonts.Current()->LargestStringWidth(0, items, num, GetStr);
-    return w + LiveSize(UiSizeId::MenuItemPadX);
+    return w + LivePx(UiSizeId::MenuItemPadX);
 }
 
 f32 MenuItemWidth(GuiState& g, Span<String const> strs) {
-    return MaxStringLength(g, strs) + LiveSize(UiSizeId::MenuItemPadX);
+    return MaxStringLength(g, strs) + LivePx(UiSizeId::MenuItemPadX);
 }
 
 //
@@ -227,8 +227,8 @@ static void MidiLearnMenu(GuiState& g, imgui::Id id, Span<ParamIndex> params, Re
             imgui.PopId();
 
             if (params.size != 1 && param != Last(params)) {
-                auto const div_gap_x = LiveSize(UiSizeId::MenuItemDividerGapX);
-                auto const div_h = LiveSize(UiSizeId::MenuItemDividerH);
+                auto const div_gap_x = LivePx(UiSizeId::MenuItemDividerGapX);
+                auto const div_h = LivePx(UiSizeId::MenuItemDividerH);
 
                 Rect div_r = {.xywh {div_gap_x, pos + (div_h / 2), item_width - (2 * div_gap_x), 1}};
                 div_r = imgui.RegisterAndConvertRect(div_r);
@@ -252,7 +252,7 @@ bool DoMultipleMenuItems(GuiState& g,
     DEFER { EndFloeMenu(g); };
 
     auto w = MenuItemWidth(g, items, num_items, GetStr);
-    auto h = LiveSize(UiSizeId::MenuItemHeight);
+    auto h = LivePx(UiSizeId::MenuItemHeight);
 
     int clicked = -1;
     for (auto const i : Range(num_items)) {

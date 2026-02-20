@@ -43,7 +43,7 @@ void DoCurveMap(GuiState& g,
     auto const grabber_radius = point_radius * k_extra_grabber_scale;
 
     auto& draw_list = *imgui.draw_list;
-    draw_list.AddRectFilled(rect, LiveCol(UiColMap::EnvelopeBack), LiveSize(UiSizeId::CornerRounding));
+    draw_list.AddRectFilled(rect, LiveCol(UiColMap::EnvelopeBack), LivePx(UiSizeId::CornerRounding));
 
     auto const working = CurveMap::CreateWorkingPoints(curve_map.points);
 

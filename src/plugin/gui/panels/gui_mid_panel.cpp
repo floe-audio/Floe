@@ -23,7 +23,7 @@ static void DoBlurredBackground(GuiState& g,
                                 sample_lib::LibraryIdRef library_id,
                                 f32x2 mid_panel_size,
                                 f32 opacity) {
-    auto const panel_rounding = LiveSize(UiSizeId::BlurredPanelRounding);
+    auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
 
     if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui))) {
         auto imgs = GetLibraryImages(g.library_images,
@@ -70,7 +70,7 @@ static void DoBlurredBackground(GuiState& g,
 
 static void DoOverlayGradient(GuiState& g, Rect r) {
     auto& imgui = g.imgui;
-    auto const panel_rounding = LiveSize(UiSizeId::BlurredPanelRounding);
+    auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
 
     auto const vtx_idx_0 = imgui.draw_list->vtx_buffer.size;
     auto const pos = r.Min() + f32x2 {1, 1};
@@ -138,7 +138,7 @@ static void DrawLayersContainerBackground(GuiState& g,
                                           imgui::Context const& imgui,
                                           f32x2 mid_panel_size,
                                           f32 mid_panel_title_height) {
-    auto const panel_rounding = LiveSize(UiSizeId::BlurredPanelRounding);
+    auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
     auto const viewport = imgui.curr_viewport;
     auto const& r = viewport->bounds;
 
@@ -186,7 +186,7 @@ static void DrawEffectsContainerBackground(GuiState& g,
                                            imgui::Context const& imgui,
                                            f32x2 mid_panel_size,
                                            f32 mid_panel_title_height) {
-    auto const panel_rounding = LiveSize(UiSizeId::BlurredPanelRounding);
+    auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
     auto const& r = imgui.curr_viewport->bounds;
 
     auto const overall_lib = LibraryForOverallBackground(g.engine);
@@ -417,62 +417,60 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
     auto const mid_panel_title_height = LiveWw(UiSizeId::MidPanelTitleHeight);
     auto const mid_panel_size = imgui.CurrentVpSize();
 
-    DoBoxViewport(
-        builder,
-        {
-            .run =
-                [&](GuiBuilder& builder) {
-                    DoLayersContainer(builder, g, frame_context, mid_panel_title_height);
-                },
-            .bounds = Rect {.xywh {0, 0, total_layer_width, imgui.CurrentVpHeight()}},
-            .imgui_id = imgui.MakeId("layers-container"),
-            .viewport_config {
-                .draw_background =
-                    [&](imgui::Context const& imgui) {
-                        DrawLayersContainerBackground(g,
-                                                      imgui,
-                                                      mid_panel_size,
-                                                      GuiIo().WwToPixels(mid_panel_title_height));
-                    },
-                .padding {
-                    .l = LiveWw(UiSizeId::LayersBoxMarginL),
-                    .r = LiveWw(UiSizeId::LayersBoxMarginR),
-                    .t = LiveWw(UiSizeId::LayersBoxMarginT),
-                    .b = LiveWw(UiSizeId::LayersBoxMarginB),
-                },
-                .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-            },
-            .debug_name = "layers-container",
-        });
+    DoBoxViewport(builder,
+                  {
+                      .run =
+                          [&](GuiBuilder& builder) {
+                              DoLayersContainer(builder, g, frame_context, mid_panel_title_height);
+                          },
+                      .bounds = Rect {.xywh {0, 0, total_layer_width, imgui.CurrentVpHeight()}},
+                      .imgui_id = imgui.MakeId("layers-container"),
+                      .viewport_config {
+                          .draw_background =
+                              [&](imgui::Context const& imgui) {
+                                  DrawLayersContainerBackground(g,
+                                                                imgui,
+                                                                mid_panel_size,
+                                                                GuiIo().WwToPixels(mid_panel_title_height));
+                              },
+                          .padding {
+                              .l = LiveWw(UiSizeId::LayersBoxMarginL),
+                              .r = LiveWw(UiSizeId::LayersBoxMarginR),
+                              .t = LiveWw(UiSizeId::LayersBoxMarginT),
+                              .b = LiveWw(UiSizeId::LayersBoxMarginB),
+                          },
+                          .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
+                      },
+                      .debug_name = "layers-container",
+                  });
 
-    DoBoxViewport(
-        builder,
-        {
-            .run =
-                [&](GuiBuilder& builder) {
-                    DoEffectsContainer(builder, g, frame_context, mid_panel_title_height);
-                },
-            .bounds = Rect {.xywh {total_layer_width,
-                                   0,
-                                   imgui.CurrentVpWidth() - total_layer_width,
-                                   imgui.CurrentVpHeight()}},
-            .imgui_id = imgui.MakeId("effects-container"),
-            .viewport_config {
-                .draw_background =
-                    [&](imgui::Context const& imgui) {
-                        DrawEffectsContainerBackground(g,
-                                                       imgui,
-                                                       mid_panel_size,
-                                                       GuiIo().WwToPixels(mid_panel_title_height));
-                    },
-                .padding {
-                    .l = LiveWw(UiSizeId::FXListMarginL),
-                    .r = LiveWw(UiSizeId::FXListMarginR),
-                    .t = LiveWw(UiSizeId::FXListMarginT),
-                    .b = LiveWw(UiSizeId::FXListMarginB),
-                },
-                .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-            },
-            .debug_name = "effects-container",
-        });
+    DoBoxViewport(builder,
+                  {
+                      .run =
+                          [&](GuiBuilder& builder) {
+                              DoEffectsContainer(builder, g, frame_context, mid_panel_title_height);
+                          },
+                      .bounds = Rect {.xywh {total_layer_width,
+                                             0,
+                                             imgui.CurrentVpWidth() - total_layer_width,
+                                             imgui.CurrentVpHeight()}},
+                      .imgui_id = imgui.MakeId("effects-container"),
+                      .viewport_config {
+                          .draw_background =
+                              [&](imgui::Context const& imgui) {
+                                  DrawEffectsContainerBackground(g,
+                                                                 imgui,
+                                                                 mid_panel_size,
+                                                                 GuiIo().WwToPixels(mid_panel_title_height));
+                              },
+                          .padding {
+                              .l = LiveWw(UiSizeId::FXListMarginL),
+                              .r = LiveWw(UiSizeId::FXListMarginR),
+                              .t = LiveWw(UiSizeId::FXListMarginT),
+                              .b = LiveWw(UiSizeId::FXListMarginB),
+                          },
+                          .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
+                      },
+                      .debug_name = "effects-container",
+                  });
 }

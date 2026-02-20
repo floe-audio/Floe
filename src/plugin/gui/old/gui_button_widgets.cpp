@@ -22,7 +22,7 @@ static u32 GetCol(GuiState& g, Style const& style, ColourSet const& colours, img
 
 static bool DrawBackground(GuiState& g, Style const& style, Rect r, imgui::Id id, bool state) {
     if (auto col = GetCol(g, style, style.back_cols, id, state)) {
-        auto const rounding = LiveSize(UiSizeId::CornerRounding);
+        auto const rounding = LivePx(UiSizeId::CornerRounding);
         g.imgui.draw_list->AddRectFilled(r, col, rounding, style.corner_rounding_flags);
         return true;
     }
@@ -94,9 +94,9 @@ static void DrawIconOrText(GuiState& g,
     DrawBackground(g, style, r, id, state);
 
     if (style.icon_or_text.justification & TextJustification::Left) {
-        if (style.icon_or_text.add_margin_x) r = r.CutLeft(LiveSize(UiSizeId::MenuButtonTextMarginL));
+        if (style.icon_or_text.add_margin_x) r = r.CutLeft(LivePx(UiSizeId::MenuButtonTextMarginL));
     } else if (style.icon_or_text.justification & TextJustification::Right) {
-        if (style.icon_or_text.add_margin_x) r = r.CutRight(LiveSize(UiSizeId::MenuButtonTextMarginL));
+        if (style.icon_or_text.add_margin_x) r = r.CutRight(LivePx(UiSizeId::MenuButtonTextMarginL));
     }
 
     if (style.icon_or_text.capitalise) str = GetTempCapitalisedString(str);
@@ -125,17 +125,17 @@ DrawIconAndTextButton(GuiState& g, Style const& style, Rect r, imgui::Id id, Str
         auto just = TextJustification::CentredLeft;
         auto btn_r = r;
         if (style.type == LayoutAndSizeType::IconAndTextLayerTab) {
-            btn_r = r.WithW(LiveSize(UiSizeId::LayerParamsGroupTabsIconW));
+            btn_r = r.WithW(LivePx(UiSizeId::LayerParamsGroupTabsIconW));
             just = TextJustification::CentredRight;
         } else if (style.type == LayoutAndSizeType::IconAndTextMidiButton) {
-            btn_r = r.WithW(LiveSize(UiSizeId::MidiItemWidth));
+            btn_r = r.WithW(LivePx(UiSizeId::MidiItemWidth));
             just = TextJustification::CentredRight;
         } else if (style.type == LayoutAndSizeType::IconAndTextMenuItem) {
-            btn_r = r.WithW(LiveSize(UiSizeId::MenuItemTickWidth))
-                        .CutLeft(LiveSize(UiSizeId::MenuItemIconMarginX));
+            btn_r =
+                r.WithW(LivePx(UiSizeId::MenuItemTickWidth)).CutLeft(LivePx(UiSizeId::MenuItemIconMarginX));
         } else if (style.type == LayoutAndSizeType::IconAndTextSubMenuItem) {
-            btn_r = r.CutLeft(r.w - LiveSize(UiSizeId::MenuItemSubMenuArrowWidth))
-                        .CutRight(LiveSize(UiSizeId::MenuItemIconMarginX));
+            btn_r = r.CutLeft(r.w - LivePx(UiSizeId::MenuItemSubMenuArrowWidth))
+                        .CutRight(LivePx(UiSizeId::MenuItemIconMarginX));
             just = TextJustification::CentredRight;
         }
         im.draw_list->AddTextInRect(btn_r,
@@ -154,13 +154,13 @@ DrawIconAndTextButton(GuiState& g, Style const& style, Rect r, imgui::Id id, Str
     if (style.icon_and_text.capitalise) str = GetTempCapitalisedString(str);
 
     auto just = TextJustification::CentredLeft;
-    auto text_offset = LiveSize(UiSizeId::PageHeadingTextOffset);
+    auto text_offset = LivePx(UiSizeId::PageHeadingTextOffset);
     auto overflow = TextOverflowType::AllowOverflow;
     if (style.type == LayoutAndSizeType::IconAndTextMidiButton) {
-        text_offset = LiveSize(UiSizeId::MidiItemWidth) + LiveSize(UiSizeId::MidiItemMarginLR);
+        text_offset = LivePx(UiSizeId::MidiItemWidth) + LivePx(UiSizeId::MidiItemMarginLR);
     } else if (style.type == LayoutAndSizeType::IconAndTextMenuItem ||
                style.type == LayoutAndSizeType::IconAndTextSubMenuItem) {
-        text_offset = LiveSize(UiSizeId::MenuItemTickWidth);
+        text_offset = LivePx(UiSizeId::MenuItemTickWidth);
     } else if (style.type == LayoutAndSizeType::IconAndTextLayerTab) {
         text_offset = 0;
         just = TextJustification::Centred;
@@ -169,7 +169,7 @@ DrawIconAndTextButton(GuiState& g, Style const& style, Rect r, imgui::Id id, Str
         if (style.icon_and_text.icon_texture)
             text_offset = r.h + r.h / 5;
         else
-            text_offset = LiveSize(UiSizeId::MenuButtonTextMarginL);
+            text_offset = LivePx(UiSizeId::MenuButtonTextMarginL);
     }
     im.draw_list->AddTextInRect(r.CutLeft(text_offset),
                                 text_col,
@@ -290,14 +290,11 @@ ButtonReturnObject PopupWithItems(GuiState& g, DescribedParamValue const& param,
     auto const converted_r = g.imgui.RegisterAndConvertRect(r);
 
     // draw it around the whole thing, not just the menu
-    if (style.back_cols.reg) {
-        g.imgui.draw_list->AddRectFilled(converted_r,
-                                         style.back_cols.reg,
-                                         LiveSize(UiSizeId::CornerRounding));
-    }
+    if (style.back_cols.reg)
+        g.imgui.draw_list->AddRectFilled(converted_r, style.back_cols.reg, LivePx(UiSizeId::CornerRounding));
 
-    auto const btn_w = LiveSize(UiSizeId::NextPrevButtonSize);
-    auto const margin_r = LiveSize(UiSizeId::ParamIntButtonMarginR);
+    auto const btn_w = LivePx(UiSizeId::NextPrevButtonSize);
+    auto const margin_r = LivePx(UiSizeId::ParamIntButtonMarginR);
     rect_cut::CutRight(r, margin_r);
     auto rect_r = rect_cut::CutRight(r, btn_w);
     auto rect_l = rect_cut::CutRight(r, btn_w);
