@@ -4,7 +4,7 @@
 #pragma once
 
 #include "engine/package_installation.hpp"
-#include "gui/elements/gui2_common_modal_panel.hpp"
+#include "gui/elements/gui2_modal.hpp"
 #include "gui/overlays/gui2_notifications.hpp"
 #include "gui_framework/gui_builder.hpp"
 

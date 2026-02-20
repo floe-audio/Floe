@@ -7,7 +7,7 @@
 
 #include "engine/engine.hpp"
 #include "gui/core/gui_file_picker.hpp"
-#include "gui/elements/gui2_common_modal_panel.hpp"
+#include "gui/elements/gui2_modal.hpp"
 
 void OnEngineStateChange(SavePresetPanelState& state, Engine const& engine) {
     state.metadata = engine.state_metadata;

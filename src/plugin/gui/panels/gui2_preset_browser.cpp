@@ -7,7 +7,8 @@
 
 #include "engine/engine.hpp"
 #include "engine/favourite_items.hpp"
-#include "gui/elements/gui2_common_modal_panel.hpp"
+#include "gui/elements/gui2_modal.hpp"
+#include "gui/elements/gui2_popup_menu.hpp"
 #include "gui/overlays/gui2_notifications.hpp"
 #include "gui/panels/gui2_common_browser.hpp"
 #include "gui_framework/gui_builder.hpp"

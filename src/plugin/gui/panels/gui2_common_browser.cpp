@@ -8,7 +8,8 @@
 #include "common_infrastructure/tags.hpp"
 
 #include "gui/core/gui2_actions.hpp"
-#include "gui/elements/gui2_common_modal_panel.hpp"
+#include "gui/elements/gui2_modal.hpp"
+#include "gui/elements/gui2_popup_menu.hpp"
 #include "gui/elements/gui_drawing_helpers.hpp"
 #include "gui/overlays/gui_tips.hpp"
 #include "gui_framework/fonts.hpp"

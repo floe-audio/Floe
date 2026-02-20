@@ -7,7 +7,8 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui2_common_modal_panel.hpp"
+#include "gui/elements/gui2_modal.hpp"
+#include "gui/elements/gui2_popup_menu.hpp"
 #include "gui/elements/gui_drawing_helpers.hpp"
 #include "gui/elements/gui_utils.hpp"
 #include "gui/panels/gui2_macros.hpp"

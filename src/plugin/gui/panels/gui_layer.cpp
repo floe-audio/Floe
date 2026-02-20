@@ -12,6 +12,7 @@
 #include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui2_popup_menu.hpp"
 #include "gui/elements/gui_drawing_helpers.hpp"
 #include "gui/old/gui_button_widgets.hpp"
 #include "gui/old/gui_dragger_widgets.hpp"

@@ -51,3 +51,7 @@ void DrawOverlayTooltipForRect(imgui::Context const& imgui,
                                DrawTooltipArgs const& args);
 
 void DrawMidPanelScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars);
+
+void DrawModalScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars);
+void DrawModalViewportBackgroundWithFullscreenDim(imgui::Context const& imgui);
+void DrawOverlayViewportBackground(imgui::Context const& imgui);

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
-#include "gui/elements/gui2_common_modal_panel.hpp"
+#include "gui/elements/gui2_modal.hpp"
 #include "gui/overlays/gui2_confirmation_dialog_state.hpp"
 
 static void ConfirmationDialog(GuiBuilder& builder, ConfirmationDialogState& state) {

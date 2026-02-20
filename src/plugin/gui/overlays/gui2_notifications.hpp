@@ -5,7 +5,7 @@
 
 #include <IconsFontAwesome6.h>
 
-#include "gui/elements/gui2_common_modal_panel.hpp"
+#include "gui/elements/gui2_modal.hpp"
 #include "gui_framework/gui_builder.hpp"
 
 struct NotificationDisplayInfo {

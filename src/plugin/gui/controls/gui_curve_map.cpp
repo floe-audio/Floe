@@ -4,7 +4,7 @@
 #include "gui/controls/gui_curve_map.hpp"
 
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui2_common_modal_panel.hpp"
+#include "gui/elements/gui2_popup_menu.hpp"
 #include "gui/elements/gui_drawing_helpers.hpp"
 #include "gui/elements/gui_utils.hpp"
 

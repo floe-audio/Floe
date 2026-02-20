@@ -9,7 +9,7 @@
 
 #include "engine/engine.hpp"
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui2_common_modal_panel.hpp"
+#include "gui/elements/gui2_modal.hpp"
 #include "gui/elements/gui2_parameter_component.hpp"
 
 static void DrawDarkModeModalBackground(imgui::Context const& imgui) {

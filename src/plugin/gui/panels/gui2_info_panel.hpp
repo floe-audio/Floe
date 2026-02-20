@@ -7,7 +7,7 @@
 
 #include "engine/check_for_update.hpp"
 #include "gui/core/gui2_actions.hpp"
-#include "gui/elements/gui2_common_modal_panel.hpp"
+#include "gui/elements/gui2_modal.hpp"
 #include "gui/overlays/gui2_confirmation_dialog_state.hpp"
 #include "gui/overlays/gui2_notifications.hpp"
 #include "gui/panels/gui2_info_panel_state.hpp"
