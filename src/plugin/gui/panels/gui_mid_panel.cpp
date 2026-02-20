@@ -9,6 +9,7 @@
 #include "gui/panels/gui_effects.hpp"
 #include "gui/panels/gui_inst_browser.hpp"
 #include "gui/panels/gui_ir_browser.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -197,26 +198,6 @@ static void DrawEffectsContainerBackground(GuiState& g, Rect r) {
                                LiveCol(UiColMap::MidViewportDivider));
 }
 
-static Box DoTitleShuffleButton(GuiBuilder& builder, Box parent, String tooltip) {
-    return DoBox(builder,
-                 {
-                     .parent = parent,
-                     .text = ICON_FA_SHUFFLE,
-                     .size_from_text = true,
-                     .font = FontType::Icons,
-                     .font_size = k_font_icons_size * 0.82f,
-                     .text_colours =
-                         ColSet {
-                             .base = LiveColStruct(UiColMap::MidIcon),
-                             .hot = LiveColStruct(UiColMap::MidTextHot),
-                             .active = LiveColStruct(UiColMap::MidTextOn),
-                         },
-                     .text_justification = TextJustification::Centred,
-                     .tooltip = tooltip,
-                     .button_behaviour = imgui::ButtonConfig {},
-                 });
-}
-
 static void
 DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
     auto const layer_width_ww = RoundUpToNearestMultiple(LiveWw(UiSizeId::LayerWidth), k_num_layers);
@@ -259,7 +240,7 @@ DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame
           });
 
     auto const rand_btn =
-        DoTitleShuffleButton(builder, title_row, "Load random instruments for all 3 layers"_s);
+        DoMidPanelShuffleButton(builder, title_row, {.tooltip = "Load random instruments for all 3 layers"_s});
 
     if (rand_btn.button_fired) {
         for (auto& layer : g.engine.processor.layer_processors) {
@@ -347,7 +328,7 @@ DoEffectsContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& fram
               .text_justification = TextJustification::CentredLeft,
           });
 
-    auto const rand_btn = DoTitleShuffleButton(builder, title_row, "Randomise all of the effects"_s);
+    auto const rand_btn = DoMidPanelShuffleButton(builder, title_row, {.tooltip = "Randomise all of the effects"_s});
 
     if (rand_btn.button_fired) {
         RandomiseAllEffectParameterValues(g.engine.processor);

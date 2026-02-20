@@ -7,6 +7,84 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 
+static Margins ParamControlPadding() {
+    return {
+        .l = LiveWw(UiSizeId::ParamControlPadL),
+        .r = LiveWw(UiSizeId::ParamControlPadR),
+        .t = LiveWw(UiSizeId::ParamControlPadT),
+        .b = LiveWw(UiSizeId::ParamControlPadB),
+    };
+}
+
+Box DoMidPanelPrevNextRow(GuiBuilder& builder, Box parent, f32 width) {
+    return DoBox(builder,
+                 {
+                     .parent = parent,
+                     .background_fill_colours = LiveColStruct(UiColMap::MidDarkSurface),
+                     .round_background_corners = 0b1111,
+                     .corner_rounding = LiveWw(UiSizeId::CornerRounding),
+                     .layout {
+                         .size = {width, layout::k_hug_contents},
+                         .contents_padding = ParamControlPadding(),
+                         .contents_direction = layout::Direction::Row,
+                         .contents_align = layout::Alignment::Middle,
+                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                     },
+                 });
+}
+
+MidPanelPrevNextButtonsResult DoMidPanelPrevNextButtons(GuiBuilder& builder, Box row, MidPanelPrevNextButtonsOptions const& options) {
+    MidPanelPrevNextButtonsResult result {};
+
+    auto const do_button = [&](String icon, String tooltip) {
+        auto const btn = DoBox(builder,
+                               {
+                                   .parent = row,
+                                   .id_extra = Hash(icon),
+                                   .text = icon,
+                                   .font = FontType::Icons,
+                                   .text_colours =
+                                       ColSet {
+                                           .base = LiveColStruct(UiColMap::MidIcon),
+                                           .hot = LiveColStruct(UiColMap::MidTextHot),
+                                           .active = LiveColStruct(UiColMap::MidTextOn),
+                                       },
+                                   .text_justification = TextJustification::Centred,
+                                   .layout {
+                                       .size = {LiveWw(UiSizeId::NextPrevButtonSize), k_font_body_size},
+                                   },
+                                   .tooltip = tooltip,
+                                   .button_behaviour = imgui::ButtonConfig {},
+                               });
+        return btn.button_fired;
+    };
+
+    result.prev_fired = do_button(ICON_FA_CARET_LEFT, options.prev_tooltip);
+    result.next_fired = do_button(ICON_FA_CARET_RIGHT, options.next_tooltip);
+
+    return result;
+}
+
+Box DoMidPanelShuffleButton(GuiBuilder& builder, Box row, MidPanelShuffleButtonOptions const& options) {
+    return DoBox(builder,
+                 {
+                     .parent = row,
+                     .text = ICON_FA_SHUFFLE,
+                     .size_from_text = true,
+                     .font = FontType::Icons,
+                     .font_size = k_font_icons_size * 0.82f,
+                     .text_colours =
+                         ColSet {
+                             .base = LiveColStruct(UiColMap::MidIcon),
+                             .hot = LiveColStruct(UiColMap::MidTextHot),
+                             .active = LiveColStruct(UiColMap::MidTextOn),
+                         },
+                     .text_justification = TextJustification::Centred,
+                     .tooltip = options.tooltip,
+                     .button_behaviour = imgui::ButtonConfig {},
+                 });
+}
+
 bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOptions const& options) {
     if (!options.ignore_show_tooltips_preference &&
         !prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::ShowTooltips)))

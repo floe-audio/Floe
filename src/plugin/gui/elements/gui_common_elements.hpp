@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include "common_infrastructure/descriptors/param_descriptors.hpp"
-
 #include "gui/core/gui_fwd.hpp"
 #include "gui_framework/gui_builder.hpp"
 
@@ -14,3 +12,22 @@ struct TooltipOptions {
     TooltipJustification justification = TooltipJustification::AboveOrBelow;
 };
 bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOptions const& options);
+
+// Reusable row with prev/next arrow buttons. Add your content to the row, then call DoMidPanelPrevNextButtons.
+Box DoMidPanelPrevNextRow(GuiBuilder& builder, Box parent, f32 width);
+
+struct MidPanelPrevNextButtonsResult {
+    bool prev_fired;
+    bool next_fired;
+};
+struct MidPanelPrevNextButtonsOptions {
+    String prev_tooltip {"Previous"};
+    String next_tooltip {"Next"};
+};
+MidPanelPrevNextButtonsResult
+DoMidPanelPrevNextButtons(GuiBuilder& builder, Box row, MidPanelPrevNextButtonsOptions const& options = {});
+
+struct MidPanelShuffleButtonOptions {
+    String tooltip {"Shuffle"};
+};
+Box DoMidPanelShuffleButton(GuiBuilder& builder, Box row, MidPanelShuffleButtonOptions const& options = {});

@@ -67,25 +67,6 @@ Box DoIntParameter(GuiState& g,
                    DescribedParamValue const& param,
                    IntParameterComponentOptions const& options);
 
-// Reusable row with prev/next arrow buttons. Add your content to the row, then call DoPrevNextButtons.
-Box DoPrevNextRow(GuiBuilder& builder, Box parent, f32 width);
-
-struct PrevNextButtonsResult {
-    bool prev_fired;
-    bool next_fired;
-};
-struct PrevNextButtonsOptions {
-    String prev_tooltip {"Previous"};
-    String next_tooltip {"Next"};
-};
-PrevNextButtonsResult
-DoPrevNextButtons(GuiBuilder& builder, Box row, PrevNextButtonsOptions const& options = {});
-
-struct ShuffleButtonOptions {
-    String tooltip {"Shuffle"};
-};
-Box DoShuffleButton(GuiBuilder& builder, Box row, ShuffleButtonOptions const& options = {});
-
 void AddParamContextMenuBehaviour(GuiState& g, Rect window_r, imgui::Id id, DescribedParamValue const& param);
 void AddParamContextMenuBehaviour(GuiState& g,
                                   Rect window_r,
