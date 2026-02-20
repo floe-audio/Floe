@@ -4,10 +4,10 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
+#include "font_type.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_imgui.hpp"
 #include "layout.hpp"
-#include "style.hpp"
 
 // GUI Builder
 //
@@ -122,6 +122,7 @@ using DrawOverlayTooltipForRectFunc = void(imgui::Context const& imgui,
                                            Fonts& fonts,
                                            String str,
                                            DrawTooltipArgs const& args);
+using DrawDropShadowFunc = void(imgui::Context const& imgui, Rect r, Optional<f32> rounding);
 
 struct GuiBuilder {
     struct WordWrappedText {
@@ -147,6 +148,7 @@ struct GuiBuilder {
     struct Config {
         bool show_tooltips;
         DrawOverlayTooltipForRectFunc* draw_tooltip;
+        DrawDropShadowFunc* draw_drop_shadow;
     };
 
     bool IsLayoutPass() const { return state->pass == GuiBuilderPass::LayoutBoxes; }
@@ -238,7 +240,7 @@ struct BoxConfig {
 
     // Corners and rounding effect both fill and border.
     Corners round_background_corners = 0b0000;
-    f32 corner_rounding = k_button_rounding;
+    f32 corner_rounding = 3.0f;
 
     // For drawing borders, which sides to draw.
     // 4 bits, clockwise from left: left, top, right, bottom, set using 0b0001 etc.

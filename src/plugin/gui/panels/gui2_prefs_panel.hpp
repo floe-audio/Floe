@@ -12,6 +12,7 @@
 #include "engine/package_installation.hpp"
 #include "gui/core/gui_file_picker.hpp"
 #include "gui/core/gui_prefs.hpp"
+#include "gui/elements/gui2_constants.hpp"
 #include "gui/elements/gui2_modal.hpp"
 #include "gui/elements/gui2_popup_menu.hpp"
 #include "gui/panels/gui2_prefs_panel_state.hpp"

@@ -9,6 +9,7 @@
 #include "common_infrastructure/common_errors.hpp"
 
 #include "engine/engine.hpp"
+#include "gui/elements/gui2_constants.hpp"
 #include "gui/elements/gui2_modal.hpp"
 #include "gui/overlays/gui2_notifications.hpp"
 #include "gui/panels/gui2_save_preset_panel.hpp"

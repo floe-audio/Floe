@@ -17,6 +17,7 @@
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/debug/gui_developer_panel.hpp"
+#include "gui/elements/gui2_constants.hpp"
 #include "gui/elements/gui_drawing_helpers.hpp"
 #include "gui/overlays/gui2_confirmation_dialog.hpp"
 #include "gui/overlays/gui2_loading_overlay.hpp"
@@ -247,6 +248,7 @@ void GuiUpdate(GuiState& g) {
                {
                    .show_tooltips = prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::ShowTooltips)),
                    .draw_tooltip = DrawOverlayTooltipForRect,
+                   .draw_drop_shadow = DrawDropShadow,
                });
 
     g.show_new_version_indicator =

@@ -6,6 +6,7 @@
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui2_constants.hpp"
 #include "gui/elements/gui_drawing_helpers.hpp"
 #include "gui/panels/gui2_inst_browser.hpp"
 #include "gui/panels/gui2_ir_browser.hpp"

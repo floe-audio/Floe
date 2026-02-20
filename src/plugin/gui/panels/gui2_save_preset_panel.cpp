@@ -7,6 +7,7 @@
 
 #include "engine/engine.hpp"
 #include "gui/core/gui_file_picker.hpp"
+#include "gui/elements/gui2_constants.hpp"
 #include "gui/elements/gui2_modal.hpp"
 
 void OnEngineStateChange(SavePresetPanelState& state, Engine const& engine) {

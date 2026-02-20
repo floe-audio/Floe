@@ -9,6 +9,7 @@
 
 #include "engine/engine.hpp"
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui2_constants.hpp"
 #include "gui/elements/gui2_modal.hpp"
 #include "gui/elements/gui2_parameter_component.hpp"
 

@@ -4,6 +4,7 @@
 #pragma once
 #include "common_infrastructure/error_reporting.hpp"
 
+#include "gui/elements/gui2_constants.hpp"
 #include "gui/elements/gui2_modal.hpp"
 #include "gui/overlays/gui2_notifications.hpp"
 #include "gui/panels/gui2_feedback_panel_state.hpp"

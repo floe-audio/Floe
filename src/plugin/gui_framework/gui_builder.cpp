@@ -5,7 +5,6 @@
 
 #include "utils/debug/tracy_wrapped.hpp"
 
-#include "gui/elements/gui_drawing_helpers.hpp"
 #include "gui_framework/fonts.hpp"
 #include "image.hpp"
 
@@ -369,7 +368,7 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                                           : k_auto_active_white_overlay;
                 }
 
-                if (config.drop_shadow) DrawDropShadow(builder.imgui, r, rounding);
+                if (config.drop_shadow) builder.config.draw_drop_shadow(builder.imgui, r, rounding);
 
                 switch (config.background_shape) {
                     case BackgroundShape::Rectangle:

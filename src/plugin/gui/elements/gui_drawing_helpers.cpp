@@ -5,12 +5,12 @@
 
 #include "foundation/foundation.hpp"
 
+#include "gui/elements/gui2_constants.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/fonts.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
-#include "gui_framework/style.hpp"
 
 void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding_opt) {
     auto const rounding = rounding_opt ? *rounding_opt : LiveSize(UiSizeId::CornerRounding);

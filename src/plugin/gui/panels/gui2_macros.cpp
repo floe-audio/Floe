@@ -4,6 +4,7 @@
 #include "gui/panels/gui2_macros.hpp"
 
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui2_constants.hpp"
 #include "gui/elements/gui2_parameter_component.hpp"
 #include "gui/elements/gui_drawing_helpers.hpp"
 #include "gui_framework/gui_builder.hpp"

@@ -3,6 +3,7 @@
 
 #include "gui/elements/gui2_modal.hpp"
 
+#include "gui/elements/gui2_constants.hpp"
 #include "gui/elements/gui_drawing_helpers.hpp"
 
 Box DoModalRootBox(GuiBuilder& builder) {

@@ -3,6 +3,8 @@
 
 #include "gui/elements/gui2_popup_menu.hpp"
 
+#include "gui/elements/gui2_constants.hpp"
+
 Box MenuOpenButton(GuiBuilder& builder, Box parent, MenuOpenButtonOptions const& options, u64 id_extra) {
     auto const button =
         DoBox(builder,

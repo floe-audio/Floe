@@ -6,8 +6,8 @@
 
 constexpr f32 FontSizeWw(f32 font_pts) { return font_pts * (16.0f / 13.0f); }
 
-constexpr f32 k_default_spacing = 16.0f;
 constexpr f32 k_button_rounding = 3.0f;
+constexpr f32 k_default_spacing = 16.0f;
 constexpr f32 k_button_padding_x = 5.0f;
 constexpr f32 k_button_padding_y = 2.0f;
 constexpr f32 k_scrollbar_width = 6.0f;
@@ -26,16 +26,5 @@ constexpr f32 k_font_heading1_size = FontSizeWw(18);
 constexpr f32 k_font_heading2_size = FontSizeWw(14);
 constexpr f32 k_font_heading3_size = FontSizeWw(10);
 constexpr f32 k_font_icons_size = FontSizeWw(14);
-constexpr f32 k_font_small_icons_size = FontSizeWw(10);
 
 constexpr f32 k_library_icon_standard_size = 20;
-
-enum class FontType : u8 {
-    Body,
-    BodyItalic,
-    Heading1,
-    Heading2,
-    Heading3,
-    Icons,
-    Count,
-};
