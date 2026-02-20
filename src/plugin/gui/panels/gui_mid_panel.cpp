@@ -208,11 +208,12 @@ static void DrawEffectsContainerBackground(GuiState& g,
                              LiveCol(UiColMap::MidViewportDivider));
 }
 
-static Box DoTitleShuffleButton(GuiBuilder& builder, Box parent, f32 width, f32 margin_r, String tooltip) {
+static Box DoTitleShuffleButton(GuiBuilder& builder, Box parent, f32 margin_r, String tooltip) {
     return DoBox(builder,
                  {
                      .parent = parent,
                      .text = ICON_FA_SHUFFLE,
+                     .size_from_text = true,
                      .font = FontType::Icons,
                      .font_size = k_font_icons_size * 0.82f,
                      .text_colours =
@@ -223,7 +224,6 @@ static Box DoTitleShuffleButton(GuiBuilder& builder, Box parent, f32 width, f32 
                          },
                      .text_justification = TextJustification::Centred,
                      .layout {
-                         .size = {width, layout::k_fill_parent},
                          .margins = {.r = margin_r},
                      },
                      .tooltip = tooltip,
@@ -235,17 +235,15 @@ static void DoLayersContainer(GuiBuilder& builder,
                               GuiState& g,
                               GuiFrameContext const& frame_context,
                               f32 mid_panel_title_height) {
-    auto const ww = [](f32 v) { return GuiIo().PixelsToWw(v); };
-    auto const title_height_ww = ww(mid_panel_title_height);
-    auto const title_margin_ww = ww(LiveSize(UiSizeId::MidPanelTitleMarginLeft));
-    auto const rand_btn_width_ww = ww(LiveSize(UiSizeId::ResourceSelectorRandomButtonW));
+    auto const title_height_ww = mid_panel_title_height;
+    auto const title_margin_ww = LiveWw(UiSizeId::MidPanelTitleMarginLeft);
     auto& engine = g.engine;
     auto& lay = g.layout;
 
     auto const root = DoBox(builder,
                             {
                                 .layout {
-                                    .size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize()),
+                                    .size = layout::k_fill_parent,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
@@ -277,7 +275,6 @@ static void DoLayersContainer(GuiBuilder& builder,
 
     auto const rand_btn = DoTitleShuffleButton(builder,
                                                title_row,
-                                               rand_btn_width_ww,
                                                title_margin_ww,
                                                "Load random instruments for all 3 layers"_s);
 
@@ -335,10 +332,8 @@ static void DoEffectsContainer(GuiBuilder& builder,
                                GuiState& g,
                                GuiFrameContext const& frame_context,
                                f32 mid_panel_title_height) {
-    auto const ww = [](f32 v) { return GuiIo().PixelsToWw(v); };
-    auto const title_height_ww = ww(mid_panel_title_height);
-    auto const title_margin_ww = ww(LiveSize(UiSizeId::MidPanelTitleMarginLeft));
-    auto const rand_btn_width_ww = ww(LiveSize(UiSizeId::ResourceSelectorRandomButtonW));
+    auto const title_height_ww = mid_panel_title_height;
+    auto const title_margin_ww = LiveWw(UiSizeId::MidPanelTitleMarginLeft);
     auto& engine = g.engine;
 
     auto const root = DoBox(builder,
@@ -374,11 +369,8 @@ static void DoEffectsContainer(GuiBuilder& builder,
               },
           });
 
-    auto const rand_btn = DoTitleShuffleButton(builder,
-                                               title_row,
-                                               rand_btn_width_ww,
-                                               title_margin_ww,
-                                               "Randomise all of the effects"_s);
+    auto const rand_btn =
+        DoTitleShuffleButton(builder, title_row, title_margin_ww, "Randomise all of the effects"_s);
 
     if (rand_btn.button_fired) {
         RandomiseAllEffectParameterValues(engine.processor);
@@ -420,9 +412,9 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
         "MidPanel");
     DEFER { imgui.EndViewport(); };
 
-    auto const layer_width = RoundUpToNearestMultiple(LiveSize(UiSizeId::LayerWidth), k_num_layers);
+    auto const layer_width = RoundUpToNearestMultiple(LivePx(UiSizeId::LayerWidth), k_num_layers);
     auto const total_layer_width = layer_width * k_num_layers;
-    auto const mid_panel_title_height = LiveSize(UiSizeId::MidPanelTitleHeight);
+    auto const mid_panel_title_height = LiveWw(UiSizeId::MidPanelTitleHeight);
     auto const mid_panel_size = imgui.CurrentVpSize();
 
     DoBoxViewport(
@@ -437,15 +429,17 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
             .viewport_config {
                 .draw_background =
                     [&](imgui::Context const& imgui) {
-                        DrawLayersContainerBackground(g, imgui, mid_panel_size, mid_panel_title_height);
+                        DrawLayersContainerBackground(g,
+                                                      imgui,
+                                                      mid_panel_size,
+                                                      GuiIo().WwToPixels(mid_panel_title_height));
                     },
-                .padding =
-                    {
-                        .l = LiveSize(UiSizeId::LayersBoxMarginL),
-                        .r = LiveSize(UiSizeId::LayersBoxMarginR),
-                        .t = LiveSize(UiSizeId::LayersBoxMarginT),
-                        .b = LiveSize(UiSizeId::LayersBoxMarginB),
-                    },
+                .padding {
+                    .l = LiveWw(UiSizeId::LayersBoxMarginL),
+                    .r = LiveWw(UiSizeId::LayersBoxMarginR),
+                    .t = LiveWw(UiSizeId::LayersBoxMarginT),
+                    .b = LiveWw(UiSizeId::LayersBoxMarginB),
+                },
                 .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
             },
             .debug_name = "layers-container",
@@ -466,15 +460,17 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
             .viewport_config {
                 .draw_background =
                     [&](imgui::Context const& imgui) {
-                        DrawEffectsContainerBackground(g, imgui, mid_panel_size, mid_panel_title_height);
+                        DrawEffectsContainerBackground(g,
+                                                       imgui,
+                                                       mid_panel_size,
+                                                       GuiIo().WwToPixels(mid_panel_title_height));
                     },
-                .padding =
-                    {
-                        .l = LiveSize(UiSizeId::FXListMarginL),
-                        .r = LiveSize(UiSizeId::FXListMarginR),
-                        .t = LiveSize(UiSizeId::FXListMarginT),
-                        .b = LiveSize(UiSizeId::FXListMarginB),
-                    },
+                .padding {
+                    .l = LiveWw(UiSizeId::FXListMarginL),
+                    .r = LiveWw(UiSizeId::FXListMarginR),
+                    .t = LiveWw(UiSizeId::FXListMarginT),
+                    .b = LiveWw(UiSizeId::FXListMarginB),
+                },
                 .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
             },
             .debug_name = "effects-container",
