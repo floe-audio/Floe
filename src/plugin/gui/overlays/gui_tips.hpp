@@ -5,7 +5,7 @@
 
 #include "common_infrastructure/persistent_store.hpp"
 
-#include "gui/overlays/gui2_notifications.hpp"
+#include "gui/overlays/gui_notifications.hpp"
 
 static constexpr u64 k_tips_persistent_store_id = 3209482352034;
 

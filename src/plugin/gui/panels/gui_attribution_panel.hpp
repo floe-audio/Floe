@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
-#include "gui/elements/gui2_constants.hpp"
-#include "gui/elements/gui2_modal.hpp"
+#include "gui/elements/gui_constants.hpp"
+#include "gui/elements/gui_modal.hpp"
 #include "gui_framework/gui_builder.hpp"
 
 struct AttributionPanelContext {

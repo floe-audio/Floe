@@ -1,7 +1,7 @@
 // Copyright 2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/panels/gui2_legacy_params_panel.hpp"
+#include "gui/panels/gui_legacy_params_panel.hpp"
 
 #include <IconsFontAwesome6.h>
 
@@ -9,9 +9,9 @@
 
 #include "engine/engine.hpp"
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui2_constants.hpp"
-#include "gui/elements/gui2_modal.hpp"
-#include "gui/elements/gui2_parameter_component.hpp"
+#include "gui/elements/gui_constants.hpp"
+#include "gui/elements/gui_modal.hpp"
+#include "gui/elements/gui_parameter_component.hpp"
 
 static void DrawDarkModeModalBackground(imgui::Context const& imgui) {
     imgui.draw_list->PushClipRectFullScreen();

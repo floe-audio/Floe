@@ -1,9 +1,9 @@
 // Copyright 2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/elements/gui2_popup_menu.hpp"
+#include "gui/elements/gui_popup_menu.hpp"
 
-#include "gui/elements/gui2_constants.hpp"
+#include "gui/elements/gui_constants.hpp"
 
 Box MenuOpenButton(GuiBuilder& builder, Box parent, MenuOpenButtonOptions const& options, u64 id_extra) {
     auto const button =

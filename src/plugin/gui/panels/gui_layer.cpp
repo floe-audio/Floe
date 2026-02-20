@@ -12,7 +12,7 @@
 #include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui2_popup_menu.hpp"
+#include "gui/elements/gui_popup_menu.hpp"
 #include "gui/elements/gui_drawing_helpers.hpp"
 #include "gui/old/gui_button_widgets.hpp"
 #include "gui/old/gui_dragger_widgets.hpp"
@@ -20,7 +20,7 @@
 #include "gui/old/gui_menu.hpp"
 #include "gui/old/gui_widget_compounds.hpp"
 #include "gui/old/gui_widget_helpers.hpp"
-#include "gui/panels/gui2_inst_browser.hpp"
+#include "gui/panels/gui_inst_browser.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "processor/layer_processor.hpp"
 

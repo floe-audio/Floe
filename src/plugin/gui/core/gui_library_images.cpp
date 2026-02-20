@@ -5,7 +5,7 @@
 
 #include "build_resources/embedded_files.h"
 #include "engine/engine.hpp"
-#include "gui/elements/gui2_constants.hpp"
+#include "gui/elements/gui_constants.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_framework/image.hpp"
 

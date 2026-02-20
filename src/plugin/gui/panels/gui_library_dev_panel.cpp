@@ -1,7 +1,7 @@
 // Copyright 2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/panels/gui2_library_dev_panel.hpp"
+#include "gui/panels/gui_library_dev_panel.hpp"
 
 #include <lauxlib.h>
 #include <lua.h>
@@ -9,10 +9,10 @@
 #include "common_infrastructure/common_errors.hpp"
 
 #include "engine/engine.hpp"
-#include "gui/elements/gui2_constants.hpp"
-#include "gui/elements/gui2_modal.hpp"
-#include "gui/overlays/gui2_notifications.hpp"
-#include "gui/panels/gui2_save_preset_panel.hpp"
+#include "gui/elements/gui_constants.hpp"
+#include "gui/elements/gui_modal.hpp"
+#include "gui/overlays/gui_notifications.hpp"
+#include "gui/panels/gui_save_preset_panel.hpp"
 #include "gui_framework/gui_builder.hpp"
 
 #define GENERATED_TAGS_FILENAME "Lua/instrument_tags.lua"

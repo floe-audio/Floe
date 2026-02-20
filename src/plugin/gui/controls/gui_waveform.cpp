@@ -10,7 +10,7 @@
 #include "engine/loop_modes.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/core/gui_waveform_images.hpp"
-#include "gui/elements/gui2_parameter_component.hpp"
+#include "gui/elements/gui_parameter_component.hpp"
 #include "gui/elements/gui_drawing_helpers.hpp"
 #include "gui/elements/gui_utils.hpp"
 #include "gui_framework/gui_live_edit.hpp"

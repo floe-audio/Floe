@@ -1,11 +1,11 @@
 // Copyright 2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/panels/gui2_macros.hpp"
+#include "gui/panels/gui_macros.hpp"
 
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui2_constants.hpp"
-#include "gui/elements/gui2_parameter_component.hpp"
+#include "gui/elements/gui_constants.hpp"
+#include "gui/elements/gui_parameter_component.hpp"
 #include "gui/elements/gui_drawing_helpers.hpp"
 #include "gui_framework/gui_builder.hpp"
 

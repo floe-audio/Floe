@@ -8,8 +8,8 @@
 
 #include "common_infrastructure/sample_library/sample_library.hpp"
 
-#include "gui/overlays/gui2_confirmation_dialog_state.hpp"
-#include "gui/overlays/gui2_notifications.hpp"
+#include "gui/overlays/gui_confirmation_dialog_state.hpp"
+#include "gui/overlays/gui_notifications.hpp"
 
 PUBLIC void UninstallSampleLibrary(imgui::Context& imgui,
                                    sample_lib::Library const& lib,

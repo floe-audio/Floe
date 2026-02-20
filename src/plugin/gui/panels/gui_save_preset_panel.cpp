@@ -1,14 +1,14 @@
 // Copyright 2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/panels/gui2_save_preset_panel.hpp"
+#include "gui/panels/gui_save_preset_panel.hpp"
 
 #include "common_infrastructure/tags.hpp"
 
 #include "engine/engine.hpp"
 #include "gui/core/gui_file_picker.hpp"
-#include "gui/elements/gui2_constants.hpp"
-#include "gui/elements/gui2_modal.hpp"
+#include "gui/elements/gui_constants.hpp"
+#include "gui/elements/gui_modal.hpp"
 
 void OnEngineStateChange(SavePresetPanelState& state, Engine const& engine) {
     state.metadata = engine.state_metadata;

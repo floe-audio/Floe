@@ -1,16 +1,16 @@
 // Copyright 2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/panels/gui2_preset_browser.hpp"
+#include "gui/panels/gui_preset_browser.hpp"
 
 #include "os/filesystem.hpp"
 
 #include "engine/engine.hpp"
 #include "engine/favourite_items.hpp"
-#include "gui/elements/gui2_modal.hpp"
-#include "gui/elements/gui2_popup_menu.hpp"
-#include "gui/overlays/gui2_notifications.hpp"
-#include "gui/panels/gui2_common_browser.hpp"
+#include "gui/elements/gui_modal.hpp"
+#include "gui/elements/gui_popup_menu.hpp"
+#include "gui/overlays/gui_notifications.hpp"
+#include "gui/panels/gui_common_browser.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "preset_server/preset_server.hpp"
 

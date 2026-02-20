@@ -5,9 +5,9 @@
 #include "engine/engine.hpp"
 #include "gui/core/gui_frame_context.hpp"
 #include "gui/core/gui_library_images.hpp"
-#include "gui/overlays/gui2_confirmation_dialog_state.hpp"
-#include "gui/panels/gui2_common_browser.hpp"
-#include "gui/panels/gui2_ir_browser_state.hpp"
+#include "gui/overlays/gui_confirmation_dialog_state.hpp"
+#include "gui/panels/gui_common_browser.hpp"
+#include "gui/panels/gui_ir_browser_state.hpp"
 #include "gui_framework/gui_builder.hpp"
 
 struct IrBrowserContext {

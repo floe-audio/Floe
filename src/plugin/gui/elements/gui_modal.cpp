@@ -1,9 +1,9 @@
 // Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/elements/gui2_modal.hpp"
+#include "gui/elements/gui_modal.hpp"
 
-#include "gui/elements/gui2_constants.hpp"
+#include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_drawing_helpers.hpp"
 
 Box DoModalRootBox(GuiBuilder& builder) {

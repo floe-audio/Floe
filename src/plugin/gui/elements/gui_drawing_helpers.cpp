@@ -5,7 +5,7 @@
 
 #include "foundation/foundation.hpp"
 
-#include "gui/elements/gui2_constants.hpp"
+#include "gui/elements/gui_constants.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/fonts.hpp"
 #include "gui_framework/gui_builder.hpp"

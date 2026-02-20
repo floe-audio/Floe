@@ -1,10 +1,10 @@
 // Copyright 2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/panels/gui2_ir_browser.hpp"
+#include "gui/panels/gui_ir_browser.hpp"
 
 #include "engine/favourite_items.hpp"
-#include "gui/panels/gui2_common_browser.hpp"
+#include "gui/panels/gui_common_browser.hpp"
 
 static Optional<IrCursor> CurrentCursor(IrBrowserContext const& context, sample_lib::IrId const& ir_id) {
     for (auto const [lib_index, l] : Enumerate(context.frame_context.libraries)) {

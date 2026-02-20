@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "gui/panels/gui2_common_browser.hpp"
+#include "gui/panels/gui_common_browser.hpp"
 
 struct InstBrowserState {
     imgui::Id const id;

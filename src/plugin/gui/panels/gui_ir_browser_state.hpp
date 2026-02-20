@@ -3,7 +3,7 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
-#include "gui/panels/gui2_common_browser.hpp"
+#include "gui/panels/gui_common_browser.hpp"
 
 struct IrBrowserState {
     static constexpr u64 k_panel_id = SourceLocationHash();

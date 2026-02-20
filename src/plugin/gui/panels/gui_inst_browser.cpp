@@ -1,10 +1,10 @@
 // Copyright 2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/panels/gui2_inst_browser.hpp"
+#include "gui/panels/gui_inst_browser.hpp"
 
 #include "engine/favourite_items.hpp"
-#include "gui/panels/gui2_common_browser.hpp"
+#include "gui/panels/gui_common_browser.hpp"
 
 constexpr sample_lib::LibraryIdRef k_waveform_library_id = "Waveforms - " FLOE_VENDOR;
 

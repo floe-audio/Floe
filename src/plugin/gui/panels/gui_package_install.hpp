@@ -4,9 +4,9 @@
 #pragma once
 
 #include "engine/package_installation.hpp"
-#include "gui/elements/gui2_constants.hpp"
-#include "gui/elements/gui2_modal.hpp"
-#include "gui/overlays/gui2_notifications.hpp"
+#include "gui/elements/gui_constants.hpp"
+#include "gui/elements/gui_modal.hpp"
+#include "gui/overlays/gui_notifications.hpp"
 #include "gui_framework/gui_builder.hpp"
 
 PUBLIC String InstallationOptionAskUserPretext(package::InstallJob::Component const& comp,
