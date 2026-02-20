@@ -15,13 +15,11 @@
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_framework/image.hpp"
 
-static void DoBlurredBackground(GuiState& g,
-                                Rect r,
-                                Rect clipped_to,
-                                imgui::Viewport* viewport,
-                                sample_lib::LibraryIdRef library_id,
-                                f32x2 whole_mid_panel_size,
-                                f32 opacity) {
+static void DrawBlurredBackground(GuiState& g,
+                                  Rect r,
+                                  Rect clipped_to,
+                                  sample_lib::LibraryIdRef library_id,
+                                  f32 opacity) {
     auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
 
     if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui))) {
@@ -33,15 +31,19 @@ static void DoBlurredBackground(GuiState& g,
 
         if (imgs.blurred_background) {
             if (auto tex = GuiIo().in.renderer->GetTextureFromImage(imgs.blurred_background)) {
+                // In order to align this blurred image with the overall blurred image, we consider the bounds
+                // of the current viewport (which we assume to contain the overall image).
+                auto const whole_panel_bounds = g.imgui.curr_viewport->bounds;
                 auto const whole_uv =
-                    GetMaxUVToMaintainAspectRatio(*imgs.blurred_background, whole_mid_panel_size);
-                auto const left_margin = r.x - viewport->parent_viewport->bounds.x;
-                auto const top_margin = r.y - viewport->parent_viewport->bounds.y;
+                    GetMaxUVToMaintainAspectRatio(*imgs.blurred_background, whole_panel_bounds.size);
 
-                f32x2 min_uv = {whole_uv.x * (left_margin / whole_mid_panel_size.x),
-                                whole_uv.y * (top_margin / whole_mid_panel_size.y)};
-                f32x2 max_uv = {whole_uv.x * (r.w + left_margin) / whole_mid_panel_size.x,
-                                whole_uv.y * (r.h + top_margin) / whole_mid_panel_size.y};
+                auto const left_margin = r.x - whole_panel_bounds.x;
+                auto const top_margin = r.y - whole_panel_bounds.y;
+
+                f32x2 min_uv = {whole_uv.x * (left_margin / whole_panel_bounds.w),
+                                whole_uv.y * (top_margin / whole_panel_bounds.h)};
+                f32x2 max_uv = {whole_uv.x * (r.w + left_margin) / whole_panel_bounds.w,
+                                whole_uv.y * (r.h + top_margin) / whole_panel_bounds.h};
 
                 g.imgui.draw_list->PushClipRect(clipped_to.Min(), clipped_to.Max());
                 DEFER { g.imgui.draw_list->PopClipRect(); };
@@ -104,7 +106,6 @@ static void DoOverlayGradient(imgui::Context const& imgui, Rect r) {
                                                     0);
 }
 
-// Reduces chance of floating point errors.
 static f32 RoundUpToNearestMultiple(f32 value, f32 multiple) { return multiple * Ceil(value / multiple); }
 
 static void DrawMidPanelOverallBackground(GuiState& g, imgui::Context const& imgui) {
@@ -133,24 +134,19 @@ static void DrawMidPanelOverallBackground(GuiState& g, imgui::Context const& img
     }
 }
 
-static void
-DrawLayersContainerBackground(GuiState& g, imgui::Context const& imgui, f32x2 whole_mid_panel_size) {
+static void DrawLayersContainerBackground(GuiState& g, Rect r) {
     auto const mid_panel_title_height = LivePx(UiSizeId::MidPanelTitleHeight);
     auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
-    auto const viewport = imgui.curr_viewport;
-    auto const& r = viewport->bounds;
 
     auto const layer_width_without_pad = RoundUpToNearestMultiple(r.w, k_num_layers) / k_num_layers;
 
     auto const overall_lib = LibraryForOverallBackground(g.engine);
     if (overall_lib)
-        DoBlurredBackground(g,
-                            r,
-                            r,
-                            viewport,
-                            *overall_lib,
-                            whole_mid_panel_size,
-                            Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
+        DrawBlurredBackground(g,
+                              r,
+                              r,
+                              *overall_lib,
+                              Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
 
     auto const layer_opacity = Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacitySingleLayer1) / 100.0f);
     for (auto const layer_index : Range(k_num_layers)) {
@@ -161,48 +157,45 @@ DrawLayersContainerBackground(GuiState& g, imgui::Context const& imgui, f32x2 wh
                                        .w = layer_width_without_pad,
                                        .h = r.h}
                                      .CutTop(mid_panel_title_height);
-            DoBlurredBackground(g, r, layer_r, viewport, *lib_id, whole_mid_panel_size, layer_opacity);
+            DrawBlurredBackground(g, r, layer_r, *lib_id, layer_opacity);
         }
     }
 
     if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui)))
         DoOverlayGradient(g.imgui, r);
 
-    imgui.draw_list->AddRect(r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
+    g.imgui.draw_list->AddRect(r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
 
-    imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
-                             {r.Right(), r.y + mid_panel_title_height},
-                             LiveCol(UiColMap::MidViewportDivider));
+    g.imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
+                               {r.Right(), r.y + mid_panel_title_height},
+                               LiveCol(UiColMap::MidViewportDivider));
     for (u32 i = 1; i < k_num_layers; ++i) {
         auto const x_pos = r.x + ((f32)i * layer_width_without_pad) - 1;
-        imgui.draw_list->AddLine({x_pos, r.y + mid_panel_title_height},
-                                 {x_pos, r.Bottom()},
-                                 LiveCol(UiColMap::MidViewportDivider));
+        g.imgui.draw_list->AddLine({x_pos, r.y + mid_panel_title_height},
+                                   {x_pos, r.Bottom()},
+                                   LiveCol(UiColMap::MidViewportDivider));
     }
 }
 
-static void DrawEffectsContainerBackground(GuiState& g, imgui::Context const& imgui, f32x2 mid_panel_size) {
+static void DrawEffectsContainerBackground(GuiState& g, Rect r) {
     auto const mid_panel_title_height = LivePx(UiSizeId::MidPanelTitleHeight);
     auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
-    auto const& r = imgui.curr_viewport->bounds;
 
     auto const overall_lib = LibraryForOverallBackground(g.engine);
     if (overall_lib)
-        DoBlurredBackground(g,
-                            r,
-                            r,
-                            imgui.curr_viewport,
-                            *overall_lib,
-                            mid_panel_size,
-                            Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
+        DrawBlurredBackground(g,
+                              r,
+                              r,
+                              *overall_lib,
+                              Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
 
     DoOverlayGradient(g.imgui, r);
 
-    imgui.draw_list->AddRect(r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
+    g.imgui.draw_list->AddRect(r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
 
-    imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
-                             {r.Right(), r.y + mid_panel_title_height},
-                             LiveCol(UiColMap::MidViewportDivider));
+    g.imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
+                               {r.Right(), r.y + mid_panel_title_height},
+                               LiveCol(UiColMap::MidViewportDivider));
 }
 
 static Box DoTitleShuffleButton(GuiBuilder& builder, Box parent, String tooltip) {
@@ -225,15 +218,23 @@ static Box DoTitleShuffleButton(GuiBuilder& builder, Box parent, String tooltip)
                  });
 }
 
-static void DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context) {
+static void
+DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
+    auto const layer_width_ww = RoundUpToNearestMultiple(LiveWw(UiSizeId::LayerWidth), k_num_layers);
+    auto const total_layer_width_ww = layer_width_ww * k_num_layers;
+
     auto const root = DoBox(builder,
                             {
+                                .parent = parent,
                                 .layout {
-                                    .size = layout::k_fill_parent,
+                                    .size = {total_layer_width_ww, layout::k_fill_parent},
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
                             });
+
+    if (auto const r = BoxRect(builder, root))
+        DrawLayersContainerBackground(g, builder.imgui.ViewportRectToWindowRect(*r));
 
     // Title row
     auto const title_row =
@@ -309,15 +310,20 @@ static void DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext 
     }
 }
 
-static void DoEffectsContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context) {
+static void
+DoEffectsContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
     auto const root = DoBox(builder,
                             {
+                                .parent = parent,
                                 .layout {
                                     .size = layout::k_fill_parent,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
                             });
+
+    if (auto const r = BoxRect(builder, root))
+        DrawEffectsContainerBackground(g, builder.imgui.ViewportRectToWindowRect(*r));
 
     // Title row
     auto const title_row =
@@ -372,83 +378,38 @@ static void DoEffectsContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext
 }
 
 void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
-    DoBoxViewport(
-        g.builder,
-        {
-            .run =
-                [&](GuiBuilder& builder) {
-                    auto const subpanel_gap_ww = LiveWw(UiSizeId::MidPanelSubpanelGapX);
-                    auto const layer_width_ww =
-                        RoundUpToNearestMultiple(LiveWw(UiSizeId::LayerWidth), k_num_layers);
-                    auto const total_layer_width_ww = layer_width_ww * k_num_layers;
+    DoBoxViewport(g.builder,
+                  {
+                      .run =
+                          [&](GuiBuilder& builder) {
+                              auto const subpanel_gap_ww = LiveWw(UiSizeId::MidPanelSubpanelGapX);
 
-                    auto const root = DoBox(builder,
-                                            {
-                                                .layout {
-                                                    .size = layout::k_fill_parent,
-                                                    .contents_padding =
-                                                        {
-                                                            .lr = subpanel_gap_ww,
-                                                            .tb = LiveWw(UiSizeId::MidPanelSubpanelGapY),
-                                                        },
-                                                    .contents_gap = subpanel_gap_ww,
-                                                    .contents_direction = layout::Direction::Row,
-                                                    .contents_align = layout::Alignment::Start,
-                                                },
-                                            });
+                              auto const root =
+                                  DoBox(builder,
+                                        {
+                                            .layout {
+                                                .size = layout::k_fill_parent,
+                                                .contents_padding =
+                                                    {
+                                                        .lr = subpanel_gap_ww,
+                                                        .tb = LiveWw(UiSizeId::MidPanelSubpanelGapY),
+                                                    },
+                                                .contents_gap = subpanel_gap_ww,
+                                                .contents_direction = layout::Direction::Row,
+                                                .contents_align = layout::Alignment::Start,
+                                            },
+                                        });
 
-                    DoBoxViewport(
-                        builder,
-                        {
-                            .run = [&](GuiBuilder& builder) { DoLayersContainer(builder, g, frame_context); },
-                            .bounds = DoBox(builder,
-                                            {
-                                                .parent = root,
-                                                .layout {
-                                                    .size = {total_layer_width_ww, layout::k_fill_parent},
-                                                },
-                                            }),
-                            .imgui_id = builder.imgui.MakeId("layers-container"),
-                            .viewport_config {
-                                .draw_background =
-                                    [&](imgui::Context const& imgui) {
-                                        DrawLayersContainerBackground(g, imgui, bounds.size);
-                                    },
-                                .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-                            },
-                            .debug_name = "layers-container",
-                        });
-
-                    DoBoxViewport(
-                        builder,
-                        {
-                            .run =
-                                [&](GuiBuilder& builder) { DoEffectsContainer(builder, g, frame_context); },
-                            .bounds = DoBox(builder,
-                                            {
-                                                .parent = root,
-                                                .layout {
-                                                    .size = layout::k_fill_parent,
-                                                },
-                                            }),
-                            .imgui_id = builder.imgui.MakeId("effects-container"),
-                            .viewport_config {
-                                .draw_background =
-                                    [&](imgui::Context const& imgui) {
-                                        DrawEffectsContainerBackground(g, imgui, bounds.size);
-                                    },
-                                .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-                            },
-                            .debug_name = "effects-container",
-                        });
-                },
-            .bounds = bounds,
-            .imgui_id = SourceLocationHash(),
-            .viewport_config {
-                .draw_background =
-                    [&](imgui::Context const& imgui) { DrawMidPanelOverallBackground(g, imgui); },
-                .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-            },
-            .debug_name = "MidPanel",
-        });
+                              DoLayersContainer(builder, g, frame_context, root);
+                              DoEffectsContainer(builder, g, frame_context, root);
+                          },
+                      .bounds = bounds,
+                      .imgui_id = SourceLocationHash(),
+                      .viewport_config {
+                          .draw_background =
+                              [&](imgui::Context const& imgui) { DrawMidPanelOverallBackground(g, imgui); },
+                          .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
+                      },
+                      .debug_name = "MidPanel",
+                  });
 }
