@@ -4,8 +4,8 @@
 #include "gui_button_widgets.hpp"
 
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui_popup_menu.hpp"
 #include "gui/elements/gui_common_elements.hpp"
+#include "gui/elements/gui_popup_menu.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_widget_helpers.hpp"
 #include "processor/param.hpp"

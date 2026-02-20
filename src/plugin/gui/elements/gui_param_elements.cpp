@@ -7,10 +7,10 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
-#include "gui/elements/gui_common_elements.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "processor/param.hpp"
 #include "processor/processor.hpp"
@@ -240,7 +240,8 @@ Box DoMenuParameter(GuiState& g,
                                      },
                                  });
 
-    auto const row = DoMidPanelPrevNextRow(g.builder, container, auto_width ? layout::k_hug_contents : options.width);
+    auto const row =
+        DoMidPanelPrevNextRow(g.builder, container, auto_width ? layout::k_hug_contents : options.width);
 
     Optional<f32> new_val {};
 

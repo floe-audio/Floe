@@ -6,10 +6,10 @@
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui/panels/gui_effects.hpp"
 #include "gui/panels/gui_inst_browser.hpp"
 #include "gui/panels/gui_ir_browser.hpp"
-#include "gui/elements/gui_common_elements.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -239,8 +239,9 @@ DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame
               .text_justification = TextJustification::CentredLeft,
           });
 
-    auto const rand_btn =
-        DoMidPanelShuffleButton(builder, title_row, {.tooltip = "Load random instruments for all 3 layers"_s});
+    auto const rand_btn = DoMidPanelShuffleButton(builder,
+                                                  title_row,
+                                                  {.tooltip = "Load random instruments for all 3 layers"_s});
 
     if (rand_btn.button_fired) {
         for (auto& layer : g.engine.processor.layer_processors) {
@@ -328,7 +329,8 @@ DoEffectsContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& fram
               .text_justification = TextJustification::CentredLeft,
           });
 
-    auto const rand_btn = DoMidPanelShuffleButton(builder, title_row, {.tooltip = "Randomise all of the effects"_s});
+    auto const rand_btn =
+        DoMidPanelShuffleButton(builder, title_row, {.tooltip = "Randomise all of the effects"_s});
 
     if (rand_btn.button_fired) {
         RandomiseAllEffectParameterValues(g.engine.processor);

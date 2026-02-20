@@ -9,10 +9,10 @@
 
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
-#include "gui/elements/gui_common_elements.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_label_widgets.hpp"
 

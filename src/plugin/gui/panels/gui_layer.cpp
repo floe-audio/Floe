@@ -12,8 +12,8 @@
 #include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui_popup_menu.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
+#include "gui/elements/gui_popup_menu.hpp"
 #include "gui/old/gui_button_widgets.hpp"
 #include "gui/old/gui_dragger_widgets.hpp"
 #include "gui/old/gui_label_widgets.hpp"
@@ -28,6 +28,7 @@
 
 namespace layer_gui {
 
+// NOTE: this function is already modernised.
 static void DoInstSelectorRightClickMenu(GuiState& g, Rect r, u32 layer, imgui::Id imgui_id) {
     auto& imgui = g.imgui;
     auto layer_obj = &g.engine.Layer(layer);

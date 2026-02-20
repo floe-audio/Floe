@@ -13,7 +13,8 @@ struct TooltipOptions {
 };
 bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOptions const& options);
 
-// Reusable row with prev/next arrow buttons. Add your content to the row, then call DoMidPanelPrevNextButtons.
+// Reusable row with prev/next arrow buttons. Add your content to the row, then call
+// DoMidPanelPrevNextButtons.
 Box DoMidPanelPrevNextRow(GuiBuilder& builder, Box parent, f32 width);
 
 struct MidPanelPrevNextButtonsResult {
