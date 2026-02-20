@@ -18,6 +18,7 @@ struct ParameterComponentOptions {
     Col knob_line_col = {Col::Background0};
     GuiStyleSystem style_system {};
     bool greyed_out = false;
+    bool bidirectional = false;
     bool is_fake = false;
     bool label = true;
     String override_tooltip {};

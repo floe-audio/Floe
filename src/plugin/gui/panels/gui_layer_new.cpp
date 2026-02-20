@@ -371,6 +371,54 @@ static void DoMixerContainer1(GuiState& g, u8 layer_index, Box root) {
     }
 }
 
+static void DoMixerContainer2(GuiState& g, u8 layer_index, Box root) {
+    using enum UiSizeId;
+
+    auto& params = g.engine.processor.main_params;
+
+    auto const container = DoBox(g.builder,
+                                 {
+                                     .parent = root,
+                                     .layout {
+                                         .size = layout::k_hug_contents,
+                                         .contents_gap = LiveWw(LayerMixerKnobGapX),
+                                         .contents_direction = layout::Direction::Row,
+                                         .contents_align = layout::Alignment::Middle,
+                                     },
+                                 });
+
+    // Tune semitone (int dragger)
+    DoIntParameter(g,
+                   container,
+                   params.DescribedValue(layer_index, LayerParamIndex::TuneSemitone),
+                   {
+                       .width = LiveWw(LayerPitchWidth),
+                       .always_show_plus = true,
+                   });
+
+    // Tune cents (bidirectional knob)
+    DoKnobParameter(g,
+                    container,
+                    params.DescribedValue(layer_index, LayerParamIndex::TuneCents),
+                    {
+                        .width = LiveWw(ParamComponentLargeWidth),
+                        .knob_height_fraction = 0.96f,
+                        .style_system = GuiStyleSystem::MidPanel,
+                        .bidirectional = true,
+                    });
+
+    // Pan (bidirectional knob)
+    DoKnobParameter(g,
+                    container,
+                    params.DescribedValue(layer_index, LayerParamIndex::Pan),
+                    {
+                        .width = LiveWw(ParamComponentLargeWidth),
+                        .knob_height_fraction = 0.96f,
+                        .style_system = GuiStyleSystem::MidPanel,
+                        .bidirectional = true,
+                    });
+}
+
 void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box parent) {
     using enum UiSizeId;
 
@@ -407,6 +455,7 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
     if (g.engine.Layer(layer_index).instrument.tag == InstrumentType::None) return;
 
     DoMixerContainer1(g, layer_index, top_controls);
+    DoMixerContainer2(g, layer_index, top_controls);
 }
 
 } // namespace layer_gui_new
