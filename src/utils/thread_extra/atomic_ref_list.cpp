@@ -7,7 +7,7 @@
 #include "utils/thread_extra/starting_gun.hpp"
 
 struct MallocedObj {
-    MallocedObj(char c) : obj((char*)GlobalAlloc({.size = 10}).data) { FillMemory({(u8*)obj, 10}, (u8)c); }
+    MallocedObj(char c) : obj((char*)GlobalAllocOversizeAllowed({.size = 10}).data) { FillMemory({(u8*)obj, 10}, (u8)c); }
     ~MallocedObj() {
         GlobalFreeNoSize(obj);
         obj = nullptr;

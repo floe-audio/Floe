@@ -30,9 +30,9 @@ struct Scoped : T {
 using MallocedString = Scoped<String, [](String& s) { GlobalFree({(void*)s.data, s.size}); }>;
 
 inline MallocedString CreateMallocedString(String other) {
-    auto const mem = GlobalAlloc({.size = other.size});
+    auto const mem = GlobalAllocOversizeAllowed({.size = other.size});
     CopyMemory(mem.data, other.data, other.size);
-    return String {(char const*)mem.data, mem.size};
+    return String {(char const*)mem.data, other.size};
 }
 
 } // namespace sample_lib_server

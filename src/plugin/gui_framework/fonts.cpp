@@ -26,7 +26,7 @@ void Fonts::Pop() { font_stack.PopBack(); }
 #define STBTT_cos(x)       Cos(x)
 #define STBTT_acos(x)      Acos(x)
 #define STBTT_fabs(x)      Fabs(x)
-#define STBTT_malloc(x, u) ((void)(u), GlobalAlloc({(usize)x}).data)
+#define STBTT_malloc(x, u) ((void)(u), GlobalAllocOversizeAllowed({(usize)x}).data)
 #define STBTT_free(x, u)   ((void)(u), GlobalFreeNoSize(x))
 #define STBTT_assert(x)    ASSERT(x)
 #define STBTT_strlen(x)    NullTerminatedSize(x)
@@ -104,7 +104,7 @@ void FontAtlas::GetTexDataAsRGBA32(unsigned char** out_pixels,
     if (!tex_pixels_rgb_a32) {
         unsigned char* pixels;
         GetTexDataAsAlpha8(&pixels, nullptr, nullptr);
-        tex_pixels_rgb_a32 = (unsigned int*)GlobalAlloc({(usize)(tex_width * tex_height * 4)}).data;
+        tex_pixels_rgb_a32 = (unsigned int*)GlobalAllocOversizeAllowed({(usize)(tex_width * tex_height * 4)}).data;
         unsigned char const* src = pixels;
         unsigned int* dst = tex_pixels_rgb_a32;
         for (int n = tex_width * tex_height; n > 0; n--)
@@ -123,7 +123,7 @@ Font* FontAtlas::AddFont(FontConfig const& font_cfg) {
 
     // Create new font
     if (!font_cfg.merge_mode) {
-        auto* font = (Font*)GlobalAlloc({sizeof(Font)}).data;
+        auto* font = (Font*)GlobalAllocOversizeAllowed({sizeof(Font)}).data;
         PLACEMENT_NEW(font) Font();
         fonts.PushBack(font);
     }
@@ -132,7 +132,7 @@ Font* FontAtlas::AddFont(FontConfig const& font_cfg) {
     FontConfig& new_font_cfg = config_data.Back();
     if (!new_font_cfg.dst_font) new_font_cfg.dst_font = fonts.Back();
     if (!new_font_cfg.font_data_reference_only && !new_font_cfg.font_data_owned_by_atlas) {
-        new_font_cfg.font_data = GlobalAlloc({new_font_cfg.font_data_size}).data;
+        new_font_cfg.font_data = GlobalAllocOversizeAllowed({new_font_cfg.font_data_size}).data;
         new_font_cfg.font_data_owned_by_atlas = true;
         CopyMemory(new_font_cfg.font_data, font_cfg.font_data, new_font_cfg.font_data_size);
     }
@@ -171,7 +171,7 @@ bool FontAtlas::Build() {
         u32 ranges_count;
     };
     auto* tmp_array =
-        (FontTempBuildData*)GlobalAlloc({(usize)config_data.size * sizeof(FontTempBuildData)}).data;
+        (FontTempBuildData*)GlobalAllocOversizeAllowed({(usize)config_data.size * sizeof(FontTempBuildData)}).data;
 
     // Initialize font information early (so we can error without any cleanup) + count glyphs
     u32 total_glyph_count = 0;
@@ -220,10 +220,10 @@ bool FontAtlas::Build() {
     u32 buf_rects_n = 0;
     u32 buf_ranges_n = 0;
     auto* buf_packedchars =
-        (stbtt_packedchar*)GlobalAlloc({total_glyph_count * sizeof(stbtt_packedchar)}).data;
-    auto* buf_rects = (stbrp_rect*)GlobalAlloc({total_glyph_count * sizeof(stbrp_rect)}).data;
+        (stbtt_packedchar*)GlobalAllocOversizeAllowed({total_glyph_count * sizeof(stbtt_packedchar)}).data;
+    auto* buf_rects = (stbrp_rect*)GlobalAllocOversizeAllowed({total_glyph_count * sizeof(stbrp_rect)}).data;
     auto* buf_ranges =
-        (stbtt_pack_range*)GlobalAlloc({total_glyph_range_count * sizeof(stbtt_pack_range)}).data;
+        (stbtt_pack_range*)GlobalAllocOversizeAllowed({total_glyph_range_count * sizeof(stbtt_pack_range)}).data;
     ZeroMemory(buf_packedchars, total_glyph_count * sizeof(stbtt_packedchar));
     ZeroMemory(buf_rects,
                total_glyph_count *
@@ -277,7 +277,7 @@ bool FontAtlas::Build() {
 
     // Create texture
     tex_height = (int)NextPowerOf2((u32)tex_height);
-    tex_pixels_alpha8 = (unsigned char*)GlobalAlloc({(usize)(tex_width * tex_height)}).data;
+    tex_pixels_alpha8 = (unsigned char*)GlobalAllocOversizeAllowed({(usize)(tex_width * tex_height)}).data;
     ZeroMemory(tex_pixels_alpha8, (usize)(tex_width * tex_height));
     spc.pixels = tex_pixels_alpha8;
     spc.height = tex_height;

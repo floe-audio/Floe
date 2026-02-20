@@ -14,7 +14,7 @@
 // Copyright (c) 2014-2024 Omar Cornut
 // SPDX-License-Identifier: MIT
 
-// Elements stored in BasicDynamicArray must be safe to memcpy/realloc because the array uses GlobalRealloc
+// Elements stored in BasicDynamicArray must be safe to memcpy/realloc because the array uses GlobalReallocOversizeAllowed
 // for growth. Types that are TriviallyCopyable satisfy this automatically. Non-trivially-copyable types
 // (such as BasicDynamicArray itself) can opt in by defining a MemcpySafe tag type.
 template <typename T>
@@ -93,10 +93,10 @@ struct BasicDynamicArray {
     }
     void Reserve(u32 new_capacity) {
         if (new_capacity <= capacity) return;
-        data = (ValueType*)GlobalRealloc({(void*)data, capacity * sizeof(ValueType)},
-                                         {.size = new_capacity * sizeof(ValueType)})
-                   .data;
-        capacity = new_capacity;
+        auto mem = GlobalReallocOversizeAllowed({(void*)data, capacity * sizeof(ValueType)},
+                                                {.size = new_capacity * sizeof(ValueType)});
+        data = (ValueType*)mem.data;
+        capacity = (u32)(mem.size / sizeof(ValueType));
     }
 
     void PushBack(ValueType const& v) {
