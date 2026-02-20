@@ -7,6 +7,14 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 
+static ColSet MidIconButtonColours() {
+    return {
+        .base = LiveColStruct(UiColMap::MidIcon),
+        .hot = LiveColStruct(UiColMap::MidTextHot),
+        .active = LiveColStruct(UiColMap::MidTextOn),
+    };
+}
+
 static Margins ParamControlPadding() {
     return {
         .l = LiveWw(UiSizeId::ParamControlPadL),
@@ -33,7 +41,8 @@ Box DoMidPanelPrevNextRow(GuiBuilder& builder, Box parent, f32 width) {
                  });
 }
 
-MidPanelPrevNextButtonsResult DoMidPanelPrevNextButtons(GuiBuilder& builder, Box row, MidPanelPrevNextButtonsOptions const& options) {
+MidPanelPrevNextButtonsResult
+DoMidPanelPrevNextButtons(GuiBuilder& builder, Box row, MidPanelPrevNextButtonsOptions const& options) {
     MidPanelPrevNextButtonsResult result {};
 
     auto const do_button = [&](String icon, String tooltip) {
@@ -43,12 +52,7 @@ MidPanelPrevNextButtonsResult DoMidPanelPrevNextButtons(GuiBuilder& builder, Box
                                    .id_extra = Hash(icon),
                                    .text = icon,
                                    .font = FontType::Icons,
-                                   .text_colours =
-                                       ColSet {
-                                           .base = LiveColStruct(UiColMap::MidIcon),
-                                           .hot = LiveColStruct(UiColMap::MidTextHot),
-                                           .active = LiveColStruct(UiColMap::MidTextOn),
-                                       },
+                                   .text_colours = MidIconButtonColours(),
                                    .text_justification = TextJustification::Centred,
                                    .layout {
                                        .size = {LiveWw(UiSizeId::NextPrevButtonSize), k_font_body_size},
@@ -73,12 +77,7 @@ Box DoMidPanelShuffleButton(GuiBuilder& builder, Box row, MidPanelShuffleButtonO
                      .size_from_text = true,
                      .font = FontType::Icons,
                      .font_size = k_font_icons_size * 0.82f,
-                     .text_colours =
-                         ColSet {
-                             .base = LiveColStruct(UiColMap::MidIcon),
-                             .hot = LiveColStruct(UiColMap::MidTextHot),
-                             .active = LiveColStruct(UiColMap::MidTextOn),
-                         },
+                     .text_colours = MidIconButtonColours(),
                      .text_justification = TextJustification::Centred,
                      .tooltip = options.tooltip,
                      .button_behaviour = imgui::ButtonConfig {},
