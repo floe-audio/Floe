@@ -195,6 +195,13 @@ enum class ViewportScrollbarVisibility : u8 {
 };
 
 struct ViewportConfig {
+    ViewportConfig Clone(ArenaAllocator& arena) {
+        auto result = *this;
+        result.draw_background = result.draw_background.CloneObject(arena);
+        result.draw_scrollbars = result.draw_scrollbars.CloneObject(arena);
+        return result;
+    }
+
     // Custom little wrapper to make ViewportScrollbarVisibility behave like a clang vector extension (which
     // can't be used for enum class types).
     struct ViewportScrollbarVisibilityx2 {
