@@ -41,47 +41,49 @@ Box DoMidPanelPrevNextRow(GuiBuilder& builder, Box parent, f32 width) {
                  });
 }
 
+static Box DoMidIconButton(GuiBuilder& builder, Box parent, String icon, String tooltip, f32 font_size = 0) {
+    auto const margin = LiveWw(UiSizeId::IconButtonMargin);
+    auto const btn = DoBox(builder,
+                           {
+                               .parent = parent,
+                               .id_extra = Hash(icon),
+                               .layout {
+                                   .size = layout::k_hug_contents,
+                               },
+                               .tooltip = tooltip,
+                               .button_behaviour = imgui::ButtonConfig {},
+                           });
+    DoBox(builder,
+          {
+              .parent = btn,
+              .text = icon,
+              .size_from_text = true,
+              .font = FontType::Icons,
+              .font_size = font_size,
+              .text_colours = MidIconButtonColours(),
+              .text_justification = TextJustification::Centred,
+              .parent_dictates_hot_and_active = true,
+              .layout {
+                  .margins = {.l = margin, .r = margin, .t = margin, .b = margin},
+              },
+          });
+    return btn;
+}
+
 MidPanelPrevNextButtonsResult
 DoMidPanelPrevNextButtons(GuiBuilder& builder, Box row, MidPanelPrevNextButtonsOptions const& options) {
     MidPanelPrevNextButtonsResult result {};
 
-    auto const do_button = [&](String icon, String tooltip) {
-        auto const btn = DoBox(builder,
-                               {
-                                   .parent = row,
-                                   .id_extra = Hash(icon),
-                                   .text = icon,
-                                   .font = FontType::Icons,
-                                   .text_colours = MidIconButtonColours(),
-                                   .text_justification = TextJustification::Centred,
-                                   .layout {
-                                       .size = {LiveWw(UiSizeId::NextPrevButtonSize), k_font_body_size},
-                                   },
-                                   .tooltip = tooltip,
-                                   .button_behaviour = imgui::ButtonConfig {},
-                               });
-        return btn.button_fired;
-    };
-
-    result.prev_fired = do_button(ICON_FA_CARET_LEFT, options.prev_tooltip);
-    result.next_fired = do_button(ICON_FA_CARET_RIGHT, options.next_tooltip);
+    result.prev_fired =
+        DoMidIconButton(builder, row, ICON_FA_CARET_LEFT, options.prev_tooltip).button_fired;
+    result.next_fired =
+        DoMidIconButton(builder, row, ICON_FA_CARET_RIGHT, options.next_tooltip).button_fired;
 
     return result;
 }
 
 Box DoMidPanelShuffleButton(GuiBuilder& builder, Box row, MidPanelShuffleButtonOptions const& options) {
-    return DoBox(builder,
-                 {
-                     .parent = row,
-                     .text = ICON_FA_SHUFFLE,
-                     .size_from_text = true,
-                     .font = FontType::Icons,
-                     .font_size = k_font_icons_size * 0.82f,
-                     .text_colours = MidIconButtonColours(),
-                     .text_justification = TextJustification::Centred,
-                     .tooltip = options.tooltip,
-                     .button_behaviour = imgui::ButtonConfig {},
-                 });
+    return DoMidIconButton(builder, row, ICON_FA_SHUFFLE, options.tooltip, k_font_icons_size * 0.82f);
 }
 
 bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOptions const& options) {
