@@ -99,7 +99,7 @@ static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
                 ImagePixelsFromLibrary(lib_id, LibraryImageType::Icon, server, scratch_arena, scratch_arena);
             if (!pixels) return k_nullopt;
             auto const result = ResizeImage(*pixels, desired_icon_size, ImageBytesAllocator())
-                                    .ValueOr(pixels->Clone(ImageBytesAllocator()));
+                                    .OrElse([&] { return pixels->Clone(ImageBytesAllocator()); });
             return result;
         },
         []() {
@@ -154,10 +154,11 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryIdRef const& lib_id_ref,
 
             // If the image is quite a lot larger than we need, resize it down to avoid storing a huge
             // image on the GPU
-            auto const background = pixels->size.width > CheckedCast<u16>(window_width * 1.3f)
-                                        ? ResizeImage(*pixels, window_width, ImageBytesAllocator())
-                                              .ValueOr(pixels->Clone(ImageBytesAllocator()))
-                                        : pixels->Clone(ImageBytesAllocator());
+            auto const background =
+                pixels->size.width > CheckedCast<u16>(window_width * 1.3f)
+                    ? ResizeImage(*pixels, window_width, ImageBytesAllocator())
+                          .OrElse([&] { return pixels->Clone(ImageBytesAllocator()); })
+                    : pixels->Clone(ImageBytesAllocator());
 
             if (reload_background) result.background = background;
 

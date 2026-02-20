@@ -288,7 +288,8 @@ ImageBytes CreateBlurredLibraryBackground(ImageBytes original,
     // Shrink the image down for better speed. We are about to blur it, we don't need detail.
     auto const shrunk_width = Max(CheckedCast<u16>(original.size.width * options.downscale_factor),
                                   Min((u16)16, original.size.width));
-    auto const result = ResizeImage(original, shrunk_width, allocator).ValueOr(original.Clone(allocator));
+    auto const result =
+        ResizeImage(original, shrunk_width, allocator).OrElse([&] { return original.Clone(allocator); });
 
     // For ease-of-use and performance, we convert the image to f32x4 format
     auto const pixels = ImageBytesToImageF32(result, scratch_arena);
