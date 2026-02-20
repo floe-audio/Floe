@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 X("Background", BackgroundBlurringBlur1Radius1, 55.000000f)
@@ -16,7 +16,7 @@ X("Controls", KnobInnerArc, 9.230769f)
 X("Controls", KnobInnerArcWeight, 5.613242f)
 X("Controls", KnobLineWeight, 2.329525f)
 X("Controls", KnobOuterArcWeight, 2.593319f)
-X("Controls", IconButtonMargin, 4.000000f)
+X("Controls", IconButtonMargin, 2.100000f)
 X("Controls", NextPrevButtonSize, 12.951319f)
 X("Controls", ParamComponentExtraSmallWidth, 28.896482f)
 X("Controls", ParamComponentHeightOffset, 1.187692f)

@@ -347,7 +347,7 @@ constexpr String k_ui_col_map_categories[ToInt(UiColMap::Count)] = {
 };
 
 static String UiStyleFilepath(Allocator& a, String filename) {
-    return path::Join(a, Array {path::Directory(__FILE__).Value(), "live_edit_defs", filename});
+    return path::Join(a, Array {*path::Directory(*path::Directory(__FILE__)), "live_edit_defs", filename});
 }
 
 static void WriteHeader(Writer writer) {
