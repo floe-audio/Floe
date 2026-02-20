@@ -13,3 +13,12 @@ enum class FontType : u8 {
     Icons,
     Count,
 };
+
+constexpr f32 FontSizeWw(f32 font_pts) { return font_pts * (16.0f / 13.0f); }
+
+constexpr f32 k_font_body_size = FontSizeWw(13);
+constexpr f32 k_font_body_italic_size = FontSizeWw(12);
+constexpr f32 k_font_heading1_size = FontSizeWw(18);
+constexpr f32 k_font_heading2_size = FontSizeWw(14);
+constexpr f32 k_font_heading3_size = FontSizeWw(10);
+constexpr f32 k_font_icons_size = FontSizeWw(14);

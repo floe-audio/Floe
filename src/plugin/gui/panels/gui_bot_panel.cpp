@@ -6,9 +6,8 @@
 #include "engine/engine.hpp"
 #include "gui/controls/gui_keyboard.hpp"
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui_constants.hpp"
-#include "gui/elements/gui_parameter_component.hpp"
-#include "gui/elements/gui_drawing_helpers.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
+#include "gui/elements/gui_param_elements.hpp"
 
 static bool IconButton(GuiBuilder& builder,
                        Box const parent,

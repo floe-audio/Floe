@@ -4,9 +4,8 @@
 #include "gui/panels/gui_macros.hpp"
 
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui_constants.hpp"
-#include "gui/elements/gui_parameter_component.hpp"
-#include "gui/elements/gui_drawing_helpers.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
+#include "gui/elements/gui_param_elements.hpp"
 #include "gui_framework/gui_builder.hpp"
 
 static void DrawLinkLine(GuiState& g, f32x2 p1, f32x2 p2) {

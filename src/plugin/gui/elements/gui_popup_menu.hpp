@@ -5,7 +5,7 @@
 #include <IconsFontAwesome6.h>
 
 #include "gui/elements/gui_constants.hpp"
-#include "gui/elements/gui_drawing_helpers.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
 #include "gui_framework/gui_builder.hpp"
 
 constexpr imgui::ViewportConfig k_default_popup_menu_viewport {

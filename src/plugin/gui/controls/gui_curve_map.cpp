@@ -5,8 +5,8 @@
 
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
-#include "gui/elements/gui_drawing_helpers.hpp"
-#include "gui/elements/gui_utils.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 
 static void
 DrawCurvedSegment(DrawList& graphics, f32x2 p0, f32x2 p1, float curve_value, int num_samples = 14) {

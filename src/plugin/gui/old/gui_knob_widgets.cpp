@@ -6,7 +6,7 @@
 #include "foundation/foundation.hpp"
 
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui_drawing_helpers.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_widget_helpers.hpp"

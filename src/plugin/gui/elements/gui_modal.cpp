@@ -4,7 +4,7 @@
 #include "gui/elements/gui_modal.hpp"
 
 #include "gui/elements/gui_constants.hpp"
-#include "gui/elements/gui_drawing_helpers.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
 
 Box DoModalRootBox(GuiBuilder& builder) {
     return DoBox(builder,

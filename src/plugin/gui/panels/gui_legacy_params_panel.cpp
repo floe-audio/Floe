@@ -11,7 +11,7 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
-#include "gui/elements/gui_parameter_component.hpp"
+#include "gui/elements/gui_param_elements.hpp"
 
 static void DrawDarkModeModalBackground(imgui::Context const& imgui) {
     imgui.draw_list->PushClipRectFullScreen();

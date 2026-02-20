@@ -13,7 +13,7 @@
 #include "engine/engine.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
-#include "gui/elements/gui_drawing_helpers.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
 #include "gui/old/gui_dragger_widgets.hpp"
 #include "gui/old/gui_label_widgets.hpp"
 #include "gui/old/gui_menu.hpp"

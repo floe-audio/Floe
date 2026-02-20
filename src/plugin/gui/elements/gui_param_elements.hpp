@@ -3,10 +3,10 @@
 
 #pragma once
 
+#include "common_infrastructure/descriptors/param_descriptors.hpp"
+
 #include "gui/core/gui_fwd.hpp"
 #include "gui_framework/gui_builder.hpp"
-
-// Builder version of gui_widget_compounds.hpp
 
 struct AudioProcessor;
 
@@ -93,3 +93,16 @@ void AddParamContextMenuBehaviour(GuiState& g,
                                   Span<DescribedParamValue const> params);
 
 void AddParamContextMenuBehaviour(GuiState& g, Box const& box, DescribedParamValue const& param);
+
+void HandleShowingTextEditorForParams(GuiState& g, Rect r, Span<ParamIndex const> params);
+
+void DoParameterTooltipIfNeeded(GuiState& g,
+                                DescribedParamValue const& param,
+                                imgui::Id imgui_id,
+                                Rect window_r);
+void DoParameterTooltipIfNeeded(GuiState& g,
+                                Span<DescribedParamValue const*> param,
+                                imgui::Id imgui_id,
+                                Rect window_r);
+void ParameterValuePopup(GuiState& g, DescribedParamValue const& param, imgui::Id id, Rect window_r);
+void ParameterValuePopup(GuiState& g, Span<DescribedParamValue const*> params, imgui::Id id, Rect window_r);

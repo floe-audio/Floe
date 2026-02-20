@@ -4,7 +4,7 @@
 #include "gui/controls/gui_keyboard.hpp"
 
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui_utils.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "processing_utils/key_range.hpp"

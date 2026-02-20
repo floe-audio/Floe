@@ -18,7 +18,7 @@
 #include "gui/core/gui_prefs.hpp"
 #include "gui/debug/gui_developer_panel.hpp"
 #include "gui/elements/gui_constants.hpp"
-#include "gui/elements/gui_drawing_helpers.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
 #include "gui/overlays/gui_confirmation_dialog.hpp"
 #include "gui/overlays/gui_loading_overlay.hpp"
 #include "gui/overlays/gui_notifications.hpp"

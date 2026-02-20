@@ -9,6 +9,8 @@
 #include "gui_framework/gui_imgui.hpp"
 #include "processing_utils/peak_meter.hpp"
 
+// Drawing functions always need window coordinates, not viewport coordinates.
+
 void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding = {});
 
 void DrawVoiceMarkerLine(imgui::Context const& imgui,

@@ -9,9 +9,9 @@
 
 #include "gui/core/gui_actions.hpp"
 #include "gui/elements/gui_constants.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
-#include "gui/elements/gui_drawing_helpers.hpp"
 #include "gui/overlays/gui_tips.hpp"
 #include "gui_framework/fonts.hpp"
 #include "gui_framework/gui_imgui.hpp"

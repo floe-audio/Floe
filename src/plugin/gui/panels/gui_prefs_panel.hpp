@@ -101,19 +101,18 @@ static FolderSelectorResult PreferencesFolderSelector(GuiBuilder& builder,
                                      },
                                  });
 
-    auto const path_container =
-        DoBox(builder,
-              {
-                  .parent = container,
-                  .background_fill_colours = Col {.c = Col::Background1},
-                  .round_background_corners = 0b1111,
-                  .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
-                      .contents_padding = {.lr = k_button_padding_x, .tb = k_button_padding_y},
-                      .contents_direction = layout::Direction::Row,
-                      .contents_align = layout::Alignment::Justify,
-                  },
-              });
+    auto const path_container = DoBox(builder,
+                                      {
+                                          .parent = container,
+                                          .background_fill_colours = Col {.c = Col::Background1},
+                                          .round_background_corners = 0b1111,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                              .contents_padding = {.lr = 5, .tb = 2},
+                                              .contents_direction = layout::Direction::Row,
+                                              .contents_align = layout::Alignment::Justify,
+                                          },
+                                      });
 
     auto const display_path = path::MakeDisplayPath(path, {.compact_middle_sections = true}, builder.arena);
     DoBox(builder,
@@ -242,7 +241,7 @@ static void FolderPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext&
                                 .layout {
                                     .size = layout::k_fill_parent,
                                     .contents_padding = {.lrtb = k_default_spacing},
-                                    .contents_gap = k_large_gap,
+                                    .contents_gap = 28,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },

@@ -6,7 +6,7 @@
 #include <IconsFontAwesome6.h>
 
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui_utils.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_widget_helpers.hpp"
 
