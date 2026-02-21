@@ -10,6 +10,7 @@
 #include "gui_framework/gui_builder.hpp"
 
 struct AudioProcessor;
+struct StereoPeakMeter;
 
 struct ParameterComponentOptions {
     f32 width; // In window-width units.
@@ -23,6 +24,7 @@ struct ParameterComponentOptions {
     bool label = true;
     String override_tooltip {};
     String override_label {};
+    StereoPeakMeter const* peak_meter = nullptr; // If set, draws a peak meter inside the knob.
 };
 
 Box DoKnobParameter(GuiState& g,

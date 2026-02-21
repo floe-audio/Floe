@@ -428,6 +428,7 @@ Box DoKnobParameter(GuiState& g,
         if (g.param_text_editor_to_open && *g.param_text_editor_to_open == param.info.index) {
             g.param_text_editor_to_open.Clear();
             g.imgui.SetTextInputFocus(container.imgui_id, display_string, false);
+            g.imgui.TextInputSelectAll();
         }
     }
 
@@ -443,6 +444,24 @@ Box DoKnobParameter(GuiState& g,
                                              .margins = {.b = LiveWw(UiSizeId::ParamComponentLabelGapY)},
                                          },
                                      }))) {
+        if (options.peak_meter) {
+            auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+            auto const knob_width_px = window_r.w;
+            auto const peak_meter_width_px = LivePx(UiSizeId::LayerPeakMeterWidth);
+            auto const peak_meter_height_px =
+                knob_width_px * LiveRaw(UiSizeId::KnobPeakMeterHeightPercent) / 100.0f;
+            auto const peak_meter_y_offs =
+                knob_width_px * LiveRaw(UiSizeId::KnobPeakMeterYOffsetPercent) / 100.0f;
+
+            Rect const peak_meter_r {
+                .x = window_r.Centre().x - (peak_meter_width_px / 2),
+                .y = window_r.y + peak_meter_y_offs,
+                .w = peak_meter_width_px,
+                .h = peak_meter_height_px,
+            };
+            DrawPeakMeter(g.imgui, peak_meter_r, *options.peak_meter, false);
+        }
+
         DrawKnob(
             g.builder.imgui,
             container.imgui_id,
