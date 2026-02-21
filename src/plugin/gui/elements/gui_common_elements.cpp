@@ -19,8 +19,6 @@ static Margins ParamControlPadding() {
     return {
         .l = LiveWw(UiSizeId::ParamControlPadL),
         .r = LiveWw(UiSizeId::ParamControlPadR),
-        .t = LiveWw(UiSizeId::ParamControlPadT),
-        .b = LiveWw(UiSizeId::ParamControlPadB),
     };
 }
 
@@ -64,7 +62,7 @@ static Box DoMidIconButton(GuiBuilder& builder, Box parent, String icon, String 
               .text_justification = TextJustification::Centred,
               .parent_dictates_hot_and_active = true,
               .layout {
-                  .margins = {.l = margin, .r = margin, .t = margin, .b = margin},
+                  .margins = {.lrtb = margin},
               },
           });
     return btn;
@@ -74,10 +72,8 @@ MidPanelPrevNextButtonsResult
 DoMidPanelPrevNextButtons(GuiBuilder& builder, Box row, MidPanelPrevNextButtonsOptions const& options) {
     MidPanelPrevNextButtonsResult result {};
 
-    result.prev_fired =
-        DoMidIconButton(builder, row, ICON_FA_CARET_LEFT, options.prev_tooltip).button_fired;
-    result.next_fired =
-        DoMidIconButton(builder, row, ICON_FA_CARET_RIGHT, options.next_tooltip).button_fired;
+    result.prev_fired = DoMidIconButton(builder, row, ICON_FA_CARET_LEFT, options.prev_tooltip).button_fired;
+    result.next_fired = DoMidIconButton(builder, row, ICON_FA_CARET_RIGHT, options.next_tooltip).button_fired;
 
     return result;
 }

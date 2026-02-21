@@ -80,7 +80,7 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
                                     {
                                         .parent = root,
                                         .layout {
-                                            .size = {layout::k_fill_parent, LiveWw(LayerSelectorBoxHeight)},
+                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
                                             .contents_padding {.r = LiveWw(LayerSelectorBoxButtonsMarginR)},
                                             .contents_direction = layout::Direction::Row,
                                             .contents_align = layout::Alignment::Start,
@@ -134,7 +134,7 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
             .parent = selector_box,
             .parent_dictates_hot_and_active = true,
             .layout {
-                .size = layout::k_fill_parent,
+                .size = {layout::k_fill_parent, layout::k_hug_contents},
                 .contents_direction = layout::Direction::Row,
                 .contents_align = layout::Alignment::Start,
                 .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -195,7 +195,8 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
               .text_overflow = TextOverflowType::ShowDotsOnRight,
               .parent_dictates_hot_and_active = true,
               .layout {
-                  .size = layout::k_fill_parent,
+                  .size = {layout::k_fill_parent,
+                           k_font_body_size * LiveRaw(UiSizeId::ParamControlTextHeightPercent) / 100.0f},
                   .margins {.l = icon_tex ? 0.0f : LiveWw(MenuButtonTextMarginL)},
               },
           });
@@ -381,7 +382,7 @@ static void DoMixerContainer2(GuiState& g, u8 layer_index, Box root) {
                                      .parent = root,
                                      .layout {
                                          .size = layout::k_hug_contents,
-                                         .contents_gap = LiveWw(LayerMixerKnobGapX),
+                                         .contents_gap = LiveWw(LayerMixerKnobGapX2),
                                          .contents_direction = layout::Direction::Row,
                                          .contents_align = layout::Alignment::Middle,
                                      },
@@ -392,7 +393,7 @@ static void DoMixerContainer2(GuiState& g, u8 layer_index, Box root) {
                    container,
                    params.DescribedValue(layer_index, LayerParamIndex::TuneSemitone),
                    {
-                       .width = LiveWw(LayerPitchWidth),
+                       .width = LiveWw(LayerPitchWidth2),
                        .always_show_plus = true,
                    });
 
@@ -444,7 +445,6 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
                                                 .t = LiveWw(LayerSelectorBoxMarginT),
                                                 .b = LiveWw(LayerSelectorBoxMarginB),
                                             },
-                                            .contents_gap = LiveWw(UiSizeId::LayerTopSectionGapAfterSelector),
                                             .contents_direction = layout::Direction::Column,
                                             .contents_align = layout::Alignment::Start,
                                         },
@@ -454,7 +454,20 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
 
     if (g.engine.Layer(layer_index).instrument.tag == InstrumentType::None) return;
 
+    DoBox(g.builder,
+          {
+              .parent = top_controls,
+              .layout {.size = {1, LiveWw(UiSizeId::LayerTopSectionGapY1)}},
+          });
+
     DoMixerContainer1(g, layer_index, top_controls);
+
+    DoBox(g.builder,
+          {
+              .parent = top_controls,
+              .layout {.size = {1, LiveWw(UiSizeId::LayerTopSectionGapY2)}},
+          });
+
     DoMixerContainer2(g, layer_index, top_controls);
 }
 

@@ -263,7 +263,7 @@ Box DoMenuParameter(GuiState& g,
                       .size = {auto_width ? g.imgui.draw_list->fonts.Current()
                                                 ->LargestStringWidth(0, ParameterMenuItems(param.info.index))
                                           : layout::k_fill_parent,
-                               k_font_body_size},
+                               k_font_body_size * LiveRaw(UiSizeId::ParamControlTextHeightPercent) / 100.0f},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
                       if (options.override_tooltip.size) return options.override_tooltip;
@@ -447,9 +447,7 @@ Box DoKnobParameter(GuiState& g,
             g.builder.imgui,
             container.imgui_id,
             g.builder.imgui.ViewportRectToWindowRect(*r),
-            MapTo01(new_val ? *new_val : val,
-                    param.info.linear_range.min,
-                    param.info.linear_range.max),
+            MapTo01(new_val ? *new_val : val, param.info.linear_range.min, param.info.linear_range.max),
             {
                 .highlight_col = ToU32(options.knob_highlight_col),
                 .line_col = ToU32(options.knob_line_col),
@@ -479,17 +477,17 @@ Box DoKnobParameter(GuiState& g,
     }
 
     if (options.label)
-        DoBox(g.builder,
-              {
-                  .parent = container,
-                  .text = options.override_label.size ? options.override_label : param.info.gui_label,
-                  .text_colours = options.greyed_out ? Col {.c = Col::Overlay0, .dark_mode = true}
-                                                     : Col {.c = Col::Text, .dark_mode = true},
-                  .text_justification = TextJustification::Centred,
-                  .layout {
-                      .size = {knob_width, k_font_body_size},
-                  },
-              });
+        DoBox(
+            g.builder,
+            {
+                .parent = container,
+                .text = options.override_label.size ? options.override_label : param.info.gui_label,
+                .text_colours = Col {.c = options.greyed_out ? Col::Overlay0 : Col::Text, .dark_mode = true},
+                .text_justification = TextJustification::Centred,
+                .layout {
+                    .size = {knob_width, k_font_body_size},
+                },
+            });
 
     return container;
 }
@@ -589,7 +587,7 @@ Box DoIntParameter(GuiState& g,
                                      .id_extra = (u64)param.info.id,
                                      .layout {
                                          .size = layout::k_hug_contents,
-                                         .contents_gap = LiveWw(UiSizeId::ParamComponentLabelGapY),
+                                         .contents_gap = LiveWw(UiSizeId::ParamIntComponentGapY),
                                          .contents_direction = layout::Direction::Column,
                                          .contents_align = layout::Alignment::Start,
                                      },
@@ -616,10 +614,11 @@ Box DoIntParameter(GuiState& g,
                   .text = display_string,
                   .text_colours = Colours {options.greyed_out ? LiveColStruct(UiColMap::MidTextDimmed)
                                                               : LiveColStruct(UiColMap::MidText)},
-                  .text_justification = TextJustification::Centred,
-                  .text_overflow = TextOverflowType::ShowDotsOnRight,
+                  .text_justification = TextJustification::CentredLeft,
+                  .text_overflow = TextOverflowType::AllowOverflow,
                   .layout {
-                      .size = {layout::k_fill_parent, k_font_body_size},
+                      .size = {layout::k_fill_parent,
+                               k_font_body_size * LiveRaw(UiSizeId::ParamControlTextHeightPercent) / 100.0f},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
                       if (options.override_tooltip.size) return options.override_tooltip;
@@ -637,7 +636,7 @@ Box DoIntParameter(GuiState& g,
             .chars_decimal = !options.midi_note_names,
             .chars_note_names = options.midi_note_names,
             .tab_focuses_next_input = true,
-            .centre_align = true,
+            .centre_align = false,
             .escape_unfocuses = true,
             .select_all_when_opening = true,
         };
