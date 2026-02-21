@@ -65,6 +65,12 @@ struct ThreadPool {
     // The cleanup function is always called, regardless of whether the task completed successfully or was
     // cancelled - this is useful if the function is a lambda that captures some resources that should be
     // released when the lambda is destroyed.
+    //
+    // IMPORTANT: The cleanup function runs AFTER the Future signals completion (after SetResult or
+    // TrySetRunning clears the working bit). This means Future::ShutdownAndRelease may return before
+    // cleanup has finished executing. If the cleanup captures references to objects that could be
+    // destroyed after ShutdownAndRelease returns, you must use a separate synchronisation mechanism
+    // (e.g. an atomic counter) to ensure cleanup has completed before destroying those objects.
     void Async(auto& future, auto&& function, auto&& cleanup, JobPriority priority = JobPriority::Normal) {
         ZoneScoped;
         ASSERT(m_workers.size > 0);
