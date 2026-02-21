@@ -73,9 +73,9 @@ These are the sections in `gui_layer.cpp`'s `Layout()` (line ~343) and `Draw()` 
 | Instrument selector | 363-411 | 1048-1156 | DONE |
 | Mixer container 1 (volume knob, mute/solo, level meter) | 416-453 | 1160-1223 | DONE |
 | Mixer container 2 (3 context-dependent knobs) | 455-500 | 1224-1248 | DONE |
-| Divider | 502-510 | 1160-1161 | TODO |
-| Page tabs (Main/Filter/LFO/EQ/Play) | 512-540 | 1249+ (tab switching logic) | TODO |
-| Divider 2 | 534-540 | same area | TODO |
+| Divider | 502-510 | 1160-1161 | DONE |
+| Page tabs (Main/Filter/LFO/EQ/Play) | 512-540 | 1249+ (tab switching logic) | DONE |
+| Divider 2 | 534-540 | same area | DONE |
 | Page content (main/filter/eq/play/lfo pages) | 542-1008 | 1249+ | TODO |
 
 Note: `Layout()` returns early at line 413 if no instrument is loaded (`instrument.tag == InstrumentType::None`), so everything below the selector only appears when an instrument is loaded.
@@ -85,10 +85,13 @@ Note: `Layout()` returns early at line 413 if no instrument is loaded (`instrume
 Established during the mid panel conversion (commits `87604076..07727c49`):
 
 ### Layout
-- **`contents_padding` on containers** instead of `margins` on children.
+- **`contents_padding` on containers** instead of `margins` on children. Note: `contents_padding` only works on boxes that have children — it has no effect on leaf boxes (e.g. `size_from_text` text boxes).
 - **`contents_gap`** for spacing between siblings rather than individual margins.
 - **`layout::k_fill_parent`** instead of manually calculating sizes.
 - **`layout::k_hug_contents`** for containers that should size to their content.
+- **`DoWhitespace(builder, parent, height)`** for explicit vertical spacing between sections — prefer this over margins on dividers or other structural elements. Keeps spacing visible and adjustable via `UiSizeId`s.
+- **2-box hierarchy for clickable text buttons**: outer box is `k_hug_contents` with `button_behaviour`; inner box has `size_from_text = true`, `parent_dictates_hot_and_active = true`, and margins for padding. This gives a larger clickable area driven by inner text size. See `DoMidIconButton` in `gui_common_elements.cpp` for the pattern.
+- **Use new `UiSizeId`s** rather than raw values or repurposing legacy IDs. Give them clear, descriptive names (e.g. `LayerDividerGapAbove` not `LayerMixerDividerVertMargins`). Add them to `gui_sizes.def`.
 
 ### Units
 - **`LiveWw()` for all sizes in `DoBox`** config (GuiBuilder layout works in window-width-relative units).
@@ -102,6 +105,9 @@ Established during the mid panel conversion (commits `87604076..07727c49`):
 - **Lean into GuiBuilder** - use `DoBox` tooltips, `button_behaviour`, text rendering rather than manual imgui calls.
 - **`size_from_text = true`** for text-only boxes.
 - **`parent_dictates_hot_and_active = true`** on children that share hover/active state with a parent button.
+
+### IDs
+- **Duplicate ID panics**: `DoBox` generates unique IDs by hashing: source location (via default `loc_hash` arg), `id_extra`, parent ID, and the IMGUI ID stack. If a helper function containing a single `DoBox` is called multiple times with the same parent, the IDs will collide. Fix this by adding a `u64 loc_hash = SourceLocationHash()` default parameter to the helper — each call site then automatically gets a unique hash. See the comment at the top of `gui_builder.hpp` for full details. This is rare; most functions contain multiple `DoBox` calls or are only called once per parent.
 
 ### Architecture
 - **No includes of `gui/old/*`** in new code.

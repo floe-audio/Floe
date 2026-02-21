@@ -355,6 +355,158 @@ static void DoMixerContainer1(GuiState& g, u8 layer_index, Box root) {
     }
 }
 
+static void DoWhitespace(GuiBuilder& builder, Box parent, f32 height, u64 loc_hash = SourceLocationHash()) {
+    DoBox(builder,
+          {
+              .parent = parent,
+              .layout {.size = {1, height}},
+          },
+          loc_hash);
+}
+
+static void DoDivider(GuiState& g, Box parent, u64 loc_hash = SourceLocationHash()) {
+    auto const divider = DoBox(g.builder,
+                               {
+                                   .parent = parent,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, 1},
+                                   },
+                               },
+                               loc_hash);
+    if (auto const r = BoxRect(g.builder, divider)) {
+        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+        g.imgui.draw_list->AddLine({window_r.x, window_r.Bottom()},
+                                   {window_r.Right(), window_r.Bottom()},
+                                   LiveCol(UiColMap::MidViewportDivider));
+    }
+}
+
+static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
+    using enum UiSizeId;
+
+    auto& params = g.engine.processor.main_params;
+    auto& layer_layout = g.layer_gui[layer_index];
+
+    auto const tabs_row = DoBox(g.builder,
+                                {
+                                    .parent = parent,
+                                    .layout {
+                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                        .contents_direction = layout::Direction::Row,
+                                        .contents_align = layout::Alignment::Middle,
+                                    },
+                                });
+
+    for (auto const i : Range(layer_gui::k_num_pages)) {
+        auto const page_type = (layer_gui::PageType)i;
+        bool const is_selected = page_type == layer_layout.selected_page;
+        bool const tab_has_active_content = ({
+            bool result = false;
+            switch (page_type) {
+                case layer_gui::PageType::Filter:
+                    result = params.BoolValue(layer_index, LayerParamIndex::FilterOn);
+                    break;
+                case layer_gui::PageType::Lfo:
+                    result = params.BoolValue(layer_index, LayerParamIndex::LfoOn);
+                    break;
+                case layer_gui::PageType::Eq:
+                    result = params.BoolValue(layer_index, LayerParamIndex::EqOn);
+                    break;
+                case layer_gui::PageType::Main:
+                case layer_gui::PageType::Play:
+                case layer_gui::PageType::Count: break;
+            }
+            result;
+        });
+
+        auto const name = [&]() -> String {
+            switch (page_type) {
+                case layer_gui::PageType::Main: return "Main"_s;
+                case layer_gui::PageType::Eq: return "EQ"_s;
+                case layer_gui::PageType::Play: return "Play"_s;
+                case layer_gui::PageType::Lfo: return "LFO"_s;
+                case layer_gui::PageType::Filter: return "Filter"_s;
+                case layer_gui::PageType::Count: PanicIfReached();
+            }
+            return {};
+        }();
+
+        auto const tab_btn = DoBox(g.builder,
+                                   {
+                                       .parent = tabs_row,
+                                       .id_extra = (u64)i,
+                                       .layout {
+                                           .size = layout::k_hug_contents,
+                                       },
+                                       .tooltip = FunctionRef<String()> {[&]() -> String {
+                                           return fmt::Format(g.scratch_arena, "Open {} tab", name);
+                                       }},
+                                       .button_behaviour = imgui::ButtonConfig {},
+                                   });
+
+        DoBox(g.builder,
+              {
+                  .parent = tab_btn,
+                  .text = name,
+                  .size_from_text = true,
+                  .text_colours = is_selected ? Colours {ColSet {
+                                                    .base = LiveColStruct(UiColMap::MidTextOn),
+                                                    .hot = LiveColStruct(UiColMap::MidTextHot),
+                                                    .active = LiveColStruct(UiColMap::MidTextHot),
+                                                }}
+                                              : Colours {ColSet {
+                                                    .base = LiveColStruct(UiColMap::MidText),
+                                                    .hot = LiveColStruct(UiColMap::MidTextHot),
+                                                    .active = LiveColStruct(UiColMap::MidTextHot),
+                                                }},
+                  .text_justification = TextJustification::Centred,
+                  .parent_dictates_hot_and_active = true,
+                  .layout {
+                      .margins {.lr = LiveWw(LayerTabButtonMarginLR), .tb = LiveWw(LayerTabButtonMarginTB)},
+                  },
+              });
+
+        if (tab_btn.button_fired) layer_layout.selected_page = page_type;
+
+        // Draw active-content dot indicator
+        if (tab_has_active_content) {
+            if (auto const r = BoxRect(g.builder, tab_btn)) {
+                auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+                auto const dot_size = LivePx(LayerParamsGroupTabsIconW) * 0.30f;
+                auto const dot_centre =
+                    f32x2 {window_r.x + (LivePx(LayerParamsGroupTabsIconW) / 2), window_r.Centre().y};
+                auto const col = is_selected ? LiveCol(UiColMap::MidTextOn) : LiveCol(UiColMap::MidText);
+                g.imgui.draw_list->AddCircleFilled(dot_centre, dot_size / 2, col);
+            }
+        }
+    }
+
+    // Auto-switch tab when a macro destination knob is being interacted
+    if (g.macros_gui_state.active_destination_knob) {
+        auto const param =
+            LayerParamIndexAndLayerFor(*g.macros_gui_state.active_destination_knob->dest.param_index);
+        if (param && param->layer_num == layer_index) {
+            auto const k_desc = ParamDescriptorAt(ParamIndexFromLayerParamIndex(layer_index, param->param));
+            Optional<layer_gui::PageType> new_page {};
+            if (k_desc.module_parts.size >= 2) {
+                switch (k_desc.module_parts[1]) {
+                    case ParameterModule::Loop:
+                    case ParameterModule::VolEnv: new_page = layer_gui::PageType::Main; break;
+                    case ParameterModule::Lfo: new_page = layer_gui::PageType::Lfo; break;
+                    case ParameterModule::Filter: new_page = layer_gui::PageType::Filter; break;
+                    case ParameterModule::Playback: new_page = layer_gui::PageType::Play; break;
+                    case ParameterModule::Eq: new_page = layer_gui::PageType::Eq; break;
+                    default: break;
+                }
+            }
+            if (new_page && *new_page != layer_layout.selected_page) {
+                layer_layout.selected_page = *new_page;
+                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+            }
+        }
+    }
+}
+
 static void DoMixerContainer2(GuiState& g, u8 layer_index, Box root) {
     using enum UiSizeId;
 
@@ -437,21 +589,19 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
 
     if (g.engine.Layer(layer_index).instrument.tag == InstrumentType::None) return;
 
-    DoBox(g.builder,
-          {
-              .parent = top_controls,
-              .layout {.size = {1, LiveWw(UiSizeId::LayerTopSectionGapY1)}},
-          });
+    DoWhitespace(g.builder, top_controls, LiveWw(UiSizeId::LayerTopSectionGapY1));
 
     DoMixerContainer1(g, layer_index, top_controls);
 
-    DoBox(g.builder,
-          {
-              .parent = top_controls,
-              .layout {.size = {1, LiveWw(UiSizeId::LayerTopSectionGapY2)}},
-          });
+    DoWhitespace(g.builder, top_controls, LiveWw(UiSizeId::LayerTopSectionGapY2));
 
     DoMixerContainer2(g, layer_index, top_controls);
+
+    DoWhitespace(g.builder, root, LiveWw(UiSizeId::LayerDividerGapAbove));
+    DoDivider(g, root);
+    DoPageTabs(g, layer_index, root);
+    DoDivider(g, root);
+    DoWhitespace(g.builder, root, LiveWw(UiSizeId::LayerDividerGapBelow));
 }
 
 } // namespace layer_gui_new
