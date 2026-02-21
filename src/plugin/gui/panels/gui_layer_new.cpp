@@ -9,7 +9,6 @@
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
-#include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/panels/gui_inst_browser.hpp"
@@ -309,33 +308,17 @@ static void DoMixerContainer1(GuiState& g, u8 layer_index, Box root) {
                                      },
                                  });
 
-    // Volume knob
-    auto const volume_knob =
-        DoKnobParameter(g,
-                        container,
-                        params.DescribedValue(layer_index, LayerParamIndex::Volume),
-                        {
-                            .width = LiveWw(UiSizeId::LayerVolumeKnobSize),
-                            .knob_height_fraction = LiveRaw(UiSizeId::LayerVolumeKnobHeightPercent) / 100.0f,
-                            .style_system = GuiStyleSystem::MidPanel,
-                        });
-
-    // Peak meter drawn on top of the volume knob
-    if (auto const r = BoxRect(g.builder, volume_knob)) {
-        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-        auto const peak_meter_width = LivePx(LayerPeakMeterWidth);
-        auto const peak_meter_height = LivePx(LayerPeakMeterHeight2);
-        auto const peak_meter_y_offs = LivePx(LayerPeakMeterYOffs);
-
-        Rect const peak_meter_r {
-            .x = window_r.Centre().x - (peak_meter_width / 2),
-            .y = window_r.y + peak_meter_y_offs,
-            .w = peak_meter_width,
-            .h = peak_meter_height,
-        };
-        auto const& processor = g.engine.processor.layer_processors[layer_index];
-        DrawPeakMeter(g.imgui, peak_meter_r, processor.peak_meter, false);
-    }
+    // Volume knob with peak meter
+    auto const& layer_processor = g.engine.processor.layer_processors[layer_index];
+    DoKnobParameter(g,
+                    container,
+                    params.DescribedValue(layer_index, LayerParamIndex::Volume),
+                    {
+                        .width = LiveWw(UiSizeId::LayerVolumeKnobSize),
+                        .knob_height_fraction = LiveRaw(UiSizeId::LayerVolumeKnobHeightPercent) / 100.0f,
+                        .style_system = GuiStyleSystem::MidPanel,
+                        .peak_meter = &layer_processor.peak_meter,
+                    });
 
     // Mute/Solo buttons
     {
