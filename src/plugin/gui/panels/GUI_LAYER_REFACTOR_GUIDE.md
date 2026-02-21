@@ -76,7 +76,11 @@ These are the sections in `gui_layer.cpp`'s `Layout()` (line ~343) and `Draw()` 
 | Divider | 502-510 | 1160-1161 | DONE |
 | Page tabs (Main/Filter/LFO/EQ/Play) | 512-540 | 1249+ (tab switching logic) | DONE |
 | Divider 2 | 534-540 | same area | DONE |
-| Page content (main/filter/eq/play/lfo pages) | 542-1008 | 1249+ | TODO |
+| Page content: Main page | 568-655 | 1251-1291 | DONE |
+| Page content: Filter page | 657-724 | 1293-1332 | TODO |
+| Page content: EQ page | 726-820 | 1334-1383 | TODO |
+| Page content: Play page | 822-940 | 1385-1484 | TODO |
+| Page content: LFO page | 942-1008 | 1486-1560 | TODO |
 
 Note: `Layout()` returns early at line 413 if no instrument is loaded (`instrument.tag == InstrumentType::None`), so everything below the selector only appears when an instrument is loaded.
 
