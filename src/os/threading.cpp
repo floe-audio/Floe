@@ -408,8 +408,11 @@ TEST_CASE(TestFutex) {
     }
 
     SUBCASE("timeout when not woken") {
-        Atomic<u32> atomic {0};
-        CHECK(!WaitIfValueIsExpectedStrong(atomic, 0, 1u));
+        // TSan on macOS doesn't properly intercept __ulock_wait timeouts, causing infinite hangs.
+        if constexpr (!(k_running_with_thread_sanitizer && IS_MACOS)) {
+            Atomic<u32> atomic {0};
+            CHECK(!WaitIfValueIsExpectedStrong(atomic, 0, 1u));
+        }
     }
     return k_success;
 }
