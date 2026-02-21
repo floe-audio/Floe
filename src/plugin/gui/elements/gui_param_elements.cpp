@@ -364,7 +364,7 @@ Box DoKnobParameter(GuiState& g,
                                      }},
                                  });
 
-    auto val = param.NormalisedLinearValue();
+    auto val = param.LinearValue();
     auto const display_string = param.info.LinearValueToString(val).ReleaseValueOr({});
     Optional<f32> new_val {};
     Optional<imgui::TextInputResult> param_text_input_result {};
@@ -377,10 +377,10 @@ Box DoKnobParameter(GuiState& g,
             .rect_in_window_coords = window_r,
             .id = container.imgui_id,
             .text = options.is_fake ? ""_s : (String)display_string,
-            .min = 0,
-            .max = 1,
+            .min = param.info.linear_range.min,
+            .max = param.info.linear_range.max,
             .value = val,
-            .default_value = param.NormalisedDefaultLinearValue(),
+            .default_value = param.info.default_linear_value,
             .text_input_button_cfg {
                 .mouse_button = MouseButton::Left,
                 .event = MouseButtonEvent::DoubleClick,
@@ -392,7 +392,7 @@ Box DoKnobParameter(GuiState& g,
                 .select_all_when_opening = true,
             },
             .slider_cfg {
-                .sensitivity = 256,
+                .sensitivity = 256 / param.info.linear_range.Delta(),
                 .slower_with_shift = true,
                 .default_on_modifer = true,
             },
@@ -447,7 +447,9 @@ Box DoKnobParameter(GuiState& g,
             g.builder.imgui,
             container.imgui_id,
             g.builder.imgui.ViewportRectToWindowRect(*r),
-            val,
+            MapTo01(new_val ? *new_val : val,
+                    param.info.linear_range.min,
+                    param.info.linear_range.max),
             {
                 .highlight_col = ToU32(options.knob_highlight_col),
                 .line_col = ToU32(options.knob_line_col),
