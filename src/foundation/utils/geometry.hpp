@@ -46,7 +46,7 @@ PUBLIC constexpr UiSize ExpandChecked(UiSize size, UiSize expansion) {
     return {CheckedCast<u16>(size.width + expansion.width), CheckedCast<u16>(size.height + expansion.height)};
 }
 
-// Use with designated initialiser syntax.
+// Use with designated initialiser syntax. For example, set all: {.lrtb = 4.0f}, set lr: {.tb = 5.0f}.
 union Margins {
     struct {
         union {
