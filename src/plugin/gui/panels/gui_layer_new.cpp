@@ -7,6 +7,7 @@
 
 #include "engine/engine.hpp"
 #include "engine/loop_modes.hpp"
+#include "gui/controls/gui_curve_map.hpp"
 #include "gui/controls/gui_envelope.hpp"
 #include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_library_images.hpp"
@@ -743,6 +744,636 @@ static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
     AddParamContextMenuBehaviour(g, menu_btn, param);
 }
 
+static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
+    using enum UiSizeId;
+
+    auto& layer = g.engine.Layer(layer_index);
+    auto& params = g.engine.processor.main_params;
+    bool const filter_on = params.BoolValue(layer_index, LayerParamIndex::FilterOn);
+    bool const greyed_out = !filter_on;
+
+    auto const page = DoBox(g.builder,
+                            {
+                                .parent = parent,
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    // Heading row: FilterOn toggle + FilterType menu
+    {
+        auto const heading_row = DoBox(g.builder,
+                                       {
+                                           .parent = page,
+                                           .layout {
+                                               .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                               .contents_padding {
+                                                   .t = LiveWw(PageHeadingMarginT2),
+                                                   .b = LiveWw(PageHeadingMarginB2),
+                                               },
+                                               .contents_gap = LiveWw(FilterHeadingGapX),
+                                               .contents_direction = layout::Direction::Row,
+                                           },
+                                       });
+
+        DoButtonParameter(g,
+                          heading_row,
+                          params.DescribedValue(layer_index, LayerParamIndex::FilterOn),
+                          {.width = LiveWw(FilterOnWidth)});
+
+        DoMenuParameter(g,
+                        heading_row,
+                        params.DescribedValue(layer_index, LayerParamIndex::FilterType),
+                        {.width = LiveWw(FilterTypeMenuWidth), .greyed_out = greyed_out, .label = false});
+    }
+
+    DoWhitespace(g.builder, page, LiveWw(FilterGapYBeforeKnobs));
+
+    // Knobs row: Cutoff, Resonance, EnvAmount
+    {
+        auto const knobs_row = DoBox(g.builder,
+                                     {
+                                         .parent = page,
+                                         .layout {
+                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                             .contents_padding {.lr = LiveWw(Page3KnobGapX)},
+                                             .contents_gap = LiveWw(Page3KnobRowGapX),
+                                             .contents_direction = layout::Direction::Row,
+                                             .contents_align = layout::Alignment::Middle,
+                                         },
+                                     });
+
+        DoKnobParameter(g,
+                        knobs_row,
+                        params.DescribedValue(layer_index, LayerParamIndex::FilterCutoff),
+                        {
+                            .width = LiveWw(ParamComponentLargeWidth),
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .greyed_out = greyed_out,
+                        });
+        DoKnobParameter(g,
+                        knobs_row,
+                        params.DescribedValue(layer_index, LayerParamIndex::FilterResonance),
+                        {
+                            .width = LiveWw(ParamComponentLargeWidth),
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .greyed_out = greyed_out,
+                        });
+        DoKnobParameter(g,
+                        knobs_row,
+                        params.DescribedValue(layer_index, LayerParamIndex::FilterEnvAmount),
+                        {
+                            .width = LiveWw(ParamComponentLargeWidth),
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .greyed_out = greyed_out,
+                            .bidirectional = true,
+                        });
+    }
+
+    // Filter envelope
+    {
+        auto const envelope_box = DoBox(g.builder,
+                                        {
+                                            .parent = page,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, LiveWw(MainEnvelopeH)},
+                                                .margins {
+                                                    .lr = LiveWw(FilterEnvelopeMarginLR),
+                                                    .tb = LiveWw(FilterEnvelopeMarginTB),
+                                                },
+                                            },
+                                        });
+
+        bool const env_greyed_out =
+            greyed_out || (params.LinearValue(layer_index, LayerParamIndex::FilterEnvAmount) == 0);
+        if (auto const r = BoxRect(g.builder, envelope_box))
+            DoEnvelopeGui(g,
+                          layer,
+                          *r,
+                          env_greyed_out,
+                          {LayerParamIndex::FilterAttack,
+                           LayerParamIndex::FilterDecay,
+                           LayerParamIndex::FilterSustain,
+                           LayerParamIndex::FilterRelease},
+                          GuiEnvelopeType::Filter);
+    }
+}
+
+static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
+    using enum UiSizeId;
+
+    auto& params = g.engine.processor.main_params;
+    bool const greyed_out = !params.BoolValue(layer_index, LayerParamIndex::EqOn);
+
+    auto const page = DoBox(g.builder,
+                            {
+                                .parent = parent,
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    // EqOn heading
+    {
+        auto const heading_wrapper = DoBox(g.builder,
+                                           {
+                                               .parent = page,
+                                               .layout {
+                                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                   .contents_padding {
+                                                       .t = LiveWw(PageHeadingMarginT2),
+                                                       .b = LiveWw(PageHeadingMarginB2),
+                                                   },
+                                                   .contents_align = layout::Alignment::Middle,
+                                               },
+                                           });
+
+        DoButtonParameter(g,
+                          heading_wrapper,
+                          params.DescribedValue(layer_index, LayerParamIndex::EqOn),
+                          {
+                              .width = LiveWw(UiSizeId::PageHeadingFullButtonWidth),
+                          });
+    }
+
+    // EQ band helper
+    auto const do_eq_band = [&](LayerParamIndex type_param,
+                                LayerParamIndex freq_param,
+                                LayerParamIndex reso_param,
+                                LayerParamIndex gain_param,
+                                u64 loc_hash = SourceLocationHash()) {
+        // Type menu
+        DoMenuParameter(g,
+                        page,
+                        params.DescribedValue(layer_index, type_param),
+                        {.greyed_out = greyed_out, .label = false});
+
+        DoWhitespace(g.builder, page, LiveWw(EqBandGapY), loc_hash);
+
+        // Knobs row
+        auto const knobs_row = DoBox(g.builder,
+                                     {
+                                         .parent = page,
+                                         .id_extra = loc_hash,
+                                         .layout {
+                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                             .contents_padding {.lr = LiveWw(Page3KnobGapX)},
+                                             .contents_gap = LiveWw(Page3KnobRowGapX),
+                                             .contents_direction = layout::Direction::Row,
+                                             .contents_align = layout::Alignment::Middle,
+                                         },
+                                     });
+
+        DoKnobParameter(g,
+                        knobs_row,
+                        params.DescribedValue(layer_index, freq_param),
+                        {
+                            .width = LiveWw(ParamComponentLargeWidth),
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .greyed_out = greyed_out,
+                        });
+        DoKnobParameter(g,
+                        knobs_row,
+                        params.DescribedValue(layer_index, reso_param),
+                        {
+                            .width = LiveWw(ParamComponentLargeWidth),
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .greyed_out = greyed_out,
+                        });
+        DoKnobParameter(g,
+                        knobs_row,
+                        params.DescribedValue(layer_index, gain_param),
+                        {
+                            .width = LiveWw(ParamComponentLargeWidth),
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .greyed_out = greyed_out,
+                            .bidirectional = true,
+                        });
+    };
+
+    // Band 1
+    do_eq_band(LayerParamIndex::EqType1,
+               LayerParamIndex::EqFreq1,
+               LayerParamIndex::EqResonance1,
+               LayerParamIndex::EqGain1);
+
+    DoWhitespace(g.builder, page, LiveWw(EqBandGapY));
+
+    // Band 2
+    do_eq_band(LayerParamIndex::EqType2,
+               LayerParamIndex::EqFreq2,
+               LayerParamIndex::EqResonance2,
+               LayerParamIndex::EqGain2);
+}
+
+static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
+    using enum UiSizeId;
+
+    auto& params = g.engine.processor.main_params;
+    bool const greyed_out = !params.BoolValue(layer_index, LayerParamIndex::LfoOn);
+
+    auto const page = DoBox(g.builder,
+                            {
+                                .parent = parent,
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    // LfoOn heading
+    {
+        auto const heading_wrapper = DoBox(g.builder,
+                                           {
+                                               .parent = page,
+                                               .layout {
+                                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                   .contents_padding {
+                                                       .t = LiveWw(PageHeadingMarginT2),
+                                                       .b = LiveWw(PageHeadingMarginB2),
+                                                   },
+                                                   .contents_align = layout::Alignment::Middle,
+                                               },
+                                           });
+
+        DoButtonParameter(g,
+                          heading_wrapper,
+                          params.DescribedValue(layer_index, LayerParamIndex::LfoOn),
+                          {
+                              .width = LiveWw(UiSizeId::PageHeadingFullButtonWidth),
+                          });
+    }
+
+    {
+        auto const menu_row_container = DoBox(g.builder,
+                                              {
+                                                  .parent = page,
+                                                  .layout {
+                                                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                      .contents_padding = {.l = LiveWw(LfoItemMarginL)},
+                                                      .contents_gap = LiveWw(LfoItemGapY2),
+                                                      .contents_direction = layout::Direction::Column,
+                                                  },
+                                              });
+
+        // Menu + label rows
+        auto const do_menu_label_row = [&](LayerParamIndex param_index, u64 loc_hash = SourceLocationHash()) {
+            auto const param = params.DescribedValue(layer_index, param_index);
+
+            auto const row = DoBox(g.builder,
+                                   {
+                                       .parent = menu_row_container,
+                                       .layout {
+                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                           .contents_gap = LiveWw(LfoItemGapX),
+                                           .contents_direction = layout::Direction::Row,
+                                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                       },
+                                   },
+                                   loc_hash);
+
+            DoMenuParameter(g,
+                            row,
+                            param,
+                            {
+                                .width = LiveWw(LfoItemWidth),
+                                .greyed_out = greyed_out,
+                                .label = false,
+                            });
+
+            DoBox(g.builder,
+                  {
+                      .parent = row,
+                      .text = param.info.gui_label,
+                      .text_colours = LiveColStruct(UiColMap::MidText),
+                      .text_justification = TextJustification::CentredLeft,
+                      .layout {
+                          .size = {layout::k_fill_parent, k_font_body_size},
+                      },
+                  },
+                  loc_hash);
+        };
+
+        do_menu_label_row(LayerParamIndex::LfoDestination);
+        do_menu_label_row(LayerParamIndex::LfoShape);
+        do_menu_label_row(LayerParamIndex::LfoRestart);
+    }
+
+    DoWhitespace(g.builder, page, LiveWw(LfoGapYBeforeKnobs2));
+
+    // Knobs row: Amount + Rate column
+    {
+        auto const knobs_row = DoBox(g.builder,
+                                     {
+                                         .parent = page,
+                                         .layout {
+                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                             .contents_gap = LiveWw(LfoKnobGapX),
+                                             .contents_direction = layout::Direction::Row,
+                                             .contents_align = layout::Alignment::Middle,
+                                         },
+                                     });
+
+        DoKnobParameter(g,
+                        knobs_row,
+                        params.DescribedValue(layer_index, LayerParamIndex::LfoAmount),
+                        {
+                            .width = LiveWw(ParamComponentLargeWidth),
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .greyed_out = greyed_out,
+                            .bidirectional = true,
+                        });
+
+        // Rate column
+        auto const rate_col = DoBox(g.builder,
+                                    {
+                                        .parent = knobs_row,
+                                        .layout {
+                                            .size = layout::k_hug_contents,
+                                            .contents_direction = layout::Direction::Column,
+                                            .contents_align = layout::Alignment::Middle,
+                                        },
+                                    });
+
+        if (params.BoolValue(layer_index, LayerParamIndex::LfoSyncSwitch)) {
+            DoMenuParameter(g,
+                            rate_col,
+                            params.DescribedValue(layer_index, LayerParamIndex::LfoRateTempoSynced),
+                            {.greyed_out = greyed_out});
+        } else {
+            DoKnobParameter(g,
+                            rate_col,
+                            params.DescribedValue(layer_index, LayerParamIndex::LfoRateHz),
+                            {
+                                .width = LiveWw(ParamComponentLargeWidth),
+                                .style_system = GuiStyleSystem::MidPanel,
+                                .greyed_out = greyed_out,
+                            });
+        }
+
+        DoWhitespace(g.builder, rate_col, LiveWw(LfoSyncSwitchGapY));
+
+        DoButtonParameter(g,
+                          rate_col,
+                          params.DescribedValue(layer_index, LayerParamIndex::LfoSyncSwitch),
+                          {.width = LiveWw(LfoSyncSwitchWidth)});
+    }
+}
+
+static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
+    using enum UiSizeId;
+
+    auto& layer = g.engine.Layer(layer_index);
+    auto& params = g.engine.processor.main_params;
+
+    auto const page = DoBox(g.builder,
+                            {
+                                .parent = parent,
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    // Helper for int dragger + label rows (Transpose, PitchBend)
+    auto const do_int_label_row = [&](LayerParamIndex param_index, u64 loc_hash = SourceLocationHash()) {
+        auto const param = params.DescribedValue(layer_index, param_index);
+
+        auto const row = DoBox(g.builder,
+                               {
+                                   .parent = page,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .contents_padding {
+                                           .lr = LiveWw(MidiItemMarginLR),
+                                           .tb = LiveWw(MidiItemGapY),
+                                       },
+                                       .contents_direction = layout::Direction::Row,
+                                   },
+                               },
+                               loc_hash);
+
+        DoIntParameter(g,
+                       row,
+                       param,
+                       {
+                           .width = LiveWw(MidiItemWidth),
+                           .label = false,
+                       });
+
+        DoBox(g.builder,
+              {
+                  .parent = row,
+                  .text = param.info.gui_label,
+                  .text_colours = LiveColStruct(UiColMap::MidText),
+                  .text_justification = TextJustification::CentredLeft,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                  },
+                  .tooltip = FunctionRef<String()> {[&]() -> String { return param.info.tooltip; }},
+              },
+              loc_hash);
+    };
+
+    // Transpose
+    do_int_label_row(LayerParamIndex::MidiTranspose);
+
+    // PitchBend
+    do_int_label_row(LayerParamIndex::PitchBendRange);
+
+    // Keytrack
+    {
+        auto const keytrack_wrapper = DoBox(g.builder,
+                                            {
+                                                .parent = page,
+                                                .layout {
+                                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                    .contents_padding {
+                                                        .lr = LiveWw(MidiItemMarginLR),
+                                                        .tb = LiveWw(MidiItemGapY),
+                                                    },
+                                                },
+                                            });
+        DoButtonParameter(g,
+                          keytrack_wrapper,
+                          params.DescribedValue(layer_index, LayerParamIndex::Keytrack),
+                          {});
+    }
+
+    // Monophonic mode
+    {
+        auto const param = params.DescribedValue(layer_index, LayerParamIndex::MonophonicMode);
+
+        auto const row = DoBox(g.builder,
+                               {
+                                   .parent = page,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .contents_padding {
+                                           .lr = LiveWw(MidiItemMarginLR),
+                                           .tb = LiveWw(MidiItemGapY),
+                                       },
+                                       .contents_direction = layout::Direction::Row,
+                                   },
+                               });
+
+        DoMenuParameter(g, row, param, {.label = false});
+
+        DoBox(g.builder,
+              {
+                  .parent = row,
+                  .text = param.info.gui_label,
+                  .text_colours = LiveColStruct(UiColMap::MidText),
+                  .text_justification = TextJustification::CentredLeft,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                  },
+              });
+    }
+
+    // Key Range row
+    {
+        auto const row = DoBox(g.builder,
+                               {
+                                   .parent = page,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .contents_padding {
+                                           .lr = LiveWw(MidiItemMarginLR),
+                                           .tb = LiveWw(MidiItemGapY),
+                                       },
+                                       .contents_gap = 4.0f,
+                                       .contents_direction = layout::Direction::Row,
+                                   },
+                               });
+
+        DoBox(g.builder,
+              {
+                  .parent = row,
+                  .text = "Range"_s,
+                  .text_colours = LiveColStruct(UiColMap::MidText),
+                  .text_justification = TextJustification::CentredLeft,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                  },
+              });
+
+        DoIntParameter(g,
+                       row,
+                       params.DescribedValue(layer_index, LayerParamIndex::KeyRangeLow),
+                       {
+                           .width = LiveWw(MidiItemWidth),
+                           .midi_note_names = true,
+                           .label = false,
+                       });
+
+        DoIntParameter(g,
+                       row,
+                       params.DescribedValue(layer_index, LayerParamIndex::KeyRangeHigh),
+                       {
+                           .width = LiveWw(MidiItemWidth),
+                           .midi_note_names = true,
+                           .label = false,
+                       });
+    }
+
+    // Key Fade row
+    {
+        auto const row = DoBox(g.builder,
+                               {
+                                   .parent = page,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .contents_padding {
+                                           .lr = LiveWw(MidiItemMarginLR),
+                                           .tb = LiveWw(MidiItemGapY),
+                                       },
+                                       .contents_gap = 4.0f,
+                                       .contents_direction = layout::Direction::Row,
+                                   },
+                               });
+
+        DoBox(g.builder,
+              {
+                  .parent = row,
+                  .text = "Key Fade"_s,
+                  .text_colours = LiveColStruct(UiColMap::MidText),
+                  .text_justification = TextJustification::CentredLeft,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                  },
+              });
+
+        DoIntParameter(g,
+                       row,
+                       params.DescribedValue(layer_index, LayerParamIndex::KeyRangeLowFade),
+                       {
+                           .width = LiveWw(MidiItemWidth),
+                           .label = false,
+                       });
+
+        DoIntParameter(g,
+                       row,
+                       params.DescribedValue(layer_index, LayerParamIndex::KeyRangeHighFade),
+                       {
+                           .width = LiveWw(MidiItemWidth),
+                           .label = false,
+                       });
+    }
+
+    // Velocity label
+    DoBox(g.builder,
+          {
+              .parent = page,
+              .text = "Velocity to volume curve"_s,
+              .text_colours = LiveColStruct(UiColMap::MidText),
+              .text_justification = TextJustification::CentredLeft,
+              .layout {
+                  .size = {layout::k_fill_parent, layout::k_hug_contents},
+                  .margins {
+                      .lr = LiveWw(MidiItemMarginLR),
+                      .tb = LiveWw(MidiItemGapY),
+                  },
+              },
+              .tooltip =
+                  FunctionRef<String()> {[&]() -> String { return "Curve that maps velocity to volume"_s; }},
+          });
+
+    // Velocity graph
+    {
+        auto const velo_box = DoBox(g.builder,
+                                    {
+                                        .parent = page,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, LiveWw(MidiVeloGraphHeight)},
+                                            .margins {.lr = LiveWw(MidiItemMarginLR)},
+                                        },
+                                    });
+
+        if (auto const r = BoxRect(g.builder, velo_box)) {
+            auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+
+            Optional<f32> velocity {};
+            if (g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed))
+                velocity =
+                    g.engine.processor.voice_pool.last_velocity[layer_index].Load(LoadMemoryOrder::Relaxed);
+
+            DoCurveMap(
+                g,
+                layer.velocity_curve_map,
+                window_r,
+                velocity,
+                "Configures how MIDI velocity maps to volume. X-axis: velocity, Y-axis: volume. Adjust the curve to customize this relationship.");
+        }
+    }
+}
+
 static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
     using enum UiSizeId;
 
@@ -922,10 +1553,10 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
     // Page content
     switch (g.layer_gui[layer_index].selected_page) {
         case layer_gui::PageType::Main: DoMainPage(g, layer_index, root); break;
-        case layer_gui::PageType::Filter:
-        case layer_gui::PageType::Lfo:
-        case layer_gui::PageType::Eq:
-        case layer_gui::PageType::Play:
+        case layer_gui::PageType::Filter: DoFilterPage(g, layer_index, root); break;
+        case layer_gui::PageType::Lfo: DoLfoPage(g, layer_index, root); break;
+        case layer_gui::PageType::Eq: DoEqPage(g, layer_index, root); break;
+        case layer_gui::PageType::Play: DoPlayPage(g, layer_index, root); break;
         case layer_gui::PageType::Count: break;
     }
 }
