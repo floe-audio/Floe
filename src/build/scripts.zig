@@ -707,7 +707,7 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
     var timer = try std.time.Timer.start();
 
     try child.spawn();
-    ciLog("Spawned", args, "");
+    ciLog("Spawned", args, "", .{});
     errdefer {
         _ = child.kill() catch {};
     }
@@ -749,22 +749,22 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
                 .allocator = allocator,
             },
             struct {
-                fn wait(process: *std.process.Child, done_inner: *std.atomic.Value(bool)) void {
+                fn wait(process: *std.process.Child, done_inner: *std.atomic.Value(bool), build_args: []const []const u8) void {
                     _ = process.wait() catch |err| {
-                        std.log.err("Failed to wait for process: {any}\n", .{err});
+                        ciLog("Error", build_args, "failed to wait for process: {any}", .{err});
                     };
 
                     done_inner.store(true, .release);
                 }
             }.wait,
-            .{ &child, &done },
+            .{ &child, &done, args },
         );
 
         var timed_out = false;
         while (!done.load(.acquire)) {
             std.time.sleep(100 * std.time.ns_per_ms);
             if (timer.read() >= timeout_seconds * std.time.ns_per_s) {
-                std.log.warn("Process timed out after {d} seconds, killing...\n", .{timeout_seconds});
+                ciLog("Timeout", args, "timed out after {d} seconds, killing", .{timeout_seconds});
                 try killProcess(&child);
                 timed_out = true;
                 break;
@@ -802,34 +802,34 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
     }
 }
 
-fn ciLog(prefix: []const u8, args: []const []const u8, extra: []const u8) void {
-    var buf: [4096]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
-    const writer = stream.writer();
-    writer.print("[ci] {s}: zig build", .{prefix}) catch return;
-    for (args) |arg| {
-        writer.print(" {s}", .{arg}) catch return;
+fn ciLog(prefix: []const u8, args: []const []const u8, comptime fmt: []const u8, fmt_args: anytype) void {
+    std.debug.lockStdErr();
+    defer std.debug.unlockStdErr();
+    const stderr = std.io.getStdErr().writer();
+    nosuspend {
+        stderr.print("[ci] {s}: zig build", .{prefix}) catch return;
+        for (args) |arg| {
+            stderr.print(" {s}", .{arg}) catch return;
+        }
+        if (fmt.len > 0) {
+            stderr.writeAll(" — ") catch return;
+            stderr.print(fmt, fmt_args) catch return;
+        }
+        stderr.writeAll("\n") catch return;
     }
-    if (extra.len > 0) {
-        writer.print(" — {s}", .{extra}) catch return;
-    }
-    writer.writeAll("\n") catch return;
-    std.debug.print("{s}", .{stream.getWritten()});
 }
 
 fn runZigBuild(ci_report: *CiReport, args: []const []const u8) void {
-    ciLog("Starting", args, "");
+    ciLog("Starting", args, "", .{});
 
     _ = tryRunZigBuild(ci_report, args) catch |err| {
-        var err_buf: [256]u8 = undefined;
-        const err_msg = std.fmt.bufPrint(&err_buf, "{any}", .{err}) catch "?";
-        ciLog("Error", args, err_msg);
+        ciLog("Error", args, "{any}", .{err});
         if (@errorReturnTrace()) |st|
             std.debug.dumpStackTrace(st.*);
         return;
     };
 
-    ciLog("Finished", args, "");
+    ciLog("Finished", args, "", .{});
 }
 
 fn spawnZigBuild(pool: *std.Thread.Pool, wg: *std.Thread.WaitGroup, ci_report: *CiReport, args: []const []const u8) void {
